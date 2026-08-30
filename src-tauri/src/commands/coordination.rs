@@ -62,8 +62,15 @@ use taurhaus_lib::ProviderState;
 pub(crate) fn background_launch_settings(
     db: &DbState,
     teams_dir: &std::path::Path,
-) -> Result<(CliCommandSettings, String), CoordinationError> {
-    Ok(task_effort_launch_settings(db, teams_dir).0)
+) -> (CliCommandSettings, String) {
+    let (settings, discovery_error) = task_effort_launch_settings(db, teams_dir);
+    if let Some(err) = discovery_error {
+        tracing::warn!(
+            error = %err,
+            "managed-Codex discovery failed; background pass proceeds with managed inputs"
+        );
+    }
+    settings
 }
 
 /// Strict launch settings for the task-arrival effort pass.

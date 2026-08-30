@@ -62,8 +62,9 @@ fn background_launch_settings_degrades_managed_codex_discovery_failure() {
         .expect("write broken config");
     let (db, _db_file) = test_db_state();
 
-    background_launch_settings(&db, teams.path())
-        .expect("background passes must retain per-team resilience");
+    // Infallible by contract: a discovery failure is logged and degraded,
+    // never surfaced, so the background passes keep their per-team handling.
+    let (_cli_commands, _tmux_layout) = background_launch_settings(&db, teams.path());
 }
 
 #[test]

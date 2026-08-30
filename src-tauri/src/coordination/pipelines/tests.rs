@@ -4516,7 +4516,7 @@ fn delivered_notice_does_not_flip_the_running_task_to_another_assignment() {
         &root,
         "42",
         "delivered",
-        "delivered",
+        "active",
         Some("2026-08-30T09:00:10Z"),
     );
 

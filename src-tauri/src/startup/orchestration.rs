@@ -133,11 +133,9 @@ fn spawn_coordination_self_heal_monitor(app: tauri::AppHandle) {
             let pass_started_at = Instant::now();
             let state = app.state::<crate::coordination::state::CoordinationState>();
             let db = app.state::<crate::commands::projects::DbState>();
-            let pass =
-                crate::commands::coordination::background_launch_settings(&db, state.teams_dir())
-                    .and_then(|(cli_commands, tmux_layout)| {
-                        state.run_background_self_heal_pass(&cli_commands, &tmux_layout)
-                    });
+            let (cli_commands, tmux_layout) =
+                crate::commands::coordination::background_launch_settings(&db, state.teams_dir());
+            let pass = state.run_background_self_heal_pass(&cli_commands, &tmux_layout);
             match pass {
                 Ok(summary) => {
                     if summary.teams_reconciled > 0
