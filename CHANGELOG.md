@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every Rust integration binary runs in the integration lane** — `just test-rust-integration` derives its targets from every top-level `src-tauri/tests/*.rs` file, while a completeness guard rejects missing or stale targets and one shared manifest keeps the unit-lane heavy skips identical to their serialized integration reruns.
+
 ## [0.8.4] - 2026-08-30
 
 ### Added
