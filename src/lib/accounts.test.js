@@ -1025,6 +1025,62 @@ describe('claudeAccounts store', () => {
       }
     })
 
+    // Regression: 4011b02 gave a Windows refresh the daemon could not be asked
+    // at all the same `false` a debounced one gets, and the read that follows
+    // reports an unreachable daemon as a degraded report rather than by
+    // failing. Nothing was learned either way, but the pair read as "the
+    // numbers on screen are current", so a launch stopped on a reading from
+    // before the daemon went away — the one thing a failed refresh promised
+    // never to do.
+    it('launches as before when the read that follows the refresh is degraded', async () => {
+      listAccounts.mockResolvedValue(detected([{ ...PRIMARY, usage: SPENT }, SECOND]))
+      await refreshAccounts('claude')
+      // The daemon is gone: nothing starts a fetch, and the read that follows
+      // carries no accounts at all.
+      refreshAccountsUsage.mockResolvedValueOnce(false)
+      listAccounts.mockResolvedValue(degraded())
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+    })
+
+    // Regression: 2bec263 made a remembered-account launch wait for a reading
+    // newer than the one it holds. For an account the poller has already found
+    // signed out there is no such reading: it records the credential file it
+    // read and republishes nothing until that file changes. So the one launch
+    // this feature exists to stop — into a subscription that cannot run — sat
+    // out the whole 30-second deadline and then went ahead anyway.
+    it('opens on a remembered account that is signed out, without waiting for the poller', async () => {
+      vi.useFakeTimers()
+      let launching = null
+      try {
+        const SIGNED_OUT = snapshot('unauthorized', [])
+        // Every read carries the same reading: the poller publishes no other.
+        listAccounts.mockResolvedValue(detected([{ ...PRIMARY, usage: SIGNED_OUT }, SECOND]))
+        await refreshAccounts('claude')
+
+        let settled = false
+        launching = requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' }).then(
+          () => {
+            settled = true
+          }
+        )
+        await vi.advanceTimersByTimeAsync(1)
+
+        expect(settled).toBe(true)
+        expect(launchCliSession).not.toHaveBeenCalled()
+        expect(claudeAccounts.pending).toMatchObject({
+          reason: { kind: 'unauthorized', accountLabel: 'stierms@gmail.com' },
+        })
+      } finally {
+        resetAccountsForTest()
+        await launching
+        vi.useRealTimers()
+      }
+    })
+
     it('never blocks a launch on an account nothing was ever known about', async () => {
       listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
       await refreshAccounts('claude')

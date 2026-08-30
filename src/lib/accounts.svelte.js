@@ -167,6 +167,19 @@ function usageObservation(account) {
   return account?.usage?.observed_at ?? null
 }
 
+/**
+ * Whether this reading is the last word the backend has on the account.
+ *
+ * An account found signed out is polled once and then held: the poller records
+ * the credential file it read and republishes nothing until that file changes.
+ * Waiting for a reading newer than that one waits out the whole deadline and
+ * learns nothing, so the one in hand is the current one and the caller is
+ * answered on it at once.
+ */
+function readingIsHeld(account) {
+  return account?.usage?.status === 'unauthorized'
+}
+
 function mergeUsageReport(state, report, pending) {
   if (report?.degraded) return pending
   const usageById = new Map(
@@ -314,12 +327,13 @@ function trackUsageSync(tool, pending, { deadline = null, watch = null } = {}) {
  *
  * An account nothing has ever reported on is not waited for — there is no
  * reading to supersede, and a launch is never held up over one that does not
- * exist.
+ * exist. Neither is one whose reading the backend is holding rather than
+ * replacing: a signed-out account is judged on the reading that says so.
  *
- * Resolves `{ ok, current }`: `ok` is false when the round trip itself failed,
- * `current` false when the named account's reading is still the older one when
- * the wait runs out. A caller deciding something on those numbers must treat
- * either as "nothing new was learned".
+ * Resolves `{ ok, current }`: `ok` is false when the round trip itself failed
+ * or came back degraded, `current` false when the named account's reading is
+ * still the older one when the wait runs out. A caller deciding something on
+ * those numbers must treat either as "nothing new was learned".
  */
 export function refreshUsage(tool = providerTool(), { settleFor = null } = {}) {
   const id = toolId(tool)
@@ -329,11 +343,17 @@ export function refreshUsage(tool = providerTool(), { settleFor = null } = {}) {
       .filter((account) => account.logged_in && account.usage_capable !== false)
       .map((account) => [account.id, usageObservation(account)])
   )
-  const awaited = settleFor && pending.get(settleFor) != null ? settleFor : null
+  const held = readingIsHeld(state.accounts.find((account) => account.id === settleFor))
+  const awaited = settleFor && !held && pending.get(settleFor) != null ? settleFor : null
   const awaitedObservation = awaited ? pending.get(awaited) : null
   return Promise.resolve(refreshAccountsUsage(id))
     .then((scheduled) => listAccounts(id).then((report) => ({ report, scheduled })))
     .then(({ report, scheduled }) => {
+      // The daemon answers an outage with a degraded report rather than by
+      // failing, and it is the same daemon that would have started the fetch.
+      // Nothing is coming, and nothing was learned: what is on screen is
+      // whatever was known before the outage.
+      if (report?.degraded) return { ok: false, current: false }
       const inFlight = usageSyncs.has(id)
       const remaining = mergeUsageReport(state, report, pending)
       settleSupersededWatches(id, state)
