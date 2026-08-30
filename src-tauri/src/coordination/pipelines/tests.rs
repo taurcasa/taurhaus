@@ -4823,6 +4823,19 @@ fn codex_launch_attempts(runtime: &RecordingCoordinationRuntime) -> usize {
         .count()
 }
 
+fn member_relaunch_attempts(runtime: &RecordingCoordinationRuntime) -> usize {
+    runtime
+        .calls()
+        .into_iter()
+        .filter(|call| {
+            matches!(
+                call,
+                RuntimeCall::CreatePane { .. } | RuntimeCall::CreatePaneInTarget { .. }
+            )
+        })
+        .count()
+}
+
 // Regression: 2529309 recorded the requested level as `applied_effort` on the
 // failure branch too. The member was already stopped, the level had never
 // taken effect, and every later pass compared requested against applied and
@@ -4910,6 +4923,101 @@ fn a_failed_effort_relaunch_stays_retryable_within_a_budget() {
         after_budget,
         "a level that keeps failing must not restart the pane on every pass"
     );
+}
+
+// Regression: 2529309 stopped retrying after the bounded effort budget but
+// left no durable reason and emitted no terminal event, so every later sweep
+// looked nominal while the member stayed at the wrong level.
+#[test]
+fn three_attempts_emit_one_budget_exhausted_event_and_later_passes_are_silent() {
+    let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("tempdir");
+    let log_path = tmp.path().join("effort-budget.log.jsonl");
+    let log_state = LogFileState::new(log_path.clone()).expect("log state");
+    install_global_sink(&log_state);
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
+    write_member_snapshot(
+        &tmp,
+        "builder",
+        Some(("budget-exhaustion-task", "Run the migration")),
+        "high",
+        "the migration is irreversible",
+    );
+
+    runtime.set_send_keys_failures("%21", usize::MAX, "launch failed");
+    for index in 1..=8 {
+        runtime.set_send_keys_failures(&format!("test-pane-{index}"), usize::MAX, "launch failed");
+    }
+
+    let before = member_relaunch_attempts(&runtime);
+    for _ in 0..3 {
+        orchestrator
+            .apply_pending_task_effort(
+                "effort-team",
+                &CliCommandSettings::default(),
+                "new_window",
+                EffortPassScope::TaskChanged,
+            )
+            .expect("budgeted attempt");
+    }
+    assert_eq!(
+        member_relaunch_attempts(&runtime) - before,
+        3,
+        "the retry budget is exactly three launch attempts"
+    );
+
+    orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("budget exhaustion pass");
+    orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("silent pass after exhaustion");
+    log_state.flush_for_test().expect("flush effort events");
+
+    let events: Vec<serde_json::Value> = fs::read_to_string(&log_path)
+        .expect("read effort events")
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("valid log record"))
+        .filter(|event| {
+            event["event"] == "effort.resume.failed"
+                && event["reason"] == "budget_exhausted"
+                && event["task_id"] == "budget-exhaustion-task"
+        })
+        .collect();
+    assert_eq!(events.len(), 1, "exhaustion is emitted exactly once");
+    assert_eq!(events[0]["attempts"], 3);
+    assert_eq!(events[0]["task_id"], "budget-exhaustion-task");
+    assert_eq!(member_relaunch_attempts(&runtime) - before, 3);
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    let failure = record
+        .effort_resume_failure
+        .expect("exhaustion remains visible in runtime state");
+    assert_eq!(failure.task_id, "budget-exhaustion-task");
+    assert_eq!(failure.attempts, 3);
+    assert_eq!(failure.reason.as_deref(), Some("budget_exhausted"));
 }
 
 // Regression: the same failure branch left a member that later came back

@@ -25,6 +25,7 @@ type BackendFactory = dyn Fn(BackendKind, &Path) -> Result<Arc<dyn CoordinationB
     + Send
     + Sync;
 type RuntimeFactory = dyn Fn() -> Arc<dyn CoordinationRuntime> + Send + Sync;
+type ProjectEffortTeamSelection = (Vec<String>, Vec<(String, String)>);
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BackgroundSelfHealPassResult {
@@ -300,7 +301,7 @@ impl CoordinationState {
     fn project_effort_teams(
         &self,
         project_path: &str,
-    ) -> Result<(Vec<String>, Vec<(String, String)>), CoordinationError> {
+    ) -> Result<ProjectEffortTeamSelection, CoordinationError> {
         let wanted = crate::provider::path::normalize_project_path(project_path);
         let mut teams = Vec::new();
         let mut skipped = Vec::new();

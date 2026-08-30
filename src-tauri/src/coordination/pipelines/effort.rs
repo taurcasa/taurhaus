@@ -486,6 +486,7 @@ impl CoordinationOrchestrator {
                     task_id: task_id.to_string(),
                     level: level.to_string(),
                     attempts,
+                    reason: None,
                 });
             })
         {
@@ -497,9 +498,37 @@ impl CoordinationOrchestrator {
             );
         }
     }
+
+    fn record_effort_budget_exhaustion(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        task_id: &str,
+        level: &str,
+    ) -> Result<bool, String> {
+        let mut newly_exhausted = false;
+        MemberRuntimeStore::update(&self.teams_dir, team_name, member_name, |record| {
+            let Some(failure) = record.effort_resume_failure.as_mut() else {
+                return;
+            };
+            if (failure.task_id.is_empty() || failure.task_id == task_id)
+                && failure.level.eq_ignore_ascii_case(level)
+                && failure.attempts >= MAX_EFFORT_RESUME_ATTEMPTS
+                && failure.reason.as_deref() != Some("budget_exhausted")
+            {
+                failure.task_id = task_id.to_string();
+                failure.attempts = MAX_EFFORT_RESUME_ATTEMPTS;
+                failure.reason = Some("budget_exhausted".to_string());
+                newly_exhausted = true;
+            }
+        })
+        .map_err(|err| format!("could not record exhausted effort budget: {err}"))?;
+        Ok(newly_exhausted)
+    }
 }
 
 /// The effort taurhaus must put into force for a member, if any.
+#[cfg(test)]
 pub(super) fn pending_member_effort(
     orchestrator: &CoordinationOrchestrator,
     team_name: &str,
@@ -541,15 +570,33 @@ fn pending_member_effort_outcome(
     ) else {
         return Ok(None);
     };
-    let failed_attempts = runtime
-        .effort_resume_failure
-        .as_ref()
-        .filter(|failure| {
-            (failure.task_id.is_empty() || failure.task_id == assigned.task_id)
-                && failure.level.eq_ignore_ascii_case(&requested)
-        })
-        .map_or(0, |failure| failure.attempts);
+    let matching_failure = runtime.effort_resume_failure.as_ref().filter(|failure| {
+        (failure.task_id.is_empty() || failure.task_id == assigned.task_id)
+            && failure.level.eq_ignore_ascii_case(&requested)
+    });
+    let failed_attempts = matching_failure.map_or(0, |failure| failure.attempts);
+    let budget_already_exhausted =
+        matching_failure.and_then(|failure| failure.reason.as_deref()) == Some("budget_exhausted");
     if !attempt_is_allowed(scope, failed_attempts) {
+        if failed_attempts >= MAX_EFFORT_RESUME_ATTEMPTS
+            && !budget_already_exhausted
+            && orchestrator.record_effort_budget_exhaustion(
+                team_name,
+                &member.name,
+                &assigned.task_id,
+                &requested,
+            )?
+        {
+            task_effort::emit_effort_budget_exhausted(
+                team_name,
+                &member.name,
+                &assigned.task_id,
+                &requested,
+                runtime.applied_effort.as_deref(),
+                MAX_EFFORT_RESUME_ATTEMPTS,
+            );
+            return Err("budget_exhausted".to_string());
+        }
         return Ok(None);
     }
     // The relaunch resumes the member's own conversation. Without a session

@@ -92,6 +92,9 @@ pub struct EffortResumeFailure {
     pub level: String,
     /// Attempts spent on it since the last launch that committed.
     pub attempts: u32,
+    /// Terminal state for this bounded retry, once its attempts are spent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// Dependency fields captured when a runtime decision begins.
@@ -2226,6 +2229,7 @@ mod tests {
             task_id: "42".to_string(),
             level: "high".to_string(),
             attempts: 2,
+            reason: None,
         });
         let Value::Object(serialized) = serde_json::to_value(record).expect("serialize record")
         else {

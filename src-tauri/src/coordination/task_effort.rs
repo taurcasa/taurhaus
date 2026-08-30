@@ -290,6 +290,55 @@ pub fn emit_effort_resume(
     );
 }
 
+/// Emit the one terminal failure after an effort switch spends its retry budget.
+pub fn emit_effort_budget_exhausted(
+    team_name: &str,
+    member_name: &str,
+    task_id: &str,
+    level: &str,
+    previous: Option<&str>,
+    attempts: u32,
+) {
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "team_name".to_string(),
+        serde_json::Value::String(team_name.to_string()),
+    );
+    fields.insert(
+        "member_name".to_string(),
+        serde_json::Value::String(member_name.to_string()),
+    );
+    fields.insert(
+        "task_id".to_string(),
+        serde_json::Value::String(task_id.to_string()),
+    );
+    fields.insert(
+        "effort".to_string(),
+        serde_json::Value::String(level.to_string()),
+    );
+    fields.insert(
+        "previous_effort".to_string(),
+        previous
+            .map(|level| serde_json::Value::String(level.to_string()))
+            .unwrap_or(serde_json::Value::Null),
+    );
+    fields.insert(
+        "reason".to_string(),
+        serde_json::Value::String("budget_exhausted".to_string()),
+    );
+    fields.insert(
+        "attempts".to_string(),
+        serde_json::Value::Number(attempts.into()),
+    );
+    taurhaus_lib::logging::emit_global(
+        "warn",
+        "coordination",
+        "effort.resume.failed",
+        Some("Task-level effort resume budget exhausted".to_string()),
+        fields,
+    );
+}
+
 fn trimmed(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
