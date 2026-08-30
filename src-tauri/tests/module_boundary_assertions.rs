@@ -183,7 +183,8 @@ fn values_after_flag(recipe: &str, flag: &str) -> BTreeSet<String> {
 
 #[test]
 fn rust_integration_recipe_runs_every_test_binary() {
-    // Regression: commit 6bfa74d invoked `just` unconditionally, so a bare
+    // Regression guard (Opus review of the manifest lane, 2026-08-30): the first
+    // draft invoked `just` unconditionally, so a bare
     // `cargo test` panicked when that development tool was not installed.
     if Command::new("just").arg("--version").output().is_err() {
         // `just` is how every lane in this repo is invoked, so its absence means
@@ -198,7 +199,7 @@ fn rust_integration_recipe_runs_every_test_binary() {
     // but never ran because nothing checked that list against `tests/*.rs`.
     let expected = integration_test_binaries_on_disk();
     let shown_recipe = show_recipe("test-rust-integration");
-    // Regression: commit 6bfa74d silently fell back to a dry-run parser that
+    // Regression guard (same review): the first draft silently fell back to a dry-run parser that
     // cannot evaluate the recipe's backtick-derived integration target list.
     assert!(
         shown_recipe.contains("{{ integration_test_args }}"),
@@ -216,7 +217,8 @@ fn rust_integration_recipe_runs_every_test_binary() {
 
 #[test]
 fn heavy_unit_skips_match_integration_reruns() {
-    // Regression: commit ff9182a invoked `just` unconditionally, so a bare
+    // Regression guard (Opus review of the manifest lane, 2026-08-30): the first
+    // draft invoked `just` unconditionally, so a bare
     // `cargo test` panicked when that development tool was not installed.
     if Command::new("just").arg("--version").output().is_err() {
         // `just` is how every lane in this repo is invoked, so its absence means
@@ -249,16 +251,34 @@ fn heavy_unit_skips_match_integration_reruns() {
         "the heavy manifest must name at least one filter"
     );
 
-    // Regression: commit ff9182a compared the shared manifest with itself, so
+    // Regression guard (same review): the first draft compared the shared manifest with itself, so
     // a literal filter appended to either recipe could drift without detection.
-    let literal_unit_skips = values_after_flag(&unit_recipe, "--skip")
-        .into_iter()
-        .filter(|value| !value.starts_with('$'))
-        .collect::<BTreeSet<_>>();
-    let literal_integration_reruns = values_after_flag(&integration_recipe, "--lib")
-        .into_iter()
-        .filter(|value| !value.starts_with('$'))
-        .collect::<BTreeSet<_>>();
+    // A `$`-value is only ever the loop variable each lane expands the shared
+    // list through; any other shell variable would be a second list the guard
+    // cannot see (Opus review of the manifest lane, 2026-08-30).
+    let loop_variables = [
+        "$skip_args",
+        "\"$skip_args\"",
+        "$test_filter",
+        "\"$test_filter\"",
+    ];
+    let split_literals = |values: BTreeSet<String>| {
+        let mut literals = BTreeSet::new();
+        for value in values {
+            if value.starts_with('$') || value.starts_with("\"$") {
+                assert!(
+                    loop_variables.contains(&value.as_str()),
+                    "a heavy filter must come from the shared manifest, not another shell variable: {value}"
+                );
+            } else {
+                literals.insert(value);
+            }
+        }
+        literals
+    };
+    let literal_unit_skips = split_literals(values_after_flag(&unit_recipe, "--skip"));
+    let literal_integration_reruns =
+        split_literals(values_after_flag(&integration_recipe, "--lib"));
     let unexpected_unit_skips = literal_unit_skips.difference(&shared).collect::<Vec<_>>();
     let unexpected_integration_reruns = literal_integration_reruns
         .difference(&shared)
