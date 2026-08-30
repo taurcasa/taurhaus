@@ -200,13 +200,22 @@ function buildResumeTeamMessage(normalizeResumeTeamReport, report) {
   return `Resume complete. ${resumedSummary}`.trim()
 }
 
-function formatResumeWarning(warning) {
+export function formatResumeWarning(warning) {
   if (!warning) return ''
   if (warning.includes(': created a replacement pane')) {
     const [memberName] = warning.split(':', 1)
     return `${memberName}: started a replacement terminal session.`
   }
   return warning.replaceAll('pane', 'terminal session')
+}
+
+export function buildMemberActionMessage(message, warnings) {
+  const formattedWarnings = (warnings ?? [])
+    .map((warning) => formatResumeWarning(warning))
+    .filter(Boolean)
+  return formattedWarnings.length > 0
+    ? `${message} Notes: ${formattedWarnings.join(' ')}`
+    : message
 }
 
 function buildResumeFooterMessage(normalizeResumeTeamReport, report) {
@@ -374,7 +383,10 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
         state.errorMessage = report?.message || `Failed to resume member '${currentNode.name}'.`
         return
       }
-      state.runtimeMessage = `Resumed '${currentNode.name}'.`
+      state.runtimeMessage = buildMemberActionMessage(
+        `Resumed '${currentNode.name}'.`,
+        report.warnings
+      )
       state.selectedNodeId = null
       const sequence = ++refs.discoverySequence
       await gate.refreshProjectMeshSnapshot(sequence, { preserveNotices: true })

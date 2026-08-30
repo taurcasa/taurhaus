@@ -1,3 +1,5 @@
+import { buildMemberActionMessage } from './meshTabRuntime.svelte.js'
+
 export function createMeshTabSetup({ state, refs, deps, gate }) {
   // A saved preset has to remember what the roster actually selected; without
   // overrides, reloading it restores the role defaults and drops the choice.
@@ -390,7 +392,10 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
       })
 
       deps.onAddAgent(report)
-      state.runtimeMessage = `Agent '${report?.memberName ?? String(draft.name || '').trim()}' added.`
+      state.runtimeMessage = buildMemberActionMessage(
+        `Agent '${report?.memberName ?? String(draft.name || '').trim()}' added.`,
+        report?.warnings
+      )
       closeSlideOver()
       const sequence = ++refs.discoverySequence
       await gate.refreshProjectMeshSnapshot(sequence, { preserveNotices: true })

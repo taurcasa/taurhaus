@@ -2451,8 +2451,18 @@ describe('MeshTab', () => {
     })
   })
 
-  it('submits add-agent flow in runtime mode', async () => {
+  // Regression: 19b405a7 removed the out-of-scope re-onboard notice without
+  // moving delivery warnings onto the existing add-agent success sentence.
+  it('shows add-agent delivery warnings in the existing success notice', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
+    coordinationAddAgent.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      memberName: 'backend-dev',
+      failedStep: null,
+      message: 'agent added',
+      steps: [],
+      warnings: ['backend-dev: created a replacement pane'],
+    })
 
     render(MeshTab, {
       props: {
@@ -2494,6 +2504,9 @@ describe('MeshTab', () => {
             projectId: 'proj-api',
           }),
         })
+      )
+      expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent(
+        "Agent 'backend-dev' added. Notes: backend-dev: started a replacement terminal session."
       )
     })
   })
@@ -3771,7 +3784,21 @@ describe('MeshTab', () => {
     })
   })
 
-  it('auto-closes the runtime detail after a successful resume action', async () => {
+  // Regression: 19b405a7 removed the out-of-scope re-onboard notice without
+  // moving delivery warnings onto the existing member-resume success sentence.
+  it('shows member-resume delivery warnings in the existing success notice', async () => {
+    coordinationResumeMember.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      memberName: 'frontend-dev',
+      resumed: true,
+      failedStep: null,
+      message: 'member resumed',
+      steps: [],
+      warnings: [
+        'onboarding wake failed: daemon spawn failed',
+        'runtime state was not persisted',
+      ],
+    })
     await renderRuntime()
 
     await fireEvent.click(screen.getByTestId('mesh-node-agent'))
@@ -3784,6 +3811,9 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(coordinationResumeMember).toHaveBeenCalledWith('architecture-final', 'frontend-dev')
       expect(screen.queryByTestId('mesh-node-detail')).not.toBeInTheDocument()
+      expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent(
+        "Resumed 'frontend-dev'. Notes: onboarding wake failed: daemon spawn failed runtime state was not persisted"
+      )
     })
   })
 
