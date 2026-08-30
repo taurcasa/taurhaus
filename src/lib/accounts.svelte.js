@@ -379,6 +379,7 @@ export function resetAccountsForTest() {
   usageSyncTimers.clear()
   for (const state of Object.values(accounts.byTool)) {
     state.accounts = []
+    state.resolvedBases = []
     state.degraded = false
     state.defaultAccountId = null
     state.projectChoices = {}
