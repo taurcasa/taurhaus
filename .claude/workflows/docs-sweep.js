@@ -662,11 +662,11 @@ const gateFailure = gateProblem(gate)
 if (gateFailure) fail(gateFailure)
 
 const remaining = actionable.concat(trivial)
-const outcome = remaining.some((finding) => finding.severity === 'blocker' || finding.severity === 'major') ? 'followup_required' : 'complete'
+const outcome = actionableFrom(remaining).length > 0 ? 'followup_required' : 'complete'
 return {
   outcome: outcome,
   ...(outcome === 'followup_required'
-    ? { followup: { name: 'fix-round', args: { findings: remaining, startRound: round + 1 } } }
+    ? { followup: { name: 'fix-round', args: { worktree: ROOT, branch: BRANCH, base: BASE, spec: SPEC, title: TITLE, findings: remaining, startRound: round + 1 } } }
     : {}),
   ledger: {
     title: TITLE,

@@ -81,10 +81,11 @@ ledger row can be filled from the run instead of by hand:
 ```
 
 `remaining` is what the loop could not close — the blockers and majors it ran out of rounds for, plus
-the minors and nits nobody picked up. Feed it to `fix-round` as `findings` with `startRound` set to
-`rounds + 1`. `outcome` is `followup_required` whenever those remaining findings include a blocker
-or major; otherwise it is `complete`, and the return has no `followup`. `research-sweep` returns
-`{question, outputs, researchers}` with one
+the minors and nits nobody picked up. `outcome` is `followup_required` whenever those remaining
+findings include a blocker or major; otherwise it is `complete`, and the return has no `followup`.
+A `followup` names the next call and carries the run's own context, so it can be run as handed
+back: `{name: 'fix-round', args: {worktree, branch, base, spec, title, findings: remaining,
+startRound: rounds + 1}}`. `research-sweep` returns `{question, outputs, researchers}` with one
 structured summary and report path per researcher; the lead synthesizes them.
 
 ## Failing closed

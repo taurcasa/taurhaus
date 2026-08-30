@@ -164,10 +164,19 @@ describe('workflow procedures — the authority question', () => {
   })
 
   it('keeps the identical question in every lens-bearing script', () => {
-    const expectedOccurrences = { 'small-change.js': 1, 'fix-round.js': 1, 'feature-pr.js': 2 }
-    for (const [script, expected] of Object.entries(expectedOccurrences)) {
+    // Every script in the directory, not a hand-written list: a new lens-bearing
+    // script (or a new lens in an old one) must carry the question too. A lens
+    // is any 'Lens:' prompt outside the shared lib block.
+    const knownLenses = { 'small-change.js': 1, 'fix-round.js': 1, 'feature-pr.js': 2 }
+    const scripts = fs.readdirSync(WORKFLOWS).filter((file) => file.endsWith('.js'))
+    expect(scripts.length).toBeGreaterThanOrEqual(5)
+    for (const script of scripts) {
       const source = fs.readFileSync(path.join(WORKFLOWS, script), 'utf8')
-      expect(source.split(AUTHORITY_QUESTION).length - 1, script).toBe(expected)
+      const end = source.indexOf('// ── end lib ──')
+      const afterLib = end >= 0 ? source.slice(end) : source
+      const lenses = afterLib.split('Lens:').length - 1
+      expect(source.split(AUTHORITY_QUESTION).length - 1, script).toBe(lenses)
+      if (script in knownLenses) expect(lenses, script).toBe(knownLenses[script])
     }
   })
 })
