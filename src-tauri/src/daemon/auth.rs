@@ -77,8 +77,7 @@ pub fn read_auth_token_for_distro(wsl_distro: Option<&str>) -> Option<String> {
     let _ = wsl_distro;
 
     let canonical_path = crate::provider::platform_paths::PlatformPaths::daemon_token_path();
-    let include_legacy =
-        crate::provider::platform_paths::PlatformPaths::app_data_root_override().is_none();
+    let include_legacy = crate::provider::platform_paths::PlatformPaths::app_data_root_is_default();
     let legacy_path = include_legacy.then(legacy_token_path).flatten();
     if let Some(token) =
         read_auth_token_from_paths(&canonical_path, legacy_path.as_deref(), include_legacy)
@@ -217,6 +216,18 @@ mod tests {
                 .collect();
             Self(previous)
         }
+
+        fn remove(keys: &[&'static str]) -> Self {
+            let previous = keys
+                .iter()
+                .map(|key| {
+                    let previous = std::env::var_os(key);
+                    std::env::remove_var(key);
+                    (*key, previous)
+                })
+                .collect();
+            Self(previous)
+        }
     }
 
     impl Drop for EnvRestore {
@@ -265,6 +276,37 @@ mod tests {
             ),
             Some("legacy-token".to_string())
         );
+    }
+
+    // Regression: commit 01058d92 treated every `TAURHAUS_DATA_DIR` value as
+    // isolation. App startup pins its ordinary default root into that variable,
+    // making the legacy-token migration read unreachable before daemon connect.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn public_reader_keeps_legacy_fallback_for_startup_pinned_default_root() {
+        let _guard = crate::test_support::acquire_env_test_guard();
+        let data_home = tempfile::tempdir().expect("data home");
+        let isolated_root = tempfile::tempdir().expect("isolated root");
+        let _xdg_env = EnvRestore::set(&[("XDG_DATA_HOME", data_home.path())]);
+        let _data_dir_env = EnvRestore::remove(&["TAURHAUS_DATA_DIR"]);
+        let legacy_path = data_home.path().join("taurhaus/daemon.token");
+        std::fs::create_dir_all(legacy_path.parent().expect("legacy parent")).unwrap();
+        std::fs::write(&legacy_path, "legacy-token\n").unwrap();
+
+        assert_eq!(
+            read_auth_token_for_distro(None).as_deref(),
+            Some("legacy-token")
+        );
+
+        let default_root = data_home.path().join("com.taurhaus.dev");
+        std::env::set_var("TAURHAUS_DATA_DIR", default_root);
+        assert_eq!(
+            read_auth_token_for_distro(None).as_deref(),
+            Some("legacy-token")
+        );
+
+        std::env::set_var("TAURHAUS_DATA_DIR", isolated_root.path());
+        assert_eq!(read_auth_token_for_distro(None), None);
     }
 
     // Regression: commit 3ed13483 left the legacy `$HOME` credential readable
