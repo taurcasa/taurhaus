@@ -144,7 +144,11 @@ impl PlatformPaths {
 
     /// Per-tool session root.
     pub fn tool_session_root(tool: CliTool) -> PathBuf {
-        Self::tool_home(tool).join(config_for(tool).projects_subdir)
+        config_for(tool)
+            .projects_subdir
+            .split('/')
+            .filter(|segment| !segment.is_empty())
+            .fold(Self::tool_home(tool), |root, segment| root.join(segment))
     }
 
     /// Daemon binary location.

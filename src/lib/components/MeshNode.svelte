@@ -2,6 +2,7 @@
   import { activityLevel } from '../activitySignal.js'
   import { getToolIcon } from '../toolLogos.js'
   import { normalizeTool } from '../toolRegistry.js'
+  import { hasOpaqueAccountNote, memberNodeHeight } from './meshLayout.js'
 
   let {
     nodeId = '',
@@ -35,11 +36,12 @@
   const normalizedRole = $derived(role === 'lead' ? 'lead' : 'agent')
   const isLead = $derived(normalizedRole === 'lead')
   const safeAccountNoteDetail = $derived(String(accountNoteDetail || '').trim())
-  const showOpaqueAccountNote = $derived(
-    accountApplied === false
-      && accountNote === 'opaque_base_command'
-      && safeAccountNoteDetail.length > 0
-  )
+  const launchAccountResult = $derived.by(() => ({
+    accountApplied,
+    accountNote,
+    accountNoteDetail: safeAccountNoteDetail,
+  }))
+  const showOpaqueAccountNote = $derived(hasOpaqueAccountNote(launchAccountResult))
   const accountNoteSentence = $derived(
     `Account selection not guaranteed: ${safeAccountNoteDetail} wraps the CLI.`
   )
@@ -47,7 +49,7 @@
   const nodeHeight = $derived(
     Number.isFinite(requestedHeight) && requestedHeight > 0
       ? requestedHeight
-      : (showOpaqueAccountNote ? (isLead ? 90 : 82) : (isLead ? 72 : 64))
+      : memberNodeHeight(launchAccountResult, isLead)
   )
 
   const safeName = $derived(String(name || '').trim() || 'unnamed')

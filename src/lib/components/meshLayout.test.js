@@ -122,6 +122,29 @@ describe('meshLayout', () => {
     expect(layout.connections[0].end.y).toBe(layout.agents[0].y - 41)
   })
 
+  it('keeps full row clearance when a first-row node carries an opaque-wrapper sentence', () => {
+    const agents = createAgents(8)
+    agents[0] = {
+      ...agents[0],
+      accountApplied: false,
+      accountNote: 'opaque_base_command',
+      accountNoteDetail: 'team-wrapper',
+    }
+    const layout = computeMeshLayout({
+      width: 960,
+      height: 640,
+      mode: 'runtime',
+      lead: createLead(),
+      agents,
+    })
+    const firstRow = layout.agents.filter((agent) => agent.row === 0)
+    const secondRow = layout.agents.filter((agent) => agent.row === 1)
+    const firstRowBottom = Math.max(...firstRow.map((agent) => agent.y + agent.height / 2))
+    const secondRowTop = Math.min(...secondRow.map((agent) => agent.y - agent.height / 2))
+
+    expect(secondRowTop - firstRowBottom).toBeGreaterThanOrEqual(24)
+  })
+
   it.each([1, 2, 3, 4, 5, 6, 7, 8])('produces exactly one connection per agent for %i agents', (count) => {
     const layout = computeMeshLayout({
       width: 960,

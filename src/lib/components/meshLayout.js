@@ -16,13 +16,13 @@ function normalizeMember(member, fallbackId) {
   }
 }
 
-function hasOpaqueAccountNote(member) {
+export function hasOpaqueAccountNote(member) {
   return member?.accountApplied === false
     && member?.accountNote === 'opaque_base_command'
     && String(member?.accountNoteDetail ?? '').trim().length > 0
 }
 
-function memberNodeHeight(member, lead = false) {
+export function memberNodeHeight(member, lead = false) {
   if (hasOpaqueAccountNote(member)) return lead ? 90 : 82
   return lead ? 72 : 64
 }
@@ -281,18 +281,23 @@ function computeMeshBoxes(topology, input) {
 
   const primaryAgentY = Math.round(height * 0.65)
   const rowOffset = 44
-  const agentHeight = 64
   const nodeBreathingRoom = 12
   const firstRow = topology.rows[0] ?? []
   const secondRow = topology.rows[1] ?? []
+  const firstRowHalfHeight = Math.max(0, ...firstRow.map((agent) => memberNodeHeight(agent) / 2))
+  const secondRowHalfHeight = Math.max(0, ...secondRow.map((agent) => memberNodeHeight(agent) / 2))
 
   // A run tree hangs below its node, so a node that has one pushes whatever sits
   // beneath it further down rather than being drawn over.
   const firstRowY = Math.max(
     secondRow.length > 0 ? primaryAgentY - rowOffset : primaryAgentY,
-    lead.y + lead.height / 2 + runTreeClearance([lead]) + agentHeight / 2 + nodeBreathingRoom
+    lead.y + lead.height / 2 + runTreeClearance([lead]) + firstRowHalfHeight + nodeBreathingRoom
   )
-  const secondRowY = firstRowY + rowOffset * 2 + runTreeClearance(firstRow)
+  const secondRowY = firstRowY
+    + firstRowHalfHeight
+    + runTreeClearance(firstRow)
+    + nodeBreathingRoom * 2
+    + secondRowHalfHeight
   const positionedAgents = [
     ...buildRowBoxes(firstRow, firstRowY, width, nodeWidth, gap, 0),
     ...buildRowBoxes(secondRow, secondRowY, width, nodeWidth, gap, 1),

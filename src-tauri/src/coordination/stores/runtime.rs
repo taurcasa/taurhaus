@@ -754,12 +754,15 @@ fn merge_current_extension_fields(
     // this snapshot's load and its save must stay deleted, so the snapshot's
     // own extras are replaced, never unioned.
     record.extra = extension_fields_only(current.into_iter().collect(), RUNTIME_AUTHORED_KEYS);
-    record.launch_account = current_launch_account;
     if preserve_applied_effort {
         record.applied_effort = current_applied_effort;
+        record.launch_account = current_launch_account;
     }
 }
 
+// LaunchAccountResult is shared with IPC and intentionally serializes these
+// three flattened fields in camelCase. The snake_case spellings remain listed
+// as read aliases for runtime records written before that contract settled.
 const RUNTIME_AUTHORED_KEYS: &[&str] = &[
     "schema_version",
     "schemaVersion",
@@ -1215,6 +1218,27 @@ mod tests {
             .expect("load should succeed");
 
         assert_eq!(loaded, record);
+    }
+
+    // Regression: e2f9745b added an app-authored launch-account result, but
+    // merge-on-save restored that field from the old locked file as though it
+    // were mesh-owned, so an ordinary save could not set or clear the note.
+    #[test]
+    fn an_owning_save_can_replace_the_launch_account_result() {
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "launch-account-owner";
+        let member_name = "wrapped-member";
+        let seeded = sample_record(member_name);
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &seeded).expect("seed record");
+
+        let mut launched = seeded;
+        launched.launch_account = LaunchAccountResult::for_opaque_head(Some("team-wrapper"));
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &launched)
+            .expect("save launch result");
+
+        let saved = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("load launch result");
+        assert_eq!(saved.launch_account, launched.launch_account);
     }
 
     #[test]
