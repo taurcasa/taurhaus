@@ -203,6 +203,16 @@ fn values_after_flag(recipe: &str, flag: &str) -> BTreeSet<String> {
 
 #[test]
 fn rust_integration_recipe_runs_every_test_binary() {
+    // Regression: commit 6bfa74d invoked `just` unconditionally, so a bare
+    // `cargo test` panicked when that development tool was not installed.
+    if Command::new("just").arg("--version").output().is_err() {
+        // `just` is how every lane in this repo is invoked, so its absence means
+        // a bare `cargo test`; this suite should not fail over a missing
+        // development tool.
+        eprintln!("skipping: `just` is not installed");
+        return;
+    }
+
     // Regression: commit 831571da replaced the integration lane with a
     // hand-maintained target list; later binaries compiled under `cargo check`
     // but never ran because nothing checked that list against `tests/*.rs`.
@@ -224,6 +234,16 @@ fn rust_integration_recipe_runs_every_test_binary() {
 
 #[test]
 fn heavy_unit_skips_match_integration_reruns() {
+    // Regression: commit ff9182a invoked `just` unconditionally, so a bare
+    // `cargo test` panicked when that development tool was not installed.
+    if Command::new("just").arg("--version").output().is_err() {
+        // `just` is how every lane in this repo is invoked, so its absence means
+        // a bare `cargo test`; this suite should not fail over a missing
+        // development tool.
+        eprintln!("skipping: `just` is not installed");
+        return;
+    }
+
     // Regression: commit 831571da introduced separate heavy-suite skip and
     // rerun lists, so one side could change while the other silently drifted.
     let unit_recipe = show_recipe("test-rust-unit");
