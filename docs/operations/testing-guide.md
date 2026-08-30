@@ -122,6 +122,17 @@ just test-macos-e2e       # macOS E2E via SSH on remote Mac Mini
 
 Test specs live in `e2e/specs/` and are split by workflow/domain rather than by one monolithic suite.
 
+Every worker isolates all five writable product roots beneath its session temp
+directory: `TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR`, `CODEX_HOME`, `GROK_HOME`
+and the taurhaus-only Antigravity root `TAURHAUS_AGY_DIR`. Ordinary workers get
+an empty Codex home. Selecting a paid lane is the only path that copies
+`auth.json` from the configured source home into that scratch root.
+
+Root isolation does not yet provide a private daemon port per worker. Until
+hardening lane 3a-ii adds daemon process/port ownership, a local E2E run can
+restart a daemon already using the default port with the worker's temporary
+data root. Use a dedicated test host or stop the operator app and daemon first.
+
 #### Paid E2E lanes
 
 Two specs drive a real Codex subscription and cost money every time they run. `e2e/specList.js` keeps both out of the config's spec list, so no suite run — including a bare `bunx wdio run e2e/wdio.conf.js` — picks them up; each is started by name and nothing else starts it.
@@ -131,7 +142,7 @@ Two specs drive a real Codex subscription and cost money every time they run. `e
 | `compaction-codex-hooks` | `E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks` | A managed Codex member gets its restored-context card back through the native hook bridge. See [compaction-testing.md](compaction-testing.md). |
 | `managed-stage-codex` | `E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex` | A managed Codex member completes a bounded task through the mesh assignment contract, with the assignment's effort put into force before the notice is delivered (W4 experiment 3). |
 
-Both run against isolated roots — `TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR` and a scratch `CODEX_HOME` holding only a copy of `auth.json` plus a generated `config.toml`. The operator's `~/.codex` is read once at copy time and never written; `~/.claude` is neither read nor written. Naming either lane on the command line is what tells `wdio.conf.js` to build that scratch Codex home.
+Both use the same five isolated worker roots. Their scratch `CODEX_HOME` holds only a copy of `auth.json` plus a generated `config.toml`. The operator's `~/.codex` is read once at copy time and never written; `~/.claude`, `~/.grok` and `~/.gemini` are neither read nor written. Naming either lane on the command line is what tells `wdio.conf.js` to populate that already-isolated Codex home.
 
 `managed-stage-codex` additionally sets `CLAUDE_DIR` on the panes it creates, because its member runs `mesh` itself: taurhaus passes `--claude-dir` to the member *daemon* it spawns but exports no Claude root into the pane, so without it the member's own `mesh send` would bootstrap the run's team inside the operator's real home. Its team lead is a Claude identity and an inbox, not a working agent — it is launched into the isolated, credential-free `CLAUDE_CONFIG_DIR` and never takes a turn, so the lane spends nothing on Claude. Measured cost and wall clock: [w4-experiment-3.md](../design/research/w4-experiment-3.md).
 

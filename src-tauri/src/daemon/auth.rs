@@ -1,12 +1,14 @@
 //! Daemon authentication — shared token between daemon and app.
 //!
 //! On startup the daemon generates a random 32-byte token, writes it to a
-//! well-known file with 0600 permissions, and validates it on every request.
+//! well-known file, and validates it on every request. Native Unix files use
+//! 0600 permissions; a Windows app-data root mounted through WSL retains its
+//! Windows ACL because DrvFs may not persist Unix mode bits.
 //! The app reads the token file when connecting.
 
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(target_os = "windows")]
 use std::time::Duration;
 
@@ -15,16 +17,20 @@ use rand::Rng;
 #[cfg(target_os = "windows")]
 const WSL_AUTH_TOKEN_TIMEOUT: Duration = Duration::from_millis(350);
 
-/// Resolve the platform-specific path for the daemon auth token.
-///
-/// - Linux:  `~/.local/share/taurhaus/daemon.token`
-/// - macOS:  `~/Library/Application Support/taurhaus/daemon.token`
-/// - Windows: `{FOLDERID_LocalAppData}/taurhaus/daemon.token`
-pub fn token_path() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("taurhaus").join("daemon.token"))
+/// Resolve the daemon auth token under the active app data root.
+pub fn token_path() -> PathBuf {
+    crate::provider::platform_paths::PlatformPaths::daemon_token_path()
 }
 
-/// Generate a random 32-byte hex token, write it to `path` with 0600 permissions.
+/// The pre-0.8.5 token location. This remains a read-only compatibility path.
+fn legacy_token_path() -> Option<PathBuf> {
+    dirs::data_dir().map(|dir| dir.join("taurhaus").join("daemon.token"))
+}
+
+/// Generate a random 32-byte hex token and write it to `path`.
+///
+/// Native Unix files are chmodded to 0600. A Windows app-data root mounted in
+/// WSL keeps its Windows ACL when DrvFs does not persist Unix mode bits.
 pub fn generate_and_write_token(path: &std::path::Path) -> io::Result<String> {
     // Ensure parent directory exists
     if let Some(parent) = path.parent() {
@@ -70,17 +76,24 @@ pub fn read_auth_token_for_distro(wsl_distro: Option<&str>) -> Option<String> {
     #[cfg(not(target_os = "windows"))]
     let _ = wsl_distro;
 
-    // Try native path first (works when daemon runs on same OS)
-    if let Some(path) = token_path() {
-        if let Ok(token) = read_token(&path) {
-            return Some(token);
-        }
+    let canonical_path = crate::provider::platform_paths::PlatformPaths::daemon_token_path();
+    let include_legacy = crate::provider::platform_paths::PlatformPaths::app_data_root_is_default();
+    let legacy_path = include_legacy.then(legacy_token_path).flatten();
+    if let Some(token) =
+        read_auth_token_from_paths(&canonical_path, legacy_path.as_deref(), include_legacy)
+    {
+        return Some(token);
     }
 
-    // Fallback: read from WSL filesystem (Windows app + WSL daemon)
+    // Read the same launch value that daemon_launch_env passed to the WSL
+    // daemon. Do not reconstruct a second data-root convention here.
     #[cfg(target_os = "windows")]
     {
-        if let Some(token) = read_token_via_wsl(wsl_distro) {
+        let daemon_data_dir = crate::daemon::launcher::daemon_data_dir_env_value_for_launch(
+            &crate::provider::platform_paths::PlatformPaths::log_path(),
+            false,
+        )?;
+        if let Some(token) = read_token_via_wsl(wsl_distro, &daemon_data_dir, include_legacy) {
             return Some(token);
         }
     }
@@ -88,24 +101,41 @@ pub fn read_auth_token_for_distro(wsl_distro: Option<&str>) -> Option<String> {
     None
 }
 
+fn read_auth_token_from_paths(
+    canonical_path: &Path,
+    legacy_path: Option<&Path>,
+    include_legacy: bool,
+) -> Option<String> {
+    if let Ok(token) = read_token(canonical_path) {
+        return Some(token);
+    }
+
+    // Keep an already-running pre-migration daemon reachable until a new daemon
+    // starts and writes the canonical token. Nothing writes through this path.
+    include_legacy
+        .then(|| legacy_path.and_then(|path| read_token(path).ok()))
+        .flatten()
+}
+
 /// Read the daemon token from inside WSL via `wsl.exe`.
 ///
-/// Runs: `wsl.exe -e sh -c 'cat "$HOME/.local/share/taurhaus/daemon.token"'`
+/// Reads `<daemon_data_dir>/daemon.token`, then optionally the legacy token.
 /// Uses `wsl_command()` from launcher to suppress console window flash.
 #[cfg(target_os = "windows")]
-fn read_token_via_wsl(wsl_distro: Option<&str>) -> Option<String> {
+fn read_token_via_wsl(
+    wsl_distro: Option<&str>,
+    daemon_data_dir: &str,
+    include_legacy: bool,
+) -> Option<String> {
     let mut command = crate::daemon::launcher::wsl_command();
     if let Some(distro) = wsl_distro {
         crate::daemon::launcher::validate_wsl_distro(distro).ok()?;
         command.arg("-d").arg(distro);
     }
+    let script = wsl_token_read_script(daemon_data_dir, include_legacy);
     command
-        .args([
-            "-e",
-            "sh",
-            "-c",
-            "cat \"$HOME/.local/share/taurhaus/daemon.token\" 2>/dev/null",
-        ])
+        .args(["-e", "sh", "-c"])
+        .arg(script)
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     let output = crate::process_utils::run_command_with_timeout(
@@ -126,6 +156,22 @@ fn read_token_via_wsl(wsl_distro: Option<&str>) -> Option<String> {
 
     tracing::debug!("Read daemon auth token via WSL fallback");
     Some(token)
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn wsl_token_read_script(daemon_data_dir: &str, include_legacy: bool) -> String {
+    let root = daemon_data_dir.trim_end_matches('/');
+    let canonical = format!(
+        "{root}/{}",
+        crate::provider::platform_paths::DAEMON_TOKEN_FILENAME
+    )
+    .replace('\'', "'\"'\"'");
+    let canonical_read = format!("cat '{canonical}' 2>/dev/null");
+    if include_legacy {
+        format!("{canonical_read} || cat \"$HOME/.local/share/taurhaus/daemon.token\" 2>/dev/null")
+    } else {
+        canonical_read
+    }
 }
 
 /// Validate a provided token against the expected value.
@@ -156,10 +202,155 @@ pub fn validate_token(expected: &str, provided: Option<&str>) -> Result<(), Stri
 mod tests {
     use super::*;
 
+    struct EnvRestore(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+    impl EnvRestore {
+        fn set(values: &[(&'static str, &std::path::Path)]) -> Self {
+            let previous = values
+                .iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var_os(key);
+                    std::env::set_var(key, value);
+                    (*key, previous)
+                })
+                .collect();
+            Self(previous)
+        }
+
+        fn remove(keys: &[&'static str]) -> Self {
+            let previous = keys
+                .iter()
+                .map(|key| {
+                    let previous = std::env::var_os(key);
+                    std::env::remove_var(key);
+                    (*key, previous)
+                })
+                .collect();
+            Self(previous)
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, value) in self.0.drain(..).rev() {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
+    // Regression: commit 06e8f740 introduced the daemon token under a second,
+    // non-overridable `taurhaus` data root, so an isolated E2E daemon could
+    // overwrite the operator daemon's credential.
     #[test]
-    fn token_path_returns_some() {
-        // On any CI or dev machine, data_dir should exist
-        assert!(token_path().is_some());
+    fn token_path_honours_the_app_data_override() {
+        let _guard = crate::test_support::acquire_env_test_guard();
+        let active_root = tempfile::tempdir().expect("active root");
+        let legacy_data_root = tempfile::tempdir().expect("legacy data root");
+        let _env = EnvRestore::set(&[
+            ("TAURHAUS_DATA_DIR", active_root.path()),
+            ("XDG_DATA_HOME", legacy_data_root.path()),
+        ]);
+
+        assert_eq!(token_path(), active_root.path().join("daemon.token"));
+    }
+
+    // Regression: commit 06e8f740 made the old `taurhaus/daemon.token` path
+    // the only reader. Moving the authority must retain that path as a
+    // read-only fallback while an already-running older daemon still uses it.
+    #[test]
+    fn legacy_token_remains_readable() {
+        let active_root = tempfile::tempdir().expect("active root");
+        let legacy_data_root = tempfile::tempdir().expect("legacy data root");
+        let legacy_path = legacy_data_root.path().join("taurhaus/daemon.token");
+        std::fs::create_dir_all(legacy_path.parent().expect("legacy parent")).unwrap();
+        std::fs::write(&legacy_path, "legacy-token\n").unwrap();
+
+        assert_eq!(
+            read_auth_token_from_paths(
+                &active_root.path().join("daemon.token"),
+                Some(&legacy_path),
+                true,
+            ),
+            Some("legacy-token".to_string())
+        );
+    }
+
+    // Regression: commit 01058d92 treated every `TAURHAUS_DATA_DIR` value as
+    // isolation. App startup pins its ordinary default root into that variable,
+    // making the legacy-token migration read unreachable before daemon connect.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn public_reader_keeps_legacy_fallback_for_startup_pinned_default_root() {
+        let _guard = crate::test_support::acquire_env_test_guard();
+        let data_home = tempfile::tempdir().expect("data home");
+        let isolated_root = tempfile::tempdir().expect("isolated root");
+        let _xdg_env = EnvRestore::set(&[("XDG_DATA_HOME", data_home.path())]);
+        let _data_dir_env = EnvRestore::remove(&["TAURHAUS_DATA_DIR"]);
+        let legacy_path = data_home.path().join("taurhaus/daemon.token");
+        std::fs::create_dir_all(legacy_path.parent().expect("legacy parent")).unwrap();
+        std::fs::write(&legacy_path, "legacy-token\n").unwrap();
+
+        assert_eq!(
+            read_auth_token_for_distro(None).as_deref(),
+            Some("legacy-token")
+        );
+
+        let default_root = data_home.path().join("com.taurhaus.dev");
+        std::env::set_var("TAURHAUS_DATA_DIR", default_root);
+        assert_eq!(
+            read_auth_token_for_distro(None).as_deref(),
+            Some("legacy-token")
+        );
+
+        std::env::set_var("TAURHAUS_DATA_DIR", isolated_root.path());
+        assert_eq!(read_auth_token_for_distro(None), None);
+    }
+
+    // Regression: commit 3ed13483 left the legacy `$HOME` credential readable
+    // when `TAURHAUS_DATA_DIR` isolated the run, allowing E2E to authenticate
+    // against an operator daemon outside the worker root.
+    #[test]
+    fn an_override_never_reads_or_writes_the_legacy_token_path() {
+        let active_root = tempfile::tempdir().expect("active root");
+        let legacy_data_root = tempfile::tempdir().expect("legacy data root");
+        let active_path = active_root.path().join("daemon.token");
+        let legacy_path = legacy_data_root.path().join("taurhaus/daemon.token");
+        std::fs::create_dir_all(legacy_path.parent().expect("legacy parent")).unwrap();
+        std::fs::write(&legacy_path, "operator-token\n").unwrap();
+
+        assert_eq!(
+            read_auth_token_from_paths(&active_path, Some(&legacy_path), false),
+            None
+        );
+
+        generate_and_write_token(&active_path).expect("generate token");
+
+        assert!(active_root.path().join("daemon.token").is_file());
+        assert_eq!(
+            read_auth_token_from_paths(&active_path, Some(&legacy_path), false),
+            read_token(&active_path).ok()
+        );
+        assert_eq!(read_token(&legacy_path).unwrap(), "operator-token");
+    }
+
+    // Regression: commit 3ed13483 joined the Linux-form WSL root with the host
+    // `Path` separator. Windows therefore emitted a literal backslash before
+    // `daemon.token`, so the canonical read could never succeed in WSL.
+    #[test]
+    fn wsl_fallback_uses_linux_separators_and_gates_the_legacy_path() {
+        let root = "/mnt/c/e2e root/it's isolated/";
+
+        assert_eq!(
+            wsl_token_read_script(root, true),
+            "cat '/mnt/c/e2e root/it'\"'\"'s isolated/daemon.token' 2>/dev/null || cat \"$HOME/.local/share/taurhaus/daemon.token\" 2>/dev/null"
+        );
+        assert_eq!(
+            wsl_token_read_script(root, false),
+            "cat '/mnt/c/e2e root/it'\"'\"'s isolated/daemon.token' 2>/dev/null"
+        );
     }
 
     #[test]

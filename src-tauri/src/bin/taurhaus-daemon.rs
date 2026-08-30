@@ -436,7 +436,7 @@ fn resolve_auth_token_with<P, G>(
     generate_token_fn: G,
 ) -> Result<Option<String>, String>
 where
-    P: FnOnce() -> Option<std::path::PathBuf>,
+    P: FnOnce() -> std::path::PathBuf,
     G: FnOnce(&std::path::Path) -> std::io::Result<String>,
 {
     if no_auth {
@@ -444,8 +444,7 @@ where
         return Ok(None);
     }
 
-    let path = token_path_fn()
-        .ok_or_else(|| "Could not determine data dir for daemon auth token".to_string())?;
+    let path = token_path_fn();
     let token = generate_token_fn(&path).map_err(|error| {
         format!(
             "Failed to write daemon auth token at {}: {}",
@@ -484,15 +483,10 @@ mod tests {
     }
 
     #[test]
-    fn refuses_to_start_without_auth_unless_no_auth_flag() {
-        let failed = resolve_auth_token_with(false, || None, |_| Ok("ignored".to_string()));
-        assert!(failed.is_err());
-
-        let insecure = resolve_auth_token_with(
-            true,
-            || None,
-            |_| Err(io::Error::other("should not be called")),
-        );
+    fn no_auth_skips_token_generation() {
+        let insecure = resolve_auth_token_with(true, std::path::PathBuf::new, |_| {
+            Err(io::Error::other("should not be called"))
+        });
         assert_eq!(insecure.ok(), Some(None));
     }
 
@@ -500,7 +494,7 @@ mod tests {
     fn auth_setup_fails_when_token_write_fails() {
         let failed = resolve_auth_token_with(
             false,
-            || Some(std::path::PathBuf::from("/tmp/daemon.token")),
+            || std::path::PathBuf::from("/tmp/daemon.token"),
             |_| Err(io::Error::other("disk full")),
         );
         assert!(failed.is_err());
