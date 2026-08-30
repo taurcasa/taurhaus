@@ -2825,6 +2825,77 @@ fn live_status_ignores_cached_snapshot_pane_when_record_has_newer_pane() {
 }
 
 #[test]
+fn daemon_pid_survives_an_interleaved_live_status_save() {
+    // Regression: 668d9f83 made the stale live-status write skippable but left
+    // daemon termination before the compare-and-commit, so a skipped verdict
+    // could leave the winning record pointing at a process it had just killed.
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "live-status-interleave";
+    let member_name = "builder";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add member");
+
+    let mut before_launch =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load runtime");
+    before_launch.pane_id = Some("%old".to_string());
+    before_launch.pane_pid = Some(7001);
+    before_launch.pane_start_time = Some(1_755_000_007);
+    before_launch.session_id = Some("session-old".to_string());
+    before_launch.daemon_pid = Some(7100);
+    before_launch.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &before_launch)
+        .expect("save old runtime");
+    runtime.set_pane_exists("%old", false);
+    runtime.set_pid_running(7100, true);
+    let probe_gate = runtime.pause_live_pane_probe("%old");
+
+    let teams_dir = tmp.path().to_path_buf();
+    let runtime_for_status = runtime.clone();
+    let live_status = std::thread::spawn(move || {
+        let mut status_orchestrator = CoordinationOrchestrator::new_with_runtime(
+            teams_dir,
+            Arc::new(FakeBackend::default()),
+            runtime_for_status,
+        );
+        status_orchestrator.reconcile_team_presence_for_live_status(team_name)
+    });
+    probe_gate.wait_until_blocked();
+
+    let mut launched = before_launch;
+    launched.pane_id = Some("%fresh".to_string());
+    launched.pane_pid = Some(8001);
+    launched.pane_start_time = Some(1_755_000_008);
+    launched.session_id = Some("session-fresh".to_string());
+    launched.daemon_pid = Some(8100);
+    launched.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &launched)
+        .expect("commit launch while live-status probe is in flight");
+    probe_gate.release();
+    live_status
+        .join()
+        .expect("live-status thread")
+        .expect("live-status reconcile");
+
+    assert_eq!(
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("final runtime"),
+        launched,
+        "a stale live-status verdict must not erase any committed launch field"
+    );
+    assert!(
+        runtime
+            .calls()
+            .iter()
+            .all(|call| !matches!(call, RuntimeCall::TerminatePid { pid: 7100 })),
+        "a skipped live-status verdict must not terminate the recorded daemon"
+    );
+}
+
+#[test]
 fn liveness_reconcile_refreshes_stale_claude_session_metadata_on_live_pane() {
     let tmp = TempDir::new().expect("tempdir");
     let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
@@ -2952,6 +3023,53 @@ fn liveness_reconcile_promotes_stale_session_dead_record_when_pane_is_alive() {
             RuntimeCall::CheckPid { .. } | RuntimeCall::TerminatePid { .. }
         )),
         "session-dead repair should start a daemon without daemon cleanup"
+    );
+}
+
+#[test]
+fn liveness_metadata_backfill_preserves_a_concurrent_value() {
+    // Regression: 06d5c829 turned cli_tool/project_path backfills into
+    // unconditional commit assignments, clobbering newer metadata that is not
+    // part of the liveness dependency snapshot.
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "liveness-metadata-backfill";
+    let member_name = "codex-reviewer";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.cli_tool = None;
+    record.project_path = None;
+    record.health = HealthState::SessionDead;
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+    runtime.set_pane_exists("%9", true);
+    let probe_gate = runtime.pause_live_pane_probe("%9");
+
+    let reconcile = std::thread::spawn(move || {
+        orchestrator
+            .reconcile_team_liveness(team_name)
+            .expect("reconcile should succeed");
+    });
+    probe_gate.wait_until_blocked();
+    let mut concurrent = record;
+    concurrent.cli_tool = Some(CliTool::Grok);
+    concurrent.project_path = Some(PathBuf::from("/tmp/concurrent-owner"));
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &concurrent)
+        .expect("save concurrent metadata");
+    probe_gate.release();
+    reconcile.join().expect("liveness thread");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.cli_tool, Some(CliTool::Grok));
+    assert_eq!(
+        updated.project_path.as_deref(),
+        Some(std::path::Path::new("/tmp/concurrent-owner"))
     );
 }
 

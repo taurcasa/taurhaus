@@ -7,7 +7,10 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::runtime::{
     pane_belongs_to_member, quarantine_foreign_member, LivePane, PaneOwnership,
 };
-use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::stores::lock::acquire_team_lock;
+use crate::coordination::stores::{
+    MemberRuntimeSnapshot, MemberRuntimeStore, RuntimeCommitOutcome, TeamConfigStore,
+};
 use crate::coordination::validation::validate_team_name;
 use crate::session_scanner::cli_tool::spec;
 
@@ -56,6 +59,7 @@ impl CoordinationOrchestrator {
         let mut reconciled_members = HashSet::new();
 
         for (member_name, mut runtime) in runtime_records {
+            let expected = MemberRuntimeSnapshot::capture(&runtime);
             let Some(member) = members_by_name.get(&member_name) else {
                 continue;
             };
@@ -121,20 +125,11 @@ impl CoordinationOrchestrator {
                 runtime.pane_id = snapshot_pane_id;
             }
 
+            let mut daemon_pid_to_terminate = None;
             if !spec(member.cli_tool).capabilities.native_inbox_poller {
                 if let Some(pid) = runtime.daemon_pid {
                     match self.runtime.is_process_running_by_pid(pid) {
-                        Ok(true) => {
-                            if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
-                                tracing::warn!(
-                                    team = %team_name,
-                                    member = %member_name,
-                                    pid = pid,
-                                    error = %err,
-                                    "failed to terminate stale daemon during live-status presence reconciliation"
-                                );
-                            }
-                        }
+                        Ok(true) => daemon_pid_to_terminate = Some(pid),
                         Ok(false) => {}
                         Err(err) => {
                             tracing::warn!(
@@ -149,13 +144,36 @@ impl CoordinationOrchestrator {
                 }
                 runtime.daemon_pid = None;
             }
-            MemberRuntimeStore::save_preserving_applied_effort(
+            let guard = acquire_team_lock(&self.teams_dir, team_name)?;
+            let outcome = MemberRuntimeStore::commit_if_unchanged(
+                &guard,
                 &self.teams_dir,
                 team_name,
                 &member_name,
-                &runtime,
+                &expected,
+                |current| {
+                    current.pane_id = runtime.pane_id.clone();
+                    current.session_id = runtime.session_id.clone();
+                    current.jsonl_path = runtime.jsonl_path.clone();
+                    current.daemon_pid = runtime.daemon_pid;
+                    current.health = runtime.health;
+                },
             )?;
-            reconciled_members.insert(member_name);
+            drop(guard);
+            if outcome == RuntimeCommitOutcome::Committed {
+                if let Some(pid) = daemon_pid_to_terminate {
+                    if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                        tracing::warn!(
+                            team = %team_name,
+                            member = %member_name,
+                            pid = pid,
+                            error = %err,
+                            "failed to terminate stale daemon during live-status presence reconciliation"
+                        );
+                    }
+                }
+                reconciled_members.insert(member_name);
+            }
         }
 
         Ok(reconciled_members)
@@ -176,6 +194,7 @@ impl CoordinationOrchestrator {
         let runtime_records = MemberRuntimeStore::load_all(&self.teams_dir, team_name)?;
 
         for (member_name, mut runtime) in runtime_records {
+            let expected = MemberRuntimeSnapshot::capture(&runtime);
             let Some(member) = members_by_name.get(&member_name) else {
                 continue;
             };
@@ -237,20 +256,11 @@ impl CoordinationOrchestrator {
                 runtime.session_id = None;
                 runtime.jsonl_path = None;
 
+                let mut daemon_pid_to_terminate = None;
                 if !spec(member.cli_tool).capabilities.native_inbox_poller {
                     if let Some(pid) = runtime.daemon_pid {
                         match self.runtime.is_process_running_by_pid(pid) {
-                            Ok(true) => {
-                                if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
-                                    tracing::warn!(
-                                        team = %team_name,
-                                        member = %member_name,
-                                        pid = pid,
-                                        error = %err,
-                                        "failed to terminate stale daemon during liveness reconciliation"
-                                    );
-                                }
-                            }
+                            Ok(true) => daemon_pid_to_terminate = Some(pid),
                             Ok(false) => {}
                             Err(err) => {
                                 tracing::warn!(
@@ -265,22 +275,51 @@ impl CoordinationOrchestrator {
                         runtime.daemon_pid = None;
                     }
                 }
-                MemberRuntimeStore::save_preserving_applied_effort(
+                let guard = acquire_team_lock(&self.teams_dir, team_name)?;
+                let outcome = MemberRuntimeStore::commit_if_unchanged(
+                    &guard,
                     &self.teams_dir,
                     team_name,
                     &member_name,
-                    &runtime,
+                    &expected,
+                    |current| {
+                        if current.cli_tool.is_none() {
+                            current.cli_tool = runtime.cli_tool;
+                        }
+                        if current.project_path.is_none() {
+                            current.project_path = runtime.project_path.clone();
+                        }
+                        current.session_id = runtime.session_id.clone();
+                        current.jsonl_path = runtime.jsonl_path.clone();
+                        current.daemon_pid = runtime.daemon_pid;
+                        current.health = runtime.health;
+                    },
                 )?;
-                tracing::info!(
-                    team = %team_name,
-                    member = %member_name,
-                    reason,
-                    "reconciled member liveness drift to offline"
-                );
+                drop(guard);
+                if outcome == RuntimeCommitOutcome::Committed {
+                    if let Some(pid) = daemon_pid_to_terminate {
+                        if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                            tracing::warn!(
+                                team = %team_name,
+                                member = %member_name,
+                                pid = pid,
+                                error = %err,
+                                "failed to terminate stale daemon during liveness reconciliation"
+                            );
+                        }
+                    }
+                    tracing::info!(
+                        team = %team_name,
+                        member = %member_name,
+                        reason,
+                        "reconciled member liveness drift to offline"
+                    );
+                }
                 continue;
             }
 
             let mut runtime_changed = metadata_backfilled;
+            let mut spawned_daemon_pid = None;
             if !spec(member.cli_tool).capabilities.native_inbox_poller {
                 let pane_id = runtime.pane_id.as_deref();
                 let discovered_daemon_pids = if let Some(pane_id) = pane_id {
@@ -411,6 +450,7 @@ impl CoordinationOrchestrator {
                             Ok(pid) => {
                                 runtime.daemon_pid = Some(pid);
                                 runtime_changed = true;
+                                spawned_daemon_pid = Some(pid);
                                 tracing::info!(
                                     team = %team_name,
                                     member = %member_name,
@@ -480,18 +520,55 @@ impl CoordinationOrchestrator {
 
             runtime.health = HealthState::Healthy;
             runtime.last_seen_at = Some(Utc::now());
-            MemberRuntimeStore::save_preserving_applied_effort(
+            let guard = acquire_team_lock(&self.teams_dir, team_name)?;
+            let outcome = MemberRuntimeStore::commit_if_unchanged(
+                &guard,
                 &self.teams_dir,
                 team_name,
                 &member_name,
-                &runtime,
+                &expected,
+                |current| {
+                    if current.cli_tool.is_none() {
+                        current.cli_tool = runtime.cli_tool;
+                    }
+                    if current.project_path.is_none() {
+                        current.project_path = runtime.project_path.clone();
+                    }
+                    current.session_id = runtime.session_id.clone();
+                    current.jsonl_path = runtime.jsonl_path.clone();
+                    current.daemon_pid = runtime.daemon_pid;
+                    current.health = runtime.health;
+                    current.last_seen_at = runtime.last_seen_at;
+                },
             )?;
-            tracing::info!(
-                team = %team_name,
-                member = %member_name,
-                reason,
-                "reconciled member liveness drift to healthy"
-            );
+            drop(guard);
+            if outcome == RuntimeCommitOutcome::Committed {
+                tracing::info!(
+                    team = %team_name,
+                    member = %member_name,
+                    reason,
+                    "reconciled member liveness drift to healthy"
+                );
+            } else if let Some(pid) = spawned_daemon_pid {
+                // The record moved under this pass: the daemon it just spawned
+                // was never committed, so terminate it rather than leave an
+                // unrecorded duplicate for the next pass to find.
+                match self.runtime.terminate_process_by_pid(pid) {
+                    Ok(()) => tracing::info!(
+                        team = %team_name,
+                        member = %member_name,
+                        pid = pid,
+                        "rolled back a mesh daemon spawned under a skipped commit"
+                    ),
+                    Err(err) => tracing::warn!(
+                        team = %team_name,
+                        member = %member_name,
+                        pid = pid,
+                        error = %err,
+                        "failed to roll back a mesh daemon spawned under a skipped commit"
+                    ),
+                }
+            }
         }
 
         Ok(())
@@ -559,6 +636,7 @@ impl CoordinationOrchestrator {
         let runtime_records = MemberRuntimeStore::load_all(&self.teams_dir, team_name)?;
 
         for (member_name, mut runtime) in runtime_records {
+            let expected = MemberRuntimeSnapshot::capture(&runtime);
             if !member_names.contains(&member_name) {
                 tracing::warn!(
                     team = %team_name,
@@ -593,18 +671,27 @@ impl CoordinationOrchestrator {
                 Ok(false) => {
                     runtime.daemon_pid = None;
                     runtime.health = HealthState::SessionDead;
-                    MemberRuntimeStore::save_preserving_applied_effort(
+                    let guard = acquire_team_lock(&self.teams_dir, team_name)?;
+                    let outcome = MemberRuntimeStore::commit_if_unchanged(
+                        &guard,
                         &self.teams_dir,
                         team_name,
                         &member_name,
-                        &runtime,
+                        &expected,
+                        |current| {
+                            current.daemon_pid = None;
+                            current.health = HealthState::SessionDead;
+                        },
                     )?;
-                    tracing::info!(
-                        team = %team_name,
-                        member = %member_name,
-                        pid = pid,
-                        "cleared stale daemon pid during startup reconciliation"
-                    );
+                    drop(guard);
+                    if outcome == RuntimeCommitOutcome::Committed {
+                        tracing::info!(
+                            team = %team_name,
+                            member = %member_name,
+                            pid = pid,
+                            "cleared stale daemon pid during startup reconciliation"
+                        );
+                    }
                 }
                 Err(err) => {
                     tracing::warn!(

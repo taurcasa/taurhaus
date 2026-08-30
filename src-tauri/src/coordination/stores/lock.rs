@@ -1,9 +1,12 @@
 //! Advisory file locks for store concurrency safety.
 
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::Read;
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
@@ -20,6 +23,10 @@ const READ_RETRY_BACKOFFS: [Duration; 3] = [
     Duration::from_millis(200),
     Duration::from_millis(500),
 ];
+
+thread_local! {
+    static HELD_TEAM_LOCKS: RefCell<HashSet<PathBuf>> = RefCell::new(HashSet::new());
+}
 
 fn is_windows_unsupported_lock_error(err: &std::io::Error) -> bool {
     cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
@@ -103,13 +110,64 @@ pub(super) fn read_to_string_with_retry(path: &Path) -> std::io::Result<String> 
 
 /// Acquire an exclusive advisory lock on a team directory.
 ///
-/// The lock is held for the lifetime of the returned `File`.
+/// The lock is held for the lifetime of the returned guard.
 /// On drop, the lock is automatically released.
-pub fn acquire_team_lock(teams_dir: &Path, team_name: &str) -> Result<File, CoordinationError> {
+///
+/// A guard cannot move to another thread: its thread-local ownership marker
+/// must be removed on the same thread that installed it. Re-entering this lock
+/// on one thread is an error instead of an unbounded `flock` wait.
+#[derive(Debug)]
+pub struct TeamLockGuard {
+    _file: File,
+    lock_path: PathBuf,
+    teams_dir: PathBuf,
+    team_name: String,
+    _not_send: PhantomData<Rc<()>>,
+}
+
+impl TeamLockGuard {
+    pub(crate) fn covers(&self, teams_dir: &Path, team_name: &str) -> bool {
+        // The exact acquisition inputs match without any filesystem lookup, so
+        // a held guard can never lose its own team to a transient failure.
+        if self.teams_dir == teams_dir && self.team_name == team_name {
+            return true;
+        }
+        // A differently spelled path may still name the same team: fall back
+        // to the canonical lock identity, computed the way acquisition did.
+        self.team_name == team_name && self.lock_path == team_lock_path(teams_dir, team_name)
+    }
+}
+
+impl Drop for TeamLockGuard {
+    fn drop(&mut self) {
+        HELD_TEAM_LOCKS.with(|held| {
+            let removed = held.borrow_mut().remove(&self.lock_path);
+            debug_assert!(removed, "dropping an unregistered team lock guard");
+        });
+    }
+}
+
+fn team_lock_path(teams_dir: &Path, team_name: &str) -> PathBuf {
+    let team_dir = teams_dir.join(team_name);
+    let canonical_team_dir = fs::canonicalize(&team_dir).unwrap_or(team_dir);
+    canonical_team_dir.join(LOCK_FILENAME)
+}
+
+pub fn acquire_team_lock(
+    teams_dir: &Path,
+    team_name: &str,
+) -> Result<TeamLockGuard, CoordinationError> {
     let team_dir = teams_dir.join(team_name);
     fs::create_dir_all(&team_dir)?;
 
-    let lock_path = team_dir.join(LOCK_FILENAME);
+    let lock_path = team_lock_path(teams_dir, team_name);
+    if HELD_TEAM_LOCKS.with(|held| held.borrow().contains(&lock_path)) {
+        return Err(CoordinationError::StoreError(format!(
+            "team lock is already held by this thread: {}",
+            lock_path.display()
+        )));
+    }
+
     let file = File::create(&lock_path).map_err(CoordinationError::Io)?;
     match file.lock_exclusive() {
         Ok(()) => {}
@@ -123,7 +181,20 @@ pub fn acquire_team_lock(teams_dir: &Path, team_name: &str) -> Result<File, Coor
         }
         Err(err) => return Err(CoordinationError::Io(err)),
     }
-    Ok(file)
+    let inserted = HELD_TEAM_LOCKS.with(|held| held.borrow_mut().insert(lock_path.clone()));
+    if !inserted {
+        return Err(CoordinationError::StoreError(format!(
+            "team lock is already held by this thread: {}",
+            lock_path.display()
+        )));
+    }
+    Ok(TeamLockGuard {
+        _file: file,
+        lock_path,
+        teams_dir: teams_dir.to_path_buf(),
+        team_name: team_name.to_string(),
+        _not_send: PhantomData,
+    })
 }
 
 /// Exclusive advisory lock held on the file that will be atomically replaced.
@@ -224,7 +295,7 @@ fn inode_matches(_file: &File, _path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Barrier};
+    use std::sync::{mpsc, Arc, Barrier};
     use std::thread;
 
     use tempfile::TempDir;
@@ -312,6 +383,79 @@ mod tests {
         // Lock dropped, second acquisition should succeed.
         let _lock = acquire_team_lock(&teams_dir, team_name)
             .expect("second lock should succeed after drop");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn guard_scope_survives_team_directory_canonicalization_failure() {
+        // Regression: 1827f8a8 re-canonicalized TeamLockGuard::covers while
+        // the guard was held, so a transient lookup failure made a valid guard
+        // appear to cover another team.
+        let tmp = TempDir::new().expect("tempdir");
+        let real_teams_dir = tmp.path().join("real-teams");
+        let teams_dir = tmp.path().join("teams-link");
+        fs::create_dir_all(&real_teams_dir).expect("create real teams dir");
+        std::os::unix::fs::symlink(&real_teams_dir, &teams_dir).expect("link teams dir");
+        let team_name = "canonicalization-test";
+
+        let guard = acquire_team_lock(&teams_dir, team_name).expect("acquire through symlink");
+        fs::remove_dir_all(real_teams_dir.join(team_name)).expect("remove team dir");
+
+        assert!(
+            guard.covers(&teams_dir, team_name),
+            "guard identity must not depend on another filesystem lookup"
+        );
+    }
+
+    #[test]
+    fn guard_scope_accepts_an_aliased_spelling_of_the_same_teams_dir() {
+        // The held-lock set is keyed on the canonical lock path; the scope
+        // check must accept a caller that names the same team through a
+        // different spelling of the teams dir.
+        let tmp = TempDir::new().expect("tempdir");
+        let real_teams_dir = tmp.path().join("real-teams");
+        let teams_link = tmp.path().join("teams-link");
+        fs::create_dir_all(&real_teams_dir).expect("create real teams dir");
+        std::os::unix::fs::symlink(&real_teams_dir, &teams_link).expect("link teams dir");
+        let team_name = "aliased-spelling-test";
+
+        let guard = acquire_team_lock(&real_teams_dir, team_name).expect("acquire via real path");
+        assert!(
+            guard.covers(&teams_link, team_name),
+            "the symlinked spelling names the same team"
+        );
+        assert!(
+            !guard.covers(&real_teams_dir, "another-team"),
+            "a different team is never covered"
+        );
+    }
+
+    #[test]
+    fn reacquiring_a_team_lock_on_the_same_thread_fails_fast() {
+        // Regression: 366f4b7 removed orchestrator-wide exclusion, so the
+        // replacement needs an outer team lock without letting a nested store
+        // acquisition block its own thread forever.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().to_path_buf();
+        let team_name = "reentrant-test";
+
+        let (result_tx, result_rx) = mpsc::channel();
+        let handle = thread::spawn(move || {
+            let _lock =
+                acquire_team_lock(&teams_dir, team_name).expect("first lock should succeed");
+            let error = acquire_team_lock(&teams_dir, team_name)
+                .expect_err("same-thread re-entry must return instead of blocking");
+            result_tx.send(error.to_string()).expect("send result");
+        });
+        let error = result_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("same-thread re-entry blocked instead of failing fast");
+        handle.join().expect("re-entry test thread");
+
+        assert!(
+            error.contains("already held by this thread"),
+            "unexpected re-entry error: {error}"
+        );
     }
 
     #[test]

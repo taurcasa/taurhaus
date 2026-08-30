@@ -839,19 +839,19 @@ pub(super) fn validate_unix_pid(pid: u32) -> Result<String, CoordinationError> {
 mod tests {
     use super::*;
 
-    use std::sync::{LazyLock, Mutex, MutexGuard};
-
-    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
     const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 
+    /// Env mutation is process-wide: a module-local mutex serialized these
+    /// tests only against each other, so an unguarded reader in another
+    /// module could race them. Delegate to the shared file-locked guard.
     struct EnvGuard {
-        _guard: MutexGuard<'static, ()>,
+        _guard: taurhaus_lib::test_support::EnvTestGuard,
     }
 
     impl EnvGuard {
         fn new() -> Self {
             Self {
-                _guard: ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner()),
+                _guard: taurhaus_lib::test_support::acquire_env_test_guard(),
             }
         }
     }
