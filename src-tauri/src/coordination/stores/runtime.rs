@@ -124,19 +124,13 @@ impl MemberRuntimeStore {
             .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
 
         let mut record = record.clone();
-        merge_current_extension_fields(
-            &mut record,
-            &target_lock.read_contents()?,
-            team_name,
-            member_name,
-            false,
-        );
+        merge_current_extension_fields(&mut record, &target_lock.read_contents()?, false);
 
         save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)
     }
 
-    /// Save a snapshot loaded earlier, keeping whatever level mesh has put into
-    /// force since.
+    /// Save a snapshot loaded earlier, keeping mesh-owned extension fields and
+    /// whatever level mesh has put into force since.
     ///
     /// The liveness passes load every record for a team, decide what changed,
     /// and save the whole snapshot back. mesh is the only writer of
@@ -164,13 +158,7 @@ impl MemberRuntimeStore {
             .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
 
         let mut record = record.clone();
-        merge_current_extension_fields(
-            &mut record,
-            &target_lock.read_contents()?,
-            team_name,
-            member_name,
-            true,
-        );
+        merge_current_extension_fields(&mut record, &target_lock.read_contents()?, true);
 
         save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)
     }
@@ -526,22 +514,29 @@ fn parse_runtime_record(
 fn merge_current_extension_fields(
     record: &mut MemberRuntimeRecord,
     current_raw: &str,
-    team_name: &str,
-    member_name: &str,
     preserve_applied_effort: bool,
 ) {
     if current_raw.trim().is_empty() {
         return;
     }
 
-    // An unreadable record is about to be repaired by the caller's complete
-    // snapshot. There are no safely identifiable extension fields to merge.
-    let Ok(current) = parse_runtime_record(current_raw, team_name, member_name) else {
+    // Extract extensions from the JSON object directly: a future value for a
+    // taurhaus-owned field must not make unrelated mesh keys unreadable.
+    let Ok(Value::Object(current)) = serde_json::from_str::<Value>(current_raw) else {
         return;
     };
-    record.extra.extend(current.extra);
+    let current_applied_effort = current
+        .get("appliedEffort")
+        .or_else(|| current.get("applied_effort"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|level| !level.is_empty())
+        .map(ToString::to_string);
+    record
+        .extra
+        .extend(extension_fields_only(current.into_iter().collect()));
     if preserve_applied_effort {
-        record.applied_effort = current.applied_effort;
+        record.applied_effort = current_applied_effort;
     }
 }
 
@@ -1714,6 +1709,56 @@ mod tests {
             saved["appliedEffort"], "low",
             "an owning save still writes the effort carried by its launch snapshot"
         );
+    }
+
+    #[test]
+    fn stale_save_preserves_extensions_from_a_forward_compatible_object() {
+        // Regression: 50fc736 made extension preservation depend on decoding
+        // the whole current record, so one future owned value could still
+        // cause unrelated mesh keys to be erased.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "forward-runtime";
+        let member_name = "codex-reviewer";
+        MemberRuntimeStore::save(
+            tmp.path(),
+            team_name,
+            member_name,
+            &sample_record(member_name),
+        )
+        .expect("seed record");
+        let mut stale =
+            MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load snapshot");
+
+        let path = runtime_record_path(tmp.path(), team_name, member_name);
+        let mut current: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read record")).expect("json");
+        current["health"] = Value::String("future_mesh_state".to_string());
+        current["appliedEffort"] = Value::String("high".to_string());
+        current["futureMeshField"] = serde_json::json!({ "keep": true });
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&current).expect("serialize future object"),
+        )
+        .expect("write future object");
+
+        stale.health = HealthState::SessionDead;
+        MemberRuntimeStore::save_preserving_applied_effort(
+            tmp.path(),
+            team_name,
+            member_name,
+            &stale,
+        )
+        .expect("save stale snapshot");
+
+        let saved: Value =
+            serde_json::from_str(&fs::read_to_string(path).expect("read saved record"))
+                .expect("saved json");
+        assert_eq!(
+            saved["futureMeshField"],
+            serde_json::json!({ "keep": true })
+        );
+        assert_eq!(saved["appliedEffort"], "high");
+        assert_eq!(saved["health"], "session_dead");
     }
 
     #[test]
