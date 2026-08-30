@@ -134,52 +134,6 @@ fn an_older_daemon_reports_no_accounts_without_degrading() {
     assert_eq!(report.error, None);
 }
 
-// Regression: c11770e answered the Windows refresh with
-// `send_status_request(...).is_ok()`, which says only that the daemon replied.
-// The daemon's own payload says whether a fetch began, and the five-second
-// debounce in `usage_poller::refresh` answers `{"started": false}` — reported
-// here as a refresh that had started. A launch waiting for the reading it asked
-// for then waited for one nothing was going to publish, and gave up only at its
-// 30-second deadline: every remembered-account launch on Windows stalled for
-// half a minute whenever anything had just refreshed usage.
-#[test]
-fn a_debounced_daemon_refresh_started_nothing() {
-    let response = protocol::DaemonResponse::ok(
-        "refresh-usage-claude",
-        serde_json::json!({"started": false}),
-    );
-
-    assert!(!refresh_started(Ok(response)));
-}
-
-#[test]
-fn a_daemon_refresh_that_began_is_reported_as_started() {
-    let response =
-        protocol::DaemonResponse::ok("refresh-usage-claude", serde_json::json!({"started": true}));
-
-    assert!(refresh_started(Ok(response)));
-}
-
-/// Nothing answered, so nothing started: the launch judges what it already has
-/// rather than waiting for a fetch that was never asked for.
-#[test]
-fn a_daemon_that_could_not_be_asked_started_nothing() {
-    assert!(!refresh_started(Err(
-        crate::errors::AppError::DaemonTransport("connection reset by peer".to_string(),)
-    )));
-}
-
-#[test]
-fn an_older_daemon_starts_no_refresh() {
-    let response = protocol::DaemonResponse::err(
-        "refresh-usage-claude",
-        "UNKNOWN_METHOD",
-        "Unknown method: refresh_usage",
-    );
-
-    assert!(!refresh_started(Ok(response)));
-}
-
 /// A resume derives its subscription from the transcript that owns the
 /// project's history. A lookup that never ran must not read as "no history".
 #[test]

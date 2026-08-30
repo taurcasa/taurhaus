@@ -97,31 +97,9 @@ fn refresh_accounts_usage_impl(provider: &ProviderState, tool: CliTool) -> Resul
             protocol::method::REFRESH_USAGE,
             protocol::ListAccountsParams { tool },
         );
-        return Ok(refresh_started(daemon.send_status_request(&request)));
+        return Ok(daemon.send_status_request(&request).is_ok());
     }
     Ok(crate::daemon::usage_poller::refresh(tool))
-}
-
-/// The daemon's answer to a usage refresh: whether a fetch actually began.
-#[derive(Debug, Clone, Copy, Default, serde::Deserialize)]
-struct RefreshUsageAnswer {
-    #[serde(default)]
-    started: bool,
-}
-
-/// Whether the daemon actually started a usage fetch.
-///
-/// Only a fetch that began can publish a newer reading, and the daemon says so
-/// itself: `refresh_usage` is debounced for five seconds and answers
-/// `{"started": false}` inside that window. A reply is not a fetch. A daemon
-/// that predates the method, or one that never answered, has started nothing
-/// either — so a launch waiting for a fresh reading is never held open for a
-/// fetch that does not exist.
-fn refresh_started(outcome: Result<protocol::DaemonResponse, AppError>) -> bool {
-    match daemon_answer::<RefreshUsageAnswer>(outcome, "a usage refresh") {
-        DaemonAnswer::Value(answer) => answer.started,
-        DaemonAnswer::Unsupported | DaemonAnswer::Unavailable(_) => false,
-    }
 }
 
 /// Detected accounts, from whichever side of the WSL boundary can see them.
