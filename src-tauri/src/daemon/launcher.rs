@@ -354,20 +354,88 @@ fn stop_existing_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), 
 fn stop_existing_daemon_native(port: u16, log_path: &Path) -> Result<(), std::io::Error> {
     #[cfg(target_os = "linux")]
     {
-        let Some(pid) = crate::platform::listening_process_on_port(port) else {
-            return Ok(());
-        };
-        blog(
+        let expected = crate::provider::platform_paths::PlatformPaths::daemon_binary_path();
+        stop_existing_daemon_native_with(
+            port,
             log_path,
-            &format!("Stopping existing daemon pid {pid} on port {port} before restart"),
-        );
-        terminate_pid_gracefully(pid, log_path)
+            &expected,
+            crate::platform::listening_process_on_port,
+            crate::platform::process_exe,
+            terminate_pid_gracefully,
+        )
     }
 
     #[cfg(not(target_os = "linux"))]
     {
         let _ = (port, log_path);
         Ok(())
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn stop_existing_daemon_native_with<FindPid, ReadExe, Terminate>(
+    port: u16,
+    log_path: &Path,
+    expected_binary: &Path,
+    find_pid: FindPid,
+    read_exe: ReadExe,
+    terminate: Terminate,
+) -> Result<(), std::io::Error>
+where
+    FindPid: FnOnce(u16) -> Option<u32>,
+    ReadExe: FnOnce(u32) -> Option<PathBuf>,
+    Terminate: FnOnce(u32, &Path) -> Result<(), std::io::Error>,
+{
+    let Some(pid) = find_pid(port) else {
+        return Ok(());
+    };
+    let running_exe = read_exe(pid);
+    if running_exe
+        .as_deref()
+        .is_none_or(|running| !native_daemon_executable_matches(running, expected_binary))
+    {
+        let running = running_exe
+            .as_deref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "unreadable".to_string());
+        bwarn(
+            log_path,
+            &format!(
+                "Refusing to stop foreign listener pid {pid} on daemon port {port}: running_exe={running}, expected_exe={}",
+                expected_binary.display()
+            ),
+        );
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!("daemon port {port} is owned by a foreign process (pid {pid})"),
+        ));
+    }
+
+    blog(
+        log_path,
+        &format!("Stopping existing daemon pid {pid} on port {port} before restart"),
+    );
+    terminate(pid, log_path)
+}
+
+#[cfg(target_os = "linux")]
+fn native_daemon_executable_matches(running_exe: &Path, expected_binary: &Path) -> bool {
+    let running_text = running_exe.to_string_lossy();
+    let running = PathBuf::from(
+        running_text
+            .strip_suffix(" (deleted)")
+            .unwrap_or(running_text.as_ref()),
+    );
+    if running == expected_binary {
+        return true;
+    }
+
+    match (
+        std::fs::canonicalize(&running),
+        std::fs::canonicalize(expected_binary),
+    ) {
+        (Ok(running), Ok(expected)) => running == expected,
+        _ => false,
     }
 }
 
@@ -945,6 +1013,55 @@ mod tests {
         let script = stop_existing_daemon_wsl_script(17233);
         assert!(script.contains("pgrep -f '[t]aurhaus-daemon.*--port 17233'"));
         assert!(!script.contains("pgrep -f 'taurhaus-daemon.*--port 17233'"));
+    }
+
+    // Regression: commit 7908cbf4 assigned E2E a hashed daemon port while the
+    // native restart path still terminated any executable listening there.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn native_restart_refuses_to_terminate_a_foreign_port_owner() {
+        let terminated = std::cell::Cell::new(false);
+        let result = stop_existing_daemon_native_with(
+            29_441,
+            &test_log_path(),
+            Path::new("/checkout/target/debug/taurhaus-daemon"),
+            |_| Some(4242),
+            |_| Some(PathBuf::from("/usr/bin/foreign-service")),
+            |_, _| {
+                terminated.set(true);
+                Ok(())
+            },
+        );
+
+        assert_eq!(
+            result
+                .expect_err("foreign listener must block restart")
+                .kind(),
+            std::io::ErrorKind::AddrInUse
+        );
+        assert!(!terminated.get());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn native_restart_terminates_the_expected_daemon_binary() {
+        let terminated = std::cell::Cell::new(false);
+        let expected = Path::new("/checkout/target/debug/taurhaus-daemon");
+        let result = stop_existing_daemon_native_with(
+            29_441,
+            &test_log_path(),
+            expected,
+            |_| Some(4242),
+            |_| Some(expected.to_path_buf()),
+            |pid, _| {
+                assert_eq!(pid, 4242);
+                terminated.set(true);
+                Ok(())
+            },
+        );
+
+        assert!(result.is_ok());
+        assert!(terminated.get());
     }
 
     struct TestDaemon {
