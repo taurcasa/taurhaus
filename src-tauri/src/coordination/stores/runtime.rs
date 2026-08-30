@@ -548,10 +548,10 @@ fn merge_current_extension_fields(
         .map(str::trim)
         .filter(|level| !level.is_empty())
         .map(ToString::to_string);
-    record.extra.extend(extension_fields_only(
-        current.into_iter().collect(),
-        RUNTIME_AUTHORED_KEYS,
-    ));
+    // The file is the authority for foreign keys: a key mesh deleted between
+    // this snapshot's load and its save must stay deleted, so the snapshot's
+    // own extras are replaced, never unioned.
+    record.extra = extension_fields_only(current.into_iter().collect(), RUNTIME_AUTHORED_KEYS);
     if preserve_applied_effort {
         record.applied_effort = current_applied_effort;
     }
@@ -1827,6 +1827,54 @@ mod tests {
         assert_eq!(
             saved["appliedEffort"], "low",
             "an owning save still writes the effort carried by its launch snapshot"
+        );
+    }
+
+    // Regression: merge-on-save unioned the snapshot's extras with the file's,
+    // so a foreign key mesh deleted between load and save came back on the
+    // next taurhaus save (Opus review of 2a-i, remaining minor).
+    #[test]
+    fn a_save_does_not_resurrect_a_foreign_key_the_file_no_longer_has() {
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "no-resurrection";
+        let member_name = "codex-reviewer";
+        let seeded = sample_record(member_name);
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &seeded).expect("seed record");
+
+        let path = runtime_record_path(tmp.path(), team_name, member_name);
+        let mut current: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read record")).expect("json");
+        current["meshOnly"] = Value::String("v1".to_string());
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&current).expect("serialize"),
+        )
+        .expect("mesh write");
+        let stale =
+            MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load snapshot");
+        assert!(
+            stale.extra.contains_key("meshOnly"),
+            "the snapshot saw the foreign key"
+        );
+
+        // mesh deletes the key after the snapshot was taken.
+        let mut current: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read record")).expect("json");
+        current.as_object_mut().expect("object").remove("meshOnly");
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&current).expect("serialize"),
+        )
+        .expect("mesh delete");
+
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &stale).expect("stale save");
+
+        let saved: Value =
+            serde_json::from_str(&fs::read_to_string(path).expect("read saved record"))
+                .expect("json");
+        assert!(
+            saved.get("meshOnly").is_none(),
+            "a key the file no longer has must not come back from a stale snapshot"
         );
     }
 
