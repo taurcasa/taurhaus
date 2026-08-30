@@ -10,6 +10,22 @@ A lead triggers one directly:
 Workflow({name: "small-change", args: {worktree: "/home/you/projects/taurhaus-w1", branch: "feat/w1", spec: "/tmp/w1-spec.md"}})
 ```
 
+When a spec names extra gates, pass exact commands and keep operational instructions separate:
+
+```js
+Workflow({
+  name: "small-change",
+  args: {
+    worktree: "/home/you/projects/taurhaus-w1",
+    branch: "feat/w1",
+    spec: "/tmp/w1-spec.md",
+    gates: ["just lint", "bunx vitest run scripts/workflow-procedures.test.mjs", "just check-quick"],
+    requiredGates: ["bunx vitest run scripts/workflow-procedures.test.mjs"],
+    gateNotes: "Use only the stubbed workflow harness; never invoke a real procedure.",
+  },
+})
+```
+
 or hands a team member the same call in a mesh notice:
 
 ```
@@ -46,8 +62,9 @@ Every script takes the shared args below; `worktree` (or `repo`) is the only har
 | `scratch` | `/tmp/taurhaus-workflows` | where the Codex wrapper writes prompts, schemas and logs |
 | `stamp` | — | a short token appended to the scratch file names; the names already carry the checkout and the tag, so pass one only to run the same procedure in the same checkout twice in sequence (a workflow script cannot read the clock itself) |
 | `sessionUrl` | — | the `Claude-Session:` trailer value; omitted when absent |
-| `gates` | check-quick + lint + targeted cargo tests | the gate commands, when a spec names different ones |
-| `requiredGates` | `['just check-quick', 'just lint']` | further commands the gate must actually run and pass, on top of `just check-quick` and `just lint`, which cannot be opted out of; matched as substrings of the reported command line |
+| `gates` | `['just check-quick', 'just lint']` | exact command strings declared for the gate; an old caller may pass one command as a string only when it contains neither `;` nor bracketed prose |
+| `requiredGates` | `['just check-quick', 'just lint']` | additional exact commands that must run and pass; each is also declared automatically, and the two defaults cannot be opted out of |
+| `gateNotes` | — | operational instructions handed to the gate agent verbatim, never interpreted as commands |
 | `notes` | — | extra instructions appended to the implementer's task |
 | `tag` | the branch | prefix for scratch file names |
 | `size` | per script | recorded in the ledger |
@@ -76,7 +93,7 @@ ledger row can be filled from the run instead of by hand:
   followup: { name: 'fix-round', args: { worktree, branch, base, spec, title, findings: remaining, startRound: rounds + 1 } },
   ledger: { title, size, implementer, models, effort, reviewers, rounds, majors, findings, remaining },
   commits: [...],
-  gate: { status: 'pass', commands: [{command, status, detail}], diff_stat, commits },
+  gate: { status: 'pass', changed_paths: [...], commands: [{command, status, detail}], diff_stat, commits },
 }
 ```
 
@@ -107,11 +124,16 @@ a completed ledger with no findings reads as an approval:
 - **A red gate fails the run.** The gate returns one entry per command with its pass/fail; any command
   that did not pass, a `status` other than `pass`, or a gate that ran nothing aborts. So does a gate
   that contradicts itself — `status: 'pass'` arriving with a non-empty `failures` or `error`.
-- **A skipped gate command is not a pass.** `just check-quick` and `just lint` (or whatever
-  `requiredGates` names) must appear among the commands that passed; one reported `skipped`, or never
-  run at all, fails the run. So does any other listed command that did not pass — the targeted
-  `cargo test` included. A gate command that did not apply is left off the list and explained in the
+- **Gate reports match the typed catalog exactly.** `just check-quick` and `just lint` (or whatever
+  `requiredGates` names) must appear as exact trimmed command lines among the commands that passed;
+  `echo just check-quick` is neither a match nor a declared command. A reported command outside the
+  declared catalog fails the run, as does one reported `skipped`, one that never ran, or any listed
+  command that did not pass. A command that did not apply is left off the list and explained in the
   summary, never reported `skipped` to get past the gate.
+- **A Rust diff runs Rust tests.** The gate's first step is
+  `git diff --name-only <base>...HEAD`, returned as `changed_paths`. Any path under `src-tauri/`
+  appends required gate `just test-rust-unit`, unless the caller already declared a `cargo test` or
+  `just test-rust-*` command. `just check-quick` compiles Rust tests but does not execute them.
 - **What stays open is not hidden.** Findings the loop could not close come back as `remaining`.
   A blocker or major also makes the outcome `followup_required` and names the next `fix-round` call.
 - **A reviewer is named by the model that ran it.** The lane must report `model_used`, the reviewer
@@ -174,13 +196,15 @@ A `followup_required` ledger is not mergeable. Run its named `fix-round` call an
 ## The rules the scripts encode
 
 The shared `lib` section is **byte-identical in every script** — workflow scripts cannot import, so it
-is copied. Change it in one file and copy it to the other four; `just lint` will not catch drift, a
-reviewer will. It carries:
+is copied. Change it in one file and copy it to the other four; `just lint` rejects any byte drift. It
+carries:
 
 - the checkout rule (work only there, read `CLAUDE.md` first, never `git add -A`);
 - commit discipline (commit after every green step; never edit ledger rows — the orchestrator fills
   them at merge);
 - TDD (red first, `// Regression:` comments naming the breaking commit);
+- the typed gate catalog, exact report matching, separate operational notes, and the Rust-diff test
+  rule;
 - safety (tests never touch the real `~/.claude*`, `~/.codex`, `~/.gemini`, `~/.grok`; no stress runs;
   kill what you start, never what you did not; never print secrets);
 - the read-only rule for research;
@@ -197,8 +221,9 @@ reviewer will. It carries:
 `just lint` runs `bun scripts/check-workflow-scripts.mjs`, which parses every script here without
 running it and fails on: a syntax error, a missing or misplaced `export const meta`, a `meta.name` that
 does not match the file name, a missing description, an `import`/`require` (impossible in a workflow
-script), and `Date.now()` / argless `new Date()` / `Math.random()` (they throw at runtime — pass a
-timestamp through `args`, and vary a prompt by index instead of randomising).
+script), `Date.now()` / argless `new Date()` / `Math.random()` (they throw at runtime — pass a
+timestamp through `args`, and vary a prompt by index instead of randomising), shared-lib byte drift,
+or a `REQUIRED_GATES` definition that bypasses the typed catalog helper.
 
 Run it directly with `bun scripts/check-workflow-scripts.mjs` (or `node …`, which adds the line
 number of a syntax error — bun's parser reports the file only).

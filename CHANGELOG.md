@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Workflow gates are exact, typed commands** — procedure callers pass command arrays and keep operational notes in `gateNotes`; startup rejects empty or multiline commands, prose strings with separators or bracketed notes, malformed `just` commands, and `cargo test` commands with more than one positional filter. Gate reports now match required commands exactly, reject undeclared command lines, and run `just test-rust-unit` whenever `git diff --name-only <base>...HEAD` includes `src-tauri/` unless a Rust test gate was already declared. The workflow lint also enforces the typed catalog and byte-identical shared libraries.
+
 ### Fixed
 
 - **Theme changes no longer wipe global default accounts** — IPC normalizers preserve backend fields they do not yet know, including each tool's `default_account_ids`, live member task effort, and resolved launch bases.
