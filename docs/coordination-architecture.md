@@ -349,8 +349,8 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 - Concurrency rule:
   - background self-heal runs on a dedicated orchestrator instance, not the app-owned cached orchestrator
   - tmux, WSL, and process probes run before any filesystem lock is acquired, so the dedicated background instance keeps probe latency off the app-owned coordination mutex and off the team lock
-  - every runtime-record decision commits per team: acquire the team lock, re-read under the target-file lock, compare `pane_id`, `pane_pid`, `pane_start_time`, `session_id`, `daemon_pid`, `health`, and `appliedEffort`, then apply the patch through the locked save only when those dependencies are unchanged
-  - a stale decision is dropped and logs `coordination.runtime.commit_skipped` with `member` and `changed_fields`; the command and background orchestrators therefore cannot interleave a runtime-record write even though they remain separate instances
+  - each individual runtime-record decision commits inside a per-team critical section: acquire the team lock, re-read under the target-file lock, compare `pane_id`, `pane_pid`, `pane_start_time`, `session_id`, `daemon_pid`, `health`, and `appliedEffort`, then apply the patch through the locked save only when those dependencies are unchanged; a pass over several members releases the lock between records and is not atomic as a whole
+  - a stale decision is dropped and logs `coordination.runtime.commit_skipped` with `member` and `changed_fields`; the array contains dependency field names, or `record` when the runtime record itself appeared or disappeared, and the command and background orchestrators therefore cannot interleave a write to the same runtime record even though they remain separate instances
 
 **Rationale**: This keeps first-render and polling snapshots cheap and predictable while still giving taurhaus a bounded repair path for stale panes/daemons and cold-restart recovery.
 
