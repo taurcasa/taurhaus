@@ -646,7 +646,8 @@ mod tests {
     use super::*;
     use crate::session_scanner::idle::{set_binding_store_path_for_test, CODEX_TEST_LOCK};
     use crate::session_scanner::{clear_scan_cache, process, SCANNER_TEST_LOCK};
-    use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+    use std::cell::Cell;
+    use std::sync::atomic::{AtomicU8, Ordering};
     use tempfile::TempDir;
 
     fn session_with_state(state: SessionState) -> DisplaySession {
@@ -1380,10 +1381,26 @@ mod tests {
         );
     }
 
-    static CLIENT_PROBE_CALLS: AtomicUsize = AtomicUsize::new(0);
+    thread_local! {
+        /// The tmux probes the *calling* thread made through `scripted_clients`.
+        ///
+        /// The override this counts behind is process-global, so a shared
+        /// counter is shared with every other thread in the test binary that
+        /// reaches `tmux::list_clients()` — the daemon hub's scanner among
+        /// them. Only the calling thread's own probes are this test's evidence.
+        static CLIENT_PROBE_CALLS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    fn reset_probe_calls() {
+        CLIENT_PROBE_CALLS.with(|calls| calls.set(0));
+    }
+
+    fn probe_calls() -> usize {
+        CLIENT_PROBE_CALLS.with(Cell::get)
+    }
 
     fn scripted_clients() -> Vec<crate::session_scanner::tmux::TmuxClient> {
-        CLIENT_PROBE_CALLS.fetch_add(1, Ordering::SeqCst);
+        CLIENT_PROBE_CALLS.with(|calls| calls.set(calls.get() + 1));
         vec![crate::session_scanner::tmux::TmuxClient {
             flags: vec!["attached".to_string(), "focused".to_string()],
             session: "taurhaus".to_string(),
@@ -1391,6 +1408,39 @@ mod tests {
             pane_id: "%1".to_string(),
             activity: 100,
         }]
+    }
+
+    // Regression: latent since 07ab6c5. `CLIENT_PROBE_CALLS` was a process-global
+    // `AtomicUsize`, so every thread in the test binary that reached
+    // `tmux::list_clients()` through the same process-global override counted
+    // into the number `degraded_cycle_does_not_probe_or_alter_focus` asserted
+    // on, and the daemon hub's scanner thread is such a thread. That is the
+    // `left: 2, right: 1` flake. A test can only count the probes its own
+    // `scan_cycle` calls made.
+    #[test]
+    fn a_probe_from_another_thread_is_not_counted_here() {
+        let _scanner_lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        crate::session_scanner::tmux::set_list_clients_override(Some(scripted_clients));
+        reset_probe_calls();
+
+        let foreign = thread::spawn(|| {
+            let _ = crate::session_scanner::tmux::list_clients();
+            let _ = crate::session_scanner::tmux::list_clients();
+        });
+        foreign.join().expect("foreign prober");
+
+        assert_eq!(
+            probe_calls(),
+            0,
+            "another thread's probes are not this test's probes"
+        );
+
+        let _ = crate::session_scanner::tmux::list_clients();
+        assert_eq!(probe_calls(), 1, "this thread's own probe still counts");
+
+        crate::session_scanner::tmux::set_list_clients_override(None);
     }
 
     /// Where `reporting_clients` sends the id of every probing thread.
@@ -1510,7 +1560,7 @@ mod tests {
         HUB_INVENTORY_MODE.store(HUB_INVENTORY_HEALTHY, Ordering::SeqCst);
         process::set_inventory_provider_override(Some(hub_inventory));
         crate::session_scanner::tmux::set_list_clients_override(Some(scripted_clients));
-        CLIENT_PROBE_CALLS.store(0, Ordering::SeqCst);
+        reset_probe_calls();
 
         let hub = SessionActivityHub::new();
         let mut cadence = ScannerCadence::default();
@@ -1518,7 +1568,7 @@ mod tests {
 
         let healthy = hub.commit_cycle(scan_cycle(tmp.path()), &mut cadence, None, now);
         assert!(healthy.changed);
-        assert_eq!(CLIENT_PROBE_CALLS.load(Ordering::SeqCst), 1);
+        assert_eq!(probe_calls(), 1);
         assert_eq!(
             hub.runtime_snapshot().focus,
             Some(focus_at("taurhaus", "1", "%1"))
@@ -1528,11 +1578,7 @@ mod tests {
         let degraded_cycle = scan_cycle(tmp.path());
         assert!(degraded_cycle.degraded);
         assert!(degraded_cycle.focus.is_none());
-        assert_eq!(
-            CLIENT_PROBE_CALLS.load(Ordering::SeqCst),
-            1,
-            "a degraded cycle must not probe tmux"
-        );
+        assert_eq!(probe_calls(), 1, "a degraded cycle must not probe tmux");
         let degraded = hub.commit_cycle(degraded_cycle, &mut cadence, Some(now), now);
         assert!(!degraded.changed);
         assert_eq!(
