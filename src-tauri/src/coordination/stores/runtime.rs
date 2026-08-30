@@ -84,6 +84,10 @@ pub struct MemberRuntimeRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EffortResumeFailure {
+    /// Task whose requested effort could not be reached. Empty only on a
+    /// record written before task identity joined the retry contract.
+    #[serde(default)]
+    pub task_id: String,
     /// The level that could not be reached.
     pub level: String,
     /// Attempts spent on it since the last launch that committed.
@@ -2219,6 +2223,7 @@ mod tests {
         let mut record = sample_record(member_name);
         record.applied_effort = Some("high".to_string());
         record.effort_resume_failure = Some(EffortResumeFailure {
+            task_id: "42".to_string(),
             level: "high".to_string(),
             attempts: 2,
         });

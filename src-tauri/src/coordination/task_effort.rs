@@ -247,6 +247,7 @@ pub fn emit_effort_resume(
     event_name: &str,
     team_name: &str,
     member_name: &str,
+    task_id: &str,
     level: &str,
     previous: Option<&str>,
     failure: Option<&str>,
@@ -259,6 +260,10 @@ pub fn emit_effort_resume(
     fields.insert(
         "member_name".to_string(),
         serde_json::Value::String(member_name.to_string()),
+    );
+    fields.insert(
+        "task_id".to_string(),
+        serde_json::Value::String(task_id.to_string()),
     );
     fields.insert(
         "effort".to_string(),

@@ -5,6 +5,9 @@
 //! durable failure recording. The member-activation pipeline only asks for the
 //! effort of an open assignment when it launches a member.
 
+use std::fs;
+use std::path::{Path, PathBuf};
+
 use crate::coordination::domain::{HealthState, Member};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
@@ -19,6 +22,8 @@ use crate::session_scanner::cli_tool::CliTool;
 
 /// One member's pending effort switch.
 pub(super) struct PendingEffort {
+    /// The assignment whose notice mesh is holding, when its projections say.
+    pub(super) task_id: String,
     pub(super) requested: String,
     pub(super) applied: Option<String>,
     /// Failures already spent on this level, from the runtime record.
@@ -31,6 +36,13 @@ pub(super) struct PendingEffort {
 /// failing must not stop it again on every pass. Any launch that commits clears
 /// the count, so a member that comes back can reach the level later.
 const MAX_EFFORT_RESUME_ATTEMPTS: u32 = 3;
+const MAX_ASSIGNMENT_RECORD_BYTES: u64 = 1_048_576;
+
+#[derive(Debug, Clone)]
+struct AssignmentTarget {
+    task_id: String,
+    level: String,
+}
 
 pub(super) fn attempt_is_allowed(
     scope: task_effort::EffortPassScope,
@@ -68,6 +80,149 @@ fn effort_launch_commands(
     let mut commands = cli_commands.clone();
     commands.get_mut(tool)?.resume = rewritten;
     Some(commands)
+}
+
+/// Assignment target selection for a member with more than one open task.
+///
+/// mesh's pending attention projection is authoritative when it names a task
+/// whose notice is still held for this member. Otherwise the highest requested
+/// effort among the member's open mesh task records wins. Only when those
+/// mesh-owned records are unavailable does the derived operational snapshot
+/// provide the single-assignment compatibility fallback. No inbox text or
+/// timestamp heuristic is used to invent a held task.
+fn assignment_target(
+    orchestrator: &CoordinationOrchestrator,
+    team_name: &str,
+    member_name: &str,
+) -> Option<AssignmentTarget> {
+    let assignments = open_mesh_assignments(&orchestrator.teams_dir, team_name, member_name);
+    if let Some(held_task_id) = held_task_id(&orchestrator.teams_dir, team_name, member_name) {
+        if let Some(held) = assignments
+            .iter()
+            .find(|assignment| assignment.task_id == held_task_id)
+        {
+            return Some(held.clone());
+        }
+    }
+    if let Some(highest) = assignments.into_iter().max_by(|left, right| {
+        effort_rank(&left.level)
+            .cmp(&effort_rank(&right.level))
+            .then_with(|| left.task_id.cmp(&right.task_id))
+    }) {
+        return Some(highest);
+    }
+
+    let snapshot =
+        OperationalContextSnapshotStore::load(&orchestrator.teams_dir, team_name, member_name)
+            .ok()??;
+    let task_id = snapshot.task.id.clone();
+    task_effort::active_task_effort(&snapshot).map(|effort| AssignmentTarget {
+        task_id,
+        level: effort.level,
+    })
+}
+
+fn open_mesh_assignments(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+) -> Vec<AssignmentTarget> {
+    let Some(tasks_dir) = mesh_tasks_dir(teams_dir, team_name) else {
+        return Vec::new();
+    };
+    let Ok(entries) = fs::read_dir(tasks_dir) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| read_assignment_task(&entry.path(), member_name))
+        .collect()
+}
+
+fn mesh_tasks_dir(teams_dir: &Path, team_name: &str) -> Option<PathBuf> {
+    if teams_dir.file_name()?.to_str()? != "teams" {
+        return None;
+    }
+    Some(teams_dir.parent()?.join("tasks").join(team_name))
+}
+
+fn read_assignment_task(path: &Path, member_name: &str) -> Option<AssignmentTarget> {
+    if path.extension().and_then(|extension| extension.to_str()) != Some("json")
+        || fs::metadata(path).ok()?.len() > MAX_ASSIGNMENT_RECORD_BYTES
+    {
+        return None;
+    }
+    let task: serde_json::Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+    if task.get("owner").and_then(serde_json::Value::as_str) != Some(member_name)
+        || !matches!(
+            task.get("status").and_then(serde_json::Value::as_str),
+            Some("pending" | "in_progress")
+        )
+    {
+        return None;
+    }
+    let task_id = non_empty_json_string(task.get("id"))?;
+    let level = non_empty_json_string(task.get("effort"))
+        .or_else(|| non_empty_json_string(task.get("metadata")?.get("effort")))?
+        .to_ascii_lowercase();
+    (effort_rank(&level) > 0).then_some(AssignmentTarget { task_id, level })
+}
+
+fn held_task_id(teams_dir: &Path, team_name: &str, member_name: &str) -> Option<String> {
+    let attention_dir = teams_dir
+        .join(team_name)
+        .join("state/projections/attention");
+    let entries = fs::read_dir(attention_dir).ok()?;
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| read_held_attention(&entry.path(), member_name))
+        .max()
+        .map(|(_, task_id)| task_id)
+}
+
+fn read_held_attention(path: &Path, member_name: &str) -> Option<(String, String)> {
+    if path.extension().and_then(|extension| extension.to_str()) != Some("json")
+        || fs::metadata(path).ok()?.len() > MAX_ASSIGNMENT_RECORD_BYTES
+    {
+        return None;
+    }
+    let attention: serde_json::Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+    if attention
+        .get("assignedTo")
+        .and_then(serde_json::Value::as_str)
+        != Some(member_name)
+        || attention
+            .get("deliveryState")
+            .and_then(serde_json::Value::as_str)
+            != Some("pending")
+        || attention
+            .get("deliveredAt")
+            .is_some_and(|delivered| !delivered.is_null())
+    {
+        return None;
+    }
+    Some((
+        non_empty_json_string(attention.get("assignedAt")).unwrap_or_default(),
+        non_empty_json_string(attention.get("taskId"))?,
+    ))
+}
+
+fn non_empty_json_string(value: Option<&serde_json::Value>) -> Option<String> {
+    value
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn effort_rank(level: &str) -> u8 {
+    match level.trim().to_ascii_lowercase().as_str() {
+        "low" => 1,
+        "medium" => 2,
+        "high" => 3,
+        "xhigh" => 4,
+        _ => 0,
+    }
 }
 
 impl CoordinationOrchestrator {
@@ -121,6 +276,7 @@ impl CoordinationOrchestrator {
                         self.record_failed_effort_attempt(
                             team_name,
                             &member.name,
+                            &pending.task_id,
                             &pending.requested,
                             pending.failed_attempts + 1,
                         );
@@ -128,6 +284,7 @@ impl CoordinationOrchestrator {
                             "effort.resume.failed",
                             team_name,
                             &member.name,
+                            &pending.task_id,
                             &pending.requested,
                             pending.applied.as_deref(),
                             Some("configured launch command cannot carry the effort"),
@@ -139,6 +296,7 @@ impl CoordinationOrchestrator {
                 "effort.resume.started",
                 team_name,
                 &member.name,
+                &pending.task_id,
                 &pending.requested,
                 pending.applied.as_deref(),
                 None,
@@ -151,6 +309,7 @@ impl CoordinationOrchestrator {
                 self.record_failed_effort_attempt(
                     team_name,
                     &member.name,
+                    &pending.task_id,
                     &pending.requested,
                     pending.failed_attempts + 1,
                 );
@@ -158,6 +317,7 @@ impl CoordinationOrchestrator {
                     "effort.resume.failed",
                     team_name,
                     &member.name,
+                    &pending.task_id,
                     &pending.requested,
                     pending.applied.as_deref(),
                     Some(&reason),
@@ -187,6 +347,7 @@ impl CoordinationOrchestrator {
                         "effort.resume.completed",
                         team_name,
                         &member.name,
+                        &pending.task_id,
                         &pending.requested,
                         pending.applied.as_deref(),
                         None,
@@ -199,6 +360,7 @@ impl CoordinationOrchestrator {
                     self.record_failed_effort_attempt(
                         team_name,
                         &member.name,
+                        &pending.task_id,
                         &pending.requested,
                         pending.failed_attempts + 1,
                     );
@@ -206,6 +368,7 @@ impl CoordinationOrchestrator {
                         "effort.resume.failed",
                         team_name,
                         &member.name,
+                        &pending.task_id,
                         &pending.requested,
                         pending.applied.as_deref(),
                         Some(&reason),
@@ -227,20 +390,8 @@ impl CoordinationOrchestrator {
         if !task_effort::relaunches_for_effort(member.cli_tool) {
             return None;
         }
-        let assigned = self.active_task_effort(team_name, &member.name)?;
+        let assigned = assignment_target(self, team_name, &member.name)?;
         task_effort::resume_effort_target(member.cli_tool, Some(&assigned.level), None)
-    }
-
-    /// The effort of the task taurhaus currently selected.
-    fn active_task_effort(
-        &self,
-        team_name: &str,
-        member_name: &str,
-    ) -> Option<task_effort::AssignmentEffort> {
-        let snapshot =
-            OperationalContextSnapshotStore::load(&self.teams_dir, team_name, member_name)
-                .ok()??;
-        task_effort::active_task_effort(&snapshot)
     }
 
     /// Take a live member's session down so the resume pipeline can relaunch it.
@@ -292,12 +443,14 @@ impl CoordinationOrchestrator {
         &self,
         team_name: &str,
         member_name: &str,
+        task_id: &str,
         level: &str,
         attempts: u32,
     ) {
         if let Err(err) =
             MemberRuntimeStore::update(&self.teams_dir, team_name, member_name, |record| {
                 record.effort_resume_failure = Some(EffortResumeFailure {
+                    task_id: task_id.to_string(),
                     level: level.to_string(),
                     attempts,
                 });
@@ -331,7 +484,7 @@ pub(super) fn pending_member_effort(
     if runtime.health == HealthState::SessionDead && runtime.effort_resume_failure.is_none() {
         return None;
     }
-    let assigned = orchestrator.active_task_effort(team_name, &member.name)?;
+    let assigned = assignment_target(orchestrator, team_name, &member.name)?;
     let requested = task_effort::resume_effort_target(
         member.cli_tool,
         Some(&assigned.level),
@@ -340,7 +493,10 @@ pub(super) fn pending_member_effort(
     let failed_attempts = runtime
         .effort_resume_failure
         .as_ref()
-        .filter(|failure| failure.level.eq_ignore_ascii_case(&requested))
+        .filter(|failure| {
+            (failure.task_id.is_empty() || failure.task_id == assigned.task_id)
+                && failure.level.eq_ignore_ascii_case(&requested)
+        })
         .map_or(0, |failure| failure.attempts);
     if !attempt_is_allowed(scope, failed_attempts) {
         return None;
@@ -357,6 +513,7 @@ pub(super) fn pending_member_effort(
         orchestrator.record_failed_effort_attempt(
             team_name,
             &member.name,
+            &assigned.task_id,
             &requested,
             failed_attempts + 1,
         );
@@ -364,6 +521,7 @@ pub(super) fn pending_member_effort(
             "effort.resume.failed",
             team_name,
             &member.name,
+            &assigned.task_id,
             &requested,
             runtime.applied_effort.as_deref(),
             Some("member has no recorded session to resume"),
@@ -371,6 +529,7 @@ pub(super) fn pending_member_effort(
         return None;
     }
     Some(PendingEffort {
+        task_id: assigned.task_id,
         requested,
         applied: runtime.applied_effort,
         failed_attempts,

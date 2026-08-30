@@ -2,7 +2,7 @@ use super::*;
 use fs2::FileExt;
 use std::fs;
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
@@ -4130,26 +4130,113 @@ fn effort_team(
     orchestrator
 }
 
-/// Put the member on an active task carrying `level`, the way the operational
-/// snapshot sync does after mesh writes the assignment onto the task record.
-fn assign_task(tmp: &TempDir, member_name: &str, level: &str, why: &str) {
-    write_member_snapshot(
-        tmp,
-        member_name,
-        Some(("42", "Run the migration")),
-        level,
-        why,
+fn canonical_effort_team(
+    root: &TempDir,
+    runtime: Arc<RecordingCoordinationRuntime>,
+) -> (PathBuf, CoordinationOrchestrator) {
+    let teams_dir = root.path().join("teams");
+    runtime.set_detected_runtime_session(
+        "%21",
+        CliTool::Codex,
+        Some("session-effort"),
+        Some("/tmp/effort.jsonl"),
     );
+    runtime.set_pane_identity("%21", Some(2021), Some(1_755_000_021));
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        teams_dir.clone(),
+        Arc::new(FakeBackend::default()),
+        runtime,
+    );
+    orchestrator
+        .create_team("effort-team", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "effort-team",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder");
+    builder.reasoning_effort = Some("low".to_string());
+    orchestrator
+        .add_member("effort-team", builder)
+        .expect("add builder");
+    (teams_dir, orchestrator)
 }
 
-/// The member has nothing assigned: its last task is finished, so the snapshot
-/// carries neither a task nor a level.
-fn clear_assignment(tmp: &TempDir, member_name: &str) {
-    write_member_snapshot(tmp, member_name, None, "", "");
+fn seed_running_canonical_codex_member(
+    teams_dir: &Path,
+    orchestrator: &mut CoordinationOrchestrator,
+) {
+    let mut record =
+        MemberRuntimeStore::load(teams_dir, "effort-team", "builder").expect("member runtime");
+    record.pane_id = Some("%21".to_string());
+    record.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(teams_dir, "effort-team", "builder", &record)
+        .expect("save offline runtime");
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
 }
 
-fn write_member_snapshot(
-    tmp: &TempDir,
+fn write_mesh_task(root: &TempDir, task_id: &str, status: &str, level: &str, why: &str) {
+    let task_dir = root.path().join("tasks/effort-team");
+    fs::create_dir_all(&task_dir).expect("create mesh task dir");
+    fs::write(
+        task_dir.join(format!("{task_id}.json")),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "id": task_id,
+            "subject": format!("Task {task_id}"),
+            "description": "isolated assignment fixture",
+            "status": status,
+            "owner": "builder",
+            "activeForm": null,
+            "blocks": [],
+            "blockedBy": [],
+            "metadata": {
+                "effort": level,
+                "effortWhy": why,
+            },
+        }))
+        .expect("serialize mesh task"),
+    )
+    .expect("write mesh task");
+}
+
+fn hold_mesh_assignment(root: &TempDir, task_id: &str) {
+    let attention_dir = root
+        .path()
+        .join("teams/effort-team/state/projections/attention");
+    fs::create_dir_all(&attention_dir).expect("create attention projection dir");
+    fs::write(
+        attention_dir.join(format!("{task_id}.json")),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "taskId": task_id,
+            "assignmentId": format!("assignment-{task_id}"),
+            "assignedTo": "builder",
+            "assignedAt": "2026-08-30T09:00:00Z",
+            "deliveryState": "pending",
+            "deliveredAt": null,
+        }))
+        .expect("serialize attention projection"),
+    )
+    .expect("write attention projection");
+}
+
+fn write_member_snapshot_at(
+    teams_dir: &Path,
     member_name: &str,
     task: Option<(&str, &str)>,
     level: &str,
@@ -4162,7 +4249,7 @@ fn write_member_snapshot(
     };
 
     OperationalContextSnapshotStore::save(
-        tmp.path(),
+        teams_dir,
         &OperationalContextSnapshot {
             version: 1,
             team_name: "effort-team".to_string(),
@@ -4191,6 +4278,34 @@ fn write_member_snapshot(
     .expect("write operational snapshot");
 }
 
+/// Put the member on an active task carrying `level`, the way the operational
+/// snapshot sync does after mesh writes the assignment onto the task record.
+fn assign_task(tmp: &TempDir, member_name: &str, level: &str, why: &str) {
+    write_member_snapshot(
+        tmp,
+        member_name,
+        Some(("42", "Run the migration")),
+        level,
+        why,
+    );
+}
+
+/// The member has nothing assigned: its last task is finished, so the snapshot
+/// carries neither a task nor a level.
+fn clear_assignment(tmp: &TempDir, member_name: &str) {
+    write_member_snapshot(tmp, member_name, None, "", "");
+}
+
+fn write_member_snapshot(
+    tmp: &TempDir,
+    member_name: &str,
+    task: Option<(&str, &str)>,
+    level: &str,
+    why: &str,
+) {
+    write_member_snapshot_at(tmp.path(), member_name, task, level, why);
+}
+
 /// An assignment mesh delivered to the member's inbox at some point. Kept only
 /// so the tests can prove the switch does *not* read it.
 fn append_inbox_assignment(tmp: &TempDir, member_name: &str, level: &str, why: &str) {
@@ -4213,6 +4328,143 @@ fn append_inbox_assignment(tmp: &TempDir, member_name: &str, level: &str, why: &
         &message,
     )
     .expect("append assignment");
+}
+
+// Regression: 7bf0405e paired effort only with the one task taurhaus ranked as
+// active. With two open assignments, mesh could hold the newer notice for a
+// different task forever because taurhaus compared the applied level with the
+// wrong assignment and saw no switch pending.
+#[test]
+fn two_assignments_converge_on_the_task_whose_notice_mesh_holds() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("high".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("41", "Already in progress")),
+        "high",
+        "the active task is risky",
+    );
+    write_mesh_task(
+        &root,
+        "41",
+        "in_progress",
+        "high",
+        "the active task is risky",
+    );
+    write_mesh_task(&root, "42", "pending", "low", "the held task is mechanical");
+    hold_mesh_assignment(&root, "42");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("effort pass");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("low"),
+        "the held task wins even though another open assignment requests more effort"
+    );
+}
+
+#[test]
+fn without_a_held_projection_the_highest_open_requested_effort_wins() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("medium".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("41", "Already in progress")),
+        "low",
+        "the active task is mechanical",
+    );
+    write_mesh_task(
+        &root,
+        "41",
+        "in_progress",
+        "low",
+        "the active task is mechanical",
+    );
+    write_mesh_task(&root, "42", "pending", "high", "the queued task is risky");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("effort pass");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+}
+
+#[test]
+fn pending_effort_carries_the_held_task_requested_and_applied_identity() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("high".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("41", "Already in progress")),
+        "high",
+        "the active task is risky",
+    );
+    write_mesh_task(
+        &root,
+        "41",
+        "in_progress",
+        "high",
+        "the active task is risky",
+    );
+    write_mesh_task(&root, "42", "pending", "low", "the held task is mechanical");
+    hold_mesh_assignment(&root, "42");
+    let config = TeamConfigStore::load(&teams_dir, "effort-team").expect("team config");
+    let builder = config
+        .members
+        .iter()
+        .find(|member| member.name == "builder")
+        .expect("builder");
+
+    let pending = super::effort::pending_member_effort(
+        &orchestrator,
+        "effort-team",
+        builder,
+        EffortPassScope::TaskChanged,
+    )
+    .expect("pending effort");
+
+    assert_eq!(pending.task_id, "42");
+    assert_eq!(pending.requested, "low");
+    assert_eq!(pending.applied.as_deref(), Some("high"));
 }
 
 #[test]
