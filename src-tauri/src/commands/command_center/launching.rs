@@ -500,8 +500,6 @@ pub(super) fn launch_cli_session_impl(
     ))
 }
 
-/// The head of the base command is not the tool's own executable, so what it
-/// does with the rendered account selector is its own business.
 /// Say that a launch could not promise the account it selected.
 pub(super) fn note_opaque_base(
     mut result: protocol::LaunchSessionResult,

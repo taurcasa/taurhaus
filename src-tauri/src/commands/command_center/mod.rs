@@ -416,6 +416,11 @@ fn delegate_launch_to_coordination_resume(
         &mut terminal_settings.cli_commands,
         [tool],
     );
+    let opaque_head = terminal_settings
+        .cli_commands
+        .resolved_bases
+        .get(&(tool, protocol::LaunchMode::Resume))
+        .and_then(|base| base.opaque_head.clone());
     let request = ResumeMemberRequest {
         team_name: target.team_name.clone(),
         member_name: target.member_name.clone(),
@@ -446,7 +451,10 @@ fn delegate_launch_to_coordination_resume(
         )
     })?;
 
-    Ok(tmux_launch_result_for_pane(&pane_id))
+    Ok(launching::note_opaque_base(
+        tmux_launch_result_for_pane(&pane_id),
+        opaque_head.as_deref(),
+    ))
 }
 
 fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str) {
