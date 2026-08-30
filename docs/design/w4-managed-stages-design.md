@@ -28,7 +28,7 @@ A stage is an **assignment to a managed member**, not a subprocess. The workflow
 ## Experiments that gate implementation
 
 3. A managed Codex member completes a bounded implementation task end to end through the inbox contract (assign → RESULT with commits) in a scratch team and worktree, with the effort applied before pickup (mesh 0.2.23) — measures wall clock vs the `codex exec` wrapper. **Measured 2026-08-30 (#71, `e2e/specs/managed-stage-codex.js`, [`research/w4-experiment-3.md`](research/w4-experiment-3.md)):** the hold, resume and delivery happened in the required order (hold 1.91 s of which resume 1.63 s), the member's `RESULT` carried a verified commit in 34.05 s end to end for two Codex turns, and a member launched at the requested level was never held.
-4. Deadline semantics: a deliberately stalled member is nudged at half time, marked stale at the deadline, and `stage()` returns `timeout` while the session survives for a resumed attempt.
+4. Deadline semantics: a deliberately stalled member is nudged at half time, marked stale at the deadline, and `stage()` returns `timeout` while the session survives for a resumed attempt. The pure decision prerequisite is now `coordination/task_deadline.rs`; it is fenced from the placeholder health framework and deliberately remains unwired until this experiment.
 5. Worktree isolation: two stages in two worktrees on one team run concurrently without touching each other's tree or inbox; the lead's run tree shows both.
 
 ## Not building

@@ -132,6 +132,8 @@ This lease still exists for daemon ownership coordination, but it is no longer t
 
 **Shipped**: only `HealthState` — Healthy, AwaitingRead, SuspectedStuck, Rebriefed, Suppressed, SessionDead. `health/transition.rs` is an identity placeholder (`transition(current) -> current`), there is no event enum, and `health/policy.rs` is a placeholder `RecoveryPolicy { cooldown_secs }`.
 
+Task deadlines do not extend that placeholder framework. `coordination/task_deadline.rs` is a separate pure policy with an injected timestamp and caller-persisted one-shot markers: it decides `Nothing`, `Nudge`, or `MarkStale`, but reads no clock, performs no I/O, and is not yet called by self-heal. A module-boundary test keeps it fenced from `health/transition.rs` and `RecoveryPolicy`; wiring the policy is an explicit future W4 change.
+
 **The live health mutations** are two, both written by `orchestrator/liveness.rs` during a reconciliation pass — there is no transition function between them:
 
 | Mutation | Trigger | Also writes |
