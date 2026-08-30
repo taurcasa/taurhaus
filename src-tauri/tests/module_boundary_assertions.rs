@@ -245,6 +245,8 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
     // Regression: commit 9a66d1c distributed CliTool identity branches across
     // runtime consumers; new harness behavior must live in the registry or a
     // declared per-tool capability slice instead.
+    // Regression: commit 35daf4b added a cfg(test)-only IPC fixture module whose
+    // synthetic descriptors are test data, not runtime identity branches.
     const ALLOWED_RUNTIME_FILES: &[&str] = &[
         "src/coordination/compact_hook.rs",
         "src/daemon/agy_hooks.rs",
@@ -283,6 +285,9 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
             .expect("source lives under crate root")
             .to_string_lossy()
             .replace('\\', "/");
+        if relative == "src/ipc_fixtures.rs" {
+            continue;
+        }
         let source = fs::read_to_string(&path).expect("Rust source should be readable");
         let runtime = source_without_test_only_items(&source);
         let count = cli_tool_literal_count(&runtime);
