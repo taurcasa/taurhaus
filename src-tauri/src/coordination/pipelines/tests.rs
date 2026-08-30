@@ -3656,6 +3656,75 @@ fn resume_foreign_pane_launch_failure_leaves_runtime_dead_without_daemon() {
 }
 
 #[test]
+fn stale_foreign_pane_decision_cannot_overwrite_a_concurrent_runtime_commit() {
+    // Regression: 366f4b7 left the resume foreign-pane cleanup as another
+    // load/probe/save writer, so its stale cleanup record could replace a new
+    // owner while the identity probe was still in flight.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+    let team_name = "foreign-pane-interleave";
+    let member_name = "builder";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member(
+                member_name,
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/builder",
+            ),
+        )
+        .expect("add member");
+
+    let mut stale = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    stale.pane_id = Some("%foreign".to_string());
+    stale.pane_pid = Some(7001);
+    stale.pane_start_time = Some(1_755_000_007);
+    stale.session_id = Some("session-stale".to_string());
+    stale.daemon_pid = Some(7100);
+    stale.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &stale)
+        .expect("save stale binding");
+    runtime.set_pane_exists("%foreign", true);
+    runtime.set_pane_current_command("%foreign", Some("claude"));
+    runtime.set_pid_running(7100, true);
+    runtime.set_send_keys_failures("test-pane-1", usize::MAX, "launch failed");
+    let probe_gate = runtime.pause_live_pane_probe("%foreign");
+
+    let resume = std::thread::spawn(move || {
+        orchestrator
+            .resume_member(team_name, member_name)
+            .expect("resume report")
+    });
+    probe_gate.wait_until_blocked();
+
+    let mut concurrent = stale;
+    concurrent.pane_id = Some("%winner".to_string());
+    concurrent.pane_pid = Some(8001);
+    concurrent.pane_start_time = Some(1_755_000_008);
+    concurrent.session_id = Some("session-winner".to_string());
+    concurrent.daemon_pid = Some(8100);
+    concurrent.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &concurrent)
+        .expect("concurrent runtime commit");
+    probe_gate.release();
+
+    let report = resume.join().expect("resume thread");
+    assert!(!report.resumed);
+    assert_eq!(report.failed_step.as_deref(), Some("resolve_pane"));
+    assert_eq!(
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("final runtime"),
+        concurrent,
+        "foreign cleanup based on the old pane must be dropped"
+    );
+}
+
+#[test]
 fn resume_failure_cleans_created_resources_and_keeps_member_config() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());

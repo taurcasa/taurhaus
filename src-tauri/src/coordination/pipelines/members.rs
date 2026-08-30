@@ -16,9 +16,10 @@ use crate::coordination::requests::{
 use crate::coordination::runtime::{
     emit_foreign_pane_event, resolve_or_create_pane_for_member, PaneResolution,
 };
+use crate::coordination::stores::lock::acquire_team_lock;
 use crate::coordination::stores::{
-    EffortResumeFailure, MemberRuntimeRecord, MemberRuntimeStore, OperationalContextSnapshotStore,
-    TeamConfigStore,
+    EffortResumeFailure, MemberRuntimeRecord, MemberRuntimeSnapshot, MemberRuntimeStore,
+    OperationalContextSnapshotStore, RuntimeCommitOutcome, TeamConfigStore,
 };
 use crate::coordination::task_effort;
 use crate::coordination::validation::{
@@ -1098,6 +1099,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 }
                 if let Some(reason) = pane_resolution.foreign_pane_reason.as_deref() {
                     if let Some(stale_pane_id) = runtime_record.pane_id.as_deref() {
+                        let expected = MemberRuntimeSnapshot::capture(runtime_record);
                         let should_emit = runtime_record.health != HealthState::SessionDead
                             || runtime_record.daemon_pid.is_some();
                         let mut stale_runtime = runtime_record.clone();
@@ -1136,14 +1138,35 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                                 "failed to clear foreign-pane daemon pid file: {err}"
                             ));
                         }
-                        if let Err(err) = MemberRuntimeStore::save_preserving_applied_effort(
+                        let guard = acquire_team_lock(
+                            &self.orchestrator.teams_dir,
+                            &prepared.activation_context.team_name,
+                        )
+                        .map_err(|err| ("resolve_pane".to_string(), err))?;
+                        let outcome = MemberRuntimeStore::commit_if_unchanged(
+                            &guard,
                             &self.orchestrator.teams_dir,
                             &prepared.activation_context.team_name,
                             &prepared.member.name,
-                            &stale_runtime,
-                        ) {
+                            &expected,
+                            |current| {
+                                current.health = stale_runtime.health;
+                                current.session_id = stale_runtime.session_id.clone();
+                                current.jsonl_path = stale_runtime.jsonl_path.clone();
+                                current.daemon_pid = stale_runtime.daemon_pid;
+                            },
+                        )
+                        .map_err(|err| ("resolve_pane".to_string(), err))?;
+                        drop(guard);
+                        if outcome != RuntimeCommitOutcome::Committed {
                             self.cleanup_failure();
-                            return Err(("resolve_pane".to_string(), err));
+                            return Err((
+                                "resolve_pane".to_string(),
+                                CoordinationError::Conflict(format!(
+                                    "runtime changed while resolving foreign pane for member '{}'",
+                                    prepared.member.name
+                                )),
+                            ));
                         }
                         if should_emit {
                             emit_foreign_pane_event(
