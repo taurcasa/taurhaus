@@ -29,11 +29,11 @@ fn codex_hook_reconcile_failure_is_degraded_for_managed_launches() {
     assert!(source.contains("compaction.codex_hook.degraded"));
 }
 
-// Regression: 6128bd1 collapsed managed-Codex discovery errors to `false`, so
-// task-arrival and self-heal callers silently rendered settings that omitted
-// the launch inputs a managed Codex member requires.
+// Regression: 135c6f54 made managed-Codex discovery failure abort the entire
+// task-arrival pass. The caller must receive both conservative launch settings
+// and the error so readable teams are still processed without hiding it.
 #[test]
-fn task_effort_launch_settings_reports_managed_codex_discovery_failure() {
+fn task_effort_launch_settings_returns_usable_settings_and_discovery_failure() {
     let teams = TempDir::new().expect("teams dir");
     let broken_team = teams.path().join("broken-team");
     std::fs::create_dir_all(&broken_team).expect("create broken team");
@@ -41,10 +41,15 @@ fn task_effort_launch_settings_reports_managed_codex_discovery_failure() {
         .expect("write broken config");
     let (db, _db_file) = test_db_state();
 
-    let error = task_effort_launch_settings(&db, teams.path())
-        .expect_err("managed-Codex discovery failure must reach the caller");
+    let ((_cli_commands, tmux_layout), error) = task_effort_launch_settings(&db, teams.path());
 
-    assert!(error.to_string().contains("failed to parse"));
+    assert_eq!(tmux_layout, "new_window");
+    assert!(
+        error
+            .expect("managed-Codex discovery failure must reach the caller")
+            .to_string()
+            .contains("failed to parse")
+    );
 }
 
 // Regression: 135c6f54 made one unreadable team config abort the shared
