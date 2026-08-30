@@ -491,7 +491,7 @@ const GATE_SCHEMA = {
 
 // One lens for a small change: correctness and the operational checklist in a single pass.
 const LENS =
-  'Lens: correctness and operational failure modes in one pass — does the change do what the spec asks and nothing beyond it; are the tests honest (they fail without the change and touch only tempdirs, never the real ~/.claude*, ~/.codex, ~/.gemini or ~/.grok); does data written by the previous release still load; does a change to the daemon wire vocabulary bump PROTOCOL_VERSION; Windows/WSL path handling; user-config files edited only through tempfile+rename with ownership and permissions preserved; concurrency, unbounded retries and processes left running; hygiene (log spam, dead code, CLAUDE.md violations); and for scripts, that they parse and match the API they call.'
+  'Lens: correctness and operational failure modes in one pass — does the change do what the spec asks and nothing beyond it; are the tests honest (they fail without the change and touch only tempdirs, never the real ~/.claude*, ~/.codex, ~/.gemini or ~/.grok); does data written by the previous release still load; does a change to the daemon wire vocabulary bump PROTOCOL_VERSION; Windows/WSL path handling; user-config files edited only through tempfile+rename with ownership and permissions preserved; concurrency, unbounded retries and processes left running; hygiene (log spam, dead code, CLAUDE.md violations); and for scripts, that they parse and match the API they call. Does the change re-derive a rule another layer owns (frontend vs backend, app vs daemon), or add a view that bypasses the existing authority? Name the authority and cite the duplicate.'
 
 const reviewers = new Set()
 function reviewPrompt(round, prior) {
@@ -667,7 +667,13 @@ const gate = await agent(
 const gateFailure = gateProblem(gate)
 if (gateFailure) fail(gateFailure)
 
+const remaining = actionable.concat(trivial)
+const outcome = actionableFrom(remaining).length > 0 ? 'followup_required' : 'complete'
 return {
+  outcome: outcome,
+  ...(outcome === 'followup_required'
+    ? { followup: { name: 'fix-round', args: { worktree: ROOT, branch: BRANCH, base: BASE, spec: SPEC, title: TITLE, findings: remaining, startRound: round + 1 } } }
+    : {}),
   ledger: {
     title: TITLE,
     size: SIZE,
@@ -680,7 +686,7 @@ return {
     findings: allFindings,
     // What the one fix round could not close: the hard findings plus the trivia nobody picked up.
     // Both are what `fix-round` takes as `findings`.
-    remaining: actionable.concat(trivial),
+    remaining: remaining,
   },
   commits: [impl, fix].filter(Boolean).flatMap((r) => r.commits || []),
   gate: gate,

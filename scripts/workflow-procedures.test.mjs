@@ -90,6 +90,8 @@ async function run(name, workflowArgs, plan = {}) {
 
 const BASE_ARGS = { worktree: '/home/dev/checkout', branch: 'feat/x', spec: '/tmp/spec.md' }
 const MUTATING = ['feature-pr.js', 'small-change.js', 'fix-round.js', 'docs-sweep.js']
+const AUTHORITY_QUESTION =
+  'Does the change re-derive a rule another layer owns (frontend vs backend, app vs daemon), or add a view that bypasses the existing authority? Name the authority and cite the duplicate.'
 function argsFor(script, extra = {}) {
   const base = { ...BASE_ARGS, ...extra }
   return script === 'fix-round.js'
@@ -126,6 +128,56 @@ describe('workflow procedures — the shared lib', () => {
   it('normalizes a \\\\wsl$ UNC checkout path', async () => {
     const { calls } = await run('feature-pr.js', { ...BASE_ARGS, worktree: '\\\\wsl$\\Ubuntu\\home\\dev\\proj', implementer: 'codex' })
     expect(calls[0].prompt).toContain('/home/dev/proj')
+  })
+})
+
+describe('workflow procedures — the authority question', () => {
+  // Regression: merge commit 2bbe0b4 (PR #75; accounts plan row 20b) needed six review rounds
+  // because authority duplication and bypasses were found late instead of by every review lens.
+  it('puts the authority question in the small-change review lane', async () => {
+    const { calls } = await run('small-change.js', BASE_ARGS)
+    const review = calls.find((call) => call.label.startsWith('review:'))
+    expect(review.prompt).toContain(AUTHORITY_QUESTION)
+  })
+
+  it('puts the authority question in the fix-round conformance lane', async () => {
+    const { calls } = await run('fix-round.js', argsFor('fix-round.js'))
+    const review = calls.find((call) => call.label.startsWith('review:'))
+    expect(review.prompt).toContain(AUTHORITY_QUESTION)
+  })
+
+  it('puts the authority question in both feature-pr first-round lanes', async () => {
+    const { calls } = await run('feature-pr.js', BASE_ARGS)
+    const conformance = calls.find((call) => call.label.includes('conformance-r1'))
+    const operational = calls.find((call) => call.label.includes('operational-r1'))
+    expect(conformance.prompt).toContain(AUTHORITY_QUESTION)
+    expect(operational.prompt).toContain(AUTHORITY_QUESTION)
+  })
+
+  it('keeps the authority question in the feature-pr round-2 re-review lane', async () => {
+    const major = { title: 'duplicates backend policy', severity: 'major', file: 'a.js:2', evidence: 'e', fix: 'f' }
+    const { calls } = await run('feature-pr.js', BASE_ARGS, {
+      review: (call) => (call.label.includes('conformance-r1') ? { ...OK_REVIEW, verdict: 'fix_required', findings: [major] } : OK_REVIEW),
+    })
+    const rereview = calls.find((call) => call.label.includes('conformance-r2'))
+    expect(rereview.prompt).toContain(AUTHORITY_QUESTION)
+  })
+
+  it('keeps the identical question in every lens-bearing script', () => {
+    // Every script in the directory, not a hand-written list: a new lens-bearing
+    // script (or a new lens in an old one) must carry the question too. A lens
+    // is any 'Lens:' prompt outside the shared lib block.
+    const knownLenses = { 'small-change.js': 1, 'fix-round.js': 1, 'feature-pr.js': 2 }
+    const scripts = fs.readdirSync(WORKFLOWS).filter((file) => file.endsWith('.js'))
+    expect(scripts.length).toBeGreaterThanOrEqual(5)
+    for (const script of scripts) {
+      const source = fs.readFileSync(path.join(WORKFLOWS, script), 'utf8')
+      const end = source.indexOf('// ── end lib ──')
+      const afterLib = end >= 0 ? source.slice(end) : source
+      const lenses = afterLib.split('Lens:').length - 1
+      expect(source.split(AUTHORITY_QUESTION).length - 1, script).toBe(lenses)
+      if (script in knownLenses) expect(lenses, script).toBe(knownLenses[script])
+    }
   })
 })
 
@@ -619,6 +671,75 @@ describe('workflow procedures — the ledger', () => {
       })
     ).rejects.toThrow(/unavailable/i)
     expect(seen.length).toBeGreaterThan(1)
+  })
+})
+
+describe('workflow procedures — the outcome', () => {
+  const major = { title: 'restart bypasses the notice', severity: 'major', file: 'a.js:2', evidence: 'e', fix: 'f' }
+  const minor = { title: 'warning copy is vague', severity: 'minor', file: 'a.js:3', evidence: 'e', fix: 'f' }
+
+  // Regression: merge commit 2bbe0b4 (PR #75; accounts plan row 20b) followed three feature-pr
+  // rounds and two fix-round rounds, while an open major could still sit under a completed ledger.
+  for (const script of MUTATING) {
+    it(`${script} requires follow-up when every review round leaves a major open`, async () => {
+      const { result } = await run(script, argsFor(script), {
+        review: { ...OK_REVIEW, verdict: 'fix_required', findings: [major] },
+      })
+      expect(result.outcome).toBe('followup_required')
+      expect(result.ledger.remaining.map((finding) => finding.title)).toContain(major.title)
+      expect(result.gate.status).toBe('pass')
+      // Runnable as handed back: fix-round needs the checkout, and the branch
+      // and spec keep the next round on the same work.
+      expect(result.followup).toEqual({
+        name: 'fix-round',
+        args: {
+          worktree: BASE_ARGS.worktree,
+          branch: BASE_ARGS.branch,
+          base: 'main',
+          spec: BASE_ARGS.spec,
+          title: result.ledger.title,
+          findings: result.ledger.remaining,
+          startRound: result.ledger.rounds + 1,
+        },
+      })
+    })
+
+    it(`${script} completes a clean run without a follow-up`, async () => {
+      const { result } = await run(script, argsFor(script))
+      expect(result.outcome).toBe('complete')
+      expect(result).not.toHaveProperty('followup')
+    })
+
+    it(`${script} completes when only a minor remains`, async () => {
+      const { result } = await run(script, argsFor(script), {
+        review: { ...OK_REVIEW, findings: [minor] },
+      })
+      expect(result.outcome).toBe('complete')
+      expect(result.ledger.remaining.map((finding) => finding.title)).toContain(minor.title)
+      expect(result).not.toHaveProperty('followup')
+    })
+  }
+
+  it('fix-round preserves an open major and requires another call at maxRounds 1', async () => {
+    const { result } = await run(
+      'fix-round.js',
+      argsFor('fix-round.js', { maxRounds: 1 }),
+      { review: { ...OK_REVIEW, verdict: 'fix_required', findings: [major] } }
+    )
+    expect(result.outcome).toBe('followup_required')
+    expect(result.ledger.remaining).toEqual([expect.objectContaining(major)])
+    expect(result.followup).toEqual({
+      name: 'fix-round',
+      args: {
+        worktree: BASE_ARGS.worktree,
+        branch: BASE_ARGS.branch,
+        base: 'main',
+        spec: BASE_ARGS.spec,
+        title: result.ledger.title,
+        findings: result.ledger.remaining,
+        startRound: result.ledger.rounds + 1,
+      },
+    })
   })
 })
 

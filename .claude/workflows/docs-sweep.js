@@ -661,7 +661,13 @@ const gate = await agent(
 const gateFailure = gateProblem(gate)
 if (gateFailure) fail(gateFailure)
 
+const remaining = actionable.concat(trivial)
+const outcome = actionableFrom(remaining).length > 0 ? 'followup_required' : 'complete'
 return {
+  outcome: outcome,
+  ...(outcome === 'followup_required'
+    ? { followup: { name: 'fix-round', args: { worktree: ROOT, branch: BRANCH, base: BASE, spec: SPEC, title: TITLE, findings: remaining, startRound: round + 1 } } }
+    : {}),
   ledger: {
     title: TITLE,
     size: A.size || 'docs',
@@ -674,7 +680,7 @@ return {
     findings: allFindings,
     // What the loop could not close: the hard findings it ran out of rounds for, plus the trivia
     // nobody picked up. Both are what `fix-round` takes as `findings`.
-    remaining: actionable.concat(trivial),
+    remaining: remaining,
     table: sweep && sweep.table_path ? sweep.table_path : TABLE,
     unresolved: sweep && sweep.unresolved ? sweep.unresolved : [],
   },

@@ -508,7 +508,7 @@ function reviewPrompt(round, prior) {
       TITLE +
       (SPEC && SPEC !== TITLE ? ', specified in ' + SPEC + ' — read it first' : '') +
       '.',
-    'Lens: conformance and correctness — does the change implement the spec item completely; are the tests genuinely red-before/green-after (inspect them, run them); edge cases and backward compatibility; anything missing or out of scope.',
+    'Lens: conformance and correctness — does the change implement the spec item completely; are the tests genuinely red-before/green-after (inspect them, run them); edge cases and backward compatibility; anything missing or out of scope. Does the change re-derive a rule another layer owns (frontend vs backend, app vs daemon), or add a view that bypasses the existing authority? Name the authority and cite the duplicate.',
     'This is re-review round ' +
       round +
       '. Prior findings (JSON): ' +
@@ -634,7 +634,13 @@ const gate = await agent(
 const gateFailure = gateProblem(gate)
 if (gateFailure) fail(gateFailure)
 
+const remaining = actionable.concat(trivial)
+const outcome = actionableFrom(remaining).length > 0 ? 'followup_required' : 'complete'
 return {
+  outcome: outcome,
+  ...(outcome === 'followup_required'
+    ? { followup: { name: 'fix-round', args: { worktree: ROOT, branch: BRANCH, base: BASE, spec: SPEC, title: TITLE, findings: remaining, startRound: round + 1 } } }
+    : {}),
   ledger: {
     title: TITLE,
     size: A.size || 'fix-round',
@@ -647,7 +653,7 @@ return {
     findings: allFindings,
     // What this run could not close: the hard findings it ran out of rounds for, plus the trivia
     // nobody picked up. Both come straight back as `findings` for another fix-round.
-    remaining: actionable.concat(trivial),
+    remaining: remaining,
   },
   commits: fixes.filter(Boolean).flatMap((r) => r.commits || []),
   gate: gate,

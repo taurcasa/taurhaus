@@ -495,12 +495,12 @@ const LENSES = [
   {
     key: 'conformance',
     prompt:
-      'Lens: spec conformance and correctness — does the change implement the spec item completely and actually fix what it claims; are the tests genuinely red-before/green-after (inspect them, run them); edge cases (timeouts, empty output, partial reads, platform cfgs, backward compatibility on the daemon wire); anything from the spec missing, or anything present that the spec did not ask for.',
+      'Lens: spec conformance and correctness — does the change implement the spec item completely and actually fix what it claims; are the tests genuinely red-before/green-after (inspect them, run them); edge cases (timeouts, empty output, partial reads, platform cfgs, backward compatibility on the daemon wire); anything from the spec missing, or anything present that the spec did not ask for. Does the change re-derive a rule another layer owns (frontend vs backend, app vs daemon), or add a view that bypasses the existing authority? Name the authority and cite the duplicate.',
   },
   {
     key: 'operational',
     prompt:
-      'Lens: operational failure modes, checked as a fixed list before anything else — (1) UPGRADE: persisted data (DB rows, settings blobs, role/preset files, config.json) written by the previous release still loads; renamed or removed enum values never abort a whole record; migrations are idempotent. (2) WIRE: any change to daemon method names, result shapes or serialised enum vocabularies bumps PROTOCOL_VERSION; additive fields carry serde defaults. (3) PLATFORM: Windows app + WSL daemon path mapping (UNC, \\\\wsl$, drvfs), no SQLite from the daemon across drvfs, cfg(unix)/cfg(target_os) hygiene with stubs so every target compiles. (4) USER CONFIG: files under ~/.claude*, ~/.codex, ~/.gemini, ~/.grok are edited only through tempfile+rename, ownership proven before overwrite, symlinks written through, permissions preserved (0600/0700), one writer, and nothing refreshed or rotated on the tool\'s behalf. (5) CONCURRENCY: races between scanner and daemon, repeated degraded states, stale caches, blocking RPCs past the daemon timeout, unbounded retry loops, per-keystroke process leaks. (6) HONEST TESTS: a regression test that would pass without the fix, tests reading the developer\'s real home directories, timing-based assertions. (7) HYGIENE: performance regressions, JSONL log spam, CLAUDE.md violations (over-engineering, legacy Svelte syntax), dead code left by a removal. Report each item as checked-clean or as a finding.',
+      'Lens: operational failure modes, checked as a fixed list before anything else — (1) UPGRADE: persisted data (DB rows, settings blobs, role/preset files, config.json) written by the previous release still loads; renamed or removed enum values never abort a whole record; migrations are idempotent. (2) WIRE: any change to daemon method names, result shapes or serialised enum vocabularies bumps PROTOCOL_VERSION; additive fields carry serde defaults. (3) PLATFORM: Windows app + WSL daemon path mapping (UNC, \\\\wsl$, drvfs), no SQLite from the daemon across drvfs, cfg(unix)/cfg(target_os) hygiene with stubs so every target compiles. (4) USER CONFIG: files under ~/.claude*, ~/.codex, ~/.gemini, ~/.grok are edited only through tempfile+rename, ownership proven before overwrite, symlinks written through, permissions preserved (0600/0700), one writer, and nothing refreshed or rotated on the tool\'s behalf. (5) CONCURRENCY: races between scanner and daemon, repeated degraded states, stale caches, blocking RPCs past the daemon timeout, unbounded retry loops, per-keystroke process leaks. (6) HONEST TESTS: a regression test that would pass without the fix, tests reading the developer\'s real home directories, timing-based assertions. (7) HYGIENE: performance regressions, JSONL log spam, CLAUDE.md violations (over-engineering, legacy Svelte syntax), dead code left by a removal. Does the change re-derive a rule another layer owns (frontend vs backend, app vs daemon), or add a view that bypasses the existing authority? Name the authority and cite the duplicate. Report each item as checked-clean or as a finding.',
   },
 ]
 
@@ -697,7 +697,13 @@ const gate = await agent(
 const gateFailure = gateProblem(gate)
 if (gateFailure) fail(gateFailure)
 
+const remaining = actionable.concat(trivial)
+const outcome = actionableFrom(remaining).length > 0 ? 'followup_required' : 'complete'
 return {
+  outcome: outcome,
+  ...(outcome === 'followup_required'
+    ? { followup: { name: 'fix-round', args: { worktree: ROOT, branch: BRANCH, base: BASE, spec: SPEC, title: TITLE, findings: remaining, startRound: round + 1 } } }
+    : {}),
   ledger: {
     title: TITLE,
     size: SIZE,
@@ -710,7 +716,7 @@ return {
     findings: allFindings,
     // What the loop could not close: the hard findings it ran out of rounds for, plus the trivia
     // nobody picked up. Both are what `fix-round` takes as `findings`.
-    remaining: actionable.concat(trivial),
+    remaining: remaining,
   },
   commits: [impl, ...fixes].filter(Boolean).flatMap((r) => r.commits || []),
   gate: gate,
