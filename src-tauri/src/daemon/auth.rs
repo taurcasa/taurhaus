@@ -77,13 +77,12 @@ pub fn read_auth_token_for_distro(wsl_distro: Option<&str>) -> Option<String> {
     let _ = wsl_distro;
 
     let canonical_path = crate::provider::platform_paths::PlatformPaths::daemon_token_path();
-    let legacy_path =
-        if crate::provider::platform_paths::PlatformPaths::app_data_root_override().is_none() {
-            legacy_token_path()
-        } else {
-            None
-        };
-    if let Some(token) = read_auth_token_from_paths(&canonical_path, legacy_path.as_deref()) {
+    let include_legacy =
+        crate::provider::platform_paths::PlatformPaths::app_data_root_override().is_none();
+    let legacy_path = include_legacy.then(legacy_token_path).flatten();
+    if let Some(token) =
+        read_auth_token_from_paths(&canonical_path, legacy_path.as_deref(), include_legacy)
+    {
         return Some(token);
     }
 
@@ -95,8 +94,7 @@ pub fn read_auth_token_for_distro(wsl_distro: Option<&str>) -> Option<String> {
             &crate::provider::platform_paths::PlatformPaths::log_path(),
             false,
         )?;
-        if let Some(token) = read_token_via_wsl(wsl_distro, &daemon_data_dir, legacy_path.is_some())
-        {
+        if let Some(token) = read_token_via_wsl(wsl_distro, &daemon_data_dir, include_legacy) {
             return Some(token);
         }
     }
@@ -104,14 +102,20 @@ pub fn read_auth_token_for_distro(wsl_distro: Option<&str>) -> Option<String> {
     None
 }
 
-fn read_auth_token_from_paths(canonical_path: &Path, legacy_path: Option<&Path>) -> Option<String> {
+fn read_auth_token_from_paths(
+    canonical_path: &Path,
+    legacy_path: Option<&Path>,
+    include_legacy: bool,
+) -> Option<String> {
     if let Ok(token) = read_token(canonical_path) {
         return Some(token);
     }
 
     // Keep an already-running pre-migration daemon reachable until a new daemon
     // starts and writes the canonical token. Nothing writes through this path.
-    legacy_path.and_then(|path| read_token(path).ok())
+    include_legacy
+        .then(|| legacy_path.and_then(|path| read_token(path).ok()))
+        .flatten()
 }
 
 /// Read the daemon token from inside WSL via `wsl.exe`.
@@ -257,6 +261,7 @@ mod tests {
             read_auth_token_from_paths(
                 &active_root.path().join("daemon.token"),
                 Some(&legacy_path),
+                true,
             ),
             Some("legacy-token".to_string())
         );
@@ -274,11 +279,16 @@ mod tests {
         std::fs::create_dir_all(legacy_path.parent().expect("legacy parent")).unwrap();
         std::fs::write(&legacy_path, "operator-token\n").unwrap();
 
+        assert_eq!(
+            read_auth_token_from_paths(&active_path, Some(&legacy_path), false),
+            None
+        );
+
         generate_and_write_token(&active_path).expect("generate token");
 
         assert!(active_root.path().join("daemon.token").is_file());
         assert_eq!(
-            read_auth_token_from_paths(&active_path, None),
+            read_auth_token_from_paths(&active_path, Some(&legacy_path), false),
             read_token(&active_path).ok()
         );
         assert_eq!(read_token(&legacy_path).unwrap(), "operator-token");
