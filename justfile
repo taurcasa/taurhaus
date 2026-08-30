@@ -5,6 +5,7 @@
 project   := justfile_directory()
 win_dir   := env_var_or_default("TAURHAUS_WINDOWS_BUILD_DIR", "/mnt/c/taurhaus_build")
 windows_bun_version := `node -p 'require("./package.json").packageManager.split("@").slice(1).join("@")'`
+integration_test_args := `for test_file in src-tauri/tests/*.rs; do test_name="${test_file##*/}"; printf -- '--test %s ' "${test_name%.rs}"; done`
 
 # macOS remote build host (Scaleway Mac mini)
 mac_host  := "m1@62.210.195.235"
@@ -198,13 +199,7 @@ test-rust-unit: ensure-tauri-resources
 
 # Rust integration/system lane (serialized, includes heavy suites).
 test-rust-integration: ensure-tauri-resources
-    cd src-tauri && cargo test --test cli_renderers -- --test-threads=1
-    cd src-tauri && cargo test --test coordination_feature_gate -- --test-threads=1
-    cd src-tauri && cargo test --test coordination_integration -- --test-threads=1
-    cd src-tauri && cargo test --test coordination_module_visibility -- --test-threads=1
-    cd src-tauri && cargo test --test coordination_onboarding_linux_e2e -- --test-threads=1
-    cd src-tauri && cargo test --test module_boundary_assertions -- --test-threads=1
-    cd src-tauri && cargo test --test session_pipeline -- --test-threads=1
+    cd src-tauri && cargo test {{integration_test_args}} -- --test-threads=1
     cd src-tauri && cargo test --lib daemon::server::tests:: -- --test-threads=1
     cd src-tauri && cargo test --lib daemon::event_listener::tests:: -- --test-threads=1
     cd src-tauri && cargo test --lib provider::daemon_client::tests:: -- --test-threads=1
