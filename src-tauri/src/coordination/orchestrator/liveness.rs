@@ -191,6 +191,7 @@ impl CoordinationOrchestrator {
         let runtime_records = MemberRuntimeStore::load_all(&self.teams_dir, team_name)?;
 
         for (member_name, mut runtime) in runtime_records {
+            let expected = MemberRuntimeSnapshot::capture(&runtime);
             let Some(member) = members_by_name.get(&member_name) else {
                 continue;
             };
@@ -280,18 +281,30 @@ impl CoordinationOrchestrator {
                         runtime.daemon_pid = None;
                     }
                 }
-                MemberRuntimeStore::save_preserving_applied_effort(
+                let guard = acquire_team_lock(&self.teams_dir, team_name)?;
+                let outcome = MemberRuntimeStore::commit_if_unchanged(
+                    &guard,
                     &self.teams_dir,
                     team_name,
                     &member_name,
-                    &runtime,
+                    &expected,
+                    |current| {
+                        current.cli_tool = runtime.cli_tool;
+                        current.project_path = runtime.project_path.clone();
+                        current.session_id = runtime.session_id.clone();
+                        current.jsonl_path = runtime.jsonl_path.clone();
+                        current.daemon_pid = runtime.daemon_pid;
+                        current.health = runtime.health;
+                    },
                 )?;
-                tracing::info!(
-                    team = %team_name,
-                    member = %member_name,
-                    reason,
-                    "reconciled member liveness drift to offline"
-                );
+                if outcome == RuntimeCommitOutcome::Committed {
+                    tracing::info!(
+                        team = %team_name,
+                        member = %member_name,
+                        reason,
+                        "reconciled member liveness drift to offline"
+                    );
+                }
                 continue;
             }
 
@@ -495,18 +508,31 @@ impl CoordinationOrchestrator {
 
             runtime.health = HealthState::Healthy;
             runtime.last_seen_at = Some(Utc::now());
-            MemberRuntimeStore::save_preserving_applied_effort(
+            let guard = acquire_team_lock(&self.teams_dir, team_name)?;
+            let outcome = MemberRuntimeStore::commit_if_unchanged(
+                &guard,
                 &self.teams_dir,
                 team_name,
                 &member_name,
-                &runtime,
+                &expected,
+                |current| {
+                    current.cli_tool = runtime.cli_tool;
+                    current.project_path = runtime.project_path.clone();
+                    current.session_id = runtime.session_id.clone();
+                    current.jsonl_path = runtime.jsonl_path.clone();
+                    current.daemon_pid = runtime.daemon_pid;
+                    current.health = runtime.health;
+                    current.last_seen_at = runtime.last_seen_at;
+                },
             )?;
-            tracing::info!(
-                team = %team_name,
-                member = %member_name,
-                reason,
-                "reconciled member liveness drift to healthy"
-            );
+            if outcome == RuntimeCommitOutcome::Committed {
+                tracing::info!(
+                    team = %team_name,
+                    member = %member_name,
+                    reason,
+                    "reconciled member liveness drift to healthy"
+                );
+            }
         }
 
         Ok(())
@@ -574,6 +600,7 @@ impl CoordinationOrchestrator {
         let runtime_records = MemberRuntimeStore::load_all(&self.teams_dir, team_name)?;
 
         for (member_name, mut runtime) in runtime_records {
+            let expected = MemberRuntimeSnapshot::capture(&runtime);
             if !member_names.contains(&member_name) {
                 tracing::warn!(
                     team = %team_name,
@@ -608,18 +635,26 @@ impl CoordinationOrchestrator {
                 Ok(false) => {
                     runtime.daemon_pid = None;
                     runtime.health = HealthState::SessionDead;
-                    MemberRuntimeStore::save_preserving_applied_effort(
+                    let guard = acquire_team_lock(&self.teams_dir, team_name)?;
+                    let outcome = MemberRuntimeStore::commit_if_unchanged(
+                        &guard,
                         &self.teams_dir,
                         team_name,
                         &member_name,
-                        &runtime,
+                        &expected,
+                        |current| {
+                            current.daemon_pid = None;
+                            current.health = HealthState::SessionDead;
+                        },
                     )?;
-                    tracing::info!(
-                        team = %team_name,
-                        member = %member_name,
-                        pid = pid,
-                        "cleared stale daemon pid during startup reconciliation"
-                    );
+                    if outcome == RuntimeCommitOutcome::Committed {
+                        tracing::info!(
+                            team = %team_name,
+                            member = %member_name,
+                            pid = pid,
+                            "cleared stale daemon pid during startup reconciliation"
+                        );
+                    }
                 }
                 Err(err) => {
                     tracing::warn!(

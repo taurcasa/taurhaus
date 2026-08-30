@@ -1052,6 +1052,99 @@ mod tests {
         )));
     }
 
+    #[test]
+    fn background_self_heal_cannot_overwrite_a_concurrent_resume_commit() {
+        // Regression: 366f4b7 gave the background pass its own orchestrator
+        // without replacing the write exclusion. A slow pane probe could then
+        // save its old SessionDead decision over a resume that had committed a
+        // fresh pane, session, and daemon.
+        let tmp = TempDir::new().expect("tempdir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let state = Arc::new(CoordinationState::with_components_and_runtime(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        ));
+        let team_name = "two-orchestrator-interleave";
+        let member_name = "builder";
+        state
+            .with_orchestrator(|orchestrator| {
+                orchestrator.create_team(team_name, None)?;
+                orchestrator.add_member(
+                    team_name,
+                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
+                orchestrator.add_member(
+                    team_name,
+                    sample_member(member_name, MemberRole::Agent, CliTool::Codex, "/tmp/app"),
+                )
+            })
+            .expect("seed team through the command orchestrator");
+        write_lead_credential(tmp.path(), team_name);
+
+        MemberRuntimeStore::update(tmp.path(), team_name, member_name, |record| {
+            record.pane_id = Some("%old".to_string());
+            record.pane_pid = Some(7001);
+            record.pane_start_time = Some(1_755_000_007);
+            record.session_id = Some("session-old".to_string());
+            record.daemon_pid = None;
+            record.health = HealthState::SessionDead;
+        })
+        .expect("seed old live runtime");
+        runtime.set_pane_exists("%old", true);
+        runtime.set_pane_dead("%old", false);
+        runtime.set_pane_shell("%old", false);
+        runtime.set_pane_current_command("%old", Some("codex"));
+        runtime.set_pane_identity("%old", Some(7001), Some(1_755_000_007));
+        runtime.set_pane_current_path("%old", Some("/tmp/app"));
+        runtime.set_detected_runtime_session(
+            "%old",
+            CliTool::Codex,
+            Some("session-fresh"),
+            Some("/tmp/session-fresh.jsonl"),
+        );
+        let probe_gate = runtime.pause_live_pane_probe("%old");
+
+        let background_state = state.clone();
+        let background = std::thread::spawn(move || {
+            background_state
+                .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
+                .expect("background pass")
+        });
+        probe_gate.wait_until_blocked();
+
+        let report = state
+            .with_orchestrator(|orchestrator| orchestrator.resume_member(team_name, member_name))
+            .expect("resume through the command orchestrator");
+        assert!(
+            report.resumed,
+            "resume must commit before the old probe: {report:?}"
+        );
+        let resumed =
+            MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("resumed runtime");
+        assert_eq!(resumed.pane_id.as_deref(), Some("%old"));
+        assert_eq!(resumed.pane_pid, Some(7001));
+        assert_eq!(resumed.pane_start_time, Some(1_755_000_007));
+        assert_eq!(resumed.session_id.as_deref(), Some("session-fresh"));
+        assert_eq!(resumed.daemon_pid, Some(10000));
+        assert_eq!(resumed.health, HealthState::Healthy);
+
+        probe_gate.release();
+        background.join().expect("background thread");
+
+        assert_eq!(
+            MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("final runtime"),
+            resumed,
+            "the two orchestrators may commit only a complete winning record"
+        );
+    }
+
     /// Put a member on an active task carrying `level`, the way the
     /// operational snapshot sync does once mesh has written the assignment
     /// onto the task record.
