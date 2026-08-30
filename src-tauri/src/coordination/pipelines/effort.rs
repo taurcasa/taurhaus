@@ -95,16 +95,19 @@ fn effort_launch_commands(
 
 /// Assignment target selection for a member with more than one open task.
 ///
-/// mesh's pending attention projection is authoritative when it names a task
-/// whose notice is still held for this member. Otherwise the highest requested
-/// effort among the member's open mesh task records wins. Only when those
-/// mesh-owned records are unavailable does the derived operational snapshot
-/// provide the single-assignment compatibility fallback. No inbox text or
-/// timestamp heuristic is used to invent a held task.
+/// mesh's attention projection is authoritative when it names a task whose
+/// notice is still held for this member. Once that notice is delivered, an
+/// open task selected in the operational snapshot keeps the level already
+/// applied for it; the highest requested effort is only the tiebreak when no
+/// open task owns the applied level. Only when mesh-owned task records are
+/// unavailable does the snapshot provide the single-assignment compatibility
+/// fallback. No inbox text or timestamp heuristic is used to invent a held
+/// task.
 fn assignment_target(
     orchestrator: &CoordinationOrchestrator,
     team_name: &str,
     member_name: &str,
+    applied_effort: Option<&str>,
 ) -> Option<AssignmentTarget> {
     let assignments = open_mesh_assignments(&orchestrator.teams_dir, team_name, member_name);
     if let Some(held_task_id) = held_task_id(&orchestrator.teams_dir, team_name, member_name) {
@@ -113,6 +116,24 @@ fn assignment_target(
             .find(|assignment| assignment.task_id == held_task_id)
         {
             return Some(held.clone());
+        }
+    }
+    if let Some(applied_effort) = applied_effort {
+        let current_task_id = OperationalContextSnapshotStore::load(
+            &orchestrator.teams_dir,
+            team_name,
+            member_name,
+        )
+        .ok()
+        .flatten()
+        .map(|snapshot| snapshot.task.id);
+        if let Some(current_task_id) = current_task_id {
+            if let Some(current) = assignments.iter().find(|assignment| {
+                assignment.task_id == current_task_id
+                    && assignment.level.eq_ignore_ascii_case(applied_effort)
+            }) {
+                return Some(current.clone());
+            }
         }
     }
     if let Some(highest) = assignments.into_iter().max_by(|left, right| {
@@ -164,17 +185,15 @@ fn read_assignment_task(path: &Path, member_name: &str) -> Option<AssignmentTarg
         return None;
     }
     let task: serde_json::Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
-    if task.get("owner").and_then(serde_json::Value::as_str) != Some(member_name)
-        || !matches!(
-            task.get("status").and_then(serde_json::Value::as_str),
-            Some("pending" | "in_progress")
-        )
-    {
+    if task.get("owner").and_then(serde_json::Value::as_str) != Some(member_name) {
+        return None;
+    }
+    let status = task.get("status").and_then(serde_json::Value::as_str)?;
+    if !crate::coordination::operational_context::is_resumable_task_status(status) {
         return None;
     }
     let task_id = non_empty_json_string(task.get("id"))?;
-    let level = non_empty_json_string(task.get("effort"))
-        .or_else(|| non_empty_json_string(task.get("metadata")?.get("effort")))?
+    let level = non_empty_json_string(task.get("metadata")?.get("effort"))?
         .to_ascii_lowercase();
     (effort_rank(&level) > 0).then_some(AssignmentTarget { task_id, level })
 }
@@ -187,10 +206,13 @@ fn held_task_id(teams_dir: &Path, team_name: &str, member_name: &str) -> Option<
     entries
         .filter_map(Result::ok)
         .filter_map(|entry| read_held_attention(&entry.path(), member_name))
-        .max()
+        .min()
         .map(|(_, task_id)| task_id)
 }
 
+/// Mirrors mesh's `is_awaiting_assignment_delivery` and runtime-notification
+/// retry vocabulary. The projection's own `attentionState` is authoritative;
+/// older projections without it use the equivalent delivery-state set.
 fn read_held_attention(path: &Path, member_name: &str) -> Option<(String, String)> {
     if path.extension().and_then(|extension| extension.to_str()) != Some("json")
         || fs::metadata(path).ok()?.len() > MAX_ASSIGNMENT_RECORD_BYTES
@@ -198,14 +220,23 @@ fn read_held_attention(path: &Path, member_name: &str) -> Option<(String, String
         return None;
     }
     let attention: serde_json::Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+    let is_held = match attention
+        .get("attentionState")
+        .and_then(serde_json::Value::as_str)
+    {
+        Some(state) => matches!(state, "assigned_pending_delivery" | "delivery_failed"),
+        None => matches!(
+            attention
+                .get("deliveryState")
+                .and_then(serde_json::Value::as_str),
+            Some("pending" | "unknown" | "failed")
+        ),
+    };
     if attention
         .get("assignedTo")
         .and_then(serde_json::Value::as_str)
         != Some(member_name)
-        || attention
-            .get("deliveryState")
-            .and_then(serde_json::Value::as_str)
-            != Some("pending")
+        || !is_held
         || attention
             .get("deliveredAt")
             .is_some_and(|delivered| !delivered.is_null())
@@ -423,7 +454,7 @@ impl CoordinationOrchestrator {
         if !task_effort::relaunches_for_effort(member.cli_tool) {
             return None;
         }
-        let assigned = assignment_target(self, team_name, &member.name)?;
+        let assigned = assignment_target(self, team_name, &member.name, None)?;
         task_effort::resume_effort_target(member.cli_tool, Some(&assigned.level), None)
     }
 
@@ -551,6 +582,7 @@ fn pending_member_effort_outcome(
     let runtime = match MemberRuntimeStore::load(&orchestrator.teams_dir, team_name, &member.name) {
         Ok(runtime) => runtime,
         Err(CoordinationError::NotFound(_)) => return Ok(None),
+        Err(_) if scope == task_effort::EffortPassScope::RetryPending => return Ok(None),
         Err(err) => return Err(format!("could not load member runtime: {err}")),
     };
     // Only a live member is switched. A member that is down is either one the
@@ -560,7 +592,19 @@ fn pending_member_effort_outcome(
     if runtime.health == HealthState::SessionDead && runtime.effort_resume_failure.is_none() {
         return Ok(None);
     }
-    let Some(assigned) = assignment_target(orchestrator, team_name, &member.name) else {
+    // A background pass only retries a switch already recorded as failed. Do
+    // not scan mesh task and attention directories when there is no retry.
+    if scope == task_effort::EffortPassScope::RetryPending
+        && runtime.effort_resume_failure.is_none()
+    {
+        return Ok(None);
+    }
+    let Some(assigned) = assignment_target(
+        orchestrator,
+        team_name,
+        &member.name,
+        runtime.applied_effort.as_deref(),
+    ) else {
         return Ok(None);
     };
     let Some(requested) = task_effort::resume_effort_target(
