@@ -131,11 +131,13 @@ impl PlatformPaths {
                 Self::claude_dir().join(tool_config.projects_subdir)
             }
             crate::session_scanner::cli_tool::SessionRoot::ToolHome => {
-                if tool == CliTool::Agy {
-                    Self::agy_dir().join(tool_config.projects_subdir)
-                } else {
-                    default_tool_session_root(tool)
+                // Registry-driven: a tool whose spec names a session-home
+                // override env has its session root follow that env. No tool
+                // identity is consulted here.
+                if let Some(home) = tool_config.home_override_env.and_then(env_path_override) {
+                    return home.join(tool_config.projects_subdir);
                 }
+                default_tool_session_root(tool)
             }
         }
     }
@@ -407,6 +409,28 @@ mod tests {
 
         assert_eq!(codex_sessions, home.path().join(".codex").join("sessions"));
         assert_eq!(grok_sessions, home.path().join(".grok").join("sessions"));
+    }
+
+    // Regression: the ToolHome arm compared `tool == CliTool::Agy` — tool
+    // identity outside the registry — while the registry field meant to carry
+    // the rule sat unread (Opus review of 3a-i, remaining minor).
+    #[test]
+    fn tool_session_root_follows_the_registry_home_override() {
+        let _guard = acquire_env_test_guard();
+        let home = TempDir::new().expect("home");
+        let agy_home = TempDir::new().expect("agy home");
+        let _env = EnvRestore::apply(&[
+            ("HOME", Some(home.path())),
+            (AGY_DIR_OVERRIDE_ENV, Some(agy_home.path())),
+        ]);
+
+        assert_eq!(
+            PlatformPaths::tool_session_root(CliTool::Agy),
+            agy_home.path().join("antigravity-cli/conversations"),
+            "the registry names the override env; the resolution reads it"
+        );
+        let spec = crate::session_scanner::cli_tool::spec(CliTool::Agy);
+        assert_eq!(spec.home_override_env, Some(AGY_DIR_OVERRIDE_ENV));
     }
 
     #[test]

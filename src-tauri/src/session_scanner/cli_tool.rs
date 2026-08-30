@@ -228,8 +228,11 @@ pub struct CliToolSpec {
     pub settings_label: &'static str,
     /// Base directory name under `$HOME` (e.g., ".claude", ".codex", ".gemini").
     pub base_dir_name: &'static str,
-    /// Environment override taurhaus consults when locating this tool's home.
-    /// This is path authority metadata, not necessarily a harness selector.
+    /// Environment override taurhaus consults when locating this tool's
+    /// session home (`PlatformPaths::tool_session_root`). Distinct from the
+    /// account selector: Codex and Grok keep `None` here because their
+    /// `CODEX_HOME`/`GROK_HOME` selectors move accounts, not session roots
+    /// (pinned by `codex_and_grok_session_roots_ignore_account_home_selectors`).
     pub home_override_env: Option<&'static str>,
     /// Subdirectory within the base dir that contains project session data.
     pub projects_subdir: &'static str,
@@ -368,7 +371,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             display_name: "Codex CLI",
             settings_label: "Codex",
             base_dir_name: ".codex",
-            home_override_env: Some("CODEX_HOME"),
+            home_override_env: None,
             projects_subdir: "sessions",
             session_extension: "jsonl",
             exit_command: "/exit",
@@ -608,7 +611,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             display_name: "Grok CLI",
             settings_label: "Grok CLI",
             base_dir_name: ".grok",
-            home_override_env: Some("GROK_HOME"),
+            home_override_env: None,
             projects_subdir: "sessions",
             session_extension: "jsonl",
             exit_command: "/quit",
