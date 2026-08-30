@@ -196,8 +196,7 @@ pub(crate) fn read_daemon_install_status(
 
 /// Native daemon check (macOS/Linux): just stat the binary and run --version.
 fn check_daemon_install_native() -> Result<DaemonInstallStatus, String> {
-    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
-    let binary = home.join(".local/bin/taurhaus-daemon");
+    let binary = crate::provider::platform_paths::PlatformPaths::daemon_binary_path();
 
     if !binary.exists() {
         return Ok(DaemonInstallStatus {
@@ -428,8 +427,7 @@ pub(crate) fn install_bundled_daemon(
 
 /// Install daemon natively (macOS/Linux): copy binary + chmod + verify.
 fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<OperationResult, String> {
-    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
-    let target_path = home.join(".local/bin").join("taurhaus-daemon");
+    let target_path = crate::provider::platform_paths::PlatformPaths::daemon_binary_path();
     install_daemon_native_at(bundled_binary, &target_path, verify_daemon_binary)
 }
 
@@ -716,6 +714,33 @@ mod tests {
     use std::net::TcpListener;
     use std::time::{Duration, Instant};
 
+    struct EnvRestore(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+    impl EnvRestore {
+        fn apply(values: &[(&'static str, &std::path::Path)]) -> Self {
+            let previous = values
+                .iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var_os(key);
+                    std::env::set_var(key, value);
+                    (*key, previous)
+                })
+                .collect();
+            Self(previous)
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, value) in self.0.drain(..).rev() {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
     fn install_status_for(installed: Option<&str>, bundled: &str) -> DaemonInstallStatus {
         DaemonInstallStatus {
             installed: installed.is_some(),
@@ -725,6 +750,37 @@ mod tests {
             wsl_available: true,
             error: None,
         }
+    }
+
+    // Regression: commit 89ae1a19 made the E2E launcher honor the worker
+    // daemon binary override, but native install/status still inspected the
+    // operator's ~/.local/bin path.
+    #[cfg(unix)]
+    #[test]
+    fn native_daemon_install_status_uses_worker_binary_override() {
+        let _guard = crate::test_support::acquire_env_test_guard();
+        let root = tempfile::tempdir().expect("tempdir");
+        let daemon = root.path().join("worker-taurhaus-daemon");
+        write_executable(
+            &daemon,
+            format!(
+                "#!/bin/sh\nprintf 'taurhaus-daemon {}\\n'\n",
+                BUNDLED_VERSION
+            )
+            .as_bytes(),
+        );
+        let isolated_home = root.path().join("home");
+        std::fs::create_dir_all(&isolated_home).expect("create isolated home");
+        let _env = EnvRestore::apply(&[
+            ("HOME", isolated_home.as_path()),
+            ("TAURHAUS_DAEMON_BINARY", daemon.as_path()),
+        ]);
+
+        let status = check_daemon_install_native().expect("read overridden daemon status");
+
+        assert!(status.installed);
+        assert_eq!(status.version.as_deref(), Some(BUNDLED_VERSION));
+        assert!(!status.needs_update);
     }
 
     fn canonical_linux_path(path: &std::path::Path) -> String {
