@@ -131,7 +131,11 @@ impl PlatformPaths {
                 Self::claude_dir().join(tool_config.projects_subdir)
             }
             crate::session_scanner::cli_tool::SessionRoot::ToolHome => {
-                default_tool_session_root(tool)
+                if tool == CliTool::Agy {
+                    Self::agy_dir().join(tool_config.projects_subdir)
+                } else {
+                    default_tool_session_root(tool)
+                }
             }
         }
     }
@@ -204,10 +208,6 @@ fn default_grok_dir() -> PathBuf {
 fn default_tool_session_root(tool: CliTool) -> PathBuf {
     let config = config_for(tool);
 
-    if let Some(path) = config.home_override_env.and_then(env_path_override) {
-        return path.join(config.projects_subdir);
-    }
-
     if let Some(path) = windows_unc_home_subdir(&format!(
         "{}/{}",
         config.base_dir_name, config.projects_subdir
@@ -261,6 +261,36 @@ fn home_dir_or_temp() -> PathBuf {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    struct EnvRestore(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+    impl EnvRestore {
+        fn apply(values: &[(&'static str, Option<&Path>)]) -> Self {
+            let previous = values
+                .iter()
+                .map(|(key, value)| {
+                    let previous = std::env::var_os(key);
+                    match value {
+                        Some(value) => std::env::set_var(key, value),
+                        None => std::env::remove_var(key),
+                    }
+                    (*key, previous)
+                })
+                .collect();
+            Self(previous)
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, value) in self.0.drain(..).rev() {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
 
     fn acquire_env_test_guard() -> crate::test_support::EnvTestGuard {
         crate::test_support::acquire_env_test_guard()
@@ -357,32 +387,26 @@ mod tests {
         assert_eq!(sessions, temp.path().join("antigravity-cli/conversations"));
     }
 
-    // Regression: commit 3ed13483 special-cased `CliTool::Agy` outside the
-    // harness registry and left Codex/Grok session scans on the operator home
-    // even when their worker roots were explicitly overridden.
+    // Regression: commit 0dcb7ba5 made account-home selectors change Codex and
+    // Grok session scanning, despite the root-isolation spec preserving their
+    // existing session-root behavior.
+    #[cfg(not(target_os = "windows"))]
     #[test]
-    fn tool_session_roots_use_registry_home_overrides() {
+    fn codex_and_grok_session_roots_ignore_account_home_selectors() {
         let _guard = acquire_env_test_guard();
-        let codex = TempDir::new().expect("codex home");
-        let agy = TempDir::new().expect("agy home");
-        let grok = TempDir::new().expect("grok home");
-        std::env::set_var(CODEX_HOME_ENV, codex.path());
-        std::env::set_var(AGY_DIR_OVERRIDE_ENV, agy.path());
-        std::env::set_var(GROK_HOME_ENV, grok.path());
+        let home = TempDir::new().expect("home");
+        let account_home = TempDir::new().expect("account home");
+        let _env = EnvRestore::apply(&[
+            ("HOME", Some(home.path())),
+            (CODEX_HOME_ENV, Some(account_home.path())),
+            (GROK_HOME_ENV, Some(account_home.path())),
+        ]);
 
         let codex_sessions = PlatformPaths::tool_session_root(CliTool::Codex);
-        let agy_sessions = PlatformPaths::tool_session_root(CliTool::Agy);
         let grok_sessions = PlatformPaths::tool_session_root(CliTool::Grok);
 
-        std::env::remove_var(CODEX_HOME_ENV);
-        std::env::remove_var(AGY_DIR_OVERRIDE_ENV);
-        std::env::remove_var(GROK_HOME_ENV);
-        assert_eq!(codex_sessions, codex.path().join("sessions"));
-        assert_eq!(
-            agy_sessions,
-            agy.path().join("antigravity-cli/conversations")
-        );
-        assert_eq!(grok_sessions, grok.path().join("sessions"));
+        assert_eq!(codex_sessions, home.path().join(".codex").join("sessions"));
+        assert_eq!(grok_sessions, home.path().join(".grok").join("sessions"));
     }
 
     #[test]
@@ -401,16 +425,15 @@ mod tests {
     fn tool_session_root_uses_tool_specific_subdirs() {
         let _guard = acquire_env_test_guard();
         let home = TempDir::new().expect("tempdir");
-        let original_home = std::env::var_os("HOME");
-        std::env::set_var("HOME", home.path());
+        let _env = EnvRestore::apply(&[
+            ("HOME", Some(home.path())),
+            (CODEX_HOME_ENV, None),
+            (GROK_HOME_ENV, None),
+            (AGY_DIR_OVERRIDE_ENV, None),
+        ]);
 
         let codex = PlatformPaths::tool_session_root(CliTool::Codex);
         let agy = PlatformPaths::tool_session_root(CliTool::Agy);
-
-        match original_home {
-            Some(value) => std::env::set_var("HOME", value),
-            None => std::env::remove_var("HOME"),
-        }
 
         assert_eq!(codex, home.path().join(".codex").join("sessions"));
         assert_eq!(
