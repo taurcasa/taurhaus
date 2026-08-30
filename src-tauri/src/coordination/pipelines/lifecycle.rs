@@ -15,7 +15,10 @@ use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryRequest, InitializeTeamRequest,
     OperatorNoticeDelivery, ResumeMemberRequest, TeardownMode, TeardownRequest,
 };
-use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::stores::lock::acquire_team_lock;
+use crate::coordination::stores::{
+    MemberRuntimeSnapshot, MemberRuntimeStore, RuntimeCommitOutcome, TeamConfigStore,
+};
 use crate::session_scanner::cli_tool::CliTool;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -227,79 +230,93 @@ impl CoordinationOrchestrator {
         context: &MemberActivationContext,
         patch: RuntimeCommitPatch,
     ) -> Result<(), CoordinationError> {
-        let mut runtime = match MemberRuntimeStore::load(
+        let expected = match MemberRuntimeStore::load(
             &self.teams_dir,
             &context.team_name,
             &context.member.name,
         ) {
-            Ok(runtime) => runtime,
+            Ok(runtime) => MemberRuntimeSnapshot::capture(&runtime),
             Err(CoordinationError::NotFound(_))
                 if matches!(
                     context.roster_policy,
                     MemberActivationRosterPolicy::CreateMember
                 ) =>
             {
-                default_runtime_record(&context.member.name)
+                MemberRuntimeSnapshot::absent(&default_runtime_record(&context.member.name))
             }
             Err(err) => return Err(err),
         };
 
-        runtime.cli_tool.get_or_insert(context.member.cli_tool);
-        if runtime.project_path.is_none() {
-            runtime.project_path = Some(context.member.project_path.clone());
+        let outcome = self.commit_member_runtime_if_unchanged(context, patch, &expected)?;
+        if outcome == RuntimeCommitOutcome::Committed
+            && matches!(
+                context.runtime_commit_policy,
+                MemberActivationRuntimeCommitPolicy::FinalizeAtEnd
+            )
+        {
+            self.sync_team_config_metadata(&context.team_name)?;
         }
-        if let Some(pane_id) = patch.pane_id {
-            runtime.pane_id = pane_id;
-        }
-        if let Some(pane_pid) = patch.pane_pid {
-            runtime.pane_pid = pane_pid;
-        }
-        if let Some(pane_start_time) = patch.pane_start_time {
-            runtime.pane_start_time = pane_start_time;
-        }
-        if let Some(session_id) = patch.session_id {
-            runtime.session_id = session_id;
-        }
-        if let Some(jsonl_path) = patch.jsonl_path {
-            runtime.jsonl_path = jsonl_path;
-        }
-        if let Some(daemon_pid) = patch.daemon_pid {
-            runtime.daemon_pid = daemon_pid;
-        }
-        if let Some(attached_at) = patch.attached_at {
-            runtime.attached_at = attached_at;
-        }
-        if let Some(health) = patch.health {
-            runtime.health = health;
-        }
-        // A launch puts the member at the effort its command carried, so the
-        // record mesh reads before typing `/effort` starts from what is
-        // actually in force rather than from whatever the last session ended
-        // at. An unset effort clears it: the CLI's own default applies.
-        runtime.applied_effort = context
+        Ok(())
+    }
+
+    pub(super) fn commit_member_runtime_if_unchanged(
+        &self,
+        context: &MemberActivationContext,
+        patch: RuntimeCommitPatch,
+        expected: &MemberRuntimeSnapshot,
+    ) -> Result<RuntimeCommitOutcome, CoordinationError> {
+        let applied_effort = context
             .member
             .reasoning_effort
             .as_deref()
             .map(str::trim)
             .filter(|level| !level.is_empty())
             .map(str::to_ascii_lowercase);
-        // A launch that commits is the member reaching a level, so whatever
-        // budget an earlier failed effort switch spent is spent no longer.
-        runtime.effort_resume_failure = None;
+        let guard = acquire_team_lock(&self.teams_dir, &context.team_name)?;
 
-        MemberRuntimeStore::save(
+        MemberRuntimeStore::commit_if_unchanged(
+            &guard,
             &self.teams_dir,
             &context.team_name,
             &context.member.name,
-            &runtime,
-        )?;
-        if matches!(
-            context.runtime_commit_policy,
-            MemberActivationRuntimeCommitPolicy::FinalizeAtEnd
-        ) {
-            self.sync_team_config_metadata(&context.team_name)?;
-        }
-        Ok(())
+            expected,
+            |runtime| {
+                runtime.cli_tool.get_or_insert(context.member.cli_tool);
+                if runtime.project_path.is_none() {
+                    runtime.project_path = Some(context.member.project_path.clone());
+                }
+                if let Some(pane_id) = patch.pane_id {
+                    runtime.pane_id = pane_id;
+                }
+                if let Some(pane_pid) = patch.pane_pid {
+                    runtime.pane_pid = pane_pid;
+                }
+                if let Some(pane_start_time) = patch.pane_start_time {
+                    runtime.pane_start_time = pane_start_time;
+                }
+                if let Some(session_id) = patch.session_id {
+                    runtime.session_id = session_id;
+                }
+                if let Some(jsonl_path) = patch.jsonl_path {
+                    runtime.jsonl_path = jsonl_path;
+                }
+                if let Some(daemon_pid) = patch.daemon_pid {
+                    runtime.daemon_pid = daemon_pid;
+                }
+                if let Some(attached_at) = patch.attached_at {
+                    runtime.attached_at = attached_at;
+                }
+                if let Some(health) = patch.health {
+                    runtime.health = health;
+                }
+                // A launch puts the member at the effort its command carried,
+                // including the CLI's own default when no override is set.
+                runtime.applied_effort = applied_effort;
+                // A committed launch reached a level, so an earlier failed
+                // effort-switch budget no longer applies.
+                runtime.effort_resume_failure = None;
+            },
+        )
     }
 
     pub(super) fn sync_team_config_metadata(

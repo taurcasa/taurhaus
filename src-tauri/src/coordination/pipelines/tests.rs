@@ -23,7 +23,9 @@ use crate::coordination::requests::{
 use crate::coordination::runtime::{
     CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
 };
-use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::stores::{
+    MemberRuntimeSnapshot, MemberRuntimeStore, RuntimeCommitOutcome, TeamConfigStore,
+};
 use crate::coordination::task_effort::EffortPassScope;
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::{spec, CliTool};
@@ -538,6 +540,73 @@ fn staged_runtime_commit_merges_partial_updates_without_syncing_team_metadata() 
         member["tmuxPaneId"].as_str(),
         None,
         "staged initialize commits should not sync config metadata yet"
+    );
+}
+
+#[test]
+fn activation_runtime_commit_skips_a_stale_dependency_snapshot() {
+    // Regression: 366f4b7 left activation's load-to-save window outside any
+    // shared critical section, so a concurrent liveness writer could be
+    // overwritten by a patch based on the runtime record from before it.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let team_name = "activation-stale-snapshot";
+    let member_name = "builder";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member(
+                member_name,
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/builder",
+            ),
+        )
+        .expect("add member");
+
+    let original = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    let expected = MemberRuntimeSnapshot::capture(&original);
+    let mut concurrent = original;
+    concurrent.pane_id = Some("%winner".to_string());
+    concurrent.pane_pid = Some(9001);
+    concurrent.pane_start_time = Some(1_755_000_009);
+    concurrent.session_id = Some("session-winner".to_string());
+    concurrent.daemon_pid = Some(9002);
+    concurrent.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &concurrent)
+        .expect("concurrent liveness save");
+
+    let member_config = setup_config(member_name, "codex", "gpt-5.4", "/tmp/builder");
+    let context = MemberActivationContext::for_initialize_member(
+        team_name,
+        "team-lead",
+        &member_config,
+        MemberRole::Agent,
+    )
+    .expect("context");
+    let outcome = orchestrator
+        .commit_member_runtime_if_unchanged(
+            &context,
+            RuntimeCommitPatch {
+                pane_id: Some(Some("%stale".to_string())),
+                session_id: Some(Some("session-stale".to_string())),
+                daemon_pid: Some(Some(8000)),
+                health: Some(HealthState::SessionDead),
+                ..Default::default()
+            },
+            &expected,
+        )
+        .expect("stale activation commit is handled");
+
+    assert!(matches!(outcome, RuntimeCommitOutcome::Skipped { .. }));
+    assert_eq!(
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("winning runtime"),
+        concurrent
     );
 }
 
