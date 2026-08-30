@@ -48,4 +48,27 @@ describe('Account popups inside the shell markup', () => {
     expect(dialog.top).toBeGreaterThan(0)
     expect(dialog.bottom).toBeLessThanOrEqual(window.innerHeight)
   })
+
+  // Regression: #35 (per-project account memory) meant the chooser only ever
+  // opened for a project that had never launched. It now interrupts a launch
+  // whose remembered subscription is spent, and the sentence explaining that —
+  // plus the row a keystroke would take — is the whole difference between the
+  // two shots.
+  it('shows why it opened and which row Enter answers with', async () => {
+    const scenario = shellPopupsScenarios.find(
+      (candidate) => candidate.name === 'chooser-exhausted-light'
+    )
+
+    await renderVisual(ShellPopupsHost, {
+      theme: scenario.theme,
+      props: { scenario, theme: scenario.theme },
+    })
+
+    const sentence = screen.getByTestId('account-chooser-reason')
+    expect(sentence.textContent).toContain('stierms@gmail.com is out of usage')
+    expect(sentence.textContent).toContain('Current week (all models)')
+
+    expect(screen.getByTestId('account-option-account-2').dataset.preselected).toBe('true')
+    expect(screen.getByTestId('account-option-account-1').dataset.preselected).toBe('false')
+  })
 })
