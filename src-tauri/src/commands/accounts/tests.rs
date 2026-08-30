@@ -220,7 +220,7 @@ fn resolving_launch_bases_carries_what_the_pane_shell_makes_of_each_command() {
         wsl_distro: None,
     };
 
-    let resolved_bases = resolve_launch_bases_impl(&db, &provider, CliTool::Claude);
+    let resolved_bases = resolve_launch_bases_impl(&db, &provider, CliTool::Claude, false);
 
     let resolved: Vec<&str> = resolved_bases
         .iter()

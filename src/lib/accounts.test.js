@@ -129,6 +129,15 @@ describe('claudeAccounts store', () => {
     }
   })
 
+  // Regression: 3c5b6cd9 invalidated only the app process's launch-base cache.
+  // On Windows the answer lives in the WSL daemon, so a Settings save replayed
+  // its stale or failed answer until the daemon's ten-minute TTL elapsed.
+  it('forwards a forced launch-base refresh to the backend', async () => {
+    await refreshResolvedBases('claude', { force: true })
+
+    expect(resolveLaunchBases).toHaveBeenCalledWith('claude', true)
+  })
+
   it('keeps a logged-out account visible for the chooser but out of the count', async () => {
     listAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, logged_in: false }]))
 

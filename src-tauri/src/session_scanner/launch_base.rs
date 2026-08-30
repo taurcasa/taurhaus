@@ -221,6 +221,8 @@ pub fn resolve_base_command_cached(
 
 /// Shell answers remain useful until an rc file changes, with a hard upper cap.
 const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+/// A missing/failed alias answer self-heals quickly after a transient timeout.
+const NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(60);
 
 type CacheKey = (u64, String, String);
 
@@ -231,6 +233,20 @@ struct CachedAliasChain {
     observed_at: Instant,
     rc_fingerprint: RcFingerprint,
     resolution: Arc<InFlightAliasChain>,
+}
+
+impl CachedAliasChain {
+    fn ttl(&self) -> Duration {
+        let result = self
+            .resolution
+            .result
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        match result.as_deref() {
+            Some([]) => NEGATIVE_CACHE_TTL,
+            _ => CACHE_TTL,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -318,7 +334,7 @@ fn resolve_base_command_cached_at_in_generation(
             entry.rc_fingerprint == rc_fingerprint
                 && now
                     .checked_duration_since(entry.observed_at)
-                    .is_some_and(|age| age < CACHE_TTL)
+                    .is_some_and(|age| age < entry.ttl())
         });
         if let Some(entry) = reusable {
             (Arc::clone(&entry.resolution), false)
@@ -1112,16 +1128,25 @@ mod tests {
 
     #[test]
     fn the_cache_answers_for_ten_minutes_and_then_asks_again() {
+        let home = tempfile::tempdir().expect("temporary shell home");
         let probe = FakeProbe::new(&[("cached2", "CLAUDE_CONFIG_DIR=/homes/two claude")]);
         let start = Instant::now();
 
-        let first =
-            resolve_base_command_cached_at("cached2 --resume", CliTool::Claude, &probe, start);
-        let second = resolve_base_command_cached_at(
+        let first = resolve_base_command_cached_at_in_generation(
+            "cached2 --resume",
+            CliTool::Claude,
+            &probe,
+            start,
+            Some(home.path()),
+            u64::MAX - 10,
+        );
+        let second = resolve_base_command_cached_at_in_generation(
             "cached2 --resume",
             CliTool::Claude,
             &probe,
             start + Duration::from_secs(599),
+            Some(home.path()),
+            u64::MAX - 10,
         );
         assert_eq!(first, second);
         assert_eq!(
@@ -1130,13 +1155,52 @@ mod tests {
             "the second call reused the answer"
         );
 
-        resolve_base_command_cached_at(
+        resolve_base_command_cached_at_in_generation(
             "cached2 --resume",
             CliTool::Claude,
             &probe,
             start + Duration::from_secs(601),
+            Some(home.path()),
+            u64::MAX - 10,
         );
         assert_eq!(probe.asked().len(), 4, "an expired entry is asked again");
+    }
+
+    // Regression: 3c5b6cd9 let cache contract tests read the process-global
+    // generation while alias-override tests changed it in parallel. An
+    // unrelated bump then looked like a cache miss and made this lane flaky.
+    #[test]
+    fn an_isolated_cache_test_ignores_the_ambient_generation() {
+        let _serial = ALIAS_OVERRIDE_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let home = tempfile::tempdir().expect("temporary shell home");
+        let probe = FakeProbe::new(&[("isolated2", "claude")]);
+        let start = Instant::now();
+
+        resolve_base_command_cached_at_in_generation(
+            "isolated2 --fresh",
+            CliTool::Claude,
+            &probe,
+            start,
+            Some(home.path()),
+            u64::MAX - 11,
+        );
+        invalidate_base_command_cache();
+        resolve_base_command_cached_at_in_generation(
+            "isolated2 --resume",
+            CliTool::Claude,
+            &probe,
+            start + Duration::from_secs(1),
+            Some(home.path()),
+            u64::MAX - 11,
+        );
+
+        assert_eq!(
+            probe.asked(),
+            vec!["isolated2", "claude"],
+            "another test's cache generation must not disturb this contract"
+        );
     }
 
     // Regression: 0.8.4 / PR #75 keyed shell resolution by the whole launch
@@ -1148,26 +1212,29 @@ mod tests {
         let probe = FakeProbe::new(&[("shared2", "CLAUDE_CONFIG_DIR=/homes/two claude")]);
         let start = Instant::now();
 
-        let fresh = resolve_base_command_cached_at_in(
+        let fresh = resolve_base_command_cached_at_in_generation(
             "shared2 --fresh",
             CliTool::Claude,
             &probe,
             start,
             Some(home.path()),
+            u64::MAX - 12,
         );
-        let continued = resolve_base_command_cached_at_in(
+        let continued = resolve_base_command_cached_at_in_generation(
             "shared2 --continue",
             CliTool::Claude,
             &probe,
             start,
             Some(home.path()),
+            u64::MAX - 12,
         );
-        let resumed = resolve_base_command_cached_at_in(
+        let resumed = resolve_base_command_cached_at_in_generation(
             "shared2 --resume session-1",
             CliTool::Claude,
             &probe,
             start,
             Some(home.path()),
+            u64::MAX - 12,
         );
 
         assert!(fresh.command.ends_with("claude --fresh"), "{fresh:?}");
@@ -1200,37 +1267,28 @@ mod tests {
         let probe = FakeProbe::new(&[("rc2", "claude")]);
         let start = Instant::now();
 
-        resolve_base_command_cached_at_in(
+        resolve_base_command_cached_at_in_generation(
             "rc2 --fresh",
             CliTool::Claude,
             &probe,
             start,
             Some(home.path()),
+            u64::MAX - 13,
         );
-        for attempt in 0..20 {
-            std::fs::write(&rc, format!("alias rc2=claude # {attempt}")).expect("change shell rc");
-            let changed = std::fs::metadata(&rc)
-                .and_then(|metadata| metadata.modified())
-                .expect("changed rc mtime");
-            if changed != initial_mtime {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(2));
-        }
-        assert_ne!(
-            std::fs::metadata(&rc)
-                .and_then(|metadata| metadata.modified())
-                .expect("final rc mtime"),
-            initial_mtime,
-            "the test must actually change the rc mtime"
-        );
+        let changed_mtime = initial_mtime + Duration::from_secs(2);
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&rc)
+            .and_then(|file| file.set_times(std::fs::FileTimes::new().set_modified(changed_mtime)))
+            .expect("set deterministic changed rc mtime");
 
-        resolve_base_command_cached_at_in(
+        resolve_base_command_cached_at_in_generation(
             "rc2 --resume",
             CliTool::Claude,
             &probe,
             start + Duration::from_secs(1),
             Some(home.path()),
+            u64::MAX - 13,
         );
 
         assert_eq!(
@@ -1245,6 +1303,9 @@ mod tests {
     // had just replaced until the old 60-second entry expired.
     #[test]
     fn settings_invalidation_discards_cached_alias_answers() {
+        let _serial = ALIAS_OVERRIDE_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let home = tempfile::tempdir().expect("temporary shell home");
         let probe = FakeProbe::new(&[("saved2", "claude")]);
         let start = Instant::now();
@@ -1355,19 +1416,44 @@ mod tests {
         assert!(second.command.ends_with("claude --resume"), "{second:?}");
     }
 
+    // Regression: 3c5b6cd9 gave an empty result the same ten-minute lifetime
+    // as a resolved alias. A transient shell timeout on Windows therefore
+    // ignored Retry and kept the literal command stale for ten minutes.
     #[test]
     fn a_failed_probe_is_cached_too() {
+        let home = tempfile::tempdir().expect("temporary shell home");
         let probe = FakeProbe::new(&[]);
         let start = Instant::now();
 
-        for _ in 0..3 {
-            resolve_base_command_cached_at("uncached-tool --x", CliTool::Claude, &probe, start);
-        }
+        resolve_base_command_cached_at_in_generation(
+            "uncached-tool --x",
+            CliTool::Claude,
+            &probe,
+            start,
+            Some(home.path()),
+            u64::MAX - 14,
+        );
+        resolve_base_command_cached_at_in_generation(
+            "uncached-tool --x",
+            CliTool::Claude,
+            &probe,
+            start + Duration::from_secs(59),
+            Some(home.path()),
+            u64::MAX - 14,
+        );
+        resolve_base_command_cached_at_in_generation(
+            "uncached-tool --x",
+            CliTool::Claude,
+            &probe,
+            start + Duration::from_secs(61),
+            Some(home.path()),
+            u64::MAX - 14,
+        );
 
         assert_eq!(
             probe.asked().len(),
-            1,
-            "a shell that said no is not re-asked"
+            2,
+            "a failed shell answer is retried after the old one-minute TTL"
         );
     }
 

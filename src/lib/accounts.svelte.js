@@ -205,7 +205,7 @@ export function refreshResolvedBases(tool = providerTool(), { force = false } = 
   state.resolvingBases = true
   let failed = false
   const promise = Promise.resolve()
-    .then(() => resolveLaunchBases(id))
+    .then(() => (force ? resolveLaunchBases(id, true) : resolveLaunchBases(id)))
     .then((bases) => {
       if (launchBaseResolutions.get(id)?.promise === promise) state.resolvedBases = bases ?? []
     })

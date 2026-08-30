@@ -174,6 +174,8 @@ pub struct ProjectTranscriptResult {
 pub struct ResolveLaunchBaseParams {
     pub tool: crate::session_scanner::cli_tool::CliTool,
     pub base: String,
+    #[serde(default)]
+    pub force: bool,
 }
 
 /// `list_workflow_runs` — completed and live runs under one Claude session.
@@ -898,6 +900,7 @@ mod tests {
         let params = ResolveLaunchBaseParams {
             tool: crate::session_scanner::cli_tool::CliTool::Claude,
             base: "claude2 --dangerously-skip-permissions".to_string(),
+            force: false,
         };
         let back: ResolveLaunchBaseParams =
             serde_json::from_str(&serde_json::to_string(&params).unwrap()).unwrap();
@@ -917,6 +920,19 @@ mod tests {
             serde_json::from_str(&json).unwrap();
         assert_eq!(result, back);
         assert_eq!(PROTOCOL_VERSION, 14);
+    }
+
+    // Regression: 3c5b6cd9 invalidated only the Windows app's process-local
+    // cache. The additive force bit must also decode as false for an older app.
+    #[test]
+    fn resolve_launch_base_force_is_additive_and_defaults_off() {
+        let params: ResolveLaunchBaseParams = serde_json::from_value(serde_json::json!({
+            "tool": "claude",
+            "base": "claude2 --fresh"
+        }))
+        .expect("old app payload");
+
+        assert!(!params.force);
     }
 
     #[test]
