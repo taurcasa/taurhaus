@@ -12,10 +12,10 @@
    *
    * Item shape: `{label, action, icon, disabled, separator, keepOpen, danger,
    * children}`. A child may be a `separator` too, and adds `meta`
-   * (right-aligned muted text), `check` (a
-   * leading tick, with the column reserved on every child so labels line up)
-   * and `key` — a unique identity for the row, because a child's label is
-   * whatever the caller's data says and two accounts can carry the same one.
+   * (right-aligned muted text), `check` (a leading tick, with the column
+   * reserved on every child so labels line up) and `key` — a unique identity
+   * for the row, because a child's label is whatever the caller's data says and
+   * two accounts can carry the same one.
    */
   let {
     items = [],
