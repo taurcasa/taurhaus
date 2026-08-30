@@ -6,12 +6,14 @@
  * This keeps per-operation latency low (~95ms vs ~165ms with all specs
  * in one session) while avoiding per-spec app startup overhead.
  *
- * Groups are organized by app layer (inside-out):
+ * The original groups are organized by app layer (inside-out):
  *   1. Content  — individual tab workflows (read-only)
  *   2. Features — cross-cutting features (read-only)
  *   3. Shell    — app chrome & platform integration
  *   4. Config   — state mutation & validation
  *   5. Guards   — regressions & visual capture
+ * Stateful additions use named UI, template, mesh, and tmux groups. The
+ * manifest is sealed: every non-paid spec must be named by one group.
  *
  * Groups are SEALED — new specs form new groups, never expand existing ones.
  * The groups themselves live in `specList.js`, together with the paid lanes a
@@ -513,7 +515,7 @@ export const config = {
 
   /**
    * Start tauri-driver before each worker session.
-   * With batched groups, this runs once per group (5 times for the full suite).
+   * With batched groups, this runs once per manifest group.
    */
   async beforeSession(_config, _capabilities, specs) {
     // Guard against stale processes from aborted runs before starting a new worker.
