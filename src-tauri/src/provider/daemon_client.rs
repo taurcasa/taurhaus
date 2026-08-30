@@ -242,8 +242,23 @@ impl DaemonProvider {
     /// Tries each pool slot without blocking. If all slots are busy, blocks on
     /// slot 0 as a last resort (bounded by the request timeout).
     pub fn send_status_request(&self, request: &DaemonRequest) -> Result<DaemonResponse, AppError> {
+        self.send_status_request_within(request, PING_TIMEOUT)
+    }
+
+    /// The same, for a method whose work on the daemon side outlasts a ping.
+    ///
+    /// The ping timeout measures reachability. A method the daemon answers by
+    /// doing something — running an interactive shell to read a launch base,
+    /// say — needs a request that outlives that work, or a slow answer is
+    /// discarded for being slow and the caller falls back exactly as if the
+    /// daemon had never answered at all.
+    pub fn send_status_request_within(
+        &self,
+        request: &DaemonRequest,
+        timeout: Duration,
+    ) -> Result<DaemonResponse, AppError> {
         let rpc_span = DaemonRpcSpan::start(request, 0);
-        let result = self.send_with_pool(request, PING_TIMEOUT);
+        let result = self.send_with_pool(request, timeout);
         match &result {
             Ok(response) => {
                 if let Some(error) = response.error.as_ref() {
@@ -1189,6 +1204,102 @@ mod tests {
         assert!(provider.ping().is_ok());
 
         daemon2.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    /// A daemon-shaped listener that answers every request after `delay`.
+    ///
+    /// The real daemon answers `resolve_launch_base` by asking an interactive
+    /// shell what a word means, which is the slow answer this stands in for.
+    struct SlowResponder {
+        port: u16,
+        shutdown: Arc<AtomicBool>,
+        handle: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl Drop for SlowResponder {
+        fn drop(&mut self) {
+            self.shutdown.store(true, Ordering::Relaxed);
+            // Unblock the accept loop so the thread this test started ends with it.
+            let _ = TcpStream::connect(("127.0.0.1", self.port));
+            if let Some(handle) = self.handle.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+
+    fn start_slow_responder(delay: Duration) -> SlowResponder {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind slow responder");
+        let port = listener.local_addr().expect("responder address").port();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let stop = Arc::clone(&shutdown);
+        let handle = std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                let Ok(clone) = stream.try_clone() else { break };
+                let mut reader = BufReader::new(clone);
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap_or(0) > 0 {
+                    if stop.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    let id = serde_json::from_str::<serde_json::Value>(&line)
+                        .ok()
+                        .and_then(|request| {
+                            request
+                                .get("id")
+                                .and_then(|id| id.as_str())
+                                .map(str::to_string)
+                        })
+                        .unwrap_or_default();
+                    std::thread::sleep(delay);
+                    let response =
+                        serde_json::to_string(&DaemonResponse::ok(id, serde_json::json!({})))
+                            .expect("encode response");
+                    if stream
+                        .write_all(format!("{response}\n").as_bytes())
+                        .is_err()
+                    {
+                        return;
+                    }
+                    let _ = stream.flush();
+                    line.clear();
+                }
+            }
+        });
+        SlowResponder {
+            port,
+            shutdown,
+            handle: Some(handle),
+        }
+    }
+
+    // Regression: bc4457a asked the daemon to resolve a launch base through
+    // `send_status_request`, which spends the 5 s ping timeout on every method
+    // it carries. The daemon answers that one by running an interactive shell,
+    // so a slow rc file times the request out, the app puts the literal base
+    // back, and the alias's own selector silently overrides the account the
+    // operator chose — the defect this feature exists to fix.
+    #[test]
+    fn a_status_request_spends_the_timeout_it_was_given() {
+        let responder = start_slow_responder(Duration::from_millis(600));
+        let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", responder.port)).unwrap();
+        let request = DaemonRequest::ping("slow-answer");
+
+        let waited = provider.send_status_request_within(&request, Duration::from_secs(5));
+        assert!(
+            waited.is_ok(),
+            "a method slower than a ping still gets its answer: {waited:?}"
+        );
+
+        let cut_short = provider.send_status_request_within(&request, Duration::from_millis(80));
+        let error = cut_short.expect_err("a timeout shorter than the answer must expire");
+        assert!(
+            error.to_string().contains("timed out"),
+            "the given timeout is the one spent: {error}"
+        );
     }
 
     #[test]

@@ -563,6 +563,16 @@ const SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(2);
 /// output exceeds the pipe buffer would otherwise block on write and never
 /// exit within the budget.
 pub(super) fn run_with_timeout(cmd: &str, args: &[&str]) -> Option<String> {
+    run_with_timeout_within(cmd, args, SUBPROCESS_TIMEOUT)
+}
+
+/// `run_with_timeout` for a caller whose subprocess is allowed to be slower.
+/// An interactive shell sources a whole rc file before it can answer.
+pub(super) fn run_with_timeout_within(
+    cmd: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> Option<String> {
     let mut command = Command::new(cmd);
     apply_background_command_settings(&mut command);
     let mut child = command
@@ -577,7 +587,7 @@ pub(super) fn run_with_timeout(cmd: &str, args: &[&str]) -> Option<String> {
         kill_and_reap(&mut child);
         return None;
     };
-    wait_for_output(cmd, child, stdout)
+    wait_for_output(cmd, child, stdout, timeout)
 }
 
 /// Drain `stdout` on a separate thread while `child` runs, then reap the
@@ -590,8 +600,9 @@ fn wait_for_output<R: Read + Send + 'static>(
     cmd: &str,
     mut child: Child,
     mut stdout: R,
+    timeout: Duration,
 ) -> Option<String> {
-    let deadline = Instant::now() + SUBPROCESS_TIMEOUT;
+    let deadline = Instant::now() + timeout;
     let (output_tx, output_rx) = mpsc::channel::<io::Result<Vec<u8>>>();
     let drain = std::thread::Builder::new()
         .name("scanner-stdout-drain".to_string())
@@ -606,7 +617,7 @@ fn wait_for_output<R: Read + Send + 'static>(
         return None;
     }
 
-    let output = match output_rx.recv_timeout(SUBPROCESS_TIMEOUT) {
+    let output = match output_rx.recv_timeout(timeout) {
         Ok(Ok(output)) => output,
         Ok(Err(error)) => {
             kill_and_reap(&mut child);
@@ -615,7 +626,7 @@ fn wait_for_output<R: Read + Send + 'static>(
         }
         Err(_) => {
             kill_and_reap(&mut child);
-            tracing::warn!(cmd, "Subprocess timed out after {SUBPROCESS_TIMEOUT:?}");
+            tracing::warn!(cmd, "Subprocess timed out after {timeout:?}");
             return None;
         }
     };
@@ -630,7 +641,7 @@ fn wait_for_output<R: Read + Send + 'static>(
             }
             Ok(None) if Instant::now() >= deadline => {
                 kill_and_reap(&mut child);
-                tracing::warn!(cmd, "Subprocess timed out after {SUBPROCESS_TIMEOUT:?}");
+                tracing::warn!(cmd, "Subprocess timed out after {timeout:?}");
                 return None;
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(1)),
@@ -933,7 +944,12 @@ mod tests {
             .spawn()
             .expect("spawn child");
 
-        let output = wait_for_output("sh", child, FailingReader(b" 1234 claude\n"));
+        let output = wait_for_output(
+            "sh",
+            child,
+            FailingReader(b" 1234 claude\n"),
+            SUBPROCESS_TIMEOUT,
+        );
 
         assert_eq!(
             output, None,

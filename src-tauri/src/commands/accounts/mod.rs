@@ -14,6 +14,7 @@
 mod tests;
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use tauri::State;
@@ -25,6 +26,7 @@ use crate::db::queries;
 use crate::errors::{sanitize_error, AppError, CommandResultExt, IpcResult, SanitizeErr};
 use crate::session_scanner::accounts::{self, Account};
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::launch_base::{self, ResolvedBase};
 use crate::ProviderState;
 
 /// Detection ran in this process.
@@ -34,6 +36,17 @@ pub(crate) const SOURCE_DAEMON: &str = "daemon";
 
 const UNKNOWN_METHOD: &str = "UNKNOWN_METHOD";
 
+/// How long the daemon gets to say what a launch command means.
+///
+/// The daemon answers this one by running an interactive shell, so the request
+/// has to outlive the resolution's own budget with room for the transport. A
+/// request that expires first is indistinguishable from a daemon that cannot
+/// resolve anything: the literal base comes back, the alias goes unseen, and
+/// its selector overrides the account the operator chose — the defect this
+/// resolution exists to fix.
+const RESOLVE_LAUNCH_BASE_TIMEOUT: Duration =
+    Duration::from_secs(launch_base::RESOLUTION_BUDGET.as_secs() + 4);
+
 /// Detected accounts for one registry tool.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +55,11 @@ pub struct AccountsResult {
     pub source: String,
     pub degraded: bool,
     pub error: Option<String>,
+    /// This tool's configured launch commands as the pane shell reads them,
+    /// one per distinct command. Only the settings surface asks for these;
+    /// every other caller leaves the list empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resolved_bases: Vec<ResolvedBase>,
 }
 
 /// The transcript that owns a project's history, and whether the lookup ran.
@@ -66,13 +84,41 @@ pub(crate) enum DaemonAnswer<T> {
 
 #[tauri::command]
 pub fn list_accounts(
+    db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
     tool: CliTool,
 ) -> IpcResult<AccountsResult> {
     let span = IpcCommandSpan::start("list_accounts");
-    let result = Ok::<_, String>(accounts_report(provider.inner(), tool)).ipc_cmd("list_accounts");
+    let result = Ok::<_, String>(list_accounts_impl(db.inner(), provider.inner(), tool))
+        .ipc_cmd("list_accounts");
     span.finish_result(&result);
     result
+}
+
+/// The accounts a tool has, plus what a launch command really starts.
+///
+/// Settings says which account is in force, and a base command that carries an
+/// account selector of its own — directly or through a shell alias — is part of
+/// that answer.
+pub(crate) fn list_accounts_impl(
+    db: &DbState,
+    provider: &ProviderState,
+    tool: CliTool,
+) -> AccountsResult {
+    let mut report = accounts_report(provider, tool);
+    let commands = crate::commands::terminal_settings::load_terminal_settings(db).cli_commands;
+    let mut seen = std::collections::HashSet::new();
+    report.resolved_bases = [
+        protocol::LaunchMode::Fresh,
+        protocol::LaunchMode::Continue,
+        protocol::LaunchMode::Resume,
+    ]
+    .into_iter()
+    .map(|mode| crate::session_scanner::launch::base_command(&commands, tool, mode))
+    .filter(|base| seen.insert(base.to_string()))
+    .map(|base| resolve_launch_base(provider, tool, base))
+    .collect();
+    report
 }
 
 #[tauri::command]
@@ -114,6 +160,7 @@ pub(crate) fn accounts_report(provider: &ProviderState, tool: CliTool) -> Accoun
         source: SOURCE_NATIVE.to_string(),
         degraded: false,
         error: None,
+        resolved_bases: Vec::new(),
     }
 }
 
@@ -165,6 +212,63 @@ pub(crate) fn project_transcript(
     }
 }
 
+/// What the shell that will run this launch makes of its base command.
+///
+/// Where the config dirs are, the aliases are: in-process on Linux and macOS,
+/// in the WSL daemon on Windows. Every failure — no daemon, an older daemon, a
+/// shell that never answered — leaves the base exactly as configured.
+pub(crate) fn resolve_launch_base(
+    provider: &ProviderState,
+    tool: CliTool,
+    base: &str,
+) -> ResolvedBase {
+    if cfg!(target_os = "windows") {
+        return daemon_resolve_launch_base(provider, tool, base);
+    }
+    launch_base::resolve_base_command_cached(base, tool, &launch_base::ShellAliasProbe::for_pane())
+}
+
+fn daemon_resolve_launch_base(provider: &ProviderState, tool: CliTool, base: &str) -> ResolvedBase {
+    let Some(daemon) = provider.daemon.as_ref() else {
+        return literal_base(base);
+    };
+    if !daemon.is_connected() && !daemon.try_reconnect() {
+        return literal_base(base);
+    }
+
+    let request = protocol::DaemonRequest::new(
+        format!("resolve-launch-base-{tool}"),
+        protocol::method::RESOLVE_LAUNCH_BASE,
+        protocol::ResolveLaunchBaseParams {
+            tool,
+            base: base.to_string(),
+        },
+    );
+    resolved_base_from(
+        daemon_answer(
+            daemon.send_status_request_within(&request, RESOLVE_LAUNCH_BASE_TIMEOUT),
+            "the resolved launch base",
+        ),
+        base,
+    )
+}
+
+fn resolved_base_from(answer: DaemonAnswer<ResolvedBase>, base: &str) -> ResolvedBase {
+    match answer {
+        DaemonAnswer::Value(resolved) => resolved,
+        DaemonAnswer::Unsupported | DaemonAnswer::Unavailable(_) => literal_base(base),
+    }
+}
+
+/// The base command as configured: no expansion, nothing claimed about it.
+fn literal_base(base: &str) -> ResolvedBase {
+    ResolvedBase {
+        command: base.to_string(),
+        expansions: Vec::new(),
+        opaque_head: None,
+    }
+}
+
 fn daemon_accounts_report(provider: &ProviderState, tool: CliTool) -> AccountsResult {
     daemon_accounts_report_from(daemon_accounts(provider, tool))
 }
@@ -180,6 +284,7 @@ fn daemon_accounts_report_from(answer: DaemonAnswer<protocol::AccountsResult>) -
         source: SOURCE_DAEMON.to_string(),
         degraded,
         error,
+        resolved_bases: Vec::new(),
     }
 }
 

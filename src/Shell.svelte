@@ -10,6 +10,7 @@
   import AccountChooser from './lib/components/AccountChooser.svelte'
   import {
     accountState,
+    launchAccountNotice,
     pendingAccountChoice,
     refreshAccounts,
     requestLaunch,
@@ -476,9 +477,12 @@
       tool,
       choose,
       launch: (projectId, mode, launchTool, accountId) =>
-        launchCliSession(projectId, mode, launchTool, accountId).then((r) =>
+        launchCliSession(projectId, mode, launchTool, accountId).then((r) => {
           console.log('[overview] launch OK:', r)
-        ),
+          // The launch is the only place that can see a base command running
+          // something other than the CLI; saying nothing loses the account.
+          shellNotice = launchAccountNotice(r, { project: selectedProject, tool }) ?? shellNotice
+        }),
       onError: (error) => console.error('[overview] launch FAILED:', error),
     })
   }

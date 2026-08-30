@@ -134,10 +134,20 @@ pub fn resolve_launch_account(
     request: AccountRequest<'_>,
 ) -> AccountResolution {
     let mut fallback_from = None;
+    let base_assignment = request
+        .base_command
+        .zip(request.selector)
+        .and_then(|(base, selector)| command_env_assignment(base, selector));
+    let base = match base_assignment.as_ref() {
+        None => BaseSelector::Absent,
+        Some(dir) => BaseSelector::Present {
+            dir: dir.as_deref(),
+        },
+    };
 
     if let Some(wanted) = non_empty(request.requested_account_id) {
         if let Some(account) = usable(accounts, wanted) {
-            return selected(account, AccountOrigin::Request, false, None);
+            return selected(account, AccountOrigin::Request, base, None);
         }
         fallback_from = Some(wanted.to_string());
     }
@@ -147,7 +157,7 @@ pub fn resolve_launch_account(
             let account = account_for_dir(accounts, &dir);
             match account {
                 Some(account) if account.identity.logged_in => {
-                    return selected(account, AccountOrigin::Session, false, fallback_from);
+                    return selected(account, AccountOrigin::Session, base, fallback_from);
                 }
                 Some(account) => {
                     fallback_from.get_or_insert_with(|| account.id.clone());
@@ -174,41 +184,35 @@ pub fn resolve_launch_account(
             continue;
         };
         if let Some(account) = usable(accounts, wanted) {
-            return selected(account, origin, false, fallback_from);
+            return selected(account, origin, base, fallback_from);
         }
         fallback_from.get_or_insert_with(|| wanted.to_string());
     }
 
-    if let (Some(base), Some(selector)) = (request.base_command, request.selector) {
-        if let Some(assignment) = command_env_assignment(base, selector) {
-            match assignment {
-                Some(dir) => match account_for_dir(accounts, &dir) {
-                    Some(account) if account.identity.logged_in => {
-                        return selected(account, AccountOrigin::BaseCommand, true, fallback_from);
-                    }
-                    Some(account) => {
-                        fallback_from.get_or_insert_with(|| account.id.clone());
-                    }
-                    None => {
-                        return AccountResolution {
-                            account_dir: None,
-                            account: None,
-                            origin: AccountOrigin::BaseCommand,
-                            fallback_from,
-                            needs_choice: false,
-                        };
-                    }
-                },
-                None => {
-                    return AccountResolution {
-                        account_dir: None,
-                        account: None,
-                        origin: AccountOrigin::BaseCommand,
+    if let Some(assignment) = base_assignment.as_ref() {
+        let unresolved = AccountResolution {
+            account_dir: None,
+            account: None,
+            origin: AccountOrigin::BaseCommand,
+            fallback_from: fallback_from.clone(),
+            needs_choice: false,
+        };
+        match assignment {
+            Some(dir) => match account_for_dir(accounts, dir) {
+                Some(account) if account.identity.logged_in => {
+                    return selected(
+                        account,
+                        AccountOrigin::BaseCommand,
+                        BaseSelector::Owns,
                         fallback_from,
-                        needs_choice: false,
-                    };
+                    );
                 }
-            }
+                Some(account) => {
+                    fallback_from.get_or_insert_with(|| account.id.clone());
+                }
+                None => return unresolved,
+            },
+            None => return unresolved,
         }
     }
 
@@ -222,7 +226,7 @@ pub fn resolve_launch_account(
     if default_account.is_none_or(|account| account.identity.logged_in) {
         return AccountResolution {
             account_dir: default_account
-                .filter(|account| !account.is_process_default)
+                .filter(|account| selector_dir_needed(account, base))
                 .map(|account| account.dir.clone()),
             account: default_account.cloned(),
             origin: AccountOrigin::DefaultConfigDir,
@@ -231,11 +235,11 @@ pub fn resolve_launch_account(
         };
     }
     if let Some(account) = accounts.iter().find(|account| account.identity.logged_in) {
-        return selected(account, AccountOrigin::SignedIn, false, fallback_from);
+        return selected(account, AccountOrigin::SignedIn, base, fallback_from);
     }
     AccountResolution {
         account_dir: default_account
-            .filter(|account| !account.is_process_default)
+            .filter(|account| selector_dir_needed(account, base))
             .map(|account| account.dir.clone()),
         account: default_account.cloned(),
         origin: AccountOrigin::DefaultConfigDir,
@@ -244,19 +248,45 @@ pub fn resolve_launch_account(
     }
 }
 
+/// What the base command's own account selector means for this launch.
+#[derive(Debug, Clone, Copy)]
+enum BaseSelector<'a> {
+    /// The base command carries no selector for this tool.
+    Absent,
+    /// It carries one. `dir` is the directory it names, when that is readable.
+    Present { dir: Option<&'a Path> },
+    /// Nothing above the base command chose an account, so its selector did.
+    Owns,
+}
+
 fn selected(
     account: &Account,
     origin: AccountOrigin,
-    base_command_owns_selector: bool,
+    base: BaseSelector<'_>,
     fallback_from: Option<String>,
 ) -> AccountResolution {
     AccountResolution {
-        account_dir: (!base_command_owns_selector && !account.is_process_default)
-            .then(|| account.dir.clone()),
+        account_dir: selector_dir_needed(account, base).then(|| account.dir.clone()),
         account: Some(account.clone()),
         origin,
         fallback_from,
         needs_choice: false,
+    }
+}
+
+/// Whether the launch has to name `account`'s directory itself.
+///
+/// The process default needs no selector — unless the base command already
+/// carries one, which would otherwise silently outrank every choice the user
+/// made. Precedence ranks the base command's selector below all of them.
+fn selector_dir_needed(account: &Account, base: BaseSelector<'_>) -> bool {
+    match base {
+        BaseSelector::Owns => false,
+        BaseSelector::Absent => !account.is_process_default,
+        BaseSelector::Present { dir } => {
+            !account.is_process_default
+                || dir.is_none_or(|dir| path_key(dir) != path_key(&account.dir))
+        }
     }
 }
 
@@ -308,30 +338,99 @@ pub fn command_contains_env(command: &str, selector: &str) -> bool {
 }
 
 /// `None` = absent; `Some(None)` = present but not parseable as a directory.
+///
+/// A shell reads the *last* assignment of a name, and expanding an alias can
+/// leave more than one behind: a configured `CLAUDE_CONFIG_DIR=… claude2` line
+/// becomes `CLAUDE_CONFIG_DIR=… CLAUDE_CONFIG_DIR=… claude`. The one in force
+/// is the one this reports. Only the leading run counts — a shell puts a word
+/// in the environment only in front of the command name.
 fn command_env_assignment(command: &str, selector: &str) -> Option<Option<PathBuf>> {
     let prefix = format!("{selector}=");
-    shell_words(command).into_iter().find_map(|word| {
-        word.strip_prefix(&prefix).map(|value| {
-            let value = value.trim();
-            (!value.is_empty()).then(|| PathBuf::from(value))
+    shell_words(command)
+        .into_iter()
+        // A shell reads assignments only in front of the command name. Past it
+        // every word is an argument the program receives verbatim, however much
+        // it looks like an assignment.
+        .take_while(ShellWord::is_assignment)
+        .filter_map(|word| {
+            word.value.strip_prefix(&prefix).map(|value| {
+                let value = value.trim();
+                (!value.is_empty()).then(|| expand_home(value))
+            })
         })
-    })
+        .last()
 }
 
-fn shell_words(command: &str) -> Vec<String> {
+/// A leading `~` in a base command is the launching shell's home directory,
+/// while every detected account is an absolute path.
+///
+/// A resolved base has none left: `launch_base` expands the selector's tilde
+/// where the pane shell lives, which on Windows is the WSL daemon. This is the
+/// last resort for a base nothing resolved — no daemon, or a daemon too old for
+/// `resolve_launch_base` — and there the home is this process's. On Windows
+/// that names no detected account, the resolution falls through as it always
+/// did, and the account it lands on has its own directory rendered.
+fn expand_home(value: &str) -> PathBuf {
+    let Some(rest) = value.strip_prefix('~') else {
+        return PathBuf::from(value);
+    };
+    // `~user` is somebody else's home; only the current user's is known here.
+    if !(rest.is_empty() || rest.starts_with('/')) {
+        return PathBuf::from(value);
+    }
+    let Some(home) = dirs::home_dir() else {
+        return PathBuf::from(value);
+    };
+    match rest.strip_prefix('/').filter(|tail| !tail.is_empty()) {
+        Some(tail) => home.join(tail),
+        None => home,
+    }
+}
+
+/// One word of a shell command, and whether quoting reached its `NAME=` part.
+struct ShellWord {
+    value: String,
+    name_quoted: bool,
+}
+
+impl ShellWord {
+    /// Whether a shell would put this word in the environment rather than read
+    /// it as a command name or hand it to the program as an argument.
+    fn is_assignment(&self) -> bool {
+        if self.name_quoted {
+            return false;
+        }
+        let Some((name, _)) = self.value.split_once('=') else {
+            return false;
+        };
+        !name.is_empty()
+            && name
+                .starts_with(|character: char| character.is_ascii_alphabetic() || character == '_')
+            && name
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+    }
+}
+
+fn shell_words(command: &str) -> Vec<ShellWord> {
     let mut words = Vec::new();
     let mut word = String::new();
     let mut started = false;
+    let mut name_quoted = false;
     let mut characters = command.chars().peekable();
     while let Some(character) = characters.next() {
         match character {
             character if character.is_whitespace() => {
                 if started {
-                    words.push(std::mem::take(&mut word));
+                    words.push(ShellWord {
+                        value: std::mem::take(&mut word),
+                        name_quoted: std::mem::take(&mut name_quoted),
+                    });
                     started = false;
                 }
             }
             '\'' => {
+                name_quoted |= !word.contains('=');
                 started = true;
                 for quoted in characters.by_ref() {
                     if quoted == '\'' {
@@ -341,6 +440,7 @@ fn shell_words(command: &str) -> Vec<String> {
                 }
             }
             '"' => {
+                name_quoted |= !word.contains('=');
                 started = true;
                 while let Some(quoted) = characters.next() {
                     match quoted {
@@ -353,6 +453,7 @@ fn shell_words(command: &str) -> Vec<String> {
                 }
             }
             '\\' => {
+                name_quoted |= !word.contains('=');
                 started = true;
                 word.extend(characters.next());
             }
@@ -363,7 +464,10 @@ fn shell_words(command: &str) -> Vec<String> {
         }
     }
     if started {
-        words.push(word);
+        words.push(ShellWord {
+            value: word,
+            name_quoted,
+        });
     }
     words
 }
@@ -1489,6 +1593,174 @@ mod tests {
             },
         );
         assert_eq!(resolved.account.unwrap().id, "last");
+        assert_eq!(resolved.origin, AccountOrigin::BaseCommand);
+        assert_eq!(resolved.account_dir, None, "the base owns the selector");
+    }
+
+    #[test]
+    fn the_resolved_account_wins_over_a_selector_the_base_command_pins() {
+        // Regression: 0.8.3 rendered no selector for the process-default
+        // account, so a base command carrying its own CLAUDE_CONFIG_DIR sent
+        // the launch to the other subscription and said nothing.
+        let resolved = resolve_launch_account(
+            &fixture(),
+            &FakeProvider,
+            AccountRequest {
+                pinned_account_id: Some("default"),
+                base_command: Some("CLAUDE_CONFIG_DIR=/accounts/last claude"),
+                selector: Some("CLAUDE_CONFIG_DIR"),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(resolved.account.unwrap().id, "default");
+        assert_eq!(resolved.origin, AccountOrigin::Project);
+        assert_eq!(
+            resolved.account_dir.as_deref(),
+            Some(Path::new("/accounts/default")),
+            "the chosen account's dir has to overwrite the base command's"
+        );
+    }
+
+    #[test]
+    fn the_selector_in_force_is_the_last_one_the_base_assigns() {
+        // Regression: c65efa4 read the first `CLAUDE_CONFIG_DIR=` word of the
+        // base command, but a shell reads the last one. Expanding an alias in
+        // front of a configured prefix leaves two assignments, and the alias's
+        // own selector is the one the launch would have run on.
+        let resolved = resolve_launch_account(
+            &fixture(),
+            &FakeProvider,
+            AccountRequest {
+                pinned_account_id: Some("default"),
+                base_command: Some(
+                    "CLAUDE_CONFIG_DIR=/accounts/default CLAUDE_CONFIG_DIR=/accounts/last claude",
+                ),
+                selector: Some("CLAUDE_CONFIG_DIR"),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(resolved.account.unwrap().id, "default");
+        assert_eq!(
+            resolved.account_dir.as_deref(),
+            Some(Path::new("/accounts/default")),
+            "the assignment in force names another account, so the launch has to name its own"
+        );
+    }
+
+    #[test]
+    fn a_selector_shaped_argument_is_not_a_base_command_selector() {
+        // Regression: 967f956 read the selector out of any shell word of the
+        // base command. A word after the executable is an argument, whatever
+        // it looks like, so `claude --append-system-prompt CLAUDE_CONFIG_DIR=…`
+        // was credited with choosing the account this launch runs on.
+        // The tilde spelling is an argument too: a3afcfe expanded `~` in every
+        // word of the resolved base, so this one arrived here as an absolute
+        // path that could name a detected account.
+        for argument in ["/accounts/last", "~/.claude"] {
+            let base = format!("claude --append-system-prompt CLAUDE_CONFIG_DIR={argument}");
+            let resolved = resolve_launch_account(
+                &fixture(),
+                &FakeProvider,
+                AccountRequest {
+                    base_command: Some(&base),
+                    selector: Some("CLAUDE_CONFIG_DIR"),
+                    ..Default::default()
+                },
+            );
+
+            assert_eq!(resolved.origin, AccountOrigin::DefaultConfigDir);
+            assert_eq!(resolved.account.unwrap().id, "default");
+            assert_eq!(
+                resolved.account_dir, None,
+                "the base command assigns nothing, so the process default needs no selector"
+            );
+        }
+    }
+
+    #[test]
+    fn a_base_selector_naming_the_resolved_account_renders_nothing() {
+        let resolved = resolve_launch_account(
+            &fixture(),
+            &FakeProvider,
+            AccountRequest {
+                pinned_account_id: Some("default"),
+                base_command: Some("CLAUDE_CONFIG_DIR='/accounts/default' claude"),
+                selector: Some("CLAUDE_CONFIG_DIR"),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(resolved.account.unwrap().id, "default");
+        assert_eq!(resolved.account_dir, None, "the base already names it");
+    }
+
+    #[test]
+    fn a_base_selector_this_build_cannot_read_is_overwritten() {
+        let resolved = resolve_launch_account(
+            &fixture(),
+            &FakeProvider,
+            AccountRequest {
+                pinned_account_id: Some("default"),
+                base_command: Some("CLAUDE_CONFIG_DIR= claude"),
+                selector: Some("CLAUDE_CONFIG_DIR"),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            resolved.account_dir.as_deref(),
+            Some(Path::new("/accounts/default"))
+        );
+    }
+
+    #[test]
+    fn a_signed_out_account_in_the_base_command_does_not_keep_the_launch() {
+        let mut accounts = fixture();
+        accounts[2].identity.logged_in = false;
+        let resolved = resolve_launch_account(
+            &accounts,
+            &FakeProvider,
+            AccountRequest {
+                base_command: Some("CLAUDE_CONFIG_DIR=/accounts/last claude"),
+                selector: Some("CLAUDE_CONFIG_DIR"),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(resolved.account.unwrap().id, "default");
+        assert_eq!(
+            resolved.account_dir.as_deref(),
+            Some(Path::new("/accounts/default")),
+            "the signed-out dir the base pins must not be inherited"
+        );
+    }
+
+    #[test]
+    fn a_tilde_in_the_base_command_resolves_against_the_launching_home() {
+        // The alias body a shell reports keeps the `~` the user typed; a
+        // detected account is always an absolute dir.
+        let Some(home) = dirs::home_dir() else {
+            return;
+        };
+        let dir = home.join(".claude-account2");
+        let accounts = vec![
+            account("default", "/accounts/default", true),
+            account("second", &dir.to_string_lossy(), false),
+        ];
+
+        let resolved = resolve_launch_account(
+            &accounts,
+            &FakeProvider,
+            AccountRequest {
+                base_command: Some("CLAUDE_CONFIG_DIR=~/.claude-account2 claude"),
+                selector: Some("CLAUDE_CONFIG_DIR"),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(resolved.account.unwrap().id, "second");
         assert_eq!(resolved.origin, AccountOrigin::BaseCommand);
         assert_eq!(resolved.account_dir, None, "the base owns the selector");
     }

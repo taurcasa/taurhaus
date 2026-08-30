@@ -11,6 +11,7 @@
   import {
     activeAccountId,
     accountState,
+    launchAccountNotice,
     launchFollowsHistory,
     refreshAccounts,
     refreshUsage,
@@ -311,9 +312,9 @@
    * running, so the menu cannot always see the delegation coming. The backend
    * always can, and reports it on the launch itself.
    */
-  function noteAccountNotApplied(project, result) {
-    if (result?.account_applied !== false) return
-    showSidebarNotice(`${project?.name ?? 'This project'} continued on the team's default account`)
+  function noteAccountNotApplied(project, result, tool) {
+    const notice = launchAccountNotice(result, { project, tool })
+    if (notice) showSidebarNotice(notice)
   }
 
   function ctxLaunchTool(mode, tool = tools()[0]?.id, accountId = null, { choose = 'auto' } = {}) {
@@ -331,7 +332,7 @@
       launch: (projectId, launchMode, launchTool, launchAccountId) =>
         launchCliSession(projectId, launchMode, launchTool, launchAccountId).then((r) => {
           console.log('[cmd-center] launch OK:', r)
-          noteAccountNotApplied(project, r)
+          noteAccountNotApplied(project, r, tool)
         }),
       onError: (error) => {
         console.error('[cmd-center] launch FAILED:', error)
@@ -398,9 +399,14 @@
       tool,
       accountId,
       launch: (projectId, launchMode, launchTool, launchAccountId) =>
-        stopClaudeSession(pane, launchTool).then(() =>
-          launchCliSession(projectId, launchMode, launchTool, launchAccountId)
-        ),
+        stopClaudeSession(pane, launchTool)
+          .then(() => launchCliSession(projectId, launchMode, launchTool, launchAccountId))
+          .then((result) => {
+            // A restart is a launch: an account it could not enforce is
+            // reported the same way a fresh launch reports it.
+            noteAccountNotApplied(project, result, launchTool)
+            return result
+          }),
       onError: (error) => {
         console.error('Failed to restart session:', error)
         showSidebarNotice(describeSessionActionError('restart', { tool }, error))

@@ -1396,6 +1396,58 @@ fn a_project_pinned_to_a_second_account_launches_with_its_config_dir() {
     assert_eq!(rendered["account"], "second@example.com");
 }
 
+// Regression: 0.8.3 read the base command literally and let it keep its own
+// selector, so the operator's `claude2` alias
+// (CLAUDE_CONFIG_DIR=~/.claude-account2 claude) overruled the account pinned
+// for the project and every launch ran on the other subscription.
+#[test]
+fn a_launch_through_a_shell_alias_runs_on_the_pinned_account() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _accounts = with_fake_accounts();
+    let _aliases = crate::session_scanner::launch_base::install_alias_override(&[(
+        "claude2",
+        "CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude",
+    )]);
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    {
+        let conn = db.0.lock().expect("db lock");
+        // The pinned account lives in the process-default dir, which is what
+        // made the bug silent: nothing was rendered to contradict the alias.
+        crate::db::queries::set_project_account(&conn, "p1", "claude", Some("account-1"))
+            .expect("store account");
+        let mut settings = crate::db::settings_queries::get_all_settings(&conn).expect("settings");
+        settings.terminal.cli_commands.claude.fresh =
+            "claude2 --dangerously-skip-permissions".to_string();
+        crate::db::settings_queries::save_settings(&conn, &settings).expect("save settings");
+    }
+    let (log_file, _log_file_path) = setup_log_file();
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p1".to_string(),
+        LaunchMode::Fresh,
+        Some(CliTool::Claude),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        "CLAUDE_CONFIG_DIR='/home/user/.claude' claude --dangerously-skip-permissions"
+    );
+}
+
 #[test]
 fn a_project_pinned_to_a_vanished_account_falls_back_and_says_so() {
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
@@ -1465,6 +1517,7 @@ fn a_launch_whose_detection_failed_falls_back_and_says_why() {
             source: "daemon".to_string(),
             degraded: true,
             error: Some("Daemon transport error: connection reset by peer".to_string()),
+            resolved_bases: Vec::new(),
         },
         &TranscriptLookup {
             transcript: None,
@@ -1491,6 +1544,33 @@ fn a_launch_whose_detection_failed_falls_back_and_says_why() {
     assert_eq!(fallback["used"], serde_json::Value::Null);
 }
 
+// Regression: c65efa4's renderer notes `launch.selector.ignored` whenever it
+// added no selector of its own. A pin that lands on the process-default account
+// the base command already names adds none either, and nothing was ignored
+// there — the note belongs to a base command that chose the account itself.
+#[test]
+fn the_ignored_selector_note_is_only_for_a_base_that_chose_the_account() {
+    use super::launching::note_holds;
+    use crate::session_scanner::accounts::AccountOrigin;
+    use crate::session_scanner::launch::LaunchNote;
+
+    let ignored = LaunchNote::SelectorIgnored {
+        found: "CLAUDE_CONFIG_DIR".to_string(),
+    };
+    assert!(note_holds(&ignored, Some(AccountOrigin::BaseCommand)));
+    assert!(!note_holds(&ignored, Some(AccountOrigin::Project)));
+    assert!(!note_holds(&ignored, Some(AccountOrigin::DefaultConfigDir)));
+    assert!(!note_holds(&ignored, None));
+
+    // Every other note stands on its own.
+    let rewritten = LaunchNote::SelectorRewritten {
+        found: "CLAUDE_CONFIG_DIR=~/.claude-account2".to_string(),
+        replaced_with: "CLAUDE_CONFIG_DIR='/home/user/.claude'".to_string(),
+    };
+    assert!(note_holds(&rewritten, Some(AccountOrigin::Project)));
+    assert!(note_holds(&rewritten, None));
+}
+
 /// A transcript recovered from this process's own sightings placed the resume,
 /// so nothing fell back — a warning here would be noise.
 #[test]
@@ -1507,6 +1587,7 @@ fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
             source: "daemon".to_string(),
             degraded: false,
             error: None,
+            resolved_bases: Vec::new(),
         },
         &TranscriptLookup {
             transcript: Some(transcript.clone()),
@@ -2448,6 +2529,56 @@ fn delegated_resume_without_a_requested_account_reports_nothing() {
 
     assert_eq!(result.account_applied, None);
     assert_eq!(result.account_note, None);
+}
+
+// A wrapper script or shell function can override the selector taurhaus
+// rendered, and taurhaus will not run it to find out. The launch goes ahead
+// and says what it could not promise.
+#[test]
+fn an_opaque_base_command_reports_that_the_account_was_not_applied() {
+    use super::launching::{log_opaque_base, note_opaque_base};
+
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let (log_file, log_file_path) = setup_log_file();
+    install_global_sink(&log_file);
+
+    let resolved = crate::session_scanner::launch_base::ResolvedBase {
+        command: "my-claude-wrapper --dangerously-skip-permissions".to_string(),
+        expansions: Vec::new(),
+        opaque_head: Some("my-claude-wrapper".to_string()),
+    };
+    log_opaque_base(CliTool::Claude, &resolved);
+    let result = note_opaque_base(
+        protocol::LaunchSessionResult::default(),
+        resolved.opaque_head.as_deref(),
+    );
+
+    assert_eq!(result.account_applied, Some(false));
+    assert_eq!(result.account_note.as_deref(), Some("opaque_base_command"));
+    assert_eq!(
+        result.account_note_detail.as_deref(),
+        Some("my-claude-wrapper")
+    );
+
+    let events = read_log_events(&log_file, log_file_path.path());
+    let opaque = events
+        .iter()
+        .find(|event| event["event"] == "launch.base.opaque")
+        .expect("opaque base event");
+    assert_eq!(opaque["head"], "my-claude-wrapper");
+    assert_eq!(opaque["tool"], "claude");
+    assert_eq!(opaque["level"], "WARN");
+}
+
+#[test]
+fn a_base_command_that_runs_the_tool_reports_nothing() {
+    use super::launching::note_opaque_base;
+
+    let result = note_opaque_base(protocol::LaunchSessionResult::default(), None);
+
+    assert_eq!(result.account_applied, None);
+    assert_eq!(result.account_note, None);
+    assert_eq!(result.account_note_detail, None);
 }
 
 // One warning per project per run: the menu offers the choice on every

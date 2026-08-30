@@ -9,6 +9,8 @@
   import { buildFrontendFallbackTerminalContract } from './ipc/system.js'
   import {
     accountState,
+    forgetResolvedBases,
+    opaqueBaseNotice,
     refreshAccounts,
     refreshUsage,
     setDefaultAccount,
@@ -164,11 +166,19 @@
     )
   )
 
-  function selectedAccountId(tool) {
-    const state = accountState(tool)
+  /** The account this user chose as the tool's global default, if any. */
+  function persistedDefaultAccountId(tool) {
     return (
       settings?.terminal?.default_account_ids?.[tool] ??
       settings?.terminal?.defaultAccountIds?.[tool] ??
+      null
+    )
+  }
+
+  function selectedAccountId(tool) {
+    const state = accountState(tool)
+    return (
+      persistedDefaultAccountId(tool) ??
       state.accounts.find((account) => account.is_default)?.id ??
       ''
     )
@@ -193,21 +203,93 @@
     return [account?.organization, account?.plan].filter(Boolean).join(' · ')
   }
 
+  /**
+   * The launch commands as the pane's shell reads them, resolved by the
+   * backend. Without that answer the literal settings are all there is —
+   * which is what an older backend leaves the frontend with.
+   */
+  function launchBases(tool) {
+    const resolved = accountState(tool.id).resolvedBases ?? []
+    if (resolved.length) return resolved
+    const commands = settings?.terminal?.cli_commands?.[tool.id] ?? {}
+    return Object.values(commands).map((command) => ({ command: String(command) }))
+  }
+
+  /**
+   * The run of `NAME=value` words a shell puts in the environment: the ones in
+   * front of the command name. Past it every word is an argument the program
+   * receives verbatim, however much it looks like an assignment.
+   */
+  function assignmentPrefix(command) {
+    const line = String(command)
+    const word = /^\s*[A-Za-z_][A-Za-z0-9_]*=(?:'[^']*'|"[^"]*"|[^\s'"])*(?=\s|$)/
+    let end = 0
+    for (;;) {
+      const match = word.exec(line.slice(end))
+      if (!match) return line.slice(0, end)
+      end += match[0].length
+    }
+  }
+
+  /**
+   * The account a base command's own selector names.
+   *
+   * A shell reads the last assignment of a name, and an expanded alias can
+   * leave a configured prefix in front of its own. A backend that resolved the
+   * base has already expanded `~` against the home of the shell that will run
+   * it; one too old to resolve anything leaves the tilde, and the account is
+   * then matched on the path it names below that home.
+   */
+  function baseSelectorAccount(command, selector, accounts) {
+    if (!selector) return null
+    const pattern = new RegExp(`(?:^|\\s)${selector}=(?:'([^']*)'|\"([^\"]*)\"|([^\\s]*))`, 'g')
+    const assignment = [...assignmentPrefix(command).matchAll(pattern)].at(-1)
+    const dir = assignment ? (assignment[1] ?? assignment[2] ?? assignment[3] ?? '') : ''
+    if (!dir) return null
+    if (dir.startsWith('~/')) {
+      const tail = dir.slice(1)
+      return accounts.find((account) => String(account.dir).endsWith(tail)) ?? null
+    }
+    return accounts.find((account) => account.dir === dir) ?? null
+  }
+
+  /**
+   * Which account a launch lands on, and why.
+   *
+   * Precedence is the backend's: the global default this user chose, then a
+   * selector the launch command carries — through a shell alias included — and
+   * only then the configured config directory. Detection marks that
+   * directory's account `is_default`, which is a fact about the host rather
+   * than a choice anybody made, so it cannot outrank the launch command.
+   */
   function effectiveDefault(tool) {
     const state = accountState(tool.id)
-    const selected = state.accounts.find((account) => account.id === selectedAccountId(tool.id))
-    if (selected) return { account: selected, origin: 'default' }
+    const configured = state.accounts.find(
+      (account) => account.is_process_default || account.is_default
+    )
+    const bases = launchBases(tool)
+    // A launch command taurhaus cannot see through decides the account itself,
+    // whatever was chosen here — so the warning outranks every precedence rule
+    // below, the chosen global default included.
+    const opaqueHead = bases.map((base) => base.opaqueHead ?? base.opaque_head).find(Boolean)
+    if (opaqueHead) return { account: configured, origin: opaqueBaseNotice(opaqueHead, tool.id) }
+    const chosen = state.accounts.find(
+      (account) => account.id === persistedDefaultAccountId(tool.id)
+    )
+    if (chosen) return { account: chosen, origin: 'default' }
     const selector = tool.capabilities.accountSelector
-    const commands = settings?.terminal?.cli_commands?.[tool.id] ?? {}
-    for (const command of Object.values(commands)) {
-      const match = selector && String(command).match(new RegExp(`${selector}=['\"]?([^'\" ]+)`))
-      const account = match && state.accounts.find((candidate) => candidate.dir === match[1])
-      if (account) return { account, origin: `from your launch command \"${command}\"` }
+    for (const base of bases) {
+      const account = baseSelectorAccount(base.command, selector, state.accounts)
+      if (!account) continue
+      const alias = base.expansions?.[0]
+      return {
+        account,
+        origin: alias
+          ? `from your launch command \"${alias.name}\" (alias for ${alias.body})`
+          : `from your launch command \"${base.command}\"`,
+      }
     }
-    return {
-      account: state.accounts.find((account) => account.is_process_default || account.is_default),
-      origin: 'default config directory',
-    }
+    return { account: configured, origin: 'default config directory' }
   }
 
   function focusCliCommands(tool) {
@@ -315,16 +397,27 @@
     return settings?.terminal?.cli_commands?.[tool]?.[mode] ?? getTerminalCliDefaults()[tool][mode]
   }
 
-  function setCliCmd(tool, mode, value) {
-    ensureCliCommands()
-    settings.terminal.cli_commands[tool][mode] = value
-    saveSettings()
+  /**
+   * A saved launch command is a new question for the backend: what the pane
+   * shell makes of it is resolved there, and the answer to the command it
+   * replaced describes nothing any launch will run.
+   */
+  async function resolveSavedCommand(tool) {
+    if (!cliTools.find((entry) => entry.id === tool)?.capabilities.accountSelection) return
+    forgetResolvedBases(tool)
+    await refreshAccounts(tool, { force: true })
   }
 
-  function resetToolDefaults(tool) {
+  async function setCliCmd(tool, mode, value) {
+    ensureCliCommands()
+    settings.terminal.cli_commands[tool][mode] = value
+    if (await saveSettings()) await resolveSavedCommand(tool)
+  }
+
+  async function resetToolDefaults(tool) {
     ensureCliCommands()
     settings.terminal.cli_commands[tool] = { ...getTerminalCliDefaults()[tool] }
-    saveSettings()
+    if (await saveSettings()) await resolveSavedCommand(tool)
   }
 
   async function handleRebuildIndex() {

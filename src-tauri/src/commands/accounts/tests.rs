@@ -166,6 +166,116 @@ fn an_older_daemon_reports_no_transcript_without_degrading() {
     assert_eq!(lookup.unavailable, None);
 }
 
+/// Settings has to name the account a launch will really run on, and only the
+/// resolved base command says which one that is.
+#[test]
+fn the_accounts_report_carries_what_the_pane_shell_makes_of_each_command() {
+    let (db, _tmp) = db_with_project("p1");
+    {
+        let conn = db.0.lock().expect("db lock");
+        let mut settings = crate::db::settings_queries::get_all_settings(&conn).expect("settings");
+        settings.terminal.cli_commands.claude.fresh =
+            "claude2 --dangerously-skip-permissions".to_string();
+        crate::db::settings_queries::save_settings(&conn, &settings).expect("save settings");
+    }
+    let _aliases = crate::session_scanner::launch_base::install_alias_override(&[(
+        "claude2",
+        "CLAUDE_CONFIG_DIR=/homes/two claude",
+    )]);
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: None,
+        wsl_distro: None,
+    };
+
+    let report = list_accounts_impl(&db, &provider, CliTool::Claude);
+
+    let resolved: Vec<&str> = report
+        .resolved_bases
+        .iter()
+        .map(|base| base.command.as_str())
+        .collect();
+    assert_eq!(resolved.len(), 3, "one per configured mode: {resolved:?}");
+    assert!(
+        resolved.contains(&"CLAUDE_CONFIG_DIR=/homes/two claude --dangerously-skip-permissions"),
+        "{resolved:?}"
+    );
+    let expansion = report
+        .resolved_bases
+        .iter()
+        .find_map(|base| base.expansions.first())
+        .expect("the alias that carried the selector");
+    assert_eq!(expansion.name, "claude2");
+}
+
+/// A daemon that can read the WSL shell answers what the base command means.
+#[test]
+fn a_resolved_base_from_the_daemon_is_used_as_the_launch_base() {
+    let response = protocol::DaemonResponse::ok(
+        "resolve-launch-base-claude",
+        serde_json::json!({
+            "command": "CLAUDE_CONFIG_DIR=~/.claude-account2 claude --dangerously-skip-permissions",
+            "expansions": [{
+                "name": "claude2",
+                "body": "CLAUDE_CONFIG_DIR=~/.claude-account2 claude"
+            }],
+            "opaqueHead": null
+        }),
+    );
+
+    let resolved = resolved_base_from(
+        daemon_answer(Ok(response), "the resolved launch base"),
+        "claude2 --dangerously-skip-permissions",
+    );
+
+    assert_eq!(
+        resolved.command,
+        "CLAUDE_CONFIG_DIR=~/.claude-account2 claude --dangerously-skip-permissions"
+    );
+    assert_eq!(resolved.expansions.len(), 1);
+}
+
+// Regression: bc4457a sent `resolve_launch_base` through `send_status_request`,
+// whose 5 s ping timeout is shorter than the resolution the daemon runs to
+// answer it — up to three interactive-shell probes plus finding the pane shell.
+// A request that expires first is a failure, a failure puts the literal base
+// back, and the alias's own selector is once again what selects the account.
+#[test]
+fn the_resolve_request_outlives_the_resolution_it_asks_for() {
+    assert!(
+        RESOLVE_LAUNCH_BASE_TIMEOUT > launch_base::RESOLUTION_BUDGET,
+        "a {RESOLVE_LAUNCH_BASE_TIMEOUT:?} request cannot carry a {:?} resolution",
+        launch_base::RESOLUTION_BUDGET,
+    );
+}
+
+/// An older daemon has no shell to ask, so the base stays exactly as
+/// configured — which is what every launch did before this feature.
+#[test]
+fn an_older_daemon_leaves_the_base_command_literal() {
+    let unsupported = protocol::DaemonResponse::err(
+        "resolve-launch-base-claude",
+        "UNKNOWN_METHOD",
+        "Unknown method: resolve_launch_base",
+    );
+
+    for answer in [
+        daemon_answer(Ok(unsupported), "the resolved launch base"),
+        daemon_answer(
+            Err(crate::errors::AppError::DaemonTransport(
+                "timed out waiting for daemon".to_string(),
+            )),
+            "the resolved launch base",
+        ),
+    ] {
+        let resolved = resolved_base_from(answer, "claude2 --dangerously-skip-permissions");
+
+        assert_eq!(resolved.command, "claude2 --dangerously-skip-permissions");
+        assert!(resolved.expansions.is_empty());
+        assert_eq!(resolved.opaque_head, None);
+    }
+}
+
 /// A transcript where Claude Code writes one: `<config dir>/projects/<slug>/`.
 pub(crate) fn write_transcript(config_dir: &Path, project_path: &str, name: &str) -> PathBuf {
     let dir = config_dir

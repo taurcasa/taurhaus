@@ -82,6 +82,9 @@ pub(crate) fn dispatch(
             handle_project_transcript(&request.id, &request.params)
         }
         protocol::method::REFRESH_USAGE => handle_refresh_usage(&request.id, &request.params),
+        protocol::method::RESOLVE_LAUNCH_BASE => {
+            handle_resolve_launch_base(&request.id, &request.params)
+        }
         protocol::method::LIST_WORKFLOW_RUNS => {
             handle_list_workflow_runs(&request.id, &request.params)
         }
@@ -110,6 +113,24 @@ fn handle_list_accounts(id: &str, params: &serde_json::Value) -> DaemonResponse 
             degraded: false,
             error: None,
         },
+    )
+}
+
+/// What the pane shell on this host makes of a base command. The Windows app
+/// cannot read the WSL shell's aliases itself.
+fn handle_resolve_launch_base(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::ResolveLaunchBaseParams = match serde_json::from_value(params.clone()) {
+        Ok(params) => params,
+        Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+    };
+    let probe = crate::session_scanner::launch_base::ShellAliasProbe::for_pane();
+    DaemonResponse::ok(
+        id,
+        crate::session_scanner::launch_base::resolve_base_command_cached(
+            &params.base,
+            params.tool,
+            &probe,
+        ),
     )
 }
 

@@ -106,6 +106,7 @@ pub mod method {
     pub const SHUTDOWN: &str = "shutdown";
     pub const LIST_ACCOUNTS: &str = "list_accounts";
     pub const PROJECT_TRANSCRIPT: &str = "project_transcript";
+    pub const RESOLVE_LAUNCH_BASE: &str = "resolve_launch_base";
     pub const REFRESH_USAGE: &str = "refresh_usage";
     pub const LIST_WORKFLOW_RUNS: &str = "list_workflow_runs";
     pub const GET_WORKFLOW_RUN: &str = "get_workflow_run";
@@ -164,6 +165,15 @@ pub struct ProjectTranscriptParams {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProjectTranscriptResult {
     pub transcript: Option<String>,
+}
+
+/// `resolve_launch_base` — what the daemon host's pane shell makes of a
+/// configured base command. Additive: a daemon without it answers
+/// `UNKNOWN_METHOD` and the app keeps reading the base literally.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ResolveLaunchBaseParams {
+    pub tool: crate::session_scanner::cli_tool::CliTool,
+    pub base: String,
 }
 
 /// `list_workflow_runs` — completed and live runs under one Claude session.
@@ -362,6 +372,10 @@ pub struct LaunchSessionResult {
     /// on rather than a sentence it would have to parse.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account_note: Option<String>,
+    /// The one detail a note needs to name something the user wrote — the head
+    /// of an opaque base command. Set by the app, never by the daemon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_note_detail: Option<String>,
 }
 
 /// `stop_session` params
@@ -861,6 +875,7 @@ mod tests {
             tmux_pane: "%5".to_string(),
             account_applied: Some(false),
             account_note: Some("team_default".to_string()),
+            account_note_detail: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: LaunchSessionResult = serde_json::from_str(&json).unwrap();
@@ -874,6 +889,34 @@ mod tests {
         let r: LaunchSessionResult = serde_json::from_str(json).unwrap();
         assert_eq!(r.tmux_session, None);
         assert_eq!(r.tmux_window, "proj");
+    }
+
+    /// Additive: an app that speaks this method still pairs with a daemon that
+    /// does not, so PROTOCOL_VERSION does not move for it.
+    #[test]
+    fn resolve_launch_base_roundtrips_without_a_protocol_bump() {
+        let params = ResolveLaunchBaseParams {
+            tool: crate::session_scanner::cli_tool::CliTool::Claude,
+            base: "claude2 --dangerously-skip-permissions".to_string(),
+        };
+        let back: ResolveLaunchBaseParams =
+            serde_json::from_str(&serde_json::to_string(&params).unwrap()).unwrap();
+        assert_eq!(params, back);
+
+        let result = crate::session_scanner::launch_base::ResolvedBase {
+            command: "CLAUDE_CONFIG_DIR=~/.claude-account2 claude".to_string(),
+            expansions: vec![crate::session_scanner::launch_base::AliasExpansion {
+                name: "claude2".to_string(),
+                body: "CLAUDE_CONFIG_DIR=~/.claude-account2 claude".to_string(),
+            }],
+            opaque_head: None,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"opaqueHead\""), "{json}");
+        let back: crate::session_scanner::launch_base::ResolvedBase =
+            serde_json::from_str(&json).unwrap();
+        assert_eq!(result, back);
+        assert_eq!(PROTOCOL_VERSION, 14);
     }
 
     #[test]
@@ -1034,6 +1077,7 @@ mod tests {
         assert!(PROTOCOL_VERSION > last_protocol_with_claude_only_account_methods);
         assert_eq!(method::LIST_ACCOUNTS, "list_accounts");
         assert_eq!(method::PROJECT_TRANSCRIPT, "project_transcript");
+        assert_eq!(method::RESOLVE_LAUNCH_BASE, "resolve_launch_base");
     }
 
     #[test]
