@@ -20,7 +20,6 @@ use crate::session_scanner::accounts::{
 use crate::session_scanner::cli_tool::{
     CliCapabilityDescriptor, CliTool, CliToolDescriptor, EffortFlagDescriptor, SessionRoot,
 };
-use crate::session_scanner::launch_base::{AliasExpansion, ResolvedBase};
 use crate::workflow_runs::WorkflowActivity;
 
 const UPDATE_FIXTURES: &str = "UPDATE_IPC_FIXTURES";
@@ -276,14 +275,10 @@ fn fully_populated_accounts_result() -> AccountsResult {
         source: "native".to_string(),
         degraded: true,
         error: Some("Fixture degraded reason".to_string()),
-        resolved_bases: vec![ResolvedBase {
-            command: "CODEX_HOME=/fixtures/codex-home codex --yolo".to_string(),
-            expansions: vec![AliasExpansion {
-                name: "fixture-codex".to_string(),
-                body: "CODEX_HOME=/fixtures/codex-home codex".to_string(),
-            }],
-            opaque_head: Some("fixture-wrapper".to_string()),
-        }],
+        // Wire compatibility only: the backend never fills this — the
+        // dedicated `resolve_launch_bases` command carries what the pane
+        // shell makes of the configured commands.
+        resolved_bases: Vec::new(),
     }
 }
 

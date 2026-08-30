@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use crate::coordination::errors::CoordinationError;
 use crate::session_scanner::cli_tool::CliTool;
@@ -94,6 +96,33 @@ pub enum RuntimeCall {
     },
 }
 
+#[derive(Debug)]
+struct LivePaneProbePause {
+    started: Sender<()>,
+    release: Receiver<()>,
+}
+
+/// Deterministic test gate for interleaving another operation while a pane
+/// probe is in flight. Both waits are bounded so a failing test cannot strand
+/// a runtime thread.
+#[derive(Debug)]
+pub struct LivePaneProbeGate {
+    started: Receiver<()>,
+    release: Sender<()>,
+}
+
+impl LivePaneProbeGate {
+    pub fn wait_until_blocked(&self) {
+        self.started
+            .recv_timeout(Duration::from_secs(5))
+            .expect("live-pane probe did not reach its test gate");
+    }
+
+    pub fn release(self) {
+        self.release.send(()).expect("release live-pane probe");
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct RecordingCoordinationRuntime {
     calls: Mutex<Vec<RuntimeCall>>,
@@ -105,6 +134,7 @@ pub struct RecordingCoordinationRuntime {
     pane_start_time: Mutex<HashMap<String, Option<u64>>>,
     pane_path: Mutex<HashMap<String, Option<PathBuf>>>,
     live_pane_failure_message: Mutex<HashMap<String, String>>,
+    live_pane_probe_pauses: Mutex<HashMap<String, LivePaneProbePause>>,
     pane_ownership: Mutex<HashMap<String, bool>>,
     send_keys_failures_remaining: Mutex<HashMap<String, usize>>,
     send_keys_failure_message: Mutex<HashMap<String, String>>,
@@ -181,6 +211,25 @@ impl RecordingCoordinationRuntime {
     pub fn set_live_pane_failure(&self, pane_id: &str, message: &str) {
         if let Ok(mut map) = self.live_pane_failure_message.lock() {
             map.insert(pane_id.to_string(), message.to_string());
+        }
+    }
+
+    pub fn pause_live_pane_probe(&self, pane_id: &str) -> LivePaneProbeGate {
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        self.live_pane_probe_pauses
+            .lock()
+            .expect("recording runtime live-pane gate")
+            .insert(
+                pane_id.to_string(),
+                LivePaneProbePause {
+                    started: started_tx,
+                    release: release_rx,
+                },
+            );
+        LivePaneProbeGate {
+            started: started_rx,
+            release: release_tx,
         }
     }
 
@@ -596,6 +645,21 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         self.push_call(RuntimeCall::InspectPane {
             pane_id: pane_id.to_string(),
         });
+        if let Some(pause) = self
+            .live_pane_probe_pauses
+            .lock()
+            .ok()
+            .and_then(|mut pauses| pauses.remove(pane_id))
+        {
+            pause
+                .started
+                .send(())
+                .map_err(|err| CoordinationError::Backend(err.to_string()))?;
+            pause
+                .release
+                .recv_timeout(Duration::from_secs(5))
+                .map_err(|err| CoordinationError::Backend(err.to_string()))?;
+        }
         if let Some(message) = self
             .live_pane_failure_message
             .lock()

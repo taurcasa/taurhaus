@@ -24,7 +24,7 @@ fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String
     Ok(project.path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_file_tree(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
@@ -94,7 +94,7 @@ fn classify_path_type(project_root: &Path, relative_path: &str) -> Result<&'stat
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_file(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
@@ -115,7 +115,7 @@ pub fn read_file(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_path_type(
     db: State<'_, DbState>,
     project_id: String,
@@ -133,7 +133,7 @@ pub fn check_path_type(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_readme(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
@@ -151,7 +151,7 @@ pub fn get_readme(
 
 /// Read a binary file from a project directory and return it as a base64 data URI.
 /// Used for rendering images embedded in markdown READMEs.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_project_asset(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,

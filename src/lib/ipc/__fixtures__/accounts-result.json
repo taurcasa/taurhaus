@@ -35,17 +35,5 @@
   ],
   "degraded": true,
   "error": "Fixture degraded reason",
-  "resolvedBases": [
-    {
-      "command": "CODEX_HOME=/fixtures/codex-home codex --yolo",
-      "expansions": [
-        {
-          "body": "CODEX_HOME=/fixtures/codex-home codex",
-          "name": "fixture-codex"
-        }
-      ],
-      "opaqueHead": "fixture-wrapper"
-    }
-  ],
   "source": "native"
 }

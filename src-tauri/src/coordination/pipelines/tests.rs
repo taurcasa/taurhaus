@@ -1,5 +1,7 @@
 use super::*;
+use fs2::FileExt;
 use std::fs;
+use std::fs::File;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -23,7 +25,10 @@ use crate::coordination::requests::{
 use crate::coordination::runtime::{
     CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
 };
-use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::stores::lock::TargetFileLock;
+use crate::coordination::stores::{
+    MemberRuntimeSnapshot, MemberRuntimeStore, RuntimeCommitOutcome, TeamConfigStore,
+};
 use crate::coordination::task_effort::EffortPassScope;
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::{spec, CliTool};
@@ -542,6 +547,170 @@ fn staged_runtime_commit_merges_partial_updates_without_syncing_team_metadata() 
 }
 
 #[test]
+fn activation_runtime_commit_skips_a_stale_dependency_snapshot() {
+    // Regression: 366f4b7 left activation's load-to-save window outside any
+    // shared critical section, so a concurrent liveness writer could be
+    // overwritten by a patch based on the runtime record from before it.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let team_name = "activation-stale-snapshot";
+    let member_name = "builder";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member(
+                member_name,
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/builder",
+            ),
+        )
+        .expect("add member");
+
+    let original = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    let expected = MemberRuntimeSnapshot::capture(&original);
+    let mut concurrent = original;
+    concurrent.pane_id = Some("%winner".to_string());
+    concurrent.pane_pid = Some(9001);
+    concurrent.pane_start_time = Some(1_755_000_009);
+    concurrent.session_id = Some("session-winner".to_string());
+    concurrent.daemon_pid = Some(9002);
+    concurrent.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &concurrent)
+        .expect("concurrent liveness save");
+
+    let member_config = setup_config(member_name, "codex", "gpt-5.4", "/tmp/builder");
+    let context = MemberActivationContext::for_initialize_member(
+        team_name,
+        "team-lead",
+        &member_config,
+        MemberRole::Agent,
+    )
+    .expect("context");
+    let outcome = orchestrator
+        .commit_member_runtime_if_unchanged(
+            &context,
+            RuntimeCommitPatch {
+                pane_id: Some(Some("%stale".to_string())),
+                session_id: Some(Some("session-stale".to_string())),
+                daemon_pid: Some(Some(8000)),
+                health: Some(HealthState::SessionDead),
+                ..Default::default()
+            },
+            &expected,
+        )
+        .expect("stale activation commit is handled");
+
+    assert!(matches!(outcome, RuntimeCommitOutcome::Skipped { .. }));
+    assert_eq!(
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("winning runtime"),
+        concurrent
+    );
+}
+
+#[test]
+fn skipped_activation_runtime_commit_is_reported_as_a_conflict() {
+    // Regression: 0dc5fcae swallowed RuntimeCommitOutcome::Skipped in
+    // commit_member_runtime, so resume reported a launch whose runtime state
+    // was never recorded.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let team_name = "activation-skipped-conflict";
+    let member_name = "builder";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member(
+                member_name,
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/builder",
+            ),
+        )
+        .expect("add member");
+
+    let original = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    let mut concurrent = original;
+    concurrent.pane_id = Some("%winner".to_string());
+    concurrent.pane_pid = Some(9001);
+    concurrent.pane_start_time = Some(1_755_000_009);
+    concurrent.session_id = Some("session-winner".to_string());
+    concurrent.daemon_pid = Some(9002);
+    concurrent.health = HealthState::Healthy;
+
+    let runtime_path = tmp
+        .path()
+        .join(team_name)
+        .join("runtime")
+        .join(format!("{member_name}.json"));
+    let target_lock = TargetFileLock::acquire_if_exists(&runtime_path)
+        .expect("acquire target lock")
+        .expect("runtime target exists");
+    let member_config = setup_config(member_name, "codex", "gpt-5.4", "/tmp/builder");
+    let context = MemberActivationContext::for_initialize_member(
+        team_name,
+        "team-lead",
+        &member_config,
+        MemberRole::Agent,
+    )
+    .expect("context");
+    let commit = std::thread::spawn(move || {
+        orchestrator.commit_member_runtime(
+            &context,
+            RuntimeCommitPatch {
+                pane_id: Some(Some("%stale".to_string())),
+                session_id: Some(Some("session-stale".to_string())),
+                daemon_pid: Some(Some(8000)),
+                health: Some(HealthState::SessionDead),
+                ..Default::default()
+            },
+        )
+    });
+
+    let team_lock_path = tmp.path().join(team_name).join(".lock");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        let lock_file = File::open(&team_lock_path).expect("open team lock");
+        if lock_file.try_lock_exclusive().is_err() {
+            break;
+        }
+        FileExt::unlock(&lock_file).expect("release probe lock");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "activation commit did not reach its target-file wait"
+        );
+        std::thread::yield_now();
+    }
+
+    fs::write(
+        &runtime_path,
+        serde_json::to_string_pretty(&concurrent).expect("serialize concurrent runtime"),
+    )
+    .expect("write concurrent runtime");
+    drop(target_lock);
+
+    let error = commit
+        .join()
+        .expect("activation commit thread")
+        .expect_err("a skipped activation commit must not report success");
+    assert!(matches!(error, CoordinationError::Conflict(_)));
+    assert_eq!(
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("winning runtime"),
+        concurrent
+    );
+}
+
+#[test]
 fn finalized_runtime_commit_syncs_team_metadata() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
@@ -841,6 +1010,10 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
 
 #[test]
 fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() {
+    // This test resolves the Claude config dir, which TAURHAUS_CLAUDE_DIR
+    // moves: hold the shared env guard so a concurrent env-mutating test
+    // cannot race the resolution.
+    let _env = taurhaus_lib::test_support::acquire_env_test_guard();
     let initialize_tmp = TempDir::new().expect("tempdir");
     let initialize_backend = Arc::new(FakeBackend::default());
     let initialize_runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -3584,6 +3757,143 @@ fn resume_foreign_pane_launch_failure_leaves_runtime_dead_without_daemon() {
         .calls()
         .iter()
         .all(|call| !matches!(call, RuntimeCall::SpawnDaemon { .. })));
+}
+
+#[test]
+fn stale_foreign_pane_decision_cannot_overwrite_a_concurrent_runtime_commit() {
+    // Regression: 366f4b7 left the resume foreign-pane cleanup as another
+    // load/probe/save writer, so its stale cleanup record could replace a new
+    // owner while the identity probe was still in flight.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+    let team_name = "foreign-pane-interleave";
+    let member_name = "builder";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member(
+                member_name,
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/builder",
+            ),
+        )
+        .expect("add member");
+
+    let mut stale = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    stale.pane_id = Some("%foreign".to_string());
+    stale.pane_pid = Some(7001);
+    stale.pane_start_time = Some(1_755_000_007);
+    stale.session_id = Some("session-stale".to_string());
+    stale.daemon_pid = Some(7100);
+    stale.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &stale)
+        .expect("save stale binding");
+    runtime.set_pane_exists("%foreign", true);
+    runtime.set_pane_current_command("%foreign", Some("claude"));
+    runtime.set_pid_running(7100, true);
+    runtime.set_send_keys_failures("test-pane-1", usize::MAX, "launch failed");
+    let probe_gate = runtime.pause_live_pane_probe("%foreign");
+
+    let resume = std::thread::spawn(move || {
+        orchestrator
+            .resume_member(team_name, member_name)
+            .expect("resume report")
+    });
+    probe_gate.wait_until_blocked();
+
+    let mut concurrent = stale;
+    concurrent.pane_id = Some("%winner".to_string());
+    concurrent.pane_pid = Some(8001);
+    concurrent.pane_start_time = Some(1_755_000_008);
+    concurrent.session_id = Some("session-winner".to_string());
+    concurrent.daemon_pid = Some(8100);
+    concurrent.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &concurrent)
+        .expect("concurrent runtime commit");
+    probe_gate.release();
+
+    let report = resume.join().expect("resume thread");
+    assert!(!report.resumed);
+    assert_eq!(report.failed_step.as_deref(), Some("resolve_pane"));
+    assert_eq!(
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("final runtime"),
+        concurrent,
+        "foreign cleanup based on the old pane must be dropped"
+    );
+}
+
+#[test]
+fn foreign_pane_commit_error_cleans_the_new_resume_pane() {
+    // Regression: 731dc539 added fallible lock and compare-and-commit calls
+    // whose `?` returns bypassed cleanup_failure after a replacement pane had
+    // already been created.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+    let team_name = "foreign-pane-commit-error";
+    let member_name = "builder";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member(
+                member_name,
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/builder",
+            ),
+        )
+        .expect("add member");
+
+    let mut stale = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    stale.pane_id = Some("%foreign".to_string());
+    stale.pane_pid = Some(7001);
+    stale.pane_start_time = Some(1_755_000_007);
+    stale.session_id = Some("session-stale".to_string());
+    stale.daemon_pid = Some(7100);
+    stale.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &stale)
+        .expect("save stale binding");
+    runtime.set_pane_exists("%foreign", true);
+    runtime.set_pane_current_command("%foreign", Some("claude"));
+    runtime.set_pid_running(7100, true);
+    let probe_gate = runtime.pause_live_pane_probe("%foreign");
+
+    let resume = std::thread::spawn(move || {
+        orchestrator
+            .resume_member(team_name, member_name)
+            .expect("resume report")
+    });
+    probe_gate.wait_until_blocked();
+    fs::write(
+        tmp.path()
+            .join(team_name)
+            .join("runtime")
+            .join(format!("{member_name}.json")),
+        "{ malformed runtime",
+    )
+    .expect("corrupt runtime while foreign-pane probe is in flight");
+    probe_gate.release();
+
+    let report = resume.join().expect("resume thread");
+    assert!(!report.resumed);
+    assert_eq!(report.failed_step.as_deref(), Some("resolve_pane"));
+    assert!(
+        runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::KillPane { pane_id } if pane_id == "test-pane-1"
+        )),
+        "the replacement pane must be rolled back on a store error"
+    );
 }
 
 #[test]

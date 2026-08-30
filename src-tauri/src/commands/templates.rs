@@ -221,7 +221,7 @@ pub fn templates_delete_role(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_role_from_file(
     state: State<'_, TemplateStoreState>,
     request: ImportRoleFromFileRequest,
@@ -432,7 +432,7 @@ pub fn templates_flush_pending(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn export_role_to_file(
     state: State<'_, TemplateStoreState>,
     request: ExportRoleToFileRequest,
@@ -445,7 +445,7 @@ pub fn export_role_to_file(
 
 /// Write every Claude role in the catalog into the project's `.claude/agents`,
 /// where Claude Code and the Workflow API resolve a subagent by name.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn export_agent_definitions(
     db: State<'_, DbState>,
     state: State<'_, TemplateStoreState>,

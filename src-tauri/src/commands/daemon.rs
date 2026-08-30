@@ -19,7 +19,7 @@ const INSTALL_ACTION_TIMEOUT: Duration = Duration::from_secs(12);
 ///
 /// Returns "macos", "linux", or "windows". Used by the frontend to show
 /// platform-appropriate UI (e.g., wizard text about WSL vs native daemon).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_platform() -> String {
     let span = IpcCommandSpan::start("get_platform");
     let platform = if cfg!(target_os = "macos") {
@@ -34,7 +34,7 @@ pub fn get_platform() -> String {
 }
 
 /// Get the current daemon connection status.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_daemon_status(provider: State<'_, ProviderState>) -> IpcResult<DaemonStatus> {
     let span = IpcCommandSpan::start("get_daemon_status");
     // This command is used by splash startup and should never queue behind a
@@ -67,7 +67,7 @@ fn daemon_status_snapshot(provider: &ProviderState) -> DaemonStatus {
 }
 
 /// Manually start the daemon process.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn start_daemon(
     provider: State<'_, ProviderState>,
     app: tauri::AppHandle,
@@ -160,7 +160,7 @@ fn parse_distro_from_wsl_output(raw: &[u8]) -> Option<String> {
 /// On Windows: checks inside WSL.
 ///
 /// Used by FirstRunWizard and startup update detection.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_daemon_install_status(
     provider: State<'_, ProviderState>,
 ) -> IpcResult<DaemonInstallStatus> {
@@ -373,7 +373,7 @@ fn check_daemon_install_wsl(
 ///
 /// On macOS/Linux: copies directly to `~/.local/bin/taurhaus-daemon`.
 /// On Windows: copies into the default WSL distro.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn install_daemon(app: tauri::AppHandle) -> IpcResult<OperationResult> {
     let span = IpcCommandSpan::start("install_daemon");
     let provider = app.state::<ProviderState>();
