@@ -1544,6 +1544,33 @@ fn a_launch_whose_detection_failed_falls_back_and_says_why() {
     assert_eq!(fallback["used"], serde_json::Value::Null);
 }
 
+// Regression: c65efa4's renderer notes `launch.selector.ignored` whenever it
+// added no selector of its own. A pin that lands on the process-default account
+// the base command already names adds none either, and nothing was ignored
+// there — the note belongs to a base command that chose the account itself.
+#[test]
+fn the_ignored_selector_note_is_only_for_a_base_that_chose_the_account() {
+    use super::launching::note_holds;
+    use crate::session_scanner::accounts::AccountOrigin;
+    use crate::session_scanner::launch::LaunchNote;
+
+    let ignored = LaunchNote::SelectorIgnored {
+        found: "CLAUDE_CONFIG_DIR".to_string(),
+    };
+    assert!(note_holds(&ignored, Some(AccountOrigin::BaseCommand)));
+    assert!(!note_holds(&ignored, Some(AccountOrigin::Project)));
+    assert!(!note_holds(&ignored, Some(AccountOrigin::DefaultConfigDir)));
+    assert!(!note_holds(&ignored, None));
+
+    // Every other note stands on its own.
+    let rewritten = LaunchNote::SelectorRewritten {
+        found: "CLAUDE_CONFIG_DIR=~/.claude-account2".to_string(),
+        replaced_with: "CLAUDE_CONFIG_DIR='/home/user/.claude'".to_string(),
+    };
+    assert!(note_holds(&rewritten, Some(AccountOrigin::Project)));
+    assert!(note_holds(&rewritten, None));
+}
+
 /// A transcript recovered from this process's own sightings placed the resume,
 /// so nothing fell back — a warning here would be noise.
 #[test]

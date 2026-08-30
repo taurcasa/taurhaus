@@ -630,6 +630,8 @@ fn render_launch_command_cli<R: Read>(
     );
 
     for note in rendered.notes {
+        // A note about a launch that did what was asked is not a warning.
+        let level = note.level();
         let response_note = LaunchCommandCliNote::from(note);
         let mut fields = serde_json::Map::new();
         fields.insert("tool".to_string(), request.tool.to_string().into());
@@ -646,7 +648,7 @@ fn render_launch_command_cli<R: Read>(
             fields.insert("reason".to_string(), value.into());
         }
         crate::commands::logging::emit_global(
-            "warn",
+            level,
             "coordination",
             response_note.event,
             Some("Launch renderer reported a configuration note".to_string()),

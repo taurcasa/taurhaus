@@ -203,7 +203,12 @@ pub(super) fn launch_cli_session_impl(
         Some("Rendered CLI launch command".to_string()),
         rendered_fields,
     );
-    for note in rendered.notes {
+    let account_origin = account.as_ref().map(|resolution| resolution.origin);
+    for note in rendered
+        .notes
+        .into_iter()
+        .filter(|note| note_holds(note, account_origin))
+    {
         let event = note.event_name();
         let level = note.level();
         let mut fields = Map::new();
@@ -762,6 +767,18 @@ pub(super) fn decide_launch_account(
 }
 
 /// Say in the log which subscription a launch ended up on, and why.
+/// Whether a renderer note still says something true about this launch.
+///
+/// `SelectorIgnored` means the base command's own selector decided the account.
+/// The renderer raises it whenever it added no selector of its own, and it adds
+/// none either when a higher-precedence choice landed on the very directory the
+/// base already names — nothing was ignored there, and saying so would be a lie
+/// about whose choice ran the launch.
+pub(super) fn note_holds(note: &LaunchNote, origin: Option<AccountOrigin>) -> bool {
+    !matches!(note, LaunchNote::SelectorIgnored { .. })
+        || origin == Some(AccountOrigin::BaseCommand)
+}
+
 pub(super) fn log_account_resolution(project_id: &str, tool: CliTool, launch: &LaunchAccount) {
     let resolution = &launch.resolution;
     let used = || {
