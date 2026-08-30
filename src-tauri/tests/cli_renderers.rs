@@ -194,6 +194,56 @@ fn launch_command_cli_surfaces_cross_tool_model_replacement() {
 }
 
 #[test]
+fn launch_command_cli_rewrites_a_base_selector_to_the_requested_account_dir() {
+    // Regression: 0.8.3 rendered `claude2 --dangerously-skip-permissions`
+    // unchanged, so the alias body's CLAUDE_CONFIG_DIR sent the launch to the
+    // other subscription. The resolved base carries that assignment, and the
+    // requested account dir has to replace it.
+    let request = serde_json::json!({
+        "tool": "claude",
+        "mode": "fresh",
+        "base": "CLAUDE_CONFIG_DIR=~/.claude-account2 claude --dangerously-skip-permissions",
+        "accountDir": "/home/user/.claude"
+    });
+    let response: serde_json::Value =
+        serde_json::from_str(run_renderer("--launch-command", &request).trim())
+            .expect("launch response is JSON");
+
+    assert_eq!(
+        response["command"],
+        "CLAUDE_CONFIG_DIR='/home/user/.claude' claude --dangerously-skip-permissions"
+    );
+    assert_eq!(response["notes"][0]["event"], "launch.selector.rewritten");
+    assert_eq!(
+        response["notes"][0]["found"],
+        "CLAUDE_CONFIG_DIR=~/.claude-account2"
+    );
+    assert_eq!(
+        response["notes"][0]["replacement"],
+        "CLAUDE_CONFIG_DIR='/home/user/.claude'"
+    );
+}
+
+#[test]
+fn launch_command_cli_prefixes_an_account_dir_a_base_does_not_carry() {
+    let request = serde_json::json!({
+        "tool": "codex",
+        "mode": "fresh",
+        "base": "codex --yolo",
+        "account_dir": "/home/user/.codex-account2"
+    });
+    let response: serde_json::Value =
+        serde_json::from_str(run_renderer("--launch-command", &request).trim())
+            .expect("launch response is JSON");
+
+    assert_eq!(
+        response["command"],
+        "CODEX_HOME='/home/user/.codex-account2' codex --yolo"
+    );
+    assert_eq!(response["notes"], serde_json::json!([]));
+}
+
+#[test]
 fn renderer_cli_rejects_unknown_fields_and_multiline_commands() {
     assert!(run_renderer_error(
         "--launch-command",

@@ -320,6 +320,7 @@ fn maybe_run_coordination_cli_mode() -> Option<i32> {
     match args.next().as_deref() {
         Some("--compact-hook" | "--claude-compact-hook") => Some(run_compact_hook_cli()),
         Some("--launch-command") => Some(run_launch_command_cli(args.next().as_deref())),
+        Some("--resolve-launch-base") => Some(run_resolve_launch_base_cli(args.next().as_deref())),
         Some("--render-onboarding") => Some(run_render_onboarding_cli(args.next().as_deref())),
         Some("--export-agent-definitions") => {
             Some(run_export_agent_definitions_cli(args.next().as_deref()))
@@ -342,6 +343,10 @@ struct LaunchCommandCliRequest {
     team: Option<LaunchCommandTeamCliRequest>,
     #[serde(default, alias = "codex_bypass_hook_trust")]
     codex_bypass_hook_trust: bool,
+    /// The account home this launch runs on. The tool's registry selector
+    /// carries it, replacing one the base command pins.
+    #[serde(default, alias = "account_dir")]
+    account_dir: Option<std::path::PathBuf>,
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
@@ -466,6 +471,42 @@ impl From<crate::session_scanner::launch::LaunchNote> for LaunchCommandCliNote {
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ResolveLaunchBaseCliRequest {
+    tool: crate::session_scanner::cli_tool::CliTool,
+    base: String,
+}
+
+/// Show what the pane's own shell makes of a configured base command. Reads
+/// the shell's alias table; it never runs the command.
+#[cfg(feature = "mesh-bridged-backend")]
+fn run_resolve_launch_base_cli(json_arg: Option<&str>) -> i32 {
+    let _log_state = init_coordination_cli_log_sink();
+    let resolved = read_renderer_request(json_arg, &mut io::stdin())
+        .and_then(|json| {
+            serde_json::from_str::<ResolveLaunchBaseCliRequest>(&json)
+                .map_err(|error| format!("invalid resolve request: {error}"))
+        })
+        .map(|request| {
+            crate::session_scanner::launch_base::resolve_base_command(
+                &request.base,
+                request.tool,
+                &crate::session_scanner::launch_base::ShellAliasProbe::for_pane(),
+            )
+        });
+    match resolved
+        .and_then(|resolved| serde_json::to_string(&resolved).map_err(|error| error.to_string()))
+    {
+        Ok(payload) => write_renderer_stdout(io::stdout(), &payload),
+        Err(error) => {
+            tracing::warn!(error = %error, "launch base resolver failed");
+            1
+        }
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
 fn run_launch_command_cli(json_arg: Option<&str>) -> i32 {
     let _log_state = init_coordination_cli_log_sink();
     match render_launch_command_cli(json_arg, io::stdin()) {
@@ -548,8 +589,12 @@ fn render_launch_command_cli<R: Read>(
         team,
         codex_bypass_hook_trust: request.codex_bypass_hook_trust,
         codex_notify_executable: None,
-        account_dir: None,
-        selector: None,
+        account_dir: request.account_dir.as_deref(),
+        selector: request.account_dir.as_ref().and_then(|_| {
+            crate::session_scanner::cli_tool::spec(request.tool)
+                .capabilities
+                .account_selector
+        }),
     }
     .render();
     validate_command_override(&rendered.command)?;
