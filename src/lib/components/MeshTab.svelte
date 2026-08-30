@@ -188,7 +188,6 @@
       onResumeTeam={controller.resumeTeam}
       onCloseNode={controller.clearSelectedNode}
       onResumeSelected={controller.resumeSelected}
-      onReonboardSelected={controller.reonboardSelected}
       onStopSelected={controller.stopSelected}
       onFocusSelectedPane={controller.focusSelectedPane}
       onCaptureRole={controller.openCaptureRoleDialog}

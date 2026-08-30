@@ -122,13 +122,12 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByTestId('mesh-node-detail-session-state')).toHaveTextContent('warming')
   })
 
-  it('offers the existing runtime detail action strip for re-onboarding', async () => {
-    const onReonboard = vi.fn()
-    renderDetail({ actions: { onReonboard } })
+  // Regression: commit 6240f486 added a live Re-onboard control even though the
+  // delivery-outcomes contract explicitly prohibited a new UI surface.
+  it('does not add a re-onboarding action to the runtime detail', () => {
+    renderDetail()
 
-    await fireEvent.click(screen.getByTestId('mesh-node-detail-reonboard'))
-
-    expect(onReonboard).toHaveBeenCalledOnce()
+    expect(screen.queryByTestId('mesh-node-detail-reonboard')).not.toBeInTheDocument()
   })
 
   it('renders the roster context with an Add to Team action instead of runtime controls', () => {

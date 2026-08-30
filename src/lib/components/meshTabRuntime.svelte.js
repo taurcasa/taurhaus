@@ -209,41 +209,6 @@ function formatResumeWarning(warning) {
   return warning.replaceAll('pane', 'terminal session')
 }
 
-function withoutSentenceEnd(value) {
-  return String(value ?? '').trim().replace(/[.!?]+$/, '')
-}
-
-function buildReonboardMessage(result, memberName) {
-  const base = `Re-onboarding for '${memberName}' was saved`
-  const notes = []
-  const wakeStatus = String(result?.wake?.status ?? '').trim()
-  const wakeReason = withoutSentenceEnd(result?.wake?.reason)
-  if (wakeStatus === 'failed') {
-    notes.push(`wake failed: ${wakeReason || 'unknown wake failure'}`)
-  } else if (
-    wakeStatus === 'not_attempted' &&
-    wakeReason &&
-    ![
-      'member uses a native inbox poller',
-      'delivery method does not require an inbox wake',
-      'wake not evaluated by backend',
-    ].includes(wakeReason)
-  ) {
-    notes.push(`wake not attempted: ${wakeReason}`)
-  }
-
-  const warnings = (result?.postWriteWarnings ?? [])
-    .map((warning) => withoutSentenceEnd(warning))
-    .filter(Boolean)
-  if (warnings.length > 0) {
-    notes.push(
-      `${warnings.length === 1 ? 'post-write warning' : 'post-write warnings'}: ${warnings.join('; ')}`
-    )
-  }
-
-  return notes.length > 0 ? `${base}, but ${notes.join('; ')}.` : `${base}.`
-}
-
 function buildResumeFooterMessage(normalizeResumeTeamReport, report) {
   const normalizedReport = normalizeResumeTeamReport(report)
   if (!normalizedReport) return ''
@@ -418,21 +383,6 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
     }
   }
 
-  async function reonboardSelected() {
-    const currentNode = state.selectedNode
-    if (!currentNode) return
-    try {
-      const result = await deps.coordinationReonboard(state.teamName, currentNode.name)
-      if (!result?.delivered || !result?.durable) {
-        state.errorMessage = `Failed to save re-onboarding for '${currentNode.name}'.`
-        return
-      }
-      state.runtimeMessage = buildReonboardMessage(result, currentNode.name)
-    } catch (error) {
-      state.errorMessage = error?.message || `Failed to re-onboard '${currentNode.name}'.`
-    }
-  }
-
   function stopSelected() {
     if (!state.selectedNode) return
     if (state.selectedNode.role === 'lead') {
@@ -578,7 +528,6 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
     focusSelectedPane,
     handleConfirmAction,
     requestDisband,
-    reonboardSelected,
     resumeSelected,
     resumeTeam,
     stopSelected,

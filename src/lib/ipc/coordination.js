@@ -9,7 +9,6 @@ import {
 import { invokeOrMock } from './client.js'
 import { normalizeInitializeTeamPayload } from './coordinationPayloads.js'
 import {
-  normalizeDeliveryResult,
   normalizeInitializeTeamResult,
   normalizeLiveTeamStatus,
   normalizeMemberActionReport,
@@ -73,16 +72,6 @@ export function coordinationResumeMember(teamName, memberName) {
     paneId: '%2',
     reusedPane: false,
   })).then((report) => normalizeMemberActionReport(report))
-}
-
-export function coordinationReonboard(teamName, memberName) {
-  return invokeOrMock('coordination_reonboard', { request: { teamName, memberName } }, () => ({
-    delivered: true,
-    method: 'inbox_file',
-    durable: true,
-    wake: { status: 'already_live' },
-    postWriteWarnings: [],
-  })).then((result) => normalizeDeliveryResult(result))
 }
 
 export function coordinationResumeTeam(teamName) {

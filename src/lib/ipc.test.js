@@ -2468,31 +2468,6 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
-    it('coordinationReonboard returns the additive delivery outcome', async () => {
-      window.__TAURI_INTERNALS__ = {}
-      tauriCore.invoke.mockResolvedValue({
-        delivered: true,
-        method: 'inbox_file',
-        durable: true,
-        wake: { status: 'failed', reason: 'daemon spawn failed' },
-        post_write_warnings: ['runtime state was not persisted'],
-      })
-
-      const result = await ipc.coordinationReonboard('arch', 'bob')
-
-      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_reonboard', {
-        request: { teamName: 'arch', memberName: 'bob' },
-      })
-      expect(result).toEqual({
-        delivered: true,
-        method: 'inbox_file',
-        durable: true,
-        wake: { status: 'failed', reason: 'daemon spawn failed' },
-        postWriteWarnings: ['runtime state was not persisted'],
-      })
-      delete window.__TAURI_INTERNALS__
-    })
-
     it('coordinationResumeTeam calls invoke with request and returns deterministic mock shape', async () => {
       const mockModeResult = await ipc.coordinationResumeTeam('arch')
       expect(mockModeResult).toEqual({
