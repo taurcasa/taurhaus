@@ -168,6 +168,7 @@ impl CoordinationOrchestrator {
                     current.health = runtime.health;
                 },
             )?;
+            drop(guard);
             if outcome == RuntimeCommitOutcome::Committed {
                 reconciled_members.insert(member_name);
             }
@@ -297,6 +298,7 @@ impl CoordinationOrchestrator {
                         current.health = runtime.health;
                     },
                 )?;
+                drop(guard);
                 if outcome == RuntimeCommitOutcome::Committed {
                     tracing::info!(
                         team = %team_name,
@@ -525,6 +527,7 @@ impl CoordinationOrchestrator {
                     current.last_seen_at = runtime.last_seen_at;
                 },
             )?;
+            drop(guard);
             if outcome == RuntimeCommitOutcome::Committed {
                 tracing::info!(
                     team = %team_name,
@@ -647,6 +650,7 @@ impl CoordinationOrchestrator {
                             current.health = HealthState::SessionDead;
                         },
                     )?;
+                    drop(guard);
                     if outcome == RuntimeCommitOutcome::Committed {
                         tracing::info!(
                             team = %team_name,

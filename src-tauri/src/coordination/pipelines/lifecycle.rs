@@ -274,7 +274,7 @@ impl CoordinationOrchestrator {
             .map(str::to_ascii_lowercase);
         let guard = acquire_team_lock(&self.teams_dir, &context.team_name)?;
 
-        MemberRuntimeStore::commit_if_unchanged(
+        let outcome = MemberRuntimeStore::commit_if_unchanged(
             &guard,
             &self.teams_dir,
             &context.team_name,
@@ -316,7 +316,9 @@ impl CoordinationOrchestrator {
                 // effort-switch budget no longer applies.
                 runtime.effort_resume_failure = None;
             },
-        )
+        );
+        drop(guard);
+        outcome
     }
 
     pub(super) fn sync_team_config_metadata(
