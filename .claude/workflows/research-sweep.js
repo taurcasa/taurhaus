@@ -181,9 +181,26 @@ function isRustTestGate(command) {
   return words.some((word, index) => word === 'just' && /^test-rust(?:-|$)/.test(words[index + 1] || ''))
 }
 
-function effectiveGateCatalog(changedPaths) {
-  const rustChanged = Array.isArray(changedPaths) && changedPaths.some((path) => String(path).trim().startsWith('src-tauri/'))
-  if (!rustChanged || GATES.some(isRustTestGate)) return GATE_CATALOG
+function normalizedChangedPaths(paths) {
+  return Array.isArray(paths) ? paths.map((path) => String(path).trim()).filter(Boolean) : []
+}
+
+function laneChangedPaths(lanes) {
+  return lanes.reduce((paths, lane) => paths.concat(normalizedChangedPaths(lane && lane.files_changed)), [])
+}
+
+function effectiveGateCatalog(changedPaths, independentPaths) {
+  const rustChanged = normalizedChangedPaths(changedPaths)
+    .concat(normalizedChangedPaths(independentPaths))
+    .some((path) => path.startsWith('src-tauri/'))
+  if (!rustChanged) return GATE_CATALOG
+  const declaredRustGates = GATES.filter(isRustTestGate)
+  if (declaredRustGates.length > 0) {
+    return {
+      declared: GATES,
+      required: uniqueGates(REQUIRED_GATES.concat(declaredRustGates)),
+    }
+  }
   return {
     declared: GATES.concat([RUST_TEST_GATE]),
     required: REQUIRED_GATES.concat([RUST_TEST_GATE]),
@@ -278,12 +295,17 @@ async function reviewOnce(request, label) {
 // A gate is green only when it says pass, every exact command it listed was declared and passed, every
 // required command is among them, and it contradicts itself nowhere. Its first action supplies the
 // diff paths that add the Rust test gate when needed.
-function gateProblem(gate) {
+function gateProblem(gate, independentPaths) {
   if (!gate) return 'the gate agent returned no result (it was skipped or died)'
   if (gate.error) return 'the gate could not run: ' + gate.error
   const ran = Array.isArray(gate.commands) ? gate.commands.filter(Boolean) : []
   if (ran.length === 0) return 'the gate reported no commands run'
-  const catalog = effectiveGateCatalog(gate.changed_paths)
+  const gatePaths = normalizedChangedPaths(gate.changed_paths)
+  const independentRustPaths = normalizedChangedPaths(independentPaths).filter((path) => path.startsWith('src-tauri/'))
+  if (independentRustPaths.length > 0 && !gatePaths.some((path) => path.startsWith('src-tauri/'))) {
+    return 'the gate did not report the diff it was asked to run; another lane reported Rust paths: ' + independentRustPaths.join(', ')
+  }
+  const catalog = effectiveGateCatalog(gatePaths, independentPaths)
   const commandOf = (entry) => String(entry.command == null ? '' : entry.command).trim()
   const missing = catalog.required.filter((required) => !ran.some((entry) => entry.status === 'pass' && commandOf(entry) === required))
   if (missing.length > 0) {
@@ -347,7 +369,7 @@ const RULES = {
     base +
     '...HEAD` and return its output lines verbatim in `changed_paths`. If any path begins `src-tauri/`, append and run the exact required command `' +
     RUST_TEST_GATE +
-    '` unless the declared gates already contain a `cargo test` or `just test-rust-*` command. Return one entry in `commands` for every effective declared gate command you ran, with the exact command after trimming and its pass/fail; do not report discovery commands or any command outside that catalog. These commands are always required and must actually run: ' +
+    '` unless the declared gates already contain a `cargo test` or `just test-rust-*` command; when they do, run every declared Rust-test command as the required Rust run. Return one entry in `commands` for every effective declared gate command you ran, with the exact command after trimming and its pass/fail; do not report discovery commands or any command outside that catalog. These commands are always required and must actually run: ' +
     REQUIRED_GATES.join(', ') +
     '. Before running a `just <recipe>` gate, use `just --summary` to confirm its recipe exists; do not list that discovery query as a gate command, and report the declared gate as fail with `unknown recipe` when absent. A required command reported `skipped` fails the run, so run it or report it `fail` with the reason it could not run. Set `status` = pass only when every command passed. A gate command that did not apply is left off the list and explained in the summary — never report it `skipped` or report a command you did not run as `pass`. `failures` and `error` stay empty under a passing status; pass next to either one is a contradiction and fails the run.',
   safety:
