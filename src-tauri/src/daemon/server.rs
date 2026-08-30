@@ -538,19 +538,6 @@ fn log_dropped_push_event(event: &DaemonEvent, stage: &str, error: Option<&str>)
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Regression: commit fc896344 isolated E2E data roots but left the app on
-    // port 17233, where its auth failure could restart the operator's daemon.
-    #[test]
-    fn app_daemon_port_honors_the_worker_override() {
-        let _env_guard = crate::test_support::acquire_env_test_guard();
-        std::env::set_var("TAURHAUS_DAEMON_PORT", "29441");
-
-        let port = app_daemon_port();
-
-        std::env::remove_var("TAURHAUS_DAEMON_PORT");
-        assert_eq!(port, 29441);
-    }
     use crate::provider::local::LocalProvider;
     use serde_json::Value;
     use std::io::{BufRead, BufReader, Write};
@@ -558,6 +545,38 @@ mod tests {
     use std::sync::LazyLock;
 
     static LOG_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+    struct EnvRestore {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvRestore {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
+    // Regression: commit fc896344 isolated E2E data roots but left the app on
+    // port 17233, where its auth failure could restart the operator's daemon.
+    #[test]
+    fn app_daemon_port_honors_the_worker_override() {
+        let _env_guard = crate::test_support::acquire_env_test_guard();
+        let _env = EnvRestore::set("TAURHAUS_DAEMON_PORT", "29441");
+
+        assert_eq!(app_daemon_port(), 29441);
+    }
 
     struct TestServer {
         port: u16,
