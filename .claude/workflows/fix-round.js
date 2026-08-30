@@ -40,15 +40,185 @@ const BASE = A.base || 'main'
 const SPEC = A.spec || ''
 const SCRATCH = posixPath(A.scratch || '/tmp/taurhaus-workflows', 'args.scratch')
 const MODEL = 'opus'
-const GATES =
-  A.gates ||
-  "'just check-quick' and 'just lint', plus 'cd src-tauri && cargo test <touched module paths>' (check-quick does not run the Rust tests); vitest runs from the checkout root"
+const DEFAULT_GATES = ['just check-quick', 'just lint']
+const RUST_TEST_GATE = 'just test-rust-unit'
+const GATE_ARRAY_EXAMPLE = '["just check-quick", "just lint"]'
 
-// The gate commands that must actually run and pass. Everything else the gate reports is optional and
-// may come back `skipped` with a reason; a required command reported skipped — or never run at all —
-// is a gate that did not happen. A spec naming further gates adds them via args.requiredGates; the two defaults can never be opted out of.
-if (A.requiredGates != null && !Array.isArray(A.requiredGates)) throw new Error(NAME + ': args.requiredGates must be an array of command substrings — got ' + JSON.stringify(A.requiredGates))
-const REQUIRED_GATES = ['just check-quick', 'just lint'].concat((A.requiredGates || []).map(String).filter((g) => g !== 'just check-quick' && g !== 'just lint'))
+// Enough shell tokenization to distinguish cargo's options from its one positional test filter.
+// The workflow never executes these tokens itself; it only rejects a command cargo cannot parse.
+function commandWords(command) {
+  const words = []
+  let word = ''
+  let quote = ''
+  let escaped = false
+  for (const char of command) {
+    if (escaped) {
+      word += char
+      escaped = false
+    } else if (char === '\\' && quote !== "'") {
+      escaped = true
+    } else if (quote) {
+      if (char === quote) quote = ''
+      else word += char
+    } else if (char === "'" || char === '"') {
+      quote = char
+    } else if (/\s/.test(char)) {
+      if (word) {
+        words.push(word)
+        word = ''
+      }
+    } else {
+      word += char
+    }
+  }
+  if (escaped) word += '\\'
+  if (word) words.push(word)
+  return words
+}
+
+const CARGO_OPTIONS_WITH_VALUES = [
+  '--package',
+  '-p',
+  '--exclude',
+  '--jobs',
+  '-j',
+  '--profile',
+  '--features',
+  '-F',
+  '--target',
+  '--target-dir',
+  '--manifest-path',
+  '--lockfile-path',
+  '--message-format',
+  '--color',
+  '--config',
+  '-Z',
+  '--bin',
+  '--example',
+  '--test',
+  '--bench',
+]
+
+function cargoTestIndices(words) {
+  const indices = []
+  for (let i = 0; i < words.length - 1; i += 1) {
+    if (words[i] === 'cargo' && words[i + 1] === 'test') indices.push(i + 1)
+    if (words[i] === 'cargo' && /^\+\S+/.test(words[i + 1] || '') && words[i + 2] === 'test') indices.push(i + 2)
+  }
+  return indices
+}
+
+function validateGateCommand(command, what) {
+  const words = commandWords(command)
+  if (words[0] === 'just' && (!words[1] || words[1].startsWith('-') || !/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/.test(words[1]))) {
+    throw new Error(NAME + ': ' + what + ' must use the shape `just <recipe>` — got ' + JSON.stringify(command))
+  }
+  for (const test of cargoTestIndices(words)) {
+    let filters = 0
+    for (let i = test + 1; i < words.length; i += 1) {
+      const word = words[i]
+      if (word === '--' || word === '&&' || word === '||' || word === '|' || word === ';') break
+      if (word.includes('>') || word.includes('<')) break
+      if (word.startsWith('-')) {
+        if (CARGO_OPTIONS_WITH_VALUES.indexOf(word) !== -1) i += 1
+        continue
+      }
+      filters += 1
+    }
+    if (filters > 1) {
+      throw new Error(NAME + ': ' + what + ' cargo test command carries ' + filters + ' positional filters before `--`; it allows at most one positional filter — got ' + JSON.stringify(command))
+    }
+  }
+}
+
+function typedGateCommands(value, what, allowString) {
+  if (value == null) return []
+  if (typeof value === 'string') {
+    const words = commandWords(value)
+    const hasConnector = words.some((word, index) => ['&&', '||', '|', 'and', 'plus', 'then'].indexOf(word) !== -1 && index > 0 && index < words.length - 1)
+    if (!allowString || value.includes(';') || /\[[^\]\n]*\]/.test(value) || /['"]/.test(value) || hasConnector) {
+      throw new Error(
+        NAME +
+          ': ' +
+          what +
+          ' must be an array of exact command strings, for example ' +
+          GATE_ARRAY_EXAMPLE +
+          '; move operational prose to args.gateNotes — got ' +
+          JSON.stringify(value)
+      )
+    }
+    value = [value]
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(NAME + ': ' + what + ' must be an array of exact command strings, for example ' + GATE_ARRAY_EXAMPLE + ' — got ' + JSON.stringify(value))
+  }
+  return value.map((entry, index) => {
+    if (typeof entry !== 'string') throw new Error(NAME + ': ' + what + '[' + index + '] must be an exact command string — got ' + JSON.stringify(entry))
+    if (/\r|\n/.test(entry)) throw new Error(NAME + ': ' + what + '[' + index + '] must not contain a newline — got ' + JSON.stringify(entry))
+    if (/\[[^\]\n]*\]/.test(entry)) throw new Error(NAME + ': ' + what + '[' + index + '] must not contain bracketed prose; move operational prose to args.gateNotes — got ' + JSON.stringify(entry))
+    const command = entry.trim()
+    if (!command) throw new Error(NAME + ': ' + what + '[' + index + '] must be non-empty')
+    validateGateCommand(command, what + '[' + index + ']')
+    return command
+  })
+}
+
+function uniqueGates(commands) {
+  return commands.filter((command, index) => commands.indexOf(command) === index)
+}
+
+// One typed catalog owns both declarations and requirements. requiredGates remains additive, and
+// adding one declares it too; the two defaults cannot be opted out of.
+function buildGateCatalog(gates, requiredGates) {
+  const requested = typedGateCommands(gates, 'args.gates', true)
+  const required = typedGateCommands(requiredGates, 'args.requiredGates', false)
+  return {
+    declared: uniqueGates(DEFAULT_GATES.concat(requested, required)),
+    required: uniqueGates(DEFAULT_GATES.concat(required)),
+  }
+}
+
+const GATE_CATALOG = buildGateCatalog(A.gates, A.requiredGates)
+const GATES = GATE_CATALOG.declared
+const REQUIRED_GATES = GATE_CATALOG.required
+if (A.gateNotes != null && typeof A.gateNotes !== 'string') throw new Error(NAME + ': args.gateNotes must be a string — got ' + JSON.stringify(A.gateNotes))
+const GATE_NOTES = A.gateNotes || ''
+
+function isRustTestGate(command) {
+  const words = commandWords(command)
+  if (cargoTestIndices(words).length > 0) return true
+  return words.some((word, index) => word === 'just' && /^test-rust(?:-|$)/.test(words[index + 1] || ''))
+}
+
+function normalizedChangedPaths(paths) {
+  return Array.isArray(paths) ? paths.map((path) => String(path).trim()).filter(Boolean) : []
+}
+
+function isRustPath(path) {
+  return /(^|\/)src-tauri\//.test(String(path))
+}
+
+function laneChangedPaths(lanes) {
+  return lanes.reduce((paths, lane) => paths.concat(normalizedChangedPaths(lane && lane.files_changed)), [])
+}
+
+function effectiveGateCatalog(changedPaths, independentPaths) {
+  const rustChanged = normalizedChangedPaths(changedPaths)
+    .concat(normalizedChangedPaths(independentPaths))
+    .some(isRustPath)
+  if (!rustChanged) return GATE_CATALOG
+  const declaredRustGates = GATES.filter(isRustTestGate)
+  if (declaredRustGates.length > 0) {
+    return {
+      declared: GATES,
+      required: uniqueGates(REQUIRED_GATES.concat(declaredRustGates)),
+    }
+  }
+  return {
+    declared: GATES.concat([RUST_TEST_GATE]),
+    required: REQUIRED_GATES.concat([RUST_TEST_GATE]),
+  }
+}
 
 // Every agent runs on Opus in this repo's model split; effort is inherited unless args.effort pins one.
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
@@ -135,29 +305,38 @@ async function reviewOnce(request, label) {
   )
 }
 
-// A gate is green only when it says pass AND every command it listed passed AND it ran something AND
-// every required command is among them AND it contradicts itself nowhere. A skipped `just check-quick`
-// is not a pass, and neither is a skipped `cargo test`: the run would otherwise complete green over a
-// lane nobody executed. A command that did not apply is left off the list rather than reported
-// `skipped`. Its own vocabulary is pass/fail, so it is checked here rather than through laneProblem.
-function gateProblem(gate) {
+// A gate is green only when it says pass, every exact command it listed was declared and passed, every
+// required command is among them, and it contradicts itself nowhere. Its first action supplies the
+// diff paths that add the Rust test gate when needed.
+function gateProblem(gate, independentPaths) {
   if (!gate) return 'the gate agent returned no result (it was skipped or died)'
   if (gate.error) return 'the gate could not run: ' + gate.error
   const ran = Array.isArray(gate.commands) ? gate.commands.filter(Boolean) : []
   if (ran.length === 0) return 'the gate reported no commands run'
-  const matches = (c, required) => String(c.command == null ? '' : c.command).indexOf(required) !== -1
-  const missing = REQUIRED_GATES.filter((required) => !ran.some((c) => c.status === 'pass' && matches(c, required)))
+  const gatePaths = normalizedChangedPaths(gate.changed_paths)
+  const independentRustPaths = normalizedChangedPaths(independentPaths).filter(isRustPath)
+  // A lane's Rust path may legitimately be gone from the final diff (a reverted file); what cannot
+  // be legitimate is a gate that reports no diff at all while a lane changed Rust. The Rust rule
+  // itself still takes the union, so the reverted case costs one extra test run, never a false green.
+  if (independentRustPaths.length > 0 && gatePaths.length === 0) {
+    return 'the gate did not report the diff it was asked to run; another lane reported Rust paths: ' + independentRustPaths.join(', ')
+  }
+  const catalog = effectiveGateCatalog(gatePaths, independentPaths)
+  const commandOf = (entry) => String(entry.command == null ? '' : entry.command).trim()
+  const missing = catalog.required.filter((required) => !ran.some((entry) => entry.status === 'pass' && commandOf(entry) === required))
   if (missing.length > 0) {
     return (
       'required gate commands did not run and pass: ' +
       missing
         .map((required) => {
-          const seen = ran.filter((c) => matches(c, required))
-          return required + ' (' + (seen.length > 0 ? seen.map((c) => c.status).join('/') : 'never run') + ')'
+          const seen = ran.filter((entry) => commandOf(entry) === required)
+          return required + ' (' + (seen.length > 0 ? seen.map((entry) => entry.status).join('/') : 'never run') + ')'
         })
         .join(', ')
     )
   }
+  // A command the gate ran beyond the catalog is extra evidence, not a breach — as long as it
+  // passed; a failing one is caught below like any other.
   const failed = ran.filter((c) => c.status !== 'pass')
   if (failed.length > 0) return 'gate commands did not pass: ' + failed.map((c) => c.command + ' (' + c.status + ')').join(', ')
   const reported = Array.isArray(gate.failures) ? gate.failures.filter(Boolean) : []
@@ -199,15 +378,19 @@ const RULES = {
     'COMMIT DISCIPLINE: `git add` the files you touched (never `git add -A`) and commit after every green step — a killed run must leave a tree one `git stash` away from clean. Never edit ledger rows in plan documents; the orchestrator fills them at merge.',
   tdd:
     'TDD: write the test first, run it to observe red, then implement and observe green. A regression test carries a "// Regression:" comment naming the commit that broke it.',
-  gates: 'GATES: ' + GATES + '.',
-  gateResult:
-    'Return the structured result: one entry in `commands` for every gate command you ran, each with its exact command line and its pass/fail, and `status` = pass only when every one of them passed.' +
-    (REQUIRED_GATES.length > 0
-      ? ' These are required and must actually run: ' +
-        REQUIRED_GATES.join(', ') +
-        ' — a required command reported `skipped` fails the run, so run it, or report it `fail` with the reason it could not run.'
-      : '') +
-    ' Every command you list has to have passed: any entry that is not `pass` fails the run, required or not. A gate command that did not apply because nothing it covers changed is simply left off the list and explained in the summary — do not report it `skipped` and never report a command you did not run as `pass`. `failures` and `error` stay empty under a passing status; a `status` of pass next to either one is a contradiction and fails the run.',
+  gates:
+    'GATES (exact commands; run from the checkout root):\n' +
+    GATES.map((command) => '- ' + command).join('\n') +
+    '\nRUST DIFF RULE: if your diff touches `src-tauri/`, also run `just test-rust-unit` — `just check-quick` compiles the Rust tests but does not execute them.',
+  gateNotes: GATE_NOTES ? 'GATE NOTES (operational instructions, not commands):\n' + GATE_NOTES : '',
+  gateResult: (base) =>
+    'As your first step, run `git diff --name-only ' +
+    base +
+    '...HEAD` and return its output lines verbatim in `changed_paths`. If any path begins `src-tauri/`, append and run the exact required command `' +
+    RUST_TEST_GATE +
+    '` unless the declared gates already contain a `cargo test` or `just test-rust-*` command; when they do, run every declared Rust-test command as the required Rust run. Return one entry in `commands` for every effective declared gate command you ran, with the exact command after trimming and its pass/fail; do not report discovery commands or any command outside that catalog. These commands are always required and must actually run: ' +
+    REQUIRED_GATES.join(', ') +
+    '. Before running a `just <recipe>` gate, use `just --summary` to confirm its recipe exists; do not list that discovery query as a gate command, and report the declared gate as fail with `unknown recipe` when absent. A required command reported `skipped` fails the run, so run it or report it `fail` with the reason it could not run. Set `status` = pass only when every command passed. A gate command that did not apply is left off the list and explained in the summary — never report it `skipped` or report a command you did not run as `pass`. `failures` and `error` stay empty under a passing status; pass next to either one is a contradiction and fails the run.',
   safety:
     'SAFETY: tests never read or write the real ~/.claude*, ~/.codex, ~/.gemini or ~/.grok and never invoke a real CLI; no load or stress runs; kill anything you start (trap/finally) and never kill a process you did not start; never print tokens or secrets.',
   readOnly:
@@ -427,7 +610,7 @@ const IMPL_SCHEMA = {
 
     summary: { type: 'string' },
     commits: { type: 'array', items: { type: 'string' } },
-    files_changed: { type: 'array', items: { type: 'string' } },
+    files_changed: { type: 'array', items: { type: 'string' }, description: 'repo-relative paths, exactly as git reports them' },
     tests_added: { type: 'array', items: { type: 'string' } },
     red_observed: { type: 'string', description: 'which tests failed before the fix and how' },
     gate: { type: 'string', description: 'the gate commands run and their outcome' },
@@ -467,12 +650,13 @@ const FINDINGS_SCHEMA = {
 const GATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['status', 'commands', 'failures', 'diff_stat', 'commits', 'error'],
+  required: ['status', 'changed_paths', 'commands', 'failures', 'diff_stat', 'commits', 'error'],
   properties: {
     status: { type: 'string', enum: ['pass', 'fail'], description: "'pass' only when every command you ran passed and `failures` and `error` are empty" },
+    changed_paths: { type: 'array', items: { type: 'string' }, description: 'verbatim lines from the required git diff --name-only command' },
     commands: {
       type: 'array',
-      description: 'every gate command you ran, in order; a command that did not apply is left off the list',
+      description: 'every effective declared gate command you ran, in order; commands outside the catalog are rejected',
       items: {
         type: 'object',
         additionalProperties: false,
@@ -619,19 +803,18 @@ phase('Gate')
 const gate = await agent(
   [
     COMMON,
+    RULES.gateNotes,
     '',
     'Final gate for ' +
       TITLE +
-      ': run the gates above for every module touched in `git diff --name-only ' +
-      BASE +
-      '...HEAD`. No stress or load runs. Do not modify code unless a gate fails for a trivial reason (formatting, an unused import); if you must, commit it.',
+      ': run the exact gates above, applying the Rust-diff rule below. No stress or load runs. Do not modify code unless a gate fails for a trivial reason (formatting, an unused import); if you must, commit it.',
     trailers(IMPLEMENTER),
-    RULES.gateResult + ' ' + RULES.honest,
-  ].join('\n'),
+    RULES.gateResult(BASE) + ' ' + RULES.honest,
+  ].filter(Boolean).join('\n'),
   call({ label: 'gate:' + TAG, phase: 'Gate', schema: GATE_SCHEMA })
 )
 // A failing gate fails the run: a completed ledger must never sit on top of a red test lane.
-const gateFailure = gateProblem(gate)
+const gateFailure = gateProblem(gate, laneChangedPaths(fixes))
 if (gateFailure) fail(gateFailure)
 
 const remaining = actionable.concat(trivial)

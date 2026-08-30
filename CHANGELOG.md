@@ -6,11 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Workflow gates are exact, typed commands** — procedure callers pass command arrays and keep gate-only operational notes in `gateNotes`; startup rejects empty or multiline commands, multi-command compatibility strings, bracketed notes in either input form, malformed `just` commands, and every `cargo test` clause with more than one positional filter. Gate reports now match required commands exactly, reject undeclared command lines, and require either `just test-rust-unit` or every caller-declared Rust-test gate whenever the diff includes `src-tauri/`; that diff report is cross-checked against the implementation lanes so an empty `changed_paths` cannot suppress Rust tests. The workflow lint also enforces the typed catalog and byte-identical shared libraries.
+
 ### Added
 
 - **CI executes Rust tests** — every pull request runs the serialized Rust unit and integration recipes in stable, cached jobs alongside the existing fast/frontend gate; main pushes and manual dispatches run both Rust jobs too, and failed builds populate the next retry's cache without skipping test execution.
 
 ### Fixed
+
+- **Every Rust integration binary runs in the integration lane** — `just test-rust-integration` derives its targets from every top-level `src-tauri/tests/*.rs` file, while a completeness guard rejects missing or stale targets and one shared manifest keeps the unit-lane heavy skips identical to their serialized integration reruns.
+
+- **The full quality gate now fails with its lane** — `just check` preserves a failed parallel lane's status, stops its peer, and is regression-guarded through `just lint` without running the real lanes.
 
 - **Theme changes no longer wipe global default accounts** — IPC normalizers preserve backend fields they do not yet know, including each tool's `default_account_ids`, live member task effort, and resolved launch bases.
 

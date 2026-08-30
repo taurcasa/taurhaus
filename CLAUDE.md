@@ -151,7 +151,7 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `bunx tauri bu
 | `just test-visual` | Browser-mode visual screenshot lane for mocked component states. |
 | `just visual-shot C S [V] [T] [OUT]` | One visual-host fixture shot at a real window size (Edge headless). For viewport-anchored popups the 960x640 browser lane cannot judge. `just visual-shot-stop` stops only the server it started. |
 | `just metrics` | Quality KPI snapshot (tests, coverage, build health, code size, E2E inventory). |
-| `just test` | All non-E2E tests: Rust compile check + Rust unit + Rust integration/system + frontend unit. |
+| `just test` | All non-E2E tests: Rust compile check + Rust unit + Rust integration/system (every `src-tauri/tests/*.rs`) + frontend unit. |
 | `just infographics` | Regenerate documentation infographics from the manifest prompts (needs `.env`; see [`docs/operations/infographics.md`](docs/operations/infographics.md)). |
 | `just infographics-dry-run` | Show which infographics are stale and what a regeneration run would cost. |
 | `just test-fast` | Fast iteration lane: Rust compile check (`cargo check --tests`) + frontend unit tests. |
@@ -372,7 +372,7 @@ Workflow reference: [`CONTRIBUTING.md`](CONTRIBUTING.md) (setup and contribution
 
 ### How Changes Are Made
 
-Multi-agent work runs from the versioned procedures in [`.claude/workflows/`](.claude/workflows/README.md) rather than from prompts retyped each session: `feature-pr` (implement → two-lens cross-family review → fix loop → gate), `small-change` (one lens, one fix round), `fix-round` (extra rounds when a run stops short), `research-sweep` (N independent researchers), `docs-sweep` (drift sweep + claim verification). A lead starts one with `Workflow({name: "small-change", args: {worktree, branch, spec}})`, or hands a member the same call in an `ACTION REQUIRED:` notice. Sizing: a one-off edit stays inline, a contained change takes `small-change`, a PR across modules or the wire contract takes `feature-pr`. Whoever implements never reviews. `just lint` syntax-checks the scripts via `scripts/check-workflow-scripts.mjs`.
+Multi-agent work runs from the versioned procedures in [`.claude/workflows/`](.claude/workflows/README.md) rather than from prompts retyped each session: `feature-pr` (implement → two-lens cross-family review → fix loop → gate), `small-change` (one lens, one fix round), `fix-round` (extra rounds when a run stops short), `research-sweep` (N independent researchers), `docs-sweep` (drift sweep + claim verification). A lead starts one with `Workflow({name: "small-change", args: {worktree, branch, spec}})`, or hands a member the same call in an `ACTION REQUIRED:` notice. Sizing: a one-off edit stays inline, a contained change takes `small-change`, a PR across modules or the wire contract takes `feature-pr`. Whoever implements never reviews. `just lint` syntax-checks the scripts via `scripts/check-workflow-scripts.mjs` and proves `just check` fails on a seeded lane failure via `scripts/check-just-gates.sh`.
 
 ### Autonomous Execution Loop
 - **Project loop**: Work through ALL phases (5A→5B→...→5G) autonomously. No pause between phases.
