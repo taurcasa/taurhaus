@@ -138,6 +138,7 @@ fn read_token_via_wsl(wsl_distro: Option<&str>, daemon_data_dir: &Path) -> Optio
     Some(token)
 }
 
+#[cfg(any(target_os = "windows", test))]
 fn wsl_token_read_script(daemon_data_dir: &Path) -> String {
     let canonical = daemon_data_dir.join("daemon.token");
     let canonical = canonical.to_string_lossy().replace('\'', "'\"'\"'");
