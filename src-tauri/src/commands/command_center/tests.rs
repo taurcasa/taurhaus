@@ -1517,6 +1517,7 @@ fn a_launch_whose_detection_failed_falls_back_and_says_why() {
             source: "daemon".to_string(),
             degraded: true,
             error: Some("Daemon transport error: connection reset by peer".to_string()),
+            resolved_bases: Vec::new(),
         },
         &TranscriptLookup {
             transcript: None,
@@ -1559,6 +1560,7 @@ fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
             source: "daemon".to_string(),
             degraded: false,
             error: None,
+            resolved_bases: Vec::new(),
         },
         &TranscriptLookup {
             transcript: Some(transcript.clone()),

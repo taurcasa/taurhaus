@@ -364,6 +364,30 @@ describe('Sidebar account submenus', () => {
     })
   })
 
+  // Regression: 0.8.3 could not tell that a launch command runs a wrapper of
+  // the user's own, so an account it could not enforce was reported as applied.
+  it('names the wrapper it could not select an account for', async () => {
+    launchCliSession.mockResolvedValue({
+      tmux_session: 'taurhaus',
+      tmux_window: '2',
+      tmux_pane: '%7',
+      account_applied: false,
+      account_note: 'opaque_base_command',
+      account_note_detail: 'my-claude-wrapper',
+    })
+
+    await openProjectMenu()
+
+    await hoverOpenSubmenu('menu-item-continue-claude')
+    await fireEvent.mouseDown(screen.getByTestId('submenu-item-matthias'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('sidebar-notice-message')).toHaveTextContent(
+        'taurhaus could not select an account: your launch command runs "my-claude-wrapper", which is not the Claude CLI'
+      )
+    })
+  })
+
   it('is reachable from the keyboard: ArrowRight opens the submenu, Enter launches', async () => {
     await openProjectMenu()
 

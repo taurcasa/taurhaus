@@ -43,6 +43,11 @@ pub struct AccountsResult {
     pub source: String,
     pub degraded: bool,
     pub error: Option<String>,
+    /// This tool's configured launch commands as the pane shell reads them,
+    /// one per distinct command. Only the settings surface asks for these;
+    /// every other caller leaves the list empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resolved_bases: Vec<ResolvedBase>,
 }
 
 /// The transcript that owns a project's history, and whether the lookup ran.
@@ -67,13 +72,41 @@ pub(crate) enum DaemonAnswer<T> {
 
 #[tauri::command]
 pub fn list_accounts(
+    db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
     tool: CliTool,
 ) -> IpcResult<AccountsResult> {
     let span = IpcCommandSpan::start("list_accounts");
-    let result = Ok::<_, String>(accounts_report(provider.inner(), tool)).ipc_cmd("list_accounts");
+    let result = Ok::<_, String>(list_accounts_impl(db.inner(), provider.inner(), tool))
+        .ipc_cmd("list_accounts");
     span.finish_result(&result);
     result
+}
+
+/// The accounts a tool has, plus what a launch command really starts.
+///
+/// Settings says which account is in force, and a base command that carries an
+/// account selector of its own — directly or through a shell alias — is part of
+/// that answer.
+pub(crate) fn list_accounts_impl(
+    db: &DbState,
+    provider: &ProviderState,
+    tool: CliTool,
+) -> AccountsResult {
+    let mut report = accounts_report(provider, tool);
+    let commands = crate::commands::terminal_settings::load_terminal_settings(db).cli_commands;
+    let mut seen = std::collections::HashSet::new();
+    report.resolved_bases = [
+        protocol::LaunchMode::Fresh,
+        protocol::LaunchMode::Continue,
+        protocol::LaunchMode::Resume,
+    ]
+    .into_iter()
+    .map(|mode| crate::session_scanner::launch::base_command(&commands, tool, mode))
+    .filter(|base| seen.insert(base.to_string()))
+    .map(|base| resolve_launch_base(provider, tool, base))
+    .collect();
+    report
 }
 
 #[tauri::command]
@@ -115,6 +148,7 @@ pub(crate) fn accounts_report(provider: &ProviderState, tool: CliTool) -> Accoun
         source: SOURCE_NATIVE.to_string(),
         degraded: false,
         error: None,
+        resolved_bases: Vec::new(),
     }
 }
 
@@ -238,6 +272,7 @@ fn daemon_accounts_report_from(answer: DaemonAnswer<protocol::AccountsResult>) -
         source: SOURCE_DAEMON.to_string(),
         degraded,
         error,
+        resolved_bases: Vec::new(),
     }
 }
 

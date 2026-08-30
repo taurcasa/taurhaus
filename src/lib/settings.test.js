@@ -255,6 +255,76 @@ describe('Settings component', () => {
     expect(toggle.className).not.toContain('accent-brand')
   })
 
+  // Regression: 0.8.3 derived this line from the literal command, so an alias
+  // base like `claude2` showed no selector at all and the sentence claimed the
+  // default config directory decided the account.
+  it('names the alias a launch command hides', async () => {
+    const accounts = [
+      { ...TWO_ACCOUNTS[0], is_default: false, is_process_default: true, dir: '/home/user/.claude' },
+      { ...TWO_ACCOUNTS[1], is_default: false, dir: '/home/user/.claude-account2' },
+    ]
+    listAccounts.mockImplementation((tool) =>
+      Promise.resolve(
+        tool === 'claude'
+          ? {
+              ...detected(accounts),
+              resolved_bases: [
+                {
+                  command:
+                    'CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude --dangerously-skip-permissions',
+                  expansions: [
+                    {
+                      name: 'claude2',
+                      body: 'CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude',
+                    },
+                  ],
+                  opaqueHead: null,
+                },
+              ],
+            }
+          : detected([])
+      )
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    const line = await screen.findByTestId('effective-default-claude')
+    expect(line).toHaveTextContent('B')
+    expect(line).toHaveTextContent(
+      'from your launch command "claude2" (alias for CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude)'
+    )
+  })
+
+  it('warns when the launch command does not run the CLI at all', async () => {
+    const accounts = [
+      { ...TWO_ACCOUNTS[0], is_default: false, is_process_default: true, dir: '/home/user/.claude' },
+      { ...TWO_ACCOUNTS[1], is_default: false, dir: '/home/user/.claude-account2' },
+    ]
+    listAccounts.mockImplementation((tool) =>
+      Promise.resolve(
+        tool === 'claude'
+          ? {
+              ...detected(accounts),
+              resolved_bases: [
+                {
+                  command: 'my-claude-wrapper --dangerously-skip-permissions',
+                  expansions: [],
+                  opaqueHead: 'my-claude-wrapper',
+                },
+              ],
+            }
+          : detected([])
+      )
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    const line = await screen.findByTestId('effective-default-claude')
+    expect(line).toHaveTextContent(
+      'taurhaus could not select an account: your launch command runs "my-claude-wrapper", which is not the Claude CLI'
+    )
+  })
+
   it('hides the accounts card when no tool has multiple accounts', async () => {
     // Regression: c11770e exposed account controls to single-account users,
     // contradicting the chooser and overview visibility rule.

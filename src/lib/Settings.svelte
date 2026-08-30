@@ -9,6 +9,7 @@
   import { buildFrontendFallbackTerminalContract } from './ipc/system.js'
   import {
     accountState,
+    opaqueBaseNotice,
     refreshAccounts,
     refreshUsage,
     setDefaultAccount,
@@ -193,16 +194,43 @@
     return [account?.organization, account?.plan].filter(Boolean).join(' · ')
   }
 
+  /**
+   * The launch commands as the pane's shell reads them, resolved by the
+   * backend. Without that answer the literal settings are all there is —
+   * which is what an older backend leaves the frontend with.
+   */
+  function launchBases(tool) {
+    const resolved = accountState(tool.id).resolvedBases ?? []
+    if (resolved.length) return resolved
+    const commands = settings?.terminal?.cli_commands?.[tool.id] ?? {}
+    return Object.values(commands).map((command) => ({ command: String(command) }))
+  }
+
   function effectiveDefault(tool) {
     const state = accountState(tool.id)
     const selected = state.accounts.find((account) => account.id === selectedAccountId(tool.id))
     if (selected) return { account: selected, origin: 'default' }
     const selector = tool.capabilities.accountSelector
-    const commands = settings?.terminal?.cli_commands?.[tool.id] ?? {}
-    for (const command of Object.values(commands)) {
-      const match = selector && String(command).match(new RegExp(`${selector}=['\"]?([^'\" ]+)`))
+    for (const base of launchBases(tool)) {
+      const head = base.opaqueHead ?? base.opaque_head
+      if (head) {
+        return {
+          account: state.accounts.find(
+            (account) => account.is_process_default || account.is_default
+          ),
+          origin: opaqueBaseNotice(head, tool.id),
+        }
+      }
+      const match = selector && String(base.command).match(new RegExp(`${selector}=['\"]?([^'\" ]+)`))
       const account = match && state.accounts.find((candidate) => candidate.dir === match[1])
-      if (account) return { account, origin: `from your launch command \"${command}\"` }
+      if (!account) continue
+      const alias = base.expansions?.[0]
+      return {
+        account,
+        origin: alias
+          ? `from your launch command \"${alias.name}\" (alias for ${alias.body})`
+          : `from your launch command \"${base.command}\"`,
+      }
     }
     return {
       account: state.accounts.find((account) => account.is_process_default || account.is_default),

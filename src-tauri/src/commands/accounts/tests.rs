@@ -166,6 +166,48 @@ fn an_older_daemon_reports_no_transcript_without_degrading() {
     assert_eq!(lookup.unavailable, None);
 }
 
+/// Settings has to name the account a launch will really run on, and only the
+/// resolved base command says which one that is.
+#[test]
+fn the_accounts_report_carries_what_the_pane_shell_makes_of_each_command() {
+    let (db, _tmp) = db_with_project("p1");
+    {
+        let conn = db.0.lock().expect("db lock");
+        let mut settings = crate::db::settings_queries::get_all_settings(&conn).expect("settings");
+        settings.terminal.cli_commands.claude.fresh =
+            "claude2 --dangerously-skip-permissions".to_string();
+        crate::db::settings_queries::save_settings(&conn, &settings).expect("save settings");
+    }
+    let _aliases = crate::session_scanner::launch_base::install_alias_override(&[(
+        "claude2",
+        "CLAUDE_CONFIG_DIR=/homes/two claude",
+    )]);
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: None,
+        wsl_distro: None,
+    };
+
+    let report = list_accounts_impl(&db, &provider, CliTool::Claude);
+
+    let resolved: Vec<&str> = report
+        .resolved_bases
+        .iter()
+        .map(|base| base.command.as_str())
+        .collect();
+    assert_eq!(resolved.len(), 3, "one per configured mode: {resolved:?}");
+    assert!(
+        resolved.contains(&"CLAUDE_CONFIG_DIR=/homes/two claude --dangerously-skip-permissions"),
+        "{resolved:?}"
+    );
+    let expansion = report
+        .resolved_bases
+        .iter()
+        .find_map(|base| base.expansions.first())
+        .expect("the alias that carried the selector");
+    assert_eq!(expansion.name, "claude2");
+}
+
 /// A daemon that can read the WSL shell answers what the base command means.
 #[test]
 fn a_resolved_base_from_the_daemon_is_used_as_the_launch_base() {

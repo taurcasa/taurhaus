@@ -15,6 +15,7 @@ import { toolDescriptor, tools } from './toolRegistry.js'
 const accounts = $state({ byTool: {} })
 const EMPTY_STATE = Object.freeze({
   accounts: Object.freeze([]),
+  resolvedBases: Object.freeze([]),
   degraded: false,
   defaultAccountId: null,
   projectChoices: Object.freeze({}),
@@ -39,6 +40,7 @@ function mutableAccountState(tool = providerTool()) {
   if (!accounts.byTool[id]) {
     accounts.byTool[id] = {
       accounts: [],
+      resolvedBases: [],
       degraded: false,
       defaultAccountId: null,
       projectChoices: {},
@@ -118,6 +120,29 @@ export function effectiveAccount(project, tool = providerTool()) {
     state.accounts.find((account) => account.logged_in) ??
     null
   return { account: fallback, origin: 'default_config_dir' }
+}
+
+/**
+ * The sentence for a launch command whose head is not the tool's own CLI.
+ *
+ * taurhaus renders the account selector in front of it and stops there: it
+ * will not run a wrapper to find out what the wrapper does with it.
+ */
+export function opaqueBaseNotice(head, tool = providerTool()) {
+  const label = toolDescriptor(tool)?.label ?? 'CLI'
+  return `taurhaus could not select an account: your launch command runs "${head}", which is not the ${label} CLI`
+}
+
+/**
+ * Why a launch did not run on the account it was given, in one sentence.
+ * `null` when the launch applied the account it was asked for.
+ */
+export function launchAccountNotice(result, { project, tool } = {}) {
+  if (result?.account_applied !== false) return null
+  if (result.account_note === 'opaque_base_command') {
+    return opaqueBaseNotice(result.account_note_detail ?? 'that command', tool)
+  }
+  return `${project?.name ?? 'This project'} continued on the team's default account`
 }
 
 export function activeAccountId(project, tool = providerTool()) {
@@ -257,6 +282,10 @@ function detectAccounts(tool) {
       return
     }
     state.accounts = keepKnownUsage(state, addressableAccounts(report?.accounts ?? []))
+    // What the pane shell makes of each configured launch command, resolved
+    // where that shell lives. An older backend sends none and the frontend
+    // falls back to the literal commands in settings.
+    state.resolvedBases = report?.resolvedBases ?? report?.resolved_bases ?? []
     state.degraded = false
   })
   const settings = Promise.resolve(getSettings())
