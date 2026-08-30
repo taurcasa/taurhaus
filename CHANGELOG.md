@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **Assignment effort follows the task mesh is delivering and reports every terminal outcome** — the Codex relaunch state machine now carries the held task id with requested and applied effort, falling back deterministically to the highest requested open assignment when mesh has no held-notice projection. Task-arrival and self-heal passes return switched members, refusals, and unreadable teams instead of collapsing them to nominal success, including managed-Codex settings discovery failures. Relaunches remain stop-then-resume and capped at three attempts per task and level; exhaustion is persisted and emits one `effort.resume.failed` record with `reason: budget_exhausted`, `attempts: 3`, and the task id, then later sweeps stay silent.
+
 - **Project switches no longer time out behind account resolution (0.8.4 regression)** — reading accounts never probes the shell again: launch-base resolution moved to a dedicated Settings-only command, deduplicated per command head with an rc-mtime-aware ten-minute cache, and every I/O-capable IPC command now runs off the main thread, so a slow WSL alias probe can no longer starve project reads into their five-second timeout. A durable boundary test keeps blocking I/O out of synchronous commands, and a forced Settings refresh is carried across daemon calls until the daemon really consumed it.
 
 ### Added
