@@ -1010,6 +1010,10 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
 
 #[test]
 fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() {
+    // This test resolves the Claude config dir, which TAURHAUS_CLAUDE_DIR
+    // moves: hold the shared env guard so a concurrent env-mutating test
+    // cannot race the resolution.
+    let _env = taurhaus_lib::test_support::acquire_env_test_guard();
     let initialize_tmp = TempDir::new().expect("tempdir");
     let initialize_backend = Arc::new(FakeBackend::default());
     let initialize_runtime = Arc::new(RecordingCoordinationRuntime::default());
