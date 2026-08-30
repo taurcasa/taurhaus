@@ -439,9 +439,11 @@ fn stop_existing_daemon_wsl_script(port: u16) -> String {
 /// **Windows**: Resolves via WSL `$HOME`.
 fn daemon_binary_path(distro: &str) -> Result<String, std::io::Error> {
     if is_native_daemon() {
-        Ok(crate::provider::platform_paths::PlatformPaths::daemon_binary_path()
-            .to_string_lossy()
-            .to_string())
+        Ok(
+            crate::provider::platform_paths::PlatformPaths::daemon_binary_path()
+                .to_string_lossy()
+                .to_string(),
+        )
     } else {
         let home = resolve_wsl_home(distro)?;
         Ok(format!("{home}/.local/bin/taurhaus-daemon"))
