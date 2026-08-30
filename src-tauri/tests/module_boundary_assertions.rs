@@ -144,6 +144,35 @@ fn sync_io_command_violations(sources: &[(String, String)]) -> Vec<String> {
     violations
 }
 
+fn holds_db_guard_across_search_lock(body: &str) -> bool {
+    let Some(db_lock) = body.find("let conn = db.0.lock") else {
+        return false;
+    };
+    let Some(search_lock_offset) = body[db_lock..].find("search.0.lock()") else {
+        return false;
+    };
+    let search_lock = db_lock + search_lock_offset;
+    let between = &body[db_lock..search_lock];
+    if between.contains("drop(conn)") {
+        return false;
+    }
+
+    let depth_at_db = body[..db_lock].matches('{').count() as isize
+        - body[..db_lock].matches('}').count() as isize;
+    let mut depth = depth_at_db;
+    for byte in between.bytes() {
+        match byte {
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            _ => {}
+        }
+        if depth < depth_at_db {
+            return false;
+        }
+    }
+    true
+}
+
 fn collect_repo_source_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).expect("directory should be readable") {
         let entry = entry.expect("directory entry should be readable");
@@ -350,6 +379,23 @@ fn newly_added_probe_impl() {
         sync_io_command_violations(&sources),
         vec!["src/commands/example.rs::newly_added_probe: [\"send_status_request\"]".to_string()],
         "a newly added sync RPC command must turn the boundary lane red"
+    );
+}
+
+#[test]
+fn project_removal_releases_the_db_before_waiting_for_search() {
+    // Regression: 47fac80d made `remove_project` and `rebuild_index`
+    // concurrent while they acquired DB/search and search/DB respectively.
+    // The AB/BA cycle permanently wedged both commands and every later DB IPC.
+    let source = source_without_test_only_items(&read_source("src/commands/projects.rs"));
+    let functions = named_function_bodies(&source);
+    let body = functions
+        .get("remove_project")
+        .expect("remove_project command body");
+
+    assert!(
+        !holds_db_guard_across_search_lock(body),
+        "remove_project holds the DB mutex while waiting for the search mutex"
     );
 }
 

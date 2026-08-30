@@ -523,6 +523,9 @@ pub fn remove_project(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let removed_project = queries::get_project(&conn, &project_id).sanitize_err()?;
         project::remove_project(&conn, &project_id).sanitize_err()?;
+        // `rebuild_index` takes search before DB. Never wait for search while
+        // retaining this guard or the two async commands can deadlock AB/BA.
+        drop(conn);
 
         // Clean up search index entries for this project
         let (search_cleanup_status, search_cleanup_error) = match search.0.lock() {
