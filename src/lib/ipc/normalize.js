@@ -31,6 +31,7 @@ export function normalizeBehavioralContract(value, options = {}) {
   if (mode === BEHAVIORAL_CONTRACT_MODES.OPTIONAL_OBJECT) {
     if (!isObjectRecord(value)) return null
     return {
+      ...value,
       communication: Array.isArray(value.communication) ? value.communication : [],
       execution: Array.isArray(value.execution) ? value.execution : [],
       escalation: Array.isArray(value.escalation) ? value.escalation : [],
@@ -52,10 +53,11 @@ export function normalizeBehavioralContract(value, options = {}) {
     const escalation = normalizeStringList(value?.escalation)
 
     if (communication.length || execution.length || escalation.length) {
-      return { communication, execution, escalation }
+      return { ...(isObjectRecord(value) ? value : {}), communication, execution, escalation }
     }
 
     return {
+      ...(isObjectRecord(value) ? value : {}),
       communication: [],
       execution: [DEFAULT_EXECUTION_RULE],
       escalation: [],

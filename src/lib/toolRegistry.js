@@ -176,6 +176,7 @@ function normalizeCapabilities(raw) {
   const effortFlag = capability(source, 'effortFlag', 'effort_flag', null)
   return {
     ...CAPABILITY_DEFAULTS,
+    ...source,
     modelFlag: stringOrNull(capability(source, 'modelFlag', 'model_flag', null)),
     effortFlag: effortFlag && typeof effortFlag === 'object' ? { ...effortFlag } : null,
     autoApproveFlag: stringOrNull(
@@ -221,6 +222,7 @@ function normalizeDescriptor(raw) {
     : []
   if (!aliases.includes(id)) aliases.unshift(id)
   return {
+    ...raw,
     id,
     label: String(raw.label ?? id).trim() || id,
     displayName:

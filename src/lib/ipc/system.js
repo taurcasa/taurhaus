@@ -81,11 +81,14 @@ const DEFAULT_TERMINAL_CONTRACTS = {
 
 function normalizeToolCommands(raw, defaults = {}) {
   const commands = raw && typeof raw === 'object' ? raw : {}
-  return {
+  const normalized = {
+    ...commands,
     continue_cmd: commands.continue_cmd ?? commands.continueCmd ?? defaults.continue_cmd ?? '',
     fresh: commands.fresh ?? defaults.fresh ?? '',
     resume: commands.resume ?? defaults.resume ?? '',
   }
+  delete normalized.continueCmd
+  return normalized
 }
 
 function normalizeModelCatalogEntry(raw) {
@@ -97,7 +100,8 @@ function normalizeModelCatalogEntry(raw) {
     : []
   const defaultEffort = raw.defaultEffort ?? raw.default_effort ?? null
   const replacement = raw.replacement ?? null
-  return {
+  const normalized = {
+    ...raw,
     id,
     label: String(raw.label ?? id).trim() || id,
     efforts,
@@ -105,6 +109,8 @@ function normalizeModelCatalogEntry(raw) {
     deprecated: Boolean(raw.deprecated),
     replacement: replacement == null ? null : String(replacement).trim() || null,
   }
+  delete normalized.default_effort
+  return normalized
 }
 
 function normalizeModelCatalogEntries(raw, defaults = []) {
@@ -115,6 +121,7 @@ function normalizeModelCatalogEntries(raw, defaults = []) {
 function normalizeModelCatalog(raw, defaults = EMPTY_MODEL_CATALOG) {
   const catalog = raw && typeof raw === 'object' ? raw : defaults
   return {
+    ...catalog,
     claude: normalizeModelCatalogEntries(catalog.claude, defaults.claude),
     codex: normalizeModelCatalogEntries(catalog.codex, defaults.codex),
     agy: normalizeModelCatalogEntries(catalog.agy, defaults.agy),
@@ -124,7 +131,8 @@ function normalizeModelCatalog(raw, defaults = EMPTY_MODEL_CATALOG) {
 
 function normalizeCliVersions(raw, defaults = EMPTY_CLI_VERSIONS) {
   const versions = raw && typeof raw === 'object' ? raw : defaults
-  return {
+  const normalized = {
+    ...versions,
     codex: versions.codex == null ? null : String(versions.codex),
     claude: versions.claude == null ? null : String(versions.claude),
     agy: versions.agy == null ? null : String(versions.agy),
@@ -147,6 +155,11 @@ function normalizeCliVersions(raw, defaults = EMPTY_CLI_VERSIONS) {
       versions.agy_hooks_supported ?? versions.agyHooksSupported ?? defaults.agy_hooks_supported,
     ),
   }
+  delete normalized.codexCompactionHooksSupported
+  delete normalized.codexNotifySupported
+  delete normalized.codexQueueWakeSupported
+  delete normalized.agyHooksSupported
+  return normalized
 }
 
 export function buildFrontendFallbackTerminalContract(platform = 'linux') {
@@ -196,11 +209,13 @@ function normalizeTerminalContract(raw) {
         : defaults.cli_versions
   const tools = Array.isArray(contract.tools) ? contract.tools : defaults.tools
 
-  return {
+  const normalized = {
+    ...contract,
     platform: defaults.platform,
     default_emulator: contract.default_emulator ?? contract.defaultEmulator ?? defaults.default_emulator,
     supported_emulators: [...supportedEmulators],
     cli_command_defaults: {
+      ...cliCommandDefaults,
       claude: normalizeToolCommands(cliCommandDefaults.claude, defaults.cli_command_defaults.claude),
       codex: normalizeToolCommands(cliCommandDefaults.codex, defaults.cli_command_defaults.codex),
       agy: normalizeToolCommands(cliCommandDefaults.agy, defaults.cli_command_defaults.agy),
@@ -210,6 +225,12 @@ function normalizeTerminalContract(raw) {
     cli_versions: normalizeCliVersions(cliVersions, defaults.cli_versions),
     tools: normalizeToolDescriptors(tools, defaults.tools),
   }
+  delete normalized.defaultEmulator
+  delete normalized.supportedEmulators
+  delete normalized.cliCommandDefaults
+  delete normalized.modelCatalog
+  delete normalized.cliVersions
+  return normalized
 }
 
 function normalizeSettings(raw) {
@@ -243,10 +264,22 @@ function normalizeSettings(raw) {
   const emulator = terminalContract.supported_emulators.includes(requestedEmulator)
     ? requestedEmulator
     : terminalContract.default_emulator
+  const legacyClaudeDefault =
+    terminal.claude_default_account_id ?? terminal.claudeDefaultAccountId ?? null
+  const defaultAccountIds =
+    terminal.default_account_ids && typeof terminal.default_account_ids === 'object'
+      ? terminal.default_account_ids
+      : terminal.defaultAccountIds && typeof terminal.defaultAccountIds === 'object'
+        ? terminal.defaultAccountIds
+        : legacyClaudeDefault
+          ? { claude: legacyClaudeDefault }
+          : {}
 
-  return {
+  const normalized = {
+    ...settings,
     scan_directories: settings.scan_directories ?? settings.scanDirectories ?? [],
     thresholds: {
+      ...thresholds,
       active_days: thresholds.active_days ?? thresholds.activeDays ?? 7,
       recent_days: thresholds.recent_days ?? thresholds.recentDays ?? 30,
       stale_days: thresholds.stale_days ?? thresholds.staleDays ?? 90,
@@ -256,38 +289,62 @@ function normalizeSettings(raw) {
     project_dialog_last_path:
       settings.project_dialog_last_path ?? settings.projectDialogLastPath ?? '',
     code_theme: {
+      ...codeTheme,
       light: codeTheme.light ?? 'github-light',
       dark: codeTheme.dark ?? 'github-dark-dimmed',
     },
     daemon: {
+      ...daemon,
       port: daemon.port ?? 17233,
       path: daemon.path ?? '',
       auto_start: daemon.auto_start ?? daemon.autoStart ?? true,
     },
     terminal: {
+      ...terminal,
       emulator,
       custom_command: terminal.custom_command ?? terminal.customCommand ?? '',
       tmux_layout: terminal.tmux_layout ?? terminal.tmuxLayout ?? 'new_window',
       cli_commands: {
+        ...cliCommands,
         claude: normalizeToolCommands(cliCommands.claude, terminalContract.cli_command_defaults.claude),
         codex: normalizeToolCommands(cliCommands.codex, terminalContract.cli_command_defaults.codex),
         agy: normalizeToolCommands(cliCommands.agy, terminalContract.cli_command_defaults.agy),
         grok: normalizeToolCommands(cliCommands.grok, terminalContract.cli_command_defaults.grok),
       },
       harness: {
+        ...harness,
         agy_hooks: agyHooks == null ? true : Boolean(agyHooks),
         grok_hooks: grokHooks == null ? true : Boolean(grokHooks),
       },
-      claude_default_account_id:
-        terminal.claude_default_account_id ?? terminal.claudeDefaultAccountId ?? null,
+      default_account_ids: { ...defaultAccountIds },
     },
     terminal_contract: terminalContract,
   }
+  delete normalized.scanDirectories
+  delete normalized.ignorePatterns
+  delete normalized.darkMode
+  delete normalized.projectDialogLastPath
+  delete normalized.codeTheme
+  delete normalized.terminalContract
+  delete normalized.thresholds.activeDays
+  delete normalized.thresholds.recentDays
+  delete normalized.thresholds.staleDays
+  delete normalized.daemon.autoStart
+  delete normalized.terminal.customCommand
+  delete normalized.terminal.tmuxLayout
+  delete normalized.terminal.cliCommands
+  delete normalized.terminal.defaultAccountIds
+  delete normalized.terminal.claudeDefaultAccountId
+  delete normalized.terminal.claude_default_account_id
+  delete normalized.terminal.harness.agyHooks
+  delete normalized.terminal.harness.grokHooks
+  return normalized
 }
 
 function normalizeDaemonStatus(raw) {
   const status = raw && typeof raw === 'object' ? raw : {}
-  return {
+  const normalized = {
+    ...status,
     status: status.status ?? 'disconnected',
     version: status.version ?? null,
     protocol_version: status.protocol_version ?? status.protocolVersion ?? 0,
@@ -297,11 +354,17 @@ function normalizeDaemonStatus(raw) {
     port: status.port ?? 17233,
     wsl_distro: status.wsl_distro ?? status.wslDistro ?? null,
   }
+  delete normalized.protocolVersion
+  delete normalized.expectedProtocolVersion
+  delete normalized.uptimeSecs
+  delete normalized.wslDistro
+  return normalized
 }
 
 function normalizeDaemonInstallStatus(raw) {
   const status = raw && typeof raw === 'object' ? raw : {}
-  return {
+  const normalized = {
+    ...status,
     installed: Boolean(status.installed),
     version: status.version ?? null,
     bundled_version: status.bundled_version ?? status.bundledVersion ?? '',
@@ -309,6 +372,10 @@ function normalizeDaemonInstallStatus(raw) {
     wsl_available: status.wsl_available ?? status.wslAvailable ?? true,
     error: status.error ?? null,
   }
+  delete normalized.bundledVersion
+  delete normalized.needsUpdate
+  delete normalized.wslAvailable
+  return normalized
 }
 
 function normalizeMeshInstallStatus(raw) {
@@ -331,12 +398,14 @@ function normalizeMeshInstallStatus(raw) {
       ? status.compatibilityIssues
       : []
 
-  return {
+  const normalized = {
+    ...status,
     installed: Boolean(status.installed),
     version: status.version ?? null,
     bundled_version: status.bundled_version ?? status.bundledVersion ?? '',
     needs_update: status.needs_update ?? status.needsUpdate ?? false,
     bundled_contract: {
+      ...bundledContract,
       version: bundledContract.version ?? '',
       protocol_version: bundledContract.protocol_version ?? bundledContract.protocolVersion ?? 0,
       schema_version: bundledContract.schema_version ?? bundledContract.schemaVersion ?? 0,
@@ -344,6 +413,7 @@ function normalizeMeshInstallStatus(raw) {
     },
     installed_contract: installedContract
       ? {
+          ...installedContract,
           version: installedContract.version ?? '',
           protocol_version:
             installedContract.protocol_version ?? installedContract.protocolVersion ?? 0,
@@ -353,6 +423,7 @@ function normalizeMeshInstallStatus(raw) {
         }
       : null,
     compatibility_issues: compatibilityIssues.map((issue) => ({
+      ...(issue && typeof issue === 'object' ? issue : {}),
       code: issue?.code ?? '',
       message: issue?.message ?? '',
       expected: issue?.expected ?? null,
@@ -362,6 +433,21 @@ function normalizeMeshInstallStatus(raw) {
       status.environment_available ?? status.environmentAvailable ?? true,
     error: status.error ?? null,
   }
+  delete normalized.bundledVersion
+  delete normalized.needsUpdate
+  delete normalized.bundledContract
+  delete normalized.installedContract
+  delete normalized.compatibilityIssues
+  delete normalized.environmentAvailable
+  delete normalized.bundled_contract.protocolVersion
+  delete normalized.bundled_contract.schemaVersion
+  delete normalized.bundled_contract.gitCommit
+  if (normalized.installed_contract) {
+    delete normalized.installed_contract.protocolVersion
+    delete normalized.installed_contract.schemaVersion
+    delete normalized.installed_contract.gitCommit
+  }
+  return normalized
 }
 
 function normalizeUsageWindow(raw) {
@@ -370,7 +456,8 @@ function normalizeUsageWindow(raw) {
   const used = Number(window.used_percentage ?? window.usedPercentage)
   if (!Number.isFinite(used)) return null
   const resetsAt = Number(window.resets_at ?? window.resetsAt)
-  return {
+  const normalized = {
+    ...window,
     key: String(window.key ?? ''),
     title: String(window.title ?? ''),
     used_percentage: used,
@@ -379,6 +466,10 @@ function normalizeUsageWindow(raw) {
     is_active: Boolean(window.is_active ?? window.isActive ?? true),
     ...(window.compact == null ? {} : { compact: Boolean(window.compact) }),
   }
+  delete normalized.usedPercentage
+  delete normalized.resetsAt
+  delete normalized.isActive
+  return normalized
 }
 
 function normalizeAccountUsage(raw) {
@@ -388,12 +479,15 @@ function normalizeAccountUsage(raw) {
     ? usage.windows.map(normalizeUsageWindow).filter(Boolean)
     : []
   const observedAt = usage.observed_at ?? usage.observedAt ?? null
-  return {
+  const normalized = {
+    ...usage,
     observed_at: observedAt == null ? null : String(observedAt),
     status: String(usage.status ?? 'ok'),
     windows,
     note: usage.note == null ? null : String(usage.note),
   }
+  delete normalized.observedAt
+  return normalized
 }
 
 function normalizeAccount(raw) {
@@ -404,11 +498,13 @@ function normalizeAccount(raw) {
   const displayName = identity.display_name ?? identity.displayName ?? null
   const plan = identity.plan ?? null
   const usageCapable = identity.usage_capable ?? identity.usageCapable ?? true
-  return {
+  const normalized = {
+    ...account,
     tool: String(account.tool ?? ''),
     id,
     dir: String(account.dir ?? ''),
     identity: {
+      ...identity,
       id: String(identity.id ?? id),
       label: String(identity.label ?? '').trim(),
       display_name: displayName == null ? null : String(displayName).trim() || null,
@@ -432,6 +528,13 @@ function normalizeAccount(raw) {
     is_process_default: Boolean(account.is_process_default ?? account.isProcessDefault),
     usage: normalizeAccountUsage(account.usage),
   }
+  delete normalized.isDefault
+  delete normalized.isProcessDefault
+  delete normalized.identity.displayName
+  delete normalized.identity.loggedIn
+  delete normalized.identity.usageCapable
+  delete normalized.identity.credentialExpiresAt
+  return normalized
 }
 
 /**
@@ -444,23 +547,28 @@ function normalizeResolvedBase(raw) {
   if (!command) return null
   const expansions = Array.isArray(base.expansions) ? base.expansions : []
   const opaqueHead = base.opaqueHead ?? base.opaque_head ?? null
-  return {
+  const normalized = {
+    ...base,
     command,
     expansions: expansions
       .map((expansion) => ({
+        ...(expansion && typeof expansion === 'object' ? expansion : {}),
         name: String(expansion?.name ?? ''),
         body: String(expansion?.body ?? ''),
       }))
       .filter((expansion) => expansion.name),
     opaqueHead: opaqueHead == null ? null : String(opaqueHead),
   }
+  delete normalized.opaque_head
+  return normalized
 }
 
 function normalizeAccountsResult(raw) {
   const result = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
   const accounts = Array.isArray(result.accounts) ? result.accounts : []
   const resolvedBases = result.resolvedBases ?? result.resolved_bases
-  return {
+  const normalized = {
+    ...result,
     accounts: accounts.map(normalizeAccount).filter(Boolean),
     source: String(result.source ?? 'native'),
     degraded: Boolean(result.degraded),
@@ -471,6 +579,8 @@ function normalizeAccountsResult(raw) {
       .map(normalizeResolvedBase)
       .filter(Boolean),
   }
+  delete normalized.resolved_bases
+  return normalized
 }
 
 /**

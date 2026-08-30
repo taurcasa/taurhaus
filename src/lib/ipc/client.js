@@ -23,6 +23,8 @@ function normalizeInvokeError(error) {
     const retryable = typeof parsed.retryable === 'boolean' ? parsed.retryable : null
     const message = formatUserFacingError(parsed, code ?? "Couldn't complete the request")
     const normalized = new Error(message)
+    Object.assign(normalized, parsed)
+    normalized.message = message
     if (code) normalized.code = code
     if (command) normalized.command = command
     if (retryable !== null) normalized.retryable = retryable
