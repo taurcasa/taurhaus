@@ -8,6 +8,9 @@ import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 
 export const DEFAULT_WORKFLOWS_DIR = '.claude/workflows'
+const SHARED_WORKFLOWS = ['feature-pr.js', 'small-change.js', 'fix-round.js', 'research-sweep.js', 'docs-sweep.js']
+const LIB_START = '// ── lib:'
+const LIB_END = '// ── end lib ──'
 
 // Workflow scripts run as one inline script with the API injected as globals.
 const BANNED = [
@@ -110,6 +113,16 @@ export function checkWorkflowSource(fileName, source) {
     if (pattern.test(source)) problems.push(`${fileName}: ${message}`)
   }
 
+  // Required gates must come from the same typed catalog that validates and declares commands.
+  // A hand-built array would silently restore the old split sources of truth.
+  if (/\bconst\s+REQUIRED_GATES\b/.test(source)) {
+    const buildsCatalog = /\bconst\s+GATE_CATALOG\s*=\s*buildGateCatalog\s*\(/.test(source)
+    const readsCatalog = /\bconst\s+REQUIRED_GATES\s*=\s*GATE_CATALOG\.required\b/.test(source)
+    if (!buildsCatalog || !readsCatalog) {
+      problems.push(`${fileName}: REQUIRED_GATES must be built through buildGateCatalog() and read from GATE_CATALOG.required`)
+    }
+  }
+
   // Every object in a `*_SCHEMA` literal must close itself with
   // `additionalProperties: false`: the OpenAI structured-output endpoint behind
   // `codex exec --output-schema` rejects a schema that leaves it out, so a Codex
@@ -135,7 +148,33 @@ export function checkWorkflowDir(dir) {
   if (files.length === 0) {
     return { checked: 0, problems: [`${dir}: no workflow scripts found`] }
   }
-  const problems = files.flatMap((file) => checkWorkflowSource(file, fs.readFileSync(path.join(dir, file), 'utf8')))
+  const sources = new Map(files.map((file) => [file, fs.readFileSync(path.join(dir, file), 'utf8')]))
+  const problems = files.flatMap((file) => checkWorkflowSource(file, sources.get(file)))
+  const shared = SHARED_WORKFLOWS.filter((file) => sources.has(file))
+  if (shared.length > 0) {
+    const missing = SHARED_WORKFLOWS.filter((file) => !sources.has(file))
+    if (missing.length > 0) {
+      problems.push(`${dir}: shared workflow set is incomplete; missing ${missing.join(', ')}`)
+    } else {
+      const block = (file) => {
+        const source = sources.get(file)
+        const start = source.indexOf(LIB_START)
+        const end = source.indexOf(LIB_END)
+        if (start === -1 || end <= start) {
+          problems.push(`${file}: shared lib block markers are missing or out of order`)
+          return null
+        }
+        return source.slice(start, end)
+      }
+      const canonical = block('feature-pr.js')
+      for (const file of SHARED_WORKFLOWS.slice(1)) {
+        const candidate = block(file)
+        if (canonical != null && candidate != null && candidate !== canonical) {
+          problems.push(`${file}: shared lib block differs byte-for-byte from feature-pr.js`)
+        }
+      }
+    }
+  }
   return { checked: files.length, problems }
 }
 

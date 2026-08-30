@@ -100,6 +100,32 @@ describe('workflow script check', () => {
     expect(titles(checkWorkflowDir(dir).problems)).toMatch(/no workflow scripts/)
     fs.rmSync(dir, { recursive: true, force: true })
   })
+
+  it('requires REQUIRED_GATES to come from the typed gate catalog helper', () => {
+    const direct = VALID.replace(
+      "const A = args || {}",
+      "const A = args || {}\nconst REQUIRED_GATES = ['just check-quick', 'just lint']"
+    )
+    expect(titles(checkWorkflowSource('demo.js', direct))).toMatch(/REQUIRED_GATES.*buildGateCatalog/i)
+
+    const typed = VALID.replace(
+      "const A = args || {}",
+      "const A = args || {}\nfunction buildGateCatalog() { return { required: [] } }\nconst GATE_CATALOG = buildGateCatalog(A.gates, A.requiredGates)\nconst REQUIRED_GATES = GATE_CATALOG.required"
+    )
+    expect(checkWorkflowSource('demo.js', typed)).toEqual([])
+  })
+
+  it('fails when one of the five procedure lib blocks drifts', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'workflow-check-'))
+    const workflows = ['feature-pr.js', 'small-change.js', 'fix-round.js', 'research-sweep.js', 'docs-sweep.js']
+    for (const workflow of workflows) {
+      fs.copyFileSync(path.join('.claude/workflows', workflow), path.join(dir, workflow))
+    }
+    const drifted = path.join(dir, 'small-change.js')
+    fs.writeFileSync(drifted, fs.readFileSync(drifted, 'utf8').replace('const DEFAULT_GATES =', 'const DEFAULT_GATES  ='))
+    expect(titles(checkWorkflowDir(dir).problems)).toMatch(/small-change\.js.*shared lib.*feature-pr\.js/i)
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
 })
 
 // Regression: the five procedures shipped schema literals without

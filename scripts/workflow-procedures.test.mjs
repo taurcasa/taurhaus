@@ -33,6 +33,7 @@ const OK_SWEEP = { status: 'ok', summary: 'swept', commits: ['abc1234 docs: swee
 const OK_REVIEW = { status: 'ok', reviewer: 'codex', verdict: 'approve', findings: [] }
 const OK_GATE = {
   status: 'pass',
+  changed_paths: ['src/thing.js'],
   commands: [
     { command: 'just check-quick', status: 'pass' },
     { command: 'just lint', status: 'pass' },
@@ -117,6 +118,64 @@ describe('workflow procedures — the shared lib', () => {
 
   it('rejects an effort outside the harness vocabulary', async () => {
     await expect(run('feature-pr.js', { ...BASE_ARGS, effort: 'turbo' })).rejects.toThrow(/effort/)
+  })
+
+  it('accepts array gates and hands every exact command to the gate agent', async () => {
+    const gates = ['bunx vitest run scripts/workflow-procedures.test.mjs', 'just check-quick']
+    const { calls } = await run('feature-pr.js', { ...BASE_ARGS, gates }, {
+      gate: {
+        ...OK_GATE,
+        commands: OK_GATE.commands.concat([{ command: gates[0], status: 'pass' }]),
+      },
+    })
+    const gate = calls.find((call) => call.label.startsWith('gate:'))
+    for (const command of gates) expect(gate.prompt).toContain(command)
+  })
+
+  it('accepts one exact gate as the compatibility string form', async () => {
+    const command = 'bunx vitest run scripts/workflow-procedures.test.mjs'
+    const { calls } = await run('feature-pr.js', { ...BASE_ARGS, gates: command }, {
+      gate: {
+        ...OK_GATE,
+        commands: OK_GATE.commands.concat([{ command, status: 'pass' }]),
+      },
+    })
+    expect(calls.find((call) => call.label.startsWith('gate:')).prompt).toContain(command)
+  })
+
+  it('rejects prose gate strings with a semicolon and shows the array form', async () => {
+    await expect(run('feature-pr.js', { ...BASE_ARGS, gates: 'just lint; then run the tests' })).rejects.toThrow(
+      /array of exact command strings.*\["just check-quick"/i
+    )
+  })
+
+  it('rejects bracketed operational prose in the gate string', async () => {
+    await expect(run('feature-pr.js', { ...BASE_ARGS, gates: 'just lint [do not start the app]' })).rejects.toThrow(/gateNotes/)
+  })
+
+  it.each([
+    { gates: [''], problem: /non-empty/ },
+    { gates: ['just lint\njust check-quick'], problem: /newline/ },
+    { gates: ['just --summary'], problem: /just <recipe>/ },
+  ])('rejects an invalid exact gate command: $gates', async ({ gates, problem }) => {
+    await expect(run('feature-pr.js', { ...BASE_ARGS, gates })).rejects.toThrow(problem)
+  })
+
+  // Regression: commit 5eda87f left gates as prose; the 2026-08-30 gate round was lost after it
+  // emitted `cargo test a::b c::d`, even though cargo accepts at most one positional test filter.
+  it('rejects a cargo test command with two positional filters', async () => {
+    await expect(run('feature-pr.js', { ...BASE_ARGS, gates: ['cargo test a::b c::d'] })).rejects.toThrow(/at most one positional filter/)
+  })
+
+  it('accepts cargo test options and one positional filter before the test-binary separator', async () => {
+    const command = 'cargo test --package taurhaus coordination -- --nocapture'
+    const { result } = await run('feature-pr.js', { ...BASE_ARGS, gates: [command] }, {
+      gate: {
+        ...OK_GATE,
+        commands: OK_GATE.commands.concat([{ command, status: 'pass' }]),
+      },
+    })
+    expect(result.gate.status).toBe('pass')
   })
 
   it('normalizes a Windows checkout path to its WSL form', async () => {
@@ -522,6 +581,31 @@ describe('workflow procedures — fail closed', () => {
       ).rejects.toThrow(/required gate/i)
     })
 
+    it(`${script} does not accept a reported command that merely contains a required command`, async () => {
+      await expect(
+        run(script, argsFor(script), {
+          gate: {
+            ...OK_GATE,
+            commands: [
+              { command: 'echo just check-quick', status: 'pass' },
+              { command: 'just lint', status: 'pass' },
+            ],
+          },
+        })
+      ).rejects.toThrow(/just check-quick.*never run/i)
+    })
+
+    it(`${script} rejects a reported command that was not declared`, async () => {
+      await expect(
+        run(script, argsFor(script), {
+          gate: {
+            ...OK_GATE,
+            commands: OK_GATE.commands.concat([{ command: 'echo surprise', status: 'pass' }]),
+          },
+        })
+      ).rejects.toThrow(/not declared.*echo surprise/i)
+    })
+
     // Regression: gateProblem excluded every `skipped` command from the failure set, so a gate could
     // report `just check-quick` and `just lint` green while the targeted cargo tests the spec asked
     // for were never run, and the workflow still returned a green ledger. A command that did not
@@ -545,13 +629,15 @@ describe('workflow procedures — fail closed', () => {
     })
 
     it(`${script} passes when the gate lists only commands that ran and passed`, async () => {
-      const { result } = await run(script, argsFor(script), {
+      const cargoGate = 'cd src-tauri && cargo test coordination'
+      const { result } = await run(script, argsFor(script, { gates: [cargoGate] }), {
         gate: {
           status: 'pass',
+          changed_paths: ['src/thing.js'],
           commands: [
             { command: 'just check-quick', status: 'pass' },
             { command: 'just lint', status: 'pass' },
-            { command: 'cd src-tauri && cargo test coordination', status: 'pass' },
+            { command: cargoGate, status: 'pass' },
           ],
           failures: [],
           diff_stat: '',
@@ -601,7 +687,7 @@ describe('workflow procedures — fail closed', () => {
 
     it(`${script} adds args.requiredGates on top of the two default gates, which cannot be opted out of`, async () => {
       const defaults = [{ command: 'just check-quick', status: 'pass' }, { command: 'just lint', status: 'pass' }]
-      const custom = argsFor(script, { gates: "'bun run test'", requiredGates: ['bun run test'] })
+      const custom = argsFor(script, { gates: ['bun run test'], requiredGates: ['bun run test'] })
       await expect(
         run(script, custom, {
           gate: { status: 'pass', commands: defaults.concat([{ command: 'bun run test', status: 'skipped', detail: 'slow' }]), failures: [], diff_stat: '', commits: [] },
@@ -632,11 +718,20 @@ describe('workflow procedures — fail closed', () => {
       expect(gate.prompt).toContain('just check-quick')
     })
 
+    it(`${script} hands gateNotes to the gate agent separately from commands`, async () => {
+      const gateNotes = 'Use the isolated fixture root; do not start the desktop app.'
+      const { calls } = await run(script, argsFor(script, { gateNotes }))
+      const gate = calls.find((c) => c.label.startsWith('gate:'))
+      expect(gate.prompt).toContain('GATE NOTES')
+      expect(gate.prompt).toContain(gateNotes)
+    })
+
     it(`${script} asks the gate for a structured result`, async () => {
       const { calls } = await run(script, argsFor(script))
       const gate = calls.find((c) => c.label.startsWith('gate:'))
       expect(gate.opts.schema, 'the gate must return a schema-validated result').toBeTruthy()
       expect(gate.opts.schema.required).toContain('status')
+      expect(gate.opts.schema.required).toContain('changed_paths')
     })
 
     it(`${script} returns a green ledger when review and gate pass`, async () => {
@@ -645,6 +740,51 @@ describe('workflow procedures — fail closed', () => {
       expect(result.ledger.reviewers.length).toBeGreaterThan(0)
     })
   }
+})
+
+describe('workflow procedures — Rust diff gate', () => {
+  const rustPath = 'src-tauri/src/commands/coordination.rs'
+  const rustGate = { command: 'just test-rust-unit', status: 'pass' }
+
+  it('requires just test-rust-unit when the diff contains a Rust path', async () => {
+    await expect(
+      run('feature-pr.js', BASE_ARGS, {
+        gate: { ...OK_GATE, changed_paths: [rustPath] },
+      })
+    ).rejects.toThrow(/just test-rust-unit.*never run/i)
+
+    const { result } = await run('feature-pr.js', BASE_ARGS, {
+      gate: { ...OK_GATE, changed_paths: [rustPath], commands: OK_GATE.commands.concat([rustGate]) },
+    })
+    expect(result.gate.status).toBe('pass')
+  })
+
+  it('does not add a Rust test gate for a frontend-only diff', async () => {
+    const { result } = await run('feature-pr.js', BASE_ARGS, {
+      gate: { ...OK_GATE, changed_paths: ['src/lib/thing.js'] },
+    })
+    expect(result.gate.status).toBe('pass')
+  })
+
+  it('does not add just test-rust-unit when the caller declared a cargo test gate', async () => {
+    const cargoGate = 'cargo test coordination'
+    const { result } = await run('feature-pr.js', { ...BASE_ARGS, gates: [cargoGate] }, {
+      gate: {
+        ...OK_GATE,
+        changed_paths: [rustPath],
+        commands: OK_GATE.commands.concat([{ command: cargoGate, status: 'pass' }]),
+      },
+    })
+    expect(result.gate.commands.map((command) => command.command)).not.toContain('just test-rust-unit')
+  })
+
+  it('tells the gate agent to inspect the diff before choosing the effective gate set', async () => {
+    const { calls } = await run('feature-pr.js', BASE_ARGS)
+    const gate = calls.find((call) => call.label.startsWith('gate:'))
+    expect(gate.prompt).toContain('git diff --name-only main...HEAD')
+    expect(gate.prompt).toContain('just test-rust-unit')
+    expect(gate.prompt).toMatch(/first step/i)
+  })
 })
 
 describe('workflow procedures — the ledger', () => {
