@@ -281,23 +281,6 @@ impl CoordinationState {
         })
     }
 
-    /// Teams with at least one member whose project is `project_path`.
-    ///
-    /// The task scan runs per project, so this is what keeps a change in one
-    /// project from sweeping every team on the host.
-    pub fn teams_working_in_project(
-        &self,
-        project_path: &str,
-    ) -> Result<Vec<String>, CoordinationError> {
-        let (teams, skipped) = self.project_effort_teams(project_path)?;
-        if let Some((team_name, reason)) = skipped.into_iter().next() {
-            return Err(CoordinationError::StoreError(format!(
-                "could not inspect team '{team_name}': {reason}"
-            )));
-        }
-        Ok(teams)
-    }
-
     fn project_effort_teams(
         &self,
         project_path: &str,

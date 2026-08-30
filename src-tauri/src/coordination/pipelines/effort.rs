@@ -307,8 +307,16 @@ impl CoordinationOrchestrator {
         scope: task_effort::EffortPassScope,
     ) -> Result<EffortPassOutcome, CoordinationError> {
         validate_team_name(team_name)?;
-        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
         let mut outcome = EffortPassOutcome::default();
+        let config = match TeamConfigStore::load(&self.teams_dir, team_name) {
+            Ok(config) => config,
+            Err(err) => {
+                outcome
+                    .skipped_teams
+                    .push((team_name.to_string(), err.to_string()));
+                return Ok(outcome);
+            }
+        };
 
         for member in &config.members {
             if !task_effort::relaunches_for_effort(member.cli_tool) {

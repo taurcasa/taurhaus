@@ -4660,6 +4660,38 @@ fn an_effort_refusal_is_returned_in_the_typed_outcome() {
     assert!(outcome.skipped_teams.is_empty());
 }
 
+// Regression: 135c6f54 added `skipped_teams` to the typed effort result but
+// returned team config failures as an outer error, leaving the producer's
+// team-skip branch permanently empty.
+#[test]
+fn an_unreadable_team_is_returned_in_the_typed_effort_outcome() {
+    let tmp = TempDir::new().expect("tempdir");
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        Arc::new(FakeBackend::default()),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    let broken_team = tmp.path().join("broken-team");
+    fs::create_dir_all(&broken_team).expect("create broken team");
+    fs::write(broken_team.join("config.json"), b"{not valid json")
+        .expect("write broken config");
+
+    let outcome = orchestrator
+        .apply_pending_task_effort_outcome(
+            "broken-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("typed effort outcome");
+
+    assert!(outcome.switched.is_empty());
+    assert!(outcome.failed.is_empty());
+    assert_eq!(outcome.skipped_teams.len(), 1);
+    assert_eq!(outcome.skipped_teams[0].0, "broken-team");
+    assert!(outcome.skipped_teams[0].1.contains("failed to parse"));
+}
+
 #[test]
 fn a_launch_records_the_effort_the_session_actually_runs_at() {
     // mesh reads this before it types `/effort`, so it has to start from the
