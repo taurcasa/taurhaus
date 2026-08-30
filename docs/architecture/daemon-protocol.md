@@ -33,7 +33,7 @@ active app-data root, and validates it on every request:
 | Authority | Token path |
 |-----------|------------|
 | Current | `<TAURHAUS_DATA_DIR or platform app-data>/daemon.token` (`PlatformPaths::daemon_token_path()`) |
-| Pre-0.8.5 migration fallback | The former platform `taurhaus/daemon.token` path, read-only and only when `TAURHAUS_DATA_DIR` is not overridden |
+| Pre-0.8.5 migration fallback | The former platform `taurhaus/daemon.token` path, read-only when the active app-data root is the ordinary platform default (including the startup-pinned default), and never consulted when the root is redirected elsewhere |
 
 Native Unix files are chmodded to `0600`. When the Windows app-data root is
 mounted into WSL through DrvFs, the Windows ACL remains authoritative because
