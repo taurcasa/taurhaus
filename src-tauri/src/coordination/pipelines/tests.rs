@@ -4840,12 +4840,14 @@ fn an_effort_refusal_is_returned_in_the_typed_outcome() {
     })
     .expect("clear session id");
 
+    let mut cli_commands = CliCommandSettings::default();
     let outcome = orchestrator
         .apply_pending_task_effort_outcome(
             "effort-team",
-            &CliCommandSettings::default(),
+            &mut cli_commands,
             "new_window",
             EffortPassScope::TaskChanged,
+            &mut |_, _| {},
         )
         .expect("effort pass");
 
@@ -4871,12 +4873,14 @@ fn an_unreadable_team_is_returned_in_the_typed_effort_outcome() {
     fs::create_dir_all(&broken_team).expect("create broken team");
     fs::write(broken_team.join("config.json"), b"{not valid json").expect("write broken config");
 
+    let mut cli_commands = CliCommandSettings::default();
     let outcome = orchestrator
         .apply_pending_task_effort_outcome(
             "broken-team",
-            &CliCommandSettings::default(),
+            &mut cli_commands,
             "new_window",
             EffortPassScope::TaskChanged,
+            &mut |_, _| {},
         )
         .expect("typed effort outcome");
 
@@ -5739,7 +5743,7 @@ fn a_base_command_that_pins_the_effort_is_relaunched_at_the_assignments_level() 
     assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let resumed = orchestrator
-        .apply_pending_task_effort_with_launch_resolution(
+        .apply_pending_task_effort_outcome(
             "effort-team",
             &mut cli_commands,
             "new_window",
@@ -5757,7 +5761,7 @@ fn a_base_command_that_pins_the_effort_is_relaunched_at_the_assignments_level() 
         )
         .expect("effort pass");
 
-    assert_eq!(resumed, vec!["builder".to_string()]);
+    assert_eq!(resumed.switched, vec!["builder".to_string()]);
     let launch = runtime
         .calls()
         .into_iter()
