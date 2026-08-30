@@ -557,6 +557,7 @@ export const config = {
     for (const key of [...WORKER_ROOT_ENV_KEYS, 'TAURHAUS_DAEMON_PORT', E2E_RUN_TOKEN_ENV]) {
       process.env[key] = workerEnv[key]
     }
+    console.log(`[e2e] daemon port for this worker: ${workerEnv.TAURHAUS_DAEMON_PORT}`)
     prepareIsolatedTmux(workerEnv)
 
     tauriDriver = spawn(

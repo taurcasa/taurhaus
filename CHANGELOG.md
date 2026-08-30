@@ -22,6 +22,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 - **E2E workers cannot write operator tool roots** — every worker now supplies isolated app-data, Claude, Codex, Grok and Antigravity roots to both WDIO setup and the spawned Tauri driver. The daemon token follows the same overridable app-data authority on both sides (with its old path retained only as a read fallback), and Antigravity hook and identity paths honour the taurhaus-only `TAURHAUS_AGY_DIR` override.
 
+- **E2E workers own their external state** — every worker uses a private tmux server and non-default daemon port, and every tmux-calling spec is source-derived and required to assert isolation before its first call. Driver, WebKit, app, and daemon cleanup is keyed by a unique run token and a checkout-scoped PID/start-time ledger, so stale cleanup cannot reach a concurrent run or reused PID; the host-wide pre-run `pkill` is gone. The WDIO manifest is sealed: every non-paid spec belongs to an explicit named group, while paid specs remain opt-in only.
+
 - **Every Rust integration binary runs in the integration lane** — `just test-rust-integration` derives its targets from every top-level `src-tauri/tests/*.rs` file, while a completeness guard rejects missing or stale targets and one shared manifest keeps the unit-lane heavy skips identical to their serialized integration reruns.
 
 - **The full quality gate now fails with its lane** — `just check` preserves a failed parallel lane's status, stops its peer, and is regression-guarded through `just lint` without running the real lanes.

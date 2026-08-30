@@ -1066,7 +1066,7 @@ describe('managed Codex stage', function () {
     let assigned = null
     let resumeEvents = []
 
-    // One window with the isolated roots on the shared tmux session: the effort
+    // One window with the isolated roots on the worker's tmux session: the effort
     // resume opens the member's replacement pane inside it, and that pane needs
     // the roots as much as the first one did.
     await withPaneEnvironment(async () => {

@@ -128,10 +128,19 @@ and the taurhaus-only Antigravity root `TAURHAUS_AGY_DIR`. Ordinary workers get
 an empty Codex home. Selecting a paid lane is the only path that copies
 `auth.json` from the configured source home into that scratch root.
 
-Root isolation does not yet provide a private daemon port per worker. Until
-hardening lane 3a-ii adds daemon process/port ownership, a local E2E run can
-restart a daemon already using the default port with the worker's temporary
-data root. Use a dedicated test host or stop the operator app and daemon first.
+Every worker also owns a non-default daemon port and a tmux server rooted at
+`<session-temp-root>/tmux`; the runner clears inherited `TMUX` before the driver,
+app, and daemons start. Teardown kills only that server. A unique inherited run
+token identifies worker processes, which are persisted as PID plus `/proc`
+start time in a checkout-scoped ledger. Pre-run cleanup considers only
+abandoned ledgers from the same checkout and requires both fields to match, so
+it cannot kill a concurrent run or a foreign process that reused a PID.
+
+The WDIO manifest is sealed. `e2e/specList.js` explicitly assigns every
+non-paid spec to a named group (`ui`, `templates`, `mesh`, and `tmux` name the
+stateful additions); an ungrouped spec fails with instructions to add it to a
+group or `paidSpecs`. The default suite is exactly the union of those groups,
+and paid specs remain excluded.
 
 #### Paid E2E lanes
 
@@ -146,7 +155,7 @@ Both use the same five isolated worker roots. Their scratch `CODEX_HOME` holds o
 
 `managed-stage-codex` additionally sets `CLAUDE_DIR` on the panes it creates, because its member runs `mesh` itself: taurhaus passes `--claude-dir` to the member *daemon* it spawns but exports no Claude root into the pane, so without it the member's own `mesh send` would bootstrap the run's team inside the operator's real home. Its team lead is a Claude identity and an inbox, not a working agent — it is launched into the isolated, credential-free `CLAUDE_CONFIG_DIR` and never takes a turn, so the lane spends nothing on Claude. Measured cost and wall clock: [w4-experiment-3.md](../design/research/w4-experiment-3.md).
 
-Both lanes take on every host change they make as an undo (`e2e/helpers/laneCleanup.js`) that runs on interrupt as well as on teardown, and both restore the `taurhaus` tmux session's environment the moment the pane-creating call returns. They differ in whose tmux server that session lives on. `compaction-codex-hooks` uses the operator's, and kills the panes it opened — identified by a working directory inside the session temp root. `managed-stage-codex` runs against a tmux server of its own: `wdio.conf.js` points `TMUX_TMPDIR` at a directory inside the session temp root and clears an inherited `TMUX` before starting tauri-driver, so the app under test and every daemon it spawns create their panes there. That lane refuses to start unless both it and the app are on that server (checked against the app's own `/proc/<pid>/environ`), and teardown takes the whole server down rather than guessing which panes were its own — so a `set-environment` carrying this run's temporary roots can never reach a pane the operator opens.
+Both lanes take on every host change they make as an undo (`e2e/helpers/laneCleanup.js`) that runs on interrupt as well as on teardown. Like every ordinary spec, they run on the worker's private tmux server; the tmux-driving source guard requires an isolation assertion before the first tmux call, and teardown takes the whole worker server down. `managed-stage-codex` additionally checks the app's own `/proc/<pid>/environ` before it spends a turn.
 
 ## Test lanes
 

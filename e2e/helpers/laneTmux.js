@@ -1,5 +1,5 @@
 /**
- * The tmux server a paid lane is allowed to create panes on.
+ * The tmux server an E2E worker is allowed to create panes on.
  *
  * taurhaus puts every managed pane in a tmux session called `taurhaus`
  * (`TAURHAUS_TMUX_SESSION_NAME`, not configurable), and a lane has to push its
@@ -10,11 +10,11 @@
  * pane the operator opens next, and a pane the lane fails to account for
  * outlives the run.
  *
- * So the lane runs against a tmux *server* of its own: `TMUX_TMPDIR` points at a
+ * So every worker runs against a tmux *server* of its own: `TMUX_TMPDIR` points at a
  * directory inside the wdio session temp root, every process that speaks tmux
  * (this one, the app, the daemons it spawns) inherits it, and teardown kills
  * that server outright. Two things decide whether that actually happened, and
- * both are worth checking before a lane spends a subscription turn:
+ * both are checked before any tmux-driving spec makes its first call:
  *
  *   - `TMUX_TMPDIR` has to name the lane's own socket directory;
  *   - `TMUX` has to be *unset*. A client inside a tmux pane resolves the socket

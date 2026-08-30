@@ -209,8 +209,8 @@ export function cleanupStaleProcessLedgers(
  * A long, expensive spec is the one an operator interrupts, and an interrupted
  * WebdriverIO run never reaches Mocha's `after` hook: `wdio.conf.js` turns
  * SIGINT and SIGTERM into "clean up the session, then `process.exit`". Anything
- * a lane changed outside its own temp root — a shared tmux session, a running
- * daemon — is therefore left changed unless the undo sits on the signal path.
+ * a lane changed outside its own temp root is therefore left changed unless the
+ * undo sits on the signal path.
  *
  * So a lane takes on each undo as it makes the change (`owe`), drops it once the
  * normal teardown has done it (`settled`), and `install` puts the whole set in

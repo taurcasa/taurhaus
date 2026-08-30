@@ -44,13 +44,11 @@
  * The hook runs as its own process spawned by Codex, so it resolves the teams
  * dir and the log sink from *its* environment — which it inherits from the
  * pane. tmux panes inherit the session environment, so the isolated roots are
- * set on the shared `taurhaus` tmux session for the length of the one call that
- * creates panes, and removed again the moment it returns: the session belongs
- * to the operator, and anything they launch in it while the override is up
- * would be pointed at roots this run later deletes.
+ * set on this worker's `taurhaus` session for the pane-creating call and removed
+ * again the moment it returns.
  *
  * Everything this lane changes outside its own temp root — that tmux session
- * environment and the panes it opens in the operator's session — is taken on
+ * environment and the panes it opens — is taken on
  * as an undo with `laneCleanup` the moment the change is made. A run that costs
  * money and takes minutes is the one an operator interrupts, and an interrupt
  * never reaches Mocha's `after`: `wdio.conf.js` deletes the session temp root
@@ -349,7 +347,7 @@ function writeOperationalSnapshot(teamName, memberName, projectPath) {
   )
 }
 
-/** Set the isolated roots on the shared taurhaus tmux session, returning a restore fn. */
+/** Set the isolated roots on the worker's taurhaus tmux session, returning a restore fn. */
 function applyPaneEnvironment() {
   tmuxQuietly(['new-session', '-d', '-s', TMUX_SESSION])
 
@@ -357,7 +355,7 @@ function applyPaneEnvironment() {
   for (const key of PANE_ENV_KEYS) {
     const value = process.env[key]
     // An empty value would hand the pane a broken root, which is worse than
-    // leaving the operator's own environment in place.
+    // leaving the worker's inherited environment in place.
     if (!value) continue
     const shown = tmuxQuietly(['show-environment', '-t', TMUX_SESSION, key])
     previous.set(key, shown.ok ? shown.output : null)
@@ -388,11 +386,9 @@ function applyPaneEnvironment() {
 /**
  * Run `work` with the isolated roots visible to panes created inside it.
  *
- * The `taurhaus` tmux session is shared with whatever the operator is running,
- * so `work` must be the pane-creating call and nothing else: every second the
- * override is up is a second in which a pane the operator opens themselves
- * inherits this run's temp roots, which are deleted when the run ends. Readiness
- * polling, live status and session-id capture all happen after the restore.
+ * Keep `work` to the pane-creating call so the session environment has the
+ * narrowest lifetime. Readiness polling, live status, and session-id capture
+ * all happen after the restore.
  */
 async function withPaneEnvironment(work) {
   const restore = applyPaneEnvironment()
@@ -408,12 +404,11 @@ async function withPaneEnvironment(work) {
 }
 
 /**
- * Kill the panes this lane put in the shared `taurhaus` tmux session.
+ * Kill the panes this lane put in the worker's `taurhaus` tmux session.
  *
- * Selection is by working directory, not by "created after we started": the
- * session belongs to whatever the operator is running, and they do open panes
- * while a run is in flight. Every pane this lane creates lives inside the wdio
- * session's temp root, and nothing else does.
+ * Selection is by working directory. Every pane this lane creates lives inside
+ * the WDIO session's temp root; the worker-wide teardown remains the final
+ * server cleanup.
  */
 function killLanePanes() {
   if (!sessionTempRoot) return
@@ -541,7 +536,7 @@ async function initializeManagedCodexTeam() {
 
   // Only this call creates panes (`pipelines/initialize.rs` launches each member
   // inline and records its pane id before returning), so it is the only thing
-  // the shared session's environment is redirected for.
+  // the worker session's environment is redirected for.
   const report = await withPaneEnvironment(async () =>
     await invokeTauriOrThrow('coordination_initialize_team', {
       request: {
