@@ -236,6 +236,9 @@ fn fully_populated_live_team_status() -> LiveTeamStatus {
             }),
             task_effort: Some("high".to_string()),
             task_effort_why: Some("The fixture covers every field".to_string()),
+            account_applied: Some(false),
+            account_note: Some("opaque_base_command".to_string()),
+            account_note_detail: Some("fixture-wrapper".to_string()),
         }],
     }
 }

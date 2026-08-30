@@ -2772,6 +2772,9 @@ fn live_team_status_round_trip() {
                 workflow_activity: None,
                 task_effort: None,
                 task_effort_why: None,
+                account_applied: None,
+                account_note: None,
+                account_note_detail: None,
             },
             LiveAgentStatus {
                 name: "frontend-dev".to_string(),
@@ -2794,6 +2797,9 @@ fn live_team_status_round_trip() {
                 workflow_activity: None,
                 task_effort: None,
                 task_effort_why: None,
+                account_applied: Some(false),
+                account_note: Some("opaque_base_command".to_string()),
+                account_note_detail: Some("team-wrapper".to_string()),
             },
         ],
     };
@@ -2834,6 +2840,9 @@ fn project_mesh_snapshot_round_trip() {
                 workflow_activity: None,
                 task_effort: None,
                 task_effort_why: None,
+                account_applied: Some(false),
+                account_note: Some("opaque_base_command".to_string()),
+                account_note_detail: Some("team-wrapper".to_string()),
             }],
         }),
         warnings: vec!["skipped team folder 'broken-team'".to_string()],
@@ -3315,6 +3324,49 @@ fn live_team_status_carries_the_member_runtime_session_id() {
         .find(|member| member.name == "frontend-dev")
         .expect("frontend-dev is on the roster");
     assert_eq!(member.session_id.as_deref(), Some("sess-frontend"));
+}
+
+#[test]
+fn live_team_status_carries_the_opaque_base_account_note() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let note = taurhaus_lib::session_scanner::launch_base::LaunchAccountResult::for_opaque_head(
+        Some("team-wrapper"),
+    );
+    MemberRuntimeStore::update(tmp.path(), "architecture-final", "frontend-dev", |record| {
+        record.launch_account = note.clone();
+    })
+    .expect("update runtime");
+    assert_eq!(
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+            .expect("reload runtime")
+            .launch_account,
+        note
+    );
+
+    let status =
+        coordination_get_live_team_status_impl(&state, None, "architecture-final".to_string())
+            .expect("live status should succeed");
+    let member = status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev is on the roster");
+    assert_eq!(member.account_applied, Some(false));
+    assert_eq!(member.account_note.as_deref(), Some("opaque_base_command"));
+    assert_eq!(member.account_note_detail.as_deref(), Some("team-wrapper"));
 }
 
 #[test]

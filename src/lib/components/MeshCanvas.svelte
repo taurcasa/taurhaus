@@ -605,12 +605,16 @@
         reasoningEffort={layout.lead.reasoningEffort}
         taskEffort={layout.lead.taskEffort}
         taskEffortWhy={layout.lead.taskEffortWhy}
+        accountApplied={layout.lead.accountApplied}
+        accountNote={layout.lead.accountNote}
+        accountNoteDetail={layout.lead.accountNoteDetail}
         status={layout.lead.status}
         isCrossProject={layout.lead.isCrossProject}
         projectLabel={layout.lead.projectLabel}
         selected={isSelected(layout.lead.id)}
         position={layout.lead.position}
         width={layout.lead.width}
+        height={layout.lead.height}
         {dark}
         onClick={() => onNodeClick(layout.lead.id)}
         onHoverStart={() => scheduleHoverCard(layout.lead.id)}
@@ -631,12 +635,16 @@
           reasoningEffort={agent.reasoningEffort}
           taskEffort={agent.taskEffort}
           taskEffortWhy={agent.taskEffortWhy}
+          accountApplied={agent.accountApplied}
+          accountNote={agent.accountNote}
+          accountNoteDetail={agent.accountNoteDetail}
           status={agent.status}
           isCrossProject={agent.isCrossProject}
           projectLabel={agent.projectLabel}
           selected={isSelected(agent.id)}
           position={agent.position}
           width={agent.width}
+          height={agent.height}
           {dark}
           onClick={() => onNodeClick(agent.id)}
           onHoverStart={() => scheduleHoverCard(agent.id)}

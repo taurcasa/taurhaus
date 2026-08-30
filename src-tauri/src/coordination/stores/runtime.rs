@@ -18,6 +18,7 @@ use super::config::extension_fields_only;
 use crate::coordination::domain::{DeliveryLease, HealthState};
 use crate::coordination::errors::CoordinationError;
 use crate::session_scanner::cli_tool::CliTool;
+use taurhaus_lib::session_scanner::launch_base::LaunchAccountResult;
 
 const RUNTIME_DIRNAME: &str = "runtime";
 const RUNTIME_SCHEMA_VERSION: u32 = 3;
@@ -76,6 +77,9 @@ pub struct MemberRuntimeRecord {
     /// is what keeps that retry bounded. Cleared by any launch that commits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort_resume_failure: Option<EffortResumeFailure>,
+    /// Account-selection result from the command that launched this member.
+    #[serde(flatten, default)]
+    pub launch_account: LaunchAccountResult,
     #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extra: BTreeMap<String, Value>,
 }
@@ -664,6 +668,12 @@ fn parse_runtime_record(
         applied_effort: Option<String>,
         #[serde(default, alias = "effortResumeFailure")]
         effort_resume_failure: Option<EffortResumeFailure>,
+        #[serde(default, alias = "accountApplied")]
+        account_applied: Option<bool>,
+        #[serde(default, alias = "accountNote")]
+        account_note: Option<String>,
+        #[serde(default, alias = "accountNoteDetail")]
+        account_note_detail: Option<String>,
         #[serde(flatten, default)]
         extra: BTreeMap<String, Value>,
     }
@@ -694,6 +704,11 @@ fn parse_runtime_record(
             .map(|level| level.trim().to_string())
             .filter(|level| !level.is_empty()),
         effort_resume_failure: wire.effort_resume_failure,
+        launch_account: LaunchAccountResult {
+            account_applied: wire.account_applied,
+            account_note: wire.account_note,
+            account_note_detail: wire.account_note_detail,
+        },
         extra: extension_fields_only(wire.extra, RUNTIME_AUTHORED_KEYS),
     })
 }
@@ -719,10 +734,27 @@ fn merge_current_extension_fields(
         .map(str::trim)
         .filter(|level| !level.is_empty())
         .map(ToString::to_string);
+    let current_launch_account = LaunchAccountResult {
+        account_applied: current
+            .get("accountApplied")
+            .or_else(|| current.get("account_applied"))
+            .and_then(Value::as_bool),
+        account_note: current
+            .get("accountNote")
+            .or_else(|| current.get("account_note"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        account_note_detail: current
+            .get("accountNoteDetail")
+            .or_else(|| current.get("account_note_detail"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    };
     // The file is the authority for foreign keys: a key mesh deleted between
     // this snapshot's load and its save must stay deleted, so the snapshot's
     // own extras are replaced, never unioned.
     record.extra = extension_fields_only(current.into_iter().collect(), RUNTIME_AUTHORED_KEYS);
+    record.launch_account = current_launch_account;
     if preserve_applied_effort {
         record.applied_effort = current_applied_effort;
     }
@@ -761,6 +793,12 @@ const RUNTIME_AUTHORED_KEYS: &[&str] = &[
     "appliedEffort",
     "effort_resume_failure",
     "effortResumeFailure",
+    "account_applied",
+    "accountApplied",
+    "account_note",
+    "accountNote",
+    "account_note_detail",
+    "accountNoteDetail",
 ];
 
 fn is_stale(record: &MemberRuntimeRecord, cutoff: DateTime<Utc>) -> bool {
@@ -1092,6 +1130,7 @@ mod tests {
             last_seen_at: Some(ts("2026-03-01T21:05:10Z")),
             applied_effort: None,
             effort_resume_failure: None,
+            launch_account: Default::default(),
             extra: BTreeMap::new(),
         }
     }
@@ -1642,6 +1681,7 @@ mod tests {
             last_seen_at: None,
             applied_effort: None,
             effort_resume_failure: None,
+            launch_account: Default::default(),
             extra: BTreeMap::new(),
         };
 

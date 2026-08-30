@@ -1234,6 +1234,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             &prepared.activation_context,
             pane_id,
             MemberSessionPhase::LaunchOnly(self.cli_commands),
+            &mut self.runtime_state,
         ) {
             self.cleanup_failure();
             self.emit_stage(
@@ -1292,6 +1293,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             &prepared.activation_context,
             pane_id,
             MemberSessionPhase::CaptureOnly,
+            &mut self.runtime_state,
         )
         .map(|detected| {
             self.runtime_state.session_id = detected.session_id;

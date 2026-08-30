@@ -16,12 +16,16 @@
     reasoningEffort = '',
     taskEffort = '',
     taskEffortWhy = '',
+    accountApplied = null,
+    accountNote = '',
+    accountNoteDetail = '',
     status = 'offline',
     isCrossProject = false,
     projectLabel = '',
     selected = false,
     position = { x: 0, y: 0 },
     width = 180,
+    height = null,
     dark = false,
     onClick = () => {},
     onHoverStart = () => {},
@@ -30,7 +34,21 @@
 
   const normalizedRole = $derived(role === 'lead' ? 'lead' : 'agent')
   const isLead = $derived(normalizedRole === 'lead')
-  const nodeHeight = $derived(isLead ? 72 : 64)
+  const safeAccountNoteDetail = $derived(String(accountNoteDetail || '').trim())
+  const showOpaqueAccountNote = $derived(
+    accountApplied === false
+      && accountNote === 'opaque_base_command'
+      && safeAccountNoteDetail.length > 0
+  )
+  const accountNoteSentence = $derived(
+    `Account selection not guaranteed: ${safeAccountNoteDetail} wraps the CLI.`
+  )
+  const requestedHeight = $derived(Number(height))
+  const nodeHeight = $derived(
+    Number.isFinite(requestedHeight) && requestedHeight > 0
+      ? requestedHeight
+      : (showOpaqueAccountNote ? (isLead ? 90 : 82) : (isLead ? 72 : 64))
+  )
 
   const safeName = $derived(String(name || '').trim() || 'unnamed')
   const safeModel = $derived(String(model || '').trim())
@@ -170,6 +188,14 @@
           </span>
         {/if}
       </span>
+    {/if}
+
+    {#if showOpaqueAccountNote}
+      <span
+        class="mesh-node-account-note"
+        data-testid={`mesh-node-account-note-${normalizedRole}`}
+        title={accountNoteSentence}
+      >{accountNoteSentence}</span>
     {/if}
   </span>
 </button>
@@ -325,6 +351,15 @@
     color: var(--mesh-node-model-dark);
     min-width: 0;
     flex: 1 1 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mesh-node-account-note {
+    color: var(--color-warning-500);
+    font-size: 10px;
+    line-height: 1.2;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

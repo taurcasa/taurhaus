@@ -387,6 +387,7 @@ impl CoordinationOrchestrator {
                     last_seen_at: None,
                     applied_effort: None,
                     effort_resume_failure: None,
+                    launch_account: Default::default(),
                     extra: Default::default(),
                 },
             )?;
@@ -412,14 +413,16 @@ impl CoordinationOrchestrator {
         per_project_anchor_panes: &mut std::collections::HashMap<String, String>,
         runtime_state: &mut PendingRuntimeState,
     ) -> Result<String, CoordinationError> {
-        let launch_cmd = build_member_activation_launch_command(context, cli_commands)?;
+        let launch = build_member_activation_launch_command(context, cli_commands)?;
         let pane_id = launch_member_pane(
             self.runtime.as_ref(),
             per_project_anchor_panes,
             tmux_layout,
             &context.member.project_path.to_string_lossy(),
-            &launch_cmd,
+            &launch.command,
         )?;
+        let account = launch.account_result();
+        runtime_state.launch_account = (!account.is_empty()).then_some(account);
         runtime_state.pane_id = Some(pane_id.clone());
         capture_member_pane_identity(self.runtime.as_ref(), &pane_id, runtime_state)?;
         runtime_state.session_id = None;
@@ -438,6 +441,7 @@ impl CoordinationOrchestrator {
                 daemon_pid: Some(None),
                 attached_at: Some(runtime_state.attached_at),
                 health: Some(HealthState::Healthy),
+                launch_account: Some(runtime_state.launch_account.clone()),
             },
         )?;
         Ok(pane_id)
@@ -454,6 +458,7 @@ impl CoordinationOrchestrator {
             context,
             pane_id,
             MemberSessionPhase::CaptureOnly,
+            runtime_state,
         )?;
         runtime_state.session_id = detected.session_id.clone();
         runtime_state.jsonl_path = detected.jsonl_path.clone();

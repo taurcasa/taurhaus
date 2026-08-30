@@ -16,6 +16,17 @@ function normalizeMember(member, fallbackId) {
   }
 }
 
+function hasOpaqueAccountNote(member) {
+  return member?.accountApplied === false
+    && member?.accountNote === 'opaque_base_command'
+    && String(member?.accountNoteDetail ?? '').trim().length > 0
+}
+
+function memberNodeHeight(member, lead = false) {
+  if (hasOpaqueAccountNote(member)) return lead ? 90 : 82
+  return lead ? 72 : 64
+}
+
 function fitHorizontalLayout(rowCount, availableWidth, preferredNodeWidth, preferredGap) {
   if (rowCount <= 0) {
     return { nodeWidth: preferredNodeWidth, gap: preferredGap }
@@ -186,7 +197,7 @@ function buildRowBoxes(items, y, width, nodeWidth, gap, row) {
     x: startX + column * (nodeWidth + gap) + nodeWidth / 2,
     y,
     width: nodeWidth,
-    height: 64,
+    height: memberNodeHeight(agent),
   }))
 }
 
@@ -263,7 +274,7 @@ function computeMeshBoxes(topology, input) {
     x: width / 2,
     y: Math.round(height * 0.3),
     width: Math.min(width - 24, Math.max(180, nodeWidth)),
-    height: 72,
+    height: memberNodeHeight(topology.lead, true),
     row: 0,
     column: 0,
   }

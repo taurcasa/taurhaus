@@ -1840,6 +1840,99 @@ fn unavailable_team_base_resolution_launches_the_literal_and_logs_once() {
     );
 }
 
+#[test]
+fn opaque_team_base_reports_the_account_note_and_logs_once() {
+    // Regression: commit 0f2bfbb0 surfaced opaque launch bases only for app
+    // launches, leaving a managed member's account selection silently unclear.
+    let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("tempdir");
+    let log_path = tmp.path().join("team-base-opaque.log.jsonl");
+    let log_state = LogFileState::new(log_path.clone()).expect("log state");
+    install_global_sink(&log_state);
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.resolved_bases.insert(
+        (CliTool::Claude, crate::daemon::protocol::LaunchMode::Fresh),
+        ResolvedBase {
+            command: "team-wrapper claude --dangerously-skip-permissions".to_string(),
+            expansions: Vec::new(),
+            opaque_head: Some("team-wrapper".to_string()),
+        },
+    );
+
+    let result = render_team_launch(
+        &commands,
+        CliTool::Claude,
+        "opus",
+        None,
+        "opaque-base-team",
+        "opaque-base-member",
+        MemberRole::Agent,
+        false,
+        None,
+    )
+    .expect("opaque wrapper must remain launchable");
+
+    assert!(result.command.contains("team-wrapper claude"));
+    assert_eq!(result.account_applied, Some(false));
+    assert_eq!(result.account_note.as_deref(), Some("opaque_base_command"));
+    assert_eq!(result.account_note_detail.as_deref(), Some("team-wrapper"));
+    let contents = wait_for_pipeline_log_contains(&log_path, "\"event\":\"launch.base.opaque\"");
+    assert_eq!(
+        contents
+            .lines()
+            .filter(|line| {
+                line.contains("\"event\":\"launch.base.opaque\"")
+                    && line.contains("\"member\":\"opaque-base-member\"")
+                    && line.contains("\"team\":\"opaque-base-team\"")
+            })
+            .count(),
+        1,
+        "one opaque resolution should produce one event: {contents}"
+    );
+}
+
+#[test]
+fn initialized_member_persists_the_opaque_base_account_note() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.resolved_bases.insert(
+        (CliTool::Codex, crate::daemon::protocol::LaunchMode::Fresh),
+        ResolvedBase {
+            command: "team-wrapper codex --yolo".to_string(),
+            expansions: Vec::new(),
+            opaque_head: Some("team-wrapper".to_string()),
+        },
+    );
+
+    let report = orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &InitializeTeamRequest {
+                team_name: "opaque-runtime-team".to_string(),
+                team_description: None,
+                lead_mode: LeadMode::LaunchNew,
+                lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
+                agents: Vec::new(),
+            },
+            &commands,
+            "new_window",
+        )
+        .expect("initialize report");
+    assert!(
+        report.failed_step.is_none(),
+        "initialize failed: {report:?}"
+    );
+
+    let runtime = MemberRuntimeStore::load(tmp.path(), "opaque-runtime-team", "team-lead")
+        .expect("persisted member runtime");
+    let account = runtime.launch_account;
+    assert_eq!(account.account_applied, Some(false));
+    assert_eq!(account.account_note.as_deref(), Some("opaque_base_command"));
+    assert_eq!(account.account_note_detail.as_deref(), Some("team-wrapper"));
+}
+
 // Regression: 791f6be centralized team launch rendering without a managed
 // Codex notify input, so the pipeline could not opt into native idle edges.
 #[test]
@@ -1883,10 +1976,12 @@ fn initialize_and_resume_leave_undeclared_effort_to_the_cli() {
 
     let initialize_command =
         build_member_activation_launch_command(&initialize, &CliCommandSettings::default())
-            .expect("initialize command");
+            .expect("initialize command")
+            .command;
     let resume_command =
         build_member_activation_launch_command(&resume, &CliCommandSettings::default())
-            .expect("resume command");
+            .expect("resume command")
+            .command;
 
     assert_eq!(initialize_command, resume_command);
     assert_eq!(initialize_command, "codex --yolo -m 'gpt-5.6-sol'");

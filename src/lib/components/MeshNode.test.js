@@ -156,4 +156,23 @@ describe('MeshNode', () => {
 
     expect(screen.queryByTestId('mesh-node-project-chip-agent')).not.toBeInTheDocument()
   })
+
+  it('shows one sentence when a wrapper makes account selection uncertain', () => {
+    // Regression: commit 0f2bfbb0 kept the opaque-base warning on app launch
+    // results only, so managed member nodes hid the same uncertainty.
+    render(MeshNode, {
+      props: {
+        role: 'agent',
+        accountApplied: false,
+        accountNote: 'opaque_base_command',
+        accountNoteDetail: 'team-wrapper',
+        height: 82,
+      },
+    })
+
+    expect(screen.getByTestId('mesh-node-account-note-agent')).toHaveTextContent(
+      'Account selection not guaranteed: team-wrapper wraps the CLI.'
+    )
+    expect(screen.getByTestId('mesh-node-agent')).toHaveAttribute('data-node-height', '82')
+  })
 })

@@ -12,6 +12,7 @@ use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamC
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::{RuntimeSession, SessionGroupKind, SessionState};
 use crate::templates::types::{BehavioralContract, RuntimeCompactSummary};
+use taurhaus_lib::session_scanner::launch_base::LaunchAccountResult;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TeamMemberActivityState {
@@ -59,6 +60,7 @@ pub struct TeamMemberView {
     pub delivery_lease: Option<DeliveryLease>,
     pub attached_at: Option<DateTime<Utc>>,
     pub last_seen_at: Option<DateTime<Utc>>,
+    pub launch_account: LaunchAccountResult,
     /// The workflow hint the daemon computed for this member's session, when
     /// the runtime snapshot carried one.
     ///
@@ -122,6 +124,7 @@ impl TeamMemberView {
             last_seen_at: self.last_seen_at,
             applied_effort: None,
             effort_resume_failure: None,
+            launch_account: self.launch_account.clone(),
             extra: Default::default(),
         })
     }
@@ -166,16 +169,17 @@ pub fn get_team_roster_with_runtime_sessions(
     runtime_sessions: &[RuntimeSession],
 ) -> Result<Vec<TeamMemberView>, CoordinationError> {
     let config = TeamConfigStore::load(teams_dir, team_name)?;
+    let persisted_by_member = MemberRuntimeStore::load_all(teams_dir, team_name)?
+        .into_iter()
+        .collect::<HashMap<_, _>>();
     let runtime_by_member = best_runtime_sessions_by_member(team_name, runtime_sessions)
         .into_iter()
         .map(|(member_name, session)| {
-            (
-                member_name,
-                (
-                    member_runtime_record_from_session(session),
-                    session.workflow_activity.clone(),
-                ),
-            )
+            let mut runtime = member_runtime_record_from_session(session);
+            if let Some(persisted) = persisted_by_member.get(&member_name) {
+                runtime.launch_account = persisted.launch_account.clone();
+            }
+            (member_name, (runtime, session.workflow_activity.clone()))
         })
         .collect::<HashMap<_, _>>();
 
@@ -203,6 +207,10 @@ fn build_team_member_view(
     activity_state: Option<TeamMemberActivityState>,
 ) -> TeamMemberView {
     let has_runtime_record = runtime.is_some();
+    let launch_account = runtime
+        .as_ref()
+        .map(|record| record.launch_account.clone())
+        .unwrap_or_default();
 
     TeamMemberView {
         team_name: team_name.to_string(),
@@ -250,6 +258,7 @@ fn build_team_member_view(
             .and_then(|record| record.delivery_lease.clone()),
         attached_at: runtime.as_ref().and_then(|record| record.attached_at),
         last_seen_at: runtime.as_ref().and_then(|record| record.last_seen_at),
+        launch_account,
         workflow_activity,
         activity_state,
         has_runtime_record,
@@ -309,6 +318,7 @@ fn member_runtime_record_from_session(session: &RuntimeSession) -> MemberRuntime
         last_seen_at: None,
         applied_effort: None,
         effort_resume_failure: None,
+        launch_account: Default::default(),
         extra: Default::default(),
     }
 }
@@ -399,6 +409,7 @@ mod tests {
                 last_seen_at: Some(ts("2026-03-08T21:02:00Z")),
                 applied_effort: None,
                 effort_resume_failure: None,
+                launch_account: Default::default(),
                 extra: Default::default(),
             },
         )
@@ -572,6 +583,29 @@ mod tests {
             .expect("load roster");
 
         assert_eq!(roster[0].workflow_activity, None);
+    }
+
+    #[test]
+    fn runtime_session_roster_keeps_the_persisted_launch_account_note() {
+        let tmp = TempDir::new().expect("tempdir");
+        save_team(tmp.path(), "team-a", vec![sample_member("developer1")]);
+        save_runtime(tmp.path(), "team-a", "developer1", HealthState::Healthy);
+        let note = LaunchAccountResult::for_opaque_head(Some("team-wrapper"));
+        MemberRuntimeStore::update(tmp.path(), "team-a", "developer1", |record| {
+            record.launch_account = note.clone();
+        })
+        .expect("persist launch account note");
+        let sessions = vec![daemon_runtime_session(
+            "team-a",
+            "developer1",
+            "/home/daemon-host/.claude/projects/-tmp-taurhaus/sess-123.jsonl",
+            None,
+        )];
+
+        let roster = get_team_roster_with_runtime_sessions(tmp.path(), "team-a", &sessions)
+            .expect("load roster");
+
+        assert_eq!(roster[0].launch_account, note);
     }
 
     #[test]

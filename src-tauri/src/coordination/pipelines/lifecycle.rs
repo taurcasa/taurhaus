@@ -317,6 +317,9 @@ impl CoordinationOrchestrator {
                 if let Some(health) = patch.health {
                     runtime.health = health;
                 }
+                if let Some(launch_account) = patch.launch_account.as_ref() {
+                    runtime.launch_account = launch_account.clone().unwrap_or_default();
+                }
                 // A launch puts the member at the effort its command carried,
                 // including the CLI's own default when no override is set.
                 runtime.applied_effort = applied_effort;

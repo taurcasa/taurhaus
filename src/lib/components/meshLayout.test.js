@@ -104,6 +104,24 @@ function assertRoutesWithinBounds(layout, width, height) {
 }
 
 describe('meshLayout', () => {
+  it('makes room for an opaque-wrapper sentence and anchors routes to the taller node', () => {
+    const layout = computeMeshLayout({
+      width: 960,
+      height: 640,
+      mode: 'runtime',
+      lead: createLead(),
+      agents: createAgents(1).map((agent) => ({
+        ...agent,
+        accountApplied: false,
+        accountNote: 'opaque_base_command',
+        accountNoteDetail: 'team-wrapper',
+      })),
+    })
+
+    expect(layout.agents[0].height).toBe(82)
+    expect(layout.connections[0].end.y).toBe(layout.agents[0].y - 41)
+  })
+
   it.each([1, 2, 3, 4, 5, 6, 7, 8])('produces exactly one connection per agent for %i agents', (count) => {
     const layout = computeMeshLayout({
       width: 960,

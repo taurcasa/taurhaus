@@ -20,6 +20,40 @@ use serde::{Deserialize, Serialize};
 
 use super::cli_tool::{spec, CliTool};
 
+/// Stable launch-result note used when a wrapper hides account selection.
+pub const OPAQUE_BASE_COMMAND: &str = "opaque_base_command";
+
+/// What a resolved launch base lets taurhaus promise about account selection.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchAccountResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_applied: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_note_detail: Option<String>,
+}
+
+impl LaunchAccountResult {
+    pub fn for_opaque_head(head: Option<&str>) -> Self {
+        let Some(head) = head else {
+            return Self::default();
+        };
+        Self {
+            account_applied: Some(false),
+            account_note: Some(OPAQUE_BASE_COMMAND.to_string()),
+            account_note_detail: Some(head.to_string()),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.account_applied.is_none()
+            && self.account_note.is_none()
+            && self.account_note_detail.is_none()
+    }
+}
+
 /// One alias the pane shell expands before the command runs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
