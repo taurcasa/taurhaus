@@ -156,9 +156,7 @@ fn rust_integration_ci_caches_failed_builds() {
         .expect("quality gate should define the Rust integration job");
 
     assert!(
-        integration_job.contains(
-            "shared-key: rust-integration\n          cache-on-failure: true"
-        ),
+        integration_job.contains("shared-key: rust-integration\n          cache-on-failure: true"),
         "failed integration builds should seed the next retry's Rust cache"
     );
 }
@@ -345,10 +343,7 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
             if lines[0].trim() != "#[cfg(test)]" {
                 return None;
             }
-            let module = lines[1]
-                .trim()
-                .strip_prefix("mod ")?
-                .strip_suffix(';')?;
+            let module = lines[1].trim().strip_prefix("mod ")?.strip_suffix(';')?;
             Some(format!("src/{module}.rs"))
         })
         .collect::<Vec<_>>();
