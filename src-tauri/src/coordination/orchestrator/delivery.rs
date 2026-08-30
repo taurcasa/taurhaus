@@ -211,7 +211,7 @@ impl CoordinationOrchestrator {
                     error = %err,
                     "inbox append succeeded but member runtime was unavailable for daemon wake"
                 );
-                return WakeDisposition::NotAttempted {
+                return WakeDisposition::Failed {
                     reason: format!("member runtime unavailable: {err}"),
                 };
             }
@@ -282,7 +282,7 @@ impl CoordinationOrchestrator {
                     "failed to quarantine foreign pane after inbox append"
                 );
             }
-            return WakeDisposition::NotAttempted {
+            return WakeDisposition::Failed {
                 reason: format!("member pane is foreign: {reason}"),
             };
         }

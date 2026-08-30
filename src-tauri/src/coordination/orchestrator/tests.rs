@@ -4096,8 +4096,8 @@ fn inbox_delivery_reports_an_adopted_daemon_without_reappending() {
 
 #[test]
 fn inbox_delivery_reports_a_missing_runtime_without_reappending() {
-    // Regression: 694b130c collapsed a missing runtime record into the same
-    // `None` returned for a successful already-live wake.
+    // Regression: e87a3de6 classified a runtime-load error as `NotAttempted`,
+    // so member-action reports omitted the wake failure after the durable append.
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let team_name = "missing-runtime-inbox-wake";
@@ -4115,7 +4115,7 @@ fn inbox_delivery_reports_a_missing_runtime_without_reappending() {
 
     assert!(matches!(
         &result.wake,
-        WakeDisposition::NotAttempted { reason } if reason.starts_with("member runtime unavailable: Not found:")
+        WakeDisposition::Failed { reason } if reason.starts_with("member runtime unavailable: Not found:")
     ));
     assert_one_inbox_append(tmp.path(), team_name, member_name);
 }
@@ -4307,6 +4307,8 @@ fn inbox_delivery_carries_runtime_update_warning_without_reappending() {
 fn inbox_delivery_does_not_wake_a_foreign_cli_pane() {
     // Regression: aecc8acd / mesh-findings P3, tmux reused pane ids; daemons
     // for taurrust/gotaurus/espn pointed at claude panes.
+    // Regression: e87a3de6 classified the resulting quarantine as `NotAttempted`,
+    // so member-action reports hid the failed wake after the durable append.
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let backend: Arc<dyn CoordinationBackend> = Arc::new(MeshBridgedBackend::new_with_teams_dir(
@@ -4337,7 +4339,7 @@ fn inbox_delivery_does_not_wake_a_foreign_cli_pane() {
 
     assert_eq!(
         result.wake,
-        WakeDisposition::NotAttempted {
+        WakeDisposition::Failed {
             reason: "member pane is foreign: cli_tool_mismatch: expected=codex found=claude"
                 .to_string(),
         }
