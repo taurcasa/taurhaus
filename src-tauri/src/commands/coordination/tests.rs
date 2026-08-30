@@ -33,7 +33,7 @@ fn codex_hook_reconcile_failure_is_degraded_for_managed_launches() {
 // task-arrival and self-heal callers silently rendered settings that omitted
 // the launch inputs a managed Codex member requires.
 #[test]
-fn background_launch_settings_reports_managed_codex_discovery_failure() {
+fn task_effort_launch_settings_reports_managed_codex_discovery_failure() {
     let teams = TempDir::new().expect("teams dir");
     let broken_team = teams.path().join("broken-team");
     std::fs::create_dir_all(&broken_team).expect("create broken team");
@@ -41,10 +41,26 @@ fn background_launch_settings_reports_managed_codex_discovery_failure() {
         .expect("write broken config");
     let (db, _db_file) = test_db_state();
 
-    let error = background_launch_settings(&db, teams.path())
+    let error = task_effort_launch_settings(&db, teams.path())
         .expect_err("managed-Codex discovery failure must reach the caller");
 
     assert!(error.to_string().contains("failed to parse"));
+}
+
+// Regression: 135c6f54 made one unreadable team config abort the shared
+// background settings helper, so the 30-second self-heal and mesh-install
+// passes never reached their existing per-team error handling.
+#[test]
+fn background_launch_settings_degrades_managed_codex_discovery_failure() {
+    let teams = TempDir::new().expect("teams dir");
+    let broken_team = teams.path().join("broken-team");
+    std::fs::create_dir_all(&broken_team).expect("create broken team");
+    std::fs::write(broken_team.join("config.json"), b"{not valid json")
+        .expect("write broken config");
+    let (db, _db_file) = test_db_state();
+
+    background_launch_settings(&db, teams.path())
+        .expect("background passes must retain per-team resilience");
 }
 
 #[test]

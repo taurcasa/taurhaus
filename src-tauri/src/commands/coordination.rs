@@ -63,14 +63,35 @@ pub(crate) fn background_launch_settings(
     db: &DbState,
     teams_dir: &std::path::Path,
 ) -> Result<(CliCommandSettings, String), CoordinationError> {
-    let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(db);
+    let has_managed_codex =
+        crate::coordination::compact_hook::any_managed_codex_member(teams_dir).unwrap_or(true);
+    Ok(launch_settings_for_managed_codex(db, has_managed_codex))
+}
+
+/// Strict launch settings for the task-arrival effort pass.
+///
+/// Unlike the shared background helper, this boundary reports a roster scan
+/// failure to the caller so the typed effort pass cannot look successful when
+/// it never established the launch inputs its target requires.
+fn task_effort_launch_settings(
+    db: &DbState,
+    teams_dir: &std::path::Path,
+) -> Result<(CliCommandSettings, String), CoordinationError> {
     let has_managed_codex = crate::coordination::compact_hook::any_managed_codex_member(teams_dir)?;
+    Ok(launch_settings_for_managed_codex(db, has_managed_codex))
+}
+
+fn launch_settings_for_managed_codex(
+    db: &DbState,
+    has_managed_codex: bool,
+) -> (CliCommandSettings, String) {
+    let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(db);
     crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
         &mut cli_commands,
         has_managed_codex,
         has_managed_codex && crate::coordination::compact_hook::codex_compact_hook_is_installed(),
     );
-    Ok((cli_commands, tmux_layout))
+    (cli_commands, tmux_layout)
 }
 
 /// Put a pending assignment effort into force after a project's tasks changed.
@@ -89,7 +110,7 @@ pub(crate) fn apply_task_effort_after_task_change(app: &tauri::AppHandle, projec
 
     let state = app.state::<crate::coordination::state::CoordinationState>();
     let db = app.state::<crate::commands::projects::DbState>();
-    let (cli_commands, tmux_layout) = match background_launch_settings(&db, state.teams_dir()) {
+    let (cli_commands, tmux_layout) = match task_effort_launch_settings(&db, state.teams_dir()) {
         Ok(settings) => settings,
         Err(err) => {
             tracing::warn!(
