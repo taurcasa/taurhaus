@@ -57,15 +57,27 @@
  * so it never takes a turn and this lane spends nothing on Claude. Its inbox is
  * a file mesh writes, which is all the completion signal needs.
  *
+ * tmux. taurhaus creates every managed pane in a session called `taurhaus`, and
+ * the roots above only reach those panes through that session's environment —
+ * which on the operator's own tmux server would hand this run's temporary roots
+ * to the next pane they open, and leave any pane this lane failed to account
+ * for behind. So the lane runs against a tmux *server* of its own:
+ * `wdio.conf.js` points `TMUX_TMPDIR` at the session temp root and clears an
+ * inherited `TMUX` before starting the driver, every process that speaks tmux
+ * inherits it — this one, the app, the daemons the app spawns — and teardown
+ * kills that server outright. The lane refuses to run at all if either it or
+ * the app under test is not on that server (`helpers/laneTmux.js`), because the
+ * alternative is doing this to the operator's session and calling it a pass.
+ *
  * The tmux helpers below deliberately mirror `compaction-codex-hooks.js` rather
  * than being extracted from it: that lane costs money to re-run, so a shared
  * refactor could not be verified for it in the same change.
  */
 
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import { ensureMainApp, waitForAppReady } from '../helpers.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
@@ -74,14 +86,22 @@ import { readLogEventsSince, selectEvents } from '../helpers/compactionLog.js'
 import { rolloutPaths } from '../helpers/codexRollout.js'
 import { trustProject } from '../helpers/codexScratchHome.js'
 import { TAURHAUS_CLAUDE_DIR } from '../helpers/platform.js'
-import { commitExists, createStageFixtureProject, runFixtureTests } from '../helpers/stageFixtureProject.js'
+import { isolatedTmuxTmpdir, parseProcEnviron, tmuxIsolationProblem } from '../helpers/laneTmux.js'
+import {
+  commitExists,
+  createStageFixtureProject,
+  filesAddedByCommit,
+  runFixtureTestsAtCommit,
+} from '../helpers/stageFixtureProject.js'
 import {
   assignTask,
   attentionRecord,
   createTask,
+  effortDeliveryVerdict,
   findBlockedMessage,
   findResultMessage,
   readInbox,
+  resultContractViolations,
   taskRecord,
 } from '../helpers/meshTaskContract.js'
 
@@ -105,6 +125,9 @@ const TMUX_SESSION = 'taurhaus'
 /** The level the member is launched at, and the level the assignment asks for. */
 const LAUNCH_EFFORT = 'low'
 const ASSIGNED_EFFORT = 'medium'
+
+/** The app binary under test, which is the process whose tmux server decides. */
+const APP_BINARY = resolve(import.meta.dirname, '..', '..', 'src-tauri', 'target', 'debug', 'taurhaus')
 
 const TEAM_READY_TIMEOUT_MS = 240_000
 /** The onboarding turn, which is also what opens Codex's thread on disk. */
@@ -149,18 +172,22 @@ const laneCleanup = createLaneCleanup()
 laneCleanup.install()
 
 const PANE_ENVIRONMENT_STEP = 'tmux-session-environment'
-const LANE_PANES_STEP = 'lane-tmux-panes'
+const LANE_PANES_STEP = 'lane-tmux-server'
 
 const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 const TEAM_NAME = `e2e-managed-stage-${uniqueSuffix}`
 const LEAD_NAME = 'e2e-lead'
 const MEMBER_NAME = 'codex-stage'
+/** The negative path's own member, launched at the level its assignment asks for. */
+const MEDIUM_MEMBER_NAME = 'codex-stage-medium'
 
 let mainApp = false
 let laneEnabled = false
 let laneSkipReason = 'managed Codex stage prerequisites unavailable'
 let managed = null
 let fixtureProject = ''
+/** The commit the fixture starts from — the one a stage must not report. */
+let fixtureBaseline = ''
 let fixtureSetupError = ''
 const createdTeamNames = new Set()
 /** Everything the run measured, printed once at teardown for the report. */
@@ -174,7 +201,7 @@ if (projectsDir) {
   try {
     fixtureProject = join(projectsDir, 'stage-fixture')
     mkdirSync(fixtureProject, { recursive: true })
-    createStageFixtureProject(fixtureProject)
+    fixtureBaseline = createStageFixtureProject(fixtureProject).headCommit
   } catch (error) {
     fixtureSetupError = String(error?.message ?? error)
     fixtureProject = ''
@@ -256,6 +283,39 @@ function commandExists(program) {
   }
 }
 
+/**
+ * The running app binaries for *this* checkout.
+ *
+ * The app is what creates the managed panes, so its environment — not this
+ * process's — decides which tmux server they land on. Matching on the absolute
+ * path keeps another checkout's debug build out of the answer.
+ */
+function appProcessIds() {
+  const found = spawnSync('pgrep', ['-f', APP_BINARY], { encoding: 'utf8', timeout: 5_000 })
+  return String(found.stdout ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^\d+$/.test(line))
+}
+
+/** Why the app under test would not create its panes on the lane's own tmux server. */
+function appTmuxIsolationProblem() {
+  const pids = appProcessIds()
+  if (pids.length === 0) return `no running app process matches ${APP_BINARY}, so its tmux server cannot be checked`
+
+  for (const pid of pids) {
+    let environment
+    try {
+      environment = parseProcEnviron(readFileSync(`/proc/${pid}/environ`, 'utf8'))
+    } catch (error) {
+      return `the app process ${pid} would not say which tmux server it uses: ${String(error?.message ?? error)}`
+    }
+    const problem = tmuxIsolationProblem(environment, sessionTempRoot)
+    if (problem) return `the app process ${pid} is not on the lane's own tmux server: ${problem}`
+  }
+  return ''
+}
+
 /** Why this host cannot run the lane, or an empty string when it can. */
 function hostSkipReason() {
   if (process.platform !== 'linux') return `The managed-stage lane is Linux-only (got ${process.platform})`
@@ -269,6 +329,14 @@ function hostSkipReason() {
   if (!fixtureProject) return 'E2E_PROJECTS_DIR is not set, so there is nowhere to put the fixture project'
   if (!commandExists('claude')) return 'claude CLI is not on PATH for the team lead'
   if (!commandExists('bun')) return 'bun is not on PATH, so the stage cannot validate its own deliverable'
+
+  // Before anything is created: a pane on the operator's tmux server, and a
+  // session-wide `set-environment` on the session they are working in, are not
+  // things this lane may do — so it declines rather than doing them.
+  const tmuxProblem = tmuxIsolationProblem(process.env, sessionTempRoot)
+  if (tmuxProblem) return `the lane needs a tmux server of its own: ${tmuxProblem}`
+  const appTmuxProblem = appTmuxIsolationProblem()
+  if (appTmuxProblem) return `the lane needs a tmux server of its own: ${appTmuxProblem}`
 
   const codexVersion = parseVersion('codex', ['--version'])
   if (!codexVersion) return 'codex CLI is not on PATH'
@@ -330,7 +398,7 @@ function readRuntimeRecord(memberName = MEMBER_NAME) {
   }
 }
 
-/** Set the isolated roots on the shared taurhaus tmux session, returning a restore fn. */
+/** Set the isolated roots on the lane's own taurhaus tmux session, returning a restore fn. */
 function applyPaneEnvironment() {
   tmuxQuietly(['new-session', '-d', '-s', TMUX_SESSION])
 
@@ -364,12 +432,12 @@ function applyPaneEnvironment() {
 /**
  * Run `work` with the isolated roots visible to panes created inside it.
  *
- * The `taurhaus` tmux session is shared with whatever the operator is running,
- * so `work` is only ever a call that creates panes: team initialization, and
- * the effort resume, which takes the member's pane down and opens a new one.
- * Every second the override is up is a second in which a pane the operator
- * opens themselves inherits roots this run later deletes, so both windows are
- * closed the moment the pane exists.
+ * The `taurhaus` session this writes to is on the lane's own tmux server — the
+ * host check refuses to run otherwise — so the override reaches this run's
+ * panes and nobody else's. It is still scoped to the calls that create panes,
+ * and still owed back the moment it goes up: a tmux environment outlives the
+ * process that set it, and the whole point of the private server is that
+ * nothing about this run leaks past teardown.
  */
 async function withPaneEnvironment(work) {
   const restore = applyPaneEnvironment()
@@ -385,27 +453,32 @@ async function withPaneEnvironment(work) {
 }
 
 /**
- * Kill the panes this lane put in the shared `taurhaus` tmux session.
+ * Take the lane's tmux server down, with everything it holds.
  *
- * Selection is by working directory, not by "created after we started": the
- * session belongs to whatever the operator is running, and they do open panes
- * while a run is in flight. Every pane this lane creates lives inside the wdio
- * session's temp root, and nothing else does.
+ * A lane that kills panes one by one has to be right about which panes are its
+ * own, and about the session it created to put them in — an initial pane in the
+ * checkout, opened by `new-session`, matches no rule about working directories
+ * and survives. On a server of its own there is nothing to be right about:
+ * every pane, window and session on it belongs to this run.
+ *
+ * The isolation check runs again here rather than being assumed. `kill-server`
+ * against the operator's socket would take down everything they are running,
+ * and a teardown path is exactly where that assumption would go unnoticed.
  */
-function killLanePanes() {
-  if (!sessionTempRoot) return
-  const listed = tmuxQuietly(['list-panes', '-a', '-F', '#{pane_id}\t#{pane_current_path}'])
-  if (!listed.ok) {
-    console.log(`[e2e] managed-stage tmux cleanup skipped: ${listed.error}`)
+function killLaneTmuxServer() {
+  const problem = tmuxIsolationProblem(process.env, sessionTempRoot)
+  if (problem) {
+    console.log(`[e2e] managed-stage tmux cleanup skipped, this is not the lane's own server: ${problem}`)
     return
   }
 
-  for (const line of listed.output.split('\n')) {
-    const [paneId, path] = line.split('\t')
-    if (!paneId || !path?.startsWith(sessionTempRoot)) continue
-    const killed = tmuxQuietly(['kill-pane', '-t', paneId])
-    console.log(`[e2e] ${killed.ok ? 'killed' : 'failed to kill'} lane pane ${paneId} (${path})`)
-  }
+  const listed = tmuxQuietly(['list-panes', '-a', '-F', '#{pane_id}\t#{pane_current_path}'])
+  if (listed.ok && listed.output) console.log(`[e2e] lane tmux panes at teardown:\n${listed.output}`)
+  const killed = tmuxQuietly(['kill-server'])
+  console.log(
+    `[e2e] ${killed.ok ? 'killed' : 'did not kill'} the lane's own tmux server ` +
+      `(${isolatedTmuxTmpdir(sessionTempRoot)})${killed.ok ? '' : `: ${killed.error}`}`
+  )
 }
 
 /**
@@ -587,7 +660,7 @@ async function initializeManagedStageTeam() {
   createdTeamNames.add(TEAM_NAME)
   // Panes appear inside the call below and outlive a killed run, so the undo is
   // owed before the first one exists rather than after the last one is found.
-  laneCleanup.owe(LANE_PANES_STEP, killLanePanes)
+  laneCleanup.owe(LANE_PANES_STEP, killLaneTmuxServer)
 
   const report = await withPaneEnvironment(async () =>
     await invokeTauriOrThrow('coordination_initialize_team', {
@@ -648,6 +721,48 @@ async function initializeManagedStageTeam() {
 
   const sessionBinding = await bindMemberSession()
   return { paneId, sessionBinding }
+}
+
+/**
+ * Add a second managed Codex member, launched at the level the negative path
+ * assigns, and wait for its pane.
+ *
+ * A hot add rather than a second team: the negative path needs a member whose
+ * `appliedEffort` was seeded by its own launch, and nothing else about a second
+ * lead or a second inbox. It creates a pane, so it runs inside the pane
+ * environment window like every other pane-creating call.
+ */
+async function addMediumMemberToTeam() {
+  const { agentRoleId } = await pickRoleIds()
+  const model = await pickCodexModel()
+
+  const report = await withPaneEnvironment(async () =>
+    await invokeTauriOrThrow('coordination_add_agent', {
+      request: {
+        teamName: TEAM_NAME,
+        agent: {
+          name: MEDIUM_MEMBER_NAME,
+          cliTool: 'codex',
+          model,
+          reasoningEffort: ASSIGNED_EFFORT,
+          projectId: fixtureProject,
+          roleId: agentRoleId,
+        },
+      },
+    })
+  )
+  if (report?.failedStep) {
+    throw new Error(`Adding ${MEDIUM_MEMBER_NAME} failed at ${report.failedStep}: ${report.message}`)
+  }
+
+  await browser.waitUntil(async () => Boolean(readRuntimeRecord(MEDIUM_MEMBER_NAME)?.pane_id), {
+    timeout: TEAM_READY_TIMEOUT_MS,
+    interval: 2_000,
+    timeoutMsg: `Managed Codex member ${MEDIUM_MEMBER_NAME} never reported a pane`,
+  })
+  const runtime = readRuntimeRecord(MEDIUM_MEMBER_NAME)
+  console.log(`[e2e] ${MEDIUM_MEMBER_NAME} launched at effort ${runtime?.appliedEffort} in pane ${runtime?.pane_id}`)
+  return runtime
 }
 
 /**
@@ -725,16 +840,16 @@ function meshArgs() {
 }
 
 /** The one message the member is told to send, spelled out so it cannot drift. */
-function completionSignalFor(taskId, payloadShape) {
+function completionSignalFor(taskId, payloadShape, owner) {
   return (
     `send exactly one message and nothing else: ` +
     `mesh send ${LEAD_NAME} 'RESULT #${taskId} ${payloadShape}' ` +
-    `--team ${TEAM_NAME} --name ${MEMBER_NAME} --claude-dir ${claudeDir} --summary result`
+    `--team ${TEAM_NAME} --name ${owner} --claude-dir ${claudeDir} --summary result`
   )
 }
 
 /** Create and assign one bounded stage task; returns its id and the assign time. */
-function assignStageTask({ subject, description, firstStep, deliverable, payloadShape }) {
+function assignStageTask({ subject, description, firstStep, deliverable, payloadShape, owner = MEMBER_NAME }) {
   const created = createTask({
     ...meshArgs(),
     subject,
@@ -749,12 +864,12 @@ function assignStageTask({ subject, description, firstStep, deliverable, payload
   assignTask({
     ...meshArgs(),
     taskId,
-    owner: MEMBER_NAME,
+    owner,
     effort: ASSIGNED_EFFORT,
     why: 'experiment 3: bounded slice',
     firstStep,
     deliverable,
-    completionSignal: completionSignalFor(taskId, payloadShape),
+    completionSignal: completionSignalFor(taskId, payloadShape, owner),
   })
   return { taskId, assignedAtMs }
 }
@@ -812,8 +927,56 @@ async function waitForResult(taskId, timeout) {
   return found
 }
 
-function effortResumeEvents(events, name) {
-  return selectEvents(events, { event: name, match: { team_name: TEAM_NAME, member_name: MEMBER_NAME } })
+function effortResumeEvents(events, name, memberName = MEMBER_NAME) {
+  return selectEvents(events, { event: name, match: { team_name: TEAM_NAME, member_name: memberName } })
+}
+
+/**
+ * Wait for the level the assignment asks for to be in force, and fail the
+ * moment mesh delivers before it is.
+ *
+ * The two readings have to be taken together. Waiting for `appliedEffort` first
+ * and reading the delivery afterwards cannot tell a gate that closed properly
+ * from mesh's effort wait expiring mid-relaunch: an expired wait delivers to a
+ * member still running at the old level, and the resume that lands a moment
+ * later makes every subsequent reading — `appliedEffort`, `pendingEffort`, a
+ * `deliveredAt` after the resume began — look exactly like success.
+ *
+ * The runtime record is read first each round so a delivery is always judged
+ * against a reading taken before it; when the record has moved on by the time
+ * the delivery is seen, the two landed inside the same poll and the ordering is
+ * given to the gate rather than guessed at.
+ */
+async function waitForEffortInForce(taskId, effort, timeout) {
+  let observedAtMs = null
+  await browser.waitUntil(
+    async () => {
+      const applied = readRuntimeRecord()?.appliedEffort ?? null
+      const deliveredAt = deliveryRecord(taskId)?.deliveredAt ?? null
+      const verdict = effortDeliveryVerdict({ appliedEffort: applied, requiredEffort: effort, deliveredAt })
+      if (verdict === 'in-force') {
+        observedAtMs = Date.now()
+        return true
+      }
+      if (verdict === 'holding') return false
+
+      const settled = readRuntimeRecord()?.appliedEffort ?? null
+      if (effortDeliveryVerdict({ appliedEffort: settled, requiredEffort: effort, deliveredAt }) === 'in-force') {
+        observedAtMs = Date.now()
+        return true
+      }
+      throw new Error(
+        `mesh delivered the notice for #${taskId} at ${deliveredAt} while ${MEMBER_NAME} was still running at ` +
+          `appliedEffort ${settled ?? 'unset'} rather than ${effort}: the effort wait expired instead of closing.`
+      )
+    },
+    {
+      timeout,
+      interval: 1_000,
+      timeoutMsg: `${MEMBER_NAME} never reported appliedEffort ${effort}`,
+    }
+  )
+  return observedAtMs
 }
 
 describe('managed Codex stage', function () {
@@ -948,23 +1111,15 @@ describe('managed Codex stage', function () {
     expect(relaunch.command).toContain(`model_reasoning_effort="${ASSIGNED_EFFORT}"`)
     expect(effortResumeEvents(resumeEvents, 'effort.resume.failed')).toEqual([])
 
-    // The record mesh gates on caught up.
-    await browser.waitUntil(async () => readRuntimeRecord()?.appliedEffort === ASSIGNED_EFFORT, {
-      timeout: 60_000,
-      interval: 1_000,
-      timeoutMsg: `${MEMBER_NAME} never reported appliedEffort ${ASSIGNED_EFFORT}`,
-    })
-    const appliedAtMs = Date.now()
+    // The record mesh gates on caught up, and nothing was delivered before it
+    // did. mesh's own "effort wait expired" line goes to a discarded stdout and
+    // cannot be read, so the wait is judged by what it would have caused: a
+    // notice handed to a member still running at `low`. `waitForEffortInForce`
+    // watches both records together and fails on that the moment it appears.
+    const appliedAtMs = await waitForEffortInForce(assigned.taskId, ASSIGNED_EFFORT, EFFORT_RESUME_TIMEOUT_MS)
     expect(taskRecord({ ...meshArgs(), taskId: assigned.taskId }).pendingEffort).toBe(false)
 
-    // ...and only then did mesh deliver. An expired effort wait would have
-    // delivered while `pendingEffort` was still true, which is the failure this
-    // ordering rules out; mesh's own "effort wait expired" line goes to a
-    // discarded stdout and cannot be read. The boundary is the *start* of the
-    // resume, not its completion: the relaunch writes `appliedEffort` inside the
-    // pipeline, a moment before `effort.resume.completed` is emitted, so mesh is
-    // entitled to deliver in between. What it may never do is deliver during the
-    // hold, which is everything before the switch began.
+    // ...and only then did mesh deliver.
     const delivery = await waitForDelivery(assigned.taskId, DELIVERY_TIMEOUT_MS)
     const resumeStartedAtMs = Date.parse(measured.effortResumeStartedAt)
     expect(delivery.deliveredAtMs).toBeGreaterThanOrEqual(resumeStartedAtMs)
@@ -979,11 +1134,25 @@ describe('managed Codex stage', function () {
     const result = await waitForResult(assigned.taskId, RESULT_TIMEOUT_MS)
     console.log(`[e2e] RESULT #${assigned.taskId}: ${result.message.text}`)
 
-    // The acceptance signal: the work exists, and it holds up.
-    expect(commitExists(fixtureProject, result.payload.commit)).toBe(true)
-    const validation = runFixtureTests(fixtureProject)
+    // The acceptance signal: the work exists, in the commit the member named,
+    // and it holds up there. Every clause earns its place — the payload has to
+    // carry the fields the completion signal asked for, the commit has to be a
+    // commit this repo has and *not* the one the fixture started from, it has
+    // to be the commit that added the deliverable, and the test has to pass in
+    // a clean checkout of it rather than in a working tree that may still hold
+    // uncommitted work.
+    const violations = resultContractViolations(result.payload)
+    expect(violations).toEqual([])
+    const reportedCommit = String(result.payload.commit).toLowerCase()
+    expect(fixtureBaseline.startsWith(reportedCommit)).toBe(false)
+    expect(commitExists(fixtureProject, reportedCommit)).toBe(true)
+    const added = filesAddedByCommit(fixtureProject, reportedCommit)
+    console.log(`[e2e] commit ${reportedCommit} added: ${added.join(', ') || 'nothing'}`)
+    expect(added).toContain('src/lib/greet.js')
+    expect(added).toContain('src/lib/greet.test.js')
+    const validation = runFixtureTestsAtCommit(fixtureProject, reportedCommit)
     if (!validation.passed) {
-      throw new Error(`The stage's own test does not pass:\n${validation.output}`)
+      throw new Error(`The stage's own test does not pass at ${reportedCommit}:\n${validation.output}`)
     }
 
     const resultAtMs = Date.parse(result.message.timestamp)
@@ -998,19 +1167,27 @@ describe('managed Codex stage', function () {
       // Delivery to RESULT: the member's own working time.
       memberMs: resultAtMs - delivery.deliveredAtMs,
       totalMs: resultAtMs - delivery.assignedAtMs,
-      commit: result.payload.commit,
+      commit: reportedCommit,
+      addedFiles: added,
       validation: validation.command,
     })
   })
 
-  it('delivers a second assignment at the level the member already runs at, with no hold', async function () {
+  it('delivers to a member launched at the level its assignment asks for, with no hold', async function () {
     if (!laneEnabled) return this.skip()
-    this.timeout(600_000)
+    this.timeout(900_000)
 
-    // No pane is created here: the member is already at `medium`, so nothing is
-    // relaunched and the shared tmux session is left alone.
+    // A member of its own, launched at `medium`, rather than the first one now
+    // sitting at `medium` because this lane resumed it. What the gate has to be
+    // shown not to act on is a *launch* that already matches: the level the
+    // member came up at is what seeds `appliedEffort`, and a launch that seeded
+    // it wrongly is a bug only a fresh member can catch.
     const offset = currentLogOffset()
+    const member = await addMediumMemberToTeam()
+    expect(member?.appliedEffort).toBe(ASSIGNED_EFFORT)
+
     const assigned = assignStageTask({
+      owner: MEDIUM_MEMBER_NAME,
       subject: 'Acknowledge the second assignment',
       description: 'W4 experiment 3 negative path: the effort gate must not act when there is no mismatch.',
       firstStep: 'Do not change any file.',
@@ -1027,11 +1204,13 @@ describe('managed Codex stage', function () {
     await browser.pause(EFFORT_PASS_SETTLE_MS)
 
     // A task event runs the effort pass; with the level already in force it must
-    // start nothing at all.
+    // start nothing at all — for this member, and for the one beside it.
     const events = readLog(offset).events
-    expect(effortResumeEvents(events, 'effort.resume.started')).toEqual([])
-    expect(effortResumeEvents(events, 'effort.resume.failed')).toEqual([])
-    expect(readRuntimeRecord()?.appliedEffort).toBe(ASSIGNED_EFFORT)
+    for (const name of [MEDIUM_MEMBER_NAME, MEMBER_NAME]) {
+      expect(effortResumeEvents(events, 'effort.resume.started', name)).toEqual([])
+      expect(effortResumeEvents(events, 'effort.resume.failed', name)).toEqual([])
+    }
+    expect(readRuntimeRecord(MEDIUM_MEMBER_NAME)?.appliedEffort).toBe(ASSIGNED_EFFORT)
 
     measured.secondAssignmentHoldMs = delivery.deliveredAtMs - delivery.assignedAtMs
   })
