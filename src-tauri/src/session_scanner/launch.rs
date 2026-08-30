@@ -117,7 +117,14 @@ pub enum LaunchNote {
         reason: EffortIgnoreReason,
     },
     /// The base already selected an account dir, so it wins over taurhaus.
+    /// Only reachable when resolution itself chose that account.
     SelectorIgnored { found: String },
+    /// The base pinned an account dir the launch is not running on, so the
+    /// assignment was rewritten in place to the account that was chosen.
+    SelectorRewritten {
+        found: String,
+        replaced_with: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,6 +169,15 @@ impl LaunchNote {
                 ..
             } => "launch.effort.invalid",
             Self::SelectorIgnored { .. } => "launch.selector.ignored",
+            Self::SelectorRewritten { .. } => "launch.selector.rewritten",
+        }
+    }
+
+    /// A note about a launch that did what was asked is not a warning.
+    pub fn level(&self) -> &'static str {
+        match self {
+            Self::SelectorRewritten { .. } => "info",
+            _ => "warn",
         }
     }
 }
@@ -474,26 +490,79 @@ impl LaunchSpec<'_> {
 
         // Last, so the selector lands in front of any tool-specific team
         // environment the match above may have prepended.
-        if let Some(account_dir) = self.account_dir {
-            if let Some(selector) = self.selector {
-                if crate::session_scanner::accounts::command_contains_env(self.base, selector) {
-                    notes.push(LaunchNote::SelectorIgnored {
-                        found: selector.to_string(),
-                    });
-                } else {
-                    let assignment = shell_escape(&account_dir.to_string_lossy());
-                    command = format!("{selector}={assignment} {command}");
+        match (self.account_dir, self.selector) {
+            (Some(account_dir), Some(selector)) => {
+                let assignment = format!(
+                    "{selector}={}",
+                    shell_escape(&account_dir.to_string_lossy())
+                );
+                // A selector the base already carries is replaced where it
+                // stands: a second assignment in front of it would lose, since
+                // the shell reads the last one.
+                match replace_env_assignment(&command, selector, &assignment) {
+                    Some((rewritten, found)) => {
+                        notes.push(LaunchNote::SelectorRewritten {
+                            found,
+                            replaced_with: assignment,
+                        });
+                        command = rewritten;
+                    }
+                    None => command = format!("{assignment} {command}"),
                 }
-            } else {
+            }
+            (Some(account_dir), None) => {
                 notes.push(LaunchNote::CapabilityMissing {
                     capability: LaunchCapability::Selector,
                     found: account_dir.to_string_lossy().into_owned(),
                 });
             }
+            // Nothing above the base command chose an account, so the selector
+            // the base carries is the one this launch runs on.
+            (None, Some(selector)) => {
+                if crate::session_scanner::accounts::command_contains_env(self.base, selector) {
+                    notes.push(LaunchNote::SelectorIgnored {
+                        found: selector.to_string(),
+                    });
+                }
+            }
+            (None, None) => {}
         }
 
         RenderedLaunch { command, notes }
     }
+}
+
+/// Replace the command's own `selector=...` assignment with `assignment`.
+///
+/// Returns the rewritten command and the assignment word that made way for it,
+/// or `None` when the command carries no such assignment. Only an unquoted
+/// leading `selector=` counts, because that is the only spelling a shell reads
+/// as an assignment rather than as a command name.
+fn replace_env_assignment(
+    command: &str,
+    selector: &str,
+    assignment: &str,
+) -> Option<(String, String)> {
+    let prefix = format!("{selector}=");
+    let mut cursor = 0;
+    while cursor < command.len() {
+        let character = command[cursor..].chars().next()?;
+        if character.is_whitespace() {
+            cursor += character.len_utf8();
+            continue;
+        }
+        let end = shell_word_end(command, cursor);
+        let word = &command[cursor..end];
+        if word.starts_with(&prefix) {
+            let mut rewritten = String::with_capacity(command.len() + assignment.len());
+            rewritten.push_str(&command[..cursor]);
+            rewritten.push_str(assignment);
+            rewritten.push_str(&command[end..]);
+            return Some((rewritten, word.to_string()));
+        }
+        cursor = end;
+    }
+    None
 }
 
 /// Return the configured base command without normalizing or rewriting it.
@@ -668,6 +737,32 @@ mod tests {
         ModelSpec {
             model: Some(model.to_string()),
             reasoning_effort: reasoning_effort.map(str::to_string),
+        }
+    }
+
+    /// One detected account, without touching any real CLI home.
+    fn fixture_account(
+        id: &str,
+        dir: &std::path::Path,
+        is_process_default: bool,
+    ) -> crate::session_scanner::accounts::Account {
+        crate::session_scanner::accounts::Account {
+            tool: CliTool::Claude,
+            id: id.to_string(),
+            dir: dir.to_path_buf(),
+            identity: crate::session_scanner::accounts::AccountIdentity {
+                id: id.to_string(),
+                label: format!("{id}@example.com"),
+                display_name: None,
+                organization: None,
+                plan: None,
+                logged_in: true,
+                usage_capable: true,
+                credential_expires_at: None,
+            },
+            is_default: is_process_default,
+            is_process_default,
+            usage: None,
         }
     }
 
@@ -1525,7 +1620,10 @@ mod tests {
     }
 
     #[test]
-    fn a_base_that_already_selects_a_config_dir_wins_and_is_noted() {
+    fn a_base_that_selects_another_config_dir_is_rewritten_in_place() {
+        // Regression: 0.8.3 kept the base command's own selector and noted it
+        // as ignored, so the account the user chose lost to the shell alias
+        // that put CLAUDE_CONFIG_DIR there.
         let base = "CLAUDE_CONFIG_DIR=~/.claude-account2 claude --dangerously-skip-permissions";
         let rendered = LaunchSpec {
             tool: CliTool::Claude,
@@ -1540,6 +1638,45 @@ mod tests {
         }
         .render();
 
+        assert_eq!(
+            rendered.command,
+            "CLAUDE_CONFIG_DIR='/home/user/.claude' claude --dangerously-skip-permissions"
+        );
+        assert_eq!(
+            count_flag(&rendered.command, "CLAUDE_CONFIG_DIR"),
+            1,
+            "a second assignment would decide the launch instead"
+        );
+        assert_eq!(
+            rendered.notes,
+            vec![LaunchNote::SelectorRewritten {
+                found: "CLAUDE_CONFIG_DIR=~/.claude-account2".to_string(),
+                replaced_with: "CLAUDE_CONFIG_DIR='/home/user/.claude'".to_string(),
+            }]
+        );
+        assert_eq!(rendered.notes[0].event_name(), "launch.selector.rewritten");
+        assert_eq!(rendered.notes[0].level(), "info");
+    }
+
+    #[test]
+    fn a_base_that_chose_the_account_itself_is_left_alone_and_noted() {
+        // The ignored note survives for exactly one case: resolution found no
+        // choice above the base command, so `AccountOrigin::BaseCommand` picked
+        // the account and rendered no dir of its own.
+        let base = "CLAUDE_CONFIG_DIR=~/.claude-account2 claude --dangerously-skip-permissions";
+        let rendered = LaunchSpec {
+            tool: CliTool::Claude,
+            mode: LaunchMode::Fresh,
+            base,
+            model: ModelSpec::default(),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: Some("CLAUDE_CONFIG_DIR"),
+            team: None,
+        }
+        .render();
+
         assert_eq!(rendered.command, base);
         assert_eq!(
             rendered.notes,
@@ -1547,13 +1684,75 @@ mod tests {
                 found: "CLAUDE_CONFIG_DIR".to_string()
             }]
         );
-        assert_eq!(
-            LaunchNote::SelectorIgnored {
-                found: "CLAUDE_CONFIG_DIR".to_string()
+        assert_eq!(rendered.notes[0].event_name(), "launch.selector.ignored");
+    }
+
+    #[test]
+    fn a_launch_through_an_expanded_alias_runs_on_the_pinned_account() {
+        // Regression: 0.8.3 shipped a base command taken literally and a render
+        // that let it keep its own selector, so the operator's `claude2` alias
+        // (CLAUDE_CONFIG_DIR=~/.claude-account2 claude) silently overruled the
+        // account pinned for the project. This is the whole chain the bug
+        // crossed: pane shell -> resolution -> render.
+        struct AliasedShell;
+
+        impl crate::session_scanner::launch_base::AliasProbe for AliasedShell {
+            fn shell(&self) -> &str {
+                "/fake/zsh"
             }
-            .event_name(),
-            "launch.selector.ignored"
+
+            fn alias(&self, name: &str) -> Option<String> {
+                (name == "claude2")
+                    .then(|| "CLAUDE_CONFIG_DIR=~/.claude-account2 claude".to_string())
+            }
+        }
+
+        let home = dirs::home_dir().expect("a home directory");
+        let pinned = home.join(".claude");
+        let other = home.join(".claude-account2");
+        let accounts = vec![
+            fixture_account("pinned", &pinned, true),
+            fixture_account("second", &other, false),
+        ];
+
+        let resolved = crate::session_scanner::launch_base::resolve_base_command(
+            "claude2 --dangerously-skip-permissions",
+            CliTool::Claude,
+            &AliasedShell,
         );
+        let resolution = crate::session_scanner::accounts::resolve_launch_account(
+            &accounts,
+            crate::session_scanner::cli_tool::spec(CliTool::Claude)
+                .account_provider()
+                .expect("claude has an account provider"),
+            crate::session_scanner::accounts::AccountRequest {
+                pinned_account_id: Some("pinned"),
+                base_command: Some(&resolved.command),
+                selector: Some("CLAUDE_CONFIG_DIR"),
+                ..Default::default()
+            },
+        );
+        let rendered = LaunchSpec {
+            tool: CliTool::Claude,
+            mode: LaunchMode::Fresh,
+            base: &resolved.command,
+            model: ModelSpec::default(),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: resolution.account_dir.as_deref(),
+            selector: Some("CLAUDE_CONFIG_DIR"),
+            team: None,
+        }
+        .render();
+
+        assert_eq!(
+            rendered.command,
+            format!(
+                "CLAUDE_CONFIG_DIR='{}' claude --dangerously-skip-permissions",
+                pinned.display()
+            )
+        );
+        assert_eq!(count_flag(&rendered.command, "CLAUDE_CONFIG_DIR"), 1);
     }
 
     // Regression: d6839a3 rendered account selection only inside the Claude

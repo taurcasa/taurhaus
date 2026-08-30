@@ -196,6 +196,7 @@ pub(super) fn launch_cli_session_impl(
     );
     for note in rendered.notes {
         let event = note.event_name();
+        let level = note.level();
         let mut fields = Map::new();
         fields.insert("tool".to_string(), Value::String(tool.to_string()));
         fields.insert("mode".to_string(), Value::String(mode_name.clone()));
@@ -236,9 +237,17 @@ pub(super) fn launch_cli_session_impl(
                 fields.insert("found".to_string(), Value::String(found));
                 "Configured launch base selects its own account directory"
             }
+            LaunchNote::SelectorRewritten {
+                found,
+                replaced_with,
+            } => {
+                fields.insert("found".to_string(), Value::String(found));
+                fields.insert("replaced_with".to_string(), Value::String(replaced_with));
+                "Configured launch base pinned another account directory; it was rewritten"
+            }
         };
         crate::commands::logging::emit_global(
-            "warn",
+            level,
             "command_center",
             event,
             Some(message.to_string()),

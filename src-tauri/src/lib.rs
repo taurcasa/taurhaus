@@ -451,6 +451,16 @@ impl From<crate::session_scanner::launch::LaunchNote> for LaunchCommandCliNote {
                 replacement: None,
                 reason: None,
             },
+            LaunchNote::SelectorRewritten {
+                found,
+                replaced_with,
+            } => Self {
+                event,
+                flag: None,
+                found: Some(found),
+                replacement: Some(replaced_with),
+                reason: None,
+            },
         }
     }
 }
