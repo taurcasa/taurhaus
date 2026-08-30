@@ -85,7 +85,7 @@ pub fn get_project_tasks(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_task_detail(
     db: State<'_, DbState>,
     project_id: String,
@@ -101,7 +101,7 @@ pub fn get_task_detail(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_archived_sessions(
     app: AppHandle,
     db: State<'_, DbState>,
@@ -128,7 +128,7 @@ pub fn get_archived_sessions(
     response
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_commit_files(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
@@ -143,7 +143,7 @@ pub fn get_commit_files(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_commit_diff(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
@@ -159,7 +159,7 @@ pub fn get_commit_diff(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_commits_in_range(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,

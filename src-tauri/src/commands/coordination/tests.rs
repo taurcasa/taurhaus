@@ -57,7 +57,8 @@ fn every_registered_roster_mutation_reconciles_the_global_harness_hooks() {
         "coordination_remove_member",
         "coordination_disband_team",
     ];
-    let source = include_str!("../coordination.rs");
+    let source =
+        include_str!("../coordination.rs").replace("#[tauri::command(async)]", "#[tauri::command]");
 
     let unreconciled = source
         .split("#[tauri::command]")

@@ -69,7 +69,7 @@ fn get_index_status_impl(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rebuild_index(
     search_state: State<'_, SearchState>,
     db: State<'_, DbState>,

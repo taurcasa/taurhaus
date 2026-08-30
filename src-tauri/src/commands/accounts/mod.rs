@@ -82,7 +82,7 @@ pub(crate) enum DaemonAnswer<T> {
     Unavailable(String),
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_accounts(
     provider: State<'_, ProviderState>,
     tool: CliTool,
@@ -136,7 +136,7 @@ pub(crate) fn resolve_launch_bases_impl(
     .collect()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn refresh_accounts_usage(
     provider: State<'_, ProviderState>,
     tool: CliTool,

@@ -40,7 +40,7 @@ use crate::commands::runtime_snapshot::daemon_runtime_session_snapshot;
 
 static SESSION_ACTIVITY_RECONCILE_QUEUED: AtomicBool = AtomicBool::new(false);
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_cli_sessions(
     app: tauri::AppHandle,
     db: State<'_, DbState>,
@@ -59,7 +59,7 @@ pub fn list_cli_sessions(
 /// The store that polls when the daemon bridge is down measures time against
 /// the interval between two observations; a replayed or cached list is not one,
 /// and reading it as one credits the outage to the last state seen.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_cli_session_snapshot(
     app: tauri::AppHandle,
     db: State<'_, DbState>,
@@ -72,7 +72,7 @@ pub fn list_cli_session_snapshot(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[allow(clippy::too_many_arguments)]
 pub fn launch_cli_session(
     db: State<'_, DbState>,
@@ -105,7 +105,7 @@ pub fn launch_cli_session(
 /// The chooser asks the user exactly once, and only when it has to. Whether it
 /// has to is a backend question: the transcript of the project's last session
 /// decides every resume, and a stored choice that logged out decides nothing.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn resolve_launch_account(
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
@@ -128,7 +128,7 @@ pub fn resolve_launch_account(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn stop_cli_session(
     log_file: State<'_, crate::commands::logging::LogFileState>,
     provider: State<'_, ProviderState>,
@@ -142,7 +142,7 @@ pub fn stop_cli_session(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn navigate_to_session(
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
@@ -167,7 +167,7 @@ pub fn navigate_to_session(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn record_session_activity(
     db: State<'_, DbState>,
     project_id: String,
@@ -192,7 +192,7 @@ pub fn record_session_activity(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_project_activity(
     db: State<'_, DbState>,
     project_id: String,
@@ -203,7 +203,7 @@ pub fn get_project_activity(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_foreground_project(
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,

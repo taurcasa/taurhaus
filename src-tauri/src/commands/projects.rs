@@ -135,7 +135,7 @@ fn get_project_detail_for_selection(
     project::get_project(conn, project_id, thresholds).sanitize_err()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn register_project(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
@@ -373,7 +373,7 @@ fn initialize_project_repo_in_wsl(
     )))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_project(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
@@ -505,7 +505,7 @@ pub fn update_project(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_project(
     db: State<'_, DbState>,
     search: State<'_, SearchState>,
@@ -619,7 +619,7 @@ pub struct BatchRegistrationResult {
     pub error: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn register_projects_batch(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
@@ -840,7 +840,7 @@ fn reseed_activity_for_project(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn scan_directory(db: State<'_, DbState>, path: String) -> IpcResult<Vec<DiscoveredProject>> {
     let span = IpcCommandSpan::start("scan_directory");
     let result = scan_directory_impl(db.inner(), path);
@@ -859,7 +859,7 @@ pub struct DirectoryEntry {
 
 /// List subdirectories at a given path (directories only, no files).
 /// Used by the directory tree browser for manual path selection.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_directory(path: String) -> IpcResult<Vec<DirectoryEntry>> {
     let span = IpcCommandSpan::start("list_directory");
     let result = (|| -> Result<Vec<DirectoryEntry>, String> {
@@ -921,7 +921,7 @@ pub fn list_directory(path: String) -> IpcResult<Vec<DirectoryEntry>> {
 /// Return filesystem root entries for the directory tree browser.
 /// On Windows: available drive letters (C:\, D:\, etc.) + WSL distributions
 /// On Linux/macOS: just ["/"]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_system_roots() -> Vec<DirectoryEntry> {
     let span = IpcCommandSpan::start("get_system_roots");
     let roots = {
@@ -1019,7 +1019,7 @@ fn detect_git_repo_for_validation(raw_path: &str, dir: &std::path::Path) -> bool
 
 /// Validate whether a path is a valid project directory.
 /// Checks: exists, is a git repo, already registered.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn validate_project_path(db: State<'_, DbState>, path: String) -> IpcResult<PathValidation> {
     let span = IpcCommandSpan::start("validate_project_path");
     let result = (|| -> Result<PathValidation, String> {

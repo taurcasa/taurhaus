@@ -40,7 +40,7 @@ fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str)
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_settings(db: State<'_, DbState>) -> IpcResult<Settings> {
     get_settings_with_span(db.inner())
 }
@@ -59,7 +59,7 @@ fn get_settings_impl(db: &DbState) -> Result<Settings, String> {
         .sanitize_err()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_settings(
     app: tauri::AppHandle,
     db: State<'_, DbState>,

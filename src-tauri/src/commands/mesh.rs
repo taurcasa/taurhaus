@@ -27,7 +27,7 @@ const MESH_TEAM_DAEMON_PATTERN: &str =
 const INSTALL_STATUS_TIMEOUT: Duration = Duration::from_secs(2);
 const INSTALL_ACTION_TIMEOUT: Duration = Duration::from_secs(12);
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_mesh_install_status(app: tauri::AppHandle) -> IpcResult<MeshInstallStatus> {
     let span = IpcCommandSpan::start("check_mesh_install_status");
     let result = read_mesh_install_status(&app).ipc_cmd("check_mesh_install_status");
@@ -35,7 +35,7 @@ pub fn check_mesh_install_status(app: tauri::AppHandle) -> IpcResult<MeshInstall
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn install_mesh(app: tauri::AppHandle) -> IpcResult<OperationResult> {
     let span = IpcCommandSpan::start("install_mesh");
     let result = install_bundled_mesh(&app).ipc_cmd("install_mesh");

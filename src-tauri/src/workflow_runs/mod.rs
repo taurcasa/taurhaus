@@ -123,7 +123,7 @@ pub fn activity_for_transcript(
     workflow_activity(&session_dir, now)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_workflow_runs(
     provider: State<'_, ProviderState>,
     session_id: String,
@@ -135,7 +135,7 @@ pub fn list_workflow_runs(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_workflow_run(
     provider: State<'_, ProviderState>,
     session_id: String,
@@ -148,7 +148,7 @@ pub fn get_workflow_run(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn workflow_ledger_row(
     provider: State<'_, ProviderState>,
     session_id: String,
