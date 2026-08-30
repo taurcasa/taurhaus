@@ -1,4 +1,11 @@
-const NOW = new Date('2026-03-06T12:00:00.000Z')
+// Regression: e3ace37 pinned this clock to the authoring date
+// ('2026-03-06T12:00:00.000Z'). HoverCard measures session freshness against
+// the real `Date.now()` with a 7-day window, so once wall-clock time passed
+// that window every "fresh session" scenario silently fell back to the commit
+// row and the spec's `Session: …` expectations went stale. The scenarios are
+// anchored to the run's own clock instead; deliberately stale fixtures use
+// `isoDaysAgo`.
+const NOW = new Date()
 const DEFAULT_ANCHOR_RECT = {
   left: 220,
   right: 252,
