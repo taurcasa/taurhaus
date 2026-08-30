@@ -193,92 +193,95 @@ impl CoordinationOrchestrator {
         }
 
         if let Some(pane_id) = pane_id {
-            match member_project_path {
-                Some(project_path) => {
-                    let project_path = project_path.display().to_string();
-                    match self
-                        .runtime
-                        .pane_belongs_to_project(pane_id, project_path.as_str())
-                    {
-                        Ok(true) => {
-                            diagnostics.steps.push(step_succeeded(
-                                "verify_pane_ownership",
-                                format!("pane {pane_id} matched project {project_path}"),
-                            ));
-                            if let Err(err) = self.runtime.kill_aitx_pane(pane_id) {
-                                tracing::warn!(
-                                    team = %team_name,
-                                    member = %member_name,
-                                    pane_id = %pane_id,
-                                    error = %err,
-                                    "failed to kill pane during teardown"
-                                );
-                                diagnostics.steps.push(step_failed(
-                                    "kill_pane",
-                                    format!("failed to kill pane {pane_id}: {err}"),
-                                ));
-                                diagnostics
-                                    .warnings
-                                    .push(format!("failed to kill pane {pane_id}: {err}"));
-                            } else {
-                                diagnostics.steps.push(step_succeeded(
-                                    "kill_pane",
-                                    format!("pane {pane_id} terminated"),
-                                ));
+            let ownership = if let Some(record) = runtime {
+                match self.runtime.live_pane(pane_id) {
+                    Ok(Some(live_pane)) => Ok(pane_belongs_to_member(record, &live_pane)),
+                    Ok(None) => Ok(PaneOwnership::Foreign {
+                        reason: "pane_missing".to_string(),
+                    }),
+                    Err(err) => Err(err.to_string()),
+                }
+            } else if let Some(project_path) = member_project_path {
+                let project_path = project_path.display().to_string();
+                self.runtime
+                    .pane_belongs_to_project(pane_id, project_path.as_str())
+                    .map(|owned| {
+                        if owned {
+                            PaneOwnership::Owned
+                        } else {
+                            PaneOwnership::Foreign {
+                                reason: "project_path_mismatch".to_string(),
                             }
                         }
-                        Ok(false) => {
-                            diagnostics.steps.push(step_failed(
-                                "verify_pane_ownership",
-                                format!(
-                                    "pane {pane_id} did not match expected project {project_path}"
-                                ),
-                            ));
-                            diagnostics.warnings.push(format!(
-                                "skipped pane teardown for {pane_id}: ownership mismatch for {project_path}"
-                            ));
-                            diagnostics.steps.push(step_failed(
-                                "kill_pane",
-                                format!(
-                                    "skipped pane kill for {pane_id} due to ownership mismatch"
-                                ),
-                            ));
-                        }
-                        Err(err) => {
-                            tracing::warn!(
-                                team = %team_name,
-                                member = %member_name,
-                                pane_id = %pane_id,
-                                error = %err,
-                                "failed to verify pane ownership during teardown"
-                            );
-                            diagnostics.steps.push(step_failed(
-                                "verify_pane_ownership",
-                                format!("failed to verify pane ownership for {pane_id}: {err}"),
-                            ));
-                            diagnostics.warnings.push(format!(
-                                "skipped pane teardown for {pane_id}: ownership check failed ({err})"
-                            ));
-                            diagnostics.steps.push(step_failed(
-                                "kill_pane",
-                                format!(
-                                    "skipped pane kill for {pane_id} because ownership check failed"
-                                ),
-                            ));
-                        }
+                    })
+                    .map_err(|err| err.to_string())
+            } else {
+                Err(format!(
+                    "no project path recorded for member '{member_name}'"
+                ))
+            };
+
+            match ownership {
+                Ok(PaneOwnership::Owned) => {
+                    diagnostics.steps.push(step_succeeded(
+                        "verify_pane_ownership",
+                        format!("pane {pane_id} matched its recorded member identity"),
+                    ));
+                    if let Err(err) = self.runtime.kill_aitx_pane(pane_id) {
+                        tracing::warn!(
+                            team = %team_name,
+                            member = %member_name,
+                            pane_id = %pane_id,
+                            error = %err,
+                            "failed to kill pane during teardown"
+                        );
+                        diagnostics.steps.push(step_failed(
+                            "kill_pane",
+                            format!("failed to kill pane {pane_id}: {err}"),
+                        ));
+                        diagnostics
+                            .warnings
+                            .push(format!("failed to kill pane {pane_id}: {err}"));
+                    } else {
+                        diagnostics.steps.push(step_succeeded(
+                            "kill_pane",
+                            format!("pane {pane_id} terminated"),
+                        ));
                     }
                 }
-                None => {
+                Ok(PaneOwnership::Foreign { reason }) => {
                     diagnostics.steps.push(step_failed(
                         "verify_pane_ownership",
-                        format!("no project path recorded for member '{member_name}'"),
+                        format!(
+                            "pane {pane_id} did not match its recorded member identity: {reason}"
+                        ),
                     ));
                     diagnostics.warnings.push(format!(
-                        "skipped pane teardown for {pane_id}: missing project path for ownership check"
+                        "skipped pane teardown for {pane_id}: ownership mismatch ({reason})"
                     ));
                     diagnostics.steps.push(step_failed(
                         "kill_pane",
-                        format!("skipped pane kill for {pane_id} because project path is missing"),
+                        format!("skipped pane kill for {pane_id} due to ownership mismatch"),
+                    ));
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        team = %team_name,
+                        member = %member_name,
+                        pane_id = %pane_id,
+                        error = %err,
+                        "failed to verify pane ownership during teardown"
+                    );
+                    diagnostics.steps.push(step_failed(
+                        "verify_pane_ownership",
+                        format!("failed to verify pane ownership for {pane_id}: {err}"),
+                    ));
+                    diagnostics.warnings.push(format!(
+                        "skipped pane teardown for {pane_id}: ownership check failed ({err})"
+                    ));
+                    diagnostics.steps.push(step_failed(
+                        "kill_pane",
+                        format!("skipped pane kill for {pane_id} because ownership check failed"),
                     ));
                 }
             }

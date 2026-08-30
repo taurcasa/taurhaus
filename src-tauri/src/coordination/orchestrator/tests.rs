@@ -439,6 +439,21 @@ impl CoordinationRuntime for PaneOwnershipRuntime {
         Ok(None)
     }
 
+    fn live_pane(
+        &self,
+        pane_id: &str,
+    ) -> Result<Option<crate::coordination::runtime::LivePane>, CoordinationError> {
+        let mut live_pane = self.inner.live_pane(pane_id)?;
+        if let Some(live_pane) = &mut live_pane {
+            live_pane.current_path = Some(PathBuf::from(if self.ownership_matches {
+                "/tmp/taurhaus"
+            } else {
+                "/recording-runtime/foreign-project"
+            }));
+        }
+        Ok(live_pane)
+    }
+
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
         self.inner.kill_aitx_pane(pane_id)
     }
@@ -2124,11 +2139,10 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
 
     let calls = runtime.calls();
     assert!(
-        calls.iter().any(|call| matches!(
-            call,
-            RuntimeCall::CheckPaneOwnership { pane_id, .. } if pane_id == "%9"
-        )),
-        "ownership check should run before pane kill"
+        calls
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::InspectPane { pane_id } if pane_id == "%9")),
+        "member identity inspection should run before pane kill"
     );
     assert!(
         !calls.iter().any(|call| matches!(
@@ -2149,6 +2163,91 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
         }
         other => panic!("expected operator notice, got {other:?}"),
     }
+}
+
+#[test]
+fn remove_member_does_not_kill_same_project_pane_owned_by_another_process() {
+    // Regression: 4344edb4 gated teardown only by project path, so one member
+    // could kill a reused pane belonging to a sibling in the same checkout.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let backend = Arc::new(FakeBackend::default());
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        runtime.clone(),
+    );
+    let team_name = "teardown-foreign-identity";
+    create_running_team(&mut orchestrator, team_name);
+    let mut record =
+        MemberRuntimeStore::load(tmp.path(), team_name, "existing-dev").expect("member runtime");
+    record.pane_id = Some("%9".to_string());
+    record.pane_pid = Some(9001);
+    record.pane_start_time = Some(1_755_000_009);
+    record.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, "existing-dev", &record).expect("save runtime");
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_current_path("%9", Some("/tmp/taurhaus"));
+    runtime.set_pane_current_command("%9", Some("codex"));
+    runtime.set_pane_identity("%9", Some(9002), Some(1_755_000_009));
+
+    let report = orchestrator
+        .remove_member(team_name, "existing-dev", Some("cleanup".to_string()))
+        .expect("remove report");
+
+    assert!(report
+        .steps
+        .iter()
+        .any(|step| step.step == "verify_pane_ownership" && !step.success));
+    assert!(
+        !runtime
+            .calls()
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::KillPane { pane_id } if pane_id == "%9")),
+        "a same-path pane with another pid must not be killed"
+    );
+}
+
+#[test]
+fn remove_member_kills_the_pane_with_its_recorded_identity() {
+    // Regression: 4344edb4 did not use the durable member identity as its
+    // positive teardown gate.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let backend = Arc::new(FakeBackend::default());
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        runtime.clone(),
+    );
+    let team_name = "teardown-owned-identity";
+    create_running_team(&mut orchestrator, team_name);
+    let mut record =
+        MemberRuntimeStore::load(tmp.path(), team_name, "existing-dev").expect("member runtime");
+    record.pane_id = Some("%9".to_string());
+    record.pane_pid = Some(9001);
+    record.pane_start_time = Some(1_755_000_009);
+    record.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, "existing-dev", &record).expect("save runtime");
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_current_path("%9", Some("/tmp/taurhaus"));
+    runtime.set_pane_current_command("%9", Some("codex"));
+    runtime.set_pane_identity("%9", Some(9001), Some(1_755_000_009));
+
+    let report = orchestrator
+        .remove_member(team_name, "existing-dev", Some("cleanup".to_string()))
+        .expect("remove report");
+
+    assert!(report
+        .steps
+        .iter()
+        .any(|step| step.step == "verify_pane_ownership" && step.success));
+    assert!(runtime
+        .calls()
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::KillPane { pane_id } if pane_id == "%9")));
 }
 
 #[test]
