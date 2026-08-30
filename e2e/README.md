@@ -77,28 +77,35 @@ Full suite:
 just test-e2e-full
 ```
 
-## Paid lane: `compaction-codex-hooks`
+## Paid lanes
 
-`e2e/specs/compaction-codex-hooks.js` drives a real Codex (and Claude) subscription:
-it builds a managed team and pays for the turns that take its Codex member to
-compaction, manually and automatically. `e2e/specList.js` therefore keeps it out
-of the config's spec list — a suite run, including a bare
-`bunx wdio run e2e/wdio.conf.js`, never picks it up — and it only runs when asked
-for by name:
+Two specs drive a real Codex subscription. `e2e/specList.js` keeps both out of the
+config's spec list — a suite run, including a bare `bunx wdio run e2e/wdio.conf.js`,
+never picks either up — and each only runs when asked for by name:
 
 ```bash
 E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
+E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex
 ```
 
-It reads `~/.codex` once, copying only `auth.json` into a scratch `CODEX_HOME` under
-the session temp root, and never writes back to it. The scratch `config.toml` is
+`compaction-codex-hooks` builds a managed team and pays for the turns that take its
+Codex member to compaction, manually and automatically. `managed-stage-codex` (W4
+experiment 3) hands a managed Codex member one bounded implementation task through
+the mesh assignment contract: it proves the assignment's effort is put into force
+before the notice is delivered, and then that the commit the member reports exists
+in the fixture repo and the test it wrote passes.
+
+Both read `~/.codex` once, copying only `auth.json` into a scratch `CODEX_HOME` under
+the session temp root, and never write back to it. The scratch `config.toml` is
 generated, not copied: the operator's own config can register things Codex executes
 (`notify`, MCP servers), and a configured `notify` in particular would displace the
-notifier taurhaus installs, which is the lane's only turn signal. Point
+notifier taurhaus installs, which is the compaction lane's only turn signal. Point
 `E2E_CODEX_SOURCE_HOME` somewhere else to copy from another Codex home. On a host
-without `codex` ≥ 0.147, without Codex credentials, or without mesh/tmux, the lane
-skips itself and prints why. See
-[`docs/operations/compaction-testing.md`](../docs/operations/compaction-testing.md).
+without `codex` ≥ 0.147, without Codex credentials, or without mesh/tmux, a lane
+skips itself and prints why; `managed-stage-codex` additionally needs `mesh` ≥ 0.2.23
+for the pending-effort gate and `bun` to validate the deliverable. See
+[`docs/operations/compaction-testing.md`](../docs/operations/compaction-testing.md)
+and [`docs/operations/testing-guide.md`](../docs/operations/testing-guide.md).
 
 ## Quick diagnosis for "Could not connect to localhost"
 

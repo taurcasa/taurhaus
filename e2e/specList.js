@@ -33,9 +33,13 @@ export const specGroups = [
  * `just test-e2e-spec compaction-codex-hooks`. WebdriverIO admits a spec named
  * as a file path on the command line whether or not the config lists it, so
  * leaving them out here does not make them unrunnable — only unbookable.
+ *
+ * Both of them drive a real Codex subscription and must never touch the
+ * operator's own `~/.codex`, so naming one on the command line is also what
+ * tells `wdio.conf.js` to build the scratch `CODEX_HOME` for the session.
  */
-export const CODEX_SCRATCH_SPEC = 'compaction-codex-hooks.js'
-export const paidSpecs = [CODEX_SCRATCH_SPEC]
+export const CODEX_SCRATCH_SPECS = ['compaction-codex-hooks.js', 'managed-stage-codex.js']
+export const paidSpecs = [...CODEX_SCRATCH_SPECS]
 
 /** Spec files present in `specsDir`, sorted. */
 export function listSpecFiles(specsDir) {
