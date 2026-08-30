@@ -188,6 +188,19 @@ fn named_test_binaries(recipe: &str) -> BTreeSet<String> {
         .collect()
 }
 
+fn values_after_flag(recipe: &str, flag: &str) -> BTreeSet<String> {
+    let tokens = recipe.split_whitespace().collect::<Vec<_>>();
+    tokens
+        .windows(2)
+        .filter(|window| window[0] == flag && !window[1].starts_with('-'))
+        .map(|window| {
+            window[1]
+                .trim_matches(|character| matches!(character, '\'' | '"' | ';'))
+                .to_owned()
+        })
+        .collect()
+}
+
 #[test]
 fn rust_integration_recipe_runs_every_test_binary() {
     // Regression: commit 831571da replaced the integration lane with a
@@ -206,6 +219,45 @@ fn rust_integration_recipe_runs_every_test_binary() {
     assert!(
         missing.is_empty() && stale.is_empty(),
         "integration test manifest drifted; missing: {missing:?}; stale: {stale:?}"
+    );
+}
+
+#[test]
+fn heavy_unit_skips_match_integration_reruns() {
+    // Regression: commit 831571da introduced separate heavy-suite skip and
+    // rerun lists, so one side could change while the other silently drifted.
+    let unit_recipe = show_recipe("test-rust-unit");
+    let integration_recipe = show_recipe("test-rust-integration");
+    let shared_reference = "{{ heavy_rust_test_filters }}";
+    let unit_uses_shared_list = unit_recipe.contains(shared_reference);
+    let integration_uses_shared_list = integration_recipe.contains(shared_reference);
+
+    assert_eq!(
+        unit_uses_shared_list, integration_uses_shared_list,
+        "both Rust lanes must source heavy filters from the same manifest"
+    );
+
+    let (skipped, rerun) = if unit_uses_shared_list {
+        let shared = evaluate_just_variable("heavy_rust_test_filters")
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>();
+        (shared.clone(), shared)
+    } else {
+        (
+            values_after_flag(&dry_run_recipe("test-rust-unit"), "--skip"),
+            values_after_flag(&dry_run_recipe("test-rust-integration"), "--lib"),
+        )
+    };
+
+    assert_eq!(
+        skipped.len(),
+        6,
+        "the heavy manifest should name six filters"
+    );
+    assert_eq!(
+        skipped, rerun,
+        "unit skips and integration reruns must stay in parity"
     );
 }
 
