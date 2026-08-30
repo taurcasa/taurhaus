@@ -208,7 +208,9 @@ fn latest_owned_task_from_tasks(
     let task = tasks
         .iter()
         .filter(|task| task.owner.as_deref() == Some(member_name))
-        .filter(|task| is_resumable_task_status(&task.status))
+        .filter(|task| {
+            crate::coordination::task_deadline::is_active_assignment_status(&task.status)
+        })
         .max_by(|left, right| {
             task_priority(left)
                 .cmp(&task_priority(right))
@@ -325,10 +327,6 @@ fn task_priority(task: &taurhaus_lib::db::task_queries::PersistedTask) -> u8 {
         "pending" => 2,
         _ => 0,
     }
-}
-
-fn is_resumable_task_status(status: &str) -> bool {
-    matches!(status.trim(), "pending" | "in_progress")
 }
 
 #[cfg(test)]

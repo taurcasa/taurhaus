@@ -20,8 +20,12 @@ pub enum DeadlineAction {
     MarkStale,
 }
 
+pub(crate) fn is_active_assignment_status(status: &str) -> bool {
+    matches!(status.trim(), "pending" | "in_progress")
+}
+
 pub fn decide(assignment: &DeadlineInput, now: Timestamp) -> DeadlineAction {
-    if matches!(assignment.status.trim(), "completed" | "cancelled") {
+    if assignment.deadline_minutes == 0 || !is_active_assignment_status(&assignment.status) {
         return DeadlineAction::Nothing;
     }
 
@@ -67,6 +71,9 @@ mod tests {
         }
     }
 
+    // Regression: 3ac444dd treated empty or unknown snapshot statuses as
+    // active and a zero-minute deadline as stale immediately because the
+    // policy used a terminal deny-list and an unguarded zero-duration window.
     #[test]
     fn deadline_actions_follow_half_and_full_deadline_one_shot_markers() {
         let assigned = assigned_at();
@@ -131,6 +138,27 @@ mod tests {
                 "cancelled",
                 input("cancelled", None, None),
                 stale,
+                DeadlineAction::Nothing,
+            ),
+            (
+                "empty status",
+                input("", None, None),
+                stale,
+                DeadlineAction::Nothing,
+            ),
+            (
+                "unknown status",
+                input("blocked", None, None),
+                stale,
+                DeadlineAction::Nothing,
+            ),
+            (
+                "zero deadline",
+                DeadlineInput {
+                    deadline_minutes: 0,
+                    ..input("in_progress", None, None)
+                },
+                assigned,
                 DeadlineAction::Nothing,
             ),
         ];
