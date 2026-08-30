@@ -351,17 +351,15 @@ describe('Settings component', () => {
   // Regression: a010581 matched the selector anywhere in the launch command,
   // so an argument that only looks like an assignment — a word after the
   // executable, which a shell hands to the program — was reported as the
-  // account the launch command selects.
-  it('ignores a selector-shaped argument after the executable', async () => {
+  // account the launch command selects. a3afcfe then delivered the tilde
+  // spelling of that argument already expanded to an absolute path, which is
+  // the spelling this line matches against a detected account.
+  it.each([
+    'claude --append-system-prompt CLAUDE_CONFIG_DIR=/home/mstie/.claude-account2',
+    'claude --append-system-prompt CLAUDE_CONFIG_DIR=~/.claude-account2',
+  ])('ignores the selector-shaped argument in %s', async (command) => {
     listAccounts.mockImplementation(
-      withResolvedBases([
-        {
-          command:
-            'claude --append-system-prompt CLAUDE_CONFIG_DIR=/home/mstie/.claude-account2',
-          expansions: [],
-          opaqueHead: null,
-        },
-      ])
+      withResolvedBases([{ command, expansions: [], opaqueHead: null }])
     )
 
     render(Settings, { props: defaultProps() })

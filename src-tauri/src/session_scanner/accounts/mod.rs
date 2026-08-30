@@ -1655,24 +1655,28 @@ mod tests {
         // base command. A word after the executable is an argument, whatever
         // it looks like, so `claude --append-system-prompt CLAUDE_CONFIG_DIR=…`
         // was credited with choosing the account this launch runs on.
-        let resolved = resolve_launch_account(
-            &fixture(),
-            &FakeProvider,
-            AccountRequest {
-                base_command: Some(
-                    "claude --append-system-prompt CLAUDE_CONFIG_DIR=/accounts/last",
-                ),
-                selector: Some("CLAUDE_CONFIG_DIR"),
-                ..Default::default()
-            },
-        );
+        // The tilde spelling is an argument too: a3afcfe expanded `~` in every
+        // word of the resolved base, so this one arrived here as an absolute
+        // path that could name a detected account.
+        for argument in ["/accounts/last", "~/.claude"] {
+            let base = format!("claude --append-system-prompt CLAUDE_CONFIG_DIR={argument}");
+            let resolved = resolve_launch_account(
+                &fixture(),
+                &FakeProvider,
+                AccountRequest {
+                    base_command: Some(&base),
+                    selector: Some("CLAUDE_CONFIG_DIR"),
+                    ..Default::default()
+                },
+            );
 
-        assert_eq!(resolved.origin, AccountOrigin::DefaultConfigDir);
-        assert_eq!(resolved.account.unwrap().id, "default");
-        assert_eq!(
-            resolved.account_dir, None,
-            "the base command assigns nothing, so the process default needs no selector"
-        );
+            assert_eq!(resolved.origin, AccountOrigin::DefaultConfigDir);
+            assert_eq!(resolved.account.unwrap().id, "default");
+            assert_eq!(
+                resolved.account_dir, None,
+                "the base command assigns nothing, so the process default needs no selector"
+            );
+        }
     }
 
     #[test]

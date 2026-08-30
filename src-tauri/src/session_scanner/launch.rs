@@ -1746,33 +1746,38 @@ mod tests {
         // so an argument after the executable — which a shell passes to the
         // program, never to the environment — was rewritten in place. The
         // chosen account never reached the launch, and the note said it had.
-        let base = "claude --append-system-prompt CLAUDE_CONFIG_DIR=/tmp/literal";
-        let rendered = LaunchSpec {
-            tool: CliTool::Claude,
-            mode: LaunchMode::Fresh,
-            base,
-            model: ModelSpec::default(),
-            codex_bypass_hook_trust: false,
-            codex_notify_executable: None,
-            account_dir: Some(std::path::Path::new("/home/user/.claude-account2")),
-            selector: Some("CLAUDE_CONFIG_DIR"),
-            team: None,
-        }
-        .render();
+        // A tilde spelling reaches render untouched as well: a3afcfe normalized
+        // this tool's selector in every word of the line, so the argument
+        // arrived here already rewritten to a path the user never typed.
+        for argument in ["/tmp/literal", "~/.literal"] {
+            let base = format!("claude --append-system-prompt CLAUDE_CONFIG_DIR={argument}");
+            let rendered = LaunchSpec {
+                tool: CliTool::Claude,
+                mode: LaunchMode::Fresh,
+                base: &base,
+                model: ModelSpec::default(),
+                codex_bypass_hook_trust: false,
+                codex_notify_executable: None,
+                account_dir: Some(std::path::Path::new("/home/user/.claude-account2")),
+                selector: Some("CLAUDE_CONFIG_DIR"),
+                team: None,
+            }
+            .render();
 
-        assert_eq!(
-            rendered.command,
-            concat!(
-                "CLAUDE_CONFIG_DIR='/home/user/.claude-account2' ",
-                "claude --append-system-prompt CLAUDE_CONFIG_DIR=/tmp/literal"
-            ),
-            "the argument stays as typed and the selector goes in front of the executable"
-        );
-        assert_eq!(
-            rendered.notes,
-            vec![],
-            "nothing the base owns was rewritten, so there is nothing to report"
-        );
+            assert_eq!(
+                rendered.command,
+                format!(
+                    "CLAUDE_CONFIG_DIR='/home/user/.claude-account2' \
+                     claude --append-system-prompt CLAUDE_CONFIG_DIR={argument}"
+                ),
+                "the argument stays as typed and the selector goes in front of the executable"
+            );
+            assert_eq!(
+                rendered.notes,
+                vec![],
+                "nothing the base owns was rewritten, so there is nothing to report"
+            );
+        }
     }
 
     #[test]
