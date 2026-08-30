@@ -115,6 +115,8 @@
       {accounts}
       projectName={scenario?.projectName ?? ''}
       defaultAccountId={scenario?.defaultAccountId ?? null}
+      reason={scenario?.reason ?? null}
+      preselectedAccountId={scenario?.preselectedAccountId ?? null}
       {dark}
       onConfirm={() => {}}
       onCancel={() => {}}

@@ -58,6 +58,56 @@ const ACCOUNTS = [
 ]
 
 /**
+ * The provider-window shape a launch actually judges on, unlike the two-field
+ * legacy snapshot above: the chooser's automatic trigger reads `windows`.
+ */
+function providerUsage({ session, week, minutesAgo }) {
+  const now = Date.now()
+  return {
+    observed_at: new Date(now - minutesAgo * 60_000).toISOString(),
+    status: 'ok',
+    windows: [
+      {
+        key: 'session',
+        title: 'Current session',
+        used_percentage: session,
+        resets_at: Math.floor(now / 1000) + 2 * 3600 + 600,
+        severity: 'normal',
+        is_active: true,
+      },
+      {
+        key: 'week',
+        title: 'Current week (all models)',
+        used_percentage: week,
+        resets_at: WEEK_RESETS_AT,
+        severity: week >= 100 ? 'critical' : 'normal',
+        is_active: true,
+      },
+    ],
+    note: null,
+  }
+}
+
+const WEEK_RESETS_AT = Math.floor(Date.now() / 1000) + 41 * 3600
+
+/**
+ * The launch the chooser interrupted: the remembered subscription has spent
+ * its week, so the dialog opens by itself and has to say why before it asks.
+ */
+const SPENT = [
+  { ...PRIMARY, usage: providerUsage({ session: 8, week: 100, minutesAgo: 2 }) },
+  { ...SECOND, usage: providerUsage({ session: 12, week: 31, minutesAgo: 3 }) },
+  LOGGED_OUT,
+]
+
+const EXHAUSTED_REASON = {
+  kind: 'exhausted',
+  accountLabel: 'stierms@gmail.com',
+  windowTitle: 'Current week (all models)',
+  resetsAt: WEEK_RESETS_AT,
+}
+
+/**
  * One person, one display name, two subscriptions — the case that crashed the
  * submenu when a row's identity was its label.
  */
@@ -68,7 +118,7 @@ const SAME_NAME = [
 ]
 
 /** `surface` picks which of the app's two mount points the host reproduces. */
-function scenario(name, theme, surface, accounts = ACCOUNTS) {
+function scenario(name, theme, surface, accounts = ACCOUNTS, extra = {}) {
   return {
     name,
     theme,
@@ -77,12 +127,23 @@ function scenario(name, theme, surface, accounts = ACCOUNTS) {
     projectName: 'taurhaus',
     selectedAccountId: null,
     defaultAccountId: null,
+    reason: null,
+    preselectedAccountId: null,
+    ...extra,
   }
 }
 
 export const shellPopupsScenarios = [
   scenario('chooser-light', 'light', 'chooser'),
   scenario('chooser-dark', 'dark', 'chooser'),
+  scenario('chooser-exhausted-light', 'light', 'chooser', SPENT, {
+    reason: EXHAUSTED_REASON,
+    preselectedAccountId: 'account-2',
+  }),
+  scenario('chooser-exhausted-dark', 'dark', 'chooser', SPENT, {
+    reason: EXHAUSTED_REASON,
+    preselectedAccountId: 'account-2',
+  }),
   scenario('chip-menu-light', 'light', 'chip'),
   scenario('chip-menu-dark', 'dark', 'chip'),
   scenario('sidebar-account-submenu-light', 'light', 'sidebar'),

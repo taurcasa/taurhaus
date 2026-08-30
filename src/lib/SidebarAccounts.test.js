@@ -317,13 +317,19 @@ describe('Sidebar account submenus', () => {
 
     await hoverOpenSubmenu('menu-item-resume-claude')
     const rows = within(screen.getByTestId('context-submenu')).getAllByRole('menuitemradio')
-    expect(rows.length).toBeGreaterThan(1)
-    for (const row of rows) {
+    const accountRows = rows.filter(
+      (row) => row.dataset.testid !== 'submenu-item-choose-account…'
+    )
+    expect(accountRows.length).toBeGreaterThan(1)
+    for (const row of accountRows) {
       expect(row).toBeDisabled()
     }
     expect(screen.getByTestId('submenu-item-matthias')).toHaveTextContent(
       'team runs on default account'
     )
+    // The note is about which account this launch runs on, not about the
+    // user's right to look at what is left of each one.
+    expect(screen.getByTestId('submenu-item-choose-account…')).toBeEnabled()
 
     await fireEvent.mouseDown(screen.getByTestId('submenu-item-matthias'))
     expect(launchCliSession).not.toHaveBeenCalled()
@@ -381,6 +387,58 @@ describe('Sidebar account submenus', () => {
 
     await waitFor(() => {
       expect(launchCliSession).toHaveBeenCalledWith('project-0', 'fresh', 'claude', 'account-2')
+    })
+  })
+
+  describe('reopening the chooser from the menu', () => {
+    const REMEMBERING = {
+      ...PROJECT,
+      accountMemory: { claude: { accountId: 'account-2', origin: 'pinned' } },
+    }
+
+    // Regression: #35 (per-project account memory) settled the account for
+    // every later launch of a project that had launched once, and no menu row
+    // could reopen the chooser to compare what was left of each subscription.
+    it('opens the chooser on a project whose account is already settled', async () => {
+      await openProjectMenu(REMEMBERING)
+
+      await hoverOpenSubmenu('menu-item-new-claude-session')
+      await fireEvent.mouseDown(screen.getByTestId('submenu-item-choose-account…'))
+
+      await waitFor(() =>
+        expect(claudeAccounts.pending).toMatchObject({
+          projectId: 'project-0',
+          mode: 'fresh',
+          preselectedAccountId: 'account-2',
+        })
+      )
+      expect(launchCliSession).not.toHaveBeenCalled()
+    })
+
+    // The guard for the test above: without the row, the same project launches
+    // on its remembered account and never sees a dialog.
+    it('leaves the plain launch row launching straight away', async () => {
+      await openProjectMenu(REMEMBERING)
+
+      await waitFor(() =>
+        expect(screen.getByTestId('menu-item-new-claude-session')).toHaveAttribute('aria-haspopup')
+      )
+      await fireEvent.mouseDown(screen.getByTestId('menu-item-new-claude-session'))
+
+      await waitFor(() =>
+        expect(launchCliSession).toHaveBeenCalledWith('project-0', 'fresh', 'claude', null)
+      )
+      expect(claudeAccounts.pending).toBe(null)
+    })
+
+    it('keeps the row out of the pin submenu, which starts nothing', async () => {
+      await openProjectMenu(REMEMBERING)
+
+      await hoverOpenSubmenu('menu-item-claude-account')
+
+      expect(
+        within(screen.getByTestId('context-submenu')).queryByText('Choose account…')
+      ).toBeNull()
     })
   })
 })

@@ -15,6 +15,7 @@
    */
   import UsageMeter from './UsageMeter.svelte'
   import { toolDescriptor } from '../toolRegistry.js'
+  import { resetLabel } from '../usageWindows.js'
 
   let {
     tool,
@@ -24,6 +25,13 @@
     defaultAccountId = null,
     /** Detection could not run: these are the accounts last known, not current. */
     degraded = false,
+    /**
+     * Why the launch stopped here, when the user did not ask for the dialog:
+     * `{ kind, accountLabel, windowTitle, resetsAt }`, or `null` when they did.
+     */
+    reason = null,
+    /** The account the dialog opens on, when the caller knows which one. */
+    preselectedAccountId = null,
     dark = false,
     onConfirm = () => {},
     onCancel = () => {},
@@ -45,6 +53,33 @@
       null
   )
 
+  // A caller that already knows which account this launch would have used says
+  // so, and that row — not the global default — is the one a keystroke takes.
+  // A pre-selection that cannot run is no answer, and the default stands.
+  const enterAccount = $derived(
+    accounts.find((account) => account.id === preselectedAccountId && account.logged_in) ??
+      defaultAccount
+  )
+
+  /**
+   * The sentence above the list: what stopped the launch, and what to do now.
+   *
+   * The reset clause is dropped rather than faked when the provider named no
+   * reset — "resets" with nothing after it says less than silence.
+   */
+  const reasonSentence = $derived.by(() => {
+    if (!reason) return null
+    const who = reason.accountLabel || 'This account'
+    if (reason.kind === 'unauthorized') {
+      return `${who} needs to sign in again. Pick a subscription for this launch.`
+    }
+    const resets = resetLabel(reason.resetsAt)
+    const window = [reason.windowTitle, resets ? `resets ${resets}` : null]
+      .filter(Boolean)
+      .join(', ')
+    return `${who} is out of usage${window ? ` — ${window}` : ''}. Pick a subscription for this launch.`
+  })
+
   const panelTone = $derived(
     dark
       ? 'border-white/[0.08] bg-zinc-950/95 text-zinc-100 shadow-2xl shadow-black/50'
@@ -57,6 +92,13 @@
       : 'border-brand-100 bg-brand-50/40 hover:border-brand-400 hover:bg-brand-50'
   )
   const metaTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
+  const reasonTone = $derived(dark ? 'text-amber-300' : 'text-amber-700')
+  // A ring, not a border colour: the option already carries `optionTone`'s
+  // border, and two competing `border-*` utilities resolve by stylesheet order
+  // rather than by which one the row wants.
+  const preselectedTone = $derived(
+    dark ? 'ring-2 ring-brand-400/50' : 'ring-2 ring-brand-500/40'
+  )
   const badgeTone = $derived(
     dark ? 'bg-brand-500/15 text-brand-300' : 'bg-brand-100 text-brand-700'
   )
@@ -85,9 +127,9 @@
       onCancel()
       return
     }
-    if (event.key === 'Enter' && defaultAccount) {
+    if (event.key === 'Enter' && enterAccount) {
       event.preventDefault()
-      choose(defaultAccount)
+      choose(enterAccount)
     }
   }
 
@@ -124,6 +166,12 @@
     {toolLabel} account{projectName ? ` · ${projectName}` : ''}
   </p>
 
+  {#if reasonSentence}
+    <p class="mb-2 text-[11px] leading-snug {reasonTone}" data-testid="account-chooser-reason">
+      {reasonSentence}
+    </p>
+  {/if}
+
   {#if degraded}
     <p class="mb-2 text-[11px] {metaTone}" data-testid="accounts-degraded">
       Accounts unavailable (daemon offline) — using last known
@@ -134,9 +182,10 @@
     {#each accounts as account (account.id)}
       <button
         type="button"
-        class="flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 {optionTone} {focusRing}"
+        class="flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 {optionTone} {focusRing} {account.id === enterAccount?.id ? preselectedTone : ''}"
         disabled={!account.logged_in}
         onclick={() => choose(account)}
+        data-preselected={account.id === enterAccount?.id ? 'true' : 'false'}
         data-testid="account-option-{account.id}"
       >
         <span class="min-w-0 flex-1">

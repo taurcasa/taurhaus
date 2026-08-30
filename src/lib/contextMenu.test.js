@@ -538,8 +538,8 @@ describe('ContextMenu submenus', () => {
       label: 'New Claude Session',
       action: vi.fn(),
       children: [
-        { key: '0:account-1', label: 'Matthias', meta: '5h 3%', action: vi.fn() },
-        { key: '1:account-2', label: 'Matthias', meta: '5h 61%', action: vi.fn() },
+        { key: '0:account-1', label: 'Matthias', meta: '5h 3%', check: false, action: vi.fn() },
+        { key: '1:account-2', label: 'Matthias', meta: '5h 61%', check: true, action: vi.fn() },
       ],
     }]
     render(ContextMenu, { props: { items, onClose: vi.fn() } })
@@ -549,6 +549,33 @@ describe('ContextMenu submenus', () => {
     const rows = screen.getAllByRole('menuitemradio')
     expect(rows).toHaveLength(2)
     expect(rows[1]).toHaveTextContent('5h 61%')
+  })
+
+  // Regression: every flyout row was rendered as `menuitemradio` with
+  // `aria-checked`, so the "Choose account…" action the launch submenu ends
+  // with was announced as an unchecked account. A row that carries no `check`
+  // is an action, not a choice among peers (Codex review, chooser round 6).
+  it('renders a child without a check state as a plain menu item', async () => {
+    const choose = vi.fn()
+    const items = [{
+      label: 'New Claude Session',
+      action: vi.fn(),
+      children: [
+        { key: '0:account-1', label: 'Matthias', meta: '5h 3%', check: true, action: vi.fn() },
+        { key: 'separator', separator: true, disabled: true },
+        { key: 'choose', label: 'Choose account…', action: choose },
+      ],
+    }]
+    render(ContextMenu, { props: { items, onClose: vi.fn() } })
+
+    await hoverOpen('menu-item-new-claude-session')
+
+    const account = screen.getByRole('menuitemradio')
+    expect(account).toHaveAttribute('aria-checked', 'true')
+    const action = screen.getByRole('menuitem', { name: /choose account/i })
+    expect(action).not.toHaveAttribute('aria-checked')
+    await fireEvent.mouseDown(action)
+    expect(choose).toHaveBeenCalledTimes(1)
   })
 
   // Regression: 6ec843e watched only the root menu for late growth. The rows
