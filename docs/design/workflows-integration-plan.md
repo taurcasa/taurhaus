@@ -32,11 +32,12 @@ Order: W1 + W3 (parallel, small) → W2 → W5 (with the v4 lead roles) → W4.
 | W2b (UI) | Opus | Codex conformance + operational | 4 | 4 → 4 → 5 → 2 (last two closed by the orchestrator: the daemon workflow hint survives the roster join on Windows; live-run phase attribution accepted as a documented limitation) | #57 |
 | W5a (mesh) | Codex | Opus one lens | 2 | 3 → 2 → 0 (pane-ownership guard, orphaned task on a rejected create; fixed by a follow-up agent) | mesh 0.2.22, bundled in #65 |
 | W5b (taurhaus) | Opus | Codex conformance + operational | 6 | 28 → reshaped by the orchestrator in round 5 (duplicated `/effort` path and settings automation removed) → 1 accepted (unlocked WSL-UNC runtime writes on Windows, follow-up) | #68 |
-| W4 | design: [`w4-managed-stages-design.md`](w4-managed-stages-design.md) (2026-08-29); experiments 3–5 gate implementation | tbd | tbd | tbd | tbd |
+| W4 exp3 (lane) | Opus | Codex conformance + operational | 2 | 3 + 1 minor → 0 (delivery-ordering assertion made durable from mesh's own wait bound; deliverable judged on the commit it reports in a clean worktree; the paid lane moved onto a tmux server of its own; a second member launched at `medium` for the negative path). Measured 2026-08-30: hold 1.91 s, resume 1.63 s, member 32.15 s, assign→RESULT 34.05 s, two Codex turns — [`research/w4-experiment-3.md`](research/w4-experiment-3.md) | #71 |
+| W4 | design: [`w4-managed-stages-design.md`](w4-managed-stages-design.md) (2026-08-29); experiment 3 measured (#71), experiments 4–5 still gate implementation | tbd | tbd | tbd | tbd |
 
 ## Follow-ups from W1–W2
 
 - The versioned procedures hard-require `just check-quick` + `just lint`, so they cannot yet drive a repo without the taurhaus justfile (taureval was fixed by hand); a repo profile that names the repo's own required gates — without a silent opt-out — is the next W1 item, along with user-scope installation.
 - Live-run phase attribution (agent → script call) so the canvas can show phase rows mid-run; today live runs render as one flat group until the summary lands (W2a contract).
-- The visual lane is host-broken independently of W2b: `vitest.visual.config.js` defaults to `/usr/bin/google-chrome`, and with the Playwright chromium two stale specs (`readme`, `hoverCard`) fail on main.
+- The visual lane runs on Playwright's managed Chromium since the lane-hygiene change: `just test-visual` resolves its browser (`PLAYWRIGHT_CHROME_PATH`, else `/usr/bin/google-chrome`, else the managed Chromium) and the stale `readme`, `hoverCard` and `meshNodeDetail` specs were brought back in line with the components.
 - First real runs of `feature-pr` found and fixed one defect in the procedures themselves (schemas without `additionalProperties: false`, #56) and proved the fail-closed gates work as designed: a run stops at an unavailable review lane or a failing gate instead of returning a green ledger.

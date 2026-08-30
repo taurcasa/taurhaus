@@ -29,10 +29,12 @@
  *   just test-e2e-spec search-workflow   (single spec in its own session)
  *   E2E_SKIP_BUILD=1 bunx wdio run e2e/wdio.conf.js  (skip build)
  *
- * None of those run a paid lane. `compaction-codex-hooks` spends real Codex and
- * Claude subscription turns and is only ever started by name:
+ * None of those run a paid lane. `compaction-codex-hooks` and
+ * `managed-stage-codex` spend real subscription turns and are only ever started
+ * by name:
  *
  *   E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
+ *   E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex
  */
 
 import { spawn, spawnSync } from 'node:child_process'
@@ -41,7 +43,8 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFile
 import { homedir, tmpdir } from 'node:os'
 import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
 import { createCodexScratchHome } from './helpers/codexScratchHome.js'
-import { CODEX_SCRATCH_SPEC, buildSpecList } from './specList.js'
+import { applyTmuxIsolation, wantsIsolatedTmux } from './helpers/laneTmux.js'
+import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
@@ -194,7 +197,7 @@ The runtime mode keeps agents connected.
   runGitOrThrow(repoPath, ['commit', '-q', '-m', 'docs: add changelog for git history coverage'], 'Failed to create third e2e fixture commit')
 }
 
-// The one spec that drives a real Codex subscription. It runs against a scratch
+// The specs that drive a real Codex subscription. They run against a scratch
 // CODEX_HOME rather than the operator's own, so the app process — which installs
 // the managed hook and renders the member's `CODEX_HOME='…'` launch prefix — has
 // to be started with that root already in its environment.
@@ -202,7 +205,9 @@ let previousCodexHome = null
 let codexHomeOverridden = false
 
 function prepareCodexScratchHome(specs, scratchHome) {
-  const wanted = (specs ?? []).some((spec) => resolve(spec).endsWith(CODEX_SCRATCH_SPEC))
+  const wanted = (specs ?? []).some((spec) =>
+    CODEX_SCRATCH_SPECS.some((name) => resolve(spec).endsWith(name))
+  )
   if (!wanted) return
 
   const sourceHome = process.env.E2E_CODEX_SOURCE_HOME || resolve(homedir(), '.codex')
@@ -226,6 +231,51 @@ function restoreCodexHome() {
   }
   previousCodexHome = null
   codexHomeOverridden = false
+}
+
+// The managed-stage lane creates tmux panes and pushes this session's temporary
+// roots into the `taurhaus` tmux session's environment. On the operator's own
+// tmux server that hands those roots — deleted at teardown — to the next pane
+// they open, so the lane runs against a server of its own. The app is what
+// creates the panes, so the override has to be in place before tauri-driver
+// starts it, and `TMUX` has to go: a suite started from inside a tmux pane
+// inherits one, and every tmux client prefers it to `TMUX_TMPDIR`.
+let previousTmuxEnvironment = null
+let tmuxSocketDir = ''
+
+function prepareIsolatedTmux(specs, tempRoot) {
+  if (!wantsIsolatedTmux(specs)) return
+
+  previousTmuxEnvironment = { TMUX_TMPDIR: process.env.TMUX_TMPDIR ?? null, TMUX: process.env.TMUX ?? null }
+  tmuxSocketDir = applyTmuxIsolation(process.env, tempRoot)
+  // tmux creates `$TMUX_TMPDIR/tmux-<uid>` but not its parent, and fails when
+  // the parent is missing.
+  mkdirSync(tmuxSocketDir, { recursive: true })
+  console.log(`[e2e] tmux server for this session: ${tmuxSocketDir} (inherited TMUX cleared)`)
+}
+
+/**
+ * Take the lane's own tmux server down before its socket directory is deleted.
+ *
+ * The spec kills it in its own teardown; this is the path a crashed or killed
+ * run takes, where removing the temp root would otherwise orphan a server —
+ * and the panes, and the CLIs in them — with its socket gone.
+ */
+function killIsolatedTmuxServer() {
+  if (!tmuxSocketDir) return
+  const env = { ...process.env, TMUX_TMPDIR: tmuxSocketDir }
+  delete env.TMUX
+  spawnSync('tmux', ['kill-server'], { env, stdio: 'ignore', timeout: 5_000 })
+}
+
+function restoreTmuxIsolation() {
+  if (!previousTmuxEnvironment) return
+  for (const [key, value] of Object.entries(previousTmuxEnvironment)) {
+    if (value === null) delete process.env[key]
+    else process.env[key] = value
+  }
+  previousTmuxEnvironment = null
+  tmuxSocketDir = ''
 }
 
 async function isWebDriverProtocolReady(host, port, timeoutMs = 500) {
@@ -333,8 +383,10 @@ function cleanupSessionTempRoot() {
 
 function cleanupAllE2eArtifacts() {
   cleanupTauriDriver()
+  killIsolatedTmuxServer()
   cleanupSessionTempRoot()
   restoreCodexHome()
+  restoreTmuxIsolation()
 }
 
 let cleanupHandlersRegistered = false
@@ -534,6 +586,7 @@ export const config = {
     process.env.TAURHAUS_DATA_DIR = tauriDataDir
     process.env.TAURHAUS_CLAUDE_DIR = tauriClaudeDir
     prepareCodexScratchHome(specs, `${sessionTempRoot}/codex-home`)
+    prepareIsolatedTmux(specs, sessionTempRoot)
 
     tauriDriver = spawn(
       localTauriDriverPath,
