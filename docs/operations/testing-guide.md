@@ -114,7 +114,7 @@ just test-macos-e2e       # macOS E2E via SSH on remote Mac Mini
 - **Tier 2**: Tests requiring a running daemon (session detection, file watching, command center)
 
 **E2E setup** (see [e2e/README.md](../../e2e/README.md) for troubleshooting):
-1. By default the recipes do **not** reinstall the daemon. Opt in only if needed: `E2E_INSTALL_DAEMON=1 just test-e2e`
+1. Keep `E2E_INSTALL_DAEMON=0` (the default). Workers launch the checkout-local daemon; setting it to `1` only rebuilds and restarts the operator's installed daemon.
 2. The recipes build the E2E binary automatically unless `E2E_SKIP_BUILD=1` is set
 3. Run the tier/spec command you need
 
@@ -148,7 +148,7 @@ Two specs drive a real Codex subscription and cost money every time they run. `e
 
 | Lane | Recipe | What it proves |
 |---|---|---|
-| `compaction-codex-hooks` | `E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks` | A managed Codex member gets its restored-context card back through the native hook bridge. See [compaction-testing.md](compaction-testing.md). |
+| `compaction-codex-hooks` | `E2E_INSTALL_DAEMON=0 just test-e2e-spec compaction-codex-hooks` | A managed Codex member gets its restored-context card back through the native hook bridge. See [compaction-testing.md](compaction-testing.md). |
 | `managed-stage-codex` | `E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex` | A managed Codex member completes a bounded task through the mesh assignment contract, with the assignment's effort put into force before the notice is delivered (W4 experiment 3). |
 
 Both use the same five isolated worker roots. Their scratch `CODEX_HOME` holds only a copy of `auth.json` plus a generated `config.toml`. The operator's `~/.codex` is read once at copy time and never written; `~/.claude`, `~/.grok` and `~/.gemini` are neither read nor written. Naming either lane on the command line is what tells `wdio.conf.js` to populate that already-isolated Codex home.

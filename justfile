@@ -336,15 +336,15 @@ build-e2e:
     bunx tauri build --debug --no-bundle
 
 # Run E2E tests — Tier 1 only.
-# By default this does NOT run install-daemon (to avoid killing/restarting
-# a live daemon during local E2E). Opt in with E2E_INSTALL_DAEMON=1.
+# Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
+# opt-in that only rebuilds/restarts the operator's installed daemon.
 # Builds the app automatically unless E2E_SKIP_BUILD=1 is set.
 test-e2e: e2e-prepare-daemon
     bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
 
 # Run E2E tests — Tier 1 + Tier 2 (daemon must be running)
-# By default this does NOT run install-daemon (to avoid killing/restarting
-# a live daemon during local E2E). Opt in with E2E_INSTALL_DAEMON=1.
+# Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
+# opt-in that only rebuilds/restarts the operator's installed daemon.
 # compaction-codex-hooks spends real Codex and Claude subscription turns, so it
 # is never part of a suite run: `e2e/specList.js` keeps every paid lane out of
 # the config's spec list. Start it by name with test-e2e-spec.
@@ -352,22 +352,22 @@ test-e2e-full: e2e-prepare-daemon
     bunx wdio run e2e/wdio.conf.js
 
 # Run a single E2E spec file.
-# By default this does NOT run install-daemon (to avoid killing/restarting
-# a live daemon during local E2E). Opt in with E2E_INSTALL_DAEMON=1.
+# Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
+# opt-in that only rebuilds/restarts the operator's installed daemon.
 # Builds by default (safe). Set E2E_SKIP_BUILD=1 explicitly if you already built.
 test-e2e-spec SPEC: e2e-prepare-daemon
     bunx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
 
-# Optional daemon prep for E2E runs.
-# Default is safe/no-op. Set E2E_INSTALL_DAEMON=1 to rebuild/reinstall daemon.
+# Legacy operator-daemon prep; isolated workers do not use this install.
+# Default is safe/no-op. Set E2E_INSTALL_DAEMON=1 only to mutate the host install.
 e2e-prepare-daemon:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "${E2E_INSTALL_DAEMON:-0}" = "1" ]; then
-        echo "▸ E2E_INSTALL_DAEMON=1 -> running install-daemon"
+        echo "▸ E2E_INSTALL_DAEMON=1 -> mutating the operator daemon via install-daemon"
         just install-daemon
     else
-        echo "▸ Skipping install-daemon for E2E (set E2E_INSTALL_DAEMON=1 to enable)"
+        echo "▸ Operator daemon unchanged; E2E workers launch the checkout-local daemon"
     fi
 
 # Reset database (delete SQLite file)
