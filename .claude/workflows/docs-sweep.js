@@ -194,6 +194,10 @@ function normalizedChangedPaths(paths) {
   return Array.isArray(paths) ? paths.map((path) => String(path).trim()).filter(Boolean) : []
 }
 
+function isRustPath(path) {
+  return /(^|\/)src-tauri\//.test(String(path))
+}
+
 function laneChangedPaths(lanes) {
   return lanes.reduce((paths, lane) => paths.concat(normalizedChangedPaths(lane && lane.files_changed)), [])
 }
@@ -201,7 +205,7 @@ function laneChangedPaths(lanes) {
 function effectiveGateCatalog(changedPaths, independentPaths) {
   const rustChanged = normalizedChangedPaths(changedPaths)
     .concat(normalizedChangedPaths(independentPaths))
-    .some((path) => path.startsWith('src-tauri/'))
+    .some(isRustPath)
   if (!rustChanged) return GATE_CATALOG
   const declaredRustGates = GATES.filter(isRustTestGate)
   if (declaredRustGates.length > 0) {
@@ -310,8 +314,8 @@ function gateProblem(gate, independentPaths) {
   const ran = Array.isArray(gate.commands) ? gate.commands.filter(Boolean) : []
   if (ran.length === 0) return 'the gate reported no commands run'
   const gatePaths = normalizedChangedPaths(gate.changed_paths)
-  const independentRustPaths = normalizedChangedPaths(independentPaths).filter((path) => path.startsWith('src-tauri/'))
-  if (independentRustPaths.length > 0 && !gatePaths.some((path) => path.startsWith('src-tauri/'))) {
+  const independentRustPaths = normalizedChangedPaths(independentPaths).filter(isRustPath)
+  if (independentRustPaths.length > 0 && !gatePaths.some(isRustPath)) {
     return 'the gate did not report the diff it was asked to run; another lane reported Rust paths: ' + independentRustPaths.join(', ')
   }
   const catalog = effectiveGateCatalog(gatePaths, independentPaths)
@@ -606,7 +610,7 @@ const SWEEP_SCHEMA = {
 
     summary: { type: 'string' },
     commits: { type: 'array', items: { type: 'string' } },
-    files_changed: { type: 'array', items: { type: 'string' } },
+    files_changed: { type: 'array', items: { type: 'string' }, description: 'repo-relative paths, exactly as git reports them' },
     table_path: { type: 'string', description: 'the drift table: before -> after with file:line evidence' },
     unresolved: { type: 'array', items: { type: 'string' }, description: 'drift you could not settle from the code' },
   },

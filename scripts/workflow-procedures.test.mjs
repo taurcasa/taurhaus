@@ -775,6 +775,10 @@ describe('workflow procedures — fail closed', () => {
 describe('workflow procedures — Rust diff gate', () => {
   const rustPath = 'src-tauri/src/commands/coordination.rs'
   const rustGate = { command: 'just test-rust-unit', status: 'pass' }
+  const lanePlan = (script, filesChanged) =>
+    script === 'docs-sweep.js'
+      ? { sweep: { ...OK_SWEEP, files_changed: filesChanged } }
+      : { work: { ...OK_WORK, files_changed: filesChanged } }
 
   it('requires just test-rust-unit when the diff contains a Rust path', async () => {
     await expect(
@@ -808,27 +812,49 @@ describe('workflow procedures — Rust diff gate', () => {
     expect(result.gate.commands.map((command) => command.command)).not.toContain('just test-rust-unit')
   })
 
-  // Regression: commit d882008 let a declared-only Rust gate suppress `just test-rust-unit`
-  // without making the caller's replacement gate required, so no Rust tests had to run.
-  it('requires a caller-declared cargo test gate for a Rust diff', async () => {
-    const cargoGate = 'cargo test coordination'
-    await expect(
-      run('feature-pr.js', { ...BASE_ARGS, gates: [cargoGate] }, {
-        gate: { ...OK_GATE, changed_paths: [rustPath] },
-      })
-    ).rejects.toThrow(/cargo test coordination.*never run/i)
-  })
+  for (const script of MUTATING) {
+    // Regression: commit d882008 let a declared-only Rust gate suppress `just test-rust-unit`
+    // without making the caller's replacement gate required, so no Rust tests had to run.
+    it(`${script} requires a caller-declared cargo test gate for a Rust diff`, async () => {
+      const cargoGate = 'cargo test coordination'
+      await expect(
+        run(script, argsFor(script, { gates: [cargoGate] }), {
+          gate: { ...OK_GATE, changed_paths: [rustPath] },
+        })
+      ).rejects.toThrow(/cargo test coordination.*never run/i)
+    })
 
-  // Regression: commit d882008 trusted only the gate agent's `changed_paths`, so an empty report
-  // disabled the Rust-test rule even when the implementer reported a `src-tauri/` change.
-  it('fails when the gate omits a Rust diff reported by the implementer', async () => {
-    await expect(
-      run('feature-pr.js', BASE_ARGS, {
-        work: { ...OK_WORK, files_changed: [rustPath] },
-        gate: { ...OK_GATE, changed_paths: [] },
-      })
-    ).rejects.toThrow(/gate did not report the diff/i)
-  })
+    // Regression: commit d882008 trusted only the gate agent's `changed_paths`, so an empty report
+    // disabled the Rust-test rule even when the implementation lane reported a `src-tauri/` change.
+    it(`${script} fails when the gate omits a Rust diff reported by the implementation lane`, async () => {
+      await expect(
+        run(script, argsFor(script), {
+          ...lanePlan(script, [rustPath]),
+          gate: { ...OK_GATE, changed_paths: [] },
+        })
+      ).rejects.toThrow(/gate did not report the diff/i)
+    })
+
+    // Regression: commit 2d9db3dc matched implementation-lane paths only when they started with
+    // `src-tauri/`, so absolute and `./`-prefixed Rust paths could disable the diff cross-check.
+    it.each(['/home/dev/checkout/' + rustPath, './' + rustPath])(
+      `${script} fails when the gate omits a non-canonical Rust path reported by the implementation lane: %s`,
+      async (reportedPath) => {
+        await expect(
+          run(script, argsFor(script), {
+            ...lanePlan(script, [reportedPath]),
+            gate: { ...OK_GATE, changed_paths: [] },
+          })
+        ).rejects.toThrow(/gate did not report the diff/i)
+      }
+    )
+
+    it(`${script} asks its implementation lane for repo-relative files_changed paths`, async () => {
+      const { calls } = await run(script, argsFor(script))
+      const implementation = calls.find((call) => call.opts.schema && call.opts.schema.properties.files_changed)
+      expect(implementation.opts.schema.properties.files_changed.description).toMatch(/repo-relative paths, exactly as git reports them/i)
+    })
+  }
 
   it('tells the gate agent to inspect the diff before choosing the effective gate set', async () => {
     const { calls } = await run('feature-pr.js', BASE_ARGS)
