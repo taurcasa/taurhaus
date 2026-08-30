@@ -12,7 +12,7 @@ use crate::coordination::pipelines::members::{
     InitializeMemberActivationStage, SharedMemberActivationExecutor,
 };
 use crate::coordination::requests::{
-    DeliveryResult, InitializeReport, InitializeTeamRequest, LeadMode, StepProgress, StepStatus,
+    InitializeReport, InitializeTeamRequest, LeadMode, StepProgress, StepStatus,
 };
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfig, TeamConfigStore};
 use crate::coordination::validation::{validate_non_empty, validate_team_name};
@@ -474,9 +474,9 @@ impl CoordinationOrchestrator {
     fn send_onboarding_messages(
         &mut self,
         request: &InitializeTeamRequest,
-    ) -> Result<Vec<DeliveryResult>, CoordinationError> {
+    ) -> Result<(), CoordinationError> {
         let entries = self.prepare_initialize_onboarding_entries(request)?;
-        self.deliver_onboarding_entries(entries)
+        self.deliver_onboarding_entries(entries).map(|_| ())
     }
 
     #[allow(clippy::too_many_arguments)]

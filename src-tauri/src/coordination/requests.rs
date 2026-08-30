@@ -161,10 +161,17 @@ pub enum WakeDisposition {
 /// Delivery completion response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeliveryResult {
+    /// Whether the backend completed its delivery operation. For inbox-file
+    /// delivery this means exactly one append completed.
     pub delivered: bool,
     pub method: DeliveryMethod,
+    /// Whether the selected delivery method persisted the message. For
+    /// `InboxFile`, this means `MeshInboxStore::append` returned successfully;
+    /// it is an outcome fact, not an additional delivery success gate.
     pub durable: bool,
+    /// Replaced by the orchestrator after the backend delivery succeeds.
     pub wake: WakeDisposition,
+    /// Extended by the orchestrator with failures that happen after delivery.
     pub post_write_warnings: Vec<String>,
 }
 
