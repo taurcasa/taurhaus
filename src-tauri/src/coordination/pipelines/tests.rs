@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
 use taurhaus_lib::logging::{install_global_sink, LogFileState};
+use taurhaus_lib::session_scanner::launch_base::{AliasExpansion, ResolvedBase};
 use tempfile::TempDir;
 
 use crate::coordination::backend::fake::FakeBackend;
@@ -1765,6 +1766,77 @@ fn managed_codex_team_launch_carries_the_account_selector() {
     assert_eq!(
         command,
         "CODEX_HOME='/accounts/codex-work' codex --yolo -m 'gpt-5.4'"
+    );
+}
+
+#[test]
+fn managed_team_launch_defeats_a_base_alias_account_selector() {
+    // Regression: commit 0f2bfbb0 resolved aliases only on the app-launch path,
+    // so a managed member still ran on the account selected inside `claude2`.
+    let agent = setup_config("builder", "claude", "opus", "/tmp/project");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.claude.fresh = "claude2 --dangerously-skip-permissions".to_string();
+    commands.account_selector_dirs.insert(
+        "CLAUDE_CONFIG_DIR".to_string(),
+        std::path::PathBuf::from("/home/user/.claude"),
+    );
+    commands.resolved_bases.insert(
+        (CliTool::Claude, crate::daemon::protocol::LaunchMode::Fresh),
+        ResolvedBase {
+            command: "CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude --dangerously-skip-permissions"
+                .to_string(),
+            expansions: vec![AliasExpansion {
+                name: "claude2".to_string(),
+                body: "CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude".to_string(),
+            }],
+            opaque_head: None,
+        },
+    );
+
+    let command =
+        build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
+            .expect("managed command");
+
+    assert_eq!(
+        command,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "CLAUDE_CONFIG_DIR='/home/user/.claude' claude --dangerously-skip-permissions ",
+            "--model 'opus' --team-name 'architecture-final' --agent-name 'builder' ",
+            "--agent-id 'builder@architecture-final' --agent-type 'general-purpose' -n 'builder'"
+        )
+    );
+}
+
+#[test]
+fn unavailable_team_base_resolution_launches_the_literal_and_logs_once() {
+    let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("tempdir");
+    let log_path = tmp.path().join("team-base-unresolved.log.jsonl");
+    let log_state = LogFileState::new(log_path.clone()).expect("log state");
+    install_global_sink(&log_state);
+    let agent = setup_config("base-unresolved-member", "claude", "opus", "/tmp/project");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.claude.fresh = "claude2 --dangerously-skip-permissions".to_string();
+
+    let command =
+        build_cli_launch_command(&agent, "base-unresolved-team", MemberRole::Agent, &commands)
+            .expect("resolution failure must not block the launch");
+
+    assert!(command.contains("claude2 --dangerously-skip-permissions"));
+    let contents =
+        wait_for_pipeline_log_contains(&log_path, "\"event\":\"launch.base.unresolved\"");
+    assert_eq!(
+        contents
+            .lines()
+            .filter(|line| {
+                line.contains("\"event\":\"launch.base.unresolved\"")
+                    && line.contains("\"member\":\"base-unresolved-member\"")
+                    && line.contains("\"team\":\"base-unresolved-team\"")
+            })
+            .count(),
+        1,
+        "one unresolved resolution should produce one event: {contents}"
     );
 }
 

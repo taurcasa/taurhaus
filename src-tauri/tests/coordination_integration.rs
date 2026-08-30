@@ -168,6 +168,15 @@ mod commands {
         pub struct DbState(pub Arc<Mutex<rusqlite::Connection>>);
     }
 
+    pub mod accounts {
+        pub fn apply_team_launch_base_resolutions(
+            _provider: &taurhaus_lib::ProviderState,
+            _commands: &mut crate::models::CliCommandSettings,
+            _tools: impl IntoIterator<Item = crate::session_scanner::cli_tool::CliTool>,
+        ) {
+        }
+    }
+
     pub mod terminal_settings {
         use crate::coordination::errors::CoordinationError;
         use crate::models::{CliCommandSettings, TerminalSettings};

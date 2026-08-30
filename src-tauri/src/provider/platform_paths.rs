@@ -123,23 +123,28 @@ impl PlatformPaths {
             .unwrap_or_else(|| teams_dir.to_path_buf())
     }
 
-    /// Per-tool session root.
-    pub fn tool_session_root(tool: CliTool) -> PathBuf {
+    /// Per-tool home root in the path form this process can access.
+    pub fn tool_home(tool: CliTool) -> PathBuf {
         let tool_config = config_for(tool);
         match tool_config.capabilities.session_root {
             crate::session_scanner::cli_tool::SessionRoot::AppManagedClaudeDir => {
-                Self::claude_dir().join(tool_config.projects_subdir)
+                Self::claude_dir()
             }
             crate::session_scanner::cli_tool::SessionRoot::ToolHome => {
                 // Registry-driven: a tool whose spec names a session-home
                 // override env has its session root follow that env. No tool
                 // identity is consulted here.
                 if let Some(home) = tool_config.home_override_env.and_then(env_path_override) {
-                    return home.join(tool_config.projects_subdir);
+                    return home;
                 }
-                default_tool_session_root(tool)
+                default_tool_home(tool)
             }
         }
+    }
+
+    /// Per-tool session root.
+    pub fn tool_session_root(tool: CliTool) -> PathBuf {
+        Self::tool_home(tool).join(config_for(tool).projects_subdir)
     }
 
     /// Daemon binary location.
@@ -207,19 +212,14 @@ fn default_grok_dir() -> PathBuf {
     home_dir_or_temp().join(".grok")
 }
 
-fn default_tool_session_root(tool: CliTool) -> PathBuf {
+fn default_tool_home(tool: CliTool) -> PathBuf {
     let config = config_for(tool);
 
-    if let Some(path) = windows_unc_home_subdir(&format!(
-        "{}/{}",
-        config.base_dir_name, config.projects_subdir
-    )) {
+    if let Some(path) = windows_unc_home_subdir(config.base_dir_name) {
         return path;
     }
 
-    home_dir_or_temp()
-        .join(config.base_dir_name)
-        .join(config.projects_subdir)
+    home_dir_or_temp().join(config.base_dir_name)
 }
 
 fn windows_unc_home_subdir(subdir: &str) -> Option<PathBuf> {

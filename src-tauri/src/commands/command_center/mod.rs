@@ -398,6 +398,7 @@ fn tmux_launch_result_for_pane(pane_id: &str) -> protocol::LaunchSessionResult {
 
 fn delegate_launch_to_coordination_resume(
     db: &DbState,
+    provider: &ProviderState,
     coordination_state: &CoordinationState,
     target: &TeamMemberMatch,
     tool: CliTool,
@@ -409,6 +410,11 @@ fn delegate_launch_to_coordination_resume(
             .capabilities
             .hook_trust,
         false,
+    );
+    crate::commands::accounts::apply_team_launch_base_resolutions(
+        provider,
+        &mut terminal_settings.cli_commands,
+        [tool],
     );
     let request = ResumeMemberRequest {
         team_name: target.team_name.clone(),

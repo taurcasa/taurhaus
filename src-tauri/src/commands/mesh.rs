@@ -897,8 +897,12 @@ fn run_mesh_install_self_heal(
 ) -> Result<MeshInstallSelfHealSummary, String> {
     let state = app.state::<crate::coordination::state::CoordinationState>();
     let db = app.state::<crate::commands::projects::DbState>();
-    let (cli_commands, tmux_layout) =
-        crate::commands::coordination::background_launch_settings(&db, state.teams_dir());
+    let provider = app.state::<crate::ProviderState>();
+    let (cli_commands, tmux_layout) = crate::commands::coordination::background_launch_settings(
+        &db,
+        provider.inner(),
+        state.teams_dir(),
+    );
     let summary = state
         .run_background_self_heal_pass(&cli_commands, &tmux_layout)
         .map_err(|e| format!("Mesh installed but daemon self-heal failed: {e}"))?;

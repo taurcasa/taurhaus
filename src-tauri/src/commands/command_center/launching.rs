@@ -83,6 +83,7 @@ pub(super) fn launch_cli_session_impl(
                     );
                     let mut result = delegate_launch_to_coordination_resume(
                         db,
+                        provider,
                         coordination_state,
                         &target,
                         tool,

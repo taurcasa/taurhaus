@@ -645,13 +645,44 @@ pub fn render_team_launch_command(
     } else {
         LaunchMode::Fresh
     };
-    let base = base_command(cli_commands, cli_tool, mode);
-    if base.trim().is_empty() {
+    let configured_base = base_command(cli_commands, cli_tool, mode);
+    if configured_base.trim().is_empty() {
         return Err(CoordinationError::Validation(format!(
             "configured launch command is empty for '{}'",
             cli_tool
         )));
     }
+    let base = match cli_commands.resolved_bases.get(&(cli_tool, mode)) {
+        Some(resolved) => resolved.command.as_str(),
+        None => {
+            let mut fields = Map::new();
+            fields.insert("team".to_string(), Value::String(team_name.to_string()));
+            fields.insert("member".to_string(), Value::String(agent_name.to_string()));
+            fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
+            fields.insert(
+                "mode".to_string(),
+                Value::String(
+                    match mode {
+                        LaunchMode::Continue => "continue",
+                        LaunchMode::Fresh => "fresh",
+                        LaunchMode::Resume => "resume",
+                    }
+                    .to_string(),
+                ),
+            );
+            emit_global(
+                "warn",
+                "coordination",
+                "launch.base.unresolved",
+                Some(
+                    "Launch base resolution was unavailable; using the configured command"
+                        .to_string(),
+                ),
+                fields,
+            );
+            configured_base
+        }
+    };
     let base = without_frozen_effort_env(base, cli_tool, team_name, agent_name)?;
     let base = match resume_session_id {
         Some(session_id) => Cow::Owned(resume_base_for_session(base.as_ref(), session_id)),

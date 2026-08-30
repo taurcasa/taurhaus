@@ -6,6 +6,7 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::launch_base::ResolvedBase;
 
 // ---------------------------------------------------------------------------
 // Activity state (ADR-008)
@@ -277,6 +278,10 @@ pub struct CliCommandSettings {
     /// never probes the ambient process environment.
     #[serde(skip)]
     pub account_selector_dirs: HashMap<String, std::path::PathBuf>,
+    /// Runtime-only shell-resolved bases for managed team launches. Missing
+    /// entries mean resolution was unavailable and render fail-soft literally.
+    #[serde(skip)]
+    pub resolved_bases: HashMap<(CliTool, crate::daemon::protocol::LaunchMode), ResolvedBase>,
 }
 
 impl Default for CliCommandSettings {
@@ -297,6 +302,7 @@ impl Default for CliCommandSettings {
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
             account_selector_dirs: HashMap::new(),
+            resolved_bases: HashMap::new(),
         }
     }
 }

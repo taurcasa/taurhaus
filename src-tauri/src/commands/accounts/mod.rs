@@ -272,6 +272,66 @@ pub(crate) fn resolve_launch_base(
     resolve_launch_base_with_force(provider, tool, base, false)
 }
 
+/// Resolve the shell bases a managed team launch can render, then carry them
+/// across the commands-to-coordination boundary on the existing settings
+/// payload. Resolution stays here because coordination may not import commands.
+pub(crate) fn apply_team_launch_base_resolutions(
+    provider: &ProviderState,
+    commands: &mut crate::models::CliCommandSettings,
+    tools: impl IntoIterator<Item = CliTool>,
+) {
+    let tools = tools.into_iter().collect::<Vec<_>>();
+    apply_team_account_selector_dirs_with(commands, tools.iter().copied(), |tool| {
+        crate::provider::platform_paths::PlatformPaths::tool_home(tool)
+    });
+    apply_team_launch_base_resolutions_with(commands, tools, |base, tool| {
+        resolve_launch_base_with_force_tracked(provider, tool, base, false)
+    });
+}
+
+fn apply_team_account_selector_dirs_with(
+    commands: &mut crate::models::CliCommandSettings,
+    tools: impl IntoIterator<Item = CliTool>,
+    mut tool_home: impl FnMut(CliTool) -> std::path::PathBuf,
+) {
+    for tool in tools {
+        if let Some(selector) = crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .account_selector
+        {
+            commands
+                .account_selector_dirs
+                .entry(selector.to_string())
+                .or_insert_with(|| tool_home(tool));
+        }
+    }
+}
+
+fn apply_team_launch_base_resolutions_with(
+    commands: &mut crate::models::CliCommandSettings,
+    tools: impl IntoIterator<Item = CliTool>,
+    mut resolve: impl FnMut(&str, CliTool) -> (ResolvedBase, bool),
+) {
+    let mut seen = std::collections::HashSet::new();
+    let mut requested = Vec::new();
+    for tool in tools.into_iter().filter(|tool| seen.insert(*tool)) {
+        for mode in [protocol::LaunchMode::Fresh, protocol::LaunchMode::Resume] {
+            requested.push((
+                tool,
+                mode,
+                crate::session_scanner::launch::base_command(commands, tool, mode).to_string(),
+            ));
+        }
+    }
+
+    for (tool, mode, base) in requested {
+        let (resolved, answered) = resolve(&base, tool);
+        if answered {
+            commands.resolved_bases.insert((tool, mode), resolved);
+        }
+    }
+}
+
 fn resolve_launch_base_with_force(
     provider: &ProviderState,
     tool: CliTool,

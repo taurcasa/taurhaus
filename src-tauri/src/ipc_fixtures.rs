@@ -108,6 +108,7 @@ fn fully_populated_settings() -> Settings {
             "codex".to_string(),
             PathBuf::from("/fixtures/codex-home"),
         )]),
+        resolved_bases: HashMap::new(),
     };
     let model_catalog = ModelCatalog {
         claude: vec![model_entry("fixture-claude")],
