@@ -360,7 +360,11 @@ fn resolve_base_command_cached_at_in_generation(
 
     if owns_probe {
         // The shell runs outside the map lock; joiners wait only on this head.
-        resolution.complete(probe_alias_expansions(base, probe));
+        let expansions = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            probe_alias_expansions(base, probe)
+        }))
+        .unwrap_or_default();
+        resolution.complete(expansions);
     }
     let expansions = resolution.wait();
     resolve_base_command_from_expansions_in(base, tool, &expansions, home)
@@ -1362,6 +1366,38 @@ mod tests {
             }
             Some("claude".to_string())
         }
+    }
+
+    struct PanickingProbe;
+
+    impl AliasProbe for PanickingProbe {
+        fn shell(&self) -> &str {
+            "/fake/zsh"
+        }
+
+        fn alias(&self, _name: &str) -> Option<String> {
+            panic!("synthetic probe failure")
+        }
+    }
+
+    // Regression: 3c5b6cd9 published an in-flight cache entry before probing,
+    // but a probe panic never completed it. Every later caller for that head
+    // then waited forever instead of receiving the normal fail-soft literal.
+    #[test]
+    fn a_panicking_probe_completes_the_cache_fail_soft() {
+        let home = tempfile::tempdir().expect("temporary shell home");
+
+        let resolved = resolve_base_command_cached_at_in_generation(
+            "panic2 --fresh",
+            CliTool::Claude,
+            &PanickingProbe,
+            Instant::now(),
+            Some(home.path()),
+            u64::MAX - 15,
+        );
+
+        assert_eq!(resolved.command, "panic2 --fresh");
+        assert!(resolved.expansions.is_empty());
     }
 
     // Regression: 0.8.4 / PR #75 probed outside the cache lock without an
