@@ -1247,13 +1247,17 @@ mod tests {
         assert_eq!(record.applied_effort.as_deref(), Some("low"));
     }
 
+    // Regression: bb32cbb8 used the tempdir itself as the teams root, so
+    // Claude hook path resolution escaped the fixture into the tempdir's
+    // parent and the fence never proved its deadline seed survived the pass.
     #[test]
     fn background_self_heal_pass_does_not_apply_deadline_policy_yet() {
         let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
         let runtime = Arc::new(RecordingCoordinationRuntime::default());
         let fake = FakeBackend::default();
         let state = CoordinationState::with_components_and_runtime(
-            tmp.path().to_path_buf(),
+            teams_dir.clone(),
             BackendSelector::m0(),
             Arc::new({
                 let fake = fake.clone();
@@ -1279,9 +1283,9 @@ mod tests {
                 Ok(())
             })
             .expect("seed team");
-        write_lead_credential(tmp.path(), "deadline-team");
+        write_lead_credential(&teams_dir, "deadline-team");
 
-        MemberRuntimeStore::update(tmp.path(), "deadline-team", "builder", |record| {
+        MemberRuntimeStore::update(&teams_dir, "deadline-team", "builder", |record| {
             record.pane_id = Some("%41".to_string());
             record.health = HealthState::Healthy;
             record.session_id = Some("session-deadline".to_string());
@@ -1291,9 +1295,9 @@ mod tests {
         runtime.set_pane_dead("%41", false);
         runtime.set_pane_shell("%41", false);
 
-        assign_task(tmp.path(), "deadline-team", "builder", "");
+        assign_task(&teams_dir, "deadline-team", "builder", "");
         let mut snapshot = crate::coordination::stores::OperationalContextSnapshotStore::load(
-            tmp.path(),
+            &teams_dir,
             "deadline-team",
             "builder",
         )
@@ -1301,7 +1305,7 @@ mod tests {
         .expect("operational snapshot");
         snapshot.updated_at = Utc::now() - chrono::Duration::minutes(21);
         snapshot.task.deadline_minutes = Some(20);
-        crate::coordination::stores::OperationalContextSnapshotStore::save(tmp.path(), &snapshot)
+        crate::coordination::stores::OperationalContextSnapshotStore::save(&teams_dir, &snapshot)
             .expect("save deadline snapshot");
 
         state.orchestrator.lock().expect("state mutex").take();
@@ -1316,13 +1320,14 @@ mod tests {
             "deadline nudges remain unwired"
         );
         let stored = crate::coordination::stores::OperationalContextSnapshotStore::load(
-            tmp.path(),
+            &teams_dir,
             "deadline-team",
             "builder",
         )
         .expect("load operational snapshot")
         .expect("operational snapshot");
         assert_eq!(stored.task.status, "in_progress");
+        assert_eq!(stored.task.deadline_minutes, Some(20));
         assert_eq!(stored.task.nudged_at, None);
         assert_eq!(stored.task.stale_at, None);
     }
