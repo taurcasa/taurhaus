@@ -136,11 +136,7 @@ impl PlatformPaths {
                 Self::claude_dir().join(tool_config.projects_subdir)
             }
             crate::session_scanner::cli_tool::SessionRoot::ToolHome => {
-                if tool == CliTool::Agy {
-                    Self::agy_dir().join(tool_config.projects_subdir)
-                } else {
-                    default_tool_session_root(tool)
-                }
+                default_tool_session_root(tool)
             }
         }
     }
@@ -212,6 +208,10 @@ fn default_grok_dir() -> PathBuf {
 
 fn default_tool_session_root(tool: CliTool) -> PathBuf {
     let config = config_for(tool);
+
+    if let Some(path) = config.home_override_env.and_then(env_path_override) {
+        return path.join(config.projects_subdir);
+    }
 
     if let Some(path) = windows_unc_home_subdir(&format!(
         "{}/{}",
@@ -360,6 +360,34 @@ mod tests {
         std::env::remove_var("TAURHAUS_AGY_DIR");
         assert_eq!(root, temp.path());
         assert_eq!(sessions, temp.path().join("antigravity-cli/conversations"));
+    }
+
+    // Regression: commit 3ed13483 special-cased `CliTool::Agy` outside the
+    // harness registry and left Codex/Grok session scans on the operator home
+    // even when their worker roots were explicitly overridden.
+    #[test]
+    fn tool_session_roots_use_registry_home_overrides() {
+        let _guard = acquire_env_test_guard();
+        let codex = TempDir::new().expect("codex home");
+        let agy = TempDir::new().expect("agy home");
+        let grok = TempDir::new().expect("grok home");
+        std::env::set_var(CODEX_HOME_ENV, codex.path());
+        std::env::set_var(AGY_DIR_OVERRIDE_ENV, agy.path());
+        std::env::set_var(GROK_HOME_ENV, grok.path());
+
+        let codex_sessions = PlatformPaths::tool_session_root(CliTool::Codex);
+        let agy_sessions = PlatformPaths::tool_session_root(CliTool::Agy);
+        let grok_sessions = PlatformPaths::tool_session_root(CliTool::Grok);
+
+        std::env::remove_var(CODEX_HOME_ENV);
+        std::env::remove_var(AGY_DIR_OVERRIDE_ENV);
+        std::env::remove_var(GROK_HOME_ENV);
+        assert_eq!(codex_sessions, codex.path().join("sessions"));
+        assert_eq!(
+            agy_sessions,
+            agy.path().join("antigravity-cli/conversations")
+        );
+        assert_eq!(grok_sessions, grok.path().join("sessions"));
     }
 
     #[test]

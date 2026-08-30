@@ -228,6 +228,9 @@ pub struct CliToolSpec {
     pub settings_label: &'static str,
     /// Base directory name under `$HOME` (e.g., ".claude", ".codex", ".gemini").
     pub base_dir_name: &'static str,
+    /// Environment override taurhaus consults when locating this tool's home.
+    /// This is path authority metadata, not necessarily a harness selector.
+    pub home_override_env: Option<&'static str>,
     /// Subdirectory within the base dir that contains project session data.
     pub projects_subdir: &'static str,
     /// File extension for session transcripts.
@@ -297,6 +300,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             display_name: "Claude Code",
             settings_label: "Claude Code",
             base_dir_name: ".claude",
+            home_override_env: None,
             projects_subdir: "projects",
             session_extension: "jsonl",
             exit_command: "/exit",
@@ -364,6 +368,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             display_name: "Codex CLI",
             settings_label: "Codex",
             base_dir_name: ".codex",
+            home_override_env: Some("CODEX_HOME"),
             projects_subdir: "sessions",
             session_extension: "jsonl",
             exit_command: "/exit",
@@ -456,6 +461,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             display_name: "Antigravity CLI",
             settings_label: "Antigravity CLI",
             base_dir_name: ".gemini",
+            // agy does not consume this taurhaus-only isolation override.
+            home_override_env: Some("TAURHAUS_AGY_DIR"),
             projects_subdir: "antigravity-cli/conversations",
             session_extension: "db",
             exit_command: "/exit",
@@ -601,6 +608,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             display_name: "Grok CLI",
             settings_label: "Grok CLI",
             base_dir_name: ".grok",
+            home_override_env: Some("GROK_HOME"),
             projects_subdir: "sessions",
             session_extension: "jsonl",
             exit_command: "/quit",
@@ -666,6 +674,7 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
     display_name: "Unknown tool",
     settings_label: "Unknown tool",
     base_dir_name: "",
+    home_override_env: None,
     projects_subdir: "",
     session_extension: "",
     exit_command: "/exit",
