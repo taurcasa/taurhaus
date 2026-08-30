@@ -55,9 +55,9 @@ pub struct AccountsResult {
     pub source: String,
     pub degraded: bool,
     pub error: Option<String>,
-    /// This tool's configured launch commands as the pane shell reads them,
-    /// one per distinct command. Only the settings surface asks for these;
-    /// every other caller leaves the list empty.
+    /// Retained for wire compatibility and always empty: what the pane shell
+    /// makes of the configured commands comes from the dedicated
+    /// `resolve_launch_bases` command, never from this report.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resolved_bases: Vec<ResolvedBase>,
 }
@@ -82,33 +82,55 @@ pub(crate) enum DaemonAnswer<T> {
     Unavailable(String),
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_accounts(
-    db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
     tool: CliTool,
 ) -> IpcResult<AccountsResult> {
     let span = IpcCommandSpan::start("list_accounts");
-    let result = Ok::<_, String>(list_accounts_impl(db.inner(), provider.inner(), tool))
-        .ipc_cmd("list_accounts");
+    let result =
+        Ok::<_, String>(list_accounts_impl(provider.inner(), tool)).ipc_cmd("list_accounts");
     span.finish_result(&result);
     result
 }
 
-/// The accounts a tool has, plus what a launch command really starts.
-///
-/// Settings says which account is in force, and a base command that carries an
-/// account selector of its own — directly or through a shell alias — is part of
-/// that answer.
-pub(crate) fn list_accounts_impl(
+/// The accounts read path never asks an interactive shell what a launch means.
+pub(crate) fn list_accounts_impl(provider: &ProviderState, tool: CliTool) -> AccountsResult {
+    accounts_report(provider, tool)
+}
+
+/// Resolve the launch commands only for the Settings accounts surface.
+#[tauri::command(async)]
+pub fn resolve_launch_bases(
+    db: State<'_, DbState>,
+    provider: State<'_, ProviderState>,
+    tool: CliTool,
+    force: Option<bool>,
+) -> IpcResult<Vec<ResolvedBase>> {
+    let span = IpcCommandSpan::start("resolve_launch_bases");
+    let result = Ok::<_, String>(resolve_launch_bases_impl(
+        db.inner(),
+        provider.inner(),
+        tool,
+        force.unwrap_or(false),
+    ))
+    .ipc_cmd("resolve_launch_bases");
+    span.finish_result(&result);
+    result
+}
+
+pub(crate) fn resolve_launch_bases_impl(
     db: &DbState,
     provider: &ProviderState,
     tool: CliTool,
-) -> AccountsResult {
-    let mut report = accounts_report(provider, tool);
+    force: bool,
+) -> Vec<ResolvedBase> {
+    if force && !cfg!(target_os = "windows") {
+        launch_base::invalidate_base_command_cache();
+    }
     let commands = crate::commands::terminal_settings::load_terminal_settings(db).cli_commands;
     let mut seen = std::collections::HashSet::new();
-    report.resolved_bases = [
+    let bases = [
         protocol::LaunchMode::Fresh,
         protocol::LaunchMode::Continue,
         protocol::LaunchMode::Resume,
@@ -116,12 +138,37 @@ pub(crate) fn list_accounts_impl(
     .into_iter()
     .map(|mode| crate::session_scanner::launch::base_command(&commands, tool, mode))
     .filter(|base| seen.insert(base.to_string()))
-    .map(|base| resolve_launch_base(provider, tool, base))
-    .collect();
-    report
+    .collect::<Vec<_>>();
+    resolve_bases_threading_force(&bases, force, |base, force| {
+        resolve_launch_base_with_force_tracked(provider, tool, base, force)
+    })
 }
 
-#[tauri::command]
+/// Resolve each base in order, carrying a forced invalidation forward until
+/// one resolution actually consumed it.
+///
+/// A fail-soft literal answer — daemon absent, unreachable, or an
+/// unsupported/unavailable reply — never consumed the force: the cache that
+/// answers never heard it, so the next base must still carry it.
+fn resolve_bases_threading_force(
+    bases: &[&str],
+    force: bool,
+    mut resolve: impl FnMut(&str, bool) -> (ResolvedBase, bool),
+) -> Vec<ResolvedBase> {
+    let mut force_pending = force;
+    bases
+        .iter()
+        .map(|base| {
+            let (resolved, consumed) = resolve(base, force_pending);
+            if consumed {
+                force_pending = false;
+            }
+            resolved
+        })
+        .collect()
+}
+
+#[tauri::command(async)]
 pub fn refresh_accounts_usage(
     provider: State<'_, ProviderState>,
     tool: CliTool,
@@ -222,18 +269,106 @@ pub(crate) fn resolve_launch_base(
     tool: CliTool,
     base: &str,
 ) -> ResolvedBase {
-    if cfg!(target_os = "windows") {
-        return daemon_resolve_launch_base(provider, tool, base);
-    }
-    launch_base::resolve_base_command_cached(base, tool, &launch_base::ShellAliasProbe::for_pane())
+    resolve_launch_base_with_force(provider, tool, base, false)
 }
 
-fn daemon_resolve_launch_base(provider: &ProviderState, tool: CliTool, base: &str) -> ResolvedBase {
+fn resolve_launch_base_with_force(
+    provider: &ProviderState,
+    tool: CliTool,
+    base: &str,
+    force: bool,
+) -> ResolvedBase {
+    resolve_launch_base_with_force_tracked(provider, tool, base, force).0
+}
+
+/// Resolves one base and says whether a forced invalidation was consumed —
+/// which it never is by a fail-soft literal answer.
+fn resolve_launch_base_with_force_tracked(
+    provider: &ProviderState,
+    tool: CliTool,
+    base: &str,
+    force: bool,
+) -> (ResolvedBase, bool) {
+    #[cfg(test)]
+    if let Some(resolved) = test_resolution_probe(base) {
+        return (resolved, true);
+    }
+    if cfg!(target_os = "windows") {
+        return daemon_resolve_launch_base_tracked(provider, tool, base, force);
+    }
+    (
+        launch_base::resolve_base_command_cached(
+            base,
+            tool,
+            &launch_base::ShellAliasProbe::for_pane(),
+        ),
+        true,
+    )
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy)]
+struct TestResolutionProbe {
+    delay: Duration,
+    calls: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_RESOLUTION_PROBE: std::cell::RefCell<Option<TestResolutionProbe>> = const {
+        std::cell::RefCell::new(None)
+    };
+}
+
+#[cfg(test)]
+pub(crate) struct TestResolutionProbeGuard;
+
+#[cfg(test)]
+impl TestResolutionProbeGuard {
+    pub(crate) fn calls(&self) -> usize {
+        TEST_RESOLUTION_PROBE.with(|probe| probe.borrow().map_or(0, |probe| probe.calls))
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestResolutionProbeGuard {
+    fn drop(&mut self) {
+        TEST_RESOLUTION_PROBE.with(|probe| *probe.borrow_mut() = None);
+    }
+}
+
+/// Install a counting, delayed stand-in for daemon/shell resolution on this test thread.
+#[cfg(test)]
+pub(crate) fn install_test_resolution_probe(delay: Duration) -> TestResolutionProbeGuard {
+    TEST_RESOLUTION_PROBE.with(|probe| {
+        *probe.borrow_mut() = Some(TestResolutionProbe { delay, calls: 0 });
+    });
+    TestResolutionProbeGuard
+}
+
+#[cfg(test)]
+fn test_resolution_probe(base: &str) -> Option<ResolvedBase> {
+    let delay = TEST_RESOLUTION_PROBE.with(|probe| {
+        let mut probe = probe.borrow_mut();
+        let probe = probe.as_mut()?;
+        probe.calls += 1;
+        Some(probe.delay)
+    })?;
+    std::thread::sleep(delay);
+    Some(literal_base(base))
+}
+
+fn daemon_resolve_launch_base_tracked(
+    provider: &ProviderState,
+    tool: CliTool,
+    base: &str,
+    force: bool,
+) -> (ResolvedBase, bool) {
     let Some(daemon) = provider.daemon.as_ref() else {
-        return literal_base(base);
+        return (literal_base(base), false);
     };
     if !daemon.is_connected() && !daemon.try_reconnect() {
-        return literal_base(base);
+        return (literal_base(base), false);
     }
 
     let request = protocol::DaemonRequest::new(
@@ -242,15 +377,15 @@ fn daemon_resolve_launch_base(provider: &ProviderState, tool: CliTool, base: &st
         protocol::ResolveLaunchBaseParams {
             tool,
             base: base.to_string(),
+            force,
         },
     );
-    resolved_base_from(
-        daemon_answer(
-            daemon.send_status_request_within(&request, RESOLVE_LAUNCH_BASE_TIMEOUT),
-            "the resolved launch base",
-        ),
-        base,
-    )
+    let answer = daemon_answer(
+        daemon.send_status_request_within(&request, RESOLVE_LAUNCH_BASE_TIMEOUT),
+        "the resolved launch base",
+    );
+    let answered = matches!(answer, DaemonAnswer::Value(_));
+    (resolved_base_from(answer, base), answered)
 }
 
 fn resolved_base_from(answer: DaemonAnswer<ResolvedBase>, base: &str) -> ResolvedBase {

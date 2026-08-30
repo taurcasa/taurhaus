@@ -12,6 +12,7 @@
     forgetResolvedBases,
     opaqueBaseNotice,
     refreshAccounts,
+    refreshResolvedBases,
     refreshUsage,
     setDefaultAccount,
   } from './accounts.svelte.js'
@@ -165,6 +166,10 @@
       (tool) => tool.capabilities.accountSelection && accountState(tool.id).accounts.length >= 2
     )
   )
+
+  $effect(() => {
+    for (const tool of accountTools) void refreshResolvedBases(tool.id)
+  })
 
   /** The account this user chose as the tool's global default, if any. */
   function persistedDefaultAccountId(tool) {
@@ -405,7 +410,7 @@
   async function resolveSavedCommand(tool) {
     if (!cliTools.find((entry) => entry.id === tool)?.capabilities.accountSelection) return
     forgetResolvedBases(tool)
-    await refreshAccounts(tool, { force: true })
+    await refreshResolvedBases(tool, { force: true })
   }
 
   async function setCliCmd(tool, mode, value) {
@@ -903,7 +908,11 @@
                     </p>
                   {/if}
                   <p class="mt-2 text-[11px] {textTertiary}" data-testid="effective-default-{tool.id}">
-                    Effective default: {effective.account ? accountLabel(effective.account) : 'none'} — {effective.origin}
+                    {#if state.resolvingBases}
+                      Effective default: resolving…
+                    {:else}
+                      Effective default: {effective.account ? accountLabel(effective.account) : 'none'} — {effective.origin}
+                    {/if}
                   </p>
                 </div>
               {/each}

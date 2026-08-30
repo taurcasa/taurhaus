@@ -40,7 +40,7 @@ fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str)
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_settings(db: State<'_, DbState>) -> IpcResult<Settings> {
     get_settings_with_span(db.inner())
 }
@@ -59,7 +59,7 @@ fn get_settings_impl(db: &DbState) -> Result<Settings, String> {
         .sanitize_err()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_settings(
     app: tauri::AppHandle,
     db: State<'_, DbState>,
@@ -136,10 +136,19 @@ fn reconcile_grok_hooks_setting(app: &tauri::AppHandle, settings: &Settings) {
     }
 }
 
+fn cli_commands_changed(previous: &Settings, next: &Settings) -> bool {
+    previous.terminal.cli_commands != next.terminal.cli_commands
+}
+
 fn update_settings_impl(db: &DbState, settings: Settings) -> Result<Settings, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let previous = settings_queries::get_all_settings(&conn).sanitize_err()?;
     let settings = settings.with_runtime_terminal_contract();
+    let invalidate_launch_bases = cli_commands_changed(&previous, &settings);
     settings_queries::save_settings(&conn, &settings).sanitize_err()?;
+    if invalidate_launch_bases {
+        crate::session_scanner::launch_base::invalidate_base_command_cache();
+    }
     settings_queries::get_all_settings(&conn)
         .map(Settings::with_runtime_terminal_contract)
         .sanitize_err()
@@ -181,6 +190,20 @@ mod tests {
 
         let fetched = get_settings_impl(&db).expect("get updated settings");
         assert_eq!(fetched, saved);
+    }
+
+    #[test]
+    fn launch_base_cache_invalidation_depends_only_on_cli_commands() {
+        let (db, _tmp) = test_db_state();
+        let before = get_settings_impl(&db).expect("get defaults");
+
+        let mut appearance_only = before.clone();
+        appearance_only.dark_mode = !before.dark_mode;
+        assert!(!cli_commands_changed(&before, &appearance_only));
+
+        let mut command_change = before.clone();
+        command_change.terminal.cli_commands.claude.fresh = "claude2 --fresh".to_string();
+        assert!(cli_commands_changed(&before, &command_change));
     }
 
     #[test]

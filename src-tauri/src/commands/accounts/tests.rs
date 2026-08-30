@@ -166,10 +166,42 @@ fn an_older_daemon_reports_no_transcript_without_degrading() {
     assert_eq!(lookup.unavailable, None);
 }
 
-/// Settings has to name the account a launch will really run on, and only the
-/// resolved base command says which one that is.
+// Regression: 0.8.4 / PR #75 resolved every configured launch command while
+// listing accounts. On 2026-08-30 those interactive-shell probes held Tauri's
+// dispatcher long enough for every project section to hit its 5 s timeout.
 #[test]
-fn the_accounts_report_carries_what_the_pane_shell_makes_of_each_command() {
+fn listing_accounts_never_resolves_launch_commands() {
+    // This delayed stand-in is the 1.5 s daemon/shell answer from the incident.
+    // A correct read never calls it, so the test itself remains fast.
+    let fake_daemon = install_test_resolution_probe(Duration::from_millis(1_500));
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: None,
+        wsl_distro: None,
+    };
+
+    let started = std::time::Instant::now();
+    let report = list_accounts_impl(&provider, CliTool::Claude);
+
+    assert!(
+        started.elapsed() < Duration::from_millis(100),
+        "a read-only account report waited on launch-base I/O"
+    );
+    assert!(
+        report.resolved_bases.is_empty(),
+        "the read path must carry only already-cached answers, never probe"
+    );
+    assert_eq!(
+        fake_daemon.calls(),
+        0,
+        "list_accounts issued a probe request"
+    );
+}
+
+/// Settings has to name the account a launch will really run on, and only the
+/// dedicated resolver asks what the configured launch commands mean.
+#[test]
+fn resolving_launch_bases_carries_what_the_pane_shell_makes_of_each_command() {
     let (db, _tmp) = db_with_project("p1");
     {
         let conn = db.0.lock().expect("db lock");
@@ -188,10 +220,9 @@ fn the_accounts_report_carries_what_the_pane_shell_makes_of_each_command() {
         wsl_distro: None,
     };
 
-    let report = list_accounts_impl(&db, &provider, CliTool::Claude);
+    let resolved_bases = resolve_launch_bases_impl(&db, &provider, CliTool::Claude, false);
 
-    let resolved: Vec<&str> = report
-        .resolved_bases
+    let resolved: Vec<&str> = resolved_bases
         .iter()
         .map(|base| base.command.as_str())
         .collect();
@@ -200,8 +231,7 @@ fn the_accounts_report_carries_what_the_pane_shell_makes_of_each_command() {
         resolved.contains(&"CLAUDE_CONFIG_DIR=/homes/two claude --dangerously-skip-permissions"),
         "{resolved:?}"
     );
-    let expansion = report
-        .resolved_bases
+    let expansion = resolved_bases
         .iter()
         .find_map(|base| base.expansions.first())
         .expect("the alias that carried the selector");
@@ -318,4 +348,48 @@ fn a_resume_finds_its_transcript_in_a_config_dir_that_names_no_account() {
     let lookup = project_transcript(&provider, CliTool::Claude, project_path);
     assert_eq!(lookup.transcript.as_deref(), Some(transcript.as_path()));
     assert_eq!(lookup.unavailable, None);
+}
+
+/// Regression: a Settings save sends `force` so the cache that answers is
+/// really invalidated. A fail-soft literal reply (daemon absent or
+/// unreachable) must not swallow it — the force is carried to the next base
+/// until one resolution consumed it.
+#[test]
+fn a_forced_refresh_is_carried_until_a_resolution_consumes_it() {
+    let mut forces = Vec::new();
+    let mut answers = [false, true, true].into_iter();
+    let resolved = resolve_bases_threading_force(&["one", "two", "three"], true, |base, force| {
+        forces.push(force);
+        (
+            crate::session_scanner::launch_base::ResolvedBase {
+                command: base.to_string(),
+                expansions: Vec::new(),
+                opaque_head: None,
+            },
+            answers.next().expect("one answer per base"),
+        )
+    });
+    assert_eq!(
+        forces,
+        vec![true, true, false],
+        "the force travels until consumed, then stops"
+    );
+    assert_eq!(resolved.len(), 3);
+}
+
+#[test]
+fn an_unforced_resolution_never_invents_a_force() {
+    let mut forces = Vec::new();
+    resolve_bases_threading_force(&["one", "two"], false, |base, force| {
+        forces.push(force);
+        (
+            crate::session_scanner::launch_base::ResolvedBase {
+                command: base.to_string(),
+                expansions: Vec::new(),
+                opaque_head: None,
+            },
+            true,
+        )
+    });
+    assert_eq!(forces, vec![false, false]);
 }

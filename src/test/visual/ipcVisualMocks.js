@@ -24,6 +24,7 @@ function createMockMap() {
     listCliSessionSnapshot: vi.fn(),
     getForegroundProject: vi.fn(),
     resolveLaunchAccount: vi.fn(),
+    resolveLaunchBases: vi.fn(),
     recordSessionActivity: vi.fn(),
     getRelationships: vi.fn(),
     dismissRelationship: vi.fn(),
@@ -127,6 +128,7 @@ export function resetVisualIpcMocks(overrides = {}) {
     source: 'default_config_dir',
     needsChoice: false,
   })
+  visualIpcMocks.resolveLaunchBases.mockResolvedValue([])
   visualIpcMocks.recordSessionActivity.mockResolvedValue(undefined)
   visualIpcMocks.getRelationships.mockResolvedValue([])
   visualIpcMocks.dismissRelationship.mockResolvedValue(undefined)

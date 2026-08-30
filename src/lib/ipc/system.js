@@ -602,6 +602,13 @@ export function listAccounts(tool) {
   })).then(normalizeAccountsResult)
 }
 
+/** Resolve configured launch commands where the pane shell runs. */
+export function resolveLaunchBases(tool, force = false) {
+  return invokeOrMock('resolve_launch_bases', { tool, force }, () => []).then((bases) =>
+    (Array.isArray(bases) ? bases : []).map(normalizeResolvedBase).filter(Boolean)
+  )
+}
+
 export function refreshAccountsUsage(tool) {
   return invokeOrMock('refresh_accounts_usage', { tool }, () => false)
 }
