@@ -6,6 +6,7 @@ vi.mock('./ipc.js', () => ({
   setProjectAccount: vi.fn(),
   launchCliSession: vi.fn(),
   resolveLaunchAccount: vi.fn(),
+  resolveLaunchBases: vi.fn(() => Promise.resolve([])),
   getSettings: vi.fn(),
 }))
 
@@ -15,6 +16,7 @@ const {
   setProjectAccount,
   launchCliSession,
   resolveLaunchAccount,
+  resolveLaunchBases,
   getSettings,
 } = await import('./ipc.js')
 const {
@@ -23,6 +25,7 @@ const {
   effectiveAccount,
   loggedInAccounts,
   refreshAccounts,
+  refreshResolvedBases,
   refreshUsage,
   requestLaunch,
   resolveChooserAccounts,
@@ -98,7 +101,32 @@ describe('claudeAccounts store', () => {
       source: 'default_config_dir',
       needsChoice: true,
     })
+    resolveLaunchBases.mockResolvedValue([])
     getSettings.mockResolvedValue({ terminal: { default_account_ids: {} } })
+  })
+
+  // Regression: b1856a33 cached a successful fail-soft launch-base response
+  // forever. If the daemon was down for that call, Settings pinned the literal
+  // command for the rest of the app run instead of asking again after a minute.
+  it('re-asks for launch bases after the detection TTL', async () => {
+    vi.useFakeTimers()
+    try {
+      resolveLaunchBases
+        .mockResolvedValueOnce([{ command: 'claude2 --fresh' }])
+        .mockResolvedValueOnce([{ command: 'claude --fresh' }])
+
+      await refreshResolvedBases('claude')
+      expect(resolveLaunchBases).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(60_001)
+      await refreshResolvedBases('claude')
+
+      expect(resolveLaunchBases).toHaveBeenCalledTimes(2)
+      expect(claudeAccounts.resolvedBases).toEqual([{ command: 'claude --fresh' }])
+    } finally {
+      resetAccountsForTest()
+      vi.useRealTimers()
+    }
   })
 
   it('keeps a logged-out account visible for the chooser but out of the count', async () => {

@@ -197,7 +197,9 @@ export function forgetResolvedBases(tool = providerTool()) {
 export function refreshResolvedBases(tool = providerTool(), { force = false } = {}) {
   const id = toolId(tool)
   const current = launchBaseResolutions.get(id)
-  if (!force && current) return current
+  if (!force && current && Date.now() - current.startedAt < DETECTION_TTL_MS) {
+    return current.promise
+  }
 
   const state = mutableAccountState(id)
   state.resolvingBases = true
@@ -205,19 +207,19 @@ export function refreshResolvedBases(tool = providerTool(), { force = false } = 
   const promise = Promise.resolve()
     .then(() => resolveLaunchBases(id))
     .then((bases) => {
-      if (launchBaseResolutions.get(id) === promise) state.resolvedBases = bases ?? []
+      if (launchBaseResolutions.get(id)?.promise === promise) state.resolvedBases = bases ?? []
     })
     .catch((error) => {
       failed = true
       console.warn('Failed to resolve launch commands:', error)
     })
     .finally(() => {
-      if (launchBaseResolutions.get(id) === promise) {
+      if (launchBaseResolutions.get(id)?.promise === promise) {
         state.resolvingBases = false
         if (failed) launchBaseResolutions.delete(id)
       }
     })
-  launchBaseResolutions.set(id, promise)
+  launchBaseResolutions.set(id, { startedAt: Date.now(), promise })
   return promise
 }
 
