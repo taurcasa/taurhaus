@@ -128,6 +128,11 @@ and the taurhaus-only Antigravity root `TAURHAUS_AGY_DIR`. Ordinary workers get
 an empty Codex home. Selecting a paid lane is the only path that copies
 `auth.json` from the configured source home into that scratch root.
 
+Root isolation does not yet provide a private daemon port per worker. Until
+hardening lane 3a-ii adds daemon process/port ownership, a local E2E run can
+restart a daemon already using the default port with the worker's temporary
+data root. Use a dedicated test host or stop the operator app and daemon first.
+
 #### Paid E2E lanes
 
 Two specs drive a real Codex subscription and cost money every time they run. `e2e/specList.js` keeps both out of the config's spec list, so no suite run — including a bare `bunx wdio run e2e/wdio.conf.js` — picks them up; each is started by name and nothing else starts it.

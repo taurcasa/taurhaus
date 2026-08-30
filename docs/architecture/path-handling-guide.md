@@ -147,9 +147,10 @@ These are two different variables and confusing them silently splits state.
 
 The daemon token follows that same captured data root. Both processes resolve
 `<TAURHAUS_DATA_DIR>/daemon.token`; on Windows the WSL reader uses the exact
-Linux-form root passed by the launcher, then tries the pre-migration
-`$HOME/.local/share/taurhaus/daemon.token` only as a read-only fallback. Token
-generation never writes the legacy path.
+Linux-form root passed by the launcher. With no app-data override it can then
+try the pre-migration `$HOME/.local/share/taurhaus/daemon.token` as a read-only
+fallback. An overridden run never resolves or reads that legacy path, and token
+generation never writes it.
 
 `TAURHAUS_AGY_DIR` is different from a harness selector. It redirects only
 taurhaus's Antigravity hook and identity reads, which gives tests a disposable

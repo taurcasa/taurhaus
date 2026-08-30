@@ -43,6 +43,12 @@ taurhaus-only Antigravity override `TAURHAUS_AGY_DIR`. The fixture path knobs
 Ordinary workers receive an empty scratch Codex home; only a paid lane copies
 `auth.json` into it.
 
+This roots-only isolation does not yet allocate a worker-specific daemon port.
+Until hardening lane 3a-ii owns daemon processes and ports, a local E2E app can
+restart a daemon already listening on the default port with the worker's
+temporary root. Run E2E on a dedicated host or stop the operator app and daemon
+first.
+
 ## 2) Build the correct app binary for E2E
 
 ```bash
