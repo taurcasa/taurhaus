@@ -1,6 +1,6 @@
 # Hardening milestone before W4 — plan and ledger
 
-Status: **proposed 2026-08-30, awaiting the operator's sign-off** on the lane order below; Track A (evidence) is complete. Precedes W4 (`w4-managed-stages-design.md`, experiments 4–5 and the implementation they gate). Companion to [`workflows-integration-plan.md`](workflows-integration-plan.md) (procedures) and [`accounts-and-usage-plan.md`](accounts-and-usage-plan.md).
+Status: **approved 2026-08-30** (all three phases as ordered); Track A (evidence) complete; Phase 1 in progress — 1a (#82), 1b+1c (#81) merged, 1d and 1e in flight. Precedes W4 (`w4-managed-stages-design.md`, experiments 4–5 and the implementation they gate). Companion to [`workflows-integration-plan.md`](workflows-integration-plan.md) (procedures) and [`accounts-and-usage-plan.md`](accounts-and-usage-plan.md).
 
 ## Why now
 
@@ -16,10 +16,10 @@ Model roles, revised by the operator on 2026-08-30 from the two-week ledger: **F
 
 ## Already landed or in flight (pulled ahead of the ranking)
 
-| Item | Why it could not wait | Where |
+| Item | Why it could not wait | Where (both merged 2026-08-30) |
 |---|---|---|
-| `just check` exits 0 when a lane fails | The full gate could not fail; every release gate before today proved nothing on the failure path (the 0.8.4 gate did pass for real — the "Full quality gate passed." line prints only on all-green) | `fix/just-check-lane-status` — fix plus a seeded-failure guard in `just lint`; in a `fix-round` for the guard's own load flakiness |
-| Lossless IPC normalizers | `normalizeSettings` dropped `default_account_ids`, so any settings save (a theme toggle included) **wiped the user's default accounts** in the shipped app; `normalizeCoordinationMember` dropped `task_effort`, so the W5b chip never rendered from real data | `fix/lossless-ipc-normalizers` — pass-through normalizers + Rust-generated JSON goldens fed through each one |
+| `just check` exits 0 when a lane fails | The full gate could not fail; every release gate before today proved nothing on the failure path (the 0.8.4 gate did pass for real — the "Full quality gate passed." line prints only on all-green) | #80 — fix plus a seeded-failure guard in `just lint` |
+| Lossless IPC normalizers | `normalizeSettings` dropped `default_account_ids`, so any settings save (a theme toggle included) **wiped the user's default accounts** in the shipped app; `normalizeCoordinationMember` dropped `task_effort`, so the W5b chip never rendered from real data | #78 — pass-through normalizers + Rust-generated JSON goldens fed through each one |
 
 ## The ranked table
 
@@ -116,8 +116,10 @@ A `docs-sweep` after Phase 3, since CLAUDE.md, ARCHITECTURE.md and the architect
 
 | Lane | Implementer | Reviewers | Rounds | Majors found | Merged |
 |---|---|---|---|---|---|
-| `just check` lane status | Codex gpt-5.6-sol | Opus ×1 | tbd | 2 → (fix-round) | tbd |
-| lossless IPC normalizers | Codex gpt-5.6-sol | Opus ×1 | 1 | 0 (1 minor + 4 nits, orchestrator's pass) | tbd |
+| `just check` lane status | Codex gpt-5.6-sol | Opus ×1 | 3 (small-change + 1 fix-round) | 2 (seeded runs evicting the real gate logs; a tee-flush race making the guard itself flaky under load) → 0; one minor — the `kill -0` prune dropping a lane that exited non-zero in the reap gap — closed in the orchestrator's pass with the reviewer's counter-based join | #80 |
+| lossless IPC normalizers | Codex gpt-5.6-sol | Opus ×1 | 1 | 0 (1 minor + 4 nits, orchestrator's pass); the settings round-trip was proven a wipe, not an error | #78 |
+| 1a integration manifest | Codex gpt-5.6-sol | Opus ×1 | 2 | 1 (the justfile-reading guards panicked under a bare `cargo test` without `just`) → 0; one minor (a `$`-prefixed filter bypassing the parity guard) closed in the orchestrator's pass. All eleven binaries ran: 101 s | #82 |
+| 1b+1c procedure honesty | Codex gpt-5.6-sol | Opus ×1 | 1 | 0 (1 minor — the `followup` call was not runnable as handed back — + 3 nits, orchestrator's pass) | #81 |
 
 ## Do not touch (union of the reports, carried by the judges)
 
