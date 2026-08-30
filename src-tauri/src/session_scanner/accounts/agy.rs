@@ -234,6 +234,34 @@ mod tests {
     use std::sync::Mutex;
     use std::time::Duration;
 
+    struct EnvRestore {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvRestore {
+        fn remove(key: &'static str) -> Self {
+            let previous = std::env::var_os(key);
+            std::env::remove_var(key);
+            Self { key, previous }
+        }
+
+        fn set(key: &'static str, value: &Path) -> Self {
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
     struct UnusedHttp;
 
     impl HttpClient for UnusedHttp {
@@ -283,6 +311,10 @@ mod tests {
     fn agy_account_provider_detects_single_implicit_account() {
         // Regression: commit 5680a7a only registered selector-based providers,
         // so Antigravity's single machine account was invisible in Settings.
+        // Regression: commit 4a02fe0a made account detection consult the new
+        // process override, so this ambient-default test raced the override test.
+        let _guard = crate::test_support::acquire_env_test_guard();
+        let _env = EnvRestore::remove("TAURHAUS_AGY_DIR");
         let home = tempfile::tempdir().unwrap();
         let root = home.path().join(".gemini");
         std::fs::create_dir_all(root.join("antigravity-cli")).unwrap();
@@ -312,15 +344,10 @@ mod tests {
         let _guard = crate::test_support::acquire_env_test_guard();
         let process_home = tempfile::tempdir().unwrap();
         let isolated_root = tempfile::tempdir().unwrap();
-        let previous = std::env::var_os("TAURHAUS_AGY_DIR");
-        std::env::set_var("TAURHAUS_AGY_DIR", isolated_root.path());
+        let _env = EnvRestore::set("TAURHAUS_AGY_DIR", isolated_root.path());
 
         let resolved = AgyAccountProvider.default_dir(process_home.path());
 
-        match previous {
-            Some(value) => std::env::set_var("TAURHAUS_AGY_DIR", value),
-            None => std::env::remove_var("TAURHAUS_AGY_DIR"),
-        }
         assert_eq!(resolved, isolated_root.path());
     }
 
