@@ -139,6 +139,16 @@ impl CoordinationRuntime for DeliveryWakeRuntime {
         self.inner.create_aitx_pane(project_id, tmux_layout)
     }
 
+    fn create_aitx_pane_and_launch_in_target(
+        &self,
+        project_id: &str,
+        target_pane: &str,
+        launch_cmd: &str,
+    ) -> Result<String, CoordinationError> {
+        self.inner
+            .create_aitx_pane_and_launch_in_target(project_id, target_pane, launch_cmd)
+    }
+
     fn send_tmux_keys_with_enter(
         &self,
         pane_id: &str,
@@ -153,6 +163,14 @@ impl CoordinationRuntime for DeliveryWakeRuntime {
         cli_tool: CliTool,
     ) -> Result<Option<String>, CoordinationError> {
         self.inner.detect_session_id(pane_id, cli_tool)
+    }
+
+    fn detect_runtime_session(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<crate::coordination::runtime::DetectedRuntimeSession, CoordinationError> {
+        self.inner.detect_runtime_session(pane_id, cli_tool)
     }
 
     fn join_mesh(
@@ -187,6 +205,14 @@ impl CoordinationRuntime for DeliveryWakeRuntime {
             .spawn_mesh_daemon(pane_id, team_name, member_name)
     }
 
+    fn spawn_team_daemon(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner.spawn_team_daemon(team_name, operator_name)
+    }
+
     fn find_existing_mesh_daemon_pids(
         &self,
         pane_id: &str,
@@ -195,6 +221,15 @@ impl CoordinationRuntime for DeliveryWakeRuntime {
     ) -> Result<Vec<u32>, CoordinationError> {
         self.inner
             .find_existing_mesh_daemon_pids(pane_id, team_name, member_name)
+    }
+
+    fn find_existing_mesh_daemon_pid_by_member(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<Option<u32>, CoordinationError> {
+        self.inner
+            .find_existing_mesh_daemon_pid_by_member(team_name, member_name)
     }
 
     fn pane_belongs_to_project(
@@ -242,6 +277,83 @@ impl CoordinationRuntime for DeliveryWakeRuntime {
         }
         self.inner.is_process_running_by_pid(pid)
     }
+
+    fn mesh_daemon_uses_current_binary(&self, pid: u32) -> Result<bool, CoordinationError> {
+        self.inner.mesh_daemon_uses_current_binary(pid)
+    }
+
+    fn team_daemon_uses_current_binary(&self, team_name: &str) -> Result<bool, CoordinationError> {
+        self.inner.team_daemon_uses_current_binary(team_name)
+    }
+
+    fn clear_mesh_daemon_pid_file(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner
+            .clear_mesh_daemon_pid_file(team_name, member_name)
+    }
+
+    fn stop_team_daemon(&self, team_name: &str) -> Result<(), CoordinationError> {
+        self.inner.stop_team_daemon(team_name)
+    }
+}
+
+#[test]
+fn delivery_wake_runtime_forwards_recording_runtime_overrides() {
+    // Regression: 31b19a4d let methods with trait defaults bypass the recording
+    // runtime, so reusing the delivery double could silently change test behavior.
+    let runtime = DeliveryWakeRuntime::new(None, None);
+
+    runtime
+        .create_aitx_pane_and_launch_in_target("/project", "%target", "codex")
+        .expect("create pane in target");
+    runtime
+        .detect_runtime_session("%pane", CliTool::Codex)
+        .expect("detect runtime session");
+    runtime
+        .spawn_team_daemon("team", "lead")
+        .expect("spawn team daemon");
+    runtime
+        .find_existing_mesh_daemon_pid_by_member("team", "member")
+        .expect("find daemon by member");
+    runtime
+        .mesh_daemon_uses_current_binary(4242)
+        .expect("check member daemon binary");
+    runtime
+        .team_daemon_uses_current_binary("team")
+        .expect("check team daemon binary");
+    runtime
+        .clear_mesh_daemon_pid_file("team", "member")
+        .expect("clear member daemon pid file");
+    runtime.stop_team_daemon("team").expect("stop team daemon");
+
+    let calls = runtime.inner.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CreatePaneInTarget { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::DetectSessionId { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnTeamDaemon { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::FindDaemonByMember { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CheckPidCurrentMeshBinary { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CheckTeamDaemonCurrentMeshBinary { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::ClearDaemonPidFile { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::StopTeamDaemon { .. })));
 }
 
 fn new_inbox_delivery_orchestrator(
