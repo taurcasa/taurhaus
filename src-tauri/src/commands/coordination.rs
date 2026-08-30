@@ -63,9 +63,41 @@ pub(crate) fn background_launch_settings(
     db: &DbState,
     teams_dir: &std::path::Path,
 ) -> (CliCommandSettings, String) {
+    let (settings, discovery_error) = task_effort_launch_settings(db, teams_dir);
+    if let Some(err) = discovery_error {
+        tracing::warn!(
+            error = %err,
+            "managed-Codex discovery failed; background pass proceeds with managed inputs"
+        );
+    }
+    settings
+}
+
+/// Strict launch settings for the task-arrival effort pass.
+///
+/// Unlike the shared background helper, this boundary reports a roster scan
+/// failure to the caller so the typed effort pass cannot look successful when
+/// it never established the launch inputs its target requires.
+fn task_effort_launch_settings(
+    db: &DbState,
+    teams_dir: &std::path::Path,
+) -> ((CliCommandSettings, String), Option<CoordinationError>) {
+    let (has_managed_codex, discovery_error) =
+        match crate::coordination::compact_hook::any_managed_codex_member(teams_dir) {
+            Ok(has_managed_codex) => (has_managed_codex, None),
+            Err(err) => (true, Some(err)),
+        };
+    (
+        launch_settings_for_managed_codex(db, has_managed_codex),
+        discovery_error,
+    )
+}
+
+fn launch_settings_for_managed_codex(
+    db: &DbState,
+    has_managed_codex: bool,
+) -> (CliCommandSettings, String) {
     let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(db);
-    let has_managed_codex =
-        crate::coordination::compact_hook::any_managed_codex_member(teams_dir).unwrap_or(false);
     crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
         &mut cli_commands,
         has_managed_codex,
@@ -124,23 +156,12 @@ pub(crate) fn apply_task_effort_after_task_change(app: &tauri::AppHandle, projec
     use tauri::Manager;
 
     let state = app.state::<crate::coordination::state::CoordinationState>();
-    match state.teams_working_in_project(project_path) {
-        Ok(teams) if teams.is_empty() => return,
-        Ok(_) => {}
-        Err(err) => {
-            tracing::warn!(
-                project_path = %project_path,
-                error = %err,
-                "could not resolve the teams working in this project"
-            );
-            return;
-        }
-    }
-
     let db = app.state::<crate::commands::projects::DbState>();
     let provider = app.state::<ProviderState>();
-    let (mut cli_commands, tmux_layout) = background_launch_settings(&db, state.teams_dir());
-    if let Err(err) = state.apply_task_effort_for_project_with_launch_resolution(
+    let ((mut cli_commands, tmux_layout), discovery_error) =
+        task_effort_launch_settings(&db, state.teams_dir());
+
+    match state.apply_task_effort_for_project_with_launch_resolution(
         project_path,
         &mut cli_commands,
         &tmux_layout,
@@ -152,10 +173,28 @@ pub(crate) fn apply_task_effort_after_task_change(app: &tauri::AppHandle, projec
             );
         },
     ) {
+        Ok(outcome) if !outcome.failed.is_empty() || !outcome.skipped_teams.is_empty() => {
+            tracing::warn!(
+                project_path = %project_path,
+                members_failed = outcome.failed.len(),
+                teams_skipped = outcome.skipped_teams.len(),
+                "task-arrival effort pass completed with errors"
+            );
+        }
+        Ok(_) => {}
+        Err(err) => {
+            tracing::warn!(
+                project_path = %project_path,
+                error = %err,
+                "task-arrival effort pass failed"
+            );
+        }
+    }
+    if let Some(err) = discovery_error {
         tracing::warn!(
             project_path = %project_path,
             error = %err,
-            "task-arrival effort pass failed"
+            "task-arrival effort pass used conservative settings after managed-Codex discovery failed"
         );
     }
 }

@@ -737,7 +737,7 @@ pub(crate) fn daemon_health_check(
             }
 
             let distro = provider_state.wsl_distro.as_deref();
-            let port = daemon::server::DEFAULT_PORT;
+            let port = daemon::server::app_daemon_port();
             let repair_target = DaemonRepairTarget {
                 distro,
                 port,

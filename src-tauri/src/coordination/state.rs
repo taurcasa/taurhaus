@@ -13,6 +13,7 @@ use crate::coordination::compact_hook::{
 };
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::{CoordinationOrchestrator, TeamSelfHealResult};
+use crate::coordination::pipelines::EffortPassOutcome;
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::TeamConfigStore;
 use crate::models::CliCommandSettings;
@@ -23,6 +24,7 @@ type BackendFactory = dyn Fn(BackendKind, &Path) -> Result<Arc<dyn CoordinationB
     + Send
     + Sync;
 type RuntimeFactory = dyn Fn() -> Arc<dyn CoordinationRuntime> + Send + Sync;
+type ProjectEffortTeamSelection = (Vec<String>, Vec<(String, String)>);
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BackgroundSelfHealPassResult {
@@ -206,14 +208,34 @@ impl CoordinationState {
             // this sweep exists so one that failed there — a pane that would
             // not come down, a launch that did not land — is picked up again
             // rather than left pending until the next assignment.
-            match orchestrator.apply_pending_task_effort_with_launch_resolution(
+            match orchestrator.apply_pending_task_effort_outcome(
                 &team_name,
                 cli_commands,
                 tmux_layout,
                 crate::coordination::task_effort::EffortPassScope::RetryPending,
                 resolve_launch_base,
             ) {
-                Ok(members) => summary.members_effort_resumed += members.len(),
+                Ok(outcome) => {
+                    summary.members_effort_resumed += outcome.switched.len();
+                    if !outcome.failed.is_empty() || !outcome.skipped_teams.is_empty() {
+                        summary.team_errors += 1;
+                        for (member, reason) in outcome.failed {
+                            tracing::warn!(
+                                team = %team_name,
+                                member = %member,
+                                error = %reason,
+                                "background task-effort member failed"
+                            );
+                        }
+                        for (skipped_team, reason) in outcome.skipped_teams {
+                            tracing::warn!(
+                                team = %skipped_team,
+                                error = %reason,
+                                "background task-effort team was skipped"
+                            );
+                        }
+                    }
+                }
                 Err(err) => {
                     summary.team_errors += 1;
                     tracing::warn!(
@@ -229,7 +251,7 @@ impl CoordinationState {
     }
 
     /// Put a pending assignment effort into force for every member working in
-    /// `project_path`, and report how many were switched.
+    /// `project_path`, and report every switch, refusal, and skipped team.
     ///
     /// Called from the task scan that just persisted the project's tasks and
     /// rewrote the operational snapshots from them — the moment an assignment
@@ -244,7 +266,7 @@ impl CoordinationState {
         project_path: &str,
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
-    ) -> Result<usize, CoordinationError> {
+    ) -> Result<EffortPassOutcome, CoordinationError> {
         let mut cli_commands = cli_commands.clone();
         self.apply_task_effort_for_project_with_launch_resolution(
             project_path,
@@ -254,52 +276,59 @@ impl CoordinationState {
         )
     }
 
+    /// The typed pass with the launch-base resolver threaded through: the
+    /// commands boundary resolves a member's base only when it is actually
+    /// about to relaunch it.
     pub(crate) fn apply_task_effort_for_project_with_launch_resolution(
         &self,
         project_path: &str,
         cli_commands: &mut CliCommandSettings,
         tmux_layout: &str,
         resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
-    ) -> Result<usize, CoordinationError> {
-        let teams = self.teams_working_in_project(project_path)?;
+    ) -> Result<EffortPassOutcome, CoordinationError> {
+        let (teams, skipped_teams) = self.project_effort_teams(project_path)?;
+        let mut outcome = EffortPassOutcome {
+            skipped_teams,
+            ..EffortPassOutcome::default()
+        };
         if teams.is_empty() {
-            return Ok(0);
+            return Ok(outcome);
         }
         self.with_orchestrator(|orchestrator| {
-            let mut switched = 0;
             for team_name in teams {
-                match orchestrator.apply_pending_task_effort_with_launch_resolution(
+                match orchestrator.apply_pending_task_effort_outcome(
                     &team_name,
                     cli_commands,
                     tmux_layout,
                     crate::coordination::task_effort::EffortPassScope::TaskChanged,
                     resolve_launch_base,
                 ) {
-                    Ok(members) => switched += members.len(),
-                    Err(err) => tracing::warn!(
-                        team = %team_name,
-                        error = %err,
-                        "task-arrival effort pass failed"
-                    ),
+                    Ok(team_outcome) => {
+                        outcome.switched.extend(team_outcome.switched);
+                        outcome.failed.extend(team_outcome.failed);
+                        outcome.skipped_teams.extend(team_outcome.skipped_teams);
+                    }
+                    Err(err) => outcome.skipped_teams.push((team_name, err.to_string())),
                 }
             }
-            Ok(switched)
+            Ok(outcome)
         })
     }
 
-    /// Teams with at least one member whose project is `project_path`.
-    ///
-    /// The task scan runs per project, so this is what keeps a change in one
-    /// project from sweeping every team on the host.
-    pub fn teams_working_in_project(
+    fn project_effort_teams(
         &self,
         project_path: &str,
-    ) -> Result<Vec<String>, CoordinationError> {
+    ) -> Result<ProjectEffortTeamSelection, CoordinationError> {
         let wanted = crate::provider::path::normalize_project_path(project_path);
         let mut teams = Vec::new();
+        let mut skipped = Vec::new();
         for team_name in TeamConfigStore::list(&self.teams_dir)? {
-            let Ok(config) = TeamConfigStore::load(&self.teams_dir, &team_name) else {
-                continue;
+            let config = match TeamConfigStore::load(&self.teams_dir, &team_name) {
+                Ok(config) => config,
+                Err(err) => {
+                    skipped.push((team_name, err.to_string()));
+                    continue;
+                }
             };
             if config.members.iter().any(|member| {
                 crate::provider::path::normalize_project_path(
@@ -309,7 +338,7 @@ impl CoordinationState {
                 teams.push(team_name);
             }
         }
-        Ok(teams)
+        Ok((teams, skipped))
     }
 
     fn build_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
@@ -1283,7 +1312,7 @@ mod tests {
             )
             .expect("task-arrival pass succeeds");
 
-        assert_eq!(resumed, 1);
+        assert_eq!(resumed.switched, vec!["builder"]);
         let record = crate::coordination::stores::MemberRuntimeStore::load(
             tmp.path(),
             "effort-team",
@@ -1291,6 +1320,39 @@ mod tests {
         )
         .expect("runtime record");
         assert_eq!(record.applied_effort.as_deref(), Some("high"));
+    }
+
+    // Regression: c8b9d58d skipped an unreadable team config while resolving
+    // the project effort pass, so the task-arrival caller reported nominal
+    // success without knowing whether that team held the affected member.
+    #[test]
+    fn a_team_whose_config_fails_to_load_is_reported() {
+        let tmp = TempDir::new().expect("tempdir");
+        let broken_team = tmp.path().join("broken-team");
+        std::fs::create_dir_all(&broken_team).expect("create broken team");
+        std::fs::write(broken_team.join("config.json"), b"{not valid json")
+            .expect("write broken config");
+        let state = CoordinationState::with_components(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+        );
+
+        let outcome = state
+            .apply_task_effort_for_project(
+                "/tmp/app",
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+            )
+            .expect("task-arrival pass returns its typed outcome");
+
+        assert!(outcome.switched.is_empty());
+        assert!(outcome.failed.is_empty());
+        assert_eq!(outcome.skipped_teams.len(), 1);
+        assert_eq!(outcome.skipped_teams[0].0, "broken-team");
+        assert!(outcome.skipped_teams[0].1.contains("failed to parse"));
     }
 
     // Regression: 2529309 started every effort switch from the 30 s self-heal
@@ -1525,7 +1587,7 @@ mod tests {
             .apply_task_effort_for_project("/tmp/app", &cli_commands, DEFAULT_TMUX_LAYOUT)
             .expect("task-arrival pass succeeds");
 
-        assert_eq!(resumed, 1);
+        assert_eq!(resumed.switched, vec!["builder"]);
         let launch = runtime
             .calls()
             .into_iter()

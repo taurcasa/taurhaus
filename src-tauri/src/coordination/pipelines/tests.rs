@@ -2,7 +2,7 @@ use super::*;
 use fs2::FileExt;
 use std::fs;
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
@@ -4252,6 +4252,50 @@ fn add_agent_onboarding_entry_uses_immediate_policy() {
 // Task-level effort: the resume path taurhaus owns for Codex
 // ---------------------------------------------------------------------------
 
+#[test]
+fn effort_pass_scope_table_pins_retry_and_budget_contract() {
+    let cases = [
+        (
+            "task change starts a switch",
+            EffortPassScope::TaskChanged,
+            0,
+            true,
+        ),
+        (
+            "self-heal does not start a switch",
+            EffortPassScope::RetryPending,
+            0,
+            false,
+        ),
+        (
+            "self-heal retries a failed switch",
+            EffortPassScope::RetryPending,
+            1,
+            true,
+        ),
+        (
+            "the third failure spends the budget",
+            EffortPassScope::TaskChanged,
+            3,
+            false,
+        ),
+        (
+            "self-heal also honors the spent budget",
+            EffortPassScope::RetryPending,
+            3,
+            false,
+        ),
+    ];
+
+    for (name, scope, failed_attempts, expected) in cases {
+        assert_eq!(
+            super::effort::attempt_is_allowed(scope, failed_attempts),
+            expected,
+            "{name}"
+        );
+    }
+}
+
 fn effort_team(
     tmp: &TempDir,
     runtime: Arc<RecordingCoordinationRuntime>,
@@ -4288,26 +4332,140 @@ fn effort_team(
     orchestrator
 }
 
-/// Put the member on an active task carrying `level`, the way the operational
-/// snapshot sync does after mesh writes the assignment onto the task record.
-fn assign_task(tmp: &TempDir, member_name: &str, level: &str, why: &str) {
-    write_member_snapshot(
-        tmp,
-        member_name,
-        Some(("42", "Run the migration")),
-        level,
-        why,
+fn canonical_effort_team(
+    root: &TempDir,
+    runtime: Arc<RecordingCoordinationRuntime>,
+) -> (PathBuf, CoordinationOrchestrator) {
+    let teams_dir = root.path().join("teams");
+    runtime.set_detected_runtime_session(
+        "%21",
+        CliTool::Codex,
+        Some("session-effort"),
+        Some("/tmp/effort.jsonl"),
     );
+    runtime.set_pane_identity("%21", Some(2021), Some(1_755_000_021));
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        teams_dir.clone(),
+        Arc::new(FakeBackend::default()),
+        runtime,
+    );
+    orchestrator
+        .create_team("effort-team", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "effort-team",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder");
+    builder.reasoning_effort = Some("low".to_string());
+    orchestrator
+        .add_member("effort-team", builder)
+        .expect("add builder");
+    (teams_dir, orchestrator)
 }
 
-/// The member has nothing assigned: its last task is finished, so the snapshot
-/// carries neither a task nor a level.
-fn clear_assignment(tmp: &TempDir, member_name: &str) {
-    write_member_snapshot(tmp, member_name, None, "", "");
+fn seed_running_canonical_codex_member(
+    teams_dir: &Path,
+    orchestrator: &mut CoordinationOrchestrator,
+) {
+    let mut record =
+        MemberRuntimeStore::load(teams_dir, "effort-team", "builder").expect("member runtime");
+    record.pane_id = Some("%21".to_string());
+    record.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(teams_dir, "effort-team", "builder", &record)
+        .expect("save offline runtime");
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
 }
 
-fn write_member_snapshot(
-    tmp: &TempDir,
+fn write_mesh_task(root: &TempDir, task_id: &str, status: &str, level: &str, why: &str) {
+    let task_dir = root.path().join("tasks/effort-team");
+    fs::create_dir_all(&task_dir).expect("create mesh task dir");
+    fs::write(
+        task_dir.join(format!("{task_id}.json")),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "id": task_id,
+            "subject": format!("Task {task_id}"),
+            "description": "isolated assignment fixture",
+            "status": status,
+            "owner": "builder",
+            "activeForm": null,
+            "blocks": [],
+            "blockedBy": [],
+            "metadata": {
+                "effort": level,
+                "effortWhy": why,
+            },
+        }))
+        .expect("serialize mesh task"),
+    )
+    .expect("write mesh task");
+}
+
+fn hold_mesh_assignment(root: &TempDir, task_id: &str) {
+    let attention_dir = root
+        .path()
+        .join("teams/effort-team/state/projections/attention");
+    fs::create_dir_all(&attention_dir).expect("create attention projection dir");
+    fs::write(
+        attention_dir.join(format!("{task_id}.json")),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "taskId": task_id,
+            "assignmentId": format!("assignment-{task_id}"),
+            "assignedTo": "builder",
+            "assignedAt": "2026-08-30T09:00:00Z",
+            "deliveryState": "pending",
+            "deliveredAt": null,
+        }))
+        .expect("serialize attention projection"),
+    )
+    .expect("write attention projection");
+}
+
+fn write_mesh_attention(
+    root: &TempDir,
+    task_id: &str,
+    delivery_state: &str,
+    attention_state: &str,
+    delivered_at: Option<&str>,
+) {
+    let attention_dir = root
+        .path()
+        .join("teams/effort-team/state/projections/attention");
+    fs::create_dir_all(&attention_dir).expect("create attention projection dir");
+    fs::write(
+        attention_dir.join(format!("{task_id}.json")),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "taskId": task_id,
+            "assignmentId": format!("assignment-{task_id}"),
+            "assignedTo": "builder",
+            "assignedAt": "2026-08-30T09:00:00Z",
+            "deliveryState": delivery_state,
+            "attentionState": attention_state,
+            "deliveredAt": delivered_at,
+        }))
+        .expect("serialize attention projection"),
+    )
+    .expect("write attention projection");
+}
+
+fn write_member_snapshot_at(
+    teams_dir: &Path,
     member_name: &str,
     task: Option<(&str, &str)>,
     level: &str,
@@ -4320,7 +4478,7 @@ fn write_member_snapshot(
     };
 
     OperationalContextSnapshotStore::save(
-        tmp.path(),
+        teams_dir,
         &OperationalContextSnapshot {
             version: 1,
             team_name: "effort-team".to_string(),
@@ -4349,6 +4507,34 @@ fn write_member_snapshot(
     .expect("write operational snapshot");
 }
 
+/// Put the member on an active task carrying `level`, the way the operational
+/// snapshot sync does after mesh writes the assignment onto the task record.
+fn assign_task(tmp: &TempDir, member_name: &str, level: &str, why: &str) {
+    write_member_snapshot(
+        tmp,
+        member_name,
+        Some(("42", "Run the migration")),
+        level,
+        why,
+    );
+}
+
+/// The member has nothing assigned: its last task is finished, so the snapshot
+/// carries neither a task nor a level.
+fn clear_assignment(tmp: &TempDir, member_name: &str) {
+    write_member_snapshot(tmp, member_name, None, "", "");
+}
+
+fn write_member_snapshot(
+    tmp: &TempDir,
+    member_name: &str,
+    task: Option<(&str, &str)>,
+    level: &str,
+    why: &str,
+) {
+    write_member_snapshot_at(tmp.path(), member_name, task, level, why);
+}
+
 /// An assignment mesh delivered to the member's inbox at some point. Kept only
 /// so the tests can prove the switch does *not* read it.
 fn append_inbox_assignment(tmp: &TempDir, member_name: &str, level: &str, why: &str) {
@@ -4371,6 +4557,334 @@ fn append_inbox_assignment(tmp: &TempDir, member_name: &str, level: &str, why: &
         &message,
     )
     .expect("append assignment");
+}
+
+// Regression: 7bf0405e paired effort only with the one task taurhaus ranked as
+// active. With two open assignments, mesh could hold the newer notice for a
+// different task forever because taurhaus compared the applied level with the
+// wrong assignment and saw no switch pending.
+#[test]
+fn two_assignments_converge_on_the_task_whose_notice_mesh_holds() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("high".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("41", "Already in progress")),
+        "high",
+        "the active task is risky",
+    );
+    write_mesh_task(
+        &root,
+        "41",
+        "in_progress",
+        "high",
+        "the active task is risky",
+    );
+    write_mesh_task(&root, "42", "pending", "low", "the held task is mechanical");
+    hold_mesh_assignment(&root, "42");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("effort pass");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("low"),
+        "the held task wins even though another open assignment requests more effort"
+    );
+}
+
+// Regression: 9e288c56 accepted only mesh's `pending` delivery projection, so
+// an unknown or failed held notice fell back to the other task's higher effort
+// and could wait forever for its own requested level.
+#[test]
+fn held_unknown_and_failed_notices_keep_their_task_identity() {
+    for (delivery_state, attention_state) in [
+        ("unknown", "assigned_pending_delivery"),
+        ("failed", "delivery_failed"),
+    ] {
+        let root = TempDir::new().expect("tempdir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+        seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+        MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+            record.applied_effort = Some("high".to_string());
+        })
+        .expect("seed applied effort");
+        write_mesh_task(
+            &root,
+            "41",
+            "in_progress",
+            "high",
+            "the active task is risky",
+        );
+        write_mesh_task(&root, "42", "pending", "low", "the held task is mechanical");
+        write_mesh_attention(&root, "42", delivery_state, attention_state, None);
+
+        let resumed = orchestrator
+            .apply_pending_task_effort(
+                "effort-team",
+                &CliCommandSettings::default(),
+                "new_window",
+                EffortPassScope::TaskChanged,
+            )
+            .expect("effort pass");
+
+        assert_eq!(
+            resumed,
+            vec!["builder".to_string()],
+            "{delivery_state} must select the held task"
+        );
+        let record =
+            MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+        assert_eq!(
+            record.applied_effort.as_deref(),
+            Some("low"),
+            "{delivery_state} must apply the held task's effort"
+        );
+    }
+}
+
+// Regression: 9e288c56 forgot the task identity behind `appliedEffort` after
+// mesh delivered the notice, so the next task scan switched the running task
+// to another queued assignment's higher level.
+#[test]
+fn delivered_notice_does_not_flip_the_running_task_to_another_assignment() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("high".to_string());
+    })
+    .expect("seed applied effort");
+    write_mesh_task(
+        &root,
+        "41",
+        "in_progress",
+        "high",
+        "the other task is risky",
+    );
+    write_mesh_task(&root, "42", "pending", "low", "the held task is mechanical");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("41", "Other task")),
+        "high",
+        "the other task is risky",
+    );
+    hold_mesh_assignment(&root, "42");
+
+    let first = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("held effort pass");
+    assert_eq!(first, vec!["builder".to_string()]);
+
+    write_mesh_task(
+        &root,
+        "42",
+        "in_progress",
+        "low",
+        "the running task is mechanical",
+    );
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("42", "Running task")),
+        "low",
+        "the running task is mechanical",
+    );
+    write_mesh_attention(
+        &root,
+        "42",
+        "delivered",
+        "active",
+        Some("2026-08-30T09:00:10Z"),
+    );
+
+    let second = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("post-delivery effort pass");
+
+    assert!(
+        second.is_empty(),
+        "the running task already has its requested effort"
+    );
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("low"));
+}
+
+#[test]
+fn without_a_held_projection_the_highest_open_requested_effort_wins() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("medium".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("41", "Already in progress")),
+        "low",
+        "the active task is mechanical",
+    );
+    write_mesh_task(
+        &root,
+        "41",
+        "in_progress",
+        "low",
+        "the active task is mechanical",
+    );
+    write_mesh_task(&root, "42", "pending", "high", "the queued task is risky");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("effort pass");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+}
+
+#[test]
+fn pending_effort_carries_the_held_task_requested_and_applied_identity() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("high".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("41", "Already in progress")),
+        "high",
+        "the active task is risky",
+    );
+    write_mesh_task(
+        &root,
+        "41",
+        "in_progress",
+        "high",
+        "the active task is risky",
+    );
+    write_mesh_task(&root, "42", "pending", "low", "the held task is mechanical");
+    hold_mesh_assignment(&root, "42");
+    let config = TeamConfigStore::load(&teams_dir, "effort-team").expect("team config");
+    let builder = config
+        .members
+        .iter()
+        .find(|member| member.name == "builder")
+        .expect("builder");
+
+    let pending = super::effort::pending_member_effort(
+        &orchestrator,
+        "effort-team",
+        builder,
+        EffortPassScope::TaskChanged,
+    )
+    .expect("pending effort");
+
+    assert_eq!(pending.task_id, "42");
+    assert_eq!(pending.requested, "low");
+    assert_eq!(pending.applied.as_deref(), Some("high"));
+}
+
+// Regression: 2529309 emitted and persisted an effort refusal but returned an
+// empty switched list, making the caller treat the pass as nominal success.
+#[test]
+fn an_effort_refusal_is_returned_in_the_typed_outcome() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = seed_running_codex_member(&tmp, runtime, &CliCommandSettings::default());
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
+    MemberRuntimeStore::update(tmp.path(), "effort-team", "builder", |record| {
+        record.session_id = None;
+    })
+    .expect("clear session id");
+
+    let outcome = orchestrator
+        .apply_pending_task_effort_outcome(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("effort pass");
+
+    assert!(outcome.switched.is_empty());
+    assert_eq!(outcome.failed.len(), 1);
+    assert_eq!(outcome.failed[0].0, "builder");
+    assert!(outcome.failed[0].1.contains("no recorded session"));
+    assert!(outcome.skipped_teams.is_empty());
+}
+
+// Regression: 135c6f54 added `skipped_teams` to the typed effort result but
+// returned team config failures as an outer error, leaving the producer's
+// team-skip branch permanently empty.
+#[test]
+fn an_unreadable_team_is_returned_in_the_typed_effort_outcome() {
+    let tmp = TempDir::new().expect("tempdir");
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        Arc::new(FakeBackend::default()),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    let broken_team = tmp.path().join("broken-team");
+    fs::create_dir_all(&broken_team).expect("create broken team");
+    fs::write(broken_team.join("config.json"), b"{not valid json").expect("write broken config");
+
+    let outcome = orchestrator
+        .apply_pending_task_effort_outcome(
+            "broken-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("typed effort outcome");
+
+    assert!(outcome.switched.is_empty());
+    assert!(outcome.failed.is_empty());
+    assert_eq!(outcome.skipped_teams.len(), 1);
+    assert_eq!(outcome.skipped_teams[0].0, "broken-team");
+    assert!(outcome.skipped_teams[0].1.contains("failed to parse"));
 }
 
 #[test]
@@ -4700,6 +5214,19 @@ fn codex_launch_attempts(runtime: &RecordingCoordinationRuntime) -> usize {
         .count()
 }
 
+fn member_relaunch_attempts(runtime: &RecordingCoordinationRuntime) -> usize {
+    runtime
+        .calls()
+        .into_iter()
+        .filter(|call| {
+            matches!(
+                call,
+                RuntimeCall::CreatePane { .. } | RuntimeCall::CreatePaneInTarget { .. }
+            )
+        })
+        .count()
+}
+
 // Regression: 2529309 recorded the requested level as `applied_effort` on the
 // failure branch too. The member was already stopped, the level had never
 // taken effect, and every later pass compared requested against applied and
@@ -4787,6 +5314,101 @@ fn a_failed_effort_relaunch_stays_retryable_within_a_budget() {
         after_budget,
         "a level that keeps failing must not restart the pane on every pass"
     );
+}
+
+// Regression: 2529309 stopped retrying after the bounded effort budget but
+// left no durable reason and emitted no terminal event, so every later sweep
+// looked nominal while the member stayed at the wrong level.
+#[test]
+fn three_attempts_emit_one_budget_exhausted_event_and_later_passes_are_silent() {
+    let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("tempdir");
+    let log_path = tmp.path().join("effort-budget.log.jsonl");
+    let log_state = LogFileState::new(log_path.clone()).expect("log state");
+    install_global_sink(&log_state);
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
+    write_member_snapshot(
+        &tmp,
+        "builder",
+        Some(("budget-exhaustion-task", "Run the migration")),
+        "high",
+        "the migration is irreversible",
+    );
+
+    runtime.set_send_keys_failures("%21", usize::MAX, "launch failed");
+    for index in 1..=8 {
+        runtime.set_send_keys_failures(&format!("test-pane-{index}"), usize::MAX, "launch failed");
+    }
+
+    let before = member_relaunch_attempts(&runtime);
+    for _ in 0..3 {
+        orchestrator
+            .apply_pending_task_effort(
+                "effort-team",
+                &CliCommandSettings::default(),
+                "new_window",
+                EffortPassScope::TaskChanged,
+            )
+            .expect("budgeted attempt");
+    }
+    assert_eq!(
+        member_relaunch_attempts(&runtime) - before,
+        3,
+        "the retry budget is exactly three launch attempts"
+    );
+
+    orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("budget exhaustion pass");
+    orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("silent pass after exhaustion");
+    log_state.flush_for_test().expect("flush effort events");
+
+    let events: Vec<serde_json::Value> = fs::read_to_string(&log_path)
+        .expect("read effort events")
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("valid log record"))
+        .filter(|event| {
+            event["event"] == "effort.resume.failed"
+                && event["reason"] == "budget_exhausted"
+                && event["task_id"] == "budget-exhaustion-task"
+        })
+        .collect();
+    assert_eq!(events.len(), 1, "exhaustion is emitted exactly once");
+    assert_eq!(events[0]["attempts"], 3);
+    assert_eq!(events[0]["task_id"], "budget-exhaustion-task");
+    assert_eq!(member_relaunch_attempts(&runtime) - before, 3);
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    let failure = record
+        .effort_resume_failure
+        .expect("exhaustion remains visible in runtime state");
+    assert_eq!(failure.task_id, "budget-exhaustion-task");
+    assert_eq!(failure.attempts, 3);
+    assert_eq!(failure.reason.as_deref(), Some("budget_exhausted"));
 }
 
 // Regression: the same failure branch left a member that later came back

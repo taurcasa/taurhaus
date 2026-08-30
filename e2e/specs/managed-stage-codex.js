@@ -91,7 +91,7 @@ import { readLogEventsSince, selectEvents } from '../helpers/compactionLog.js'
 import { rolloutPaths } from '../helpers/codexRollout.js'
 import { trustProject } from '../helpers/codexScratchHome.js'
 import { TAURHAUS_CLAUDE_DIR } from '../helpers/platform.js'
-import { isolatedTmuxTmpdir, parseProcEnviron, tmuxIsolationProblem } from '../helpers/laneTmux.js'
+import { assertTmuxIsolation, isolatedTmuxTmpdir, parseProcEnviron, tmuxIsolationProblem } from '../helpers/laneTmux.js'
 import {
   commitExists,
   createStageFixtureProject,
@@ -224,6 +224,7 @@ if (projectsDir) {
 }
 
 function tmux(args) {
+  assertTmuxIsolation(process.env)
   return execFileSync('tmux', args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -1065,7 +1066,7 @@ describe('managed Codex stage', function () {
     let assigned = null
     let resumeEvents = []
 
-    // One window with the isolated roots on the shared tmux session: the effort
+    // One window with the isolated roots on the worker's tmux session: the effort
     // resume opens the member's replacement pane inside it, and that pane needs
     // the roots as much as the first one did.
     await withPaneEnvironment(async () => {

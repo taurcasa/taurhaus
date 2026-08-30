@@ -33,6 +33,12 @@ describe('Daemon Integration', () => {
         daemonConnected = false
       }
     }
+    if (!daemonConnected && process.env.TAURHAUS_DAEMON_PORT) {
+      throw new Error(
+        `E2E worker daemon is not connected on its own port ${process.env.TAURHAUS_DAEMON_PORT}; ` +
+          'an isolated worker must not silently skip Tier-2 daemon coverage'
+      )
+    }
   })
 
   // ─── Status ───────────────────────────────────────────────────────────────

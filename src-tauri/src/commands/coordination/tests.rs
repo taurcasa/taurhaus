@@ -29,6 +29,44 @@ fn codex_hook_reconcile_failure_is_degraded_for_managed_launches() {
     assert!(source.contains("compaction.codex_hook.degraded"));
 }
 
+// Regression: 135c6f54 made managed-Codex discovery failure abort the entire
+// task-arrival pass. The caller must receive both conservative launch settings
+// and the error so readable teams are still processed without hiding it.
+#[test]
+fn task_effort_launch_settings_returns_usable_settings_and_discovery_failure() {
+    let teams = TempDir::new().expect("teams dir");
+    let broken_team = teams.path().join("broken-team");
+    std::fs::create_dir_all(&broken_team).expect("create broken team");
+    std::fs::write(broken_team.join("config.json"), b"{not valid json")
+        .expect("write broken config");
+    let (db, _db_file) = test_db_state();
+
+    let ((_cli_commands, tmux_layout), error) = task_effort_launch_settings(&db, teams.path());
+
+    assert_eq!(tmux_layout, "new_window");
+    assert!(error
+        .expect("managed-Codex discovery failure must reach the caller")
+        .to_string()
+        .contains("failed to parse"));
+}
+
+// Regression: 135c6f54 made one unreadable team config abort the shared
+// background settings helper, so the 30-second self-heal and mesh-install
+// passes never reached their existing per-team error handling.
+#[test]
+fn background_launch_settings_degrades_managed_codex_discovery_failure() {
+    let teams = TempDir::new().expect("teams dir");
+    let broken_team = teams.path().join("broken-team");
+    std::fs::create_dir_all(&broken_team).expect("create broken team");
+    std::fs::write(broken_team.join("config.json"), b"{not valid json")
+        .expect("write broken config");
+    let (db, _db_file) = test_db_state();
+
+    // Infallible by contract: a discovery failure is logged and degraded,
+    // never surfaced, so the background passes keep their per-team handling.
+    let (_cli_commands, _tmux_layout) = background_launch_settings(&db, teams.path());
+}
+
 #[test]
 fn successful_team_commands_do_not_reconcile_the_codex_hook_twice() {
     // Regression: 6fe0aa3 reconciled Codex both before launch and again after a

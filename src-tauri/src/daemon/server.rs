@@ -9,6 +9,17 @@ use crate::project_provider::ProjectProvider;
 
 /// Default port for the daemon.
 pub const DEFAULT_PORT: u16 = 17233;
+/// App-only override used by isolated E2E workers and explicit launchers.
+pub const DAEMON_PORT_OVERRIDE_ENV: &str = "TAURHAUS_DAEMON_PORT";
+
+/// Port the app and its daemon launcher must agree on for this process.
+pub fn app_daemon_port() -> u16 {
+    std::env::var(DAEMON_PORT_OVERRIDE_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|port| *port != 0)
+        .unwrap_or(DEFAULT_PORT)
+}
 
 /// Maximum allowed length for a single request line (1 MB).
 ///
@@ -534,6 +545,38 @@ mod tests {
     use std::sync::LazyLock;
 
     static LOG_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+    struct EnvRestore {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvRestore {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
+    // Regression: commit fc896344 isolated E2E data roots but left the app on
+    // port 17233, where its auth failure could restart the operator's daemon.
+    #[test]
+    fn app_daemon_port_honors_the_worker_override() {
+        let _env_guard = crate::test_support::acquire_env_test_guard();
+        let _env = EnvRestore::set("TAURHAUS_DAEMON_PORT", "29441");
+
+        assert_eq!(app_daemon_port(), 29441);
+    }
 
     struct TestServer {
         port: u16,

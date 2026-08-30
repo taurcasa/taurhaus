@@ -12,42 +12,45 @@ tree to the Mac mini and runs `scripts/macos-e2e-test.sh` over SSH — a shell
 smoke suite over the built `.app` bundle, tmux and the CLI harnesses, not a
 WDIO suite. Nothing below applies to it.
 
-## 1) Ensure daemon is current and running
+## 1) Leave the operator daemon alone
 
-```bash
-just install-daemon
-```
+The E2E build produces both the app and its checkout-local daemon. Every worker
+launches `src-tauri/target/debug/taurhaus-daemon` on its own port, so it neither
+needs nor uses the operator's `~/.local/bin/taurhaus-daemon`.
 
-This rebuilds `taurhaus-daemon`, installs it to `~/.local/bin/`, and restarts it if it was running
-(preserving the previous process's `TAURHAUS_*`/`RUST_LOG` env and re-passing normalized
-`--data-dir`/`--port`).
-
-The E2E recipes are **safe by default**: `just test-e2e`, `just test-e2e-full` and
-`just test-e2e-spec` do *not* run `install-daemon` for you, so a daemon you are using
-elsewhere is never restarted underneath you. Opt in explicitly when you want the rebuild:
+The recipes remain **safe by default** and do not run `install-daemon`. The
+legacy opt-in still exists, but it only rebuilds and restarts the operator's
+installed daemon; it contributes nothing to the isolated worker run:
 
 ```bash
 E2E_INSTALL_DAEMON=1 just test-e2e
 ```
 
-**Why this step matters:** the app validates the daemon's protocol version on every
-connect path and refuses a mismatch outright rather than half-working. The constant is
-`PROTOCOL_VERSION` in `src-tauri/src/daemon/protocol.rs` (currently 13; 11, 12 and 13
-each changed the wire contract). If you have just pulled a branch that bumped it, an
-installed older daemon is rejected and every session-backed spec fails — reinstall it.
+Do not set it for routine E2E. The checkout-local app and daemon come from the
+same build and therefore carry the same `PROTOCOL_VERSION`.
 
 Every WDIO worker puts all writable product roots under its session temp root:
 `TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR`, `CODEX_HOME`, `GROK_HOME` and the
 taurhaus-only Antigravity override `TAURHAUS_AGY_DIR`. The fixture path knobs
 `E2E_PROJECTS_DIR` and `E2E_TAURHAUS_PROJECT_PATH` point into that temp root too.
-Ordinary workers receive an empty scratch Codex home; only a paid lane copies
-`auth.json` into it.
+The child `HOME` is isolated there as well, so default/sibling account discovery
+cannot fall back to the operator's dot-directories. Ordinary workers receive an
+empty scratch Codex home; only a paid lane copies `auth.json` into it.
 
-This roots-only isolation does not yet allocate a worker-specific daemon port.
-Until hardening lane 3a-ii owns daemon processes and ports, a local E2E app can
-restart a daemon already listening on the default port with the worker's
-temporary root. Run E2E on a dedicated host or stop the operator app and daemon
-first.
+Every worker also gets a private daemon port and a private tmux server. The
+runner passes `TAURHAUS_DAEMON_PORT` to the app and its daemon launcher, points
+`TMUX_TMPDIR` at `<session-temp-root>/tmux`, and removes an inherited `TMUX`
+before tauri-driver starts. Teardown kills that tmux server; no spec connects to
+the operator's server or port 17233. A few settings round trips retain an inert
+stored `daemon.port` fallback, but connection authority comes from the worker env.
+
+Process cleanup is ownership-checked. A unique run token is inherited by the
+driver, WebKitWebDriver, app, and daemons, and the runner records each live
+process as PID plus Linux `/proc` start time in a checkout-scoped ledger under
+the system temp directory. Pre-run cleanup reads only abandoned ledgers from
+this checkout and kills only identities whose PID and start time still match.
+A live concurrent run is left alone, as is a reused PID. The final in-run
+fallback is limited to this worker's exact WebDriver ports.
 
 ## 2) Build the correct app binary for E2E
 
@@ -87,6 +90,14 @@ Full suite:
 just test-e2e-full
 ```
 
+## Sealed spec manifest
+
+`e2e/specList.js` is the complete manifest for default WDIO runs. Every
+non-paid `e2e/specs/*.js` file must belong to one named group; adding an
+ungrouped file makes `e2e/specList.test.js` and WDIO configuration fail with an
+instruction to add it to a group or `paidSpecs`. Paid lanes never enter a suite
+implicitly.
+
 ## Paid lanes
 
 Two specs drive a real Codex subscription. `e2e/specList.js` keeps both out of the
@@ -94,7 +105,7 @@ config's spec list — a suite run, including a bare `bunx wdio run e2e/wdio.con
 never picks either up — and each only runs when asked for by name:
 
 ```bash
-E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
+E2E_INSTALL_DAEMON=0 just test-e2e-spec compaction-codex-hooks
 E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex
 ```
 
@@ -119,24 +130,26 @@ and [`docs/operations/testing-guide.md`](../docs/operations/testing-guide.md).
 
 ## Quick diagnosis for "Could not connect to localhost"
 
-1. Verify daemon is listening:
+1. Read the worker port from `[e2e] daemon port for this worker: …`, then verify
+   that port is listening:
 
 ```bash
-ss -ltnp | rg 17233
+ss -ltnp | rg '<worker-port>'
 ```
 
-Expected: a `LISTEN` line for `127.0.0.1:17233` owned by `taurhaus-daemon`.
+Expected: a `LISTEN` line for `127.0.0.1:<worker-port>` owned by
+`taurhaus-daemon`. Port 17233 belongs to the operator and is not part of the
+run.
 
-2. If missing, restart daemon:
-
-```bash
-just install-daemon
-```
-
-3. Rebuild E2E binary (debug/no-bundle) and rerun:
+2. If missing, rebuild the checkout-local app and daemon:
 
 ```bash
 just build-e2e
+```
+
+3. Rerun the spec:
+
+```bash
 just test-e2e-spec mesh-workflow
 ```
 
@@ -148,9 +161,9 @@ The daemon answers TCP but the app refuses it. Check the protocol pair:
 cd src-tauri && rg 'PROTOCOL_VERSION: u32' src/daemon/protocol.rs
 ```
 
-Then reinstall the daemon so the binary matches the checkout (`just install-daemon`).
-The app's gate is exact-match, not a floor — a *newer* daemon is rejected the same way
-an older one is. On a mismatch `ensure_expected_daemon_runtime` disconnects the daemon
+Then rebuild E2E so the checkout-local app and daemon are paired (`just build-e2e`).
+The app's gate is exact-match, not a floor. On a mismatch
+`ensure_expected_daemon_runtime` disconnects the daemon
 (`startup/daemon.rs:380-395`), so look for `daemon.connection.lost` with
 `reason: startup_runtime_mismatch` in `taurhaus.log.jsonl`, plus the
 `daemon protocol mismatch: running=…, expected=…` error text.

@@ -1,10 +1,28 @@
-import { describe, it, expect, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, it, expect, vi } from 'vitest'
 
-import { createLaneCleanup } from './laneCleanup.js'
+import {
+  E2E_RUN_TOKEN_ENV,
+  cleanupStaleProcessLedgers,
+  createLaneCleanup,
+  createOwnedProcessLedger,
+  findRunTokenProcessRecords,
+  killOwnedProcessRecord,
+} from './laneCleanup.js'
 
 function silentLogger() {
   return { log: vi.fn(), warn: vi.fn(), error: vi.fn() }
+}
+
+function writeProcFixture(procRoot, pid, { startTime, runToken }) {
+  const processRoot = join(procRoot, String(pid))
+  mkdirSync(processRoot, { recursive: true })
+  const fieldsAfterCommand = ['S', ...Array(18).fill('0'), String(startTime), '0']
+  writeFileSync(join(processRoot, 'stat'), `${pid} (fixture process) ${fieldsAfterCommand.join(' ')}\n`)
+  writeFileSync(join(processRoot, 'environ'), `${E2E_RUN_TOKEN_ENV}=${runToken}\0PATH=/usr/bin\0`)
 }
 
 describe('lane cleanup', () => {
@@ -152,5 +170,181 @@ describe('lane cleanup', () => {
 
     expect(proc.listenerCount('uncaughtException')).toBe(0)
     expect(proc.listenerCount('unhandledRejection')).toBe(0)
+  })
+})
+
+describe('owned process cleanup', () => {
+  // Regression: commit 707ce88a recorded a PID without its Linux start time,
+  // so a reused PID could make cleanup kill a process this run never started.
+  it('does not kill a recorded process whose PID has been reused', () => {
+    const kill = vi.fn()
+
+    const killed = killOwnedProcessRecord(
+      { pid: 4242, startTime: '100' },
+      { readStartTime: () => '200', kill }
+    )
+
+    expect(killed).toBe(false)
+    expect(kill).not.toHaveBeenCalled()
+  })
+
+  it('kills a recorded process when both PID and start time still match', () => {
+    const kill = vi.fn()
+
+    const killed = killOwnedProcessRecord(
+      { pid: 4242, startTime: '100' },
+      { readStartTime: () => '100', kill }
+    )
+
+    expect(killed).toBe(true)
+    expect(kill).toHaveBeenCalledWith(4242, 'SIGKILL')
+  })
+
+  // Regression: commit 69bb4e1a created an ownership ledger but never proved
+  // that token-carrying descendants were discovered and persisted beside the
+  // explicitly recorded tauri-driver group leader.
+  it('records token-carrying descendants in the persistent ledger', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'taurhaus-ledger-test-'))
+    const procRoot = join(fixtureRoot, 'proc')
+    const registryRoot = join(fixtureRoot, 'registry')
+    const runToken = 'run-uuid-1234'
+    try {
+      writeProcFixture(procRoot, 4101, { startTime: '101', runToken })
+      writeProcFixture(procRoot, 4102, { startTime: '102', runToken })
+      writeProcFixture(procRoot, 4199, { startTime: '199', runToken: 'another-run' })
+
+      const records = findRunTokenProcessRecords(runToken, { procRoot })
+      expect(records.map((record) => record.pid)).toEqual([4101, 4102])
+
+      const startTimes = new Map([[9999, 'owner'], [4101, '101'], [4102, '102']])
+      const ledger = createOwnedProcessLedger({
+        checkoutRoot: '/checkout/a',
+        runToken,
+        ownerPid: 9999,
+        registryRoot,
+        readStartTime: (pid) => startTimes.get(pid) ?? null,
+      })
+      ledger.recordPid(4101, { processGroup: true })
+      for (const record of records) ledger.record(record)
+
+      const persisted = JSON.parse(readFileSync(ledger.path, 'utf8'))
+      expect(persisted.processes).toHaveLength(2)
+      expect(persisted.processes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ pid: 4101, startTime: '101', processGroup: true }),
+          expect.objectContaining({ pid: 4102, startTime: '102' }),
+        ])
+      )
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('removes an unparseable ledger instead of warning about it forever', () => {
+    const registryRoot = mkdtempSync(join(tmpdir(), 'taurhaus-ledger-garbled-'))
+    const warn = vi.fn()
+    try {
+      const ledger = createOwnedProcessLedger({
+        checkoutRoot: '/checkout/a',
+        runToken: 'garbled-run',
+        ownerPid: 9001,
+        registryRoot,
+        readStartTime: () => 'owner-start',
+      })
+      writeFileSync(ledger.path, 'not json {')
+
+      cleanupStaleProcessLedgers('/checkout/a', {
+        registryRoot,
+        readStartTime: () => null,
+        kill: vi.fn(),
+        logger: { log: vi.fn(), warn, error: vi.fn() },
+      })
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(existsSync(ledger.path)).toBe(false)
+    } finally {
+      rmSync(registryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('leaves a ledger alone while its owner identity is still alive', () => {
+    const registryRoot = mkdtempSync(join(tmpdir(), 'taurhaus-ledger-live-'))
+    const kill = vi.fn()
+    try {
+      const ledger = createOwnedProcessLedger({
+        checkoutRoot: '/checkout/a',
+        runToken: 'live-run',
+        ownerPid: 9001,
+        registryRoot,
+        readStartTime: () => 'owner-start',
+      })
+      ledger.recordPid(4101)
+
+      cleanupStaleProcessLedgers('/checkout/a', {
+        registryRoot,
+        readStartTime: (pid) => pid === 9001 ? 'owner-start' : 'process-start',
+        kill,
+      })
+
+      expect(kill).not.toHaveBeenCalled()
+      expect(existsSync(ledger.path)).toBe(true)
+    } finally {
+      rmSync(registryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('kills matching records and removes a ledger whose owner is gone', () => {
+    const registryRoot = mkdtempSync(join(tmpdir(), 'taurhaus-ledger-stale-'))
+    const kill = vi.fn()
+    try {
+      const ledger = createOwnedProcessLedger({
+        checkoutRoot: '/checkout/a',
+        runToken: 'stale-run',
+        ownerPid: 9001,
+        registryRoot,
+        readStartTime: (pid) => pid === 9001 ? 'owner-start' : 'process-start',
+      })
+      ledger.recordPid(4101)
+
+      cleanupStaleProcessLedgers('/checkout/a', {
+        registryRoot,
+        readStartTime: (pid) => pid === 4101 ? 'process-start' : null,
+        kill,
+      })
+
+      expect(kill).toHaveBeenCalledWith(4101, 'SIGKILL')
+      expect(existsSync(ledger.path)).toBe(false)
+    } finally {
+      rmSync(registryRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('ignores a ledger that does not claim this checkout root', () => {
+    const registryRoot = mkdtempSync(join(tmpdir(), 'taurhaus-ledger-foreign-'))
+    const kill = vi.fn()
+    try {
+      const ledger = createOwnedProcessLedger({
+        checkoutRoot: '/checkout/a',
+        runToken: 'foreign-run',
+        ownerPid: 9001,
+        registryRoot,
+        readStartTime: () => 'start',
+      })
+      ledger.recordPid(4101)
+      const persisted = JSON.parse(readFileSync(ledger.path, 'utf8'))
+      persisted.checkoutRoot = '/checkout/b'
+      writeFileSync(ledger.path, `${JSON.stringify(persisted)}\n`)
+
+      cleanupStaleProcessLedgers('/checkout/a', {
+        registryRoot,
+        readStartTime: () => null,
+        kill,
+      })
+
+      expect(kill).not.toHaveBeenCalled()
+      expect(existsSync(ledger.path)).toBe(true)
+    } finally {
+      rmSync(registryRoot, { recursive: true, force: true })
+    }
   })
 })

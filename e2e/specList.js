@@ -11,18 +11,26 @@ import { resolve } from 'node:path'
 // Spec groups by app layer. Each sub-array = one worker session = one app instance.
 // Groups are SEALED: new specs form new groups, never expand existing ones.
 // See the `wdio.conf.js` header comment for the layer model.
-export const specGroups = [
-  // Group 1: Content — individual tab workflows (read-only)
-  ['overview-interactions.js', 'git-workflow.js', 'files-workflow.js'],
-  // Group 2: Features — cross-cutting features (read-only)
-  ['tasks-workflow.js', 'cross-tab-navigation.js', 'search-workflow.js'],
-  // Group 3: Shell — app chrome & platform integration
-  ['theme-and-shortcuts.js', 'context-menu.js', 'daemon-integration.js'],
-  // Group 4: Config — state mutation & validation
-  ['settings-persistence.js', 'project-lifecycle.js', 'error-handling.js'],
-  // Group 5: Guards — regressions & visual capture
-  ['regressions.js', 'screenshots.js', 'readme-screenshots.js'],
-]
+export const specGroups = {
+  // Individual tab workflows (read-only).
+  content: ['overview-interactions.js', 'git-workflow.js', 'files-workflow.js'],
+  // Cross-cutting features (read-only).
+  features: ['tasks-workflow.js', 'cross-tab-navigation.js', 'search-workflow.js'],
+  // App chrome and platform integration.
+  shell: ['theme-and-shortcuts.js', 'context-menu.js', 'daemon-integration.js'],
+  // State mutation and validation.
+  config: ['settings-persistence.js', 'project-lifecycle.js', 'error-handling.js'],
+  // General visual capture and non-tmux guards.
+  guards: ['screenshots.js', 'readme-screenshots.js'],
+  // Standalone UI and detail-state capture.
+  ui: ['first-run-wizard.js', 'role-detail-screenshots.js'],
+  // Template storage, editing, and roster screenshots.
+  templates: ['template-crud-ui.js', 'template-screenshots.js', 'templates.js'],
+  // Team runtime and recovery workflows.
+  mesh: ['mesh-recovery.js', 'mesh-screenshots.js', 'mesh-workflow.js'],
+  // Real session actions and runtime session presentation.
+  tmux: ['command-center-real-actions.js', 'session-management.js', 'regressions.js'],
+}
 
 /**
  * Lanes that spend a real, paid subscription when they run.
@@ -46,24 +54,23 @@ export function listSpecFiles(specsDir) {
   return readdirSync(specsDir).filter(name => name.endsWith('.js')).sort()
 }
 
-// Build the spec list. Each group becomes a sub-array (one worker session each).
-// Specs not in any group are collected into an "ungrouped" session at the end.
-// Paid lanes are in neither: they are named on the command line or not run.
+// Build the sealed spec list. Each group becomes one worker session. Paid lanes
+// are named on the command line; every other file must belong to a named group.
 export function buildSpecList(specsDir, specFiles = listSpecFiles(specsDir)) {
   const paid = new Set(paidSpecs)
   const allFiles = specFiles.filter(name => !paid.has(name))
+  const groups = Object.values(specGroups)
+  const knownSpecs = new Set(groups.flat())
+  const ungrouped = allFiles.filter(name => !knownSpecs.has(name))
+  if (ungrouped.length > 0) {
+    throw new Error(
+      `Ungrouped E2E specs: ${ungrouped.join(', ')}. ` +
+      'Add each file to a named specGroups group or to paidSpecs.'
+    )
+  }
 
-  // Resolve each group, dropping missing files
-  const groups = specGroups
+  // A focused fixture list can include only part of the real manifest.
+  return groups
     .map(group => group.filter(name => allFiles.includes(name)).map(name => resolve(specsDir, name)))
     .filter(group => group.length > 0)
-
-  // Any new specs not in a defined group run as a catch-all session
-  const knownSpecs = new Set(specGroups.flat())
-  const ungrouped = allFiles
-    .filter(name => !knownSpecs.has(name))
-    .map(name => resolve(specsDir, name))
-  if (ungrouped.length > 0) groups.push(ungrouped)
-
-  return groups
 }
