@@ -667,7 +667,13 @@ const gate = await agent(
 const gateFailure = gateProblem(gate)
 if (gateFailure) fail(gateFailure)
 
+const remaining = actionable.concat(trivial)
+const outcome = remaining.some((finding) => finding.severity === 'blocker' || finding.severity === 'major') ? 'followup_required' : 'complete'
 return {
+  outcome: outcome,
+  ...(outcome === 'followup_required'
+    ? { followup: { name: 'fix-round', args: { findings: remaining, startRound: round + 1 } } }
+    : {}),
   ledger: {
     title: TITLE,
     size: SIZE,
@@ -680,7 +686,7 @@ return {
     findings: allFindings,
     // What the one fix round could not close: the hard findings plus the trivia nobody picked up.
     // Both are what `fix-round` takes as `findings`.
-    remaining: actionable.concat(trivial),
+    remaining: remaining,
   },
   commits: [impl, fix].filter(Boolean).flatMap((r) => r.commits || []),
   gate: gate,

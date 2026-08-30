@@ -71,6 +71,9 @@ ledger row can be filled from the run instead of by hand:
 
 ```js
 {
+  outcome: 'complete' | 'followup_required',
+  // Present only for followup_required:
+  followup: { name: 'fix-round', args: { findings: remaining, startRound: rounds + 1 } },
   ledger: { title, size, implementer, models, effort, reviewers, rounds, majors, findings, remaining },
   commits: [...],
   gate: { status: 'pass', commands: [{command, status, detail}], diff_stat, commits },
@@ -79,7 +82,9 @@ ledger row can be filled from the run instead of by hand:
 
 `remaining` is what the loop could not close — the blockers and majors it ran out of rounds for, plus
 the minors and nits nobody picked up. Feed it to `fix-round` as `findings` with `startRound` set to
-`rounds + 1`. `research-sweep` returns `{question, outputs, researchers}` with one
+`rounds + 1`. `outcome` is `followup_required` whenever those remaining findings include a blocker
+or major; otherwise it is `complete`, and the return has no `followup`. `research-sweep` returns
+`{question, outputs, researchers}` with one
 structured summary and report path per researcher; the lead synthesizes them.
 
 ## Failing closed
@@ -106,8 +111,8 @@ a completed ledger with no findings reads as an approval:
   run at all, fails the run. So does any other listed command that did not pass — the targeted
   `cargo test` included. A gate command that did not apply is left off the list and explained in the
   summary, never reported `skipped` to get past the gate.
-- **What stays open does not fail it.** Findings the loop could not close come back as `remaining` —
-  that is what `fix-round` is for.
+- **What stays open is not hidden.** Findings the loop could not close come back as `remaining`.
+  A blocker or major also makes the outcome `followup_required` and names the next `fix-round` call.
 - **A reviewer is named by the model that ran it.** The lane must report `model_used`, the reviewer
   label carries `codexModel` (or "cli default" when none is pinned), and a commit trailer names a
   Codex model only when the run pinned one. No script claims a model nobody requested.
@@ -161,6 +166,9 @@ a completed ledger with no findings reads as an approval:
   round. If findings are still open at the end, that is what `fix-round` is for.
 - **Feature** — a PR that touches several modules or a wire contract: `feature-pr`. Two review lenses
   (conformance and the operational checklist) and up to three fix rounds.
+
+A `followup_required` ledger is not mergeable. Run its named `fix-round` call and carry
+`remaining` forward until a procedure returns `complete`.
 
 ## The rules the scripts encode
 

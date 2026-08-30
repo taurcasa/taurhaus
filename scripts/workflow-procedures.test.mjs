@@ -665,6 +665,63 @@ describe('workflow procedures — the ledger', () => {
   })
 })
 
+describe('workflow procedures — the outcome', () => {
+  const major = { title: 'restart bypasses the notice', severity: 'major', file: 'a.js:2', evidence: 'e', fix: 'f' }
+  const minor = { title: 'warning copy is vague', severity: 'minor', file: 'a.js:3', evidence: 'e', fix: 'f' }
+
+  // Regression: merge commit 2bbe0b4 (PR #75; accounts plan row 20b) followed three feature-pr
+  // rounds and two fix-round rounds, while an open major could still sit under a completed ledger.
+  for (const script of MUTATING) {
+    it(`${script} requires follow-up when every review round leaves a major open`, async () => {
+      const { result } = await run(script, argsFor(script), {
+        review: { ...OK_REVIEW, verdict: 'fix_required', findings: [major] },
+      })
+      expect(result.outcome).toBe('followup_required')
+      expect(result.ledger.remaining.map((finding) => finding.title)).toContain(major.title)
+      expect(result.gate.status).toBe('pass')
+      expect(result.followup).toEqual({
+        name: 'fix-round',
+        args: {
+          findings: result.ledger.remaining,
+          startRound: result.ledger.rounds + 1,
+        },
+      })
+    })
+
+    it(`${script} completes a clean run without a follow-up`, async () => {
+      const { result } = await run(script, argsFor(script))
+      expect(result.outcome).toBe('complete')
+      expect(result).not.toHaveProperty('followup')
+    })
+
+    it(`${script} completes when only a minor remains`, async () => {
+      const { result } = await run(script, argsFor(script), {
+        review: { ...OK_REVIEW, findings: [minor] },
+      })
+      expect(result.outcome).toBe('complete')
+      expect(result.ledger.remaining.map((finding) => finding.title)).toContain(minor.title)
+      expect(result).not.toHaveProperty('followup')
+    })
+  }
+
+  it('fix-round preserves an open major and requires another call at maxRounds 1', async () => {
+    const { result } = await run(
+      'fix-round.js',
+      argsFor('fix-round.js', { maxRounds: 1 }),
+      { review: { ...OK_REVIEW, verdict: 'fix_required', findings: [major] } }
+    )
+    expect(result.outcome).toBe('followup_required')
+    expect(result.ledger.remaining).toEqual([expect.objectContaining(major)])
+    expect(result.followup).toEqual({
+      name: 'fix-round',
+      args: {
+        findings: result.ledger.remaining,
+        startRound: result.ledger.rounds + 1,
+      },
+    })
+  })
+})
+
 describe('workflow procedures — the verdict contract', () => {
   const minor = { title: 'weak test', severity: 'minor', file: 'a.js:1', evidence: 'e', fix: 'f' }
   const nit = { title: 'spelling', severity: 'nit', file: 'a.js:1', evidence: 'e', fix: 'f' }
