@@ -147,15 +147,21 @@ export function accountUsageMeta(account, now = Date.now()) {
  * menu decides the launch's account. The rows still show, for the same reason:
  * a submenu that empties itself looks broken, one that says why does not. No
  * row is ticked either, because none of them is what the launch would use.
+ *
+ * `onChoose` adds the trailing way out: the rows above answer "launch on this
+ * one", and that row answers "show me what is left of each first". It stays
+ * enabled under `disabledNote`, because the note is about which account this
+ * launch runs on, not about the user's right to look.
  */
 export function buildAccountMenuChildren({
   accounts = [],
   activeAccountId = null,
   onSelect = () => {},
+  onChoose = null,
   disabledNote = null,
 } = {}) {
   const labels = labelsFor(accounts)
-  return accounts.map((account, index) => ({
+  const rows = accounts.map((account, index) => ({
     // Keyed by position as well as id: a label is not unique enough to key a
     // rendered list by, and the position is unique whatever the caller passes.
     key: `${index}:${account.id ?? ''}`,
@@ -165,4 +171,12 @@ export function buildAccountMenuChildren({
     disabled: Boolean(disabledNote) || !account.logged_in,
     action: () => onSelect(account.id),
   }))
+  if (!onChoose) return rows
+  return [
+    ...rows,
+    // Disabled so keyboard navigation and typeahead step over it: a separator
+    // is neither a row to focus nor a label to type at.
+    { key: 'separator', separator: true, disabled: true },
+    { key: 'choose', label: 'Choose account…', action: () => onChoose() },
+  ]
 }
