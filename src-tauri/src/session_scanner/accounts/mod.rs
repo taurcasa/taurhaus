@@ -338,14 +338,22 @@ pub fn command_contains_env(command: &str, selector: &str) -> bool {
 }
 
 /// `None` = absent; `Some(None)` = present but not parseable as a directory.
+///
+/// A shell reads the *last* assignment of a name, and expanding an alias can
+/// leave more than one behind: a configured `CLAUDE_CONFIG_DIR=… claude2` line
+/// becomes `CLAUDE_CONFIG_DIR=… CLAUDE_CONFIG_DIR=… claude`. The one in force
+/// is the one this reports.
 fn command_env_assignment(command: &str, selector: &str) -> Option<Option<PathBuf>> {
     let prefix = format!("{selector}=");
-    shell_words(command).into_iter().find_map(|word| {
-        word.strip_prefix(&prefix).map(|value| {
-            let value = value.trim();
-            (!value.is_empty()).then(|| expand_home(value))
+    shell_words(command)
+        .into_iter()
+        .filter_map(|word| {
+            word.strip_prefix(&prefix).map(|value| {
+                let value = value.trim();
+                (!value.is_empty()).then(|| expand_home(value))
+            })
         })
-    })
+        .next_back()
 }
 
 /// A leading `~` in a base command is the launching shell's home directory,
@@ -1569,6 +1577,33 @@ mod tests {
             resolved.account_dir.as_deref(),
             Some(Path::new("/accounts/default")),
             "the chosen account's dir has to overwrite the base command's"
+        );
+    }
+
+    #[test]
+    fn the_selector_in_force_is_the_last_one_the_base_assigns() {
+        // Regression: c65efa4 read the first `CLAUDE_CONFIG_DIR=` word of the
+        // base command, but a shell reads the last one. Expanding an alias in
+        // front of a configured prefix leaves two assignments, and the alias's
+        // own selector is the one the launch would have run on.
+        let resolved = resolve_launch_account(
+            &fixture(),
+            &FakeProvider,
+            AccountRequest {
+                pinned_account_id: Some("default"),
+                base_command: Some(
+                    "CLAUDE_CONFIG_DIR=/accounts/default CLAUDE_CONFIG_DIR=/accounts/last claude",
+                ),
+                selector: Some("CLAUDE_CONFIG_DIR"),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(resolved.account.unwrap().id, "default");
+        assert_eq!(
+            resolved.account_dir.as_deref(),
+            Some(Path::new("/accounts/default")),
+            "the assignment in force names another account, so the launch has to name its own"
         );
     }
 

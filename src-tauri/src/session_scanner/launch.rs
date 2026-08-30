@@ -532,37 +532,54 @@ impl LaunchSpec<'_> {
     }
 }
 
-/// Replace the command's own `selector=...` assignment with `assignment`.
+/// Collapse every `selector=...` assignment the command carries into a single
+/// `assignment`, kept where the first one stood.
 ///
-/// Returns the rewritten command and the assignment word that made way for it,
-/// or `None` when the command carries no such assignment. Only an unquoted
-/// leading `selector=` counts, because that is the only spelling a shell reads
-/// as an assignment rather than as a command name.
+/// Returns the rewritten command and the assignment word that was in force, or
+/// `None` when the command carries no such assignment. Only an unquoted
+/// `selector=` counts, because that is the only spelling a shell reads as an
+/// assignment rather than as a command name. Expanding an alias can leave two
+/// of them — a configured prefix plus the alias's own — and the shell obeys
+/// the last, so replacing only the first would still lose the launch.
 fn replace_env_assignment(
     command: &str,
     selector: &str,
     assignment: &str,
 ) -> Option<(String, String)> {
     let prefix = format!("{selector}=");
+    let mut spans = Vec::new();
     let mut cursor = 0;
     while cursor < command.len() {
-        let character = command[cursor..].chars().next()?;
+        let Some(character) = command[cursor..].chars().next() else {
+            break;
+        };
         if character.is_whitespace() {
             cursor += character.len_utf8();
             continue;
         }
         let end = shell_word_end(command, cursor);
-        let word = &command[cursor..end];
-        if word.starts_with(&prefix) {
-            let mut rewritten = String::with_capacity(command.len() + assignment.len());
-            rewritten.push_str(&command[..cursor]);
-            rewritten.push_str(assignment);
-            rewritten.push_str(&command[end..]);
-            return Some((rewritten, word.to_string()));
+        if command[cursor..end].starts_with(&prefix) {
+            spans.push((cursor, end));
         }
         cursor = end;
     }
-    None
+
+    let (in_force_start, in_force_end) = *spans.last()?;
+    let in_force = command[in_force_start..in_force_end].to_string();
+    let mut rewritten = String::with_capacity(command.len() + assignment.len());
+    let mut copied = 0;
+    for (index, &(start, end)) in spans.iter().enumerate() {
+        if index == 0 {
+            rewritten.push_str(&command[copied..start]);
+            rewritten.push_str(assignment);
+        } else {
+            // The word goes, and with it the whitespace that separated it.
+            rewritten.push_str(command[copied..start].trim_end());
+        }
+        copied = end;
+    }
+    rewritten.push_str(&command[copied..]);
+    Some((rewritten, in_force))
 }
 
 /// Return the configured base command without normalizing or rewriting it.
@@ -1656,6 +1673,49 @@ mod tests {
         );
         assert_eq!(rendered.notes[0].event_name(), "launch.selector.rewritten");
         assert_eq!(rendered.notes[0].level(), "info");
+    }
+
+    #[test]
+    fn every_selector_the_base_carries_collapses_into_the_chosen_one() {
+        // Regression: c65efa4 replaced only the first `CLAUDE_CONFIG_DIR=`
+        // word. A configured prefix in front of an alias that carries its own
+        // selector leaves two assignments behind, and the shell reads the last
+        // one — so the account the user chose still lost the launch.
+        let base = concat!(
+            "CLAUDE_CONFIG_DIR='/home/user/.claude' ",
+            "CLAUDE_CONFIG_DIR=/home/user/.claude-account2 ",
+            "claude --dangerously-skip-permissions"
+        );
+        let rendered = LaunchSpec {
+            tool: CliTool::Claude,
+            mode: LaunchMode::Fresh,
+            base,
+            model: ModelSpec::default(),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: Some(std::path::Path::new("/home/user/.claude")),
+            selector: Some("CLAUDE_CONFIG_DIR"),
+            team: None,
+        }
+        .render();
+
+        assert_eq!(
+            rendered.command,
+            "CLAUDE_CONFIG_DIR='/home/user/.claude' claude --dangerously-skip-permissions"
+        );
+        assert_eq!(
+            count_flag(&rendered.command, "CLAUDE_CONFIG_DIR"),
+            1,
+            "a surviving second assignment would decide the launch instead"
+        );
+        assert_eq!(
+            rendered.notes,
+            vec![LaunchNote::SelectorRewritten {
+                found: "CLAUDE_CONFIG_DIR=/home/user/.claude-account2".to_string(),
+                replaced_with: "CLAUDE_CONFIG_DIR='/home/user/.claude'".to_string(),
+            }],
+            "the note names the assignment that was in force"
+        );
     }
 
     #[test]
