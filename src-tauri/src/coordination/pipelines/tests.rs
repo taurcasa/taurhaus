@@ -4432,13 +4432,7 @@ fn held_unknown_and_failed_notices_keep_their_task_identity() {
             "the active task is risky",
         );
         write_mesh_task(&root, "42", "pending", "low", "the held task is mechanical");
-        write_mesh_attention(
-            &root,
-            "42",
-            delivery_state,
-            attention_state,
-            None,
-        );
+        write_mesh_attention(&root, "42", delivery_state, attention_state, None);
 
         let resumed = orchestrator
             .apply_pending_task_effort(
@@ -4454,8 +4448,8 @@ fn held_unknown_and_failed_notices_keep_their_task_identity() {
             vec!["builder".to_string()],
             "{delivery_state} must select the held task"
         );
-        let record = MemberRuntimeStore::load(&teams_dir, "effort-team", "builder")
-            .expect("runtime record");
+        let record =
+            MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
         assert_eq!(
             record.applied_effort.as_deref(),
             Some("low"),
@@ -4673,8 +4667,7 @@ fn an_unreadable_team_is_returned_in_the_typed_effort_outcome() {
     );
     let broken_team = tmp.path().join("broken-team");
     fs::create_dir_all(&broken_team).expect("create broken team");
-    fs::write(broken_team.join("config.json"), b"{not valid json")
-        .expect("write broken config");
+    fs::write(broken_team.join("config.json"), b"{not valid json").expect("write broken config");
 
     let outcome = orchestrator
         .apply_pending_task_effort_outcome(

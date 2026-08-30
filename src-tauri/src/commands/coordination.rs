@@ -74,10 +74,7 @@ pub(crate) fn background_launch_settings(
 fn task_effort_launch_settings(
     db: &DbState,
     teams_dir: &std::path::Path,
-) -> (
-    (CliCommandSettings, String),
-    Option<CoordinationError>,
-) {
+) -> ((CliCommandSettings, String), Option<CoordinationError>) {
     let (has_managed_codex, discovery_error) =
         match crate::coordination::compact_hook::any_managed_codex_member(teams_dir) {
             Ok(has_managed_codex) => (has_managed_codex, None),

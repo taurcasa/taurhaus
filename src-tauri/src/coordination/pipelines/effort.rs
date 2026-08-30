@@ -119,14 +119,11 @@ fn assignment_target(
         }
     }
     if let Some(applied_effort) = applied_effort {
-        let current_task_id = OperationalContextSnapshotStore::load(
-            &orchestrator.teams_dir,
-            team_name,
-            member_name,
-        )
-        .ok()
-        .flatten()
-        .map(|snapshot| snapshot.task.id);
+        let current_task_id =
+            OperationalContextSnapshotStore::load(&orchestrator.teams_dir, team_name, member_name)
+                .ok()
+                .flatten()
+                .map(|snapshot| snapshot.task.id);
         if let Some(current_task_id) = current_task_id {
             if let Some(current) = assignments.iter().find(|assignment| {
                 assignment.task_id == current_task_id
@@ -193,8 +190,7 @@ fn read_assignment_task(path: &Path, member_name: &str) -> Option<AssignmentTarg
         return None;
     }
     let task_id = non_empty_json_string(task.get("id"))?;
-    let level = non_empty_json_string(task.get("metadata")?.get("effort"))?
-        .to_ascii_lowercase();
+    let level = non_empty_json_string(task.get("metadata")?.get("effort"))?.to_ascii_lowercase();
     (effort_rank(&level) > 0).then_some(AssignmentTarget { task_id, level })
 }
 

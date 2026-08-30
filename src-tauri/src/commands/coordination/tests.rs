@@ -44,12 +44,10 @@ fn task_effort_launch_settings_returns_usable_settings_and_discovery_failure() {
     let ((_cli_commands, tmux_layout), error) = task_effort_launch_settings(&db, teams.path());
 
     assert_eq!(tmux_layout, "new_window");
-    assert!(
-        error
-            .expect("managed-Codex discovery failure must reach the caller")
-            .to_string()
-            .contains("failed to parse")
-    );
+    assert!(error
+        .expect("managed-Codex discovery failure must reach the caller")
+        .to_string()
+        .contains("failed to parse"));
 }
 
 // Regression: 135c6f54 made one unreadable team config abort the shared
