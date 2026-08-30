@@ -131,6 +131,22 @@ describe('fixture', () => {
       rmSync(specsDir, { recursive: true, force: true })
     }
   })
+
+  it('flags a snapshot call that sits outside any before hook', () => {
+    const specsDir = mkdtempSync(join(tmpdir(), 'taurhaus-tmux-nohook-'))
+    try {
+      writeFileSync(
+        join(specsDir, 'stray-snapshot.js'),
+        'function guard() {\n  assertTmuxIsolation(process.env)\n}\n\nconst panes = snapshotTmuxPanes()\n'
+      )
+
+      expect(tmuxIsolationCoverageProblems(specsDir)).toEqual([
+        'stray-snapshot.js: call snapshotTmuxPanes from a before hook that asserts isolation first',
+      ])
+    } finally {
+      rmSync(specsDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('applyTmuxIsolation', () => {

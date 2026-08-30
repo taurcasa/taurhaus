@@ -410,7 +410,9 @@ fn print_help() {
     eprintln!("       taurhaus-daemon agy-hook <busy|idle>");
     eprintln!();
     eprintln!("Options:");
-    eprintln!("  -p, --port <PORT>          TCP port to listen on (default: {DEFAULT_PORT})");
+    eprintln!(
+        "  -p, --port <PORT>          TCP port to listen on (default: {DEFAULT_PORT}, or $TAURHAUS_DAEMON_PORT when set)"
+    );
     eprintln!("  -b, --bind <ADDR>          Bind address (default: 127.0.0.1)");
     eprintln!(
         "      --idle-timeout <SECS>  Auto-shutdown after N idle seconds (default: 600, 0=disable)"

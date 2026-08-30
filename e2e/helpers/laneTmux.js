@@ -120,6 +120,12 @@ export function tmuxIsolationCoverageProblems(specsDir) {
     const beforeHooks = Array.from(source.matchAll(/\bbefore\s*\(/g))
       .filter((match) => match.index < snapshot.index)
     const hookOffset = beforeHooks.at(-1)?.index ?? -1
+    if (hookOffset < 0) {
+      problems.push(
+        `${name}: call snapshotTmuxPanes from a before hook that asserts isolation first`
+      )
+      continue
+    }
     const hookAssertionOffset = hookOffset >= 0
       ? source.indexOf('assertTmuxIsolation(', hookOffset)
       : -1

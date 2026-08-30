@@ -274,6 +274,20 @@ pub fn validate_startup_daemon_binary(
         if !startup_daemon_binary_is_stale(&running_exe, &expected_path) {
             return Ok(StartupDaemonValidation::Healthy);
         }
+        if !native_daemon_executable_matches(&running_exe, &expected_path) {
+            // One rule owns "may we kill the process on the daemon port":
+            // the same predicate stop_existing_daemon_native_with applies.
+            // A foreign owner is reported and left running — reconnect and
+            // protocol repair deal with the port, never a kill.
+            bwarn(
+                log_path,
+                &format!(
+                    "Refusing stale-binary eviction of foreign listener pid {pid} on daemon port {port}: running_exe={}, expected_exe={expected_binary}",
+                    running_exe.to_string_lossy()
+                ),
+            );
+            return Ok(StartupDaemonValidation::Healthy);
+        }
         let running_exe_display = running_exe.to_string_lossy().to_string();
 
         blog(

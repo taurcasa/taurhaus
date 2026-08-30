@@ -62,6 +62,8 @@ import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
+// Mirrors the Rust rule (commands/mesh.rs WSL_MESH_BINARY_PATH): the
+// operator's installed mesh lives at ~/.local/bin/mesh; keep them in step.
 const operatorMeshBinaryPath = resolve(homedir(), '.local', 'bin', 'mesh')
 
 const binaryPath = resolve(projectRoot, 'src-tauri', 'target', 'debug', 'taurhaus')

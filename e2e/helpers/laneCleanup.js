@@ -209,7 +209,12 @@ export function cleanupStaleProcessLedgers(
       }
       rmSync(path, { force: true })
     } catch (error) {
-      logger.warn(`[e2e] ignored unreadable process ledger ${path}: ${error?.message ?? error}`)
+      logger.warn(`[e2e] removed unreadable process ledger ${path}: ${error?.message ?? error}`)
+      try {
+        rmSync(path, { force: true })
+      } catch {
+        // Nothing recoverable: an unreadable ledger carries no identities.
+      }
     }
   }
 }

@@ -240,6 +240,33 @@ describe('owned process cleanup', () => {
     }
   })
 
+  it('removes an unparseable ledger instead of warning about it forever', () => {
+    const registryRoot = mkdtempSync(join(tmpdir(), 'taurhaus-ledger-garbled-'))
+    const warn = vi.fn()
+    try {
+      const ledger = createOwnedProcessLedger({
+        checkoutRoot: '/checkout/a',
+        runToken: 'garbled-run',
+        ownerPid: 9001,
+        registryRoot,
+        readStartTime: () => 'owner-start',
+      })
+      writeFileSync(ledger.path, 'not json {')
+
+      cleanupStaleProcessLedgers('/checkout/a', {
+        registryRoot,
+        readStartTime: () => null,
+        kill: vi.fn(),
+        logger: { log: vi.fn(), warn, error: vi.fn() },
+      })
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(existsSync(ledger.path)).toBe(false)
+    } finally {
+      rmSync(registryRoot, { recursive: true, force: true })
+    }
+  })
+
   it('leaves a ledger alone while its owner identity is still alive', () => {
     const registryRoot = mkdtempSync(join(tmpdir(), 'taurhaus-ledger-live-'))
     const kill = vi.fn()
