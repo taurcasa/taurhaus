@@ -126,6 +126,7 @@ pub fn apply_delivery_context(
                 id: task.id.clone(),
                 subject: task.subject.clone(),
                 status: task.status.clone(),
+                ..Default::default()
             })
             .or_else(|| existing.as_ref().map(|snapshot| snapshot.task.clone()))
             .unwrap_or_default(),
@@ -221,6 +222,7 @@ fn latest_owned_task_from_tasks(
             id: task.source_task_id.clone(),
             subject: task.subject.clone(),
             status: task.status.clone(),
+            ..Default::default()
         })
         .unwrap_or_default();
 
@@ -668,6 +670,7 @@ mod tests {
                     id: "42".to_string(),
                     subject: "Fix regression".to_string(),
                     status: "in_progress".to_string(),
+                    ..Default::default()
                 },
                 assignment_footer: OperationalAssignmentFooterSnapshot::default(),
                 ownership: OperationalOwnershipSnapshot::default(),

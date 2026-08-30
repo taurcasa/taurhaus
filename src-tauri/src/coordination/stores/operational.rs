@@ -17,6 +17,12 @@ pub struct OperationalTaskSnapshot {
     pub id: String,
     pub subject: String,
     pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline_minutes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nudged_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stale_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -194,6 +200,7 @@ mod tests {
                 id: "674".to_string(),
                 subject: "Add canonical OperationalContextSnapshot model and store".to_string(),
                 status: "in_progress".to_string(),
+                ..Default::default()
             },
             assignment_footer: OperationalAssignmentFooterSnapshot {
                 execution_mode: "implement".to_string(),
@@ -223,7 +230,18 @@ mod tests {
     #[test]
     fn operational_snapshot_round_trips_through_store() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let snapshot = sample_snapshot();
+        let mut snapshot = sample_snapshot();
+        snapshot.task.deadline_minutes = Some(20);
+        snapshot.task.nudged_at = Some(
+            DateTime::parse_from_rfc3339("2026-03-08T14:20:00Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+        );
+        snapshot.task.stale_at = Some(
+            DateTime::parse_from_rfc3339("2026-03-08T14:30:00Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+        );
 
         OperationalContextSnapshotStore::save(tmp.path(), &snapshot).expect("save snapshot");
         let stored = OperationalContextSnapshotStore::load(
@@ -242,6 +260,20 @@ mod tests {
                 ..snapshot
             }
         );
+    }
+
+    #[test]
+    fn operational_task_deadline_fields_default_when_absent() {
+        let task: OperationalTaskSnapshot = serde_json::from_value(serde_json::json!({
+            "id": "674",
+            "subject": "Legacy assignment",
+            "status": "in_progress"
+        }))
+        .expect("legacy task snapshot");
+
+        assert_eq!(task.deadline_minutes, None);
+        assert_eq!(task.nudged_at, None);
+        assert_eq!(task.stale_at, None);
     }
 
     #[test]

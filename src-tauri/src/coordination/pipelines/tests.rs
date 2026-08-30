@@ -3636,6 +3636,7 @@ fn write_member_snapshot(
                     id: id.to_string(),
                     subject: subject.to_string(),
                     status: "in_progress".to_string(),
+                    ..Default::default()
                 })
                 .unwrap_or_default(),
             assignment_footer: OperationalAssignmentFooterSnapshot {
