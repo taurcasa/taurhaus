@@ -527,7 +527,7 @@ export const config = {
     const workerEnv = buildWorkerEnv(sessionTempRoot, {
       baseEnv: process.env,
       runToken: sessionRunToken,
-      daemonBinaryPath: join(projectRoot, 'src-tauri/target/debug/taurhaus-daemon'),
+      daemonBinaryPath: resolve(projectRoot, 'src-tauri/target/debug/taurhaus-daemon'),
     })
     const tauriDataDir = workerEnv.TAURHAUS_DATA_DIR
     const tauriClaudeDir = workerEnv.TAURHAUS_CLAUDE_DIR
