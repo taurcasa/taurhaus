@@ -1,5 +1,6 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { applyTmuxIsolation } from './laneTmux.js'
 import { E2E_RUN_TOKEN_ENV } from './laneCleanup.js'
@@ -22,6 +23,12 @@ const ROOT_SUBDIRS = {
 
 const WORKER_DAEMON_PORT_START = 20_000
 const WORKER_DAEMON_PORT_COUNT = 12_000
+
+/** Seed an isolated login home without reading the operator's shell files. */
+export function prepareWorkerHome(workerHome) {
+  mkdirSync(workerHome, { recursive: true })
+  writeFileSync(join(workerHome, '.zshrc'), '# taurhaus E2E isolated shell home\n', 'utf8')
+}
 
 /** A stable non-ephemeral port derived from the worker's unique session root. */
 function workerDaemonPort(sessionTempRoot) {

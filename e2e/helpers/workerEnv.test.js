@@ -1,11 +1,13 @@
-import { describe, expect, it } from 'vitest'
-import { homedir } from 'node:os'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
+import { describe, expect, it } from 'vitest'
 
 import {
   WORKER_ROOT_ENV_KEYS,
   buildWorkerEnv,
   findAvailableWorkerDaemonPort,
+  prepareWorkerHome,
 } from './workerEnv.js'
 import { E2E_RUN_TOKEN_ENV } from './laneCleanup.js'
 
@@ -51,6 +53,21 @@ describe('buildWorkerEnv', () => {
     expect(isInside(sessionTempRoot, env.HOME), 'HOME must be inside the worker root').toBe(true)
     expect(env.HOME.startsWith(operatorHome), 'HOME must not use the operator home').toBe(false)
     expect(env.PATH).toBe('/usr/bin')
+  })
+
+  // Regression: commit 272eed7d isolated HOME without a shell startup file,
+  // so zsh-newuser-install captured every tmux pane before its fixture command
+  // could run.
+  it('seeds the isolated home so interactive zsh launches cannot block', () => {
+    const workerRoot = mkdtempSync(join(tmpdir(), 'taurhaus-worker-home-'))
+    const workerHome = join(workerRoot, 'home')
+
+    try {
+      prepareWorkerHome(workerHome)
+      expect(readFileSync(join(workerHome, '.zshrc'), 'utf8')).toContain('taurhaus E2E')
+    } finally {
+      rmSync(workerRoot, { recursive: true, force: true })
+    }
   })
 
   // Regression: commit fc896344 isolated worker roots but left every ordinary

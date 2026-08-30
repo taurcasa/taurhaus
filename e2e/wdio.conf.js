@@ -56,6 +56,7 @@ import {
   WORKER_ROOT_ENV_KEYS,
   buildWorkerEnv,
   findAvailableWorkerDaemonPort,
+  prepareWorkerHome,
 } from './helpers/workerEnv.js'
 import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
 
@@ -566,7 +567,7 @@ export const config = {
     for (const key of WORKER_ROOT_ENV_KEYS) {
       mkdirSync(workerEnv[key], { recursive: true })
     }
-    mkdirSync(workerEnv.HOME, { recursive: true })
+    prepareWorkerHome(workerEnv.HOME)
     tauriDriverStderrBuffer = ''
     sessionAppLogPaths = [
       `${tauriDataDir}/taurhaus.log.jsonl`,
