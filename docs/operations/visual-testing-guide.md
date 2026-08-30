@@ -22,6 +22,25 @@ for flags, the port/pid rules, and where the PNGs land.
 
 Use the lightest lane that answers the question.
 
+## Which browser the lane launches
+
+`just test-visual` does not hardcode a browser. `vitest.visual.config.js` asks
+`scripts/visual-browser.mjs` for one, in this order:
+
+1. `PLAYWRIGHT_CHROME_PATH`, when it is set. It is an override, not a hint: a
+   path that does not exist fails the run immediately with an error naming the
+   path, rather than falling through to another browser.
+2. `/usr/bin/google-chrome`, when that file exists.
+3. Playwright's managed Chromium — the revision the installed `playwright`
+   package points at, else the newest `chromium-<revision>` actually present in
+   the browser cache (`PLAYWRIGHT_BROWSERS_PATH`, else the platform default).
+   Install one with `bunx playwright install chromium`.
+
+The resolved path is passed to Playwright as `executablePath` and printed as
+the run's first line — `[visual] browser: <path> (<source>)` — so the browser
+reported is always the browser that launched. `scripts/visual-browser.test.mjs`
+covers the order against a fake filesystem.
+
 ## When to use visual tests
 
 Use Browser Mode visual tests when the goal is appearance with controlled mock state:

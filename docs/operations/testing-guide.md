@@ -41,6 +41,12 @@ just test-frontend        # Run all frontend Vitest tests
 just test-visual          # Run browser-mode visual screenshot tests
 ```
 
+`just test-visual` resolves its own browser: `PLAYWRIGHT_CHROME_PATH` when set
+(a path that does not exist fails the run and names itself), else
+`/usr/bin/google-chrome`, else Playwright's managed Chromium. The run's first
+line names the binary it launched. See
+[`visual-testing-guide.md`](./visual-testing-guide.md#which-browser-the-lane-launches).
+
 #### Full-window screenshots (`just visual-shot`)
 
 `just test-visual` renders a component into a 960×640 test page. A popup that

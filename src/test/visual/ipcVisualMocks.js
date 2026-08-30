@@ -1,15 +1,16 @@
 import { vi } from 'vitest'
 
+// Imported from the submodule, so it is the real implementation: the `vi.mock`
+// below replaces `../../lib/ipc.js`, not the modules behind it.
+import { buildFrontendFallbackTerminalContract as actualFallbackTerminalContract } from '../../lib/ipc/system.js'
+
 function createMockMap() {
   return {
     listProjects: vi.fn(),
     getProject: vi.fn(),
-    registerProject: vi.fn(),
     createProject: vi.fn(),
-    updateProject: vi.fn(),
     getRecentCommits: vi.fn(),
     getAllCommits: vi.fn(),
-    getGitStatus: vi.fn(),
     getReadme: vi.fn(),
     getFileTree: vi.fn(),
     readFile: vi.fn(),
@@ -20,13 +21,12 @@ function createMockMap() {
     validateProjectPath: vi.fn(),
     getLatestSession: vi.fn(),
     listSessions: vi.fn(),
-    getSession: vi.fn(),
-    getProjectActivity: vi.fn(),
+    listCliSessionSnapshot: vi.fn(),
+    getForegroundProject: vi.fn(),
+    resolveLaunchAccount: vi.fn(),
     recordSessionActivity: vi.fn(),
     getRelationships: vi.fn(),
     dismissRelationship: vi.fn(),
-    createRelationship: vi.fn(),
-    removeRelationship: vi.fn(),
     isTauri: vi.fn(),
     isFirstRun: vi.fn(),
     getSettings: vi.fn(),
@@ -47,7 +47,9 @@ function createMockMap() {
     getPlatform: vi.fn(),
     listClaudeSessions: vi.fn(),
     listAccounts: vi.fn(),
+    refreshAccountsUsage: vi.fn(),
     setProjectAccount: vi.fn(),
+    buildFrontendFallbackTerminalContract: vi.fn(),
     search: vi.fn(),
     getProjectTasks: vi.fn(),
     listWorkflowRuns: vi.fn(),
@@ -60,19 +62,14 @@ function createMockMap() {
     getCommitDiff: vi.fn(),
     getCommitsInRange: vi.fn(),
     checkMeshInstallStatus: vi.fn(),
-    coordinationCreateTeam: vi.fn(),
-    coordinationGetFeatureAvailability: vi.fn(),
     coordinationGetProjectMeshSnapshot: vi.fn(),
-    coordinationGetTeamStatus: vi.fn(),
     composeTeam: vi.fn(),
-    coordinationAddMember: vi.fn(),
     coordinationAddAgent: vi.fn(),
     coordinationDisbandTeam: vi.fn(),
     coordinationGetLiveTeamStatus: vi.fn(),
     coordinationInitializeTeam: vi.fn(),
     coordinationListTeams: vi.fn(),
     coordinationPreflightCheck: vi.fn(),
-    coordinationReonboard: vi.fn(),
     coordinationRemoveMember: vi.fn(),
     coordinationResumeMember: vi.fn(),
     coordinationResumeTeam: vi.fn(),
@@ -82,6 +79,9 @@ function createMockMap() {
     getTeamPreset: vi.fn(),
     upsertTeamPreset: vi.fn(),
     deleteTeamPreset: vi.fn(),
+    importRoleFromFile: vi.fn(),
+    exportRoleToFile: vi.fn(),
+    exportAgentDefinitions: vi.fn(),
     getTemplateStorageStatus: vi.fn(),
     getTemplateHistory: vi.fn(),
     getTemplateDiff: vi.fn(),
@@ -91,6 +91,7 @@ function createMockMap() {
     listRoleTemplates: vi.fn(),
     listTeamPresets: vi.fn(),
     onCoordinationStepProgress: vi.fn(),
+    onCoordinationResumeTeamProgress: vi.fn(),
   }
 }
 
@@ -105,12 +106,9 @@ export function resetVisualIpcMocks(overrides = {}) {
 
   visualIpcMocks.listProjects.mockResolvedValue([])
   visualIpcMocks.getProject.mockResolvedValue(null)
-  visualIpcMocks.registerProject.mockResolvedValue(null)
   visualIpcMocks.createProject.mockResolvedValue(null)
-  visualIpcMocks.updateProject.mockResolvedValue(null)
   visualIpcMocks.getRecentCommits.mockResolvedValue([])
   visualIpcMocks.getAllCommits.mockResolvedValue([])
-  visualIpcMocks.getGitStatus.mockResolvedValue({ modified: [], untracked: [], staged: [] })
   visualIpcMocks.getReadme.mockResolvedValue(null)
   visualIpcMocks.getFileTree.mockResolvedValue([])
   visualIpcMocks.readFile.mockResolvedValue(null)
@@ -121,13 +119,17 @@ export function resetVisualIpcMocks(overrides = {}) {
   visualIpcMocks.validateProjectPath.mockResolvedValue({ valid: true, message: null })
   visualIpcMocks.getLatestSession.mockResolvedValue(null)
   visualIpcMocks.listSessions.mockResolvedValue([])
-  visualIpcMocks.getSession.mockResolvedValue(null)
-  visualIpcMocks.getProjectActivity.mockResolvedValue(null)
+  visualIpcMocks.listCliSessionSnapshot.mockResolvedValue({ sessions: [], freshness: 'fresh' })
+  visualIpcMocks.getForegroundProject.mockResolvedValue(null)
+  visualIpcMocks.resolveLaunchAccount.mockResolvedValue({
+    accountId: null,
+    email: null,
+    source: 'default_config_dir',
+    needsChoice: false,
+  })
   visualIpcMocks.recordSessionActivity.mockResolvedValue(undefined)
   visualIpcMocks.getRelationships.mockResolvedValue([])
   visualIpcMocks.dismissRelationship.mockResolvedValue(undefined)
-  visualIpcMocks.createRelationship.mockResolvedValue(null)
-  visualIpcMocks.removeRelationship.mockResolvedValue(undefined)
   visualIpcMocks.isTauri.mockReturnValue(false)
   visualIpcMocks.isFirstRun.mockResolvedValue(false)
   visualIpcMocks.getSettings.mockResolvedValue({ dark_mode: false, code_theme: null })
@@ -145,7 +147,12 @@ export function resetVisualIpcMocks(overrides = {}) {
     degraded: false,
     error: null,
   })
+  visualIpcMocks.refreshAccountsUsage.mockResolvedValue(false)
   visualIpcMocks.setProjectAccount.mockResolvedValue(undefined)
+  // A pure helper, not an IPC call: the visual lane wants the real contract.
+  visualIpcMocks.buildFrontendFallbackTerminalContract.mockImplementation(
+    (platform = 'linux') => actualFallbackTerminalContract(platform),
+  )
   visualIpcMocks.navigateToSession.mockResolvedValue(undefined)
   visualIpcMocks.stopClaudeSession.mockResolvedValue(undefined)
   visualIpcMocks.removeProject.mockResolvedValue(undefined)
@@ -171,19 +178,14 @@ export function resetVisualIpcMocks(overrides = {}) {
     environment_available: true,
     error: null,
   })
-  visualIpcMocks.coordinationCreateTeam.mockResolvedValue(undefined)
-  visualIpcMocks.coordinationGetFeatureAvailability.mockResolvedValue({ available: true, reason: null })
   visualIpcMocks.coordinationGetProjectMeshSnapshot.mockResolvedValue(null)
-  visualIpcMocks.coordinationGetTeamStatus.mockResolvedValue(null)
   visualIpcMocks.composeTeam.mockResolvedValue({ roster: [], warnings: [], validationErrors: [] })
-  visualIpcMocks.coordinationAddMember.mockResolvedValue(undefined)
   visualIpcMocks.coordinationAddAgent.mockResolvedValue(undefined)
   visualIpcMocks.coordinationDisbandTeam.mockResolvedValue(undefined)
   visualIpcMocks.coordinationGetLiveTeamStatus.mockResolvedValue({ teamName: '', leadName: '', members: [] })
   visualIpcMocks.coordinationInitializeTeam.mockResolvedValue(undefined)
   visualIpcMocks.coordinationListTeams.mockResolvedValue([])
   visualIpcMocks.coordinationPreflightCheck.mockResolvedValue({ canInitialize: true, blockingErrors: [], agentWarnings: [] })
-  visualIpcMocks.coordinationReonboard.mockResolvedValue(undefined)
   visualIpcMocks.coordinationRemoveMember.mockResolvedValue(undefined)
   visualIpcMocks.coordinationResumeMember.mockResolvedValue(undefined)
   visualIpcMocks.coordinationResumeTeam.mockResolvedValue(undefined)
@@ -193,6 +195,9 @@ export function resetVisualIpcMocks(overrides = {}) {
   visualIpcMocks.getTeamPreset.mockResolvedValue(null)
   visualIpcMocks.upsertTeamPreset.mockResolvedValue(undefined)
   visualIpcMocks.deleteTeamPreset.mockResolvedValue(undefined)
+  visualIpcMocks.importRoleFromFile.mockResolvedValue({ success: true, role: null, conflict: null })
+  visualIpcMocks.exportRoleToFile.mockResolvedValue({ targetFormat: 'claude_agent', fileContent: '', lossyFields: [] })
+  visualIpcMocks.exportAgentDefinitions.mockResolvedValue({ written: [], removed: [], skipped: [] })
   visualIpcMocks.getTemplateStorageStatus.mockResolvedValue({ dirty: false, head: null, branch: null })
   visualIpcMocks.getTemplateHistory.mockResolvedValue({ commits: [], cursor: null, has_more: false })
   visualIpcMocks.getTemplateDiff.mockResolvedValue(null)
@@ -202,6 +207,7 @@ export function resetVisualIpcMocks(overrides = {}) {
   visualIpcMocks.listRoleTemplates.mockResolvedValue([])
   visualIpcMocks.listTeamPresets.mockResolvedValue([])
   visualIpcMocks.onCoordinationStepProgress.mockResolvedValue(() => {})
+  visualIpcMocks.onCoordinationResumeTeamProgress.mockResolvedValue(() => {})
 
   for (const [name, value] of Object.entries(overrides)) {
     const mock = visualIpcMocks[name]
