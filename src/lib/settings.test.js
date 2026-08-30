@@ -391,6 +391,47 @@ describe('Settings component', () => {
     )
   })
 
+  // Regression: 1c779eb gave this line the backend's resolved bases and left
+  // nothing to invalidate them. Saving a launch command only wrote settings, so
+  // the line went on describing the command the operator had just replaced —
+  // while the next launch resolved and ran the new one.
+  it('re-resolves a launch command it has just saved', async () => {
+    listAccounts.mockImplementation(
+      withResolvedBases([
+        {
+          command:
+            "CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude --dangerously-skip-permissions",
+          expansions: [
+            { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
+          ],
+          opaqueHead: null,
+        },
+      ])
+    )
+
+    render(Settings, { props: defaultProps() })
+    const line = await screen.findByTestId('effective-default-claude')
+    expect(line).toHaveTextContent(
+      'Effective default: B — from your launch command "claude2" (alias for CLAUDE_CONFIG_DIR=~/.claude-account2 claude)'
+    )
+
+    // The operator drops the alias for the CLI itself.
+    listAccounts.mockImplementation(
+      withResolvedBases([
+        { command: 'claude --dangerously-skip-permissions', expansions: [], opaqueHead: null },
+      ])
+    )
+    const input = screen.getByTestId('cli-claude-fresh')
+    input.value = 'claude --dangerously-skip-permissions'
+    await fireEvent.blur(input)
+
+    await waitFor(() =>
+      expect(screen.getByTestId('effective-default-claude')).toHaveTextContent(
+        'Effective default: A — default config directory'
+      )
+    )
+  })
+
   it('hides the accounts card when no tool has multiple accounts', async () => {
     // Regression: c11770e exposed account controls to single-account users,
     // contradicting the chooser and overview visibility rule.

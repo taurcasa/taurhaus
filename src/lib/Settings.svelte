@@ -9,6 +9,7 @@
   import { buildFrontendFallbackTerminalContract } from './ipc/system.js'
   import {
     accountState,
+    forgetResolvedBases,
     opaqueBaseNotice,
     refreshAccounts,
     refreshUsage,
@@ -376,16 +377,27 @@
     return settings?.terminal?.cli_commands?.[tool]?.[mode] ?? getTerminalCliDefaults()[tool][mode]
   }
 
-  function setCliCmd(tool, mode, value) {
-    ensureCliCommands()
-    settings.terminal.cli_commands[tool][mode] = value
-    saveSettings()
+  /**
+   * A saved launch command is a new question for the backend: what the pane
+   * shell makes of it is resolved there, and the answer to the command it
+   * replaced describes nothing any launch will run.
+   */
+  async function resolveSavedCommand(tool) {
+    if (!cliTools.find((entry) => entry.id === tool)?.capabilities.accountSelection) return
+    forgetResolvedBases(tool)
+    await refreshAccounts(tool, { force: true })
   }
 
-  function resetToolDefaults(tool) {
+  async function setCliCmd(tool, mode, value) {
+    ensureCliCommands()
+    settings.terminal.cli_commands[tool][mode] = value
+    if (await saveSettings()) await resolveSavedCommand(tool)
+  }
+
+  async function resetToolDefaults(tool) {
     ensureCliCommands()
     settings.terminal.cli_commands[tool] = { ...getTerminalCliDefaults()[tool] }
-    saveSettings()
+    if (await saveSettings()) await resolveSavedCommand(tool)
   }
 
   async function handleRebuildIndex() {

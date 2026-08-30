@@ -175,6 +175,17 @@ const USAGE_SYNC_MAX_RETRY_MS = 16_000
 const USAGE_SYNC_DEADLINE_MS = 30_000
 const usageSyncTimers = new Map()
 
+/**
+ * Forget what the backend said this tool's launch commands mean.
+ *
+ * A command the operator has just edited was never resolved, and the answer to
+ * the one it replaced describes a command no launch will run. Until a refresh
+ * lands, the literal commands in settings are the honest answer.
+ */
+export function forgetResolvedBases(tool = providerTool()) {
+  mutableAccountState(tool).resolvedBases = []
+}
+
 export function refreshAccounts(tool = providerTool(), { force = false } = {}) {
   const id = toolId(tool)
   const current = detections.get(id)
