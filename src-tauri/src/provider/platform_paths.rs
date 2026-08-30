@@ -10,9 +10,11 @@ const DATA_DIR_OVERRIDE_ENV: &str = "TAURHAUS_DATA_DIR";
 const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 const CODEX_HOME_ENV: &str = "CODEX_HOME";
 const GROK_HOME_ENV: &str = "GROK_HOME";
+const AGY_DIR_OVERRIDE_ENV: &str = "TAURHAUS_AGY_DIR";
 const CLAUDE_SETTINGS_FILENAME: &str = "settings.json";
 const HOOKS_DIRNAME: &str = "hooks";
 const DAEMON_BINARY_NAME: &str = "taurhaus-daemon";
+const DAEMON_TOKEN_FILENAME: &str = "daemon.token";
 
 /// Central authority for platform-sensitive path resolution.
 ///
@@ -27,6 +29,11 @@ impl PlatformPaths {
     /// Active app data directory for the current run.
     pub fn app_data_root() -> PathBuf {
         env_path_override(DATA_DIR_OVERRIDE_ENV).unwrap_or_else(default_app_data_root)
+    }
+
+    /// Daemon authentication token under the active app data root.
+    pub fn daemon_token_path() -> PathBuf {
+        Self::app_data_root().join(DAEMON_TOKEN_FILENAME)
     }
 
     /// Canonical structured JSONL log path.
@@ -74,8 +81,15 @@ impl PlatformPaths {
         env_path_override(GROK_HOME_ENV).unwrap_or_else(default_grok_dir)
     }
 
-    /// Antigravity's shared Google tooling root (`~/.gemini`).
+    /// Antigravity's shared Google tooling root.
+    ///
+    /// `TAURHAUS_AGY_DIR` is a taurhaus-only isolation override. Antigravity
+    /// has no supported process-level home selector, so managed launches still
+    /// use its real `~/.gemini` root.
     pub fn agy_dir() -> PathBuf {
+        if let Some(path) = env_path_override(AGY_DIR_OVERRIDE_ENV) {
+            return path;
+        }
         if let Some(path) = windows_unc_home_subdir(".gemini") {
             return path;
         }
@@ -107,7 +121,11 @@ impl PlatformPaths {
                 Self::claude_dir().join(tool_config.projects_subdir)
             }
             crate::session_scanner::cli_tool::SessionRoot::ToolHome => {
-                default_tool_session_root(tool)
+                if tool == CliTool::Agy {
+                    Self::agy_dir().join(tool_config.projects_subdir)
+                } else {
+                    default_tool_session_root(tool)
+                }
             }
         }
     }
@@ -232,40 +250,10 @@ fn home_dir_or_temp() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fs2::FileExt;
-    use std::sync::{LazyLock, Mutex, MutexGuard};
     use tempfile::TempDir;
 
-    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-
-    struct EnvTestGuard {
-        _in_process: MutexGuard<'static, ()>,
-        lock_file: std::fs::File,
-    }
-
-    impl Drop for EnvTestGuard {
-        fn drop(&mut self) {
-            let _ = self.lock_file.unlock();
-        }
-    }
-
-    fn acquire_env_test_guard() -> EnvTestGuard {
-        let in_process = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let lock_path = std::env::temp_dir().join("taurhaus-platform-paths-env-tests.lock");
-        let lock_file = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .unwrap_or_else(|e| panic!("failed to open env test lock at {:?}: {e}", lock_path));
-        lock_file
-            .lock_exclusive()
-            .unwrap_or_else(|e| panic!("failed to lock env test lock at {:?}: {e}", lock_path));
-        EnvTestGuard {
-            _in_process: in_process,
-            lock_file,
-        }
+    fn acquire_env_test_guard() -> crate::test_support::EnvTestGuard {
+        crate::test_support::acquire_env_test_guard()
     }
 
     #[test]
@@ -340,6 +328,23 @@ mod tests {
         std::env::remove_var(CLAUDE_DIR_OVERRIDE_ENV);
         assert_eq!(script_dir, temp.path().join(HOOKS_DIRNAME));
         assert_eq!(settings_path, temp.path().join(CLAUDE_SETTINGS_FILENAME));
+    }
+
+    // Regression: commit 4e9e2c54 centralized Antigravity's root but left it
+    // fixed at the operator's `~/.gemini`, so E2E startup installed hooks into
+    // the real profile even when every other tool root was isolated.
+    #[test]
+    fn agy_dir_and_sessions_use_the_taurhaus_override() {
+        let _guard = acquire_env_test_guard();
+        let temp = TempDir::new().expect("tempdir");
+        std::env::set_var("TAURHAUS_AGY_DIR", temp.path());
+
+        let root = PlatformPaths::agy_dir();
+        let sessions = PlatformPaths::tool_session_root(CliTool::Agy);
+
+        std::env::remove_var("TAURHAUS_AGY_DIR");
+        assert_eq!(root, temp.path());
+        assert_eq!(sessions, temp.path().join("antigravity-cli/conversations"));
     }
 
     #[test]

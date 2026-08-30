@@ -432,6 +432,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 transcript_parser: false,
                 catalog: true,
                 session_root: SessionRoot::ToolHome,
+                // agy exposes no supported home selector. `TAURHAUS_AGY_DIR`
+                // is taurhaus-only test isolation and is never sent to the CLI.
                 account_selector: None,
                 account_selection: false,
                 team_config_namespace: false,
