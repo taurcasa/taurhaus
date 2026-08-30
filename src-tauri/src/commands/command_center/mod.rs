@@ -419,7 +419,9 @@ fn delegate_launch_to_coordination_resume(
     let opaque_head = terminal_settings
         .cli_commands
         .resolved_bases
-        .get(&(tool, protocol::LaunchMode::Resume))
+        // This delegated request has no resume session id, so coordination's
+        // renderer selects the Fresh base even though the UI action is Resume.
+        .get(&(tool, protocol::LaunchMode::Fresh))
         .and_then(|base| base.opaque_head.clone());
     let request = ResumeMemberRequest {
         team_name: target.team_name.clone(),

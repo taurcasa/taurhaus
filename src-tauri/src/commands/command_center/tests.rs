@@ -2539,10 +2539,9 @@ fn delegated_resume_without_a_requested_account_reports_nothing() {
     assert_eq!(result.account_note, None);
 }
 
-// Regression: e2f9745b persisted the opaque-base account result for launches
-// rendered inside coordination, but the command-center delegation returned a
-// fresh pane result and discarded that note before the Overview/sidebar caller
-// could surface it.
+// Regression: 3e5f871a inspected the resolved Resume base for this delegated
+// path even though coordination renders Fresh when no session id is supplied.
+// A wrapper in the command that actually launched was therefore silent.
 #[test]
 fn delegated_resume_with_an_opaque_base_reports_that_account_selection_is_not_guaranteed() {
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
@@ -2553,7 +2552,7 @@ fn delegated_resume_with_an_opaque_base_reports_that_account_selection_is_not_gu
     {
         let conn = db.0.lock().expect("db lock");
         let mut settings = crate::db::settings_queries::get_all_settings(&conn).expect("settings");
-        settings.terminal.cli_commands.claude.resume =
+        settings.terminal.cli_commands.claude.fresh =
             "mywrap claude --dangerously-skip-permissions".to_string();
         crate::db::settings_queries::save_settings(&conn, &settings).expect("save settings");
     }
@@ -2612,6 +2611,80 @@ fn delegated_resume_with_an_opaque_base_reports_that_account_selection_is_not_gu
     assert_eq!(result.account_applied, Some(false));
     assert_eq!(result.account_note.as_deref(), Some("opaque_base_command"));
     assert_eq!(result.account_note_detail.as_deref(), Some("mywrap"));
+}
+
+// Regression: 3e5f871a also produced the inverse false alarm by inspecting a
+// wrapped Resume base even when this delegated path rendered an unwrapped
+// Fresh command.
+#[test]
+fn delegated_resume_does_not_report_a_wrapper_from_the_unused_resume_base() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("temp teams dir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
+    let (db, _db_file) = setup_db_with_project("p-team-resume-wrapper", "/tmp/project");
+    {
+        let conn = db.0.lock().expect("db lock");
+        let mut settings = crate::db::settings_queries::get_all_settings(&conn).expect("settings");
+        settings.terminal.cli_commands.claude.resume =
+            "mywrap claude --dangerously-skip-permissions --resume".to_string();
+        crate::db::settings_queries::save_settings(&conn, &settings).expect("save settings");
+    }
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: None,
+        wsl_distro: None,
+    };
+    let (log_file, _log_file) = setup_log_file();
+
+    save_team_member(
+        tmp.path(),
+        "architecture-final",
+        "developer2",
+        "/tmp/project",
+        CliTool::Claude,
+    );
+    save_member_runtime_record(
+        tmp.path(),
+        "architecture-final",
+        "developer2",
+        MemberRuntimeRecord {
+            schema_version: 3,
+            member_name: "developer2".to_string(),
+            cli_tool: Some(CliTool::Claude),
+            project_path: Some(PathBuf::from("/tmp/project")),
+            pane_id: Some("%9".to_string()),
+            pane_pid: None,
+            pane_start_time: None,
+            session_id: None,
+            jsonl_path: None,
+            daemon_pid: None,
+            health: HealthState::SessionDead,
+            delivery_lease: None,
+            attached_at: Some(chrono::Utc::now()),
+            last_seen_at: Some(chrono::Utc::now()),
+            applied_effort: None,
+            effort_resume_failure: None,
+            launch_account: Default::default(),
+            extra: Default::default(),
+        },
+    );
+
+    let result = launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        Some(&coordination_state),
+        "p-team-resume-wrapper".to_string(),
+        LaunchMode::Resume,
+        Some(CliTool::Claude),
+        None,
+    )
+    .expect("delegated resume should succeed");
+
+    assert_eq!(result.account_applied, None);
+    assert_eq!(result.account_note, None);
+    assert_eq!(result.account_note_detail, None);
 }
 
 // A wrapper script or shell function can override the selector taurhaus
