@@ -498,8 +498,8 @@
         class="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition-colors
           {child.disabled ? textMuted + ' cursor-default opacity-50' : textPrimary + ' ' + hoverBg}
           {childIndex === childFocusIndex && !child.disabled ? focusBg : ''}"
-        role="menuitemradio"
-        aria-checked={Boolean(child.check)}
+        role={'check' in child ? 'menuitemradio' : 'menuitem'}
+        aria-checked={'check' in child ? Boolean(child.check) : undefined}
         disabled={child.disabled}
         onmousedown={(e) => { e.stopPropagation(); activate(child) }}
         onmouseenter={() => { if (!child.disabled) childFocusIndex = childIndex }}
