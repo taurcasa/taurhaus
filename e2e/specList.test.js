@@ -78,19 +78,11 @@ describe('default WDIO spec list', () => {
     const firstStallTurn = stallBody.indexOf(
       'expect(await waitForTurnAfter(turnCount, ONBOARDING_TURN_TIMEOUT_MS)).toBe(true)'
     )
-    const finalTurnBaseline = stallBody.indexOf(
-      'previousCaseFinalTurnBaseline = completedTurns()'
-    )
-
     expect(settle).toBeGreaterThanOrEqual(0)
     expect(assignment).toBeGreaterThan(settle)
     expect(delivery).toBeGreaterThan(assignment)
     expect(firstStallTurn).toBeGreaterThanOrEqual(0)
-    expect(finalTurnBaseline).toBeGreaterThan(firstStallTurn)
-    expect(managedDeadlineSource).toContain(
-      'waitForTurnAfter(previousCaseFinalTurnBaseline, ONBOARDING_TURN_TIMEOUT_MS)'
-    )
-    expect(managedDeadlineSource).toContain('browser.pause(FOLLOWUP_ASSIGNMENT_SETTLE_MS)')
+    expect(managedDeadlineSource).toContain('SETTLE_QUIESCENCE_CAP_MS')
     expect(managedDeadlineSource).toMatch(
       /notice delivered into a mid-turn pane can be[\s\S]*swallowed member-side[\s\S]*mesh records it as delivered/i
     )
@@ -104,8 +96,11 @@ describe('default WDIO spec list', () => {
       managedDeadlineSource.indexOf('async function ensureMemberHasTakenATurn')
     )
 
-    expect(settleHelper).not.toMatch(/did not record its final-turn baseline/)
-    expect(settleHelper).toMatch(/previousCaseFinalTurnBaseline\s*\?\?[^\n]*completedTurns\(\)/)
+    // Quiescence, not an edge: the helper never throws and never demands a
+    // further turn — it waits for the count to stop moving under a cap.
+    expect(settleHelper).not.toMatch(/throw new Error/)
+    expect(settleHelper).toMatch(/SETTLE_QUIESCENCE_CAP_MS/)
+    expect(settleHelper).toMatch(/completedTurns\(\)/)
   })
 
   // Regression: 348204fa moved suppression behind a stale task but left the

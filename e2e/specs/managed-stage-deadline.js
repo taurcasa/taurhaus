@@ -125,6 +125,7 @@ const ASSIGNMENT_START_TIMEOUT_MS = 240_000
 const DEADLINE_ACTION_TIMEOUT_MS = 180_000
 const PASS_EVIDENCE_TIMEOUT_MS = 210_000
 const FOLLOWUP_ASSIGNMENT_SETTLE_MS = 3_000
+const SETTLE_QUIESCENCE_CAP_MS = 30_000
 
 const dataDir = process.env.TAURHAUS_DATA_DIR || ''
 const codexHome = process.env.CODEX_HOME || ''
@@ -161,7 +162,6 @@ let fixtureSetupError = ''
 let fixtureProjectKey = null
 const createdTeamNames = new Set()
 const measured = {}
-let previousCaseFinalTurnBaseline = null
 
 // The first-run wizard scans E2E_PROJECTS_DIR inside the before hook, so this
 // throwaway project must exist at module load. The worker root removes it.
@@ -508,14 +508,25 @@ async function waitForTurnAfter(previousTurns, timeoutMs) {
 }
 
 async function settlePreviousCaseBeforeAssignment() {
-  previousCaseFinalTurnBaseline ??= Math.max(0, completedTurns() - 1)
-  if (!(await waitForTurnAfter(previousCaseFinalTurnBaseline, ONBOARDING_TURN_TIMEOUT_MS))) {
-    throw new Error('the previous case did not finish its final Codex turn before follow-up assignment')
-  }
-
   // Observed attempt 1: a notice delivered into a mid-turn pane can be
-  // swallowed member-side even though mesh records it as delivered.
-  await browser.pause(FOLLOWUP_ASSIGNMENT_SETTLE_MS)
+  // swallowed member-side even though mesh records it as delivered. Wait for
+  // turn QUIESCENCE — the completed-turn count unchanged for a full settle
+  // window — instead of demanding a further turn the product never promises:
+  // a failed or inconclusive previous case must not also destroy this
+  // measurement, and a focused single-case re-run settles the same way.
+  const cap = Date.now() + SETTLE_QUIESCENCE_CAP_MS
+  let stable = completedTurns()
+  let stableSince = Date.now()
+  while (Date.now() < cap) {
+    await browser.pause(500)
+    const now = completedTurns()
+    if (now !== stable) {
+      stable = now
+      stableSince = Date.now()
+    } else if (Date.now() - stableSince >= FOLLOWUP_ASSIGNMENT_SETTLE_MS) {
+      return
+    }
+  }
 }
 
 async function ensureMemberHasTakenATurn(paneId) {
@@ -1000,7 +1011,6 @@ describe('managed stage deadline semantics', function () {
     // resulting in-progress transition. The completed Codex turn proves it then
     // returned to silence rather than the test holding a fake status open.
     expect(await waitForTurnAfter(turnCount, ONBOARDING_TURN_TIMEOUT_MS)).toBe(true)
-    previousCaseFinalTurnBaseline = completedTurns()
     expect(imported.task.deadline_minutes).toBe(DEADLINE_MINUTES)
     expect(Number.isFinite(Date.parse(imported.task.assigned_at))).toBe(true)
     expect(imported.task.nudged_at ?? null).toBeNull()
