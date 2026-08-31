@@ -79,9 +79,9 @@ fn apply_member_deadline(
     }
     let action = decide(
         &DeadlineInput {
-            // Until mesh supplies an assignment timestamp, the latest
-            // operational task-content write is the deadline clock origin.
-            // A later content refresh therefore restarts this clock.
+            // Until mesh supplies an assignment timestamp, the latest saved
+            // operational snapshot write is the deadline clock origin. Any
+            // snapshot content refresh therefore restarts this clock.
             assigned_at: snapshot.updated_at,
             deadline_minutes,
             nudged_at: snapshot.task.nudged_at,
