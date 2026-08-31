@@ -12,7 +12,12 @@ export async function waitWithPaneTail({ memberName, paneId, wait, capturePane, 
   try {
     return await wait()
   } catch (error) {
-    const captured = (await capturePane(paneId)).trimEnd()
+    let captured = ''
+    try {
+      captured = (await capturePane(paneId)).trimEnd()
+    } catch {
+      captured = ''
+    }
     const tail = captured ? captured.split('\n').slice(-tailLines).join('\n') : '(pane capture empty)'
     throw new Error(
       `${String(error?.message ?? error)}\n${memberName} pane ${paneId} capture tail:\n${tail}`,

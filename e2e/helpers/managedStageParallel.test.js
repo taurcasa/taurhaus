@@ -87,4 +87,27 @@ describe('waitWithPaneTail', () => {
       'bind deadline expired\ncodex-beta pane %9 capture tail:\nmigration failed\nlocal database appears to be damaged'
     )
   })
+
+  // Regression: f6dfee6f let a pane-capture failure replace the original bind
+  // timeout, hiding which managed member failed to bind its session.
+  it('preserves the bind error when pane capture also fails', async () => {
+    const bindError = new Error('codex-beta did not bind its scratch-home session')
+    const waiting = waitWithPaneTail({
+      memberName: 'codex-beta',
+      paneId: '%9',
+      wait: async () => {
+        throw bindError
+      },
+      capturePane: async () => {
+        throw new Error('Webdriver session is gone')
+      },
+    })
+
+    await expect(waiting).rejects.toMatchObject({
+      message:
+        'codex-beta did not bind its scratch-home session\n' +
+        'codex-beta pane %9 capture tail:\n(pane capture empty)',
+      cause: bindError,
+    })
+  })
 })
