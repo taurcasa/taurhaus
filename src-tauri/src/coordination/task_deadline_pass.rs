@@ -123,6 +123,11 @@ fn apply_member_deadline(
 
     if let Err(error) = action_result {
         rollback_claim(&orchestrator.teams_dir, &claimed, action, now)?;
+        if action == DeadlineAction::MarkStale
+            && matches!(&error, CoordinationError::Conflict(_))
+        {
+            return Ok(());
+        }
         return Err(error);
     }
 

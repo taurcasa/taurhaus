@@ -1895,6 +1895,35 @@ mod tests {
         assert_no_deadline_termination(&runtime);
     }
 
+    // Regression: 1bb8668e reported a deadline failure every pass when mesh
+    // completed the task after the operational snapshot was loaded but before
+    // the stale write landed.
+    #[test]
+    fn deadline_self_heal_skips_a_mesh_task_that_already_moved_on() {
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
+        let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
+        seed_deadline_task(&teams_dir, assigned_at, Some(20));
+        set_mesh_task_status(&teams_dir, "completed");
+
+        let summary = state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                assigned_at + chrono::Duration::minutes(20),
+            )
+            .expect("moved-on task is a harmless deadline skip");
+
+        assert_eq!(summary.team_errors, 0);
+        assert!(deadline_notices(&fake).is_empty());
+        let stored = deadline_snapshot(&teams_dir);
+        assert_eq!(stored.task.status, "in_progress");
+        assert_eq!(stored.task.stale_at, None);
+        assert_eq!(mesh_task_status(&teams_dir), "completed");
+        assert_no_deadline_termination(&runtime);
+    }
+
     #[test]
     fn deadline_marker_compare_and_commit_skips_a_changed_snapshot_then_redecides() {
         use crate::coordination::stores::{
