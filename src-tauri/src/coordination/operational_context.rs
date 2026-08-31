@@ -297,6 +297,9 @@ fn preserve_task_deadline_markers(
             task.deadline_minutes = existing.deadline_minutes;
             task.nudged_at = existing.nudged_at;
             task.stale_at = existing.stale_at;
+            if existing.status == "stale" {
+                task.status = existing.status.clone();
+            }
         }
     }
 

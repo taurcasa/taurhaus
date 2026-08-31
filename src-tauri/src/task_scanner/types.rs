@@ -13,6 +13,7 @@ pub enum TaskStatus {
     Pending,
     InProgress,
     Completed,
+    Stale,
 }
 
 impl std::fmt::Display for TaskStatus {
@@ -21,6 +22,7 @@ impl std::fmt::Display for TaskStatus {
             TaskStatus::Pending => write!(f, "pending"),
             TaskStatus::InProgress => write!(f, "in_progress"),
             TaskStatus::Completed => write!(f, "completed"),
+            TaskStatus::Stale => write!(f, "stale"),
         }
     }
 }

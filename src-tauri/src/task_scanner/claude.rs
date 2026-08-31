@@ -399,6 +399,7 @@ fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<Uni
     let status = match raw.status.as_str() {
         "in_progress" => TaskStatus::InProgress,
         "completed" => TaskStatus::Completed,
+        "stale" => TaskStatus::Stale,
         _ => TaskStatus::Pending, // "pending" and anything unknown → Pending
     };
 
@@ -639,6 +640,9 @@ mod tests {
 
     #[test]
     fn status_mapping() {
+        // Regression: 1bb8668e made the deadline pass write `stale`, but the
+        // Claude task importer decoded that token as `pending` and reopened
+        // the assignment on the next scan.
         let tmp = TempDir::new().unwrap();
         let task_dir = tmp.path().join("session-status");
         fs::create_dir_all(&task_dir).unwrap();
@@ -661,14 +665,20 @@ mod tests {
         write_task(
             &task_dir,
             "4.json",
-            r#"{"id":"4","subject":"Unknown","status":"unknown_value"}"#,
+            r#"{"id":"4","subject":"Stale","status":"stale"}"#,
+        );
+        write_task(
+            &task_dir,
+            "5.json",
+            r#"{"id":"5","subject":"Unknown","status":"unknown_value"}"#,
         );
 
         let tasks = parse_task_directory_for_test(&task_dir);
         assert_eq!(tasks[0].status, TaskStatus::Pending);
         assert_eq!(tasks[1].status, TaskStatus::InProgress);
         assert_eq!(tasks[2].status, TaskStatus::Completed);
-        assert_eq!(tasks[3].status, TaskStatus::Pending); // unknown → Pending
+        assert_eq!(tasks[3].status, TaskStatus::Stale);
+        assert_eq!(tasks[4].status, TaskStatus::Pending); // unknown → Pending
     }
 
     #[test]

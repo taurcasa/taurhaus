@@ -225,7 +225,14 @@ fn set_action_marker(
     match action {
         DeadlineAction::Nothing => {}
         DeadlineAction::Nudge => snapshot.task.nudged_at = value,
-        DeadlineAction::MarkStale => snapshot.task.stale_at = value,
+        DeadlineAction::MarkStale => {
+            snapshot.task.stale_at = value;
+            snapshot.task.status = if value.is_some() {
+                "stale".to_string()
+            } else {
+                "in_progress".to_string()
+            };
+        }
     }
 }
 

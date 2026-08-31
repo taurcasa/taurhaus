@@ -1736,6 +1736,7 @@ mod tests {
         let staled = deadline_snapshot(&teams_dir);
         assert_eq!(staled.task.nudged_at, Some(half_deadline));
         assert_eq!(staled.task.stale_at, Some(full_deadline));
+        assert_eq!(staled.task.status, "stale");
         assert_eq!(mesh_task_status(&teams_dir), "stale");
         assert_no_deadline_termination(&runtime);
         let runtime_record = MemberRuntimeStore::load(&teams_dir, "deadline-team", "builder")
