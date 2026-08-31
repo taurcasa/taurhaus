@@ -12,6 +12,7 @@ docs/sessions/
 # Rust build artifacts
 src-tauri/target/
 target/
+/.cargo/config.toml
 
 # SQLite database files
 *.db

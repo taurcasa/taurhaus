@@ -29,6 +29,71 @@ ensure-tauri-resources:
     @if [ ! -s src-tauri/resources/mesh.version ]; then echo "0.0.0-dev" > src-tauri/resources/mesh.version; fi
     @if [ ! -s src-tauri/resources/mesh.manifest.json ]; then printf '%s\n' '{"version":"0.0.0-dev","protocol_version":1,"schema_version":1,"git_commit":null,"bundled_at_utc":"unknown"}' > src-tauri/resources/mesh.manifest.json; fi
 
+# Provision an isolated development lane using the proven fetch, worktree-add,
+# and frozen Bun install sequence. The worktree-local Cargo config affects only
+# that lane: the main checkout and release builds keep src-tauri/target untouched.
+# Cargo's own locking serializes concurrent lanes sharing the cache.
+provision-worktree LANE_PATH BRANCH BASE="origin/main":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    lane_input={{quote(LANE_PATH)}}
+    lane_parent=$(cd -- {{quote(invocation_directory())}} && cd -- "$(dirname -- "$lane_input")" && pwd)
+    lane_path="$lane_parent/$(basename -- "$lane_input")"
+    lane_branch={{quote(BRANCH)}}
+    lane_base={{quote(BASE)}}
+    shared_target="${HOME:?}/.cache/taurhaus-lane-target"
+    mkdir -p -- "$shared_target"
+    git fetch origin
+    git worktree add "$lane_path" -b "$lane_branch" "$lane_base"
+    mkdir -p -- "$lane_path/.cargo"
+    {
+        printf '%s\n' '# Shared Cargo target for taurhaus lane worktrees.'
+        printf '%s\n' '# This worktree-local config affects only this lane; the main checkout and release builds keep src-tauri/target untouched.'
+        printf '%s\n' '# Deleting ~/.cache/taurhaus-lane-target is always safe; Cargo'\''s own locking serializes concurrent lane compiles.'
+        printf '%s\n' '# Binaries in the shared target are last-writer-wins, so recipes that run one (E2E) pin CARGO_TARGET_DIR back to this lane.'
+        printf '%s\n' '[build]'
+        printf 'target-dir = "%s"\n' "$shared_target"
+    } > "$lane_path/.cargo/config.toml"
+    (
+        cd -- "$lane_path"
+        bun install --frozen-lockfile
+    )
+
+# Remove a lane worktree and its branch. Unmerged branches are preserved unless
+# the caller explicitly acknowledges the destructive cleanup with FORCE_BRANCH=1.
+remove-worktree LANE_PATH:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    lane_input={{quote(LANE_PATH)}}
+    lane_parent=$(cd -- {{quote(invocation_directory())}} && cd -- "$(dirname -- "$lane_input")" && pwd)
+    lane_path="$lane_parent/$(basename -- "$lane_input")"
+    lane_branch=$(git -C "$lane_path" symbolic-ref --quiet --short HEAD) || {
+        echo "Cannot remove '$lane_path': its branch could not be resolved." >&2
+        exit 1
+    }
+    force_branch="${FORCE_BRANCH:-0}"
+    integration_ref="origin/main"
+    # FORCE_BRANCH=1 is the explicit destructive override, so it must work
+    # with origin unreachable: skip the fetch and the ancestry check entirely.
+    if [ "$force_branch" != "1" ]; then
+        git fetch origin
+        if ! git merge-base --is-ancestor "refs/heads/$lane_branch" "$integration_ref"; then
+            echo "Refusing to remove '$lane_path': branch '$lane_branch' is not merged into $integration_ref." >&2
+            echo "Set FORCE_BRANCH=1 to remove the worktree and delete the unmerged branch." >&2
+            exit 1
+        fi
+    fi
+    git worktree remove "$lane_path" --force
+    # The integration guard above replaces `git branch -d`'s HEAD-relative check.
+    git branch -D -- "$lane_branch"
+
+# Reclaim the shared lane Cargo artifacts. This cache is always safe to delete.
+clean-lane-target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shared_target="${HOME:?}/.cache/taurhaus-lane-target"
+    rm -rf -- "$shared_target"
+
 # Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
 # Use this when you need the definitive "is this ready?" signal.
 # TAURHAUS_CHECK_SEED_FAILURE=rust|frontend|late-failure|fast-failure|green is test-only: it replaces both lanes
@@ -181,6 +246,7 @@ lint-workflows:
 # Exercise the real full-gate lane joiner with test-only seeded commands.
 lint-just-gates:
     scripts/check-just-gates.sh
+    scripts/check-lane-worktree-recipes.sh
 
 # Typecheck frontend code
 typecheck:
@@ -332,15 +398,20 @@ test-watch:
 # IMPORTANT: Always use this (not raw `cargo build`) — Tauri needs --debug --no-bundle
 # for embedded asset serving. A plain `cargo build` produces a binary that tries to
 # connect to a dev server, resulting in a blank page.
+# CARGO_TARGET_DIR keeps the E2E app and daemon in this checkout's own target even in a
+# provisioned lane: a shared target is last-writer-wins for binaries, so a concurrent
+# lane's build would replace the app underneath a live run.
 build-e2e:
-    bunx tauri build --debug --no-bundle
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" bunx tauri build --debug --no-bundle
 
 # Run E2E tests — Tier 1 only.
+# The recipe pins CARGO_TARGET_DIR to this checkout so a provisioned lane's shared
+# Cargo target never hands two lanes the same app binary.
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
 # opt-in that only rebuilds/restarts the operator's installed daemon.
 # Builds the app automatically unless E2E_SKIP_BUILD=1 is set.
 test-e2e: e2e-prepare-daemon
-    bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
 
 # Run E2E tests — Tier 1 + Tier 2 (daemon must be running)
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
@@ -349,14 +420,14 @@ test-e2e: e2e-prepare-daemon
 # is never part of a suite run: `e2e/specList.js` keeps every paid lane out of
 # the config's spec list. Start it by name with test-e2e-spec.
 test-e2e-full: e2e-prepare-daemon
-    bunx wdio run e2e/wdio.conf.js
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" bunx wdio run e2e/wdio.conf.js
 
 # Run a single E2E spec file.
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
 # opt-in that only rebuilds/restarts the operator's installed daemon.
 # Builds by default (safe). Set E2E_SKIP_BUILD=1 explicitly if you already built.
 test-e2e-spec SPEC: e2e-prepare-daemon
-    bunx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" bunx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
 
 # Legacy operator-daemon prep; isolated workers do not use this install.
 # Default is safe/no-op. Set E2E_INSTALL_DAEMON=1 only to mutate the host install.
@@ -492,6 +563,10 @@ _install-daemon-from-build:
     #!/usr/bin/env bash
     set -euo pipefail
 
+    cargo_target_dir=$(
+        cargo metadata --format-version 1 --no-deps --manifest-path src-tauri/Cargo.toml |
+            node -e 'const fs = require("node:fs"); const metadata = JSON.parse(fs.readFileSync(0, "utf8")); process.stdout.write(metadata.target_directory)'
+    )
     DAEMON_BIN="taurhaus-daemon"
     INSTALL_DIR="$HOME/.local/bin"
     WAS_RUNNING=false
@@ -555,7 +630,7 @@ _install-daemon-from-build:
     # Install (atomic swap avoids "Text file busy" when replacing a running binary)
     mkdir -p "$INSTALL_DIR"
     TMP_BIN="$INSTALL_DIR/.${DAEMON_BIN}.new"
-    install -m 755 "src-tauri/target/release/$DAEMON_BIN" "$TMP_BIN"
+    install -m 755 "$cargo_target_dir/release/$DAEMON_BIN" "$TMP_BIN"
     mv -f "$TMP_BIN" "$INSTALL_DIR/$DAEMON_BIN"
     echo "✓ Installed $DAEMON_BIN to $INSTALL_DIR/"
 
@@ -703,6 +778,7 @@ sync-windows:
     rsync -a --delete \
         --exclude='node_modules' \
         --exclude='target' \
+        --exclude='/.cargo/' \
         --exclude='dist' \
         --exclude='.git' \
         {{project}}/ {{win_dir}}/
@@ -713,10 +789,16 @@ bundle-daemon: build-daemon
     just _bundle-daemon-from-build
 
 _bundle-daemon-from-build:
-    @echo "▸ Bundling daemon binary into src-tauri/resources/…"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo_target_dir=$(
+        cargo metadata --format-version 1 --no-deps --manifest-path src-tauri/Cargo.toml |
+            node -e 'const fs = require("node:fs"); const metadata = JSON.parse(fs.readFileSync(0, "utf8")); process.stdout.write(metadata.target_directory)'
+    )
+    echo "▸ Bundling daemon binary into src-tauri/resources/…"
     mkdir -p src-tauri/resources
-    cp src-tauri/target/release/taurhaus-daemon src-tauri/resources/taurhaus-daemon
-    @echo "✓ Daemon binary bundled"
+    cp "$cargo_target_dir/release/taurhaus-daemon" src-tauri/resources/taurhaus-daemon
+    echo "✓ Daemon binary bundled"
 
 # Build Windows NSIS installer (syncs first, builds natively on Windows)
 build-windows:
@@ -759,6 +841,7 @@ sync-macos:
     rsync -az --delete \
         --exclude='node_modules' \
         --exclude='target' \
+        --exclude='/.cargo/' \
         --exclude='dist' \
         --exclude='.git' \
         {{project}}/ {{mac_host}}:{{mac_dir}}/
@@ -1124,12 +1207,16 @@ test-daemon-local:
     set -euo pipefail
     echo "── Step 1: Linux → Linux daemon connectivity ──"
     echo ""
-    # Build daemon
+    # Build daemon (a lane worktree redirects target-dir, so ask Cargo where it landed)
+    cargo_target_dir=$(
+        cargo metadata --format-version 1 --no-deps --manifest-path src-tauri/Cargo.toml |
+            node -e 'const fs = require("node:fs"); const metadata = JSON.parse(fs.readFileSync(0, "utf8")); process.stdout.write(metadata.target_directory)'
+    )
     cd src-tauri && cargo build --bin taurhaus-daemon 2>&1 | tail -1
     echo "✓ Daemon built"
     # Start daemon on a random-ish port to avoid conflicts
     PORT=17299
-    ./target/debug/taurhaus-daemon --port $PORT &
+    "$cargo_target_dir/debug/taurhaus-daemon" --port $PORT &
     DAEMON_PID=$!
     sleep 0.5
     # Ping it
@@ -1154,11 +1241,15 @@ test-daemon-windows:
     set -euo pipefail
     echo "── Step 2: Windows → Linux daemon connectivity ──"
     echo ""
-    # Build daemon
+    # Build daemon (a lane worktree redirects target-dir, so ask Cargo where it landed)
+    cargo_target_dir=$(
+        cargo metadata --format-version 1 --no-deps --manifest-path src-tauri/Cargo.toml |
+            node -e 'const fs = require("node:fs"); const metadata = JSON.parse(fs.readFileSync(0, "utf8")); process.stdout.write(metadata.target_directory)'
+    )
     cd src-tauri && cargo build --bin taurhaus-daemon 2>&1 | tail -1
     echo "✓ Daemon built"
     PORT=17299
-    ./target/debug/taurhaus-daemon --port $PORT &
+    "$cargo_target_dir/debug/taurhaus-daemon" --port $PORT &
     DAEMON_PID=$!
     sleep 0.5
     echo "✓ Daemon running on :$PORT (PID $DAEMON_PID)"

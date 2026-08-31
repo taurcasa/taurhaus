@@ -10,6 +10,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 - **Role templates now encode the shipped delivery playbook** — the bundled catalog is consolidated from 44 overlapping generations to 16 canonical roles, with unique v2/v3 guidance and compaction summaries folded into the surviving role bodies before retirement. Every lane carries the assignment-message contract, scoped gate discipline, review-ready handoff, and managed `RESULT`/`BLOCKED` signals; model pins now follow the current Fable 5, GPT-5.6 Sol, Opus 5, Antigravity, and Grok slate. Architect, reviewer, researcher, creative-direction, and UI-implementation experiments name their alternatives in the role body so switching remains a field edit, and compatibility accepts catalog aliases such as `fable` as the deliberate exception to the previous prefix-only rule. All five presets explicitly reference the canonical lead and roster; one-time upgrade reconciliation refreshes or retires exact untouched 0.8.5 template copies while preserving byte-modified user files; Claude agent export reconciles retired generated files while preserving hand-written agents; and the deliberately changed quick-dev onboarding and agent-definition goldens were regenerated from the canonical role text.
 
+## [0.8.7] - 2026-08-31
+
+### Fixed
+
+- **Codex sessions map to their tmux pane again (0.8.6 regression)** — the `@openai/codex` package signature matched by bare substring containment, so `codex-code-mode-host` — a piped background service child that inherits the controlling terminal — counted as a codex session, and 0.8.6's wrapper dedup then kept it as the deepest match: both real codex processes were dropped, leaving one tile whose pipe stdio mapped to no tmux pane, so clicking it could not focus the pane and the focused pane resolved to no session. A package-path signature now qualifies only the package's own JS entry script (`dist/cli.js`, `bin/codex.js`); vendored helpers and nested-dependency scripts never enter the session inventory, while native binaries keep matching through their plain basename signature.
+
+### Added
+
+- **Cached lane worktrees** — `just provision-worktree LANE_PATH BRANCH [BASE]` now performs the standard fetch, branch-worktree creation, and frozen Bun install, then gives only the lane a Cargo config backed by `~/.cache/taurhaus-lane-target`; Cargo locking serializes concurrent lane compiles, the E2E recipes keep their built binaries lane-local, and the main checkout and release targets remain unchanged. `just remove-worktree LANE_PATH` cleans up merged lanes but protects unmerged branches unless `FORCE_BRANCH=1`, and `just clean-lane-target` safely reclaims the shared cache.
+
+## [0.8.6] - 2026-08-31
+
+### Fixed
+
+- **Codex npm installs show one session per agent** — newer Codex keeps its Node.js launcher alive beside the native CLI child on the same terminal, and both command lines match the harness inventory. The scanner now recognizes that same-tool, same-terminal parent chain as one harness and keeps the deepest native process, so each agent has one tile and clicking it focuses the correct tmux pane.
+
 ## [0.8.5] - 2026-08-31
 
 ### Changed

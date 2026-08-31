@@ -13,6 +13,7 @@
 //! sees it — see `retain_interactive_processes`, the one place the rule is
 //! applied. The rule is terminal-based, never tool-based.
 
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Read};
 use std::process::{Child, Command, Stdio};
 use std::sync::{mpsc, Mutex, OnceLock};
@@ -53,6 +54,7 @@ pub struct ProcessScan {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InventoryEntry {
     pub(crate) pid: u32,
+    pub(crate) ppid: u32,
     pub(crate) args: String,
     pub(crate) cli_tool: CliTool,
     /// Whether the backend sees a controlling terminal for this process:
@@ -60,6 +62,9 @@ pub(crate) struct InventoryEntry {
     /// Only `retain_interactive_processes` reads it; `ProcessInfo::tty` stays
     /// the stdin device the tmux pane map is keyed by.
     pub(crate) has_terminal: bool,
+    /// Backend-native controlling-terminal identity: Linux `tty_nr` or the
+    /// macOS `ps` TTY column. `None` means detached or unreadable.
+    pub(crate) controlling_terminal: Option<String>,
 }
 
 #[cfg(test)]
@@ -67,10 +72,19 @@ impl InventoryEntry {
     pub(crate) fn new(pid: u32, args: &str, cli_tool: CliTool, has_terminal: bool) -> Self {
         Self {
             pid,
+            ppid: 0,
             args: args.to_string(),
             cli_tool,
             has_terminal,
+            controlling_terminal: has_terminal.then(|| format!("test-tty-{pid}")),
         }
+    }
+
+    pub(crate) fn with_parent_and_terminal(mut self, ppid: u32, terminal: &str) -> Self {
+        self.ppid = ppid;
+        self.has_terminal = true;
+        self.controlling_terminal = Some(terminal.to_string());
+        self
     }
 }
 
@@ -100,7 +114,7 @@ const TARGET_OS: TargetOs = TargetOs::Windows;
 enum InventoryBackend {
     /// `/proc/*/cmdline`.
     Proc,
-    /// `ps -eo pid,tty,args`.
+    /// `ps -eo pid=,ppid=,tty=,args=`.
     Ps,
     /// No native inventory: CLI tools run inside WSL2 and the session scan
     /// goes through the WSL daemon, so the local read is always degraded.
@@ -339,13 +353,19 @@ fn list_cli_tool_processes() -> Option<Vec<(u32, String, CliTool)>> {
 /// of sessions.
 fn read_cli_tool_inventory() -> Option<Vec<(u32, String, CliTool)>> {
     let mut entries = read_inventory_entries()?;
-    retain_interactive_processes(&mut entries);
+    retain_inventory_processes(&mut entries);
     Some(
         entries
             .into_iter()
             .map(|entry| (entry.pid, entry.args, entry.cli_tool))
             .collect(),
     )
+}
+
+/// Apply every retention rule before either inventory consumer sees a PID.
+fn retain_inventory_processes(entries: &mut Vec<InventoryEntry>) {
+    retain_interactive_processes(entries);
+    deduplicate_wrapper_processes(entries);
 }
 
 /// Drop every tool process that has no controlling terminal.
@@ -358,6 +378,93 @@ fn read_cli_tool_inventory() -> Option<Vec<(u32, String, CliTool)>> {
 pub(crate) fn retain_interactive_processes(entries: &mut Vec<InventoryEntry>) {
     entries.retain(|entry| entry.has_terminal);
 }
+
+/// Drop matched wrapper ancestors while keeping the deepest harness process.
+///
+/// Inventory-level and structural: it collapses a parent *chain* (an npm
+/// shim that spawned the vendored native binary) before either inventory
+/// consumer sees a PID. `classification::deduplicate_runtime_sessions` is
+/// the separate session-layer rule — one session per (tty, cli_tool),
+/// highest pid wins — and runs only on the runtime-session path, not on
+/// the authoritative display snapshot, which relies on this structural
+/// rule alone for its dedup.
+///
+/// Known residual class (follow-up): the walk keeps the deepest matched
+/// entry without checking that its own stdio is a terminal. A same-tool
+/// child with piped stdio that inherits the controlling terminal — e.g. the
+/// harness run as a stdio MCP server inside its own session (`claude mcp
+/// serve`, `codex mcp-server`) — would still steal the session the way
+/// `codex-code-mode-host` did before the package-signature rule excluded
+/// it. The structural fix is to prefer the deepest entry whose `fd/0`
+/// resolves to a terminal.
+fn deduplicate_wrapper_processes(entries: &mut Vec<InventoryEntry>) {
+    let entries_by_pid: HashMap<u32, usize> = entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| (entry.pid, index))
+        .collect();
+    let mut dropped = HashSet::new();
+
+    for entry in entries.iter() {
+        // A dropped entry never votes: in a cycle (a torn /proc read where
+        // PID reuse made two entries each other's ancestor) both walks would
+        // otherwise drop both, leaving the agent with no session at all. The
+        // survivor's walk still covers every real ancestor in its chain.
+        if dropped.contains(&entry.pid) {
+            continue;
+        }
+        let Some(terminal) = entry.controlling_terminal.as_deref() else {
+            continue;
+        };
+        let mut parent_pid = entry.ppid;
+        let mut visited = HashSet::new();
+
+        while parent_pid != 0 && parent_pid != entry.pid && visited.insert(parent_pid) {
+            let Some(parent_index) = entries_by_pid.get(&parent_pid) else {
+                break;
+            };
+            let parent = &entries[*parent_index];
+            if parent.cli_tool != entry.cli_tool
+                || parent.controlling_terminal.as_deref() != Some(terminal)
+            {
+                break;
+            }
+
+            dropped.insert(parent.pid);
+            parent_pid = parent.ppid;
+        }
+    }
+
+    // Edge-triggered like the module's other telemetry: a wrapper pid is
+    // reported once when it first gets deduped, not on every scan cycle for
+    // the life of the session. Replacing the set each cycle lets a pid that
+    // leaves and returns (process exit + PID reuse) report again.
+    let mut logged = WRAPPER_DEDUP_LOGGED
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    entries.retain(|entry| {
+        if !dropped.contains(&entry.pid) {
+            return true;
+        }
+        if !logged.contains(&entry.pid) {
+            tracing::debug!(
+                event = "session_scanner.inventory.wrapper_deduped",
+                pid = entry.pid,
+                ppid = entry.ppid,
+                tool = %entry.cli_tool,
+                "deduplicated CLI wrapper ancestor"
+            );
+        }
+        false
+    });
+    *logged = dropped;
+}
+
+/// Wrapper pids already reported by
+/// `session_scanner.inventory.wrapper_deduped`, so the event fires on the
+/// dedup edge rather than every scan cycle.
+static WRAPPER_DEDUP_LOGGED: OnceLock<Mutex<HashSet<u32>>> = OnceLock::new();
 
 /// Detect CLI tools from the selected inventory backend, unfiltered.
 fn read_inventory_entries() -> Option<Vec<InventoryEntry>> {
@@ -377,20 +484,27 @@ fn read_inventory_entries() -> Option<Vec<InventoryEntry>> {
                         // stat line will not parse): keep it. Enrichment drops
                         // dead PIDs anyway, and dropping a session we cannot
                         // classify would be worse than keeping a phantom one.
-                        let has_terminal =
-                            crate::platform::process_has_controlling_terminal(pid).unwrap_or(true);
+                        let (ppid, controlling_terminal, has_terminal) =
+                            match crate::platform::process_parent_and_tty(pid) {
+                                Some((ppid, tty_nr)) => {
+                                    (ppid, (tty_nr != 0).then(|| tty_nr.to_string()), tty_nr != 0)
+                                }
+                                None => (0, None, true),
+                            };
                         Some(InventoryEntry {
                             pid,
+                            ppid,
                             args,
                             cli_tool,
                             has_terminal,
+                            controlling_terminal,
                         })
                     })
                     .collect(),
             )
         }
         InventoryBackend::Ps => {
-            let output = run_with_timeout("ps", &["-eo", "pid,tty,args"])?;
+            let output = run_with_timeout("ps", &["-eo", "pid=,ppid=,tty=,args="])?;
             Some(parse_ps_output(&output))
         }
         InventoryBackend::None => None,
@@ -658,7 +772,7 @@ fn kill_and_reap(child: &mut Child) {
     let _ = child.wait();
 }
 
-/// Parse `ps -eo pid,tty,args` output into inventory entries for detected CLI tools.
+/// Parse `ps -eo pid=,ppid=,tty=,args=` output into inventory entries for detected CLI tools.
 ///
 /// The TTY column is the process's controlling terminal, which is how the
 /// `ps` backend answers `InventoryEntry::has_terminal`.
@@ -667,18 +781,23 @@ pub(crate) fn parse_ps_output(output: &str) -> Vec<InventoryEntry> {
         .lines()
         .filter_map(|line| {
             let line = line.trim();
-            // Split into PID, TTY, and rest (args).
+            // Split into PID, PPID, TTY, and rest (args).
             let (pid_str, rest) = line.split_once(char::is_whitespace)?;
+            let (ppid_str, rest) = rest.trim_start().split_once(char::is_whitespace)?;
             let (tty, args) = rest.trim_start().split_once(char::is_whitespace)?;
             let args = args.trim();
 
             let cli_tool = detect_cli_tool(args)?;
             let pid: u32 = pid_str.parse().ok()?;
+            let ppid: u32 = ppid_str.parse().ok()?;
+            let has_terminal = ps_tty_is_a_terminal(tty);
             Some(InventoryEntry {
                 pid,
+                ppid,
                 args: args.to_string(),
                 cli_tool,
-                has_terminal: ps_tty_is_a_terminal(tty),
+                has_terminal,
+                controlling_terminal: has_terminal.then(|| tty.to_string()),
             })
         })
         .collect()
@@ -699,7 +818,10 @@ fn ps_tty_is_a_terminal(column: &str) -> bool {
 ///
 /// Matches:
 /// - **Codex**: `codex`, `/path/to/codex`
-/// - **Claude**: `claude`, `/path/to/claude`, `node .../claude`, `node .../@anthropic-ai/claude-code/...`
+/// - **Claude**: `claude`, `/path/to/claude`, `node .../claude`, and the
+///   package's own entry script (`node .../@anthropic-ai/claude-code/cli.js`;
+///   see `CliToolSpec::token_is_package_entry_script` — vendored helpers under
+///   the package tree never match)
 /// - **Antigravity**: `agy`, `/path/to/agy` (interactive argv only)
 /// - **Grok**: `grok`, `/path/to/grok` (interactive argv only)
 ///
@@ -787,12 +909,30 @@ mod tests {
     use crate::session_scanner::SCANNER_TEST_LOCK;
     use std::sync::atomic::{AtomicU8, Ordering};
 
+    /// Drive fake backend entries through production inventory retention, then
+    /// perform deterministic enrichment without touching a live process.
+    fn fake_process_infos(mut entries: Vec<InventoryEntry>) -> Vec<ProcessInfo> {
+        retain_inventory_processes(&mut entries);
+        entries
+            .into_iter()
+            .map(|entry| ProcessInfo {
+                pid: entry.pid,
+                project_path: "/fake/project".to_string(),
+                tty: entry
+                    .controlling_terminal
+                    .expect("retained fake process has a terminal"),
+                args: entry.args,
+                cli_tool: entry.cli_tool,
+            })
+            .collect()
+    }
+
     #[test]
     fn parse_ps_finds_bare_claude() {
         let output = "\
-  PID TTY      COMMAND
- 1234 s001     claude
- 5678 s001     bash";
+  PID PPID TTY      COMMAND
+ 1234   12 s001     claude
+ 5678   56 s001     bash";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].pid, 1234);
@@ -804,10 +944,10 @@ mod tests {
     #[test]
     fn parse_ps_finds_claude_with_flags() {
         let output = "\
-  PID TTY      COMMAND
- 4927 s001     claude --dangerously-skip-permissions
- 4928 s002     claude --dangerously-skip-permissions --continue
- 4929 s003     claude --resume";
+  PID PPID TTY      COMMAND
+ 4927   49 s001     claude --dangerously-skip-permissions
+ 4928   49 s002     claude --dangerously-skip-permissions --continue
+ 4929   49 s003     claude --resume";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].pid, 4927);
@@ -822,8 +962,8 @@ mod tests {
     #[test]
     fn parse_ps_finds_full_path_claude() {
         let output = "\
-  PID TTY      COMMAND
- 1000 ttys001  /home/user/.local/bin/claude --dangerously-skip-permissions";
+  PID PPID TTY      COMMAND
+ 1000   10 ttys001  /home/user/.local/bin/claude --dangerously-skip-permissions";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].pid, 1000);
@@ -833,16 +973,16 @@ mod tests {
     #[test]
     fn parse_ps_finds_node_launched_claude() {
         let output = "\
-  PID TTY      COMMAND
- 2000 s001     node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js";
+  PID PPID TTY      COMMAND
+ 2000   20 s001     node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].pid, 2000);
         assert_eq!(result[0].cli_tool, CliTool::Claude);
 
         let output2 = "\
-  PID TTY      COMMAND
- 2000 s001     node /usr/local/bin/claude --dangerously-skip-permissions";
+  PID PPID TTY      COMMAND
+ 2000   20 s001     node /usr/local/bin/claude --dangerously-skip-permissions";
         let result2 = parse_ps_output(output2);
         assert_eq!(result2.len(), 1);
         assert_eq!(result2[0].cli_tool, CliTool::Claude);
@@ -851,10 +991,10 @@ mod tests {
     #[test]
     fn parse_ps_excludes_grep_and_ps() {
         let output = "\
-  PID TTY      COMMAND
- 1234 s001     claude --dangerously-skip-permissions
- 5555 s001     grep claude
- 6666 s001     ps -eo pid,tty,args";
+  PID PPID TTY      COMMAND
+ 1234   12 s001     claude --dangerously-skip-permissions
+ 5555   55 s001     grep claude
+ 6666   66 s001     ps -eo pid,ppid,tty,args";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].pid, 1234);
@@ -863,9 +1003,9 @@ mod tests {
     #[test]
     fn parse_ps_excludes_claude_prefixed() {
         let output = "\
-  PID TTY      COMMAND
- 1234 s001     claude-code-server
- 5678 s001     claude";
+  PID PPID TTY      COMMAND
+ 1234   12 s001     claude-code-server
+ 5678   56 s001     claude";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].pid, 5678);
@@ -879,7 +1019,7 @@ mod tests {
 
     #[test]
     fn parse_ps_handles_header_only() {
-        let result = parse_ps_output("  PID TTY      COMMAND\n");
+        let result = parse_ps_output("  PID PPID TTY      COMMAND\n");
         assert!(result.is_empty());
     }
 
@@ -1026,6 +1166,226 @@ mod tests {
         assert_eq!(entries[0].pid, 4246);
     }
 
+    // Regression: commit 665abc94 taught the inventory to match both Codex's
+    // JavaScript shim and native binary, but retained both when Codex 0.151
+    // stopped exec-replacing the shim. The observed chain was:
+    // `node ~/.nvm/.../bin/codex --yolo (pid A) -> vendor .../codex-linux-x64/.../bin/codex --yolo (pid B, child of A, same pts) -> codex-code-mode-host (child of B, unmatched)`.
+    #[test]
+    fn codex_npm_shim_ancestor_is_deduped() {
+        let mut entries = vec![
+            InventoryEntry::new(
+                4100,
+                "node /home/user/.nvm/versions/node/v24/bin/codex --yolo",
+                CliTool::Codex,
+                true,
+            )
+            .with_parent_and_terminal(4000, "pts/7"),
+            InventoryEntry::new(
+                4200,
+                "/node_modules/@openai/codex-linux-x64/vendor/codex --yolo",
+                CliTool::Codex,
+                true,
+            )
+            .with_parent_and_terminal(4100, "pts/7"),
+        ];
+
+        retain_inventory_processes(&mut entries);
+
+        assert_eq!(
+            entries.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
+            vec![4200]
+        );
+    }
+
+    #[test]
+    fn wrapper_dedup_walks_a_three_deep_matched_chain() {
+        let mut entries = vec![
+            InventoryEntry::new(5100, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(5000, "pts/8"),
+            InventoryEntry::new(5200, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(5100, "pts/8"),
+            InventoryEntry::new(5300, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(5200, "pts/8"),
+        ];
+
+        retain_inventory_processes(&mut entries);
+
+        assert_eq!(
+            entries.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
+            vec![5300]
+        );
+    }
+
+    // Regression: the 0.8.6 symptom end to end — the live three-rung chain
+    // (nvm shim -> vendored native codex -> codex-code-mode-host, one
+    // terminal) must classify into an inventory of exactly the shim and the
+    // native CLI, and retention must keep only the native pid. Tools come
+    // from `detect_cli_tool_argv` so the test breaks if the matcher ever
+    // re-admits the service child.
+    #[test]
+    fn live_codex_chain_retains_only_the_native_process() {
+        let chain: [(u32, u32, Vec<&str>); 3] = [
+            (8100, 8000, vec!["node", "/home/user/.nvm/versions/node/v24.14.1/bin/codex", "--yolo"]),
+            (8200, 8100, vec!["/home/user/.nvm/versions/node/v24.14.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex", "--yolo"]),
+            (8300, 8200, vec!["/home/user/.nvm/versions/node/v24.14.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host"]),
+        ];
+        let mut entries: Vec<InventoryEntry> = chain
+            .iter()
+            .filter_map(|(pid, ppid, argv)| {
+                let argv: Vec<String> = argv.iter().map(|s| s.to_string()).collect();
+                detect_cli_tool_argv(&argv).map(|tool| {
+                    InventoryEntry::new(*pid, &argv.join(" "), tool, true)
+                        .with_parent_and_terminal(*ppid, "pts/9")
+                })
+            })
+            .collect();
+        assert_eq!(
+            entries.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
+            vec![8100, 8200],
+            "the service child must not classify into the inventory at all"
+        );
+
+        retain_inventory_processes(&mut entries);
+
+        assert_eq!(
+            entries.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
+            vec![8200],
+            "the native CLI must be the one surviving session"
+        );
+    }
+
+    // Regression: a torn /proc read where PID reuse makes two same-tool,
+    // same-terminal entries each other's parent used to drop BOTH (each walk
+    // dropped the other), leaving the agent with no session at all. Exactly
+    // one of a mutual pair must survive.
+    #[test]
+    fn a_mutual_parent_pair_keeps_exactly_one_entry() {
+        let mut entries = vec![
+            InventoryEntry::new(7100, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(7200, "pts/3"),
+            InventoryEntry::new(7200, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(7100, "pts/3"),
+        ];
+
+        retain_inventory_processes(&mut entries);
+
+        assert_eq!(
+            entries.len(),
+            1,
+            "a cyclic parent pair must keep one session, not zero"
+        );
+    }
+
+    // Regression: commit 665abc94 matched both sides of the npm Codex launch
+    // without recognizing that they are one harness, so one agent became two
+    // ProcessInfo rows. The fake inventory must retain only the native child.
+    #[test]
+    fn fake_inventory_keeps_only_the_native_codex_process_info() {
+        let processes = fake_process_infos(vec![
+            InventoryEntry::new(
+                6100,
+                "node /home/user/.nvm/versions/node/v24/bin/codex --yolo",
+                CliTool::Codex,
+                true,
+            )
+            .with_parent_and_terminal(6000, "pts/9"),
+            InventoryEntry::new(
+                6200,
+                "/node_modules/@openai/codex-linux-x64/vendor/codex --yolo",
+                CliTool::Codex,
+                true,
+            )
+            .with_parent_and_terminal(6100, "pts/9"),
+        ]);
+
+        assert_eq!(processes.len(), 1);
+        assert_eq!(processes[0].pid, 6200);
+    }
+
+    // Regression: commit 665abc94 had no wrapper-chain retention at all; a
+    // later extra matched wrapper must not make the intermediate child survive.
+    #[test]
+    fn fake_inventory_keeps_only_the_deepest_of_three_wrappers() {
+        let processes = fake_process_infos(vec![
+            InventoryEntry::new(7100, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(7000, "pts/10"),
+            InventoryEntry::new(7200, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(7100, "pts/10"),
+            InventoryEntry::new(7300, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(7200, "pts/10"),
+        ]);
+
+        assert_eq!(
+            processes
+                .iter()
+                .map(|process| process.pid)
+                .collect::<Vec<_>>(),
+            vec![7300]
+        );
+    }
+
+    // Regression: commit 665abc94 made argv matching independent of tool and
+    // terminal ancestry; dedup must not merge unrelated harness sessions.
+    #[test]
+    fn fake_inventory_preserves_different_tools_and_terminals() {
+        let processes = fake_process_infos(vec![
+            InventoryEntry::new(8100, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(8000, "pts/11"),
+            InventoryEntry::new(8200, "claude --continue", CliTool::Claude, true)
+                .with_parent_and_terminal(8100, "pts/11"),
+            InventoryEntry::new(8300, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(8000, "pts/12"),
+            InventoryEntry::new(8400, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(8300, "pts/13"),
+        ]);
+
+        assert_eq!(
+            processes
+                .iter()
+                .map(|process| process.pid)
+                .collect::<Vec<_>>(),
+            vec![8100, 8200, 8300, 8400]
+        );
+    }
+
+    // Regression: commit 665abc94 matched the Codex process but provided no
+    // parent inventory relation; an unmatched parent is not evidence to drop it.
+    #[test]
+    fn fake_inventory_preserves_a_process_with_an_unmatched_parent() {
+        let processes = fake_process_infos(vec![InventoryEntry::new(
+            9100,
+            "codex --yolo",
+            CliTool::Codex,
+            true,
+        )
+        .with_parent_and_terminal(9000, "pts/14")]);
+
+        assert_eq!(processes.len(), 1);
+        assert_eq!(processes[0].pid, 9100);
+    }
+
+    // Regression: commit 665abc94 expanded Codex matching; the fix must leave
+    // the pre-existing single-process Claude inventory exactly unchanged.
+    #[test]
+    fn fake_inventory_preserves_single_claude_process_info_exactly() {
+        let expected = ProcessInfo {
+            pid: 10_100,
+            project_path: "/fake/project".to_string(),
+            tty: "pts/15".to_string(),
+            args: "claude --continue".to_string(),
+            cli_tool: CliTool::Claude,
+        };
+        let processes = fake_process_infos(vec![InventoryEntry::new(
+            10_100,
+            "claude --continue",
+            CliTool::Claude,
+            true,
+        )
+        .with_parent_and_terminal(10_000, "pts/15")]);
+
+        assert_eq!(processes, vec![expected]);
+    }
+
     // Regression: the `ps` backend's own reading of the same rule. macOS prints
     // `??` for a process with no controlling terminal (Linux `ps` prints `?`),
     // and a device name otherwise.
@@ -1051,10 +1411,10 @@ mod tests {
     #[test]
     fn parse_ps_marks_detached_processes_non_interactive() {
         let output = "\
-  PID TTY      COMMAND
- 1234 s001     claude --continue
- 5678 ??       codex exec --json review
- 9012 ttys002  codex --yolo";
+  PID PPID TTY      COMMAND
+ 1234   12 s001     claude --continue
+ 5678   56 ??       codex exec --json review
+ 9012   90 ttys002  codex --yolo";
         let mut result = parse_ps_output(output);
         assert_eq!(result.len(), 3);
         assert_eq!(result[1].args, "codex exec --json review");
@@ -1484,6 +1844,85 @@ mod tests {
         );
     }
 
+    // Regression: the `@openai/codex` package signature matched by bare
+    // substring containment, so EVERY binary vendored under the package tree
+    // counted as a codex session — including `codex-code-mode-host`, a piped
+    // background service child. It inherits the controlling terminal in
+    // `/proc/<pid>/stat`, so it entered the inventory, and the wrapper dedup's
+    // "keep the deepest" then dropped both real codex processes in its favor:
+    // one tile per agent, whose pipe stdio maps to no tmux pane, so clicking
+    // it could not focus the pane and the focused pane resolved to no session.
+    // A package-path signature must also require the token to BE the tool
+    // binary.
+    #[test]
+    fn codex_code_mode_host_never_matches_as_a_codex_session() {
+        // Exact argv observed live (single element, as /proc/<pid>/cmdline
+        // delivers it).
+        let host = "/home/user/.nvm/versions/node/v24.14.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host";
+        assert_eq!(detect_cli_tool_argv(&[host.to_string()]), None);
+        assert_eq!(detect_cli_tool(host), None);
+        // The same rule protects every '@' package signature: a vendored
+        // helper under the Claude package dir is not a claude session.
+        assert_eq!(
+            detect_cli_tool(
+                "/usr/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/rg --files"
+            ),
+            None
+        );
+        // An entry script of a NESTED dependency package is not the tool's
+        // entry script either.
+        assert_eq!(
+            detect_cli_tool("/usr/lib/node_modules/@openai/codex/node_modules/leftpad/cli.js"),
+            None
+        );
+        // The vendored native binary keeps matching through its plain
+        // basename signature, untouched by the package rule.
+        assert_eq!(
+            detect_cli_tool_argv(&[
+                "/home/user/.nvm/versions/node/v24.14.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex".to_string(),
+                "--yolo".to_string(),
+            ]),
+            Some(CliTool::Codex)
+        );
+        // The package signature still qualifies the package's own entry
+        // script: the WSL view of a Windows npm global install, and bun's
+        // version-suffixed cache directory.
+        assert_eq!(
+            detect_cli_tool_argv(&[
+                "node".to_string(),
+                "/mnt/c/Users/user/AppData/Roaming/npm/node_modules/@openai/codex/bin/codex.js"
+                    .to_string(),
+                "--yolo".to_string(),
+            ]),
+            Some(CliTool::Codex)
+        );
+        assert_eq!(
+            detect_cli_tool_argv(&[
+                "node".to_string(),
+                "/home/user/.bun/install/cache/@openai/codex@0.151.0@@@1/bin/codex.js".to_string(),
+            ]),
+            Some(CliTool::Codex)
+        );
+        // Boundary guards: a sibling package whose name merely continues the
+        // signature (`@openai/codex-linux-x64`) is not the package dir, and
+        // an occurrence not on a path-component boundary never anchors.
+        assert_eq!(
+            detect_cli_tool("/usr/lib/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/helper.js"),
+            None
+        );
+        assert_eq!(detect_cli_tool("/opt/my@openai/codex/dist/cli.js"), None);
+        // The live middle rung of the fixed chain: the nvm shim matches via
+        // the plain basename signature, not the package rule.
+        assert_eq!(
+            detect_cli_tool_argv(&[
+                "node".to_string(),
+                "/home/user/.nvm/versions/node/v24.14.1/bin/codex".to_string(),
+                "--yolo".to_string(),
+            ]),
+            Some(CliTool::Codex)
+        );
+    }
+
     #[test]
     fn detect_agy_interactive_processes_only() {
         // Regression: commit 9a66d1c treated every matching harness process as
@@ -1673,25 +2112,31 @@ mod tests {
     #[test]
     fn parse_ps_detects_mixed_tools() {
         let output = "\
-  PID TTY      COMMAND
- 1000 s001     claude --continue
- 2000 s002     codex --full-auto
- 3000 s003     agy --continue
- 4000 s004     bash
- 5000 s005     vim";
+  PID  PPID TTY      COMMAND
+ 1000    10 s001     claude --continue
+ 2000    20 s002     codex --full-auto
+ 3000    30 s003     agy --continue
+ 4000    40 s004     bash
+ 5000    50 s005     vim";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 3);
+        assert_eq!(result[0].ppid, 10);
+        assert_eq!(result[1].ppid, 20);
+        assert_eq!(result[2].ppid, 30);
         assert_eq!(
             result[0],
             InventoryEntry::new(1000, "claude --continue", CliTool::Claude, true)
+                .with_parent_and_terminal(10, "s001")
         );
         assert_eq!(
             result[1],
             InventoryEntry::new(2000, "codex --full-auto", CliTool::Codex, true)
+                .with_parent_and_terminal(20, "s002")
         );
         assert_eq!(
             result[2],
             InventoryEntry::new(3000, "agy --continue", CliTool::Agy, true)
+                .with_parent_and_terminal(30, "s003")
         );
     }
 }

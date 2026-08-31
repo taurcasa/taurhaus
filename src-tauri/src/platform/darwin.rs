@@ -88,11 +88,11 @@ pub fn list_processes() -> Option<Vec<(u32, Vec<String>)>> {
     None
 }
 
-/// No per-PID controlling-terminal lookup here: the `ps` inventory backend
-/// already carries the TTY column for every process it lists, so the session
-/// scanner reads the controlling terminal from there (see
-/// `session_scanner::process`). `None` means "unknown on this platform".
-pub fn process_has_controlling_terminal(_pid: u32) -> Option<bool> {
+/// No per-PID stat lookup here: the `ps` inventory backend already carries
+/// the PPID and TTY columns for every process it lists, so the session
+/// scanner reads both from there (see `session_scanner::process`). `None`
+/// means "unknown on this platform".
+pub fn process_parent_and_tty(_pid: u32) -> Option<(u32, i64)> {
     None
 }
 
