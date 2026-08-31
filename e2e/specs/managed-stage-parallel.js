@@ -38,6 +38,7 @@ import { ensureMainApp, waitForAppReady } from '../helpers.js'
 import { trustProject } from '../helpers/codexScratchHome.js'
 import { createLaneCleanup } from '../helpers/laneCleanup.js'
 import { assertTmuxIsolation, isolatedTmuxTmpdir, parseProcEnviron, tmuxIsolationProblem } from '../helpers/laneTmux.js'
+import { launchManagedMembersSerially } from '../helpers/managedStageParallel.js'
 import {
   attentionRecord,
   assignTaskAsync,
@@ -374,75 +375,101 @@ async function pickRoleIds() {
   return { leadRoleId: idOf(lead), agentRoleId: idOf(agent) }
 }
 
-async function initializeParallelTeam() {
-  const { leadRoleId, agentRoleId } = await pickRoleIds()
-  const model = await pickCodexModel()
-  createdTeamNames.add(TEAM_NAME)
-  laneCleanup.owe(LANE_PANES_STEP, killLaneTmuxServer)
-
-  const report = await withPaneEnvironment(async () =>
-    await invokeTauriOrThrow('coordination_initialize_team', {
-      request: {
-        teamName: TEAM_NAME,
-        teamDescription: 'W4 experiment 5: two concurrent managed stages in isolated worktrees',
-        leadMode: 'launch_new',
-        lead: {
-          name: LEAD_NAME,
-          cliTool: 'claude',
-          model: '',
-          projectId: fixtureSource,
-          roleId: leadRoleId,
-        },
-        agents: stages.map((stage) => ({
-          name: stage.owner,
-          cliTool: 'codex',
-          model,
-          reasoningEffort: EFFORT,
-          projectId: stage.worktree,
-          roleId: agentRoleId,
-        })),
-      },
-    })
-  )
-  if (report?.failedStep) throw new Error(`Team initialization failed at ${report.failedStep}: ${report.message}`)
-
-  await browser.waitUntil(
-    async () => stages.every((stage) => Boolean(readRuntimeRecord(stage.owner)?.pane_id)),
-    {
-      timeout: TEAM_READY_TIMEOUT_MS,
-      interval: 2_000,
-      timeoutMsg: 'The two managed Codex members did not both report panes',
-    }
-  )
-
-  for (const stage of stages) {
-    const runtime = readRuntimeRecord(stage.owner)
-    expect(runtime?.appliedEffort).toBe(EFFORT)
-    const pane = await capturePane(runtime.pane_id)
-    console.log(`[e2e] ${stage.owner} launched in ${stage.worktree} on ${runtime.pane_id}:\n${pane.trimEnd()}`)
-    if (BLOCKING_PANE_PROMPTS.some((pattern) => pattern.test(pane))) {
-      throw new Error(`${stage.owner} is parked on an interactive prompt:\n${pane.trimEnd()}`)
-    }
-
-    // The onboarding submission can land while Codex is still starting. Add a
-    // tiny prompt and submit once; the resulting first turn gives the managed
-    // member the durable session id a real stage requires.
-    tmuxQuietly(['send-keys', '-t', runtime.pane_id, '-l', 'Reply with only the word READY.'])
-    await browser.pause(600)
-    tmuxQuietly(['send-keys', '-t', runtime.pane_id, 'Enter'])
+function managedAgentRequest(stage, { agentRoleId, model }) {
+  return {
+    name: stage.owner,
+    cliTool: 'codex',
+    model,
+    reasoningEffort: EFFORT,
+    projectId: stage.worktree,
+    roleId: agentRoleId,
   }
+}
+
+async function waitForMemberBinding(stage) {
+  await browser.waitUntil(async () => Boolean(readRuntimeRecord(stage.owner)?.pane_id), {
+    timeout: TEAM_READY_TIMEOUT_MS,
+    interval: 2_000,
+    timeoutMsg: `${stage.owner} did not report a managed pane`,
+  })
+
+  const runtime = readRuntimeRecord(stage.owner)
+  expect(runtime?.appliedEffort).toBe(EFFORT)
+  const pane = await capturePane(runtime.pane_id)
+  console.log(`[e2e] ${stage.owner} launched in ${stage.worktree} on ${runtime.pane_id}:\n${pane.trimEnd()}`)
+  if (BLOCKING_PANE_PROMPTS.some((pattern) => pattern.test(pane))) {
+    throw new Error(`${stage.owner} is parked on an interactive prompt:\n${pane.trimEnd()}`)
+  }
+
+  // The onboarding submission can land while Codex is still starting. Add a
+  // tiny prompt and submit once; the resulting first turn gives the managed
+  // member the durable session id a real stage requires.
+  tmuxQuietly(['send-keys', '-t', runtime.pane_id, '-l', 'Reply with only the word READY.'])
+  await browser.pause(600)
+  tmuxQuietly(['send-keys', '-t', runtime.pane_id, 'Enter'])
 
   await browser.waitUntil(
     async () => {
       await invokeTauri('coordination_get_live_team_status', { teamName: TEAM_NAME })
-      return stages.every((stage) => Boolean(readRuntimeRecord(stage.owner)?.session_id))
+      return Boolean(readRuntimeRecord(stage.owner)?.session_id)
     },
     {
       timeout: SESSION_BIND_TIMEOUT_MS,
       interval: 3_000,
-      timeoutMsg: 'The two Codex members did not both bind their scratch-home sessions',
+      timeoutMsg: `${stage.owner} did not bind its scratch-home session`,
     }
   )
+}
+
+async function initializeParallelTeam() {
+  const { leadRoleId, agentRoleId } = await pickRoleIds()
+  const model = await pickCodexModel()
+  const launchInputs = { agentRoleId, model }
+  createdTeamNames.add(TEAM_NAME)
+  laneCleanup.owe(LANE_PANES_STEP, killLaneTmuxServer)
+
+  // Codex 0.151 must not cold-start two processes against one fresh CODEX_HOME:
+  // attempt 1 lost beta to `state_5.sqlite ... migration 22: duplicate column
+  // name: agent_path`. Bind alpha first, then launch beta through add-agent.
+  await launchManagedMembersSerially({
+    members: stages,
+    initialize: async (stage) => {
+      const report = await withPaneEnvironment(async () =>
+        await invokeTauriOrThrow('coordination_initialize_team', {
+          request: {
+            teamName: TEAM_NAME,
+            teamDescription: 'W4 experiment 5: two concurrent managed stages in isolated worktrees',
+            leadMode: 'launch_new',
+            lead: {
+              name: LEAD_NAME,
+              cliTool: 'claude',
+              model: '',
+              projectId: fixtureSource,
+              roleId: leadRoleId,
+            },
+            agents: [managedAgentRequest(stage, launchInputs)],
+          },
+        })
+      )
+      if (report?.failedStep) {
+        throw new Error(`Team initialization failed at ${report.failedStep}: ${report.message}`)
+      }
+    },
+    add: async (stage) => {
+      const report = await withPaneEnvironment(async () =>
+        await invokeTauriOrThrow('coordination_add_agent', {
+          request: {
+            teamName: TEAM_NAME,
+            agent: managedAgentRequest(stage, launchInputs),
+          },
+        })
+      )
+      if (report?.failedStep) {
+        throw new Error(`Adding ${stage.owner} failed at ${report.failedStep}: ${report.message}`)
+      }
+    },
+    waitForBinding: waitForMemberBinding,
+  })
   return model
 }
 
