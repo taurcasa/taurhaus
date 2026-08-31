@@ -232,8 +232,15 @@ pub fn write_snapshot(snapshot: &OperationalContextSnapshot) -> Result<(), Coord
     OperationalContextSnapshotStore::save(&PlatformPaths::teams_dir(), snapshot)
 }
 
+/// Rename errors a volume answers when it cannot atomically replace the
+/// target: ERROR_INVALID_FUNCTION (1), ERROR_ACCESS_DENIED (5 — the 9p
+/// server behind a `\\wsl.localhost` teams dir refuses to replace a file
+/// any handle holds open, our own target lock included; NTFS replaces an
+/// open file via POSIX-semantics rename, so this only fires where the
+/// atomic path truly is unavailable), and ERROR_SHARING_VIOLATION (32).
+/// The same codes the config and runtime stores' fallback predicate uses.
 pub(crate) fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
-    cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
+    matches!(err.raw_os_error(), Some(1 | 5 | 32))
 }
 
 fn operational_snapshot_dir(teams_dir: &Path, team_name: &str) -> PathBuf {

@@ -29,7 +29,14 @@ thread_local! {
 }
 
 fn is_windows_unsupported_lock_error(err: &std::io::Error) -> bool {
-    cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
+    // ERROR_INVALID_FUNCTION (1) and ERROR_ACCESS_DENIED (5): which one the
+    // 9p server behind a `\\wsl.localhost` path answers for `LockFileEx`
+    // depends on the Windows/WSL build — newer builds answer 5 where older
+    // ones answered 1. Both callers reach this check only after successfully
+    // opening the file for WRITE, so a 5 here reports missing lock support,
+    // not permissions; a real ACL denial fails at open. Lock contention is
+    // ERROR_LOCK_VIOLATION (33) and stays on the transient path.
+    cfg!(target_os = "windows") && matches!(err.raw_os_error(), Some(1) | Some(5))
 }
 
 /// Paths already reported as unlockable, so one degraded volume does not
@@ -304,11 +311,24 @@ mod tests {
 
     #[test]
     fn unsupported_lock_error_detection_is_platform_aware() {
-        let err = std::io::Error::from_raw_os_error(1);
-        assert_eq!(
-            is_windows_unsupported_lock_error(&err),
-            cfg!(target_os = "windows")
-        );
+        // Regression: initializing a team from the Windows app failed hard at
+        // "Sending agent instructions" with os error 5, and every locked
+        // runtime-record save left a zero-byte file: this Windows/WSL build
+        // answers ERROR_ACCESS_DENIED for LockFileEx over `\\wsl.localhost`
+        // where older builds answered ERROR_INVALID_FUNCTION. Both spellings
+        // of "this path cannot lock" must take the degrade-and-report path.
+        for code in [1, 5] {
+            let err = std::io::Error::from_raw_os_error(code);
+            assert_eq!(
+                is_windows_unsupported_lock_error(&err),
+                cfg!(target_os = "windows"),
+                "os error {code}"
+            );
+        }
+        // Contention (ERROR_LOCK_VIOLATION) is transient, never "unsupported".
+        assert!(!is_windows_unsupported_lock_error(
+            &std::io::Error::from_raw_os_error(33)
+        ));
     }
 
     #[test]

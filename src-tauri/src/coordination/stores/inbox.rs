@@ -152,6 +152,28 @@ impl MeshInboxStore {
         tmp_file.write_all(payload.as_bytes())?;
         tmp_file.sync_all()?;
         if let Err(err) = fs::rename(&tmp_path, &target_path) {
+            // Regression: initializing a team from the Windows app failed at
+            // "Sending agent instructions" with os error 5 — the 9p server
+            // behind the WSL-resolved teams dir refuses to rename over the
+            // file our own target lock holds open. Every sibling store
+            // (config, runtime, operational, mesh_task) already degrades to
+            // a direct write on these volumes; the inbox was the one store
+            // without the fallback.
+            if super::operational::is_windows_unsupported_rename_error(&err) {
+                tracing::warn!(
+                    team_name,
+                    member_name,
+                    target = %target_path.display(),
+                    raw_os_error = ?err.raw_os_error(),
+                    "atomic inbox rename failed; falling back to direct write"
+                );
+                if let Err(write_err) = fs::write(&target_path, payload.as_bytes()) {
+                    let _ = fs::remove_file(&tmp_path);
+                    return Err(CoordinationError::Io(write_err));
+                }
+                let _ = fs::remove_file(&tmp_path);
+                return Ok(());
+            }
             let _ = fs::remove_file(&tmp_path);
             return Err(CoordinationError::Io(err));
         }
