@@ -1,7 +1,7 @@
 {
-  "version": "0.2.23",
+  "version": "0.2.24",
   "protocol_version": 1,
   "schema_version": 1,
-  "git_commit": "806258f80f7ba0811054d8cdf0ae31c6d0137470",
-  "bundled_at_utc": "2026-08-30T11:20:28Z"
+  "git_commit": "1d6af0e919bb8c496ff2b5ae2a9080b6637a8000",
+  "bundled_at_utc": "2026-08-31T06:04:12Z"
 }
