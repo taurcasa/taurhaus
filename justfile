@@ -55,6 +55,31 @@ provision-worktree PATH BRANCH BASE="origin/main":
         printf 'target-dir = "%s"\n' "$shared_target"
     } > "$lane_path/.cargo/config.toml"
 
+# Remove a lane worktree and its branch. Unmerged branches are preserved unless
+# the caller explicitly acknowledges the destructive cleanup with FORCE_BRANCH=1.
+remove-worktree PATH:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    lane_path={{quote(PATH)}}
+    lane_branch=$(git -C "$lane_path" symbolic-ref --quiet --short HEAD) || {
+        echo "Cannot remove '$lane_path': its branch could not be resolved." >&2
+        exit 1
+    }
+    force_branch="${FORCE_BRANCH:-0}"
+    if ! git merge-base --is-ancestor "refs/heads/$lane_branch" HEAD; then
+        if [ "$force_branch" != "1" ]; then
+            echo "Refusing to remove '$lane_path': branch '$lane_branch' is not merged into HEAD." >&2
+            echo "Set FORCE_BRANCH=1 to remove the worktree and delete the unmerged branch." >&2
+            exit 1
+        fi
+    fi
+    git worktree remove "$lane_path" --force
+    if [ "$force_branch" = "1" ]; then
+        git branch -D -- "$lane_branch"
+    else
+        git branch -d -- "$lane_branch"
+    fi
+
 # Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
 # Use this when you need the definitive "is this ready?" signal.
 # TAURHAUS_CHECK_SEED_FAILURE=rust|frontend|late-failure|fast-failure|green is test-only: it replaces both lanes
