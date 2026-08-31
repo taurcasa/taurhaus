@@ -145,7 +145,6 @@ pub struct CliCapabilities {
     /// Accepted spellings besides `model_flag`, in renderer precedence order.
     pub model_flag_aliases: &'static [&'static str],
     /// Alternate spellings of the effort flag the tool also accepts.
-    /// Alternate spellings of the effort flag the tool also accepts.
     pub effort_flag_aliases: &'static [&'static str],
     /// Flags the tool still accepts but has deprecated; a base carrying one
     /// gets a `DeprecatedFlag` note.
