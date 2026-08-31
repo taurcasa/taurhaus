@@ -16,14 +16,16 @@
  * events after `assigned_at`; elapsed sleeps are never accepted as proof that
  * those passes ran.
  *
- * Before that stall, a negative path gives the same member a two-minute task
- * whose first step starts the task and runs a low-frequency 96-second Bun
- * heartbeat. Half time is 60 seconds and the next 30-second pass is therefore
- * no later than 90 seconds, while the full deadline is 120 seconds. That leaves
- * a recorded eligible pass while the activity projection says `active` or
- * `likely_working`, followed by enough room to complete normally. The heartbeat
- * keeps one real member command running; it is not a test-process sleep and its
- * duration proves nothing without the joined activity/pass records.
+ * Before that stall, a negative path gives the same member a three-minute task.
+ * The active command must cover `needed_active = D/2 + 30 s`: 90 + 30 = 120
+ * seconds, including a whole pass cadence after half time. That leaves
+ * `slack = D/2 - 30 s`: 90 - 30 = 60 seconds for the Codex turn that launches
+ * the command and the turn that completes the task. MarkStale is not suppressed
+ * by activity, so that completion allowance is part of the lane contract. The
+ * heartbeat emits 4096 bytes every 500 ms so Codex's measured read rate clears
+ * the production 1 kB/s gate. It keeps one real member command running; it is
+ * not a test-process sleep and proves nothing without joined activity/pass
+ * records.
  *
  * Every acceptance assertion reads a durable record:
  *
@@ -63,6 +65,7 @@ import { readLogEventsSince, selectEvents } from '../helpers/compactionLog.js'
 import { trustProject } from '../helpers/codexScratchHome.js'
 import { createLaneCleanup } from '../helpers/laneCleanup.js'
 import {
+  activeDeadlineHeartbeatPlan,
   activeDeadlinePassEvidence,
   assignTask,
   attentionRecord,
@@ -89,8 +92,14 @@ const TAURHAUS_MESH_BINARY = join(homedir(), '.local', 'bin', 'mesh')
 const TMUX_SESSION = 'taurhaus'
 const LAUNCH_EFFORT = 'low'
 const DEADLINE_MINUTES = 1
-const ACTIVE_DEADLINE_MINUTES = 2
-const ACTIVE_HEARTBEAT_ITERATIONS = 48
+const PASS_CADENCE_MS = 30_000
+const ACTIVE_DEADLINE_MINUTES = 3
+const ACTIVE_HEARTBEAT = activeDeadlineHeartbeatPlan({
+  deadlineMinutes: ACTIVE_DEADLINE_MINUTES,
+  passCadenceMs: PASS_CADENCE_MS,
+  intervalMs: 500,
+  payloadBytes: 4_096,
+})
 const REQUIRED_PASS_COUNT = 3
 
 const APP_BINARY = resolve(import.meta.dirname, '..', '..', 'src-tauri', 'target', 'debug', 'taurhaus')
@@ -762,15 +771,12 @@ describe('managed stage deadline semantics', function () {
       deadlineMinutes: ACTIVE_DEADLINE_MINUTES,
       firstStepFor: (taskId) => {
         const start = memberMeshCommand('start', taskId, " --active-form 'Running deadline heartbeat'")
-        const heartbeat =
-          `bun -e 'for (let i = 0; i < ${ACTIVE_HEARTBEAT_ITERATIONS}; i += 1) { ` +
-          'console.log("deadline-activity-" + i); await Bun.sleep(2000) }\''
         const complete = memberMeshCommand(
           'complete',
           taskId,
           " --summary 'active deadline suppression completed'"
         )
-        return `${start}. Then run exactly: ${heartbeat}. After it exits, run exactly: ${complete}.`
+        return `${start}. Then run exactly: ${ACTIVE_HEARTBEAT.command}. After it exits, run exactly: ${complete}.`
       },
       deliverable: 'Complete the task after the heartbeat. Change no file and send no separate message.',
       completionSignalFor: (taskId) =>
@@ -841,6 +847,9 @@ describe('managed stage deadline semantics', function () {
       deadlineMinutes: ACTIVE_DEADLINE_MINUTES,
       halfDueMs: ACTIVE_DEADLINE_MINUTES * 60_000 / 2,
       fullDueMs: ACTIVE_DEADLINE_MINUTES * 60_000,
+      heartbeatDurationMs: ACTIVE_HEARTBEAT.durationMs,
+      completionSlackMs: ACTIVE_HEARTBEAT.completionSlackMs,
+      heartbeatOutputBytesPerSecond: ACTIVE_HEARTBEAT.outputBytesPerSecond,
       taskTransitions: [
         { status: assigned.created.status, recordTimestamps: taskRecordTimestamps(assigned.created) },
         {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  activeDeadlineHeartbeatPlan,
   activeDeadlinePassEvidence,
   effortDeliveryVerdict,
   effortWaitBoundMs,
@@ -211,6 +212,40 @@ describe('stagePollVerdict', () => {
   it('keeps polling every non-stale task record', () => {
     expect(stagePollVerdict({ id: '42', status: 'in_progress' })).toBeNull()
     expect(stagePollVerdict(null)).toBeNull()
+  })
+})
+
+describe('activeDeadlineHeartbeatPlan', () => {
+  // Regression: e1c38eef emitted about 10 bytes/s during the long command, so
+  // Codex never cleared the production 1 kB/s recent-IO activity threshold.
+  it('sustains enough command output for the activity pipeline to observe', () => {
+    const plan = activeDeadlineHeartbeatPlan({
+      deadlineMinutes: 3,
+      passCadenceMs: 30_000,
+      intervalMs: 500,
+      payloadBytes: 4_096,
+    })
+
+    expect(plan.outputBytesPerSecond).toBeGreaterThanOrEqual(1_000)
+    expect(plan.command).toContain('"x".repeat(4096)')
+    expect(plan.command).toContain('Bun.sleep(500)')
+  })
+
+  // Regression: e1c38eef spent 96 seconds of a 120-second deadline in the
+  // heartbeat, leaving only 24 seconds for two Codex command turns before the
+  // unsuppressed stale action could fire.
+  it('covers half-time plus one pass while reserving a full minute to complete', () => {
+    const plan = activeDeadlineHeartbeatPlan({
+      deadlineMinutes: 3,
+      passCadenceMs: 30_000,
+      intervalMs: 500,
+      payloadBytes: 4_096,
+    })
+
+    expect(plan.neededActiveMs).toBe(120_000)
+    expect(plan.iterations).toBe(240)
+    expect(plan.durationMs).toBe(120_000)
+    expect(plan.completionSlackMs).toBe(60_000)
   })
 })
 

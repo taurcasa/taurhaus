@@ -108,6 +108,46 @@ export function stagePollVerdict(record) {
 }
 
 /**
+ * Build the active negative path around the production self-heal cadence.
+ *
+ * The heartbeat must span half the deadline plus one complete pass cadence,
+ * and its output must be dense enough for Codex's `/proc` read-rate signal.
+ * What remains before the full deadline is the two-turn completion allowance.
+ */
+export function activeDeadlineHeartbeatPlan({
+  deadlineMinutes,
+  passCadenceMs,
+  intervalMs,
+  payloadBytes,
+}) {
+  const deadlineMs = Number(deadlineMinutes) * 60_000
+  const numericInputs = [deadlineMs, passCadenceMs, intervalMs, payloadBytes]
+  if (numericInputs.some((value) => !Number.isFinite(value) || value <= 0)) {
+    throw new Error('active deadline heartbeat inputs must be positive finite numbers')
+  }
+
+  const neededActiveMs = deadlineMs / 2 + passCadenceMs
+  const iterations = Math.ceil(neededActiveMs / intervalMs)
+  const durationMs = iterations * intervalMs
+  const completionSlackMs = deadlineMs - durationMs
+  if (completionSlackMs <= 0) {
+    throw new Error('active deadline heartbeat must leave time to complete before stale')
+  }
+
+  return {
+    command:
+      `bun -e 'const payload = "x".repeat(${payloadBytes}); ` +
+      `for (let i = 0; i < ${iterations}; i += 1) { console.log(payload); await Bun.sleep(${intervalMs}) }'`,
+    deadlineMs,
+    neededActiveMs,
+    iterations,
+    durationMs,
+    completionSlackMs,
+    outputBytesPerSecond: payloadBytes * 1_000 / intervalMs,
+  }
+}
+
+/**
  * Join a half-deadline self-heal pass to the fresh active snapshot it read.
  *
  * The production deadline pass accepts `active` and `likely_working` snapshots
