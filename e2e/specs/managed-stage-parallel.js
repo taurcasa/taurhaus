@@ -721,7 +721,11 @@ describe('parallel managed Codex stages', function () {
 
     for (const stage of stages) trustProject(join(codexHome, 'config.toml'), stage.worktree)
     const stateDatabase = codexStateDatabaseDiagnostic(codexHome)
-    console.log(`[e2e] Codex state DB before managed member launches: ${stateDatabase.path} exists=${stateDatabase.exists}`)
+    const stateDatabaseFiles = stateDatabase.filenames.join(', ') || '(none)'
+    console.log(
+      `[e2e] Codex state DBs before managed member launches in ${stateDatabase.directory}: ` +
+        `${stateDatabaseFiles} exists=${stateDatabase.exists}`
+    )
     measured.model = await initializeParallelTeam()
     measured.sessions = Object.fromEntries(
       stages.map((stage) => [stage.owner, readRuntimeRecord(stage.owner)?.session_id ?? null])

@@ -50,19 +50,26 @@ describe('launchManagedMembersSerially', () => {
 })
 
 describe('codexStateDatabaseDiagnostic', () => {
-  // Regression: 94fdab40 launched the paid members without recording whether
-  // Codex's fresh-home state migration had already created its database.
-  it('reports state_5.sqlite presence without creating it', () => {
+  // Regression: 707dc749 hardcoded state_5.sqlite, so a Codex schema-generation
+  // bump made the pre-launch diagnostic silently report no state database.
+  it('reports every current state database generation without creating one', () => {
     const home = mkdtempSync(join(tmpdir(), 'taurhaus-codex-state-'))
     try {
       expect(codexStateDatabaseDiagnostic(home)).toEqual({
-        path: join(home, 'state_5.sqlite'),
+        directory: home,
+        filenames: [],
         exists: false,
       })
       expect(existsSync(join(home, 'state_5.sqlite'))).toBe(false)
 
       writeFileSync(join(home, 'state_5.sqlite'), '')
-      expect(codexStateDatabaseDiagnostic(home).exists).toBe(true)
+      writeFileSync(join(home, 'state_6.sqlite'), '')
+      writeFileSync(join(home, 'state_6.sqlite-wal'), '')
+      expect(codexStateDatabaseDiagnostic(home)).toEqual({
+        directory: home,
+        filenames: ['state_5.sqlite', 'state_6.sqlite'],
+        exists: true,
+      })
     } finally {
       rmSync(home, { recursive: true, force: true })
     }
