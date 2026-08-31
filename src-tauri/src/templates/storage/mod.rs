@@ -1602,6 +1602,19 @@ fn resolve_signature(repo: &Repository) -> Result<Signature<'_>, TemplateStoreEr
 }
 
 fn default_builtins_dir() -> PathBuf {
+    // In dev and test builds the repo's resources are the truth: a stale
+    // copy under target/debug/resources (deposited by an earlier
+    // `tauri dev`/`tauri build`) must not shadow the current catalog —
+    // copied artifacts never see deletions, so a consolidation that removes
+    // bundled files would silently resurrect them. Packaged builds have no
+    // dev dir and keep using the exe-relative resources.
+    #[cfg(debug_assertions)]
+    {
+        let dev = dev_builtins_dir();
+        if dev.is_dir() {
+            return dev;
+        }
+    }
     resolve_packaged_builtins_dir().unwrap_or_else(dev_builtins_dir)
 }
 
