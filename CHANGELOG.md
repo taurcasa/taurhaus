@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Role templates now encode the shipped delivery playbook** — the bundled catalog is consolidated from 44 overlapping generations to 16 canonical roles, with unique v2/v3 guidance and compaction summaries folded into the surviving role bodies before retirement. Every lane carries the assignment-message contract, scoped gate discipline, review-ready handoff, and managed `RESULT`/`BLOCKED` signals; model pins now follow the current Fable 5, GPT-5.6 Sol, Opus 5, Antigravity, and Grok slate. Architect, reviewer, researcher, creative-direction, and UI-implementation experiments name their alternatives in the role body so switching remains a field edit, and compatibility accepts catalog aliases such as `fable` as the deliberate exception to the previous prefix-only rule. All five presets explicitly reference the canonical lead and roster; one-time upgrade reconciliation refreshes or retires exact untouched 0.8.5 template copies while preserving byte-modified user files; Claude agent export reconciles retired generated files while preserving hand-written agents; and the deliberately changed quick-dev onboarding and agent-definition goldens were regenerated from the canonical role text.
+
 ## [0.8.7] - 2026-08-31
 
 ### Fixed

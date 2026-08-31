@@ -102,8 +102,8 @@ fn load_catalog_accepts_repo_builtins_roles_and_presets() {
     for role_id in [
         "claude-design-lead",
         "claude-product-checker",
-        "codex-product-lead",
-        "codex-vertical-slice-developer",
+        "codex-orchestrator",
+        "v4-developer-codex",
     ] {
         assert!(
             catalog.roles.iter().any(|role| role.role_id == role_id),
@@ -368,6 +368,7 @@ fn state_round_trip_persists_pending_actions() {
         }],
         last_commit_at: Some(99),
         repo_initialized: true,
+        builtin_catalog_revision: 0,
     };
 
     store.save_state(&state).expect("save state");

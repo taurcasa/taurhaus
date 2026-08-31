@@ -489,9 +489,9 @@ function blockingPrompt(paneContents) {
 /**
  * The newest Codex model the backend catalog still offers.
  *
- * The bundled `codex-developer` role pins a model Codex has since deprecated,
- * and a member launched on it stops at a migration prompt before its first
- * turn. The catalog is ordered newest first and marks what is retired.
+ * Role pins can drift out of date and stop a member at a migration prompt
+ * before its first turn. The catalog is ordered newest first and marks what
+ * is retired, so this lane always selects a current entry.
  */
 async function pickCodexModel() {
   const settings = await invokeTauriOrThrow('get_settings')

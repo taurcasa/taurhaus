@@ -4,8 +4,8 @@ schema:
 
 preset_id: pair
 name: Pair
-description: "One lead and one quick-delivery developer for the smallest scoped build-and-review loop."
-version: "3.0.0"
+description: "One Fable-led orchestrator and one Sol quick-delivery developer for the smallest scoped build-and-review loop."
+version: "4.0.0"
 lead_role_id: v3-lead-claude
 
 agent_slots:

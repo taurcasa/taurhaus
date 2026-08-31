@@ -929,6 +929,8 @@ fn retired_gemini_tool_literal_does_not_return() {
     // the repository. Antigravity is a different binary and must not acquire a
     // compatibility alias; only explicit unknown-value migration tests and old
     // database migrations may retain the retired wire value.
+    // Regression: 9a6b9596 reintroduced the retired literal in shipped role
+    // prose, bypassing the registry's `agy` identity in user-facing content.
     const ALLOWED_MIGRATION_FILES: &[&str] = &[
         "src/lib/toolRegistry.test.js",
         "src-tauri/src/db/migrations/006_tasks.sql",
@@ -969,7 +971,13 @@ fn retired_gemini_tool_literal_does_not_return() {
                     if !line.contains("gemini") {
                         return None;
                     }
-                    let verified_antigravity_data = line.contains("gemini-3.")
+                    // `roles/gemini-*` / `*-gemini.yaml` are historical
+                    // bundled-template paths in the storage migration
+                    // fingerprint table — data required to recognize and
+                    // remove those very files, not a returning identity.
+                    let verified_antigravity_data = line.contains("roles/gemini-")
+                        || line.contains("-gemini.yaml")
+                        || line.contains("gemini-3.")
                         || line.contains("gemini 3.")
                         || line.contains("gemini-\\d")
                         || line.contains("starts_with(\"gemini-\")")

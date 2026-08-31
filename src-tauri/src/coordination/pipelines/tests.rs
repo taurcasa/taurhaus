@@ -3083,7 +3083,7 @@ fn load_resume_member_state_preserves_role_template_context() {
             Member {
                 name: "builder".to_string(),
                 role: MemberRole::Agent,
-                role_id: Some("codex-developer".to_string()),
+                role_id: Some("v4-developer-codex".to_string()),
                 role_name: None,
                 focus_area: None,
                 context_summary: None,
@@ -3124,7 +3124,7 @@ fn load_resume_member_state_preserves_role_template_context() {
         .expect("resume state should load");
 
     assert_eq!(lead_name, "team-lead");
-    assert_eq!(loaded_member.role_id.as_deref(), Some("codex-developer"));
+    assert_eq!(loaded_member.role_id.as_deref(), Some("v4-developer-codex"));
     assert_eq!(
         loaded_member.instructions.as_deref(),
         Some("Implement safely")
@@ -3147,8 +3147,8 @@ fn load_resume_member_state_preserves_role_template_context() {
     );
     // Regression: ff40911 discarded the role effort during relaunch, while
     // resume also replaced the model with an empty string.
-    assert_eq!(loaded_member.model.as_deref(), Some("gpt-5.4"));
-    assert_eq!(loaded_member.reasoning_effort.as_deref(), Some("high"));
+    assert_eq!(loaded_member.model.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(loaded_member.reasoning_effort.as_deref(), Some("medium"));
 
     mark_member_offline(&tmp, "architecture-final", "builder", "%61", Some(55));
     let report = orchestrator
@@ -3160,13 +3160,13 @@ fn load_resume_member_state_preserves_role_template_context() {
     assert!(calls.iter().any(|call| matches!(
         call,
         RuntimeCall::JoinMesh { member_name, model, .. }
-            if member_name == "builder" && model == "gpt-5.4"
+            if member_name == "builder" && model == "gpt-5.6-sol"
     )));
     assert!(calls.iter().any(|call| matches!(
         call,
         RuntimeCall::SendKeys { keys, .. }
-            if keys.contains("-m 'gpt-5.4'")
-                && keys.contains("model_reasoning_effort=\"high\"")
+            if keys.contains("-m 'gpt-5.6-sol'")
+                && keys.contains("model_reasoning_effort=\"medium\"")
     )));
 }
 
@@ -3233,7 +3233,7 @@ fn resume_external_placeholder_hydrates_the_role_model() {
         )
         .expect("add lead");
     let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder");
-    builder.role_id = Some("v3-developer-codex".to_string());
+    builder.role_id = Some("v4-developer-codex".to_string());
     builder.model = Some("external".to_string());
     orchestrator
         .add_member("external-placeholder", builder)
@@ -3260,10 +3260,13 @@ fn resume_external_placeholder_hydrates_the_role_model() {
             _ => None,
         })
         .expect("launch command");
-    assert_eq!(launch, "codex --yolo -m 'gpt-5.4'");
+    assert_eq!(
+        launch,
+        "codex --yolo -m 'gpt-5.6-sol' -c 'model_reasoning_effort=\"medium\"'"
+    );
     assert!(calls.iter().any(|call| matches!(
         call,
-        RuntimeCall::JoinMesh { model, .. } if model == "gpt-5.4"
+        RuntimeCall::JoinMesh { model, .. } if model == "gpt-5.6-sol"
     )));
 }
 
@@ -3277,7 +3280,7 @@ fn resume_hydrates_user_role_from_app_data_template_root() {
 
     let store = TemplateStore::new(app_data_dir.clone());
     let mut role = store
-        .get_role("v3-developer-codex")
+        .get_role("v4-developer-codex")
         .expect("bundled role")
         .template;
     role.role_id = "user-root-builder".to_string();

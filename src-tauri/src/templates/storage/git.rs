@@ -70,7 +70,7 @@ impl TemplateStore {
         }
 
         // Ensure current tree remains schema-valid before auto-commit.
-        let _ = self.load_catalog()?;
+        self.validate_store_strict()?;
 
         let result = self.commit_with_repo(&repo, &changes, RECOVERY_COMMIT_MESSAGE);
         match result {
@@ -345,7 +345,7 @@ impl TemplateStore {
         self.commit_paths_unlocked(&changed_paths, message)
     }
 
-    fn commit_paths_unlocked(
+    pub(super) fn commit_paths_unlocked(
         &self,
         changed_paths: &[PathBuf],
         message: &str,
@@ -412,7 +412,7 @@ impl TemplateStore {
             return Ok(None);
         }
 
-        if let Err(err) = self.load_catalog() {
+        if let Err(err) = self.validate_store_strict() {
             tracing::warn!(
                 templates_dir = %self.templates_dir.display(),
                 error = %err,
@@ -522,7 +522,7 @@ impl TemplateStore {
         Ok(by_path.into_values().collect())
     }
 
-    fn commit_with_repo(
+    pub(super) fn commit_with_repo(
         &self,
         repo: &Repository,
         changes: &[PathChange],

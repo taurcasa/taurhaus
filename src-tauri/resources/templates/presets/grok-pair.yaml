@@ -4,8 +4,8 @@ schema:
 
 preset_id: grok-pair
 name: Grok Pair
-description: "One lead and one Grok developer for the smallest scoped build-and-review loop on the xAI harness."
-version: "1.0.0"
+description: "One Fable-led orchestrator and one Grok developer for the smallest scoped build-and-review loop on the xAI harness."
+version: "2.0.0"
 lead_role_id: v3-lead-claude
 
 agent_slots:

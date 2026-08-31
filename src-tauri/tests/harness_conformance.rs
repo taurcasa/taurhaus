@@ -200,6 +200,8 @@ fn registry_is_complete_and_drives_the_terminal_contract() {
     let frontend_fixture: Vec<taurhaus_lib::session_scanner::cli_tool::CliToolDescriptor> =
         serde_json::from_str(include_str!("../../src/lib/fixtures/tool-registry.json"))
             .expect("frontend registry fixture");
+    // Regression: 9a6b9596 repointed the backend defaults at the canonical
+    // roles without updating either frontend mirror of this sealed contract.
     assert_eq!(
         taurhaus_lib::session_scanner::cli_tool::descriptors(),
         frontend_fixture,

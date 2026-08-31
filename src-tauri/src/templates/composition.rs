@@ -649,7 +649,7 @@ mod tests {
     fn compose_enforces_single_lead_role() {
         let roles = load_roles();
         let slots = vec![AgentSlot {
-            role_id: "codex-developer".to_string(),
+            role_id: "v4-developer-codex".to_string(),
             count: 1,
             project_binding: ProjectBinding::LeadProject,
             project_id: None,
@@ -657,7 +657,7 @@ mod tests {
         }];
 
         let result = compose_team(
-            "codex-developer",
+            "v4-developer-codex",
             &slots,
             &roles,
             &CompositionOverrides::default(),
@@ -675,7 +675,7 @@ mod tests {
         let roles = load_roles();
         let slots = vec![
             AgentSlot {
-                role_id: "codex-developer".to_string(),
+                role_id: "v4-developer-codex".to_string(),
                 count: 1,
                 project_binding: ProjectBinding::LeadProject,
                 project_id: None,
@@ -713,7 +713,7 @@ mod tests {
         ];
 
         let result = compose_team(
-            "claude-orchestrator",
+            "v3-lead-claude",
             &slots,
             &roles,
             &CompositionOverrides {
@@ -739,7 +739,7 @@ mod tests {
     fn compose_applies_override_precedence() {
         let roles = load_roles();
         let slots = vec![AgentSlot {
-            role_id: "codex-developer".to_string(),
+            role_id: "v4-developer-codex".to_string(),
             count: 2,
             project_binding: ProjectBinding::LeadProject,
             project_id: None,
@@ -758,7 +758,7 @@ mod tests {
         }];
 
         let result = compose_team(
-            "claude-orchestrator",
+            "v3-lead-claude",
             &slots,
             &roles,
             &CompositionOverrides {
@@ -799,7 +799,7 @@ mod tests {
         assert_eq!(dev1.model, "gpt-5.4");
         assert_eq!(dev1.reasoning_effort.as_deref(), Some("high"));
         assert_eq!(dev2.model, "gpt-5-mini");
-        assert_eq!(dev2.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(dev2.reasoning_effort.as_deref(), Some("medium"));
 
         assert_eq!(dev1.instructions, "instance replace\ninstance append");
         assert!(dev2.instructions.contains("slot append"));
@@ -815,7 +815,7 @@ mod tests {
     fn compose_reports_role_constraint_violations() {
         let roles = load_roles();
         let slots = vec![AgentSlot {
-            role_id: "codex-developer".to_string(),
+            role_id: "v4-developer-codex".to_string(),
             count: 9,
             project_binding: ProjectBinding::LeadProject,
             project_id: None,
@@ -823,7 +823,7 @@ mod tests {
         }];
 
         let result = compose_team(
-            "claude-orchestrator",
+            "v3-lead-claude",
             &slots,
             &roles,
             &CompositionOverrides::default(),

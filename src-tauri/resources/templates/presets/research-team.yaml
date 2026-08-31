@@ -4,8 +4,8 @@ schema:
 
 preset_id: research-team
 name: Research Team
-description: "One lead, one researcher, and one developer for evidence gathering paired with implementation and decision-ready handoff."
-version: "3.0.0"
+description: "One Fable-led orchestrator, the Sol-first open researcher slot, and one Sol developer for evidence-backed implementation."
+version: "4.0.0"
 lead_role_id: v3-lead-claude
 
 agent_slots:

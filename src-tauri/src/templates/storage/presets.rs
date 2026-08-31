@@ -2,6 +2,7 @@ use super::*;
 
 impl TemplateStore {
     pub fn list_presets(&self) -> Result<Vec<TeamPresetRecord>, TemplateStoreError> {
+        self.reconcile_builtins_if_needed()?;
         self.ensure_directories()?;
         let role_catalog = self.load_role_catalog()?;
 
@@ -9,10 +10,18 @@ impl TemplateStore {
         for preset_file in
             self.load_preset_files_from_dir(&self.builtins_dir.join(PRESETS_DIRNAME))?
         {
-            preset_file
+            if let Err(err) = preset_file
                 .template
                 .validate_with_role_catalog(&role_catalog)
-                .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
+            {
+                tracing::warn!(
+                    preset_id = %preset_file.template.preset_id,
+                    source = "built_in",
+                    error = %err,
+                    "skipping invalid team preset"
+                );
+                continue;
+            }
             merged.insert(
                 preset_file.template.preset_id.clone(),
                 TeamPresetRecord {
@@ -24,10 +33,18 @@ impl TemplateStore {
         }
 
         for preset_file in self.load_preset_files_from_dir(&self.presets_dir())? {
-            preset_file
+            if let Err(err) = preset_file
                 .template
                 .validate_with_role_catalog(&role_catalog)
-                .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
+            {
+                tracing::warn!(
+                    preset_id = %preset_file.template.preset_id,
+                    source = "user",
+                    error = %err,
+                    "skipping invalid team preset"
+                );
+                continue;
+            }
             merged.insert(
                 preset_file.template.preset_id.clone(),
                 TeamPresetRecord {
@@ -42,33 +59,56 @@ impl TemplateStore {
     }
 
     pub fn get_preset(&self, preset_id: &str) -> Result<TeamPresetRecord, TemplateStoreError> {
+        self.reconcile_builtins_if_needed()?;
         self.ensure_directories()?;
         let role_catalog = self.load_role_catalog()?;
 
         if let Some(preset_file) = self.load_preset_file_by_id(&self.presets_dir(), preset_id)? {
-            preset_file
+            match preset_file
                 .template
                 .validate_with_role_catalog(&role_catalog)
-                .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
-            return Ok(TeamPresetRecord {
-                template: preset_file.template,
-                source: TemplateSource::User,
-                read_only: false,
-            });
+            {
+                Ok(()) => {
+                    return Ok(TeamPresetRecord {
+                        template: preset_file.template,
+                        source: TemplateSource::User,
+                        read_only: false,
+                    });
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        preset_id = %preset_file.template.preset_id,
+                        source = "user",
+                        error = %err,
+                        "skipping invalid team preset"
+                    );
+                }
+            }
         }
 
         if let Some(preset_file) =
             self.load_preset_file_by_id(&self.builtins_dir.join(PRESETS_DIRNAME), preset_id)?
         {
-            preset_file
+            match preset_file
                 .template
                 .validate_with_role_catalog(&role_catalog)
-                .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
-            return Ok(TeamPresetRecord {
-                template: preset_file.template,
-                source: TemplateSource::BuiltIn,
-                read_only: true,
-            });
+            {
+                Ok(()) => {
+                    return Ok(TeamPresetRecord {
+                        template: preset_file.template,
+                        source: TemplateSource::BuiltIn,
+                        read_only: true,
+                    });
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        preset_id = %preset_file.template.preset_id,
+                        source = "built_in",
+                        error = %err,
+                        "skipping invalid team preset"
+                    );
+                }
+            }
         }
 
         Err(TemplateStoreError::NotFound(format!(
@@ -166,18 +206,27 @@ impl TemplateStore {
         validate_template_id(preset_id, "preset")?;
         self.ensure_directories()?;
 
-        let record = self.get_preset(preset_id)?;
-        if record.read_only {
-            return Err(TemplateStoreError::ReadOnly(format!(
-                "preset '{preset_id}' is built-in and cannot be deleted"
-            )));
-        }
-
+        // Deletion is resolved by file identity, never through `get_preset`:
+        // that path skips a user preset that no longer validates against the
+        // role catalog (e.g. one naming a retired role), which made exactly
+        // the presets most in need of cleanup report "not found" while the
+        // file stayed on disk. A user copy shadowing a built-in is likewise
+        // deletable — removing it reverts to the built-in.
         let relative_path = self.preset_file_path(preset_id);
         let absolute_path = self.templates_dir().join(&relative_path);
-        if !absolute_path.exists() {
+        if !absolute_path.is_file() {
+            if self
+                .builtins_dir
+                .join(PRESETS_DIRNAME)
+                .join(format!("{preset_id}.yaml"))
+                .is_file()
+            {
+                return Err(TemplateStoreError::ReadOnly(format!(
+                    "preset '{preset_id}' is built-in and cannot be deleted"
+                )));
+            }
             return Err(TemplateStoreError::NotFound(format!(
-                "preset file missing for '{preset_id}'"
+                "preset '{preset_id}' not found"
             )));
         }
 

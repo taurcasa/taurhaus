@@ -28,7 +28,7 @@ function baseTeamConfig() {
       model: 'opus',
       projectId: '/projects/taurhaus',
       description: 'Lead agent',
-      roleId: 'claude-orchestrator',
+      roleId: 'v3-lead-claude',
     },
     agents: [
       {
@@ -91,6 +91,8 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
   })
 
   it('calls upsertTeamPreset with correct payload', async () => {
+    // Regression: 9a6b9596 changed the backend registry defaults but left the
+    // frontend mirrors and preset payload contract on retired role ids.
     render(TeamCustomizerPanel, {
       props: {
         open: true,
@@ -115,14 +117,14 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
         name: 'My Cool Preset',
         description: 'Preset desc',
         version: '1.0.0',
-        leadRoleId: 'claude-orchestrator',
+        leadRoleId: 'v3-lead-claude',
         defaults: {
           teamNamePattern: '{project}-team',
           tmuxLayout: 'tiled',
         },
         agentSlots: [
           expect.objectContaining({
-            roleId: 'codex-developer',
+            roleId: 'v4-developer-codex',
             count: 1,
             projectBinding: 'lead_project',
             projectId: null,
@@ -166,7 +168,7 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
     // Regression: 91f4d3f (PR 15) looked the fallback role up in the tool
     // registry only, so an agent row with an empty or unrecognized tool saved
     // `roleId: ""` and the backend rejected the preset; main's default arm had
-    // always answered `codex-developer` for anything outside its original tool pair.
+    // always answered the Codex default for anything outside its original tool pair.
     const config = baseTeamConfig()
     config.agents = [
       { id: 'agent-1', name: 'dev-1', tool: '', model: 'gpt-5.4', projectId: '/projects/taurhaus' },
@@ -186,8 +188,8 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
     expect(ipc.upsertTeamPreset).toHaveBeenCalledWith(
       expect.objectContaining({
         agentSlots: [
-          expect.objectContaining({ roleId: 'codex-developer' }),
-          expect.objectContaining({ roleId: 'codex-developer' }),
+          expect.objectContaining({ roleId: 'v4-developer-codex' }),
+          expect.objectContaining({ roleId: 'v4-developer-codex' }),
         ],
       })
     )

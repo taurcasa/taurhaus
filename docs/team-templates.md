@@ -99,7 +99,7 @@ Use this as the conceptual template for a role:
 ```yaml
 defaults:
   cli_tool: codex
-  model: gpt-5.4          # bare slug
+  model: gpt-5.6-sol      # bare slug
   reasoning_effort: high  # separate field; null when a model has no separate effort
   default_name_pattern: architect-{project}
 
@@ -139,7 +139,7 @@ The current template system remains structurally the same, but the role schema n
 
 ### Model and reasoning effort
 
-The canonical on-disk form is a bare model slug plus a separate `reasoning_effort` under `defaults:` — bundled roles use `model: gpt-5.4` / `reasoning_effort: high` where supported and `null` otherwise. Legacy spellings `"gpt-5.4 high"` and `"gpt-5.4-high"` still load through `ModelSpec::parse_legacy` in composition and request normalization, and `SlotOverrides` — agent slots and `lead_overrides` — take `model` and `reasoning_effort` as separate fields too. Saving from the editor always writes the canonical form.
+The canonical on-disk form is a bare model slug plus a separate `reasoning_effort` under `defaults:` — for example, the Codex implementation lane uses `model: gpt-5.6-sol` / `reasoning_effort: medium`, while a harness without a separate effort sets `null`. Legacy spellings such as `"gpt-5.4 high"` and `"gpt-5.4-high"` still load through `ModelSpec::parse_legacy` in composition and request normalization, and `SlotOverrides` — agent slots and `lead_overrides` — take `model` and `reasoning_effort` as separate fields too. Saving from the editor always writes the canonical form.
 
 That means this guide changes both **how to think about roles** and what concrete fields you should author.
 
@@ -378,30 +378,44 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
-- **Roles (44)**:
-  - legacy and imported-compatible roles such as `claude-orchestrator`, `claude-researcher`, `claude-reviewer`, `codex-developer`, and `antigravity-ui-specialist`
-  - taurhaus-specific roles such as `taurhaus-lead-claude`, `taurhaus-lead-codex`, `taurhaus-architect`, `taurhaus-developer`, and `taurhaus-designer`
-  - v2 and v3 role families such as `v2-lead-claude`, `v2-developer-codex`, `v3-lead-claude`, `v3-architect-codex`, and `v3-product-checker-claude`
-  - the v4 developer family — `v4-developer-claude`, `v4-developer-codex`, `v4-developer-agy`, `v4-developer-grok` — which is what the built-in presets staff
-  - newer specialist roles: `adversarial-reviewer-claude`, `docs-verifier-codex`, `quick-dev-codex`, `frontend-design-skill-developer`, `claude-design-lead`, `claude-product-checker`, `codex-product-lead`, `codex-qa`, `codex-vertical-slice-developer`
+- **Roles (16)**:
+  - orchestration: `v3-lead-claude` (Fable 5), `codex-orchestrator` (GPT-5.6 Sol), and `antigravity-orchestrator` (the Antigravity/agy alternative)
+  - implementation: `v4-developer-claude`, `v4-developer-codex`, `v4-developer-agy`, `v4-developer-grok`, `quick-dev-codex`, and `frontend-design-skill-developer`
+  - review and decision support: `v3-architect-codex`, `adversarial-reviewer-claude`, `claude-product-checker`, `claude-design-lead`, `claude-researcher`, `docs-verifier-codex`, and `codex-qa`
 - **Presets (5)**:
-  - `pair` — lead plus `quick-dev-codex`
-  - `dev-team` — lead plus two `v4-developer-codex`
-  - `full-team` — lead plus `v3-architect-codex` and two `v4-developer-codex`
-  - `research-team` — lead plus `claude-researcher` and one `v4-developer-codex`
-  - `grok-pair` — lead plus one `v4-developer-grok`
+  - `pair` — `v3-lead-claude` plus `quick-dev-codex`
+  - `dev-team` — `v3-lead-claude` plus two `v4-developer-codex`
+  - `full-team` — `v3-lead-claude` plus `v3-architect-codex` and two `v4-developer-codex`
+  - `research-team` — `v3-lead-claude` plus `claude-researcher` and one `v4-developer-codex`
+  - `grok-pair` — `v3-lead-claude` plus one `v4-developer-grok`
 
-No preset pins model or effort on a developer slot; both come from the role, which
-defaults to medium. The v3 developer roles stay in the catalog for one more release,
-but no built-in preset staffs them any more.
+Every preset names its lead explicitly, references only canonical role ids, and
+inherits model and effort from each role instead of pinning slot overrides. The
+historical `v3-lead-claude` and `v3-architect-codex` ids remain because presets
+already reference them; their bodies and versions carry the current playbook.
+Those frozen compatibility ids no longer indicate which harness runs the role.
+
+The architect and researcher are open model slots. Architect defaults to Fable 5
+with GPT-5.6 Sol named as the fallback; researcher defaults to session-proven Sol
+with Opus 5 High named as the alternative. The adversarial reviewer defaults to
+Opus 5 and documents the candidate Sol-recall-then-Opus-verification variant.
+Switching one of these experiments is a field edit to the role's `defaults`, not
+a new role file.
+
+Design is deliberately split: `claude-design-lead` owns creative direction
+(Fable 5 preferred, Gemini via Antigravity as the alternative), while
+`frontend-design-skill-developer` owns UI implementation (Sol preferred, Opus 5
+as the alternative). Both roles treat automated evidence as a pre-filter and
+state that UX conclusions require human validation.
 
 These built-ins are most useful when you read them as lane definitions:
 
 - orchestrator owns routing and unblock decisions
 - architect owns structure and review boundaries
 - developer owns implementation lanes
-- UI specialist owns frontend presentation and polish
-- reviewer owns verification and risk spotting
+- creative-direction lead owns intent, critique, and final visual judgment
+- UI implementation specialist turns approved direction into production UI
+- product, adversarial, docs, and QA lanes own distinct verification questions
 
 ## History, Diff, And Revert
 

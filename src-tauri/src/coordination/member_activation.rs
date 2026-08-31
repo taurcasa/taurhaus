@@ -477,7 +477,7 @@ mod tests {
             taurhaus_lib::logging::LogFileState::new(log_path.clone()).expect("log state");
         taurhaus_lib::logging::install_global_sink(&log_state);
         let role: RoleTemplate = serde_norway::from_str(include_str!(
-            "../../resources/templates/roles/v3-developer-codex.yaml"
+            "../../resources/templates/roles/v4-developer-codex.yaml"
         ))
         .expect("bundled Codex role");
         let mut member = Member {
@@ -516,7 +516,7 @@ mod tests {
             .filter_map(|line| serde_json::from_str::<Value>(line).ok())
             .find(|event| event["event"] == "launch.model.invalid" && event["member"] == "reviewer")
             .expect("invalid role model event");
-        assert_eq!(event["found"], "gpt-5.4");
+        assert_eq!(event["found"], "gpt-5.6-sol");
         assert_eq!(event["replacement"], "opus");
     }
 
