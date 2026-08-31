@@ -1002,3 +1002,198 @@ defaults:
   team_name_pattern: "{project}-team"
   tmux_layout: tiled
 "#;
+
+// Regression: b0830f10's reference-gathering parsed every YAML in the user
+// presets directory inline and propagated Parse errors from the first read,
+// so one stray non-preset file took down every role read.
+#[test]
+fn a_stray_yaml_in_presets_does_not_fail_role_reads() {
+    let (_root, app_data, _fixture_builtins) = setup_dirs();
+    let builtins = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("templates");
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    store.ensure_directories().expect("ensure dirs");
+
+    write(
+        &app_data.join("templates/presets/notes.yaml"),
+        "just: a note\n",
+    );
+
+    store
+        .list_roles()
+        .expect("a stray presets file must not take the role catalog down");
+    store.load_catalog().expect("catalog stays readable");
+}
+
+// Regression: delete_preset resolved through get_preset, whose validation
+// skips a user preset naming a retired role — leaving exactly the presets
+// most in need of cleanup reported "not found" while the file stayed on
+// disk.
+#[test]
+fn an_invalid_user_preset_remains_deletable() {
+    let (_root, app_data, _fixture_builtins) = setup_dirs();
+    let builtins = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("templates");
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    store.ensure_directories().expect("ensure dirs");
+
+    let err = store
+        .delete_preset("pair")
+        .expect_err("a built-in preset stays protected");
+    assert!(matches!(err, TemplateStoreError::ReadOnly(_)));
+    let err = store
+        .delete_preset("no-such-preset")
+        .expect_err("an unknown id stays not-found");
+    assert!(matches!(err, TemplateStoreError::NotFound(_)));
+
+    let path = app_data.join("templates/presets/my-team.yaml");
+    write(&path, INVALID_MY_TEAM_PRESET);
+    store
+        .delete_preset("my-team")
+        .expect("an invalid user preset must remain deletable");
+    assert!(!path.exists(), "the invalid preset file must be gone");
+}
+
+// Regression: the fingerprint table started at 0.8.0, so a store seeded by
+// v0.4.5–v0.7.0 kept retired roles (gemini-orchestrator and friends) as
+// user-owned copies forever.
+#[test]
+fn a_v0_7_0_seeded_retired_role_reconciles_away() {
+    let (_root, app_data, _fixture_builtins) = setup_dirs();
+    let builtins = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("templates");
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    store.ensure_directories().expect("ensure dirs");
+
+    write(
+        &app_data.join("templates/roles/gemini-orchestrator.yaml"),
+        V0_7_0_GEMINI_ORCHESTRATOR_ROLE,
+    );
+
+    let catalog = store.load_catalog().expect("v0.7.0 copies reconcile");
+    assert!(
+        catalog
+            .roles
+            .iter()
+            .all(|role| role.role_id != "gemini-orchestrator"),
+        "a v0.7.0-seeded retired role must be removed by reconciliation"
+    );
+}
+
+const INVALID_MY_TEAM_PRESET: &str = r#"schema:
+  kind: team_preset
+  version: 1
+
+preset_id: my-team
+name: My Team
+description: "A user preset naming a role that no longer exists."
+version: "1.0.0"
+lead_role_id: long-gone-role
+
+agent_slots:
+  - role_id: also-long-gone
+    count: 1
+    project_binding: lead_project
+
+defaults:
+  team_name_pattern: "{project}-team"
+  tmux_layout: tiled
+"#;
+
+// The exact bytes v0.7.0 shipped (`git show
+// v0.7.0:src-tauri/resources/templates/roles/gemini-orchestrator.yaml`);
+// the fingerprint table must recognize them for the reconcile to fire.
+const V0_7_0_GEMINI_ORCHESTRATOR_ROLE: &str = r#"schema:
+  kind: role_template
+  version: 1
+
+role_id: gemini-orchestrator
+name: Gemini Orchestrator
+version: 1.0.0
+kind: lead
+
+defaults:
+  cli_tool: gemini
+  model: gemini-3.1-pro
+  reasoning_effort: null
+  default_name_pattern: lead-{project}
+
+instructions: |
+  Coordinate the team end to end: convert user requests into concrete tasks,
+  assign clear owners, track blockers, and synthesize outcomes into user-facing
+  updates. Keep momentum high by unblocking agents quickly and deciding on
+  tradeoffs when ambiguity appears.
+
+  Stay available for communication at all times. Your primary mode is delegation, not implementation. When work needs doing, assign it to the right team member:
+  - Implementation tasks -> developers
+  - Structural/pattern questions -> architect
+  - Frontend design decisions -> UI specialist
+  - Direction/scope questions -> decide yourself or consult the user
+
+  Never do implementation work yourself unless all team members are occupied and the task is urgent. Your context is too valuable to spend on code -> spend it on coordination.
+
+  Operate through Gemini CLI conventions while preserving the same team-lead contract: clear routing, explicit ownership, and concise status synthesis.
+
+focus_area: "Team orchestration, delegation, and unblock decisions"
+context_summary: "Carries the live map of team assignments, blockers, priorities, and handoffs so the next routing decision stays coherent after compaction."
+behavior_summary: "Delegates by default, keeps momentum high, and handles direction-level decisions while routing specialized work to the right agent."
+
+communication_style: "Short, directive, and priority-aware. Assigns concrete next actions, keeps lanes informed, and avoids narrative status chatter."
+
+quality_gates:
+  - "Every active lane has a clear owner, next action, and completion signal."
+  - "Blockers, dependencies, and handoffs are visible in the task system."
+  - "Specialized work is routed to the right role instead of being handled opportunistically."
+
+definition_of_done:
+  - "Assignments and handoffs are routed with exact deliverables and first actions."
+  - "The team has no silent stalls or ambiguous ownership gaps."
+  - "Outstanding blockers or risks are surfaced to the lead or next owner."
+
+phase_scope:
+  - "planning"
+  - "execution"
+  - "handoff"
+
+mode: coordination
+
+required_artifacts:
+  - "task assignments"
+  - "progress or blocker updates"
+  - "handoff notes"
+
+handoff_expectations:
+  - "State the current owner, task id, next action, and completion signal for every active handoff."
+  - "Call out the exact evidence or unblock decision still required before closure."
+  - "Leave downstream lanes knowing who needs to be nudged, reviewed, or unblocked next."
+
+behavioral_contract:
+  communication:
+    - Acknowledge new requests quickly and classify them as action, response, or informational.
+    - Send concise assignment messages with acceptance criteria and expected evidence.
+    - Request status updates when work runs long or dependencies shift.
+    - Close each handoff by naming the next owner or lane explicitly.
+  execution:
+    - Break work into scoped tasks and keep each task aligned to one clear deliverable.
+    - "Verify completion evidence before marking tasks done: changed paths, commands run, and outcomes."
+    - Enforce project conventions (AGENTS.md/CLAUDE.md) and quality gates before closure.
+    - Commit at milestone boundaries with descriptive messages when appropriate.
+  escalation:
+    - Surface blockers immediately with dependency context and decision options.
+    - If conflicting reports arrive, resolve by requesting concrete evidence and choosing a single path.
+    - Do not let blocked tasks stall silently; re-route or de-scope quickly.
+    - "Route structural questions from developers to the architect, not yourself"
+    - "Only handle direction-level decisions: new features, scope, priorities"
+    - "Escalate when completion evidence, ownership, or downstream review routing is too ambiguous to advance safely."
+
+capabilities: []
+
+constraints:
+  min_instances: 1
+  max_instances: 1
+  requires_lead_tool: null
+  allowed_project_binding: lead_project
+"#;

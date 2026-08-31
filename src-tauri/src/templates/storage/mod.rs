@@ -41,11 +41,16 @@ const BUILTIN_CATALOG_REVISION: u32 = 1;
 
 const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n.lock\n.lock.fallback\n";
 
-// Exact SHA-256 fingerprints of template bytes shipped from 0.8.0 through
-// 0.8.5. A file must match both an old path and known shipped bytes before the
-// catalog migration may remove it; locally edited copies remain user-owned.
-// Reconciliation removes redundant copies, so later bundle edits are read
-// directly and do not require another fingerprint for already-migrated stores.
+// Exact SHA-256 fingerprints of template bytes shipped from 0.4.5 (the first
+// bundled catalog) through 0.8.5. A file must match both an old path and known
+// shipped bytes before the catalog migration may remove it; locally edited
+// copies remain user-owned.
+//
+// Forward contract: `seed_builtins_if_missing` re-copies the current bundle
+// into the user store on every mutation path, so reconciliation alone does NOT
+// keep already-migrated stores clean. Every future bundled-template edit must
+// bump `BUILTIN_CATALOG_REVISION` and append the superseded bytes'
+// fingerprints here.
 const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
     (
         "presets/dev-team.yaml",
@@ -266,6 +271,484 @@ const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
     (
         "roles/v4-developer-grok.yaml",
         "98f59514df7ba5cb046a654a29463bb48b30e174f6aaaf7b23dfe368f209341e",
+    ),
+    // Shipped v0.4.5 through v0.7.0 (generated from the release tags; see
+    // the regression `a_v0_7_0_seeded_retired_role_reconciles_away`):
+    (
+        "presets/dev-team.yaml",
+        "2941f85c72056f5f5f5d80fe146b0be149c9f3525e025622aa6975fa636d4476",
+    ),
+    (
+        "presets/full-team.yaml",
+        "12474a60eee7980a989898b4d5e8841d994f3323324e7d97030b2a6a67330fa0",
+    ),
+    (
+        "presets/fullstack-dev-codex.yaml",
+        "9f2ca8c6c8be7e23eb528f05ba780990c1b54e2492306180ac8213354c1a6879",
+    ),
+    (
+        "presets/fullstack-dev-gemini.yaml",
+        "25ce614a2a3f1c1f357132f331711d3c21a4c71275d133faba4f95a906596500",
+    ),
+    (
+        "presets/fullstack-dev.yaml",
+        "3ee18a890464aa19d2a4a6f8eca6183df9557d4f6c81c96ef44353645d0a9e13",
+    ),
+    (
+        "presets/pair.yaml",
+        "c107de3630ccb3b6d037353e8c741e80e6e43895e6710ca28d0bb3697cb44533",
+    ),
+    (
+        "presets/research-dev-codex.yaml",
+        "5761429db7ffaf983d211338131e1c7e7b3cb469a67cc7563d5f2c76ed1b76a2",
+    ),
+    (
+        "presets/research-dev-gemini.yaml",
+        "4001647ef14c22f50993dffaf3ff5a1be05d26efbf5846d2462848ab04c9a2a2",
+    ),
+    (
+        "presets/research-dev.yaml",
+        "51d517d829310d044d1e63ac3e745e852cd29e3eb3f9b3e0edb7fa1295f9e41a",
+    ),
+    (
+        "presets/research-team.yaml",
+        "9a73aa522144e30403c7e675e0096ec370609161dcdbbc68664c844ddeff97be",
+    ),
+    (
+        "presets/review-team-codex.yaml",
+        "b303521d366651c146dda0f2a6961caf20870bbd539107a0abf54250d5257fba",
+    ),
+    (
+        "presets/review-team-gemini.yaml",
+        "b08130f0302ab0289bacb5156a03a1f51b9e640fddcd5b21ea17d86200a1f311",
+    ),
+    (
+        "presets/review-team.yaml",
+        "5f3011e39c37c9ff7b5f62a0dfa62753260b62d80beb36e06285b8e41a625ac6",
+    ),
+    (
+        "presets/standard-team-codex.yaml",
+        "6a9488690a8f4634d1ce78f60c30fcbb614433a75213d3e17c835ea0c525dc0e",
+    ),
+    (
+        "presets/standard-team-gemini.yaml",
+        "91f79bec15d1a1d71b7e2c045db46ef7dd2e0271ccacd084befb0d286036d633",
+    ),
+    (
+        "presets/standard-team.yaml",
+        "6b88b9409b54e6e3219930ea383003e0d00a02104595cd962800e1798a5ce0bc",
+    ),
+    (
+        "presets/taurhaus-standard-codex.yaml",
+        "d7ef30f87a40dac2d1506781c19cdaa2b689dd90af76eaff8a7a69628b067a5c",
+    ),
+    (
+        "presets/taurhaus-standard.yaml",
+        "cf31a28180202eab880532fe39d749c2d3044cb4f36ac73b8ca4faffb838f9eb",
+    ),
+    (
+        "roles/adversarial-reviewer-claude.yaml",
+        "a23f6b988578c13d6718eb25068f621d0f462ac5c76fab296e355e44f1de5380",
+    ),
+    (
+        "roles/claude-design-lead.yaml",
+        "0bb004c7799e23659f2de40939b41b9541496331222e7159a45f56e855902e10",
+    ),
+    (
+        "roles/claude-design-lead.yaml",
+        "f576a347dbded3bf5b67e22c2f6393d12e2f0dcc7e74555f233c15305528bdb5",
+    ),
+    (
+        "roles/claude-orchestrator.yaml",
+        "09c8ae1f76b92d583f820d7997e0deb978e91d63da23ebb7daafe82c35c2dad5",
+    ),
+    (
+        "roles/claude-orchestrator.yaml",
+        "3781aacc3955aa00160f37ecbb067498dd27cecfc41faded78b6f5063be0392e",
+    ),
+    (
+        "roles/claude-orchestrator.yaml",
+        "bc3656baf9bcecebd9d6e07ce708b0d8da0027dd48e5f578b9d7f270fa325836",
+    ),
+    (
+        "roles/claude-orchestrator.yaml",
+        "f4c28cbec68913c9686db1976a3f13710b303d4ea1c554c5e8b46b3115a11559",
+    ),
+    (
+        "roles/claude-product-checker.yaml",
+        "1dc77cad85211531e22f9a2be9a1dab8e606cbf1844828505407bd290cf12577",
+    ),
+    (
+        "roles/claude-product-checker.yaml",
+        "fdff8a274b7829b627ccf954a3c73bd34015aea3391deb7493de1627d1408c10",
+    ),
+    (
+        "roles/claude-researcher.yaml",
+        "3c94718035550cebb09d7e4f7f14544779f151165ff56edbd42563ff4b964218",
+    ),
+    (
+        "roles/claude-researcher.yaml",
+        "4a618327083bc447adba57793a8ece05870127b8e78c440a4c277328ea4df4cf",
+    ),
+    (
+        "roles/claude-researcher.yaml",
+        "edd229b59902a330a1f081f8a694e3e5d7ee5c8e419c82eebe4b5e0348e4cbe4",
+    ),
+    (
+        "roles/claude-researcher.yaml",
+        "f5aa0fd280c4324a2cb8ed3f36926ef7911d0e6d1675b0387488dab7f798499b",
+    ),
+    (
+        "roles/claude-reviewer.yaml",
+        "2e7696c3928f79b67f49c73bfa38bd4106f88e6b503bb07545dbb10a08fcce1e",
+    ),
+    (
+        "roles/claude-reviewer.yaml",
+        "9332a173e3e219b34cf11ff3b4e6af0a6bf4519abbd3ecedf1f2e2630aaca3df",
+    ),
+    (
+        "roles/claude-reviewer.yaml",
+        "9340f7aed090a053696bebf863114e317230b36afc79ab44dd8400010ef92c58",
+    ),
+    (
+        "roles/claude-reviewer.yaml",
+        "a24c32553fbced187341ea9fc3c23d9e38f6d9df228de3ace564ee30ee7a4b6d",
+    ),
+    (
+        "roles/codex-architect.yaml",
+        "0e01b460f71cf680dce3122cc8819e603eff421957ad305d1519891033b151ab",
+    ),
+    (
+        "roles/codex-architect.yaml",
+        "122156fe6e1e40e89cde6da2a62274ae09198ba85559a142932282b6d815dc93",
+    ),
+    (
+        "roles/codex-architect.yaml",
+        "2c7c855d4b6c53432eeb8f1d2af3a0fb0b394072b348cf8b6b40e0f36c7ae2df",
+    ),
+    (
+        "roles/codex-architect.yaml",
+        "355687a935faeda6598f22eaa14d6bdd066f00dc3f40e5767f42207f574737a1",
+    ),
+    (
+        "roles/codex-architect.yaml",
+        "b8b85b0fa1d55f20245614c64696b34b8b5acd0cc26edd148e07790cb64adfa8",
+    ),
+    (
+        "roles/codex-architect.yaml",
+        "f5f4bba96467046d361ed17161b59f56b8cbbc59a9cd2360bea205759b81690d",
+    ),
+    (
+        "roles/codex-developer.yaml",
+        "11a863fa25af10439473fbca11751c8561076d327995aa86237c5faede657c92",
+    ),
+    (
+        "roles/codex-developer.yaml",
+        "3ed6d20fa996a8280f342b1c7e060864c93cde9f1aeb6a9e057a9d3d8e85d473",
+    ),
+    (
+        "roles/codex-developer.yaml",
+        "523d82e745d08b9a6230e1da42a291adeb5a5f9da88837f13ed6071929dc8010",
+    ),
+    (
+        "roles/codex-developer.yaml",
+        "8496d06ef7a60878a8684dbc0c982263faccc491b7dc1f995ac3820737ac86c9",
+    ),
+    (
+        "roles/codex-developer.yaml",
+        "b61070dfe9a26d84452431e754f2a86a1824bbad842f4d1a0e588de631eedfec",
+    ),
+    (
+        "roles/codex-developer.yaml",
+        "c92bdfbcf9f5f68b24bce337d69c99d93756591d8db51cb4c89a0f49af7c2354",
+    ),
+    (
+        "roles/codex-developer.yaml",
+        "ef58263711736c69a3535401d1508e7bac4f6297c57bb942e3b1e5deb92e2042",
+    ),
+    (
+        "roles/codex-orchestrator.yaml",
+        "c392b58eae6ba2732193886d87e9b559d26e52b530a99d2c4d9b930f2bc425e6",
+    ),
+    (
+        "roles/codex-orchestrator.yaml",
+        "f145a425461fc4b40dc33bfba2a98ea02c156ba2ae043fb5ba4c7fcc380fd7f1",
+    ),
+    (
+        "roles/codex-product-lead.yaml",
+        "9a130a48939bbf1ee07c6e9034015ede5e39a4609128831f497f7cebfd087eab",
+    ),
+    (
+        "roles/codex-product-lead.yaml",
+        "f84eb9f6816f733c2ef9f0301d45a4a6ab33518c370f1923d316063de14a4d5f",
+    ),
+    (
+        "roles/codex-qa.yaml",
+        "8ab170cd5b2b27eb15e30d43e66a577549c514b59bd88ab718cee410781b9359",
+    ),
+    (
+        "roles/codex-qa.yaml",
+        "8e88857f2a1e9484039cbf801203295623ca0a0e17bb09f98509d93dc353bb12",
+    ),
+    (
+        "roles/codex-qa.yaml",
+        "9cbcd962f7ad01cf76825716d576a29b7edf651902be9fd02a48a195373fea76",
+    ),
+    (
+        "roles/codex-qa.yaml",
+        "b15744a62eb0f5d0c7dc38e3b514ae1be0e70d53ec8ada883f63e0b1168d5483",
+    ),
+    (
+        "roles/codex-qa.yaml",
+        "b680825aff1b4f4bdd08468a68f4650a1167876a3685e73f699c0c6913b99400",
+    ),
+    (
+        "roles/codex-qa.yaml",
+        "d18873518022555e3a64131eb617d410084f7645de8ce341f3477cf535002c10",
+    ),
+    (
+        "roles/codex-vertical-slice-developer.yaml",
+        "d3cbc928315b5f9342ca86861bc5a068b43a3a6327789ac9f40186a5a73f586f",
+    ),
+    (
+        "roles/codex-vertical-slice-developer.yaml",
+        "e73c603b0a3dbf1d2a0ec26e9524e69a0881ee806943cbf22f1a34bb31a4ea82",
+    ),
+    (
+        "roles/docs-verifier-codex.yaml",
+        "943f4115ccf5a6e07ce97381996bdf6424f301af14571303369ed759b6b1339d",
+    ),
+    (
+        "roles/frontend-design-skill-developer.yaml",
+        "cb727662e580605f936362cfc06b1ef8e3152212c4839469f5d497195a295702",
+    ),
+    (
+        "roles/gemini-orchestrator.yaml",
+        "034f746595afab626143d921aeef15577bebf7d30b0e8302edc573c5134dc8f1",
+    ),
+    (
+        "roles/gemini-orchestrator.yaml",
+        "46735e1eeefe17acb5212730f6217b2a96cfc31182cc0ff415bfa0b5cfa8a452",
+    ),
+    (
+        "roles/gemini-orchestrator.yaml",
+        "8aff0ed25461b2b5caa7dcc1e298fd4605d72bd10ae4ae0eed8e27cd2968e88c",
+    ),
+    (
+        "roles/gemini-ui-specialist.yaml",
+        "0d1eb86d9dd2e7b3ec3082aab669cf9aa82b798e70597e378a45bc392bb3acc3",
+    ),
+    (
+        "roles/gemini-ui-specialist.yaml",
+        "16b85e149b00bf5e8e63e41b3c72c84f73ead992f2b3de5b2f58a0e297ac3a5a",
+    ),
+    (
+        "roles/gemini-ui-specialist.yaml",
+        "27fd5ded32647799b6c2cdd7fa7b3c8701154bb8cca51543b1b0423ab6478db2",
+    ),
+    (
+        "roles/gemini-ui-specialist.yaml",
+        "5e135878ddcdb7767bd1fed61bffae459ce7c1136a36a29a6eb10962aa903627",
+    ),
+    (
+        "roles/gemini-ui-specialist.yaml",
+        "c6f5ef79b703e33c2cbdd0bd7069600d8297e1242a39dbca0ef31c9d1b2ac551",
+    ),
+    (
+        "roles/quick-dev-codex.yaml",
+        "840a3213e0bc9af1ebbc4fd44bd1bff392a33e700cb48d794f39597ace12aaed",
+    ),
+    (
+        "roles/taurhaus-architect.yaml",
+        "623389a1620eedb4f038bb09001abcd685eb31f95048eb018ceec60bdfc06b12",
+    ),
+    (
+        "roles/taurhaus-architect.yaml",
+        "85790295b1f67cfb7b75c23f1b235ba552a96b40d78a9d5ac7c7ce43857cca99",
+    ),
+    (
+        "roles/taurhaus-architect.yaml",
+        "de178d2c0475911b835808ef620f0c29888c74bbafe50806b6f99491b70f8fa0",
+    ),
+    (
+        "roles/taurhaus-designer.yaml",
+        "13d9ab9dd7ef6291c060b3167c8e2caff84b44f3d4b0b5a7b600607c86b7a155",
+    ),
+    (
+        "roles/taurhaus-designer.yaml",
+        "27fc4ca2ac9230f6acfde873edaff564d2ea2005ca640b700a06afddf18fdc8e",
+    ),
+    (
+        "roles/taurhaus-designer.yaml",
+        "a4a52ef3cf685b13baf057405c7432a5aed4c0b694a6817a304154f5c40c4b9d",
+    ),
+    (
+        "roles/taurhaus-designer.yaml",
+        "fe4e3237a629cef78a0e855688a5cded77120f01f178918768eade90b65650ee",
+    ),
+    (
+        "roles/taurhaus-developer.yaml",
+        "01d1654ff16b37fd1f21a915b286411b923352a37bba2c397514c96cf238d639",
+    ),
+    (
+        "roles/taurhaus-developer.yaml",
+        "8b47a6f8b0e92db7b237ef33e8ad6963f34842303f445a26bcd9fb6e3ad53e15",
+    ),
+    (
+        "roles/taurhaus-developer.yaml",
+        "8dce6e828cf41e75b000b2fb5a92b011f91374bb3745c6a64f4993965404e94d",
+    ),
+    (
+        "roles/taurhaus-lead-claude.yaml",
+        "4cdcab554f8cd587422055b7430737eda181da9d2dd6c7f0f96f260f1e6d0392",
+    ),
+    (
+        "roles/taurhaus-lead-claude.yaml",
+        "7c26d4dd3303bc763232a0d8d72c61602f4cb4754bd7121c350eaa1b387115f3",
+    ),
+    (
+        "roles/taurhaus-lead-claude.yaml",
+        "fd9b5e7dafe0017689bf688154752a6c28512cf737ee58a5c99267f68b0a5717",
+    ),
+    (
+        "roles/taurhaus-lead-codex.yaml",
+        "27c231141c894439a494d8afaf6e9fdd183b224f10ccc1b587b914aef8ca2cd9",
+    ),
+    (
+        "roles/taurhaus-lead-codex.yaml",
+        "2c5c4145d7ff8821d58c5cbdec8dec4ef89e4abca6a250283cee2ffddacb182a",
+    ),
+    (
+        "roles/taurhaus-lead-codex.yaml",
+        "8af1c92231ee798997155ffedfb03ea4badace035029b450516b9e54bd9b8984",
+    ),
+    (
+        "roles/v2-architect-claude.yaml",
+        "0ce564039425da0cb01626e67cf446823c31fa6bfc8242963c2e9c3893e3f923",
+    ),
+    (
+        "roles/v2-architect-claude.yaml",
+        "d60720fddc457d511675acbc34aaaaa35d1fff365ce9fe9ce91442a87818db9c",
+    ),
+    (
+        "roles/v2-architect-codex.yaml",
+        "44c9401cd6f8fd1f55c4d882780be913b31f334a063dd552fb4694aba309d6be",
+    ),
+    (
+        "roles/v2-architect-codex.yaml",
+        "74959aef3b368a2aa86234a9b5a3905dc856f191bea03688074ac89d99807ae1",
+    ),
+    (
+        "roles/v2-design-lead-claude.yaml",
+        "755b0ac4b0fe183ede874a20f445b235b9c0dd172a25d347f45fd24401f0002b",
+    ),
+    (
+        "roles/v2-design-lead-claude.yaml",
+        "ff0906cbe00096caedbbb239c1c9720e7e230e07b5037e0c44ae676944f9821d",
+    ),
+    (
+        "roles/v2-developer-claude.yaml",
+        "5bfa27edefcfd185f4287f50bd70713dc6796e2d8214e26043bbd03f45317046",
+    ),
+    (
+        "roles/v2-developer-claude.yaml",
+        "7a54f5092199bc8ae3d60f0197e1dc9a96af0302f11df6ebebae4c61a432621d",
+    ),
+    (
+        "roles/v2-developer-codex.yaml",
+        "11e29e4fcc11335a2f52992627d3ab6d1b56dbe3251727d403fb29a6841350f1",
+    ),
+    (
+        "roles/v2-developer-codex.yaml",
+        "6ffdae0768cc289e95f016a5cb6d0a69615142b78af7b4d5ad07d55f0c680001",
+    ),
+    (
+        "roles/v2-lead-claude.yaml",
+        "352ffced42bc612fe86fc6960cbfdba94acecf175bb5271f0f0d4d0603437173",
+    ),
+    (
+        "roles/v2-lead-claude.yaml",
+        "c4386b589d2c9ee5fa64b8b1e4021bfc2850b18042b5459e30b358c5808b6ad4",
+    ),
+    (
+        "roles/v2-lead-codex.yaml",
+        "21b8be78958fd5c361827919a6449b663b72e878cbb8e64309b11c50517c30e6",
+    ),
+    (
+        "roles/v2-lead-codex.yaml",
+        "ab2705d9c09050a44fa0dd02874cc9cedfcb036fb418614194143a4fdccbfdb8",
+    ),
+    (
+        "roles/v2-product-checker-claude.yaml",
+        "ca95d20d04fe787670725ec241047c8e7088598468799a277575a5a63afa8801",
+    ),
+    (
+        "roles/v2-product-checker-claude.yaml",
+        "ece49b53048c6d610e5e9a64bd1eaf2b424da4c01f6370988cdb8f28957e3a13",
+    ),
+    (
+        "roles/v3-architect-claude.yaml",
+        "45a0b5361c28ce5c5575d4669ad49a59886a9ad0a6e3ae01ba342d195b7ed569",
+    ),
+    (
+        "roles/v3-architect-claude.yaml",
+        "bb6b033e542cb5cc7acc219ed33a9dc4f9ae2734d1aace45f58c2198ba7042df",
+    ),
+    (
+        "roles/v3-architect-codex.yaml",
+        "576d44ac05ebab44607a71cc915c2123471f74103f4f4b353d6c960f44e91144",
+    ),
+    (
+        "roles/v3-architect-codex.yaml",
+        "ef6b79193ea2a2d51de4a5a55107cf829374827af85ca72a7a22ae3a3d4a490d",
+    ),
+    (
+        "roles/v3-design-lead-claude.yaml",
+        "1b5dbd05b90f75db48fb90937c6e4686aa0c0a2cd414c4d838b594534fc12efa",
+    ),
+    (
+        "roles/v3-design-lead-claude.yaml",
+        "917c83538e13ded5a54add86ab3cffa8c6a734abee534a34eed18cfc2fc366e2",
+    ),
+    (
+        "roles/v3-developer-claude.yaml",
+        "0c0a1f21ebd76615e8df8d263e641a6813c697db2ad78174833380984eaca3e0",
+    ),
+    (
+        "roles/v3-developer-claude.yaml",
+        "fdd753046582f5261ff3aee20cf2eb6b8cbc5aa5b15aa79890dc641919ff84f8",
+    ),
+    (
+        "roles/v3-developer-codex.yaml",
+        "b83296bf6cbafe8356b53d21e08dff4b2c85ef51b8f1102e37c2e80d2c9dca11",
+    ),
+    (
+        "roles/v3-developer-codex.yaml",
+        "ff0bfd03a34041f7f980a956695693244e5752694cbaf29c6e4ddecab2b2df6d",
+    ),
+    (
+        "roles/v3-lead-claude.yaml",
+        "0fd84e2124cd354d9069ba8276cafda3e730de014b9e2be739683f7c3dfbbb5e",
+    ),
+    (
+        "roles/v3-lead-claude.yaml",
+        "4eaab814e0a3a2dd9fa81ebe7c420242ee15512603a6f0031b88d58ed21bb9b5",
+    ),
+    (
+        "roles/v3-lead-codex.yaml",
+        "24e44d261fe3234e3b932cbfb3e2a43da93aae0ebaabb43161bc5c830a129be1",
+    ),
+    (
+        "roles/v3-lead-codex.yaml",
+        "983e0d3518c0d13c549aa57de1c8c139b0afa73f510490a8f5f64b11512ade6f",
+    ),
+    (
+        "roles/v3-product-checker-claude.yaml",
+        "39543544370804a7b762216b255645610e7fa7533529d1c9739be393aa73d58e",
+    ),
+    (
+        "roles/v3-product-checker-claude.yaml",
+        "6de3b04cf0e22b37a7249e18deb06c238d1dcc98874278feeb457cf1dd04b9b9",
     ),
 ];
 
@@ -492,6 +975,16 @@ struct TeamPresetFile {
     template: TeamPreset,
 }
 
+/// How a directory scan treats a file it cannot parse. Every read path is
+/// `SkipUnparseable` — one broken or stray file must not take listings or the
+/// merged catalog down — while pre-commit validation is `Strict`: a corrupt
+/// store must never be committed into template history.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScanMode {
+    Strict,
+    SkipUnparseable,
+}
+
 impl DebounceState {
     fn from_store(state: TemplateStoreState, window_secs: i64) -> Self {
         Self {
@@ -623,6 +1116,20 @@ impl TemplateStore {
         self.load_catalog_without_reconcile()
     }
 
+    /// Pre-commit validation: every file in the store must parse — a stray
+    /// or corrupt YAML that the tolerant read paths would skip is a reason
+    /// NOT to commit — and the merged catalog must load.
+    pub(super) fn validate_store_strict(&self) -> Result<(), TemplateStoreError> {
+        for dir in [self.builtins_dir.join(ROLES_DIRNAME), self.roles_dir()] {
+            self.load_role_files_from_dir_with(&dir, ScanMode::Strict)?;
+        }
+        for dir in [self.builtins_dir.join(PRESETS_DIRNAME), self.presets_dir()] {
+            self.load_preset_files_from_dir_with(&dir, ScanMode::Strict)?;
+        }
+        self.load_catalog_without_reconcile()?;
+        Ok(())
+    }
+
     fn load_catalog_without_reconcile(&self) -> Result<TemplateCatalog, TemplateStoreError> {
         let roles = self.load_role_catalog()?;
         let presets = self.load_preset_catalog(&roles)?;
@@ -723,13 +1230,20 @@ impl TemplateStore {
                 continue;
             }
             let raw = fs::read_to_string(&target)?;
-            let preset = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
-                TemplateStoreError::Parse(format!(
-                    "failed to parse preset {}: {err}",
-                    target.display()
-                ))
-            })?;
-            insert_preset_role_ids(&preset, &mut referenced_role_ids);
+            // Reference-gathering must not take the whole catalog down: a
+            // stray or unparseable YAML in the user presets directory names
+            // no roles and is skipped with a warning, instead of failing
+            // every role read behind the reconcile.
+            match serde_norway::from_str::<TeamPreset>(&raw) {
+                Ok(preset) => insert_preset_role_ids(&preset, &mut referenced_role_ids),
+                Err(err) => {
+                    tracing::warn!(
+                        path = %target.display(),
+                        error = %err,
+                        "skipping unparseable user preset during builtin reconciliation"
+                    );
+                }
+            }
         }
 
         let mut role_entries = fs::read_dir(self.roles_dir())?
@@ -940,6 +1454,14 @@ impl TemplateStore {
         &self,
         dir: &Path,
     ) -> Result<Vec<RoleTemplateFile>, TemplateStoreError> {
+        self.load_role_files_from_dir_with(dir, ScanMode::SkipUnparseable)
+    }
+
+    fn load_role_files_from_dir_with(
+        &self,
+        dir: &Path,
+        mode: ScanMode,
+    ) -> Result<Vec<RoleTemplateFile>, TemplateStoreError> {
         if !dir.exists() {
             return Ok(Vec::new());
         }
@@ -955,9 +1477,23 @@ impl TemplateStore {
                 continue;
             }
             let raw = fs::read_to_string(&path)?;
-            let mut parsed = serde_norway::from_str::<RoleTemplate>(&raw).map_err(|err| {
-                TemplateStoreError::Parse(format!("failed to parse role {}: {err}", path.display()))
-            })?;
+            let mut parsed = match serde_norway::from_str::<RoleTemplate>(&raw) {
+                Ok(parsed) => parsed,
+                Err(err) if mode == ScanMode::Strict => {
+                    return Err(TemplateStoreError::Parse(format!(
+                        "failed to parse role {}: {err}",
+                        path.display()
+                    )));
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        error = %err,
+                        "skipping unparseable role file in directory scan"
+                    );
+                    continue;
+                }
+            };
             parsed.normalize_model_fields();
             roles.push(RoleTemplateFile { template: parsed });
         }
@@ -994,6 +1530,14 @@ impl TemplateStore {
         &self,
         dir: &Path,
     ) -> Result<Vec<TeamPresetFile>, TemplateStoreError> {
+        self.load_preset_files_from_dir_with(dir, ScanMode::SkipUnparseable)
+    }
+
+    fn load_preset_files_from_dir_with(
+        &self,
+        dir: &Path,
+        mode: ScanMode,
+    ) -> Result<Vec<TeamPresetFile>, TemplateStoreError> {
         if !dir.exists() {
             return Ok(Vec::new());
         }
@@ -1009,12 +1553,23 @@ impl TemplateStore {
                 continue;
             }
             let raw = fs::read_to_string(&path)?;
-            let mut parsed = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
-                TemplateStoreError::Parse(format!(
-                    "failed to parse preset {}: {err}",
-                    path.display()
-                ))
-            })?;
+            let mut parsed = match serde_norway::from_str::<TeamPreset>(&raw) {
+                Ok(parsed) => parsed,
+                Err(err) if mode == ScanMode::Strict => {
+                    return Err(TemplateStoreError::Parse(format!(
+                        "failed to parse preset {}: {err}",
+                        path.display()
+                    )));
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        error = %err,
+                        "skipping unparseable preset file in directory scan"
+                    );
+                    continue;
+                }
+            };
             parsed.normalize_model_fields();
             presets.push(TeamPresetFile { template: parsed });
         }

@@ -206,18 +206,27 @@ impl TemplateStore {
         validate_template_id(preset_id, "preset")?;
         self.ensure_directories()?;
 
-        let record = self.get_preset(preset_id)?;
-        if record.read_only {
-            return Err(TemplateStoreError::ReadOnly(format!(
-                "preset '{preset_id}' is built-in and cannot be deleted"
-            )));
-        }
-
+        // Deletion is resolved by file identity, never through `get_preset`:
+        // that path skips a user preset that no longer validates against the
+        // role catalog (e.g. one naming a retired role), which made exactly
+        // the presets most in need of cleanup report "not found" while the
+        // file stayed on disk. A user copy shadowing a built-in is likewise
+        // deletable — removing it reverts to the built-in.
         let relative_path = self.preset_file_path(preset_id);
         let absolute_path = self.templates_dir().join(&relative_path);
-        if !absolute_path.exists() {
+        if !absolute_path.is_file() {
+            if self
+                .builtins_dir
+                .join(PRESETS_DIRNAME)
+                .join(format!("{preset_id}.yaml"))
+                .is_file()
+            {
+                return Err(TemplateStoreError::ReadOnly(format!(
+                    "preset '{preset_id}' is built-in and cannot be deleted"
+                )));
+            }
             return Err(TemplateStoreError::NotFound(format!(
-                "preset file missing for '{preset_id}'"
+                "preset '{preset_id}' not found"
             )));
         }
 

@@ -70,7 +70,7 @@ impl TemplateStore {
         }
 
         // Ensure current tree remains schema-valid before auto-commit.
-        let _ = self.load_catalog_without_reconcile()?;
+        self.validate_store_strict()?;
 
         let result = self.commit_with_repo(&repo, &changes, RECOVERY_COMMIT_MESSAGE);
         match result {
@@ -412,7 +412,7 @@ impl TemplateStore {
             return Ok(None);
         }
 
-        if let Err(err) = self.load_catalog_without_reconcile() {
+        if let Err(err) = self.validate_store_strict() {
             tracing::warn!(
                 templates_dir = %self.templates_dir.display(),
                 error = %err,
