@@ -153,11 +153,8 @@ fn delete_state_file(
     member_name: &str,
 ) -> Result<(), CoordinationError> {
     let path = compaction_state_path(teams_dir, team_name, member_name);
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(err) => Err(CoordinationError::Io(err)),
-    }
+    // Sibling first, so a deliberate delete cannot be resurrected.
+    super::lock::remove_record(&path).map_err(CoordinationError::Io)
 }
 
 impl MemberCompactionStore {

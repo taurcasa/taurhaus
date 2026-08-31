@@ -179,12 +179,19 @@ impl MemberRuntimeStore {
         member_name: &str,
     ) -> Result<MemberRuntimeRecord, CoordinationError> {
         let path = runtime_record_path(teams_dir, team_name, member_name);
-        let raw = fs::read_to_string(&path).map_err(|err| match err.kind() {
-            std::io::ErrorKind::NotFound => CoordinationError::NotFound(format!(
-                "runtime state not found for member '{member_name}' in team '{team_name}'"
-            )),
-            _ => CoordinationError::Io(err),
-        })?;
+        let raw = match fs::read_to_string(&path) {
+            Ok(raw) => raw,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                // A crash between a swap's two renames leaves the record only
+                // at its displaced sibling; reads must still see it.
+                fs::read_to_string(super::lock::displaced_path(&path)).map_err(|_| {
+                    CoordinationError::NotFound(format!(
+                        "runtime state not found for member '{member_name}' in team '{team_name}'"
+                    ))
+                })?
+            }
+            Err(err) => return Err(CoordinationError::Io(err)),
+        };
 
         parse_runtime_record(&raw, team_name, member_name)
     }
@@ -477,11 +484,9 @@ impl MemberRuntimeStore {
         member_name: &str,
     ) -> Result<(), CoordinationError> {
         let path = runtime_record_path(teams_dir, team_name, member_name);
-        match fs::remove_file(path) {
-            Ok(()) => Ok(()),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(err) => Err(CoordinationError::Io(err)),
-        }
+        // The displaced sibling must go too, or the next acquire would
+        // "recover" the deleted record from it.
+        super::lock::remove_record(&path).map_err(CoordinationError::Io)
     }
 
     /// Remove stale runtime entries based on TTL and explicit `now` timestamp.
@@ -539,7 +544,7 @@ impl MemberRuntimeStore {
             };
 
             if should_remove {
-                fs::remove_file(&path)?;
+                super::lock::remove_record(&path)?;
                 removed.push(member_name);
             }
         }

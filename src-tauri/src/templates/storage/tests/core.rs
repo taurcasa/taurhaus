@@ -398,17 +398,28 @@ fn replacing_without_an_atomic_rename_never_leaves_a_partial_file() {
         "new contents"
     );
     assert!(!tmp.exists(), "the staged replacement was left behind");
-    let leftovers: Vec<_> = fs::read_dir(target.parent().expect("target parent"))
-        .expect("read agents dir")
-        .map(|entry| {
-            entry
-                .expect("entry")
-                .file_name()
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect();
-    assert_eq!(leftovers, vec!["reviewer.md".to_string()]);
+    // Deferred cleanup: the displaced copy stays until the next swap's
+    // aside-rename replaces it — unlinking it while a handle may hold it is
+    // deferred by some servers to handle close and can destroy the TARGET
+    // (proven live in coordination::stores::lock). It must hold the whole
+    // previous content, never a partial state.
+    let displaced = target.with_file_name("reviewer.md.displaced");
+    assert_eq!(
+        fs::read_to_string(&displaced).expect("displaced copy"),
+        "old contents"
+    );
+
+    let tmp = temp_path_for(&target);
+    fs::write(&tmp, "third contents").expect("staged again");
+    replace_without_atomic_rename(&tmp, &target).expect("second replacement settles");
+    assert_eq!(
+        fs::read_to_string(&target).expect("replaced file"),
+        "third contents"
+    );
+    assert_eq!(
+        fs::read_to_string(&displaced).expect("displaced holds the second publish"),
+        "new contents"
+    );
 }
 
 #[test]

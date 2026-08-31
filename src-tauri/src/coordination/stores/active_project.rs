@@ -135,11 +135,28 @@ fn load_state(teams_dir: &Path) -> Result<ActiveProjectTeamState, CoordinationEr
     // does a load first), so an unparsable file must never wedge project →
     // team discovery permanently. Quarantine the unreadable file so its
     // mappings stay recoverable, then start from an empty state.
+    let raw = match serde_json::from_str(&raw) {
+        Ok(state) => return Ok(state),
+        Err(_) => {
+            // One tolerant re-read before concluding corruption, matching
+            // the sibling stores.
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            match super::lock::read_to_string_with_retry(&path) {
+                Ok(raw) => raw,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(ActiveProjectTeamState::default());
+                }
+                Err(err) => return Err(CoordinationError::Io(err)),
+            }
+        }
+    };
     match serde_json::from_str(&raw) {
         Ok(state) => Ok(state),
         Err(err) => {
-            let quarantine =
-                path.with_extension(format!("json.corrupt.{}", chrono::Utc::now().timestamp()));
+            let quarantine = path.with_extension(format!(
+                "json.corrupt.{}",
+                chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+            ));
             let moved = fs::rename(&path, &quarantine);
             tracing::warn!(
                 path = %path.display(),

@@ -1900,7 +1900,19 @@ pub(crate) fn write_atomic_file(target: &Path, bytes: &[u8]) -> Result<(), Templ
 /// failure puts the old file back and reports itself rather than claiming a
 /// write that did not happen.
 fn replace_without_atomic_rename(tmp: &Path, target: &Path) -> std::io::Result<()> {
-    let displaced = temp_path_for(target);
+    // Deterministic aside name, and no removal after the swap: unlinking a
+    // file another handle may hold is deferred by some servers to handle
+    // close and can land on the TARGET path (see
+    // coordination::stores::lock::replace_via_move_aside, where this was
+    // proven live). The next swap's aside-rename replaces the settled copy.
+    let displaced = {
+        let mut name = target
+            .file_name()
+            .map(|name| name.to_os_string())
+            .unwrap_or_default();
+        name.push(".displaced");
+        target.with_file_name(name)
+    };
     let had_target = match fs::rename(target, &displaced) {
         Ok(()) => true,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
@@ -1908,12 +1920,7 @@ fn replace_without_atomic_rename(tmp: &Path, target: &Path) -> std::io::Result<(
     };
 
     match fs::rename(tmp, target) {
-        Ok(()) => {
-            if had_target {
-                let _ = fs::remove_file(&displaced);
-            }
-            Ok(())
-        }
+        Ok(()) => Ok(()),
         Err(err) => {
             if had_target {
                 if let Err(restore) = fs::rename(&displaced, target) {

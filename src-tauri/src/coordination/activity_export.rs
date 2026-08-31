@@ -592,12 +592,19 @@ fn write_member_activity_snapshot(
     }
 
     if let Err(rename_err) = fs::rename(&tmp_path, &target_path) {
-        #[cfg(target_os = "windows")]
-        {
-            if target_path.exists() && fs::remove_file(&target_path).is_ok() {
-                if fs::rename(&tmp_path, &target_path).is_ok() {
-                    return Ok(());
-                }
+        // The old remove-then-rename here was the last live instance of the
+        // unlink-a-possibly-open-file class; snapshots publish through the
+        // same move-aside swap as every store now.
+        if crate::coordination::stores::lock::is_windows_unsupported_rename_error(&rename_err) {
+            crate::coordination::stores::lock::report_atomic_write_degraded(
+                &target_path,
+                "activity_export",
+                rename_err.raw_os_error(),
+            );
+            if crate::coordination::stores::lock::replace_via_move_aside(&tmp_path, &target_path)
+                .is_ok()
+            {
+                return Ok(());
             }
         }
         let _ = fs::remove_file(&tmp_path);

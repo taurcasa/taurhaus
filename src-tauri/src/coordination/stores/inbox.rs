@@ -107,7 +107,14 @@ impl MeshInboxStore {
         let path = inbox_path(teams_dir, team_name, member_name);
         let raw = match super::lock::read_to_string_with_retry(&path) {
             Ok(raw) => raw,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                // A crash between a swap's two renames leaves the record only
+                // at its displaced sibling; reads must still see it.
+                match super::lock::read_to_string_with_retry(&super::lock::displaced_path(&path)) {
+                    Ok(raw) => raw,
+                    Err(_) => return Ok(Vec::new()),
+                }
+            }
             Err(err) => return Err(CoordinationError::Io(err)),
         };
 

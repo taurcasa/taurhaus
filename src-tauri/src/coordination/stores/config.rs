@@ -293,15 +293,21 @@ impl TeamConfigStore {
     /// Load a single team configuration from `<teams_dir>/<team_name>/config.json`.
     pub fn load(teams_dir: &Path, team_name: &str) -> Result<TeamConfig, CoordinationError> {
         let config_path = config_path(teams_dir, team_name);
-        let raw = super::lock::read_to_string_with_retry(&config_path).map_err(|err| match err
-            .kind()
-        {
-            std::io::ErrorKind::NotFound => CoordinationError::NotFound(format!(
-                "team config not found for '{team_name}' at {}",
-                config_path.display()
-            )),
-            _ => CoordinationError::Io(err),
-        })?;
+        let raw = match super::lock::read_to_string_with_retry(&config_path) {
+            Ok(raw) => raw,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                // A crash between a swap's two renames leaves the config only
+                // at its displaced sibling; reads must still see it.
+                super::lock::read_to_string_with_retry(&super::lock::displaced_path(&config_path))
+                    .map_err(|_| {
+                    CoordinationError::NotFound(format!(
+                        "team config not found for '{team_name}' at {}",
+                        config_path.display()
+                    ))
+                })?
+            }
+            Err(err) => return Err(CoordinationError::Io(err)),
+        };
 
         if raw.trim().is_empty() {
             return Err(CoordinationError::NotFound(format!(
@@ -758,7 +764,8 @@ fn ensure_saved_config_visible(
             // The repair write must never truncate the live config in place:
             // stage and publish through the same move-aside swap every
             // fallback uses.
-            let repair_tmp = target_path.with_extension("json.repair.tmp");
+            let repair_tmp =
+                target_path.with_extension(format!("json.repair.{}.tmp", std::process::id()));
             super::lock::stage_synced(&repair_tmp, payload.as_bytes())
                 .and_then(|_| super::lock::replace_via_move_aside(&repair_tmp, target_path))
                 .map_err(CoordinationError::Io)

@@ -96,10 +96,16 @@ pub(crate) fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool 
 }
 
 /// Test-only forcing hook, mirroring the template store's
-/// `TAURHAUS_FORCE_TEMPLATE_LOCK_FALLBACK`: lets Linux CI drive the fallback
-/// branches that are otherwise dead behind the platform gate.
+/// `TAURHAUS_FORCE_TEMPLATE_LOCK_FALLBACK`: lets tests drive the fallback
+/// branches that are otherwise dead behind the platform gate. Read once —
+/// a production process cannot have the classification flipped mid-run by
+/// an injected variable, and tests that set it do so under the shared env
+/// guard before the first store call.
 fn should_force_rename_fallback_for_tests() -> bool {
-    std::env::var_os("TAURHAUS_FORCE_COORDINATION_RENAME_FALLBACK").is_some_and(|v| v == "1")
+    static FORCED: OnceLock<bool> = OnceLock::new();
+    *FORCED.get_or_init(|| {
+        std::env::var_os("TAURHAUS_FORCE_COORDINATION_RENAME_FALLBACK").is_some_and(|v| v == "1")
+    })
 }
 
 /// Paths already reported for the non-atomic write fallback, so a degraded
@@ -428,8 +434,14 @@ pub(crate) fn displaced_path(target: &Path) -> PathBuf {
 /// the intact copy of the intended state — callers remove it only on paths
 /// where the target is known intact.
 pub(crate) fn replace_via_move_aside(tmp: &Path, target: &Path) -> std::io::Result<()> {
+    // No settling here. The aside-rename REPLACES a settled husk implicitly
+    // (bounded: one sibling per record), and if a husk is still held open —
+    // our own lock during a repair republish, or a concurrent writer — the
+    // rename fails cleanly instead of unlinking a held file, which is the
+    // deferred-delete class this module exists to avoid. Settle-restore
+    // lives only in `TargetFileLock::acquire`, where no handle of ours can
+    // be on the sibling yet.
     let displaced = displaced_path(target);
-    recover_displaced(target, &displaced);
     let had_target = match fs::rename(target, &displaced) {
         Ok(()) => true,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
@@ -440,13 +452,13 @@ pub(crate) fn replace_via_move_aside(tmp: &Path, target: &Path) -> std::io::Resu
         Err(err) => {
             if had_target {
                 if let Err(restore) = fs::rename(&displaced, target) {
-                    return Err(std::io::Error::new(
-                        err.kind(),
-                        format!(
-                            "{err}; and restoring the previous file failed ({restore}) — it is at {}",
-                            displaced.display()
-                        ),
-                    ));
+                    // Log rather than wrap: wrapping would erase
+                    // raw_os_error and defeat every retry classifier.
+                    tracing::warn!(
+                        displaced = %displaced.display(),
+                        error = %restore,
+                        "restoring the previous file after a failed publish also failed"
+                    );
                 }
             }
             Err(err)
@@ -454,35 +466,57 @@ pub(crate) fn replace_via_move_aside(tmp: &Path, target: &Path) -> std::io::Resu
     }
 }
 
-/// Settle a previous swap's displaced sibling: restore it when the target is
-/// absent (an interrupted swap — the sibling is the only copy), remove it
-/// when the target is present (a husk whose handles are long gone; the
-/// deferred-delete hazard only applies while a holder is alive). Best-effort
-/// by design, but a failed removal is reported so leaks stay visible.
+/// Restore an interrupted swap: when the target is genuinely absent
+/// (`ErrorKind::NotFound` from a real stat, never a collapsed transient
+/// error) and its displaced sibling exists, the sibling is the only copy of
+/// the record and is renamed back. Never removes anything: a sibling beside
+/// a present target is consumed by the next swap's replacing aside-rename,
+/// so no code path ever unlinks a file another handle might hold — the
+/// deferred-delete class stays structurally impossible.
+///
+/// Concurrency note: a restore could in principle steal the vacant window of
+/// another writer's in-flight swap. Exactly one process performs 9p writes
+/// today (the Windows app, whose per-team critical section serializes its
+/// own threads); the daemon-routing migration removes cross-process 9p
+/// writing before a second writer can exist. See
+/// docs/design/coordination-daemon-routing.md.
 fn recover_displaced(target: &Path, displaced: &Path) {
-    if !displaced.exists() {
-        return;
+    match fs::metadata(displaced) {
+        Ok(_) => {}
+        Err(_) => return,
     }
-    if target.exists() {
-        if let Err(err) = fs::remove_file(displaced) {
-            tracing::warn!(
-                path = %displaced.display(),
-                error = %err,
-                "failed to remove a settled displaced sibling; retried next swap"
-            );
-        }
-    } else {
+    match fs::metadata(target) {
+        Ok(_) => return,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return,
+    }
+    tracing::warn!(
+        target = %target.display(),
+        "recovering an interrupted move-aside swap from its displaced sibling"
+    );
+    if let Err(err) = fs::rename(displaced, target) {
         tracing::warn!(
-            target = %target.display(),
-            "recovering an interrupted move-aside swap from its displaced sibling"
+            path = %displaced.display(),
+            error = %err,
+            "failed to recover the displaced sibling"
         );
-        if let Err(err) = fs::rename(displaced, target) {
-            tracing::warn!(
-                path = %displaced.display(),
-                error = %err,
-                "failed to recover the displaced sibling"
-            );
-        }
+    }
+}
+
+/// Remove a record together with its displaced sibling, so a deliberate
+/// delete cannot be resurrected by `recover_displaced` on the next acquire.
+/// The sibling goes first: with the target still present, a crash between
+/// the two removals leaves a state the restore branch will not touch.
+pub(crate) fn remove_record(path: &Path) -> std::io::Result<()> {
+    match fs::remove_file(displaced_path(path)) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err),
+    }
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
     }
 }
 
@@ -624,6 +658,54 @@ mod tests {
             lock.read_contents().expect("recovered"),
             "the only copy",
             "the displaced sibling must be restored before the open"
+        );
+    }
+
+    #[test]
+    fn displaced_path_appends_never_replaces_the_extension() {
+        for (target, expected) in [
+            ("record", "record.displaced"),
+            ("record.json", "record.json.displaced"),
+            ("a.b.json", "a.b.json.displaced"),
+            (".lock", ".lock.displaced"),
+        ] {
+            assert_eq!(
+                displaced_path(Path::new(target)),
+                Path::new(expected),
+                "{target}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_forced_fallback_save_publishes_end_to_end() {
+        // Drives the fallback branch that is dead on Linux behind the
+        // platform gate, via the env seam (read once per process, so it is
+        // set before any predicate call in this test binary — the guard
+        // serializes env mutation across the suite).
+        let _guard = taurhaus_lib::test_support::acquire_env_test_guard();
+        std::env::set_var("TAURHAUS_FORCE_COORDINATION_RENAME_FALLBACK", "1");
+        let forced = is_windows_unsupported_rename_error(&std::io::Error::from_raw_os_error(99));
+        std::env::remove_var("TAURHAUS_FORCE_COORDINATION_RENAME_FALLBACK");
+        if !forced {
+            // Another test in this process evaluated the OnceLock first with
+            // the variable unset; the branch is covered by the CI env lane
+            // instead of this opportunistic in-process check.
+            return;
+        }
+
+        let tmp = TempDir::new().expect("tempdir");
+        let target = tmp.path().join("record.json");
+        let staged = tmp.path().join("record.json.tmp");
+        std::fs::write(&target, "old").expect("seed");
+        std::fs::write(&staged, "new").expect("stage");
+        let lock = TargetFileLock::acquire_or_create(&target).expect("lock");
+        replace_via_move_aside(&staged, &target).expect("publish");
+        drop(lock);
+        assert_eq!(std::fs::read_to_string(&target).expect("read"), "new");
+        assert_eq!(
+            std::fs::read_to_string(displaced_path(&target)).expect("sibling"),
+            "old"
         );
     }
 
