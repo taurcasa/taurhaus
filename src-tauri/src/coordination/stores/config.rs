@@ -766,9 +766,12 @@ fn ensure_saved_config_visible(
             // fallback uses.
             let repair_tmp =
                 target_path.with_extension(format!("json.repair.{}.tmp", std::process::id()));
-            super::lock::stage_synced(&repair_tmp, payload.as_bytes())
-                .and_then(|_| super::lock::replace_via_move_aside(&repair_tmp, target_path))
-                .map_err(CoordinationError::Io)
+            let result = super::lock::stage_synced(&repair_tmp, payload.as_bytes())
+                .and_then(|_| super::lock::replace_via_move_aside(&repair_tmp, target_path));
+            if result.is_err() {
+                let _ = fs::remove_file(&repair_tmp);
+            }
+            result.map_err(CoordinationError::Io)
         },
     )
 }
@@ -793,7 +796,17 @@ where
             Err(CoordinationError::NotFound(message)) => {
                 last_error = Some(CoordinationError::NotFound(message));
                 if !rewrote_target {
-                    rewrite_target()?;
+                    // The repair is best-effort: on the degraded volume its
+                    // aside-rename can fail against our own still-held target
+                    // lock, and a repair failure must not burn the remaining
+                    // read-back attempts — the publish may simply not be
+                    // visible yet.
+                    if let Err(err) = rewrite_target() {
+                        tracing::warn!(
+                            error = %err,
+                            "config visible-repair failed; continuing read-back attempts"
+                        );
+                    }
                     rewrote_target = true;
                 }
                 if attempt + 1 < total_attempts && !delay.is_zero() {

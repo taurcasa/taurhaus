@@ -39,7 +39,7 @@ const FALLBACK_LOCK_RETRY_ATTEMPTS: usize = 250;
 const TEMP_FILE_RANDOM_RETRY_ATTEMPTS: usize = 16;
 const BUILTIN_CATALOG_REVISION: u32 = 1;
 
-const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n.lock\n.lock.fallback\n";
+const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n.lock.fallback\n";
 
 // Exact SHA-256 fingerprints of template bytes shipped from 0.4.5 (the first
 // bundled catalog) through 0.8.5. A file must match both an old path and known
