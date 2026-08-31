@@ -169,4 +169,13 @@ if [ -e "$shared_target" ]; then
 fi
 run_just clean-lane-target
 
+if ! grep -Fq '`just provision-worktree PATH BRANCH [BASE]`' "$repo_root/CONTRIBUTING.md"; then
+    echo "CONTRIBUTING.md does not name the lane provisioning recipe" >&2
+    exit 1
+fi
+if ! grep -Fq '**Cached lane worktrees**' "$repo_root/CHANGELOG.md"; then
+    echo "CHANGELOG.md does not record cached lane worktrees" >&2
+    exit 1
+fi
+
 echo "lane worktree recipe guard passed."
