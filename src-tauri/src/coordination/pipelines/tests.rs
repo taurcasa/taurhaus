@@ -23,7 +23,7 @@ use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryRequest, DeliveryResult, InitializeTeamRequest,
     LaunchRequest, LaunchResult, LeadMode, ProbeRequest, ProbeResult, ResumeMemberRequest,
-    StepStatus, TeardownRequest, TeardownResult,
+    StepStatus, TeardownRequest, TeardownResult, WakeDisposition,
 };
 use crate::coordination::runtime::{
     CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
@@ -52,6 +52,28 @@ fn optional_pane_identity_capture_failure_does_not_abort_activation() {
 
     assert_eq!(state.pane_pid, None);
     assert_eq!(state.pane_start_time, None);
+}
+
+#[test]
+fn member_action_warning_surfaces_unread_not_attempted_dispositions() {
+    // Regression: d4ebdf76 surfaced only `Failed` wake dispositions, hiding
+    // durable notices that a confirmed dead or absent pane would not read.
+    for reason in ["member pane is dead", "member pane not found"] {
+        assert_eq!(
+            members::onboarding_wake_warning(&WakeDisposition::NotAttempted {
+                reason: reason.to_string(),
+            }),
+            Some(format!("onboarding wake not attempted: {reason}"))
+        );
+    }
+
+    assert_eq!(
+        members::onboarding_wake_warning(&WakeDisposition::NotAttempted {
+            reason: "member uses a native inbox poller".to_string(),
+        }),
+        None,
+        "native inbox polling is an expected no-wake disposition"
+    );
 }
 
 #[test]

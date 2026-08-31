@@ -42,6 +42,24 @@ pub(super) enum InitializeMemberActivationStage {
     StartDaemons,
 }
 
+pub(super) fn onboarding_wake_warning(wake: &WakeDisposition) -> Option<String> {
+    match wake {
+        WakeDisposition::Failed { reason } => Some(format!("onboarding wake failed: {reason}")),
+        WakeDisposition::NotAttempted { reason }
+            if matches!(
+                reason.as_str(),
+                "member pane is dead" | "member pane not found"
+            ) =>
+        {
+            Some(format!("onboarding wake not attempted: {reason}"))
+        }
+        WakeDisposition::AlreadyLive
+        | WakeDisposition::Spawned { .. }
+        | WakeDisposition::Adopted { .. }
+        | WakeDisposition::NotAttempted { .. } => None,
+    }
+}
+
 impl CoordinationOrchestrator {
     pub fn add_agent_to_team(
         &mut self,
@@ -1182,9 +1200,8 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             Ok(results) => {
                 for result in results {
                     self.warnings.extend(result.post_write_warnings);
-                    if let WakeDisposition::Failed { reason } = result.wake {
-                        self.warnings
-                            .push(format!("onboarding wake failed: {reason}"));
+                    if let Some(warning) = onboarding_wake_warning(&result.wake) {
+                        self.warnings.push(warning);
                     }
                 }
                 self.record_step_success("send_onboarding", "onboarding delivered");
