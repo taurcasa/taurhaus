@@ -90,6 +90,9 @@ pub(crate) fn words(command: &str) -> Vec<Word> {
                 while let Some((_, character)) = characters.next() {
                     match character {
                         '"' => break,
+                        '\\' if matches!(characters.peek(), Some((_, '\n'))) => {
+                            characters.next();
+                        }
                         '\\' if matches!(characters.peek(), Some((_, '"' | '\\' | '$' | '`'))) => {
                             text.extend(characters.next().map(|(_, character)| character));
                         }
@@ -98,13 +101,17 @@ pub(crate) fn words(command: &str) -> Vec<Word> {
                 }
             }
             '\\' => {
+                let escaped = characters.next();
+                if matches!(escaped, Some((_, '\n'))) {
+                    continue;
+                }
                 if !started {
                     start = index;
                     started = true;
                 }
                 quoted = true;
                 name_quoted |= !text.contains('=');
-                text.extend(characters.next().map(|(_, character)| character));
+                text.extend(escaped.map(|(_, character)| character));
             }
             character => {
                 if !started {
@@ -140,8 +147,7 @@ pub(crate) fn leading_assignments(command: &str) -> Vec<Word> {
 pub(crate) fn assignment_in_force(command: &str, name: &str) -> Option<Word> {
     leading_assignments(command)
         .into_iter()
-        .filter(|word| word.assignment_name() == Some(name))
-        .last()
+        .rfind(|word| word.assignment_name() == Some(name))
 }
 
 /// The first word that is not a leading assignment.
@@ -154,6 +160,141 @@ pub(crate) fn head(command: &str) -> Option<Word> {
 #[cfg(test)]
 mod tests {
     use super::{assignment_in_force, head, leading_assignments, words};
+
+    #[derive(Debug)]
+    struct CorpusCase {
+        command: &'static str,
+        assignments: &'static [&'static str],
+        selector: Option<&'static str>,
+        head: Option<(&'static str, bool)>,
+    }
+
+    // Regression: commit 89e73bd added a second assignment tokenizer beside
+    // the one from 0f2bfbb, leaving quoted heads and escaped words classified
+    // differently by launch-base, account, and renderer consumers.
+    #[test]
+    fn every_consumer_classifies_the_shell_word_corpus_identically() {
+        let cases = [
+            CorpusCase {
+                command: r#"SELECTOR='two words' claude --flag"#,
+                assignments: &["SELECTOR=two words"],
+                selector: Some("SELECTOR=two words"),
+                head: Some(("claude", false)),
+            },
+            CorpusCase {
+                command: r#"SELECTOR=two\ words claude"#,
+                assignments: &["SELECTOR=two words"],
+                selector: Some("SELECTOR=two words"),
+                head: Some(("claude", false)),
+            },
+            CorpusCase {
+                command: "SELECTOR=one\\\ntwo claude",
+                assignments: &["SELECTOR=onetwo"],
+                selector: Some("SELECTOR=onetwo"),
+                head: Some(("claude", false)),
+            },
+            CorpusCase {
+                command: r#"SELECTOR='it'\''s' claude"#,
+                assignments: &["SELECTOR=it's"],
+                selector: Some("SELECTOR=it's"),
+                head: Some(("claude", false)),
+            },
+            CorpusCase {
+                command: "A=1 B=2 claude A=argument",
+                assignments: &["A=1", "B=2"],
+                selector: None,
+                head: Some(("claude", false)),
+            },
+            CorpusCase {
+                command: "SELECTOR=first OTHER=x SELECTOR=last claude",
+                assignments: &["SELECTOR=first", "OTHER=x", "SELECTOR=last"],
+                selector: Some("SELECTOR=last"),
+                head: Some(("claude", false)),
+            },
+            CorpusCase {
+                command: "SELECTOR=one ./opaque-wrapper --flag",
+                assignments: &["SELECTOR=one"],
+                selector: Some("SELECTOR=one"),
+                head: Some(("./opaque-wrapper", false)),
+            },
+            CorpusCase {
+                command: "SELECTOR=one 'claude' --flag",
+                assignments: &["SELECTOR=one"],
+                selector: Some("SELECTOR=one"),
+                head: Some(("claude", true)),
+            },
+            CorpusCase {
+                command: "'SELECTOR=not-env' claude",
+                assignments: &[],
+                selector: None,
+                head: Some(("SELECTOR=not-env", true)),
+            },
+            CorpusCase {
+                command: "SELECTOR=~/.tool claude",
+                assignments: &["SELECTOR=~/.tool"],
+                selector: Some("SELECTOR=~/.tool"),
+                head: Some(("claude", false)),
+            },
+            CorpusCase {
+                command: r#"SELECTOR=C:\\Users\\Example claude"#,
+                assignments: &[r#"SELECTOR=C:\Users\Example"#],
+                selector: Some(r#"SELECTOR=C:\Users\Example"#),
+                head: Some(("claude", false)),
+            },
+            CorpusCase {
+                command: r#"SELECTOR='C:\Users\Example User\.tool' 'C:\Program Files\tool.exe'"#,
+                assignments: &[r#"SELECTOR=C:\Users\Example User\.tool"#],
+                selector: Some(r#"SELECTOR=C:\Users\Example User\.tool"#),
+                head: Some((r#"C:\Program Files\tool.exe"#, true)),
+            },
+            CorpusCase {
+                command: "A=1 SELECTOR=two",
+                assignments: &["A=1", "SELECTOR=two"],
+                selector: Some("SELECTOR=two"),
+                head: None,
+            },
+        ];
+
+        for case in cases {
+            let parsed = words(case.command);
+            let from_words = parsed
+                .iter()
+                .take_while(|word| word.is_assignment())
+                .map(|word| word.text.as_str())
+                .collect::<Vec<_>>();
+
+            // launch.rs consumes the complete leading run.
+            let for_renderer = leading_assignments(case.command);
+            let renderer_assignments = for_renderer
+                .iter()
+                .map(|word| word.text.as_str())
+                .collect::<Vec<_>>();
+            assert_eq!(renderer_assignments, case.assignments, "{case:?}");
+            assert_eq!(from_words, renderer_assignments, "{case:?}");
+
+            // accounts/mod.rs consumes the last selector assignment in force.
+            let account_assignment = assignment_in_force(case.command, "SELECTOR");
+            let for_accounts = account_assignment.as_ref().map(|word| word.text.as_str());
+            let renderer_selector = for_renderer
+                .iter()
+                .rfind(|word| word.assignment_name() == Some("SELECTOR"))
+                .map(|word| word.text.as_str());
+            assert_eq!(for_accounts, case.selector, "{case:?}");
+            assert_eq!(renderer_selector, for_accounts, "{case:?}");
+
+            // launch_base.rs consumes the first non-assignment word as head.
+            let from_words = parsed
+                .iter()
+                .find(|word| !word.is_assignment())
+                .map(|word| (word.text.as_str(), word.quoted));
+            let launch_base_head = head(case.command);
+            let for_launch_base = launch_base_head
+                .as_ref()
+                .map(|word| (word.text.as_str(), word.quoted));
+            assert_eq!(for_launch_base, case.head, "{case:?}");
+            assert_eq!(from_words, for_launch_base, "{case:?}");
+        }
+    }
 
     #[test]
     fn tokenizes_shell_words_with_decoded_text_and_original_spans() {
