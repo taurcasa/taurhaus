@@ -15,8 +15,12 @@ WDIO suite. Nothing below applies to it.
 ## 1) Leave the operator daemon alone
 
 The E2E build produces both the app and its checkout-local daemon. Every worker
-launches `src-tauri/target/debug/taurhaus-daemon` on its own port, so it neither
-needs nor uses the operator's `~/.local/bin/taurhaus-daemon`.
+launches that daemon on its own port, so it neither needs nor uses the operator's
+`~/.local/bin/taurhaus-daemon`. The runner asks Cargo for the target directory
+rather than assuming one, and the `just` recipes pin `CARGO_TARGET_DIR` to this
+checkout's `src-tauri/target` — so a provisioned lane worktree runs its own E2E
+binaries instead of the shared lane cache, where a concurrent lane's build would
+replace the app mid-run.
 
 The recipes remain **safe by default** and do not run `install-daemon`. The
 legacy opt-in still exists, but it only rebuilds and restarts the operator's
@@ -63,12 +67,17 @@ E2E requires the Tauri debug/no-bundle build so the app serves embedded assets c
 
 For the same reason, do not run `cargo build`, `cargo check --all-targets` or
 `cargo clippy --all-targets` against `src-tauri/` between building and running E2E:
-they overwrite `src-tauri/target/debug/taurhaus` with a binary that was not produced by
-the Tauri build, and the app then starts, logs a healthy backend, and renders a blank
-page — which surfaces as `App did not render within 45s`. Re-run `just build-e2e` (or
-drop `E2E_SKIP_BUILD=1`) after any such cargo invocation. Running cargo *during* a live
-E2E run replaces the binary underneath the app and ends the session with
-`invalid session id`.
+they overwrite the `taurhaus` debug binary in the target directory the run uses
+(`src-tauri/target/debug/taurhaus` for any `just` E2E recipe, in the main checkout and
+in a provisioned lane alike) with a binary that was not produced by the Tauri build, and
+the app then starts, logs a healthy backend, and renders a blank page — which surfaces as
+`App did not render within 45s`. Re-run `just build-e2e` (or drop `E2E_SKIP_BUILD=1`)
+after any such cargo invocation. Running cargo *during* a live E2E run replaces the
+binary underneath the app and ends the session with `invalid session id`.
+
+Invoking WDIO directly (`bunx wdio run e2e/wdio.conf.js`) skips that pin: inside a
+provisioned lane it resolves the shared `~/.cache/taurhaus-lane-target`, which every lane
+writes to. Prefer the recipes, or export `CARGO_TARGET_DIR="$PWD/src-tauri/target"` first.
 
 ## 3) Run tests
 

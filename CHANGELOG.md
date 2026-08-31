@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 - **Codex sessions map to their tmux pane again (0.8.6 regression)** — the `@openai/codex` package signature matched by bare substring containment, so `codex-code-mode-host` — a piped background service child that inherits the controlling terminal — counted as a codex session, and 0.8.6's wrapper dedup then kept it as the deepest match: both real codex processes were dropped, leaving one tile whose pipe stdio mapped to no tmux pane, so clicking it could not focus the pane and the focused pane resolved to no session. A package-path signature now qualifies only the package's own JS entry script (`dist/cli.js`, `bin/codex.js`); vendored helpers and nested-dependency scripts never enter the session inventory, while native binaries keep matching through their plain basename signature.
 
+### Added
+
+- **Cached lane worktrees** — `just provision-worktree LANE_PATH BRANCH [BASE]` now performs the standard fetch, branch-worktree creation, and frozen Bun install, then gives only the lane a Cargo config backed by `~/.cache/taurhaus-lane-target`; Cargo locking serializes concurrent lane compiles, the E2E recipes keep their built binaries lane-local, and the main checkout and release targets remain unchanged. `just remove-worktree LANE_PATH` cleans up merged lanes but protects unmerged branches unless `FORCE_BRANCH=1`, and `just clean-lane-target` safely reclaims the shared cache.
+
 ## [0.8.6] - 2026-08-31
 
 ### Fixed
