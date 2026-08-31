@@ -75,6 +75,11 @@ impl std::fmt::Debug for CoordinationState {
 impl CoordinationState {
     /// Build default app state without performing backend checks at startup.
     pub fn for_app_startup() -> Self {
+        Self::for_process_default()
+    }
+
+    /// Build default coordination state for an app or daemon process.
+    pub(crate) fn for_process_default() -> Self {
         Self::with_components_and_runtime(
             PlatformPaths::teams_dir(),
             BackendSelector::m0(),

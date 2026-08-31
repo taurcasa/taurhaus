@@ -128,7 +128,7 @@ where
         // the shared deadline pass reads. Register only after that activity
         // source is live so the pass keeps its existing input seam.
         crate::daemon::deadline_scheduler::DeadlineScheduler::start(
-            crate::coordination::state::CoordinationState::for_app_startup(),
+            crate::coordination::state::CoordinationState::for_process_default(),
             shutdown.clone(),
         )
     });
@@ -730,6 +730,73 @@ mod tests {
             reachable,
             "the daemon must bind before legacy cleanup completes"
         );
+    }
+
+    // Regression: 34fdeead added a daemon deadline scheduler but only tested
+    // the scheduler in isolation. Removing `run`'s production registration
+    // would therefore leave both the app and daemon with deadline work disabled.
+    #[test]
+    fn production_daemon_run_registers_and_fires_the_deadline_scheduler() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _env_guard = crate::test_support::acquire_env_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let claude_dir = temp.path().join("claude");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(claude_dir.join("teams")).expect("teams dir");
+        std::fs::create_dir_all(&data_dir).expect("data dir");
+        let _claude_env = EnvRestore::set(
+            "TAURHAUS_CLAUDE_DIR",
+            claude_dir.to_str().expect("utf-8 claude dir"),
+        );
+        let _data_env = EnvRestore::set(
+            "TAURHAUS_DATA_DIR",
+            data_dir.to_str().expect("utf-8 data dir"),
+        );
+        let log_state =
+            crate::commands::logging::LogFileState::new(data_dir.join("taurhaus.log.jsonl"))
+                .expect("log state");
+        crate::commands::logging::install_global_sink(&log_state);
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
+        crate::commands::logging::install_test_tap(event_tx);
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("reserve port");
+        let port = listener.local_addr().expect("listener address").port();
+        drop(listener);
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let server_shutdown = shutdown.clone();
+        let handle = std::thread::spawn(move || {
+            run(
+                &DaemonConfig {
+                    port,
+                    bind_addr: "127.0.0.1".to_string(),
+                    idle_timeout_secs: None,
+                    auth_token: None,
+                },
+                server_shutdown,
+                Arc::new(LocalProvider),
+            )
+        });
+
+        let deadline = Instant::now() + Duration::from_secs(8);
+        let pass = loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let record = event_rx
+                .recv_timeout(remaining)
+                .expect("production daemon deadline pass within eight seconds");
+            if record["event"] == "deadline.pass.completed" {
+                break record;
+            }
+        };
+        shutdown.store(true, Ordering::Relaxed);
+        handle
+            .join()
+            .expect("server thread")
+            .expect("server result");
+        crate::commands::logging::clear_test_tap();
+
+        assert_eq!(pass["component"], "coordination");
+        assert_eq!(pass["fields"]["teams_scanned"], 0);
     }
 
     fn send_request(
