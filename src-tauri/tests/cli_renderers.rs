@@ -497,7 +497,7 @@ fn export_agent_definitions_cli_writes_generated_claude_agents_only() {
         .iter()
         .map(|value| value.as_str().expect("role id").to_string())
         .collect::<Vec<_>>();
-    assert!(written.contains(&"claude-orchestrator".to_string()));
+    assert!(written.contains(&"v3-lead-claude".to_string()));
     assert!(!written.contains(&"quick-dev-codex".to_string()));
     assert!(response["skipped"]
         .as_array()
@@ -507,10 +507,10 @@ fn export_agent_definitions_cli_writes_generated_claude_agents_only() {
             "reason": "user_authored",
         })));
 
-    let role_yaml = include_str!("../resources/templates/roles/claude-orchestrator.yaml");
+    let role_yaml = include_str!("../resources/templates/roles/v3-lead-claude.yaml");
     let role: RoleTemplate = serde_norway::from_str(role_yaml).expect("bundled role parses");
     assert_eq!(
-        std::fs::read_to_string(agents.join("claude-orchestrator.md")).expect("generated agent"),
+        std::fs::read_to_string(agents.join("v3-lead-claude.md")).expect("generated agent"),
         render_agent_definition(&role)
     );
     assert!(!agents.join("quick-dev-codex.md").exists());

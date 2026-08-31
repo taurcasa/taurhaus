@@ -966,6 +966,8 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+    use crate::models::ModelCatalog;
+    use crate::session_scanner::cli_tool;
 
     fn sample_role_template() -> RoleTemplate {
         RoleTemplate {
@@ -1172,10 +1174,6 @@ mod tests {
             "built-in role templates should have unique role ids"
         );
         assert!(
-            roles.iter().any(|role| role.role_id == "codex-architect"),
-            "expected codex-architect role template in built-ins"
-        );
-        assert!(
             roles
                 .iter()
                 .any(|role| role.role_id == "codex-orchestrator"),
@@ -1186,34 +1184,6 @@ mod tests {
                 .iter()
                 .any(|role| role.role_id == "antigravity-orchestrator"),
             "expected antigravity-orchestrator role template in built-ins"
-        );
-        assert!(
-            roles
-                .iter()
-                .any(|role| role.role_id == "taurhaus-lead-claude"),
-            "expected taurhaus-lead-claude role template in built-ins"
-        );
-        assert!(
-            roles
-                .iter()
-                .any(|role| role.role_id == "taurhaus-lead-codex"),
-            "expected taurhaus-lead-codex role template in built-ins"
-        );
-        assert!(
-            roles
-                .iter()
-                .any(|role| role.role_id == "taurhaus-developer"),
-            "expected taurhaus-developer role template in built-ins"
-        );
-        assert!(
-            roles
-                .iter()
-                .any(|role| role.role_id == "taurhaus-architect"),
-            "expected taurhaus-architect role template in built-ins"
-        );
-        assert!(
-            roles.iter().any(|role| role.role_id == "taurhaus-designer"),
-            "expected taurhaus-designer role template in built-ins"
         );
 
         for role in &roles {
@@ -1243,14 +1213,194 @@ mod tests {
                 "role '{}' should define behavior_summary",
                 role.role_id
             );
-            if role.role_id.starts_with("taurhaus-") {
+        }
+    }
+
+    #[test]
+    fn bundled_roles_are_the_canonical_shipped_playbook() {
+        let roles = load_role_templates();
+        let actual = roles
+            .iter()
+            .map(|role| role.role_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let expected = [
+            "adversarial-reviewer-claude",
+            "antigravity-orchestrator",
+            "claude-design-lead",
+            "claude-product-checker",
+            "claude-researcher",
+            "codex-orchestrator",
+            "codex-qa",
+            "docs-verifier-codex",
+            "frontend-design-skill-developer",
+            "quick-dev-codex",
+            "v3-architect-codex",
+            "v3-lead-claude",
+            "v4-developer-agy",
+            "v4-developer-claude",
+            "v4-developer-codex",
+            "v4-developer-grok",
+        ]
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+
+        assert_eq!(
+            actual, expected,
+            "bundled catalog should contain one canonical role per living lane and harness"
+        );
+
+        let harness_defaults = cli_tool::all()
+            .iter()
+            .map(|tool| (tool.name, tool.default_agent_role_id))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert_eq!(
+            harness_defaults,
+            [
+                ("agy", "v4-developer-agy"),
+                ("claude", "v4-developer-claude"),
+                ("codex", "v4-developer-codex"),
+                ("grok", "v4-developer-grok"),
+            ]
+            .into_iter()
+            .collect(),
+            "every harness should default to its canonical implementation role"
+        );
+
+        for role in &roles {
+            let communication = role.communication_style.as_deref().unwrap_or_default();
+            for mark in [
+                "objective",
+                "exact deliverable",
+                "concrete first action",
+                "completion signal",
+                "explicit response expectation",
+                "ACTION REQUIRED:",
+                "INFO ONLY:",
+                "no response needed",
+            ] {
                 assert!(
-                    role.runtime_compact_summary.is_some(),
-                    "role '{}' should define runtime_compact_summary",
+                    communication.contains(mark),
+                    "role '{}' communication_style is missing '{mark}'",
+                    role.role_id
+                );
+            }
+
+            let gates = role.quality_gates.as_deref().unwrap_or_default().join("\n");
+            assert!(
+                gates.contains("`just check-quick`"),
+                "role '{}' should carry the per-task gate",
+                role.role_id
+            );
+            assert!(
+                gates.contains("Never run full `just check` as an agent"),
+                "role '{}' should carry the serialized full-gate boundary",
+                role.role_id
+            );
+
+            let done = role
+                .definition_of_done
+                .as_deref()
+                .unwrap_or_default()
+                .join("\n");
+            assert!(
+                done.contains("review-ready handoff"),
+                "role '{}' should require a review-ready handoff",
+                role.role_id
+            );
+
+            let catalog_entry =
+                ModelCatalog::entry_for(role.defaults.cli_tool, role.defaults.model.as_str())
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "role '{}' pins unknown model '{}' for {:?}",
+                            role.role_id, role.defaults.model, role.defaults.cli_tool
+                        )
+                    });
+            assert!(
+                !catalog_entry.deprecated,
+                "role '{}' pins retired model '{}'",
+                role.role_id, role.defaults.model
+            );
+            assert!(
+                !role.instructions.contains("Sonnet") && !role.instructions.contains("sonnet"),
+                "role '{}' should not recommend Sonnet",
+                role.role_id
+            );
+
+            if role.kind == RoleKind::Agent {
+                let contract = format!(
+                    "{}\n{}\n{}",
+                    role.instructions,
+                    role.behavioral_contract.communication.join("\n"),
+                    done
+                );
+                assert!(
+                    contract.contains("RESULT <id>") && contract.contains("BLOCKED <id> <reason>"),
+                    "member role '{}' should carry the managed-stage completion signals",
+                    role.role_id
+                );
+            } else {
+                assert!(
+                    role.instructions
+                        .contains("one active assignment per member")
+                        && role.instructions.contains("uptake")
+                        && role.instructions.contains("deadline"),
+                    "lead role '{}' should carry the bounded stage contract",
                     role.role_id
                 );
             }
         }
+    }
+
+    #[test]
+    fn open_and_design_slots_name_their_candidate_models() {
+        let roles = load_role_templates();
+        let find = |role_id: &str| {
+            roles
+                .iter()
+                .find(|role| role.role_id == role_id)
+                .unwrap_or_else(|| panic!("missing role '{role_id}'"))
+        };
+
+        let architect = find("v3-architect-codex");
+        assert_eq!(architect.defaults.cli_tool, CliTool::Claude);
+        assert_eq!(architect.defaults.model, "fable");
+        assert!(architect
+            .instructions
+            .contains("Candidates: Fable 5 (preferred) or GPT-5.6 Sol (fallback)"));
+
+        let researcher = find("claude-researcher");
+        assert_eq!(researcher.defaults.cli_tool, CliTool::Codex);
+        assert_eq!(researcher.defaults.model, "gpt-5.6-sol");
+        assert!(researcher
+            .instructions
+            .contains("Candidates: GPT-5.6 Sol (preferred) or Opus 5 High"));
+
+        let reviewer = find("adversarial-reviewer-claude");
+        assert_eq!(reviewer.defaults.cli_tool, CliTool::Claude);
+        assert_eq!(reviewer.defaults.model, "opus");
+        assert!(reviewer.instructions.contains("Default: Opus 5"));
+        assert!(reviewer.instructions.contains(
+            "Candidate variant: GPT-5.6 Sol recall pass followed by Opus 5 verification"
+        ));
+
+        let creative = find("claude-design-lead");
+        assert_eq!(creative.defaults.cli_tool, CliTool::Claude);
+        assert_eq!(creative.defaults.model, "fable");
+        assert!(creative
+            .instructions
+            .contains("CREATIVE DIRECTION candidates: Fable 5 (preferred) or Gemini via agy"));
+        assert!(creative.instructions.contains("human validation required"));
+
+        let implementation = find("frontend-design-skill-developer");
+        assert_eq!(implementation.defaults.cli_tool, CliTool::Codex);
+        assert_eq!(implementation.defaults.model, "gpt-5.6-sol");
+        assert!(implementation
+            .instructions
+            .contains("UI IMPLEMENTATION candidates: GPT-5.6 Sol (preferred) or Opus 5"));
+        assert!(implementation
+            .instructions
+            .contains("human validation required"));
     }
 
     #[test]

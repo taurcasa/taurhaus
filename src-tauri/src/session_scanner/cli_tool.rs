@@ -271,7 +271,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             label: "Claude",
             accent: "emerald",
             medallion_accent: "amber",
-            default_agent_role_id: "claude-reviewer",
+            default_agent_role_id: "v4-developer-claude",
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 model_flag_aliases: &[],
@@ -337,7 +337,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             label: "Codex",
             accent: "sky",
             medallion_accent: "emerald",
-            default_agent_role_id: "codex-developer",
+            default_agent_role_id: "v4-developer-codex",
             capabilities: CliCapabilities {
                 model_flag: Some("-m"),
                 model_flag_aliases: &["--model"],
@@ -434,7 +434,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             label: "Antigravity",
             accent: "google-blue",
             medallion_accent: "google-blue",
-            default_agent_role_id: "antigravity-ui-specialist",
+            default_agent_role_id: "v4-developer-agy",
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 model_flag_aliases: &[],
@@ -579,7 +579,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             label: "Grok",
             accent: "graphite",
             medallion_accent: "graphite",
-            default_agent_role_id: "grok-developer",
+            default_agent_role_id: "v4-developer-grok",
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 model_flag_aliases: &["-m"],
@@ -771,10 +771,11 @@ pub fn bridged_default() -> CliTool {
 }
 
 pub fn model_is_compatible(tool: CliTool, model: &str) -> bool {
-    spec(tool)
-        .model_prefixes
-        .iter()
-        .any(|prefix| model.starts_with(prefix))
+    crate::models::ModelCatalog::entry_for(tool, model).is_some()
+        || spec(tool)
+            .model_prefixes
+            .iter()
+            .any(|prefix| model.starts_with(prefix))
 }
 
 pub fn infer_from_model(model: &str) -> CliTool {

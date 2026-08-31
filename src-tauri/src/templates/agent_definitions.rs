@@ -364,7 +364,7 @@ mod tests {
 
     fn claude_role() -> RoleTemplate {
         role(include_str!(
-            "../../resources/templates/roles/claude-reviewer.yaml"
+            "../../resources/templates/roles/adversarial-reviewer-claude.yaml"
         ))
     }
 
@@ -392,11 +392,11 @@ mod tests {
     #[test]
     fn renders_the_claude_golden() {
         let template = role(include_str!(
-            "../../resources/templates/roles/claude-reviewer.yaml"
+            "../../resources/templates/roles/adversarial-reviewer-claude.yaml"
         ));
         assert_eq!(
             render_agent_definition(&template),
-            include_str!("../../tests/agent-definition-claude-reviewer.golden.md")
+            include_str!("../../tests/agent-definition-adversarial-reviewer-claude.golden.md")
         );
     }
 
@@ -462,10 +462,10 @@ mod tests {
         let parsed: serde_norway::Value =
             serde_norway::from_str(frontmatter).expect("frontmatter parses as YAML");
 
-        assert_eq!(parsed["name"].as_str(), Some("claude-reviewer"));
+        assert_eq!(parsed["name"].as_str(), Some("adversarial-reviewer-claude"));
         assert_eq!(parsed["description"].as_str(), Some(hostile));
-        assert_eq!(parsed["model"].as_str(), Some("claude-opus-4-6"));
-        assert!(parsed.get("effort").is_none());
+        assert_eq!(parsed["model"].as_str(), Some("opus"));
+        assert_eq!(parsed["effort"].as_str(), Some("high"));
     }
 
     #[test]
@@ -476,13 +476,20 @@ mod tests {
         let result =
             export_agent_definitions(&roles, project.path()).expect("export writes definitions");
 
-        assert_eq!(result.written, vec!["claude-reviewer".to_string()]);
+        assert_eq!(
+            result.written,
+            vec!["adversarial-reviewer-claude".to_string()]
+        );
         assert!(result.skipped.is_empty());
         let dir = agents_dir(project.path());
-        assert_eq!(file_names(&dir), vec!["claude-reviewer.md".to_string()]);
         assert_eq!(
-            std::fs::read_to_string(dir.join("claude-reviewer.md")).expect("written definition"),
-            include_str!("../../tests/agent-definition-claude-reviewer.golden.md")
+            file_names(&dir),
+            vec!["adversarial-reviewer-claude.md".to_string()]
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("adversarial-reviewer-claude.md"))
+                .expect("written definition"),
+            include_str!("../../tests/agent-definition-adversarial-reviewer-claude.golden.md")
         );
     }
 
@@ -492,7 +499,7 @@ mod tests {
         let dir = agents_dir(project.path());
         std::fs::create_dir_all(&dir).expect("agents directory");
         std::fs::write(
-            dir.join("claude-reviewer.md"),
+            dir.join("adversarial-reviewer-claude.md"),
             format!("---\nname: stale\n---\n\n{GENERATED_MARKER}\n"),
         )
         .expect("stale generated definition");
@@ -508,7 +515,10 @@ mod tests {
         let roles = vec![claude_role(), mine];
         let result = export_agent_definitions(&roles, project.path()).expect("export runs");
 
-        assert_eq!(result.written, vec!["claude-reviewer".to_string()]);
+        assert_eq!(
+            result.written,
+            vec!["adversarial-reviewer-claude".to_string()]
+        );
         assert_eq!(
             result.skipped,
             vec![SkippedAgentDefinition {
@@ -517,8 +527,9 @@ mod tests {
             }]
         );
         assert_eq!(
-            std::fs::read_to_string(dir.join("claude-reviewer.md")).expect("regenerated"),
-            include_str!("../../tests/agent-definition-claude-reviewer.golden.md")
+            std::fs::read_to_string(dir.join("adversarial-reviewer-claude.md"))
+                .expect("regenerated"),
+            include_str!("../../tests/agent-definition-adversarial-reviewer-claude.golden.md")
         );
         assert_eq!(
             std::fs::read_to_string(dir.join("hand-written.md")).expect("untouched"),
@@ -630,7 +641,7 @@ mod tests {
         assert_eq!(
             first.written,
             vec![
-                "claude-reviewer".to_string(),
+                "adversarial-reviewer-claude".to_string(),
                 "retired-reviewer".to_string()
             ]
         );
@@ -645,12 +656,15 @@ mod tests {
 
         let second = export_agent_definitions(&[claude_role()], project.path()).expect("re-export");
 
-        assert_eq!(second.written, vec!["claude-reviewer".to_string()]);
+        assert_eq!(
+            second.written,
+            vec!["adversarial-reviewer-claude".to_string()]
+        );
         assert_eq!(second.removed, vec!["retired-reviewer".to_string()]);
         assert_eq!(
             file_names(&dir),
             vec![
-                "claude-reviewer.md".to_string(),
+                "adversarial-reviewer-claude.md".to_string(),
                 "hand-written.md".to_string()
             ]
         );
@@ -672,9 +686,12 @@ mod tests {
         let result = export_agent_definitions(&[moved], project.path()).expect("re-export");
 
         assert!(result.written.is_empty());
-        assert_eq!(result.removed, vec!["claude-reviewer".to_string()]);
+        assert_eq!(
+            result.removed,
+            vec!["adversarial-reviewer-claude".to_string()]
+        );
         assert!(!agents_dir(project.path())
-            .join("claude-reviewer.md")
+            .join("adversarial-reviewer-claude.md")
             .exists());
     }
 
@@ -712,7 +729,7 @@ mod tests {
 
         assert_eq!(
             file_names(&agents_dir(project.path())),
-            vec!["claude-reviewer.md".to_string()]
+            vec!["adversarial-reviewer-claude.md".to_string()]
         );
     }
 
@@ -726,9 +743,10 @@ mod tests {
         let dir = agents_dir(project.path());
         std::fs::create_dir_all(&dir).expect("agents directory");
         let quoting = format!(
-            "---\nname: claude-reviewer\n---\n\nMine. Ours start with `{GENERATED_MARKER}`.\n"
+            "---\nname: adversarial-reviewer-claude\n---\n\nMine. Ours start with `{GENERATED_MARKER}`.\n"
         );
-        std::fs::write(dir.join("claude-reviewer.md"), &quoting).expect("user authored definition");
+        std::fs::write(dir.join("adversarial-reviewer-claude.md"), &quoting)
+            .expect("user authored definition");
 
         let result = export_agent_definitions(&[claude_role()], project.path()).expect("export");
 
@@ -736,12 +754,12 @@ mod tests {
         assert_eq!(
             result.skipped,
             vec![SkippedAgentDefinition {
-                role_id: "claude-reviewer".to_string(),
+                role_id: "adversarial-reviewer-claude".to_string(),
                 reason: AgentDefinitionSkipReason::UserAuthored,
             }]
         );
         assert_eq!(
-            std::fs::read_to_string(dir.join("claude-reviewer.md")).expect("untouched"),
+            std::fs::read_to_string(dir.join("adversarial-reviewer-claude.md")).expect("untouched"),
             quoting
         );
     }
@@ -853,7 +871,7 @@ mod tests {
                 "unexpected error for a linked {linked}: {error:?}"
             );
             assert!(
-                !elsewhere.join("claude-reviewer.md").exists(),
+                !elsewhere.join("adversarial-reviewer-claude.md").exists(),
                 "the export wrote outside the project through {linked}"
             );
             assert!(
@@ -897,10 +915,14 @@ mod tests {
 
         let result = export_agent_definitions(&[claude_role()], project.path()).expect("export");
 
-        assert_eq!(result.written, vec!["claude-reviewer".to_string()]);
         assert_eq!(
-            std::fs::read_to_string(shared.join("claude-reviewer.md")).expect("written definition"),
-            include_str!("../../tests/agent-definition-claude-reviewer.golden.md")
+            result.written,
+            vec!["adversarial-reviewer-claude".to_string()]
+        );
+        assert_eq!(
+            std::fs::read_to_string(shared.join("adversarial-reviewer-claude.md"))
+                .expect("written definition"),
+            include_str!("../../tests/agent-definition-adversarial-reviewer-claude.golden.md")
         );
     }
 
@@ -914,7 +936,7 @@ mod tests {
         let outside = tempfile::tempdir().expect("directory outside the project");
         let pointee = outside.path().join("reviewer.md");
         std::fs::write(&pointee, generated("elsewhere")).expect("foreign generated file");
-        if link_file(&pointee, &dir.join("claude-reviewer.md")).is_err() {
+        if link_file(&pointee, &dir.join("adversarial-reviewer-claude.md")).is_err() {
             return;
         }
         let stray = outside.path().join("stray.md");
@@ -929,7 +951,7 @@ mod tests {
         assert_eq!(
             result.skipped,
             vec![SkippedAgentDefinition {
-                role_id: "claude-reviewer".to_string(),
+                role_id: "adversarial-reviewer-claude".to_string(),
                 reason: AgentDefinitionSkipReason::UserAuthored,
             }]
         );
@@ -940,7 +962,7 @@ mod tests {
         );
         assert!(stray.exists(), "pruning followed a link out of the project");
         assert!(dir
-            .join("claude-reviewer.md")
+            .join("adversarial-reviewer-claude.md")
             .symlink_metadata()
             .expect("the link survives")
             .file_type()
