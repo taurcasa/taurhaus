@@ -8,6 +8,9 @@ import { buildSpecList, listSpecFiles, paidSpecs, specGroups } from './specList.
 // this the real specs directory rather than a fixture.
 const specsDir = resolve('e2e/specs')
 const managedDeadlineSource = readFileSync(resolve(specsDir, 'managed-stage-deadline.js'), 'utf8')
+const testingGuideSource = readFileSync(resolve('docs/operations/testing-guide.md'), 'utf8')
+const e2eReadmeSource = readFileSync(resolve('e2e/README.md'), 'utf8')
+const claudeSource = readFileSync(resolve('CLAUDE.md'), 'utf8')
 
 function flatNames(specList) {
   return specList.flat().map((path) => basename(path))
@@ -42,6 +45,19 @@ describe('default WDIO spec list', () => {
 
   it('keeps the paid managed deadline measurement named-only', () => {
     expect(paidSpecs).toContain('managed-stage-deadline.js')
+  })
+
+  it('keeps the paid parallel-stage isolation measurement named-only', () => {
+    expect(paidSpecs).toHaveLength(4)
+    expect(paidSpecs).toContain('managed-stage-parallel.js')
+  })
+
+  it('documents all four paid lanes without making the parallel lane a suite default', () => {
+    expect(testingGuideSource).toMatch(/Four specs drive a real Codex subscription/)
+    expect(testingGuideSource).toContain('just test-e2e-spec managed-stage-parallel')
+    expect(e2eReadmeSource).toMatch(/Four specs drive a real Codex subscription/)
+    expect(e2eReadmeSource).toContain('just test-e2e-spec managed-stage-parallel')
+    expect(claudeSource).toContain('the four paid Codex lanes are never in a suite run')
   })
 
   // Regression: e1c38eef registered the suppression case before the primary

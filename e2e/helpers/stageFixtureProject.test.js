@@ -5,11 +5,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  addStageFixtureWorktree,
   commitExists,
   createStageFixtureProject,
   filesAddedByCommit,
+  removeStageFixtureWorktree,
   runFixtureTests,
   runFixtureTestsAtCommit,
+  worktreeTreeDiff,
 } from './stageFixtureProject.js'
 
 let root
@@ -128,7 +131,7 @@ describe('runFixtureTestsAtCommit', () => {
     execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'feat: greet'], { encoding: 'utf8' })
     const head = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
 
-    const result = runFixtureTestsAtCommit(repo, head)
+    const result = runFixtureTestsAtCommit(repo, head, { root })
     expect(result.passed).toBe(true)
     expect(result.command).toBe('bun test')
   })
@@ -143,14 +146,94 @@ describe('runFixtureTestsAtCommit', () => {
     writeFileSync(join(repo, 'src/lib/greet.test.js'), GREET_TEST)
 
     expect(runFixtureTests(repo).passed).toBe(true)
-    expect(runFixtureTestsAtCommit(repo, created.headCommit).passed).toBe(false)
+    expect(runFixtureTestsAtCommit(repo, created.headCommit, { root }).passed).toBe(false)
   })
 
   it('leaves no worktree behind', () => {
     const repo = join(root, 'stage-k')
     const created = createStageFixtureProject(repo)
-    runFixtureTestsAtCommit(repo, created.headCommit)
+    runFixtureTestsAtCommit(repo, created.headCommit, { root })
     const listed = execFileSync('git', ['-C', repo, 'worktree', 'list'], { encoding: 'utf8' }).trim().split('\n')
     expect(listed).toHaveLength(1)
+  })
+
+  // Regression: 94fdab40 left validation worktrees in the host `/tmp`, where
+  // the worker's session-root teardown could not recover them after a crash.
+  it('creates the validation checkout below the caller-provided session root', () => {
+    const repo = join(root, 'stage-validation-root')
+    const validationRoot = join(root, 'session-validation-checkouts')
+    createStageFixtureProject(repo)
+    writeFileSync(join(repo, 'src/lib/greet.js'), GREET)
+    writeFileSync(
+      join(repo, 'src/lib/greet.test.js'),
+      `${GREET_TEST}\nconsole.log('VALIDATION_CWD=' + process.cwd())\n`
+    )
+    execFileSync('git', ['-C', repo, 'add', '.'], { encoding: 'utf8' })
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'feat: report validation cwd'], { encoding: 'utf8' })
+    const head = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+
+    const result = runFixtureTestsAtCommit(repo, head, { root: validationRoot })
+    expect(result.passed).toBe(true)
+    expect(result.output).toContain(`VALIDATION_CWD=${validationRoot}/stage-commit-`)
+  })
+
+  // Regression: d114a405 moved the helper default beside the fixture repo,
+  // so experiment 3 created its validation worktree inside E2E_PROJECTS_DIR
+  // and exposed that transient checkout to the app's project scanner.
+  it('keeps the experiment-3 validation checkout under its session temp root', () => {
+    const source = readFileSync(
+      join(import.meta.dirname, '..', 'specs', 'managed-stage-codex.js'),
+      'utf8'
+    )
+    expect(source).toContain(
+      'runFixtureTestsAtCommit(fixtureProject, reportedCommit, { root: sessionTempRoot })'
+    )
+  })
+})
+
+describe('stage fixture worktrees', () => {
+  it('keeps two detached worktree heads and their tree diffs independent', () => {
+    const repo = join(root, 'parallel-source')
+    const baseline = createStageFixtureProject(repo).headCommit
+    const alpha = join(root, 'parallel-alpha')
+    const beta = join(root, 'parallel-beta')
+
+    addStageFixtureWorktree(repo, alpha, baseline)
+    addStageFixtureWorktree(repo, beta, baseline)
+    try {
+      writeFileSync(join(alpha, 'src/lib/greet-alpha.js'), 'export const greetAlpha = () => "alpha"\n')
+      execFileSync('git', ['-C', alpha, 'add', 'src/lib/greet-alpha.js'])
+      execFileSync('git', ['-C', alpha, 'commit', '-q', '-m', 'feat: add alpha greeting'])
+      writeFileSync(join(beta, 'src/lib/greet-beta.js'), 'export const greetBeta = () => "beta"\n')
+      execFileSync('git', ['-C', beta, 'add', 'src/lib/greet-beta.js'])
+      execFileSync('git', ['-C', beta, 'commit', '-q', '-m', 'feat: add beta greeting'])
+
+      const alphaEvidence = worktreeTreeDiff(alpha, baseline)
+      const betaEvidence = worktreeTreeDiff(beta, baseline)
+      expect(alphaEvidence.headCommit).not.toBe(betaEvidence.headCommit)
+      expect(alphaEvidence.entries).toEqual([{ status: 'A', path: 'src/lib/greet-alpha.js' }])
+      expect(betaEvidence.entries).toEqual([{ status: 'A', path: 'src/lib/greet-beta.js' }])
+      expect(existsSync(join(alpha, 'src/lib/greet-beta.js'))).toBe(false)
+      expect(existsSync(join(beta, 'src/lib/greet-alpha.js'))).toBe(false)
+    } finally {
+      removeStageFixtureWorktree(repo, alpha)
+      removeStageFixtureWorktree(repo, beta)
+    }
+  })
+
+  // Regression: 94fdab40 folded Git's `R100\told\tnew` record into one path,
+  // so a tree diff no longer named both paths involved in a rename.
+  it('reports both paths of a rename as independent tree changes', () => {
+    const repo = join(root, 'rename-source')
+    const baseline = createStageFixtureProject(repo).headCommit
+    execFileSync('git', [
+      '-C', repo, 'mv', 'src/lib/Greeting.svelte', 'src/lib/RenamedGreeting.svelte',
+    ])
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'refactor: rename greeting'])
+
+    expect(worktreeTreeDiff(repo, baseline).entries).toEqual([
+      { status: 'D', path: 'src/lib/Greeting.svelte' },
+      { status: 'A', path: 'src/lib/RenamedGreeting.svelte' },
+    ])
   })
 })

@@ -22,9 +22,12 @@
  * to `~/.claude` would bootstrap a team in the operator's real home.
  */
 
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 /** Run one mesh command against an explicit Claude root; throws on failure. */
 function runMesh(claudeDir, args, { timeout = 60_000 } = {}) {
@@ -35,9 +38,17 @@ function runMesh(claudeDir, args, { timeout = 60_000 } = {}) {
   }).trim()
 }
 
-/** `mesh task create --json`, returning the created record. */
-export function createTask({
-  claudeDir, team, actor, subject, description, effort, why, deadline, firstStep, deliverable,
+/** Async counterpart used when multiple independent task pipelines overlap. */
+async function runMeshAsync(claudeDir, args, { timeout = 60_000 } = {}) {
+  const { stdout } = await execFileAsync('mesh', ['--claude-dir', claudeDir, ...args], {
+    encoding: 'utf8',
+    timeout,
+  })
+  return String(stdout).trim()
+}
+
+function createTaskArgs({
+  team, actor, subject, description, effort, why, deadline, firstStep, deliverable,
 }) {
   const args = [
     '--team', team,
@@ -52,19 +63,27 @@ export function createTask({
   ]
   if (deadline != null) args.push('--deadline', String(deadline))
   args.push('--json')
-  const raw = runMesh(claudeDir, args)
+  return args
+}
+
+/** `mesh task create --json`, returning the created record. */
+export function createTask({
+  claudeDir, team, actor, subject, description, effort, why, deadline, firstStep, deliverable,
+}) {
+  const raw = runMesh(claudeDir, createTaskArgs({
+    team, actor, subject, description, effort, why, deadline, firstStep, deliverable,
+  }))
   return JSON.parse(raw)
 }
 
-/**
- * `mesh task assign`, with the effort and the completion signal on the
- * assignment itself.
- *
- * The completion signal names the task id, which only exists once the task has
- * been created — so it is passed here and not at creation.
- */
-export function assignTask({
-  claudeDir, team, actor, taskId, owner, status, effort, why, deadline, firstStep, deliverable,
+/** Async `mesh task create --json` using the same argv contract. */
+export async function createTaskAsync(options, { execute = runMeshAsync } = {}) {
+  const raw = await execute(options.claudeDir, createTaskArgs(options))
+  return JSON.parse(raw)
+}
+
+function assignTaskArgs({
+  team, actor, taskId, owner, status, effort, why, deadline, firstStep, deliverable,
   completionSignal,
 }) {
   const args = [
@@ -80,7 +99,29 @@ export function assignTask({
   ]
   if (status) args.push('--status', status)
   if (deadline != null) args.push('--deadline', String(deadline))
-  return runMesh(claudeDir, args)
+  return args
+}
+
+/**
+ * `mesh task assign`, with the effort and the completion signal on the
+ * assignment itself.
+ *
+ * The completion signal names the task id, which only exists once the task has
+ * been created — so it is passed here and not at creation.
+ */
+export function assignTask({
+  claudeDir, team, actor, taskId, owner, status, effort, why, deadline, firstStep, deliverable,
+  completionSignal,
+}) {
+  return runMesh(claudeDir, assignTaskArgs({
+    team, actor, taskId, owner, status, effort, why, deadline, firstStep, deliverable,
+    completionSignal,
+  }))
+}
+
+/** Async `mesh task assign` using the same argv contract. */
+export async function assignTaskAsync(options, { execute = runMeshAsync } = {}) {
+  return await execute(options.claudeDir, assignTaskArgs(options))
 }
 
 /**
@@ -288,6 +329,14 @@ export function readInbox({ claudeDir, team, member }) {
   } catch {
     return []
   }
+}
+
+/** Task ids named by mesh assignment notices in one member inbox. */
+export function taskAssignmentNoticeIds(messages) {
+  return (messages ?? [])
+    .filter((message) => /^task #\S+ assignment$/.test(String(message?.summary ?? '')))
+    .map((message) => String(message?.text ?? '').match(/(?:^|\n)Task ID: #(\S+)/)?.[1] ?? null)
+    .filter(Boolean)
 }
 
 /**

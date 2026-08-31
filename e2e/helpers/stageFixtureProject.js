@@ -17,8 +17,7 @@
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 /** The command the stage is asked to validate its own work with. */
 const FIXTURE_TEST_COMMAND = 'bun test'
@@ -159,6 +158,52 @@ export function runFixtureTests(directory) {
   }
 }
 
+/** Add a detached fixture worktree at `revision`. */
+export function addStageFixtureWorktree(repoPath, worktreePath, revision) {
+  mkdirSync(dirname(worktreePath), { recursive: true })
+  git(repoPath, ['worktree', 'add', '--detach', worktreePath, String(revision ?? '')])
+  return {
+    path: worktreePath,
+    headCommit: git(worktreePath, ['rev-parse', 'HEAD']).trim(),
+  }
+}
+
+/** Remove one fixture worktree and its directory. */
+export function removeStageFixtureWorktree(repoPath, worktreePath) {
+  try {
+    git(repoPath, ['worktree', 'remove', '--force', worktreePath])
+  } finally {
+    rmSync(worktreePath, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Positive evidence for the tree checked out by one stage member.
+ *
+ * Linked worktrees share a Git object database, so asking whether the sibling
+ * can resolve a commit SHA does not prove isolation. The checked-out HEAD and
+ * its name-status diff from the common baseline do.
+ */
+export function worktreeTreeDiff(worktreePath, baseline) {
+  const headCommit = git(worktreePath, ['rev-parse', 'HEAD']).trim()
+  const raw = git(worktreePath, [
+    'diff', '--no-renames', '--name-status', String(baseline ?? ''), headCommit,
+  ])
+  const entries = raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [status, ...pathParts] = line.split('\t')
+      return { status, path: pathParts.join('\t') }
+    })
+  return {
+    headCommit,
+    entries,
+    workingTreeStatus: git(worktreePath, ['status', '--porcelain']).trim(),
+  }
+}
+
 /**
  * Run the fixture's tests from a clean checkout of `revision`.
  *
@@ -167,14 +212,21 @@ export function runFixtureTests(directory) {
  * files, ran the tests and never committed them — the member's own report would
  * name some other commit and everything would still be green.
  *
- * The checkout is a detached worktree in a temp directory, removed on every
- * path out; a `bun test` in it sees exactly the tree the commit records.
+ * The checkout is a detached worktree below the fixture's parent by default,
+ * keeping it inside the worker session root. It is removed on every path out;
+ * a `bun test` in it sees exactly the tree the commit records.
  */
-export function runFixtureTestsAtCommit(repoPath, revision) {
-  const checkout = mkdtempSync(join(tmpdir(), 'taurhaus-stage-commit-'))
+export function runFixtureTestsAtCommit(repoPath, revision, { root } = {}) {
+  if (!root || !String(root).trim()) {
+    // Never default near the scanned projects dir: a transient checkout there
+    // would be picked up as a project. The caller owns the session temp root.
+    throw new Error('runFixtureTestsAtCommit requires an explicit root for its validation checkout')
+  }
+  mkdirSync(root, { recursive: true })
+  const checkout = mkdtempSync(join(root, 'stage-commit-'))
   try {
     try {
-      git(repoPath, ['worktree', 'add', '--detach', checkout, String(revision ?? '')])
+      addStageFixtureWorktree(repoPath, checkout, revision)
     } catch (error) {
       return {
         command: FIXTURE_TEST_COMMAND,
@@ -185,11 +237,10 @@ export function runFixtureTestsAtCommit(repoPath, revision) {
     return runFixtureTests(checkout)
   } finally {
     try {
-      git(repoPath, ['worktree', 'remove', '--force', checkout])
+      removeStageFixtureWorktree(repoPath, checkout)
     } catch {
-      // The directory below is removed either way; a worktree entry that could
-      // not be dropped is pruned by git on its own and lives in a temp dir.
+      // Removal owns the directory even when Git cannot drop the administrative
+      // entry; Git prunes that now-missing checkout on its own.
     }
-    rmSync(checkout, { recursive: true, force: true })
   }
 }

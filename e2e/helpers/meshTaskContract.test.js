@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   activeDeadlineHeartbeatPlan,
   activeDeadlinePassEvidence,
+  assignTaskAsync,
   assignmentStartTimeoutProblem,
+  createTaskAsync,
   effortDeliveryVerdict,
   effortWaitBoundMs,
   expiredEffortWaitProblem,
@@ -14,7 +16,75 @@ import {
   parseResultMessage,
   resultContractViolations,
   stagePollVerdict,
+  taskAssignmentNoticeIds,
 } from './meshTaskContract.js'
+
+describe('async task assignment contract', () => {
+  it('owns the create and assign argv while allowing concurrent callers', async () => {
+    const calls = []
+    const execute = async (claudeDir, args) => {
+      calls.push({ claudeDir, args })
+      return args.includes('create') ? '{"id":"42"}' : 'assigned'
+    }
+    const shared = {
+      claudeDir: '/scratch/claude',
+      team: 'parallel-team',
+      actor: 'lead',
+      effort: 'medium',
+      why: 'isolation evidence',
+      deadline: 10,
+      firstStep: 'edit the fixture',
+      deliverable: 'one commit',
+    }
+
+    const created = await createTaskAsync({
+      ...shared,
+      subject: 'Add greeting',
+      description: 'Bounded fixture change',
+    }, { execute })
+    await assignTaskAsync({
+      ...shared,
+      taskId: created.id,
+      owner: 'codex-alpha',
+      status: 'in_progress',
+      completionSignal: 'RESULT #42 {json}',
+    }, { execute })
+
+    expect(created).toEqual({ id: '42' })
+    expect(calls).toEqual([
+      {
+        claudeDir: '/scratch/claude',
+        args: [
+          '--team', 'parallel-team', '--name', 'lead', 'task', 'create',
+          '--subject', 'Add greeting', '--description', 'Bounded fixture change',
+          '--effort', 'medium', '--why', 'isolation evidence',
+          '--first-step', 'edit the fixture', '--deliverable', 'one commit',
+          '--deadline', '10', '--json',
+        ],
+      },
+      {
+        claudeDir: '/scratch/claude',
+        args: [
+          '--team', 'parallel-team', '--name', 'lead', 'task', 'assign', '42',
+          '--owner', 'codex-alpha', '--effort', 'medium', '--why', 'isolation evidence',
+          '--first-step', 'edit the fixture', '--deliverable', 'one commit',
+          '--completion-signal', 'RESULT #42 {json}', '--status', 'in_progress',
+          '--deadline', '10',
+        ],
+      },
+    ])
+  })
+})
+
+describe('taskAssignmentNoticeIds', () => {
+  it('returns only task ids from mesh assignment notices', () => {
+    expect(taskAssignmentNoticeIds([
+      { summary: 'task #42 assignment', text: 'Assigned to codex-alpha\nTask ID: #42\nEffort: medium' },
+      { summary: 'result', text: 'Task ID: #99' },
+      { summary: 'task #7 assignment', text: 'malformed notice without id' },
+    ])).toEqual(['42'])
+  })
+})
 
 describe('assignmentStartTimeoutProblem', () => {
   // Regression: c12c506c reported only that the task never reached
