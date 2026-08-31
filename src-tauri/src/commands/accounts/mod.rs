@@ -25,8 +25,9 @@ use crate::daemon::protocol;
 use crate::db::queries;
 use crate::errors::{sanitize_error, AppError, CommandResultExt, IpcResult, SanitizeErr};
 use crate::session_scanner::accounts::{self, Account};
-use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::session_scanner::launch_base::{self, ResolvedBase};
+use crate::session_scanner::shell_words::assignment_in_force;
 use crate::ProviderState;
 
 /// Detection ran in this process.
@@ -60,6 +61,29 @@ pub struct AccountsResult {
     /// `resolve_launch_bases` command, never from this report.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resolved_bases: Vec<ResolvedBase>,
+}
+
+/// One Settings-only base resolution, including the selector value already
+/// classified by the backend's shared shell-word parser.
+///
+/// `ResolvedBase` itself stays unchanged because it also travels over the
+/// app↔daemon protocol. This additive local IPC result keeps shell syntax out
+/// of the frontend without changing that protocol.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedLaunchBase {
+    #[serde(flatten)]
+    pub base: ResolvedBase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selector_value: Option<String>,
+}
+
+impl std::ops::Deref for ResolvedLaunchBase {
+    type Target = ResolvedBase;
+
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
 }
 
 /// The transcript that owns a project's history, and whether the lookup ran.
@@ -106,7 +130,7 @@ pub fn resolve_launch_bases(
     provider: State<'_, ProviderState>,
     tool: CliTool,
     force: Option<bool>,
-) -> IpcResult<Vec<ResolvedBase>> {
+) -> IpcResult<Vec<ResolvedLaunchBase>> {
     let span = IpcCommandSpan::start("resolve_launch_bases");
     let result = Ok::<_, String>(resolve_launch_bases_impl(
         db.inner(),
@@ -124,7 +148,7 @@ pub(crate) fn resolve_launch_bases_impl(
     provider: &ProviderState,
     tool: CliTool,
     force: bool,
-) -> Vec<ResolvedBase> {
+) -> Vec<ResolvedLaunchBase> {
     if force && !cfg!(target_os = "windows") {
         launch_base::invalidate_base_command_cache();
     }
@@ -142,6 +166,26 @@ pub(crate) fn resolve_launch_bases_impl(
     resolve_bases_threading_force(&bases, force, |base, force| {
         resolve_launch_base_with_force_tracked(provider, tool, base, force)
     })
+    .into_iter()
+    .map(|base| resolved_launch_base(base, tool))
+    .collect()
+}
+
+fn resolved_launch_base(base: ResolvedBase, tool: CliTool) -> ResolvedLaunchBase {
+    let selector_value = spec(tool)
+        .capabilities
+        .account_selector
+        .and_then(|selector| assignment_in_force(&base.command, selector))
+        .and_then(|assignment| {
+            assignment
+                .text
+                .split_once('=')
+                .map(|(_, value)| value.to_string())
+        });
+    ResolvedLaunchBase {
+        base,
+        selector_value,
+    }
 }
 
 /// Resolve each base in order, carrying a forced invalidation forward until

@@ -547,6 +547,7 @@ function normalizeResolvedBase(raw) {
   if (!command) return null
   const expansions = Array.isArray(base.expansions) ? base.expansions : []
   const opaqueHead = base.opaqueHead ?? base.opaque_head ?? null
+  const selectorValue = base.selectorValue ?? base.selector_value ?? null
   const normalized = {
     ...base,
     command,
@@ -558,8 +559,10 @@ function normalizeResolvedBase(raw) {
       }))
       .filter((expansion) => expansion.name),
     opaqueHead: opaqueHead == null ? null : String(opaqueHead),
+    selectorValue: selectorValue == null ? null : String(selectorValue),
   }
   delete normalized.opaque_head
+  delete normalized.selector_value
   return normalized
 }
 

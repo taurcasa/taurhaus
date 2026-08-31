@@ -236,6 +236,11 @@ fn resolving_launch_bases_carries_what_the_pane_shell_makes_of_each_command() {
         .find_map(|base| base.expansions.first())
         .expect("the alias that carried the selector");
     assert_eq!(expansion.name, "claude2");
+    let selected = resolved_bases
+        .iter()
+        .find(|base| base.command.starts_with("CLAUDE_CONFIG_DIR=/homes/two"))
+        .expect("resolved base with selector");
+    assert_eq!(selected.selector_value.as_deref(), Some("/homes/two"));
 }
 
 #[test]

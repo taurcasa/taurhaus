@@ -208,48 +208,13 @@
     return [account?.organization, account?.plan].filter(Boolean).join(' · ')
   }
 
-  /**
-   * The launch commands as the pane's shell reads them, resolved by the
-   * backend. Without that answer the literal settings are all there is —
-   * which is what an older backend leaves the frontend with.
-   */
+  /** The launch commands and selector values as the backend resolved them. */
   function launchBases(tool) {
-    const resolved = accountState(tool.id).resolvedBases ?? []
-    if (resolved.length) return resolved
-    const commands = settings?.terminal?.cli_commands?.[tool.id] ?? {}
-    return Object.values(commands).map((command) => ({ command: String(command) }))
+    return accountState(tool.id).resolvedBases ?? []
   }
 
-  /**
-   * The run of `NAME=value` words a shell puts in the environment: the ones in
-   * front of the command name. Past it every word is an argument the program
-   * receives verbatim, however much it looks like an assignment.
-   */
-  function assignmentPrefix(command) {
-    const line = String(command)
-    const word = /^\s*[A-Za-z_][A-Za-z0-9_]*=(?:'[^']*'|"[^"]*"|[^\s'"])*(?=\s|$)/
-    let end = 0
-    for (;;) {
-      const match = word.exec(line.slice(end))
-      if (!match) return line.slice(0, end)
-      end += match[0].length
-    }
-  }
-
-  /**
-   * The account a base command's own selector names.
-   *
-   * A shell reads the last assignment of a name, and an expanded alias can
-   * leave a configured prefix in front of its own. A backend that resolved the
-   * base has already expanded `~` against the home of the shell that will run
-   * it; one too old to resolve anything leaves the tilde, and the account is
-   * then matched on the path it names below that home.
-   */
-  function baseSelectorAccount(command, selector, accounts) {
-    if (!selector) return null
-    const pattern = new RegExp(`(?:^|\\s)${selector}=(?:'([^']*)'|\"([^\"]*)\"|([^\\s]*))`, 'g')
-    const assignment = [...assignmentPrefix(command).matchAll(pattern)].at(-1)
-    const dir = assignment ? (assignment[1] ?? assignment[2] ?? assignment[3] ?? '') : ''
+  function accountForSelectorValue(value, accounts) {
+    const dir = String(value ?? '')
     if (!dir) return null
     if (dir.startsWith('~/')) {
       const tail = dir.slice(1)
@@ -282,9 +247,11 @@
       (account) => account.id === persistedDefaultAccountId(tool.id)
     )
     if (chosen) return { account: chosen, origin: 'default' }
-    const selector = tool.capabilities.accountSelector
     for (const base of bases) {
-      const account = baseSelectorAccount(base.command, selector, state.accounts)
+      const account = accountForSelectorValue(
+        base.selectorValue ?? base.selector_value,
+        state.accounts,
+      )
       if (!account) continue
       const alias = base.expansions?.[0]
       return {

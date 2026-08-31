@@ -735,6 +735,7 @@ describe('ipc module', () => {
               { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
             ],
             opaqueHead: null,
+            selectorValue: '/home/mstie/.claude-account2',
           },
           { command: 'my-wrapper', expansions: [], opaqueHead: 'my-wrapper' },
         ],
@@ -748,8 +749,14 @@ describe('ipc module', () => {
             "CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude --dangerously-skip-permissions",
           expansions: [{ name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' }],
           opaqueHead: null,
+          selectorValue: '/home/mstie/.claude-account2',
         },
-        { command: 'my-wrapper', expansions: [], opaqueHead: 'my-wrapper' },
+        {
+          command: 'my-wrapper',
+          expansions: [],
+          opaqueHead: 'my-wrapper',
+          selectorValue: null,
+        },
       ])
       delete window.__TAURI_INTERNALS__
     })
