@@ -2681,6 +2681,7 @@ fn add_agent_request_and_report_round_trip() {
             status: StepStatus::Succeeded,
             message: Some("joined".to_string()),
         }],
+        warnings: vec!["onboarding wake failed".to_string()],
     };
     let report_json = serde_json::to_string(&report).expect("serialize add-agent report");
     let report_decoded: AddAgentReport =

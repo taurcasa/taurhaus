@@ -152,6 +152,7 @@ pub(super) fn failed_add_agent_report(
     err: CoordinationError,
     succeeded_steps: Vec<String>,
     steps: &mut Vec<StepProgress>,
+    warnings: Vec<String>,
 ) -> AddAgentReport {
     steps.push(StepProgress {
         step: failed_step.to_string(),
@@ -166,6 +167,7 @@ pub(super) fn failed_add_agent_report(
         retryable: true,
         message: err.to_string(),
         steps: std::mem::take(steps),
+        warnings,
     }
 }
 

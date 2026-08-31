@@ -166,6 +166,7 @@ pub(super) fn map_add_agent_report_from_contract(
             .into_iter()
             .map(map_step_progress_from_contract)
             .collect(),
+        warnings: report.warnings,
     }
 }
 

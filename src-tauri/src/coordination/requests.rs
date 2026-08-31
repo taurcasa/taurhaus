@@ -583,6 +583,7 @@ pub struct AddAgentResult {
     pub retryable: bool,
     pub message: String,
     pub steps: Vec<StepProgress>,
+    pub warnings: Vec<String>,
 }
 
 /// Request contract for resuming a team member session.
@@ -920,6 +921,7 @@ mod tests {
                 status: StepStatus::Succeeded,
                 message: Some("ok".to_string()),
             }],
+            warnings: vec!["onboarding wake failed".to_string()],
         };
         let add_json = serde_json::to_string(&add_report).expect("serialize add report");
         let add_decoded: AddAgentResult =

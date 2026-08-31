@@ -389,6 +389,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 err,
                 self.succeeded_steps,
                 &mut self.steps,
+                self.warnings,
             ));
         }
         self.record_step_success("validate", "request validated");
@@ -402,6 +403,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 err,
                 self.succeeded_steps,
                 &mut self.steps,
+                self.warnings,
             ));
         }
 
@@ -415,6 +417,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             retryable: false,
             message: "agent added".to_string(),
             steps: self.steps,
+            warnings: self.warnings,
         })
     }
 
