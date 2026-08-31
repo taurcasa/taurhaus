@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Bundled mesh 0.2.24** — assignment deadlines travel (`--deadline <minutes>` on `task create`/`task assign`, stored as task metadata `deadline_minutes` and shown wherever effort is shown), and `task get` recognises the member's completion signal from the lead inbox (`RESULT <id>` with its JSON block, `BLOCKED <id> <reason>`, tolerant header spellings, `completion.at` provenance from the matched message) — the mesh half of W4's stage contract, feeding the deadline pass #100 wired.
+
 ### Fixed
 
 - **Launch commands have one shell-word classifier** — alias resolution, account selection and selector rewriting now share the same bounded tokenizer for quoting, escaping, leading assignment runs, last-assignment-wins and command heads, including tilde and Windows-style path forms. Settings no longer implements a fourth shell parser: the dedicated launch-base resolver reports the selector value it classified, and the existing `from your launch command "…" (alias for …)` explanation renders from that backend result.
