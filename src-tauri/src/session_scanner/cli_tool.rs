@@ -142,6 +142,8 @@ pub enum RuntimeEffort {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CliCapabilities {
     pub model_flag: Option<&'static str>,
+    /// Accepted spellings besides `model_flag`, in renderer precedence order.
+    pub model_flag_aliases: &'static [&'static str],
     pub effort_flag: Option<EffortFlag>,
     /// How the level changes once the session is already running.
     pub runtime_effort: RuntimeEffort,
@@ -267,6 +269,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             default_agent_role_id: "claude-reviewer",
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
+                model_flag_aliases: &[],
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
                 runtime_effort: RuntimeEffort::SlashCommand,
                 runtime_effort_frozen_env: Some("CLAUDE_CODE_EFFORT_LEVEL"),
@@ -330,6 +333,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             default_agent_role_id: "codex-developer",
             capabilities: CliCapabilities {
                 model_flag: Some("-m"),
+                model_flag_aliases: &["--model"],
                 effort_flag: Some(EffortFlag::Config {
                     flag: "-c",
                     key: "model_reasoning_effort",
@@ -424,6 +428,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             default_agent_role_id: "antigravity-ui-specialist",
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
+                model_flag_aliases: &[],
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
                 runtime_effort: RuntimeEffort::SlashCommand,
                 runtime_effort_frozen_env: None,
@@ -566,6 +571,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             default_agent_role_id: "grok-developer",
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
+                model_flag_aliases: &["-m"],
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
                 runtime_effort: RuntimeEffort::SlashCommand,
                 runtime_effort_frozen_env: None,
@@ -641,6 +647,7 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
     default_agent_role_id: "",
     capabilities: CliCapabilities {
         model_flag: None,
+        model_flag_aliases: &[],
         effort_flag: None,
         runtime_effort: RuntimeEffort::None,
         runtime_effort_frozen_env: None,

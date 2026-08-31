@@ -215,75 +215,82 @@ impl LaunchSpec<'_> {
             }
         }
 
+        // Codex-specific additions precede model and effort exactly as they do
+        // in the command line. The selection logic below is shared by all four
+        // registered tools.
+        if self.tool == CliTool::Codex {
+            if capabilities.hook_trust
+                && self.codex_bypass_hook_trust
+                && !command_contains_flag(&command, "--dangerously-bypass-hook-trust")
+            {
+                command.push_str(" --dangerously-bypass-hook-trust");
+            }
+            if let Some(executable) = self
+                .codex_notify_executable
+                .filter(|_| capabilities.notify_sink)
+            {
+                if command_contains_codex_config(self.base, "notify") {
+                    notes.push(LaunchNote::NotifyIgnored {
+                        found: "notify".to_string(),
+                    });
+                } else {
+                    let notify = serde_json::to_string(&[
+                        executable.to_string_lossy().as_ref(),
+                        "codex-notify",
+                    ])
+                    .expect("string-only Codex notify command serializes");
+                    append_flag(&mut command, "-c", &format!("notify={notify}"));
+                }
+            }
+            if command_contains_flag(self.base, "--full-auto") {
+                notes.push(LaunchNote::DeprecatedFlag {
+                    flag: "--full-auto".to_string(),
+                });
+            }
+        }
+
+        let model_selection = resolve_model_selection(self.base, requested_model, capabilities);
+        if let Some(model) = requested_model {
+            match (capabilities.model_flag, model_selection.found_flag) {
+                (_, Some(found)) => notes.push(LaunchNote::ModelIgnored {
+                    found: found.to_string(),
+                }),
+                (Some(model_flag), None) => {
+                    if let Some(entry) =
+                        ModelCatalog::entry_for(self.tool, model).filter(|entry| entry.deprecated)
+                    {
+                        notes.push(LaunchNote::ModelDeprecated {
+                            found: model.to_string(),
+                            replacement: entry.replacement.clone(),
+                        });
+                    }
+                    append_flag(&mut command, model_flag, model);
+                }
+                (None, None) => notes.push(LaunchNote::CapabilityMissing {
+                    capability: LaunchCapability::Model,
+                    found: model.to_string(),
+                }),
+            }
+        }
+
+        if let Some(effort) = requested_effort {
+            if !ModelCatalog::supports_effort(
+                self.tool,
+                model_selection.effective_model.as_deref(),
+                effort,
+            ) {
+                notes.push(LaunchNote::EffortIgnored {
+                    found: effort.to_string(),
+                    reason: EffortIgnoreReason::Invalid,
+                });
+                requested_effort = None;
+            }
+        }
+
         match self.tool {
             CliTool::Codex => {
-                if capabilities.hook_trust
-                    && self.codex_bypass_hook_trust
-                    && !command_contains_flag(&command, "--dangerously-bypass-hook-trust")
-                {
-                    command.push_str(" --dangerously-bypass-hook-trust");
-                }
-                if let Some(executable) = self
-                    .codex_notify_executable
-                    .filter(|_| capabilities.notify_sink)
-                {
-                    if command_contains_codex_config(self.base, "notify") {
-                        notes.push(LaunchNote::NotifyIgnored {
-                            found: "notify".to_string(),
-                        });
-                    } else {
-                        let notify = serde_json::to_string(&[
-                            executable.to_string_lossy().as_ref(),
-                            "codex-notify",
-                        ])
-                        .expect("string-only Codex notify command serializes");
-                        append_flag(&mut command, "-c", &format!("notify={notify}"));
-                    }
-                }
-                if command_contains_flag(self.base, "--full-auto") {
-                    notes.push(LaunchNote::DeprecatedFlag {
-                        flag: "--full-auto".to_string(),
-                    });
-                }
-
-                let base_model = capabilities.model_flag.and_then(|model_flag| {
-                    first_present_flag_value(self.base, &[model_flag, "--model"])
-                });
-                if let Some(model) = requested_model {
-                    if let Some(model_flag) = capabilities.model_flag {
-                        if let Some(found) = first_present_flag(self.base, &[model_flag, "--model"])
-                        {
-                            notes.push(LaunchNote::ModelIgnored {
-                                found: found.to_string(),
-                            });
-                        } else {
-                            if let Some(entry) = ModelCatalog::entry_for(self.tool, model)
-                                .filter(|entry| entry.deprecated)
-                            {
-                                notes.push(LaunchNote::ModelDeprecated {
-                                    found: model.to_string(),
-                                    replacement: entry.replacement.clone(),
-                                });
-                            }
-                            append_flag(&mut command, model_flag, model);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Model,
-                            found: model.to_string(),
-                        });
-                    }
-                }
-
                 if let Some(effort) = requested_effort {
-                    let effective_model = base_model.as_deref().or(requested_model);
-                    if !ModelCatalog::supports_effort(self.tool, effective_model, effort) {
-                        notes.push(LaunchNote::EffortIgnored {
-                            found: effort.to_string(),
-                            reason: EffortIgnoreReason::Invalid,
-                        });
-                    } else if let Some(EffortFlag::Config { flag, key }) = capabilities.effort_flag
-                    {
+                    if let Some(EffortFlag::Config { flag, key }) = capabilities.effort_flag {
                         if command_contains_flag(self.base, key) {
                             notes.push(LaunchNote::EffortIgnored {
                                 found: key.to_string(),
@@ -301,54 +308,14 @@ impl LaunchSpec<'_> {
                 }
             }
             CliTool::Claude => {
-                if let Some(model) = requested_model {
-                    if let Some(model_flag) = capabilities.model_flag {
-                        if command_contains_flag(self.base, model_flag) {
-                            notes.push(LaunchNote::ModelIgnored {
-                                found: model_flag.to_string(),
-                            });
-                        } else {
-                            if let Some(entry) = ModelCatalog::entry_for(self.tool, model)
-                                .filter(|entry| entry.deprecated)
-                            {
-                                notes.push(LaunchNote::ModelDeprecated {
-                                    found: model.to_string(),
-                                    replacement: entry.replacement.clone(),
-                                });
-                            }
-                            append_flag(&mut command, model_flag, model);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Model,
-                            found: model.to_string(),
-                        });
-                    }
-                }
-
-                if let Some(effort) = requested_effort {
-                    if !ModelCatalog::supports_effort(self.tool, requested_model, effort) {
-                        notes.push(LaunchNote::EffortIgnored {
-                            found: effort.to_string(),
-                            reason: EffortIgnoreReason::Invalid,
-                        });
-                    } else if let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag {
-                        if command_contains_flag(self.base, flag) {
-                            notes.push(LaunchNote::EffortIgnored {
-                                found: flag.to_string(),
-                                reason: EffortIgnoreReason::BaseOverride,
-                            });
-                        } else {
-                            append_flag(&mut command, flag, effort);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Effort,
-                            found: effort.to_string(),
-                        });
-                    }
-                }
-
+                render_argument_effort(
+                    &mut command,
+                    &mut notes,
+                    self.base,
+                    requested_effort,
+                    capabilities,
+                    &[],
+                );
                 if let Some(team) = self.team.as_ref().filter(|_| capabilities.team_flags) {
                     if !self.base.contains("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=") {
                         command = format!(
@@ -393,98 +360,24 @@ impl LaunchSpec<'_> {
                 }
             }
             CliTool::Agy => {
-                if let Some(model) = requested_model {
-                    if let Some(model_flag) = capabilities.model_flag {
-                        if let Some(found) = first_present_flag(self.base, &[model_flag, "--model"])
-                        {
-                            notes.push(LaunchNote::ModelIgnored {
-                                found: found.to_string(),
-                            });
-                        } else {
-                            append_flag(&mut command, model_flag, model);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Model,
-                            found: model.to_string(),
-                        });
-                    }
-                }
-
-                if let Some(effort) = requested_effort {
-                    if !ModelCatalog::supports_effort(self.tool, requested_model, effort) {
-                        notes.push(LaunchNote::EffortIgnored {
-                            found: effort.to_string(),
-                            reason: EffortIgnoreReason::Invalid,
-                        });
-                    } else if let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag {
-                        if command_contains_flag(self.base, flag) {
-                            notes.push(LaunchNote::EffortIgnored {
-                                found: flag.to_string(),
-                                reason: EffortIgnoreReason::BaseOverride,
-                            });
-                        } else {
-                            append_flag(&mut command, flag, effort);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Effort,
-                            found: effort.to_string(),
-                        });
-                    }
-                }
+                render_argument_effort(
+                    &mut command,
+                    &mut notes,
+                    self.base,
+                    requested_effort,
+                    capabilities,
+                    &[],
+                );
             }
             CliTool::Grok => {
-                if let Some(model) = requested_model {
-                    if let Some(model_flag) = capabilities.model_flag {
-                        if let Some(found) =
-                            first_present_flag(self.base, &[model_flag, "--model", "-m"])
-                        {
-                            notes.push(LaunchNote::ModelIgnored {
-                                found: found.to_string(),
-                            });
-                        } else {
-                            append_flag(&mut command, model_flag, model);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Model,
-                            found: model.to_string(),
-                        });
-                    }
-                }
-
-                if let Some(effort) = requested_effort {
-                    let effective_model = capabilities
-                        .model_flag
-                        .and_then(|model_flag| {
-                            first_present_flag_value(self.base, &[model_flag, "--model", "-m"])
-                        })
-                        .or_else(|| requested_model.map(str::to_string));
-                    if !ModelCatalog::supports_effort(self.tool, effective_model.as_deref(), effort)
-                    {
-                        notes.push(LaunchNote::EffortIgnored {
-                            found: effort.to_string(),
-                            reason: EffortIgnoreReason::Invalid,
-                        });
-                    } else if let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag {
-                        if let Some(found) =
-                            first_present_flag(self.base, &[flag, "--reasoning-effort"])
-                        {
-                            notes.push(LaunchNote::EffortIgnored {
-                                found: found.to_string(),
-                                reason: EffortIgnoreReason::BaseOverride,
-                            });
-                        } else {
-                            append_flag(&mut command, flag, effort);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Effort,
-                            found: effort.to_string(),
-                        });
-                    }
-                }
+                render_argument_effort(
+                    &mut command,
+                    &mut notes,
+                    self.base,
+                    requested_effort,
+                    capabilities,
+                    &["--reasoning-effort"],
+                );
             }
             CliTool::Unknown => {}
         }
@@ -676,6 +569,70 @@ fn first_present_flag_value(command: &str, flags: &[&str]) -> Option<String> {
         }
     }
     None
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ModelSelection {
+    found_flag: Option<&'static str>,
+    effective_model: Option<String>,
+}
+
+/// Resolve the model once for every renderer arm.
+///
+/// The registry owns every accepted flag spelling. A model already present in
+/// the base wins over the requested model because that is what the CLI will
+/// run; effort validation must inspect the same effective model.
+fn resolve_model_selection(
+    base: &str,
+    requested_model: Option<&str>,
+    capabilities: CliCapabilities,
+) -> ModelSelection {
+    let flags = capabilities
+        .model_flag
+        .into_iter()
+        .chain(capabilities.model_flag_aliases.iter().copied())
+        .collect::<Vec<_>>();
+    let found_flag = flags
+        .iter()
+        .copied()
+        .find(|flag| command_contains_flag(base, flag));
+    let base_model = first_present_flag_value(base, &flags);
+    let effective_model = base_model.or_else(|| requested_model.map(str::to_string));
+    ModelSelection {
+        found_flag,
+        effective_model,
+    }
+}
+
+fn render_argument_effort(
+    command: &mut String,
+    notes: &mut Vec<LaunchNote>,
+    base: &str,
+    requested_effort: Option<&str>,
+    capabilities: CliCapabilities,
+    aliases: &[&str],
+) {
+    let Some(effort) = requested_effort else {
+        return;
+    };
+    let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag else {
+        notes.push(LaunchNote::CapabilityMissing {
+            capability: LaunchCapability::Effort,
+            found: effort.to_string(),
+        });
+        return;
+    };
+    let flags = std::iter::once(flag)
+        .chain(aliases.iter().copied())
+        .collect::<Vec<_>>();
+    if let Some(found) = first_present_flag(base, &flags) {
+        notes.push(LaunchNote::EffortIgnored {
+            found: found.to_string(),
+            reason: EffortIgnoreReason::BaseOverride,
+        });
+    } else {
+        append_flag(command, flag, effort);
+    }
 }
 
 fn append_flag(command: &mut String, flag: &str, value: &str) {
@@ -1049,6 +1006,38 @@ mod tests {
                     reason: EffortIgnoreReason::Invalid,
                 },
             ]
+        );
+    }
+
+    // Regression: commit ee810e3 validated Claude effort against the requested
+    // model even when the free-form base had already selected the model that
+    // actually runs.
+    #[test]
+    fn claude_effort_is_resolved_against_base_model() {
+        let base = "claude --model opus";
+        let resolved =
+            resolve_model_selection(base, Some("fable"), spec(CliTool::Claude).capabilities);
+        assert_eq!(resolved.effective_model.as_deref(), Some("opus"));
+
+        let rendered = LaunchSpec {
+            tool: CliTool::Claude,
+            mode: LaunchMode::Fresh,
+            base,
+            model: model_spec("fable", Some("high")),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.command, "claude --model opus --effort 'high'");
+        assert_eq!(
+            rendered.notes,
+            vec![LaunchNote::ModelIgnored {
+                found: "--model".to_string(),
+            }]
         );
     }
 
@@ -1435,6 +1424,63 @@ mod tests {
                 found: "--model".to_string()
             }]
         );
+    }
+
+    // Regression: commit efcd7d2 validated Antigravity effort against the
+    // requested model rather than the base command's effective model.
+    #[test]
+    fn agy_effort_is_resolved_against_base_model() {
+        let base = "agy --model gemini-3.7-flash-low";
+        let resolved = resolve_model_selection(
+            base,
+            Some("gemini-3.7-flash-high"),
+            spec(CliTool::Agy).capabilities,
+        );
+        assert_eq!(
+            resolved.effective_model.as_deref(),
+            Some("gemini-3.7-flash-low")
+        );
+
+        let rendered = LaunchSpec {
+            tool: CliTool::Agy,
+            mode: LaunchMode::Fresh,
+            base,
+            model: model_spec("gemini-3.7-flash-high", Some("low")),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(
+            rendered.command,
+            "agy --model gemini-3.7-flash-low --effort 'low'"
+        );
+        assert_eq!(
+            rendered.notes,
+            vec![LaunchNote::ModelIgnored {
+                found: "--model".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn model_flag_aliases_are_declared_by_the_registry() {
+        assert!(spec(CliTool::Claude)
+            .capabilities
+            .model_flag_aliases
+            .is_empty());
+        assert_eq!(
+            spec(CliTool::Codex).capabilities.model_flag_aliases,
+            &["--model"]
+        );
+        assert!(spec(CliTool::Agy)
+            .capabilities
+            .model_flag_aliases
+            .is_empty());
+        assert_eq!(spec(CliTool::Grok).capabilities.model_flag_aliases, &["-m"]);
     }
 
     #[test]
