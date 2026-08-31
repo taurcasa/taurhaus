@@ -1169,7 +1169,7 @@ describe('managed Codex stage', function () {
     console.log(`[e2e] commit ${reportedCommit} added: ${added.join(', ') || 'nothing'}`)
     expect(added).toContain('src/lib/greet.js')
     expect(added).toContain('src/lib/greet.test.js')
-    const validation = runFixtureTestsAtCommit(fixtureProject, reportedCommit)
+    const validation = runFixtureTestsAtCommit(fixtureProject, reportedCommit, { root: sessionTempRoot })
     if (!validation.passed) {
       throw new Error(`The stage's own test does not pass at ${reportedCommit}:\n${validation.output}`)
     }

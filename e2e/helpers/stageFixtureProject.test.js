@@ -176,6 +176,19 @@ describe('runFixtureTestsAtCommit', () => {
     expect(result.passed).toBe(true)
     expect(result.output).toContain(`VALIDATION_CWD=${validationRoot}/stage-commit-`)
   })
+
+  // Regression: d114a405 moved the helper default beside the fixture repo,
+  // so experiment 3 created its validation worktree inside E2E_PROJECTS_DIR
+  // and exposed that transient checkout to the app's project scanner.
+  it('keeps the experiment-3 validation checkout under its session temp root', () => {
+    const source = readFileSync(
+      join(import.meta.dirname, '..', 'specs', 'managed-stage-codex.js'),
+      'utf8'
+    )
+    expect(source).toContain(
+      'runFixtureTestsAtCommit(fixtureProject, reportedCommit, { root: sessionTempRoot })'
+    )
+  })
 })
 
 describe('stage fixture worktrees', () => {
