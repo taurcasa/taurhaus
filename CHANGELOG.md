@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-08-31
+
 ### Fixed
 
 - **Codex npm installs show one session per agent** — newer Codex keeps its Node.js launcher alive beside the native CLI child on the same terminal, and both command lines match the harness inventory. The scanner now recognizes that same-tool, same-terminal parent chain as one harness and keeps the deepest native process, so each agent has one tile and clicking it focuses the correct tmux pane.
