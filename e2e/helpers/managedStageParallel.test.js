@@ -43,6 +43,21 @@ describe('parallel managed-stage spec contract', () => {
   })
 })
 
+describe('member bind nudge', () => {
+  // Regression: measured attempt 2 found the READY prompt and mesh's own
+  // onboarding notice parked unsubmitted in the Codex composer — a one-shot
+  // Enter is lost during cold start. The bind wait must keep nudging.
+  it('retries the submit inside the bind wait instead of sending once', () => {
+    const binding = parallelSpecSource.slice(
+      parallelSpecSource.indexOf('async function waitForMemberBinding'),
+      parallelSpecSource.indexOf('async function initializeParallelTeam')
+    )
+    expect(binding).toMatch(/lastNudgeAt/)
+    expect(binding).toMatch(/reprompted/)
+    expect((binding.match(/send-keys/g) ?? []).length).toBeGreaterThanOrEqual(4)
+  })
+})
+
 describe('launchManagedMembersSerially', () => {
   // Regression: 94fdab40 initialized both managed Codex members together, so
   // Codex 0.151 raced its fresh-home state migration and one launch died.
