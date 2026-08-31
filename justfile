@@ -36,17 +36,16 @@ ensure-tauri-resources:
 provision-worktree PATH BRANCH BASE="origin/main":
     #!/usr/bin/env bash
     set -euo pipefail
-    lane_path={{quote(PATH)}}
+    lane_input={{quote(PATH)}}
+    lane_parent=$(cd -- {{quote(invocation_directory())}} && cd -- "$(dirname -- "$lane_input")" && pwd)
+    lane_path="$lane_parent/$(basename -- "$lane_input")"
     lane_branch={{quote(BRANCH)}}
     lane_base={{quote(BASE)}}
     shared_target="${HOME:?}/.cache/taurhaus-lane-target"
+    mkdir -p -- "$shared_target"
     git fetch origin
     git worktree add "$lane_path" -b "$lane_branch" "$lane_base"
-    (
-        cd -- "$lane_path"
-        bun install --frozen-lockfile
-    )
-    mkdir -p -- "$shared_target" "$lane_path/.cargo"
+    mkdir -p -- "$lane_path/.cargo"
     {
         printf '%s\n' '# Shared Cargo target for taurhaus lane worktrees.'
         printf '%s\n' '# This worktree-local config affects only this lane; the main checkout and release builds keep src-tauri/target untouched.'
@@ -54,31 +53,36 @@ provision-worktree PATH BRANCH BASE="origin/main":
         printf '%s\n' '[build]'
         printf 'target-dir = "%s"\n' "$shared_target"
     } > "$lane_path/.cargo/config.toml"
+    (
+        cd -- "$lane_path"
+        bun install --frozen-lockfile
+    )
 
 # Remove a lane worktree and its branch. Unmerged branches are preserved unless
 # the caller explicitly acknowledges the destructive cleanup with FORCE_BRANCH=1.
 remove-worktree PATH:
     #!/usr/bin/env bash
     set -euo pipefail
-    lane_path={{quote(PATH)}}
+    lane_input={{quote(PATH)}}
+    lane_parent=$(cd -- {{quote(invocation_directory())}} && cd -- "$(dirname -- "$lane_input")" && pwd)
+    lane_path="$lane_parent/$(basename -- "$lane_input")"
     lane_branch=$(git -C "$lane_path" symbolic-ref --quiet --short HEAD) || {
         echo "Cannot remove '$lane_path': its branch could not be resolved." >&2
         exit 1
     }
     force_branch="${FORCE_BRANCH:-0}"
-    if ! git merge-base --is-ancestor "refs/heads/$lane_branch" HEAD; then
+    integration_ref="origin/main"
+    git fetch origin
+    if ! git merge-base --is-ancestor "refs/heads/$lane_branch" "$integration_ref"; then
         if [ "$force_branch" != "1" ]; then
-            echo "Refusing to remove '$lane_path': branch '$lane_branch' is not merged into HEAD." >&2
+            echo "Refusing to remove '$lane_path': branch '$lane_branch' is not merged into $integration_ref." >&2
             echo "Set FORCE_BRANCH=1 to remove the worktree and delete the unmerged branch." >&2
             exit 1
         fi
     fi
     git worktree remove "$lane_path" --force
-    if [ "$force_branch" = "1" ]; then
-        git branch -D -- "$lane_branch"
-    else
-        git branch -d -- "$lane_branch"
-    fi
+    # The integration guard above replaces `git branch -d`'s HEAD-relative check.
+    git branch -D -- "$lane_branch"
 
 # Reclaim the shared lane Cargo artifacts. This cache is always safe to delete.
 clean-lane-target:
@@ -551,6 +555,10 @@ _install-daemon-from-build:
     #!/usr/bin/env bash
     set -euo pipefail
 
+    cargo_target_dir=$(
+        cargo metadata --format-version 1 --no-deps --manifest-path src-tauri/Cargo.toml |
+            node -e 'const fs = require("node:fs"); const metadata = JSON.parse(fs.readFileSync(0, "utf8")); process.stdout.write(metadata.target_directory)'
+    )
     DAEMON_BIN="taurhaus-daemon"
     INSTALL_DIR="$HOME/.local/bin"
     WAS_RUNNING=false
@@ -614,7 +622,7 @@ _install-daemon-from-build:
     # Install (atomic swap avoids "Text file busy" when replacing a running binary)
     mkdir -p "$INSTALL_DIR"
     TMP_BIN="$INSTALL_DIR/.${DAEMON_BIN}.new"
-    install -m 755 "src-tauri/target/release/$DAEMON_BIN" "$TMP_BIN"
+    install -m 755 "$cargo_target_dir/release/$DAEMON_BIN" "$TMP_BIN"
     mv -f "$TMP_BIN" "$INSTALL_DIR/$DAEMON_BIN"
     echo "✓ Installed $DAEMON_BIN to $INSTALL_DIR/"
 
@@ -762,6 +770,7 @@ sync-windows:
     rsync -a --delete \
         --exclude='node_modules' \
         --exclude='target' \
+        --exclude='.cargo' \
         --exclude='dist' \
         --exclude='.git' \
         {{project}}/ {{win_dir}}/
@@ -772,10 +781,16 @@ bundle-daemon: build-daemon
     just _bundle-daemon-from-build
 
 _bundle-daemon-from-build:
-    @echo "▸ Bundling daemon binary into src-tauri/resources/…"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo_target_dir=$(
+        cargo metadata --format-version 1 --no-deps --manifest-path src-tauri/Cargo.toml |
+            node -e 'const fs = require("node:fs"); const metadata = JSON.parse(fs.readFileSync(0, "utf8")); process.stdout.write(metadata.target_directory)'
+    )
+    echo "▸ Bundling daemon binary into src-tauri/resources/…"
     mkdir -p src-tauri/resources
-    cp src-tauri/target/release/taurhaus-daemon src-tauri/resources/taurhaus-daemon
-    @echo "✓ Daemon binary bundled"
+    cp "$cargo_target_dir/release/taurhaus-daemon" src-tauri/resources/taurhaus-daemon
+    echo "✓ Daemon binary bundled"
 
 # Build Windows NSIS installer (syncs first, builds natively on Windows)
 build-windows:
@@ -818,6 +833,7 @@ sync-macos:
     rsync -az --delete \
         --exclude='node_modules' \
         --exclude='target' \
+        --exclude='.cargo' \
         --exclude='dist' \
         --exclude='.git' \
         {{project}}/ {{mac_host}}:{{mac_dir}}/

@@ -7,6 +7,12 @@ source_checkout="$tmp_dir/source"
 origin_repo="$tmp_dir/origin.git"
 lane_path="$tmp_dir/lane"
 unmerged_lane_path="$tmp_dir/unmerged-lane"
+relative_invocation_dir="$source_checkout/nested"
+relative_lane_path="$relative_invocation_dir/relative-lane"
+relative_remove_lane_path="$relative_invocation_dir/relative-remove-lane"
+misplaced_relative_lane_path="$source_checkout/relative-lane"
+stacked_lane_path="$tmp_dir/stacked-lane"
+failed_install_lane_path="$tmp_dir/failed-install-lane"
 test_home="$tmp_dir/home"
 fake_bin="$tmp_dir/bin"
 git_log="$tmp_dir/git.log"
@@ -17,26 +23,38 @@ cleanup() {
     if [ -d "$source_checkout/.git" ]; then
         "$real_git" -C "$source_checkout" worktree remove "$lane_path" --force 2>/dev/null || true
         "$real_git" -C "$source_checkout" worktree remove "$unmerged_lane_path" --force 2>/dev/null || true
+        "$real_git" -C "$source_checkout" worktree remove "$relative_lane_path" --force 2>/dev/null || true
+        "$real_git" -C "$source_checkout" worktree remove "$relative_remove_lane_path" --force 2>/dev/null || true
+        "$real_git" -C "$source_checkout" worktree remove "$misplaced_relative_lane_path" --force 2>/dev/null || true
+        "$real_git" -C "$source_checkout" worktree remove "$stacked_lane_path" --force 2>/dev/null || true
+        "$real_git" -C "$source_checkout" worktree remove "$failed_install_lane_path" --force 2>/dev/null || true
         "$real_git" -C "$source_checkout" branch -D lane-provision-smoke 2>/dev/null || true
         "$real_git" -C "$source_checkout" branch -D lane-unmerged-smoke 2>/dev/null || true
+        "$real_git" -C "$source_checkout" branch -D lane-relative-smoke 2>/dev/null || true
+        "$real_git" -C "$source_checkout" branch -D lane-relative-remove-smoke 2>/dev/null || true
+        "$real_git" -C "$source_checkout" branch -D lane-stacked-smoke 2>/dev/null || true
+        "$real_git" -C "$source_checkout" branch -D lane-failed-install-smoke 2>/dev/null || true
+        "$real_git" -C "$source_checkout" branch -D stacked-parent-smoke 2>/dev/null || true
     fi
     rm -rf "$tmp_dir"
 }
 trap cleanup EXIT
 
-mkdir -p "$source_checkout" "$test_home" "$fake_bin"
-"$real_git" init --bare --initial-branch=main "$origin_repo" >/dev/null
-"$real_git" -C "$source_checkout" init --initial-branch=main >/dev/null
+mkdir -p "$source_checkout" "$relative_invocation_dir" "$test_home" "$fake_bin"
+"$real_git" init --bare --initial-branch=main "$origin_repo" >/dev/null 2>&1
+"$real_git" -C "$source_checkout" init --initial-branch=main >/dev/null 2>&1
 "$real_git" -C "$source_checkout" config user.email "lane-test@example.invalid"
 "$real_git" -C "$source_checkout" config user.name "Lane recipe test"
 printf '%s\n' '{"name":"lane-recipe-fixture","packageManager":"bun@1.2.20"}' > "$source_checkout/package.json"
-"$real_git" -C "$source_checkout" add package.json
-"$real_git" -C "$source_checkout" commit -m "fixture base" >/dev/null
+cp "$repo_root/.gitignore" "$source_checkout/.gitignore"
+"$real_git" -C "$source_checkout" add package.json .gitignore
+"$real_git" -C "$source_checkout" commit -m "fixture base" >/dev/null 2>&1
 "$real_git" -C "$source_checkout" remote add origin "$origin_repo"
-"$real_git" -C "$source_checkout" push -u origin main >/dev/null
+"$real_git" -C "$source_checkout" push -u origin main >/dev/null 2>&1
 printf '%s\n' 'provision from this HEAD' > "$source_checkout/head-marker.txt"
 "$real_git" -C "$source_checkout" add head-marker.txt
-"$real_git" -C "$source_checkout" commit -m "fixture head" >/dev/null
+"$real_git" -C "$source_checkout" commit -m "fixture head" >/dev/null 2>&1
+"$real_git" -C "$source_checkout" push origin main >/dev/null 2>&1
 
 printf '%s\n' \
     '#!/usr/bin/env bash' \
@@ -48,17 +66,57 @@ printf '%s\n' \
     '#!/usr/bin/env bash' \
     'set -euo pipefail' \
     'printf '\''cwd=%s\nargs=%s\n'\'' "$PWD" "$*" > "$LANE_TEST_BUN_LOG"' \
+    'if [ "${LANE_TEST_BUN_FAIL:-0}" = "1" ]; then exit 42; fi' \
     > "$fake_bin/bun"
 chmod +x "$fake_bin/git" "$fake_bin/bun"
 
-run_just() {
-    HOME="$test_home" \
-        LANE_TEST_REAL_GIT="$real_git" \
-        LANE_TEST_GIT_LOG="$git_log" \
-        LANE_TEST_BUN_LOG="$bun_log" \
-        PATH="$fake_bin:$PATH" \
-        just --justfile "$repo_root/justfile" --working-directory "$source_checkout" "$@"
+run_just_from() {
+    local invocation_dir="$1"
+    local output
+    local status=0
+    shift
+    output=$(
+        cd "$invocation_dir"
+        HOME="$test_home" \
+            LANE_TEST_REAL_GIT="$real_git" \
+            LANE_TEST_GIT_LOG="$git_log" \
+            LANE_TEST_BUN_LOG="$bun_log" \
+            LANE_TEST_BUN_FAIL="${LANE_TEST_BUN_FAIL:-0}" \
+            PATH="$fake_bin:$PATH" \
+            just --justfile "$repo_root/justfile" --working-directory "$source_checkout" "$@" 2>&1
+    ) || status=$?
+    if [ "$status" -ne 0 ]; then
+        [ -z "$output" ] || printf '%s\n' "$output" >&2
+        return "$status"
+    fi
 }
+
+run_just() {
+    run_just_from "$source_checkout" "$@"
+}
+
+regression_failures=0
+record_regression_failure() {
+    echo "$1" >&2
+    regression_failures=$((regression_failures + 1))
+}
+
+# // Regression: cf6f7d55 redirected lane artifacts while consumers retained checkout-local paths.
+grep -Fq '"$cargo_target_dir/release/$DAEMON_BIN"' "$repo_root/justfile" || \
+    record_regression_failure "install-daemon does not use Cargo's resolved target directory"
+grep -Fq '"$cargo_target_dir/release/taurhaus-daemon"' "$repo_root/justfile" || \
+    record_regression_failure "bundle-daemon does not use Cargo's resolved target directory"
+grep -Fq "resolve(cargoTargetDir, 'debug', 'taurhaus')" "$repo_root/e2e/wdio.conf.js" || \
+    record_regression_failure "E2E app launch does not use Cargo's resolved target directory"
+grep -Fq "resolve(cargoTargetDir, 'debug', 'taurhaus-daemon')" "$repo_root/e2e/wdio.conf.js" || \
+    record_regression_failure "E2E daemon launch does not use Cargo's resolved target directory"
+grep -Fq 'target_directory' "$repo_root/e2e/wdio.conf.js" || \
+    record_regression_failure "E2E configuration does not resolve Cargo metadata target_directory"
+
+# // Regression: cf6f7d55 allowed the lane-only Cargo redirect into platform build syncs.
+if [ "$(grep -Fc -- "--exclude='.cargo'" "$repo_root/justfile")" -lt 2 ]; then
+    record_regression_failure "platform sync recipes do not both exclude the lane-only .cargo directory"
+fi
 
 run_just provision-worktree "$lane_path" lane-provision-smoke HEAD
 
@@ -92,6 +150,10 @@ if [ -e "$source_checkout/.cargo/config.toml" ]; then
     echo "provision-worktree wrote Cargo config into the main checkout" >&2
     exit 1
 fi
+# // Regression: cf6f7d55 left the generated lane Cargo config permanently untracked.
+if ! "$real_git" -C "$lane_path" check-ignore --quiet .cargo/config.toml; then
+    record_regression_failure "provision-worktree generated a Cargo config that Git does not ignore"
+fi
 if [ ! -f "$lane_path/head-marker.txt" ]; then
     echo "provision-worktree did not use the requested HEAD base" >&2
     exit 1
@@ -123,6 +185,27 @@ fi
 if "$real_git" -C "$source_checkout" show-ref --verify --quiet refs/heads/lane-provision-smoke; then
     echo "remove-worktree left the merged lane branch behind" >&2
     exit 1
+fi
+
+# // Regression: cf6f7d55 resolved relative lane paths from the justfile directory.
+run_just_from "$relative_invocation_dir" provision-worktree relative-lane lane-relative-smoke HEAD
+if [ ! -d "$relative_lane_path" ]; then
+    record_regression_failure "provision-worktree did not resolve a relative path from the invocation directory"
+fi
+relative_remove_status=0
+run_just_from "$relative_invocation_dir" remove-worktree relative-lane || relative_remove_status=$?
+if [ "$relative_remove_status" -ne 0 ]; then
+    record_regression_failure "remove-worktree did not resolve a relative path from the invocation directory"
+    actual_relative_lane="$relative_lane_path"
+    [ -d "$actual_relative_lane" ] || actual_relative_lane="$misplaced_relative_lane_path"
+    run_just remove-worktree "$actual_relative_lane"
+fi
+run_just provision-worktree "$relative_remove_lane_path" lane-relative-remove-smoke HEAD
+relative_remove_status=0
+run_just_from "$relative_invocation_dir" remove-worktree relative-remove-lane || relative_remove_status=$?
+if [ "$relative_remove_status" -ne 0 ]; then
+    record_regression_failure "remove-worktree did not resolve an existing relative path from the invocation directory"
+    run_just remove-worktree "$relative_remove_lane_path"
 fi
 
 run_just provision-worktree "$unmerged_lane_path" lane-unmerged-smoke HEAD
@@ -161,6 +244,41 @@ if "$real_git" -C "$source_checkout" show-ref --verify --quiet refs/heads/lane-u
     exit 1
 fi
 
+# // Regression: be9d2897 treated a stacked feature HEAD as proof that a lane reached main.
+run_just provision-worktree "$stacked_lane_path" lane-stacked-smoke HEAD
+printf '%s\n' 'stacked lane work' > "$stacked_lane_path/stacked.txt"
+"$real_git" -C "$stacked_lane_path" add stacked.txt
+"$real_git" -C "$stacked_lane_path" commit -m "stacked lane work" >/dev/null 2>&1
+"$real_git" -C "$source_checkout" branch stacked-parent-smoke lane-stacked-smoke
+"$real_git" -C "$source_checkout" switch stacked-parent-smoke >/dev/null 2>&1
+stacked_output="$tmp_dir/stacked-remove.log"
+stacked_status=0
+run_just remove-worktree "$stacked_lane_path" >"$stacked_output" 2>&1 || stacked_status=$?
+if [ "$stacked_status" -eq 0 ]; then
+    record_regression_failure "remove-worktree deleted a lane merged only into the current stacked feature HEAD"
+else
+    if ! grep -Fq 'origin/main' "$stacked_output"; then
+        record_regression_failure "remove-worktree did not name origin/main in its integration guard message"
+    fi
+    FORCE_BRANCH=1 run_just remove-worktree "$stacked_lane_path"
+fi
+"$real_git" -C "$source_checkout" switch main >/dev/null 2>&1
+"$real_git" -C "$source_checkout" branch -D stacked-parent-smoke >/dev/null 2>&1
+
+# // Regression: cf6f7d55 wrote the lane Cargo config only after Bun succeeded.
+failed_install_output="$tmp_dir/failed-install.log"
+failed_install_status=0
+LANE_TEST_BUN_FAIL=1 run_just provision-worktree "$failed_install_lane_path" lane-failed-install-smoke HEAD \
+    >"$failed_install_output" 2>&1 || failed_install_status=$?
+if [ "$failed_install_status" -eq 0 ]; then
+    echo "provision-worktree unexpectedly accepted the seeded Bun install failure" >&2
+    exit 1
+fi
+if [ ! -f "$failed_install_lane_path/.cargo/config.toml" ]; then
+    record_regression_failure "a failed Bun install left the lane without its Cargo config"
+fi
+run_just remove-worktree "$failed_install_lane_path"
+
 printf '%s\n' 'discardable Cargo artifact' > "$shared_target/artifact.txt"
 run_just clean-lane-target
 if [ -e "$shared_target" ]; then
@@ -175,6 +293,11 @@ if ! grep -Fq '`just provision-worktree PATH BRANCH [BASE]`' "$repo_root/CONTRIB
 fi
 if ! grep -Fq '**Cached lane worktrees**' "$repo_root/CHANGELOG.md"; then
     echo "CHANGELOG.md does not record cached lane worktrees" >&2
+    exit 1
+fi
+
+if [ "$regression_failures" -ne 0 ]; then
+    echo "$regression_failures lane worktree regression check(s) failed." >&2
     exit 1
 fi
 
