@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Codex npm installs show one session per agent** — newer Codex keeps its Node.js launcher alive beside the native CLI child on the same terminal, and both command lines match the harness inventory. The scanner now recognizes that same-tool, same-terminal parent chain as one harness and keeps the deepest native process, so each agent has one tile and clicking it focuses the correct tmux pane.
+
 ## [0.8.5] - 2026-08-31
 
 ### Changed
@@ -14,7 +18,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
-- **Codex npm installs show one session per agent** — newer Codex keeps its Node.js launcher alive beside the native CLI child on the same terminal, and both command lines match the harness inventory. The scanner now recognizes that same-tool, same-terminal parent chain as one harness and keeps the deepest native process, so each agent has one tile and clicking it focuses the correct tmux pane.
 - **Launch commands have one shell-word classifier** — alias resolution, account selection and selector rewriting now share the same bounded tokenizer for quoting, escaping, leading assignment runs, last-assignment-wins and command heads, including tilde and Windows-style path forms. Settings no longer implements a fourth shell parser: the dedicated launch-base resolver reports the selector value it classified, and the existing `from your launch command "…" (alias for …)` explanation renders from that backend result.
 - **Effort is validated against the model the CLI will actually run** — all four launch renderers now resolve the registry's primary model flag and aliases through one path, emit model override and deprecation notes uniformly, and validate effort against a model pinned in the base command before falling back to the requested model. Existing launch and managed-team command bytes remain unchanged.
 - **Managed team launches now resolve base-command aliases before applying their account directory** — team initialization, add, resume and background relaunch paths carry the commands layer's cached `ResolvedBase` inward beside account-selector directories, so an alias such as `claude2` can no longer restore its own `CLAUDE_CONFIG_DIR` after the team's directory was chosen. Background passes resolve only after selecting a member to relaunch, and resolution remains fail-soft: an unavailable probe launches the configured literal and logs one `launch.base.unresolved` event for that render. Managed members always name the tool's default config dir because their inbox lives there. Wrapper commands remain launchable, emit `launch.base.opaque`, persist the same `accountApplied: false` / `opaque_base_command` result as app launches, and show one warning sentence on the member node. Byte goldens now pin the managed renderer for Claude, Codex, Antigravity and Grok with and without pinned selectors.

@@ -111,20 +111,14 @@ fn parse_start_ticks(stat: &str) -> Option<u64> {
 /// Parent PID and controlling terminal from `/proc/{pid}/stat` fields 4 and 7.
 ///
 /// Both values come from one read because the session inventory needs them as
-/// one coherent process snapshot.
+/// one coherent process snapshot. `tty_nr == 0` means the process was started
+/// with no controlling terminal — a detached one-shot run, a daemon child —
+/// which `ps` prints as `?`; the session scanner drops those from its
+/// inventory, they are not interactive sessions. Returns `None` when the
+/// process is gone or its stat line cannot be parsed, which the caller reads
+/// as "unknown", not as "no terminal".
 pub fn process_parent_and_tty(pid: u32) -> Option<(u32, i64)> {
     parse_parent_and_tty(&fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)
-}
-
-/// Whether a process has a controlling terminal (`/proc/{pid}/stat` field 7).
-///
-/// `tty_nr == 0` means the process was started with no controlling terminal —
-/// a detached one-shot run, a daemon child — which `ps` prints as `?`. The
-/// session scanner drops those from its inventory: they are not interactive
-/// sessions. Returns `None` when the process is gone or its stat line cannot
-/// be parsed, which the caller reads as "unknown", not as "no terminal".
-pub fn process_has_controlling_terminal(pid: u32) -> Option<bool> {
-    process_parent_and_tty(pid).map(|(_, tty_nr)| tty_nr != 0)
 }
 
 /// Fields 4 and 7 of a `/proc/<pid>/stat` line.
@@ -520,7 +514,7 @@ mod tests {
     // terminal, so this reading is what keeps a detached `codex exec` one-shot
     // (tty_nr 0) out of the inventory and a pts-backed session in it.
     #[test]
-    fn process_has_controlling_terminal_matches_proc_stat_for_self() {
+    fn process_parent_and_tty_matches_proc_stat_for_self() {
         let pid = std::process::id();
         let stat = fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
         let tty_nr: i64 = stat
@@ -533,15 +527,15 @@ mod tests {
             .parse()
             .unwrap();
         assert_eq!(
-            process_has_controlling_terminal(pid),
+            process_parent_and_tty(pid).map(|(_, tty_nr)| tty_nr != 0),
             Some(tty_nr != 0),
             "tty_nr {tty_nr} must decide the controlling-terminal answer"
         );
     }
 
     #[test]
-    fn process_has_controlling_terminal_is_none_for_nonexistent_pid() {
-        assert_eq!(process_has_controlling_terminal(999_999_999), None);
+    fn process_parent_and_tty_is_none_for_nonexistent_pid() {
+        assert_eq!(process_parent_and_tty(999_999_999), None);
     }
 
     #[test]

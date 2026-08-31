@@ -380,6 +380,14 @@ pub(crate) fn retain_interactive_processes(entries: &mut Vec<InventoryEntry>) {
 }
 
 /// Drop matched wrapper ancestors while keeping the deepest harness process.
+///
+/// Inventory-level and structural: it collapses a parent *chain* (an npm
+/// shim that spawned the vendored native binary) before either inventory
+/// consumer sees a PID. `classification::deduplicate_runtime_sessions` is
+/// the separate session-layer rule — one session per (tty, cli_tool),
+/// highest pid wins — and runs only on the runtime-session path, not on
+/// the authoritative display snapshot, which relies on this structural
+/// rule alone for its dedup.
 fn deduplicate_wrapper_processes(entries: &mut Vec<InventoryEntry>) {
     let entries_by_pid: HashMap<u32, usize> = entries
         .iter()
@@ -389,6 +397,13 @@ fn deduplicate_wrapper_processes(entries: &mut Vec<InventoryEntry>) {
     let mut dropped = HashSet::new();
 
     for entry in entries.iter() {
+        // A dropped entry never votes: in a cycle (a torn /proc read where
+        // PID reuse made two entries each other's ancestor) both walks would
+        // otherwise drop both, leaving the agent with no session at all. The
+        // survivor's walk still covers every real ancestor in its chain.
+        if dropped.contains(&entry.pid) {
+            continue;
+        }
         let Some(terminal) = entry.controlling_terminal.as_deref() else {
             continue;
         };
@@ -411,20 +426,36 @@ fn deduplicate_wrapper_processes(entries: &mut Vec<InventoryEntry>) {
         }
     }
 
+    // Edge-triggered like the module's other telemetry: a wrapper pid is
+    // reported once when it first gets deduped, not on every scan cycle for
+    // the life of the session. Replacing the set each cycle lets a pid that
+    // leaves and returns (process exit + PID reuse) report again.
+    let mut logged = WRAPPER_DEDUP_LOGGED
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     entries.retain(|entry| {
         if !dropped.contains(&entry.pid) {
             return true;
         }
-        tracing::debug!(
-            event = "session_scanner.inventory.wrapper_deduped",
-            pid = entry.pid,
-            ppid = entry.ppid,
-            tool = %entry.cli_tool,
-            "deduplicated CLI wrapper ancestor"
-        );
+        if !logged.contains(&entry.pid) {
+            tracing::debug!(
+                event = "session_scanner.inventory.wrapper_deduped",
+                pid = entry.pid,
+                ppid = entry.ppid,
+                tool = %entry.cli_tool,
+                "deduplicated CLI wrapper ancestor"
+            );
+        }
         false
     });
+    *logged = dropped;
 }
+
+/// Wrapper pids already reported by
+/// `session_scanner.inventory.wrapper_deduped`, so the event fires on the
+/// dedup edge rather than every scan cycle.
+static WRAPPER_DEDUP_LOGGED: OnceLock<Mutex<HashSet<u32>>> = OnceLock::new();
 
 /// Detect CLI tools from the selected inventory backend, unfiltered.
 fn read_inventory_entries() -> Option<Vec<InventoryEntry>> {
@@ -1170,6 +1201,28 @@ mod tests {
         assert_eq!(
             entries.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
             vec![5300]
+        );
+    }
+
+    // Regression: a torn /proc read where PID reuse makes two same-tool,
+    // same-terminal entries each other's parent used to drop BOTH (each walk
+    // dropped the other), leaving the agent with no session at all. Exactly
+    // one of a mutual pair must survive.
+    #[test]
+    fn a_mutual_parent_pair_keeps_exactly_one_entry() {
+        let mut entries = vec![
+            InventoryEntry::new(7100, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(7200, "pts/3"),
+            InventoryEntry::new(7200, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(7100, "pts/3"),
+        ];
+
+        retain_inventory_processes(&mut entries);
+
+        assert_eq!(
+            entries.len(),
+            1,
+            "a cyclic parent pair must keep one session, not zero"
         );
     }
 
