@@ -394,6 +394,38 @@ describe('workflow procedures — the authority question', () => {
 describe('workflow procedures — the Codex lane', () => {
   const spacey = { ...BASE_ARGS, worktree: "/home/dev/Jane's checkout", scratch: '/tmp/scratch dir', implementer: 'codex', effort: 'high', codexModel: 'gpt-5.6-terra' }
 
+  it('uses a managed stage for the feature implementer when args.team names a team', async () => {
+    const { calls } = await run('feature-pr.js', { ...spacey, team: 'feature-team', title: 'Managed implementation' })
+    const implementation = calls[0]
+
+    expect(implementation.label).toBe('stage:codex:managed-implementation')
+    expect(implementation.prompt).not.toContain('codex exec')
+    expect(implementation.prompt).toContain("--team 'feature-team'")
+    expect(implementation.prompt).toContain("--effort 'high'")
+    expect(implementation.prompt).toContain("--deadline '60'")
+    expect(implementation.prompt).toContain('You are the implementer for Managed implementation')
+    expect(implementation.prompt).toContain('gpt-5.6-terra')
+  })
+
+  it('keeps the exec transport when a team-backed feature explicitly requests it', async () => {
+    const { calls } = await run('feature-pr.js', { ...spacey, team: 'feature-team', transport: 'exec' })
+    expect(calls[0].label).toMatch(/^impl:.*:codex$/)
+    expect(calls[0].prompt).toContain('codex exec')
+    expect(calls[0].prompt).not.toContain('mesh task create')
+  })
+
+  it('reports the managed stage timeout instead of calling it an unavailable lane', async () => {
+    await expect(
+      run('feature-pr.js', { ...spacey, team: 'feature-team' }, { work: { status: 'timeout' } })
+    ).rejects.toThrow(/implementer timed out/i)
+  })
+
+  it('reports the managed member blocker reason', async () => {
+    await expect(
+      run('feature-pr.js', { ...spacey, team: 'feature-team' }, { work: { status: 'blocked', reason: 'dependency missing' } })
+    ).rejects.toThrow(/implementer is blocked: dependency missing/i)
+  })
+
   it('passes the requested model and reasoning effort to codex exec', async () => {
     const { calls } = await run('feature-pr.js', spacey)
     expect(calls[0].prompt).toContain("-m 'gpt-5.6-terra'")

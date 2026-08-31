@@ -1,6 +1,6 @@
 # W4 — taurhaus-managed non-Claude stages: design
 
-Status: design approved; experiment 3 measured 2026-08-30 (#71, shipped in 0.8.4), experiments 4 and 5 outstanding and unblocked since the hardening milestone closed. Row W4 in [`workflows-integration-plan.md`](workflows-integration-plan.md); builds on W1 (procedures), W2 (run scanner), W3 (agent definitions), W5 (assignment effort in mesh 0.2.22/0.2.23 and taurhaus #68).
+Status: implemented through the first production stage: `feature-pr` sends a team-backed Codex implementation to a managed member, while `args.transport: "exec"` and calls without `args.team` retain the existing wrapper. Experiment 3 was measured 2026-08-30 (#71, shipped in 0.8.4); the deadline contract is covered end to end with an injected clock, while the separate live deadline measurement and experiment 5 remain outstanding. Row W4 in [`workflows-integration-plan.md`](workflows-integration-plan.md); builds on W1 (procedures), W2 (run scanner), W3 (agent definitions), W5 (assignment effort in mesh 0.2.22/0.2.23 and taurhaus #68).
 
 ## Problem
 
@@ -23,12 +23,12 @@ A stage is an **assignment to a managed member**, not a subprocess. The workflow
 **What changes where**
 - mesh: `task create/assign --deadline`, the `RESULT/BLOCKED <task-id>` completion-signal convention recognised in `task get` (small).
 - taurhaus: the nudge-and-stale rule in the self-heal pass; the task card shows the deadline; a `stage` helper in the procedures' shared lib (W1) replacing the Codex wrapper: create task → assign → wait for the completion message via the inbox → return JSON; the Codex wrapper stays available behind `args.transport: "exec"` for hosts without a team.
-- procedures: `feature-pr` / `small-change` / `fix-round` / `research-sweep` use `stage` for non-Claude lanes when `args.team` names a team; otherwise unchanged.
+- procedures: `feature-pr` uses `stage` for its Codex implementer when `args.team` names a team. Adoption by `small-change`, `fix-round`, and `research-sweep` remains a later slice; all procedures retain the exec transport in the shared library.
 
 ## Experiments that gate implementation
 
 3. A managed Codex member completes a bounded implementation task end to end through the inbox contract (assign → RESULT with commits) in a scratch team and worktree, with the effort applied before pickup (mesh 0.2.23) — measures wall clock vs the `codex exec` wrapper. **Measured 2026-08-30 (#71, `e2e/specs/managed-stage-codex.js`, [`research/w4-experiment-3.md`](research/w4-experiment-3.md)):** the hold, resume and delivery happened in the required order (hold 1.91 s of which resume 1.63 s), the member's `RESULT` carried a verified commit in 34.05 s end to end for two Codex turns, and a member launched at the requested level was never held.
-4. Deadline semantics: a deliberately stalled member is nudged at half time, marked stale at the deadline, and `stage()` returns `timeout` while the session survives for a resumed attempt. The pure decision prerequisite is now `coordination/task_deadline.rs`; it is fenced from the placeholder health framework and deliberately remains unwired until this experiment.
+4. Deadline semantics: the production path now imports mesh's `deadline_minutes`, anchors the policy to the assignment's persisted `assigned_at`, nudges at half time, marks both stores stale at the deadline, and makes `stage()` return `timeout` without terminating the member session. An end-to-end injected-clock test covers import → nudge → stale without a live team; the separately paid/live timing measurement is not part of this implementation lane.
 5. Worktree isolation: two stages in two worktrees on one team run concurrently without touching each other's tree or inbox; the lead's run tree shows both.
 
 ## Not building

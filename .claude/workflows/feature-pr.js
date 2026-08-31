@@ -256,6 +256,8 @@ function fail(why) {
 // A lane that returned nothing, or reported itself unavailable, never produced work or a review.
 function laneProblem(result, label) {
   if (!result) return label + ' returned no result (the agent was skipped or died)'
+  if (result.status === 'blocked') return label + ' is blocked: ' + (result.reason || 'no reason reported')
+  if (result.status === 'timeout') return label + ' timed out'
   if (result.status && result.status !== 'ok') return label + ' is unavailable: ' + (result.error || 'no error reported')
   return ''
 }
@@ -742,6 +744,9 @@ const MAX_ROUNDS = A.maxRounds || 3
 const TITLE = A.title || SPEC || BRANCH || NAME
 const TAG = (A.tag || BRANCH || NAME).replace(/[^A-Za-z0-9._-]+/g, '-')
 const DIFF = 'git diff ' + BASE + '...HEAD'
+const TRANSPORT = A.transport == null ? '' : String(A.transport).trim().toLowerCase()
+if (TRANSPORT && TRANSPORT !== 'exec') throw new Error(NAME + ': args.transport currently accepts only "exec" — omit it to use a managed team stage')
+const MANAGED_CODEX_IMPLEMENTER = IMPLEMENTER === 'codex' && Boolean(String(A.team || '').trim()) && TRANSPORT !== 'exec'
 
 const COMMON = [RULES.checkout, RULES.spec, RULES.gates, RULES.tdd, RULES.commits, RULES.safety].filter(Boolean).join('\n')
 
@@ -924,22 +929,36 @@ const IMPL_TASK = [
   trailers(IMPLEMENTER),
 ].join('\n')
 
+const IMPL_RESULT =
+  'When completely done, return a JSON object with keys summary, commits (`git log --oneline ' +
+  BASE +
+  '..HEAD`), files_changed, tests_added, red_observed, gate, deviations.'
+
 const impl =
   IMPLEMENTER === 'codex'
-    ? await agent(
-        codexWrapper({
-          tag: TAG + '-impl',
-          task:
-            IMPL_TASK +
-            '\nWhen completely done, print a final JSON object with keys summary, commits (`git log --oneline ' +
-            BASE +
-            '..HEAD`), files_changed, tests_added, red_observed, gate, deviations.',
+    ? MANAGED_CODEX_IMPLEMENTER
+      ? await stage({
+          harness: 'codex',
+          model: CODEX_MODEL,
+          effort: A.effort || 'medium',
+          why: ('feature implementation: ' + TITLE).replace(/\s+/g, ' '),
+          deadline: SIZE === 'small' ? 20 : 60,
+          worktree: ROOT,
+          firstStep: 'Read ' + ROOT + '/CLAUDE.md' + (SPEC ? ', then read the specification at ' + SPEC : '') + '.',
+          deliverable: IMPL_TASK + '\n' + IMPL_RESULT,
           schema: IMPL_SCHEMA,
-          timeout: 3300,
-          resume: true,
-        }),
-        call({ label: 'impl:' + TAG + ':codex', phase: 'Implement', schema: IMPL_SCHEMA })
-      )
+          title: TITLE,
+        })
+      : await agent(
+          codexWrapper({
+            tag: TAG + '-impl',
+            task: IMPL_TASK + '\n' + IMPL_RESULT,
+            schema: IMPL_SCHEMA,
+            timeout: 3300,
+            resume: true,
+          }),
+          call({ label: 'impl:' + TAG + ':codex', phase: 'Implement', schema: IMPL_SCHEMA })
+        )
     : await agent(
         IMPL_TASK + "\nReturn the structured summary, with status='ok' and model_used='" + MODELS.opus + "'. " + RULES.honest,
         call({ label: 'impl:' + TAG + ':opus', phase: 'Implement', schema: IMPL_SCHEMA })

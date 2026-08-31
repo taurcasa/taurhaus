@@ -57,8 +57,10 @@ Every script takes the shared args below; `worktree` (or `repo`) is the only har
 | `spec` | — | absolute path of the spec; agents are told to build its minimum deliverable only |
 | `title` | the spec path | what the change is called in prompts and in the ledger |
 | `implementer` | `opus` | `opus` or `codex` — the other family reviews |
-| `effort` | inherit | `low`/`medium`/`high`/`xhigh`/`max`, applied to every agent call — and to Codex as `-c model_reasoning_effort` |
-| `codexModel` | the Codex CLI's own default | model slug passed to `codex exec` as `-m`; the ledger records what actually ran, never a guess |
+| `team` | — | team name for a managed non-Claude stage; currently `feature-pr` uses it for its Codex implementer |
+| `transport` | managed when `team` is set, otherwise exec | pass `exec` to retain the Codex wrapper even when `team` is set |
+| `effort` | inherit | `low`/`medium`/`high`/`xhigh`/`max`, applied to every agent call and the exec wrapper; managed mesh stages accept through `xhigh` and default to `medium` |
+| `codexModel` | the Codex CLI's own/default managed member | model slug passed to `codex exec` as `-m`, or used to select the managed member; the ledger records what actually ran, never a guess |
 | `scratch` | `/tmp/taurhaus-workflows` | where the Codex wrapper writes prompts, schemas and logs |
 | `stamp` | — | a short token appended to the scratch file names; the names already carry the checkout and the tag, so pass one only to run the same procedure in the same checkout twice in sequence (a workflow script cannot read the clock itself) |
 | `sessionUrl` | — | the `Claude-Session:` trailer value; omitted when absent |
@@ -149,7 +151,15 @@ a completed ledger with no findings reads as an approval:
 - **Opus implements, fixes and sweeps.** Every `agent()` call in these scripts runs on Opus.
 - **The other family reviews.** Whoever implements never reviews: `implementer: "opus"` gets Codex
   reviews, `implementer: "codex"` gets Opus reviews.
-- **Codex runs behind a thin wrapper.** An Opus agent writes the prompt, the output schema and a
+- **A team-backed Codex implementer is a managed stage.** In `feature-pr`, `args.team` makes the thin
+  Claude courier create and assign a mesh task to the matching online Codex member in `worktree`, then
+  poll `mesh task get --json`. The assignment carries effort, its reason, a 60-minute feature deadline,
+  the first step, deliverable, and a completion signal. A current `RESULT <task-id>` fenced JSON block
+  becomes the lane result, `BLOCKED` fails fast with its reason, and `stale` returns timeout. Completion
+  messages older than the assignment's `metadata.assigned_at` are ignored, so a resumed task cannot
+  consume its previous result. The member session is never stopped on timeout.
+- **Codex exec remains the fallback.** Without `args.team`, or with `args.transport: "exec"`, an Opus
+  agent writes the prompt, the output schema and a
   runner script to `scratch`, launches the runner detached (`codex exec --yolo … -o`), polls for the
   `EXIT=` marker (one Bash call is capped at 10 minutes) up to a deadline, and returns Codex's JSON.
   Every path is one single-quoted shell word and the command lives in the runner rather than inside a
@@ -218,7 +228,7 @@ carries:
 - the authority question in every code-review lens: does the change re-derive a rule another layer
   owns (frontend vs backend, app vs daemon), or add a view that bypasses the existing authority —
   name the authority and cite the duplicate;
-- the Codex wrapper builder.
+- the managed `stage()` courier and the Codex exec-wrapper builder.
 
 ## The lint
 

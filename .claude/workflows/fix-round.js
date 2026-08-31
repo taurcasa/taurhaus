@@ -254,6 +254,8 @@ function fail(why) {
 // A lane that returned nothing, or reported itself unavailable, never produced work or a review.
 function laneProblem(result, label) {
   if (!result) return label + ' returned no result (the agent was skipped or died)'
+  if (result.status === 'blocked') return label + ' is blocked: ' + (result.reason || 'no reason reported')
+  if (result.status === 'timeout') return label + ' timed out'
   if (result.status && result.status !== 'ok') return label + ' is unavailable: ' + (result.error || 'no error reported')
   return ''
 }
