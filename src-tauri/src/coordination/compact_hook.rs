@@ -1410,8 +1410,21 @@ fn write_atomic_settings_file(
 
     if let Err(err) = fs::rename(&tmp_path, settings_path) {
         if is_windows_unsupported_rename_error(&err) {
-            fs::write(settings_path, payload)?;
-            let _ = fs::remove_file(&tmp_path);
+            // These files are read continuously by external tools (Claude
+            // Code, Codex, Grok) with zero torn-read tolerance: never
+            // truncate them in place. The move-aside publish keeps the path
+            // holding complete content on both sides of the swap.
+            crate::coordination::stores::lock::report_atomic_write_degraded(
+                settings_path,
+                "settings_hooks",
+                err.raw_os_error(),
+            );
+            if let Err(publish_err) =
+                crate::coordination::stores::lock::replace_via_move_aside(&tmp_path, settings_path)
+            {
+                let _ = fs::remove_file(&tmp_path);
+                return Err(CoordinationError::Io(publish_err));
+            }
             return Ok(());
         }
 

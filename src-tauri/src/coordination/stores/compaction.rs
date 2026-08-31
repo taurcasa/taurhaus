@@ -82,11 +82,16 @@ impl MemberCompactionStore {
         fs::write(&tmp_path, payload.as_bytes())?;
         if let Err(err) = fs::rename(&tmp_path, &target_path) {
             if is_windows_unsupported_rename_error(&err) {
-                if let Err(write_err) = fs::write(&target_path, payload.as_bytes()) {
+                super::lock::report_atomic_write_degraded(
+                    &target_path,
+                    "compaction",
+                    err.raw_os_error(),
+                );
+                if let Err(write_err) = super::lock::replace_via_move_aside(&tmp_path, &target_path)
+                {
                     let _ = fs::remove_file(&tmp_path);
                     return Err(CoordinationError::Io(write_err));
                 }
-                let _ = fs::remove_file(&tmp_path);
                 return Ok(());
             }
 

@@ -131,12 +131,21 @@ fn load_state(teams_dir: &Path) -> Result<ActiveProjectTeamState, CoordinationEr
         Err(err) => return Err(CoordinationError::Io(err)),
     };
 
-    serde_json::from_str(&raw).map_err(|err| {
-        CoordinationError::StoreError(format!(
-            "failed to parse active project team state at {}: {err}",
-            path.display()
-        ))
-    })
+    // Self-healing: this file gates every writer in the store (each save
+    // does a load first), so an unparsable file must never wedge project →
+    // team discovery permanently. Start from an empty state and let the next
+    // save rewrite it.
+    match serde_json::from_str(&raw) {
+        Ok(state) => Ok(state),
+        Err(err) => {
+            tracing::warn!(
+                path = %path.display(),
+                error = %err,
+                "active project team state is unparsable; starting from an empty state"
+            );
+            Ok(ActiveProjectTeamState::default())
+        }
+    }
 }
 
 fn save_state(teams_dir: &Path, state: &ActiveProjectTeamState) -> Result<(), CoordinationError> {
@@ -165,11 +174,10 @@ fn save_state(teams_dir: &Path, state: &ActiveProjectTeamState) -> Result<(), Co
                 "atomic active-project rename failed; falling back to direct write"
             );
             super::lock::report_atomic_write_degraded(&path, "active_project", err.raw_os_error());
-            if let Err(write_err) = super::lock::write_direct_synced(&path, payload.as_bytes()) {
+            if let Err(write_err) = super::lock::replace_via_move_aside(&tmp_path, &path) {
                 let _ = fs::remove_file(&tmp_path);
                 return Err(CoordinationError::Io(write_err));
             }
-            let _ = fs::remove_file(&tmp_path);
             return Ok(());
         }
         let _ = fs::remove_file(&tmp_path);

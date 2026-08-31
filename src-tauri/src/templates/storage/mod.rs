@@ -1769,6 +1769,11 @@ fn should_force_fallback_lock_for_tests() -> bool {
     false
 }
 
+// Deliberately narrower than coordination's shared predicate (1|5|32): the
+// template store lives in the local app data dir, where only
+// ERROR_INVALID_FUNCTION has ever been observed; codes 5/32 there would be
+// real faults. The fallback strategy below (move the old file aside, then
+// rename into the vacant slot) is the same one coordination's stores adopted.
 fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
     cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
 }

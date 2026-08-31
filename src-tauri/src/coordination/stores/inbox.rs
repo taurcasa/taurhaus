@@ -179,15 +179,11 @@ impl MeshInboxStore {
                     "inbox",
                     err.raw_os_error(),
                 );
-                // Through the handle that owns the lock: a second handle
-                // would be blocked by our own byte-range lock where locking
-                // works, and the rename this replaces already proved the
-                // volume refuses to replace an open file.
-                if let Err(write_err) = target_lock.overwrite(payload.as_bytes()) {
+                if let Err(write_err) = super::lock::replace_via_move_aside(&tmp_path, &target_path)
+                {
                     let _ = fs::remove_file(&tmp_path);
                     return Err(CoordinationError::Io(write_err));
                 }
-                let _ = fs::remove_file(&tmp_path);
                 return Ok(());
             }
             let _ = fs::remove_file(&tmp_path);
@@ -562,6 +558,52 @@ mod tests {
         assert!(
             inbox_path.exists(),
             "a healed inbox must never be quarantined"
+        );
+    }
+
+    // The production parse path is `append` (delivery and the compaction
+    // hook), not `load`: the same healing must hold when the reread goes
+    // through the still-held target lock.
+    #[test]
+    fn append_heals_a_torn_read_and_preserves_existing_messages() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let inbox_dir = teams_dir.join("t").join("inboxes");
+        fs::create_dir_all(&inbox_dir).expect("inbox dir");
+        let inbox_path = inbox_dir.join("agent.json");
+        fs::write(&inbox_path, "[{\"torn").expect("write torn inbox");
+
+        let healed = serde_json::to_string(&vec![MeshInboxMessage::new(
+            "taurhaus",
+            "first".to_string(),
+            None,
+            DateTime::parse_from_rfc3339("2026-03-09T00:05:00Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+        )])
+        .expect("serialize healed inbox");
+        let heal_path = inbox_path.clone();
+        let writer = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(20));
+            fs::write(&heal_path, healed).expect("heal inbox");
+        });
+
+        let second = MeshInboxMessage::new(
+            "taurhaus",
+            "second".to_string(),
+            None,
+            DateTime::parse_from_rfc3339("2026-03-09T00:06:00Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+        );
+        MeshInboxStore::append(&teams_dir, "t", "agent", &second).expect("append heals");
+        writer.join().expect("writer thread");
+
+        let messages = MeshInboxStore::load(&teams_dir, "t", "agent").expect("load");
+        assert_eq!(
+            messages.iter().map(|m| m.text.as_str()).collect::<Vec<_>>(),
+            vec!["first", "second"],
+            "the healed message survives and the append lands after it"
         );
     }
 

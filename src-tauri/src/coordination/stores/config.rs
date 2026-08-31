@@ -345,8 +345,12 @@ impl TeamConfigStore {
         let target_path = config_path(teams_dir, team_name);
         let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
             .inspect_err(|err| log_config_store_error("lock", &target_path, err, None))?;
-        match target_lock.read_contents() {
+        match super::lock::read_json_tolerating_torn(&target_lock) {
             Ok(current_raw) => {
+                // The tolerant read has already waited out any torn-write
+                // transient, so a merge failure here is persistent
+                // corruption: repairing it with this save is deliberate (a
+                // pinned property of this store), logged, never silent.
                 if let Err(err) =
                     merge_current_extension_fields(&mut normalized, &current_raw, team_name)
                 {
@@ -537,7 +541,7 @@ fn persist_config_payload(
     target_path: &Path,
     tmp_path: &Path,
     payload: &str,
-    target_lock: &super::lock::TargetFileLock,
+    _target_lock: &super::lock::TargetFileLock,
 ) -> Result<(), CoordinationError> {
     retry_file_operation(
         "write",
@@ -570,7 +574,7 @@ fn persist_config_payload(
                 target_path,
                 None,
                 &SAVE_RETRY_BACKOFFS,
-                || target_lock.overwrite(payload.as_bytes()),
+                || super::lock::replace_via_move_aside(tmp_path, target_path),
                 |write_err| log_config_store_io_error("write", target_path, write_err, None),
             )
             .map_err(CoordinationError::Io)?;
@@ -1300,7 +1304,7 @@ mod tests {
     }
 
     #[test]
-    fn atomic_write_fallback_error_detection_includes_unc_locking_codes() {
+    fn atomic_write_fallback_error_detection_is_platform_gated() {
         // Platform-gated since the 9p rename fallback unification: on Linux
         // these numbers are EPERM/EIO/EPIPE — real faults, never a reason to
         // truncate-rewrite a live record.

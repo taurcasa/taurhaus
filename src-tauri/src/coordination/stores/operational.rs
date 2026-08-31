@@ -202,13 +202,10 @@ fn save_snapshot_locked(
                 "operational",
                 err.raw_os_error(),
             );
-            if let Err(write_err) =
-                super::lock::write_direct_synced(&target_path, payload.as_bytes())
-            {
+            if let Err(write_err) = super::lock::replace_via_move_aside(&tmp_path, &target_path) {
                 let _ = fs::remove_file(&tmp_path);
                 return Err(CoordinationError::Io(write_err));
             }
-            let _ = fs::remove_file(&tmp_path);
             return Ok(());
         }
 
@@ -239,7 +236,7 @@ pub fn write_snapshot(snapshot: &OperationalContextSnapshot) -> Result<(), Coord
     OperationalContextSnapshotStore::save(&PlatformPaths::teams_dir(), snapshot)
 }
 
-pub(crate) use super::lock::is_windows_unsupported_rename_error;
+use super::lock::is_windows_unsupported_rename_error;
 
 fn operational_snapshot_dir(teams_dir: &Path, team_name: &str) -> PathBuf {
     teams_dir.join(team_name).join("state").join("operational")

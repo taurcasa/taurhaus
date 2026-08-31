@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -129,13 +129,6 @@ pub(crate) fn report_atomic_write_degraded(path: &Path, scope: &str, raw_os_erro
         Some("Store save fell back to a non-atomic direct write".to_string()),
         fields,
     );
-}
-
-/// Synced direct write for fallbacks at sites that hold no target lock.
-pub(crate) fn write_direct_synced(path: &Path, payload: &[u8]) -> std::io::Result<()> {
-    let mut file = File::create(path)?;
-    file.write_all(payload)?;
-    file.sync_all()
 }
 
 pub(super) fn is_transient_file_lock_error(err: &std::io::Error) -> bool {
@@ -333,20 +326,69 @@ impl TargetFileLock {
         file.read_to_string(&mut contents)?;
         Ok(contents)
     }
+}
 
-    /// Replace the locked target's contents through the very handle that
-    /// owns the lock — the direct-write fallback for volumes that refuse to
-    /// rename over an open file. A second handle would be blocked by our own
-    /// byte-range lock where locking works, and is pointless where it
-    /// degraded; this handle works in both worlds. Not atomic: a concurrent
-    /// reader on a lock-degraded volume can observe a torn state, which the
-    /// stores' readers treat as a transient before quarantining anything.
-    pub fn overwrite(&self, payload: &[u8]) -> std::io::Result<()> {
-        let mut file = &self.file;
-        file.seek(SeekFrom::Start(0))?;
-        file.write_all(payload)?;
-        self.file.set_len(payload.len() as u64)?;
-        self.file.sync_all()
+/// Publish `tmp` at `target` on a volume that refuses to rename over an open
+/// file (the 9p server behind `\\wsl.localhost`): move the current target
+/// ASIDE — renaming an open file to a sibling name is legal everywhere, and
+/// a holder's handle transparently follows the old inode — then rename the
+/// fully written, synced tmp into the vacant slot. No reader can ever
+/// observe torn content; the worst case is a one-syscall window where the
+/// path is absent, which every store reader already treats as an empty or
+/// missing record. On failure the previous file is restored and the tmp is
+/// left on disk as the intact copy of the intended state. Ported from the
+/// template store, which has published this way on unrenameable volumes all
+/// along.
+/// Read the locked target, re-reading with backoff while its contents are
+/// non-empty yet not valid JSON: on a volume whose locks degraded, another
+/// process's fallback publish can expose a transient state mid-swap. Returns
+/// the final read either way — a persistently unparsable file is the
+/// caller's decision (repair, skip, or error), but never on a torn read.
+pub(crate) fn read_json_tolerating_torn(
+    lock: &TargetFileLock,
+) -> Result<String, CoordinationError> {
+    let mut raw = lock.read_contents()?;
+    for backoff in READ_RETRY_BACKOFFS {
+        if raw.trim().is_empty() || serde_json::from_str::<serde_json::Value>(&raw).is_ok() {
+            return Ok(raw);
+        }
+        thread::sleep(backoff);
+        raw = lock.read_contents()?;
+    }
+    Ok(raw)
+}
+
+pub(crate) fn replace_via_move_aside(tmp: &Path, target: &Path) -> std::io::Result<()> {
+    let displaced = target.with_extension(format!(
+        "displaced.{:016x}",
+        rand::RngCore::next_u64(&mut rand::thread_rng())
+    ));
+    let had_target = match fs::rename(target, &displaced) {
+        Ok(()) => true,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
+        Err(err) => return Err(err),
+    };
+    match fs::rename(tmp, target) {
+        Ok(()) => {
+            if had_target {
+                let _ = fs::remove_file(&displaced);
+            }
+            Ok(())
+        }
+        Err(err) => {
+            if had_target {
+                if let Err(restore) = fs::rename(&displaced, target) {
+                    return Err(std::io::Error::new(
+                        err.kind(),
+                        format!(
+                            "{err}; and restoring the previous file failed ({restore}) — it is at {}",
+                            displaced.display()
+                        ),
+                    ));
+                }
+            }
+            Err(err)
+        }
     }
 }
 
@@ -425,17 +467,61 @@ mod tests {
     }
 
     #[test]
-    fn overwrite_replaces_longer_content_through_the_lock_handle() {
+    fn move_aside_publish_replaces_content_while_a_handle_stays_open() {
+        // Regression: the direct-write fallback for Windows team init
+        // truncated the live file in place, exposing torn state to readers.
+        // The move-aside publish never does: the path always holds either
+        // the complete old or the complete new content, and the open handle
+        // (our own target lock) transparently follows the displaced inode.
+        let tmp = TempDir::new().expect("tempdir");
+        let target = tmp.path().join("record.json");
+        let staged = tmp.path().join("record.tmp");
+        std::fs::write(&target, "the previous, much longer record body").expect("seed");
+        std::fs::write(&staged, "new").expect("stage");
+
+        let lock = TargetFileLock::acquire_or_create(&target).expect("lock");
+        replace_via_move_aside(&staged, &target).expect("publish");
+
+        assert_eq!(std::fs::read_to_string(&target).expect("path"), "new");
+        assert_eq!(
+            lock.read_contents().expect("via handle"),
+            "the previous, much longer record body",
+            "the lock holder keeps reading the displaced old inode"
+        );
+        assert!(!staged.exists(), "the staged tmp is consumed on success");
+        let leftovers: Vec<_> = std::fs::read_dir(tmp.path())
+            .expect("dir")
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().contains("displaced"))
+            .collect();
+        assert!(leftovers.is_empty(), "the displaced copy is cleaned up");
+    }
+
+    #[test]
+    fn read_contents_rereads_from_the_start() {
         let tmp = TempDir::new().expect("tempdir");
         let path = tmp.path().join("record.json");
-        std::fs::write(&path, "the previous, much longer record body").expect("seed");
+        std::fs::write(&path, "stable contents").expect("seed");
 
         let lock = TargetFileLock::acquire_or_create(&path).expect("lock");
-        lock.overwrite(b"short").expect("overwrite");
+        assert_eq!(lock.read_contents().expect("first"), "stable contents");
+        assert_eq!(
+            lock.read_contents().expect("second"),
+            "stable contents",
+            "a reread through the same handle must not start at the old cursor"
+        );
+    }
 
-        assert_eq!(lock.read_contents().expect("read back"), "short");
-        drop(lock);
-        assert_eq!(std::fs::read_to_string(&path).expect("reread"), "short");
+    #[test]
+    fn move_aside_publish_creates_a_missing_target() {
+        let tmp = TempDir::new().expect("tempdir");
+        let target = tmp.path().join("record.json");
+        let staged = tmp.path().join("record.tmp");
+        std::fs::write(&staged, "fresh").expect("stage");
+
+        replace_via_move_aside(&staged, &target).expect("publish");
+
+        assert_eq!(std::fs::read_to_string(&target).expect("path"), "fresh");
     }
 
     #[test]

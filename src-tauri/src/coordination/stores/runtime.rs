@@ -223,7 +223,11 @@ impl MemberRuntimeStore {
             .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
 
         let mut record = record.clone();
-        merge_current_extension_fields(&mut record, &target_lock.read_contents()?, false);
+        merge_current_extension_fields(
+            &mut record,
+            &super::lock::read_json_tolerating_torn(&target_lock)?,
+            false,
+        );
 
         save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)
     }
@@ -275,7 +279,11 @@ impl MemberRuntimeStore {
             .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
 
         let mut record = record.clone();
-        merge_current_extension_fields(&mut record, &target_lock.read_contents()?, true);
+        merge_current_extension_fields(
+            &mut record,
+            &super::lock::read_json_tolerating_torn(&target_lock)?,
+            true,
+        );
 
         save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)
     }
@@ -559,7 +567,7 @@ fn save_runtime_record_locked(
     team_name: &str,
     member_name: &str,
     record: &MemberRuntimeRecord,
-    target_lock: &super::lock::TargetFileLock,
+    _target_lock: &super::lock::TargetFileLock,
 ) -> Result<(), CoordinationError> {
     let mut normalized = record.clone();
     normalized.schema_version = RUNTIME_SCHEMA_VERSION;
@@ -613,7 +621,7 @@ fn save_runtime_record_locked(
                 &target_path,
                 None,
                 &SAVE_RETRY_BACKOFFS,
-                || target_lock.overwrite(payload.as_bytes()),
+                || super::lock::replace_via_move_aside(&tmp_path, &target_path),
                 |write_err| log_runtime_store_io_error("write", &target_path, write_err, None),
             )
             .map_err(CoordinationError::Io)?;
@@ -732,7 +740,14 @@ fn merge_current_extension_fields(
 
     // Extract extensions from the JSON object directly: a future value for a
     // taurhaus-owned field must not make unrelated mesh keys unreadable.
+    // Callers read the file through `read_json_tolerating_torn`, so an
+    // unparsable value here is persistent corruption, not a torn transient:
+    // repairing it with this save is deliberate and logged, never silent.
     let Ok(Value::Object(current)) = serde_json::from_str::<Value>(current_raw) else {
+        tracing::warn!(
+            member_name = %record.member_name,
+            "current runtime record is unparsable after torn-read tolerance; repairing it with this save"
+        );
         return;
     };
     let current_applied_effort = current
@@ -1800,7 +1815,7 @@ mod tests {
     }
 
     #[test]
-    fn atomic_write_fallback_error_detection_includes_unc_locking_codes() {
+    fn atomic_write_fallback_error_detection_is_platform_gated() {
         // Platform-gated since the 9p rename fallback unification.
         for code in [1, 5, 32] {
             assert_eq!(
