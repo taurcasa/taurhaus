@@ -1459,56 +1459,53 @@ mod tests {
         }
     }
 
-    // The bundled presets staff the v4 developer roles decided in
-    // `docs/design/research/phase-c-v4-results.md`; the v3 roles stay in the
-    // catalog for one release but must no longer be what a preset staffs.
     #[test]
-    fn built_in_presets_staff_the_v4_developer_roles() {
+    fn built_in_presets_use_only_the_canonical_roles() {
         let roles = load_role_templates();
         let presets = load_team_presets();
 
-        let expected: &[(&str, &str)] = &[
-            ("dev-team", "v4-developer-codex"),
-            ("full-team", "v4-developer-codex"),
-            ("research-team", "v4-developer-codex"),
-            ("grok-pair", "v4-developer-grok"),
+        let expected = [
+            ("dev-team", "4.0.0", vec![("v4-developer-codex", 2)]),
+            (
+                "full-team",
+                "4.0.0",
+                vec![("v3-architect-codex", 1), ("v4-developer-codex", 2)],
+            ),
+            ("grok-pair", "2.0.0", vec![("v4-developer-grok", 1)]),
+            ("pair", "4.0.0", vec![("quick-dev-codex", 1)]),
+            (
+                "research-team",
+                "4.0.0",
+                vec![("claude-researcher", 1), ("v4-developer-codex", 1)],
+            ),
         ];
 
-        for (preset_id, role_id) in expected {
+        for (preset_id, version, expected_slots) in expected {
             let preset = presets
                 .iter()
-                .find(|preset| preset.preset_id == *preset_id)
+                .find(|preset| preset.preset_id == preset_id)
                 .unwrap_or_else(|| panic!("expected '{preset_id}' preset in built-ins"));
-            assert!(
+            assert_eq!(preset.version, version, "preset '{preset_id}' version");
+            assert_eq!(
+                preset.lead_role_id, "v3-lead-claude",
+                "preset '{preset_id}' should name the canonical lead explicitly"
+            );
+            assert_eq!(
                 preset
                     .agent_slots
                     .iter()
-                    .any(|slot| slot.role_id == *role_id),
-                "preset '{preset_id}' should staff its developer slot with '{role_id}'"
-            );
-
-            let role = roles
-                .iter()
-                .find(|role| role.role_id == *role_id)
-                .unwrap_or_else(|| panic!("expected '{role_id}' role template in built-ins"));
-            assert_eq!(
-                role.defaults.reasoning_effort.as_deref(),
-                Some("medium"),
-                "'{role_id}' should default to medium effort, the level the presets inherit"
+                    .map(|slot| (slot.role_id.as_str(), slot.count))
+                    .collect::<Vec<_>>(),
+                expected_slots,
+                "preset '{preset_id}' should have an exact canonical roster"
             );
         }
 
         for preset in &presets {
             for slot in &preset.agent_slots {
                 assert!(
-                    !matches!(
-                        slot.role_id.as_str(),
-                        "v3-developer-claude"
-                            | "v3-developer-codex"
-                            | "v3-developer-agy"
-                            | "grok-developer"
-                    ),
-                    "preset '{}' still staffs superseded developer role '{}'",
+                    roles.iter().any(|role| role.role_id == slot.role_id),
+                    "preset '{}' references non-canonical role '{}'",
                     preset.preset_id,
                     slot.role_id
                 );

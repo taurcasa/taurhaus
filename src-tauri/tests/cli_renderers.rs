@@ -12,7 +12,7 @@ use taurhaus_lib::models::CliCommandSettings;
 use taurhaus_lib::session_scanner::cli_tool::{spec, CliTool};
 use taurhaus_lib::session_scanner::launch::{base_command, LaunchSpec, ModelSpec, TeamContext};
 use taurhaus_lib::session_scanner::launch_base::{AliasExpansion, ResolvedBase};
-use taurhaus_lib::templates::agent_definitions::render_agent_definition;
+use taurhaus_lib::templates::agent_definitions::GENERATED_MARKER;
 use taurhaus_lib::templates::types::RoleTemplate;
 
 fn run_renderer(flag: &str, request: &serde_json::Value) -> String {
@@ -473,7 +473,14 @@ fn export_agent_definitions_cli_writes_generated_claude_agents_only() {
     let agents = project.path().join(".claude").join("agents");
     std::fs::create_dir_all(&agents).expect("agents directory");
     let hand_written = "---\nname: mine\n---\n\nMy own reviewer.\n";
-    std::fs::write(agents.join("claude-reviewer.md"), hand_written).expect("user authored agent");
+    std::fs::write(agents.join("mine.md"), hand_written).expect("user authored agent");
+    std::fs::write(
+        agents.join("claude-reviewer.md"),
+        format!(
+            "---\nname: claude-reviewer\n---\n\n{GENERATED_MARKER}\n\nRetired generated role.\n"
+        ),
+    )
+    .expect("retired generated agent");
 
     let output = Command::new(env!("CARGO_BIN_EXE_taurhaus"))
         .args([
@@ -497,27 +504,58 @@ fn export_agent_definitions_cli_writes_generated_claude_agents_only() {
         .iter()
         .map(|value| value.as_str().expect("role id").to_string())
         .collect::<Vec<_>>();
-    assert!(written.contains(&"v3-lead-claude".to_string()));
-    assert!(!written.contains(&"quick-dev-codex".to_string()));
-    assert!(response["skipped"]
-        .as_array()
-        .expect("skipped roles")
-        .contains(&serde_json::json!({
-            "roleId": "claude-reviewer",
-            "reason": "user_authored",
-        })));
-
-    let role_yaml = include_str!("../resources/templates/roles/v3-lead-claude.yaml");
-    let role: RoleTemplate = serde_norway::from_str(role_yaml).expect("bundled role parses");
+    let expected = vec![
+        "adversarial-reviewer-claude".to_string(),
+        "claude-design-lead".to_string(),
+        "claude-product-checker".to_string(),
+        "v3-architect-codex".to_string(),
+        "v3-lead-claude".to_string(),
+        "v4-developer-claude".to_string(),
+    ];
     assert_eq!(
-        std::fs::read_to_string(agents.join("v3-lead-claude.md")).expect("generated agent"),
-        render_agent_definition(&role)
+        written, expected,
+        "exported set should match the canonical Claude catalog"
     );
+    assert_eq!(
+        response["removed"],
+        serde_json::json!(["claude-reviewer"]),
+        "retired generated roles should be reconciled"
+    );
+    assert_eq!(response["skipped"], serde_json::json!([]));
+
+    for role_id in &written {
+        let generated = std::fs::read_to_string(agents.join(format!("{role_id}.md")))
+            .unwrap_or_else(|error| panic!("read generated definition for {role_id}: {error}"));
+        assert!(
+            generated.contains(&format!("\n{GENERATED_MARKER}\n")),
+            "export for '{role_id}' should carry the generated marker"
+        );
+    }
+    assert!(!agents.join("claude-reviewer.md").exists());
     assert!(!agents.join("quick-dev-codex.md").exists());
     assert_eq!(
-        std::fs::read_to_string(agents.join("claude-reviewer.md")).expect("user authored agent"),
+        std::fs::read_to_string(agents.join("mine.md")).expect("user authored agent"),
         hand_written
     );
+
+    let mut actual_files = std::fs::read_dir(&agents)
+        .expect("agents directory")
+        .map(|entry| {
+            entry
+                .expect("agent entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    actual_files.sort();
+    let mut expected_files = written
+        .iter()
+        .map(|role_id| format!("{role_id}.md"))
+        .collect::<Vec<_>>();
+    expected_files.push("mine.md".to_string());
+    expected_files.sort();
+    assert_eq!(actual_files, expected_files);
 }
 
 /// The repository root, one level above the Rust crate.
