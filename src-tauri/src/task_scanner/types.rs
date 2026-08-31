@@ -13,6 +13,9 @@ pub enum TaskStatus {
     Pending,
     InProgress,
     Completed,
+    Stale,
+    #[serde(other)]
+    Unknown,
 }
 
 impl std::fmt::Display for TaskStatus {
@@ -21,6 +24,8 @@ impl std::fmt::Display for TaskStatus {
             TaskStatus::Pending => write!(f, "pending"),
             TaskStatus::InProgress => write!(f, "in_progress"),
             TaskStatus::Completed => write!(f, "completed"),
+            TaskStatus::Stale => write!(f, "stale"),
+            TaskStatus::Unknown => write!(f, "unknown"),
         }
     }
 }
@@ -148,6 +153,21 @@ pub struct SessionInfo {
     pub id: String,
     pub started_at: String,
     pub ended_at: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression: 04bda5ec added a task-status wire token without an unknown
+    // landing pad, so a newer daemon status rejected the entire task result.
+    #[test]
+    fn unknown_task_status_decodes_without_rejecting_the_payload() {
+        let status: TaskStatus =
+            serde_json::from_str("\"a_future_status\"").expect("decode future task status");
+
+        assert_eq!(status.to_string(), "unknown");
+    }
 }
 
 /// A group of archived tasks from a single session, enriched with context.

@@ -4,6 +4,7 @@ export function statusBadgeClass(status) {
     case 'in_progress': return 'bg-success-400/15 text-success-400'
     case 'pending': return 'bg-info-400/15 text-info-400'
     case 'completed': return 'bg-zinc-500/15 text-zinc-500'
+    case 'stale': return 'bg-zinc-500/15 text-zinc-500'
     default: return 'bg-zinc-500/15 text-zinc-500'
   }
 }
@@ -14,6 +15,8 @@ export function statusLabel(status) {
     case 'in_progress': return 'In Progress'
     case 'pending': return 'Pending'
     case 'completed': return 'Done'
+    case 'stale': return 'Timed out'
+    case 'unknown': return 'Unknown'
     default: return status
   }
 }
@@ -83,7 +86,7 @@ export function groupTasksByStatus(tasks) {
         return taskSortIdentity(a).localeCompare(taskSortIdentity(b))
       }),
     completed: tasks
-      .filter((task) => task.status === 'completed')
+      .filter((task) => task.status !== 'in_progress' && task.status !== 'pending')
       .slice()
       .sort((a, b) => {
         const updatedDelta = parseTimeMs(b.updated_at) - parseTimeMs(a.updated_at)

@@ -128,6 +128,10 @@ mod tests {
             serde_json::to_string(&TaskStatus::Completed).unwrap(),
             "\"completed\""
         );
+        assert_eq!(
+            serde_json::to_string(&TaskStatus::Stale).unwrap(),
+            "\"stale\""
+        );
     }
 
     #[test]

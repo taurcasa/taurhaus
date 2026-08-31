@@ -171,11 +171,31 @@ impl CoordinationState {
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
+        self.run_background_self_heal_pass_at_inner(cli_commands, tmux_layout, Utc::now())
+    }
+
+    #[cfg(test)]
+    fn run_background_self_heal_pass_at(
+        &self,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+        now: DateTime<Utc>,
+    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
+        self.run_background_self_heal_pass_at_inner(cli_commands, tmux_layout, now)
+    }
+
+    fn run_background_self_heal_pass_at_inner(
+        &self,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+        now: DateTime<Utc>,
+    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
         let mut cli_commands = cli_commands.clone();
-        self.run_background_self_heal_pass_with_launch_resolution(
+        self.run_background_self_heal_pass_with_launch_resolution_at(
             &mut cli_commands,
             tmux_layout,
             &mut |_, _| {},
+            now,
         )
     }
 
@@ -184,6 +204,21 @@ impl CoordinationState {
         cli_commands: &mut CliCommandSettings,
         tmux_layout: &str,
         resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
+    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
+        self.run_background_self_heal_pass_with_launch_resolution_at(
+            cli_commands,
+            tmux_layout,
+            resolve_launch_base,
+            Utc::now(),
+        )
+    }
+
+    fn run_background_self_heal_pass_with_launch_resolution_at(
+        &self,
+        cli_commands: &mut CliCommandSettings,
+        tmux_layout: &str,
+        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
+        now: DateTime<Utc>,
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
         let team_names = TeamConfigStore::list(&self.teams_dir)?;
         let mut summary = BackgroundSelfHealPassResult::default();
@@ -199,6 +234,32 @@ impl CoordinationState {
                         team = %team_name,
                         error = %err,
                         "background coordination self-heal failed"
+                    );
+                }
+            }
+
+            match crate::coordination::task_deadline_pass::apply_task_deadlines(
+                &mut orchestrator,
+                &team_name,
+                now,
+            ) {
+                Ok(outcome) => {
+                    summary.team_errors += outcome.failures.len();
+                    for (member, reason) in outcome.failures {
+                        tracing::warn!(
+                            team = %team_name,
+                            member = %member,
+                            error = %reason,
+                            "background task-deadline member failed"
+                        );
+                    }
+                }
+                Err(err) => {
+                    summary.team_errors += 1;
+                    tracing::warn!(
+                        team = %team_name,
+                        error = %err,
+                        "background task-deadline pass failed"
                     );
                 }
             }
@@ -455,6 +516,9 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::coordination::activity_schema::{
+        MemberActivitySnapshot, SnapshotActivityConfidence, ACTIVITY_SNAPSHOT_SCHEMA_VERSION,
+    };
     use crate::coordination::backend::fake::FakeBackend;
     use crate::coordination::domain::{HealthState, Member, MemberRole};
     use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
@@ -1434,10 +1498,15 @@ mod tests {
     }
 
     // Regression: bb32cbb8 used the tempdir itself as the teams root, so
-    // Claude hook path resolution escaped the fixture into the tempdir's
-    // parent and the fence never proved its deadline seed survived the pass.
-    #[test]
-    fn background_self_heal_pass_does_not_apply_deadline_policy_yet() {
+    // Claude hook/task path resolution escaped the fixture instead of staying
+    // under the sibling `teams` and `tasks` directories.
+    fn deadline_fixture() -> (
+        TempDir,
+        PathBuf,
+        Arc<RecordingCoordinationRuntime>,
+        FakeBackend,
+        CoordinationState,
+    ) {
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
         let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -1480,42 +1549,427 @@ mod tests {
         runtime.set_pane_exists("%41", true);
         runtime.set_pane_dead("%41", false);
         runtime.set_pane_shell("%41", false);
+        runtime.set_pane_current_command("%41", Some("codex"));
 
-        assign_task(&teams_dir, "deadline-team", "builder", "");
+        (tmp, teams_dir, runtime, fake, state)
+    }
+
+    fn seed_deadline_task(
+        teams_dir: &Path,
+        assigned_at: DateTime<Utc>,
+        deadline_minutes: Option<u32>,
+    ) {
+        assign_task(teams_dir, "deadline-team", "builder", "");
         let mut snapshot = crate::coordination::stores::OperationalContextSnapshotStore::load(
-            &teams_dir,
+            teams_dir,
             "deadline-team",
             "builder",
         )
         .expect("load operational snapshot")
         .expect("operational snapshot");
-        snapshot.updated_at = Utc::now() - chrono::Duration::minutes(21);
-        snapshot.task.deadline_minutes = Some(20);
-        crate::coordination::stores::OperationalContextSnapshotStore::save(&teams_dir, &snapshot)
+        snapshot.updated_at = assigned_at;
+        snapshot.task.deadline_minutes = deadline_minutes;
+        crate::coordination::stores::OperationalContextSnapshotStore::save(teams_dir, &snapshot)
             .expect("save deadline snapshot");
 
-        state.orchestrator.lock().expect("state mutex").take();
-        state
-            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
-            .expect("background pass succeeds");
+        let task_dir = teams_dir
+            .parent()
+            .expect("teams root parent")
+            .join("tasks")
+            .join("deadline-team");
+        std::fs::create_dir_all(&task_dir).expect("create mesh task dir");
+        std::fs::write(
+            task_dir.join("42.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "id": "42",
+                "subject": "Run the migration",
+                "status": "in_progress",
+                "owner": "builder",
+                "metadata": {},
+            }))
+            .expect("serialize mesh task"),
+        )
+        .expect("write mesh task");
+    }
 
-        assert!(
-            fake.delivered_requests()
-                .iter()
-                .all(|request| !matches!(request, DeliveryRequest::RecoveryNudge(_))),
-            "deadline nudges remain unwired"
-        );
-        let stored = crate::coordination::stores::OperationalContextSnapshotStore::load(
-            &teams_dir,
+    fn deadline_snapshot(
+        teams_dir: &Path,
+    ) -> crate::coordination::stores::OperationalContextSnapshot {
+        crate::coordination::stores::OperationalContextSnapshotStore::load(
+            teams_dir,
             "deadline-team",
             "builder",
         )
         .expect("load operational snapshot")
-        .expect("operational snapshot");
-        assert_eq!(stored.task.status, "in_progress");
-        assert_eq!(stored.task.deadline_minutes, Some(20));
+        .expect("operational snapshot")
+    }
+
+    fn mesh_task_status(teams_dir: &Path) -> String {
+        let task_path = teams_dir
+            .parent()
+            .expect("teams root parent")
+            .join("tasks/deadline-team/42.json");
+        let task: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(task_path).expect("read mesh task"))
+                .expect("parse mesh task");
+        task["status"]
+            .as_str()
+            .expect("mesh task status")
+            .to_string()
+    }
+
+    fn set_mesh_task_status(teams_dir: &Path, status: &str) {
+        let task_path = teams_dir
+            .parent()
+            .expect("teams root parent")
+            .join("tasks/deadline-team/42.json");
+        let mut task: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&task_path).expect("read mesh task"))
+                .expect("parse mesh task");
+        task["status"] = serde_json::Value::String(status.to_string());
+        std::fs::write(
+            task_path,
+            serde_json::to_vec_pretty(&task).expect("serialize mesh task"),
+        )
+        .expect("write mesh task");
+    }
+
+    fn write_activity_snapshot(
+        teams_dir: &Path,
+        observed_at: DateTime<Utc>,
+        confidence: SnapshotActivityConfidence,
+    ) {
+        let activity_dir = teams_dir.join("deadline-team/state/activity");
+        std::fs::create_dir_all(&activity_dir).expect("create activity dir");
+        let active = confidence == SnapshotActivityConfidence::Active;
+        let likely_working = confidence == SnapshotActivityConfidence::LikelyWorking;
+        std::fs::write(
+            activity_dir.join("builder.json"),
+            serde_json::to_vec_pretty(&MemberActivitySnapshot {
+                version: ACTIVITY_SNAPSHOT_SCHEMA_VERSION,
+                observed_at: observed_at.to_rfc3339(),
+                stall_recent_activity: active,
+                stall_no_output: !active,
+                stall_no_active_process: !active && !likely_working,
+                active_non_shell_process: active || likely_working,
+                recent_io: active,
+                pane_alive: true,
+                pane_foreign: false,
+                last_output_age_secs: (active || likely_working).then_some(1),
+                activity_confidence: confidence,
+            })
+            .expect("serialize activity snapshot"),
+        )
+        .expect("write activity snapshot");
+    }
+
+    fn deadline_notices(fake: &FakeBackend) -> Vec<OperatorNoticeDelivery> {
+        fake.delivered_requests()
+            .into_iter()
+            .filter_map(|request| match request {
+                DeliveryRequest::OperatorNotice(payload) => Some(*payload),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn assert_no_deadline_termination(runtime: &RecordingCoordinationRuntime) {
+        assert!(
+            runtime.calls().iter().all(|call| !matches!(
+                call,
+                RuntimeCall::KillPane { .. }
+                    | RuntimeCall::TerminatePid { .. }
+                    | RuntimeCall::StopTeamDaemon { .. }
+            )),
+            "deadline actions must never stop a member session or daemon"
+        );
+    }
+
+    #[test]
+    fn deadline_self_heal_nudges_once_then_stales_once_without_stopping_the_session() {
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
+        let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
+        let half_deadline = assigned_at + chrono::Duration::minutes(10);
+        let full_deadline = assigned_at + chrono::Duration::minutes(20);
+        seed_deadline_task(&teams_dir, assigned_at, Some(20));
+
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                half_deadline,
+            )
+            .expect("half-deadline pass succeeds");
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                half_deadline,
+            )
+            .expect("repeated half-deadline pass succeeds");
+
+        let notices = deadline_notices(&fake);
+        assert_eq!(
+            notices.len(),
+            1,
+            "the persisted marker makes nudge one-shot"
+        );
+        assert_eq!(notices[0].team_name, "deadline-team");
+        assert_eq!(notices[0].member_name, "builder");
+        assert!(notices[0].message.contains("half the deadline is gone"));
+        assert!(notices[0].message.contains("report progress or BLOCKED"));
+        let nudged = deadline_snapshot(&teams_dir);
+        assert_eq!(nudged.task.nudged_at, Some(half_deadline));
+        assert_eq!(nudged.task.stale_at, None);
+        assert_eq!(mesh_task_status(&teams_dir), "in_progress");
+
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                full_deadline,
+            )
+            .expect("deadline pass succeeds");
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                full_deadline,
+            )
+            .expect("repeated deadline pass succeeds");
+
+        assert_eq!(
+            deadline_notices(&fake).len(),
+            1,
+            "stale supersedes nudge and neither marker re-fires"
+        );
+        let staled = deadline_snapshot(&teams_dir);
+        assert_eq!(staled.task.nudged_at, Some(half_deadline));
+        assert_eq!(staled.task.stale_at, Some(full_deadline));
+        assert_eq!(staled.task.status, "stale");
+        assert_eq!(mesh_task_status(&teams_dir), "stale");
+        assert_no_deadline_termination(&runtime);
+        let runtime_record = MemberRuntimeStore::load(&teams_dir, "deadline-team", "builder")
+            .expect("load surviving runtime");
+        assert_eq!(runtime_record.pane_id.as_deref(), Some("%41"));
+    }
+
+    #[test]
+    fn deadline_self_heal_stale_supersedes_a_late_first_nudge() {
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
+        let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
+        let full_deadline = assigned_at + chrono::Duration::minutes(20);
+        seed_deadline_task(&teams_dir, assigned_at, Some(20));
+
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                full_deadline,
+            )
+            .expect("deadline pass succeeds");
+
+        assert!(deadline_notices(&fake).is_empty());
+        let stored = deadline_snapshot(&teams_dir);
+        assert_eq!(stored.task.nudged_at, None);
+        assert_eq!(stored.task.stale_at, Some(full_deadline));
+        assert_eq!(mesh_task_status(&teams_dir), "stale");
+        assert_no_deadline_termination(&runtime);
+    }
+
+    #[test]
+    fn deadline_self_heal_does_not_nudge_a_member_with_fresh_active_activity() {
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
+        let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
+        let half_deadline = assigned_at + chrono::Duration::minutes(10);
+        seed_deadline_task(&teams_dir, assigned_at, Some(20));
+        write_activity_snapshot(
+            &teams_dir,
+            half_deadline,
+            SnapshotActivityConfidence::Active,
+        );
+
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                half_deadline,
+            )
+            .expect("active-member pass succeeds");
+
+        assert!(deadline_notices(&fake).is_empty());
+        let stored = deadline_snapshot(&teams_dir);
         assert_eq!(stored.task.nudged_at, None);
         assert_eq!(stored.task.stale_at, None);
+        assert_eq!(mesh_task_status(&teams_dir), "in_progress");
+        assert_no_deadline_termination(&runtime);
+    }
+
+    // Regression: 1bb8668e hand-derived activity from two JSON fields and
+    // treated the exporter's `likely_working` verdict as idle, sending a
+    // half-time nudge while attributed work was still running.
+    #[test]
+    fn deadline_self_heal_does_not_nudge_a_likely_working_member() {
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
+        let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
+        let half_deadline = assigned_at + chrono::Duration::minutes(10);
+        seed_deadline_task(&teams_dir, assigned_at, Some(20));
+        write_activity_snapshot(
+            &teams_dir,
+            half_deadline,
+            SnapshotActivityConfidence::LikelyWorking,
+        );
+
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                half_deadline,
+            )
+            .expect("likely-working pass succeeds");
+
+        assert!(deadline_notices(&fake).is_empty());
+        let stored = deadline_snapshot(&teams_dir);
+        assert_eq!(stored.task.nudged_at, None);
+        assert_eq!(stored.task.stale_at, None);
+        assert_eq!(mesh_task_status(&teams_dir), "in_progress");
+        assert_no_deadline_termination(&runtime);
+    }
+
+    #[test]
+    fn deadline_self_heal_leaves_a_task_without_a_deadline_untouched() {
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
+        let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
+        seed_deadline_task(&teams_dir, assigned_at, None);
+
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                assigned_at + chrono::Duration::hours(2),
+            )
+            .expect("no-deadline pass succeeds");
+
+        assert!(deadline_notices(&fake).is_empty());
+        let stored = deadline_snapshot(&teams_dir);
+        assert_eq!(stored.task.deadline_minutes, None);
+        assert_eq!(stored.task.nudged_at, None);
+        assert_eq!(stored.task.stale_at, None);
+        assert_eq!(mesh_task_status(&teams_dir), "in_progress");
+        assert_no_deadline_termination(&runtime);
+    }
+
+    #[test]
+    fn deadline_self_heal_leaves_a_pending_deadline_untouched() {
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
+        let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
+        seed_deadline_task(&teams_dir, assigned_at, Some(20));
+        let mut snapshot = deadline_snapshot(&teams_dir);
+        snapshot.task.status = "pending".to_string();
+        crate::coordination::stores::OperationalContextSnapshotStore::save(&teams_dir, &snapshot)
+            .expect("save pending snapshot");
+        set_mesh_task_status(&teams_dir, "pending");
+
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                assigned_at + chrono::Duration::hours(2),
+            )
+            .expect("pending-deadline pass succeeds");
+
+        assert!(deadline_notices(&fake).is_empty());
+        let stored = deadline_snapshot(&teams_dir);
+        assert_eq!(stored.task.status, "pending");
+        assert_eq!(stored.task.nudged_at, None);
+        assert_eq!(stored.task.stale_at, None);
+        assert_eq!(mesh_task_status(&teams_dir), "pending");
+        assert_no_deadline_termination(&runtime);
+    }
+
+    // Regression: 1bb8668e reported a deadline failure every pass when mesh
+    // completed the task after the operational snapshot was loaded but before
+    // the stale write landed.
+    #[test]
+    fn deadline_self_heal_skips_a_mesh_task_that_already_moved_on() {
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
+        let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
+        seed_deadline_task(&teams_dir, assigned_at, Some(20));
+        set_mesh_task_status(&teams_dir, "completed");
+
+        let summary = state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                assigned_at + chrono::Duration::minutes(20),
+            )
+            .expect("moved-on task is a harmless deadline skip");
+
+        assert_eq!(summary.team_errors, 0);
+        assert!(deadline_notices(&fake).is_empty());
+        let stored = deadline_snapshot(&teams_dir);
+        assert_eq!(stored.task.status, "in_progress");
+        assert_eq!(stored.task.stale_at, None);
+        assert_eq!(mesh_task_status(&teams_dir), "completed");
+        assert_no_deadline_termination(&runtime);
+    }
+
+    #[test]
+    fn deadline_marker_compare_and_commit_skips_a_changed_snapshot_then_redecides() {
+        use crate::coordination::stores::{
+            OperationalContextSnapshotStore, OperationalSnapshotCommitOutcome,
+        };
+
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
+        let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
+        let half_deadline = assigned_at + chrono::Duration::minutes(10);
+        seed_deadline_task(&teams_dir, assigned_at, Some(20));
+        let expected = deadline_snapshot(&teams_dir);
+
+        let mut concurrent = expected.clone();
+        concurrent.task.subject = "Concurrent task refresh".to_string();
+        OperationalContextSnapshotStore::save(&teams_dir, &concurrent)
+            .expect("concurrent snapshot save");
+
+        let outcome = OperationalContextSnapshotStore::commit_if_unchanged(
+            &teams_dir,
+            &expected,
+            |snapshot| snapshot.task.nudged_at = Some(half_deadline),
+        )
+        .expect("stale snapshot commit is handled");
+        assert_eq!(outcome, OperationalSnapshotCommitOutcome::Skipped);
+        assert_eq!(deadline_snapshot(&teams_dir), concurrent);
+        assert!(deadline_notices(&fake).is_empty());
+
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                half_deadline,
+            )
+            .expect("next pass re-decides");
+
+        assert_eq!(deadline_notices(&fake).len(), 1);
+        let stored = deadline_snapshot(&teams_dir);
+        assert_eq!(stored.task.subject, "Concurrent task refresh");
+        assert_eq!(stored.task.nudged_at, Some(half_deadline));
+        assert_no_deadline_termination(&runtime);
     }
 
     // Regression: 2529309 ran the effort relaunch with

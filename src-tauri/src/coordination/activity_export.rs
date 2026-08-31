@@ -654,6 +654,21 @@ fn activity_snapshot_path(
     activity_snapshot_dir(teams_dir, team_name).join(format!("{member_name}.json"))
 }
 
+pub(crate) fn read_member_activity_snapshot(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+) -> Option<MemberActivitySnapshot> {
+    const MAX_ACTIVITY_SNAPSHOT_BYTES: u64 = 1_048_576;
+
+    let path = activity_snapshot_path(teams_dir, team_name, member_name);
+    if fs::metadata(&path).ok()?.len() > MAX_ACTIVITY_SNAPSHOT_BYTES {
+        return None;
+    }
+    let snapshot: MemberActivitySnapshot = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+    (snapshot.version == ACTIVITY_SNAPSHOT_SCHEMA_VERSION).then_some(snapshot)
+}
+
 fn activity_snapshot_tmp_path(
     teams_dir: &Path,
     team_name: &str,

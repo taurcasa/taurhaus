@@ -2448,6 +2448,10 @@ fn build_cli_launch_command_for_claude_appends_team_context() {
 // pick up another agent's checkpoint.
 #[test]
 fn build_resume_cli_launch_command_always_uses_fresh_session() {
+    // This render reads the tool home (TAURHAUS_CLAUDE_DIR): hold the shared
+    // env guard so a concurrent env-mutating test cannot leak its tempdir
+    // into the rendered selector.
+    let _env = taurhaus_lib::test_support::acquire_env_test_guard();
     let cmds = crate::models::CliCommandSettings::default();
     let codex_agent = setup_config("builder", "codex", "gpt-5.3", "/tmp/project");
 

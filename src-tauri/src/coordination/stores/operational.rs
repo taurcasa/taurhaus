@@ -81,71 +81,133 @@ pub struct OperationalContextSnapshot {
 #[derive(Debug, Default)]
 pub struct OperationalContextSnapshotStore;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OperationalSnapshotCommitOutcome {
+    Committed,
+    Skipped,
+}
+
 impl OperationalContextSnapshotStore {
     pub fn load(
         teams_dir: &Path,
         team_name: &str,
         member_name: &str,
     ) -> Result<Option<OperationalContextSnapshot>, CoordinationError> {
-        let path = operational_snapshot_path(teams_dir, team_name, member_name);
-        let raw = match fs::read_to_string(&path) {
-            Ok(raw) => raw,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(err) => return Err(CoordinationError::Io(err)),
-        };
-
-        let snapshot = serde_json::from_str::<OperationalContextSnapshot>(&raw).map_err(|err| {
-            CoordinationError::StoreError(format!(
-                "failed to parse operational snapshot for member '{member_name}' in team '{team_name}': {err}"
-            ))
-        })?;
-
-        Ok(Some(snapshot))
+        load_snapshot_unlocked(teams_dir, team_name, member_name)
     }
 
     pub fn save(
         teams_dir: &Path,
         snapshot: &OperationalContextSnapshot,
     ) -> Result<(), CoordinationError> {
-        let _lock = super::lock::acquire_team_lock(teams_dir, &snapshot.team_name)?;
+        let lock = super::lock::acquire_team_lock(teams_dir, &snapshot.team_name)?;
+        Self::save_locked(&lock, teams_dir, snapshot)
+    }
 
-        let mut normalized = snapshot.clone();
-        normalized.version = OPERATIONAL_SCHEMA_VERSION;
+    /// Save while the caller holds this snapshot's team lock.
+    pub fn save_locked(
+        guard: &super::lock::TeamLockGuard,
+        teams_dir: &Path,
+        snapshot: &OperationalContextSnapshot,
+    ) -> Result<(), CoordinationError> {
+        if !guard.covers(teams_dir, &snapshot.team_name) {
+            return Err(CoordinationError::StoreError(format!(
+                "team lock guard does not cover team '{}'",
+                snapshot.team_name
+            )));
+        }
+        save_snapshot_locked(teams_dir, snapshot)
+    }
 
-        let operational_dir = operational_snapshot_dir(teams_dir, &normalized.team_name);
-        fs::create_dir_all(&operational_dir)?;
-
-        let target_path =
-            operational_snapshot_path(teams_dir, &normalized.team_name, &normalized.member_name);
-        let tmp_path = operational_snapshot_tmp_path(
-            teams_dir,
-            &normalized.team_name,
-            &normalized.member_name,
-        );
-        let payload = serde_json::to_string_pretty(&normalized).map_err(|err| {
-            CoordinationError::StoreError(format!(
-                "failed to serialize operational snapshot for member '{}': {err}",
-                normalized.member_name
-            ))
-        })?;
-
-        fs::write(&tmp_path, payload.as_bytes())?;
-        if let Err(err) = fs::rename(&tmp_path, &target_path) {
-            if is_windows_unsupported_rename_error(&err) {
-                if let Err(write_err) = fs::write(&target_path, payload.as_bytes()) {
-                    let _ = fs::remove_file(&tmp_path);
-                    return Err(CoordinationError::Io(write_err));
-                }
-                let _ = fs::remove_file(&tmp_path);
-                return Ok(());
-            }
-
-            let _ = fs::remove_file(&tmp_path);
-            return Err(CoordinationError::Io(err));
+    /// Apply a marker update only while the operational snapshot evaluated by
+    /// the caller is still current.
+    ///
+    /// The background orchestrator is deliberately separate from the
+    /// command-owned one. Holding the team lock across re-read, compare, and
+    /// save prevents a deadline decision from overwriting a task refresh that
+    /// won between evaluation and commit.
+    pub fn commit_if_unchanged<F>(
+        teams_dir: &Path,
+        expected: &OperationalContextSnapshot,
+        update: F,
+    ) -> Result<OperationalSnapshotCommitOutcome, CoordinationError>
+    where
+        F: FnOnce(&mut OperationalContextSnapshot),
+    {
+        let _lock = super::lock::acquire_team_lock(teams_dir, &expected.team_name)?;
+        let Some(mut current) =
+            load_snapshot_unlocked(teams_dir, &expected.team_name, &expected.member_name)?
+        else {
+            return Ok(OperationalSnapshotCommitOutcome::Skipped);
+        };
+        if current != *expected {
+            return Ok(OperationalSnapshotCommitOutcome::Skipped);
         }
 
-        Ok(())
+        update(&mut current);
+        save_snapshot_locked(teams_dir, &current)?;
+        Ok(OperationalSnapshotCommitOutcome::Committed)
     }
+}
+
+fn load_snapshot_unlocked(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+) -> Result<Option<OperationalContextSnapshot>, CoordinationError> {
+    let path = operational_snapshot_path(teams_dir, team_name, member_name);
+    let raw = match fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(CoordinationError::Io(err)),
+    };
+
+    serde_json::from_str::<OperationalContextSnapshot>(&raw)
+        .map(Some)
+        .map_err(|err| {
+            CoordinationError::StoreError(format!(
+                "failed to parse operational snapshot for member '{member_name}' in team '{team_name}': {err}"
+            ))
+        })
+}
+
+fn save_snapshot_locked(
+    teams_dir: &Path,
+    snapshot: &OperationalContextSnapshot,
+) -> Result<(), CoordinationError> {
+    let mut normalized = snapshot.clone();
+    normalized.version = OPERATIONAL_SCHEMA_VERSION;
+
+    let operational_dir = operational_snapshot_dir(teams_dir, &normalized.team_name);
+    fs::create_dir_all(&operational_dir)?;
+
+    let target_path =
+        operational_snapshot_path(teams_dir, &normalized.team_name, &normalized.member_name);
+    let tmp_path =
+        operational_snapshot_tmp_path(teams_dir, &normalized.team_name, &normalized.member_name);
+    let payload = serde_json::to_string_pretty(&normalized).map_err(|err| {
+        CoordinationError::StoreError(format!(
+            "failed to serialize operational snapshot for member '{}': {err}",
+            normalized.member_name
+        ))
+    })?;
+
+    fs::write(&tmp_path, payload.as_bytes())?;
+    if let Err(err) = fs::rename(&tmp_path, &target_path) {
+        if is_windows_unsupported_rename_error(&err) {
+            if let Err(write_err) = fs::write(&target_path, payload.as_bytes()) {
+                let _ = fs::remove_file(&tmp_path);
+                return Err(CoordinationError::Io(write_err));
+            }
+            let _ = fs::remove_file(&tmp_path);
+            return Ok(());
+        }
+
+        let _ = fs::remove_file(&tmp_path);
+        return Err(CoordinationError::Io(err));
+    }
+
+    Ok(())
 }
 
 pub fn read_snapshot(team_name: &str, member_name: &str) -> Option<OperationalContextSnapshot> {
@@ -168,7 +230,7 @@ pub fn write_snapshot(snapshot: &OperationalContextSnapshot) -> Result<(), Coord
     OperationalContextSnapshotStore::save(&PlatformPaths::teams_dir(), snapshot)
 }
 
-fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
+pub(crate) fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
     cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
 }
 

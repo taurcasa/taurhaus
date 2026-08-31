@@ -4,6 +4,7 @@ mod initialize;
 mod lifecycle;
 mod members;
 
+pub(crate) use effort::mesh_tasks_dir;
 pub use effort::EffortPassOutcome;
 /// Public renderer seam used by the byte-golden integration test.
 #[allow(unused_imports)]

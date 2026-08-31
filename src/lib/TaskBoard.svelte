@@ -537,7 +537,7 @@
           <path d={icon.path}/>
         </svg>
       </span>
-      <span class="text-[13px] leading-snug {task.status === 'completed' ? `${t.textMuted} line-through` : t.textBody}">{task.subject}</span>
+      <span class="text-[13px] leading-snug {task.status === 'completed' || task.status === 'stale' ? `${t.textMuted} line-through` : t.textBody}">{task.subject}</span>
     </div>
 
     {#if task.status === 'in_progress' && task.active_form}

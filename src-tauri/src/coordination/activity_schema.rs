@@ -1,8 +1,8 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub(crate) const ACTIVITY_SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct MemberActivitySnapshot {
     pub version: u32,
     pub observed_at: String,
@@ -17,7 +17,7 @@ pub(crate) struct MemberActivitySnapshot {
     pub activity_confidence: SnapshotActivityConfidence,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum SnapshotActivityConfidence {
     Active,

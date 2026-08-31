@@ -51,8 +51,16 @@ describe('statusBadgeClass', () => {
     expect(statusBadgeClass('completed')).toContain('zinc-500')
   })
 
-  it('returns zinc classes for unknown status', () => {
-    expect(statusBadgeClass('unknown')).toContain('zinc-500')
+  it('renders stale exactly like completed, unlike the open statuses', () => {
+    expect(statusBadgeClass('stale')).toBe(statusBadgeClass('completed'))
+    expect(statusBadgeClass('stale')).not.toBe(statusBadgeClass('in_progress'))
+    expect(statusBadgeClass('stale')).not.toBe(statusBadgeClass('pending'))
+  })
+
+  it('folds a future status token into the closed bucket, visibly', () => {
+    const grouped = groupTasksByStatus([{ id: '9', status: 'unknown', subject: 'x' }])
+    expect(grouped.completed.map((task) => task.id)).toEqual(['9'])
+    expect(statusLabel('unknown')).toBe('Unknown')
   })
 })
 
@@ -67,6 +75,10 @@ describe('statusLabel', () => {
 
   it('returns "Done" for completed', () => {
     expect(statusLabel('completed')).toBe('Done')
+  })
+
+  it('returns "Timed out" for stale', () => {
+    expect(statusLabel('stale')).toBe('Timed out')
   })
 
   it('returns raw status for unknown values', () => {
@@ -91,6 +103,22 @@ describe('groupTasksByStatus', () => {
 
     expect(second).toBe(first)
     expect(second.pending).toHaveLength(1)
+  })
+
+  // Regression: b709a8ed exposed the backend's stale token to the board, but
+  // exact three-status grouping dropped every timed-out task from all columns.
+  it('keeps stale tasks reachable in the completed column', () => {
+    const staleTask = {
+      id: '42',
+      source: 'claude',
+      source_key: 'mesh-team',
+      status: 'stale',
+      blocked_by: [],
+    }
+
+    const grouped = groupTasksByStatus([staleTask])
+
+    expect(grouped.completed).toEqual([staleTask])
   })
 })
 

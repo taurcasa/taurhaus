@@ -309,6 +309,7 @@ pub(crate) fn persisted_to_unified(
         status: match t.status.as_str() {
             "in_progress" => crate::task_scanner::TaskStatus::InProgress,
             "completed" => crate::task_scanner::TaskStatus::Completed,
+            "stale" => crate::task_scanner::TaskStatus::Stale,
             _ => crate::task_scanner::TaskStatus::Pending,
         },
         source: CliTool::from_persisted(&t.source),
@@ -723,6 +724,25 @@ mod tests {
         );
 
         assert_eq!(persisted_to_unified(task).source, CliTool::Unknown);
+    }
+
+    // Regression: 1bb8668e introduced the deadline pass's `stale` status, but
+    // the DB-to-board adapter normalized that closed token back to `pending`.
+    #[test]
+    fn stale_database_task_stays_closed_in_the_unified_model() {
+        let mut task = make_archived_task(
+            "claude",
+            "deadline-team",
+            Some("deadline-team"),
+            "2026-03-01T10:00:00Z",
+            "2026-03-01T11:00:00Z",
+        );
+        task.status = "stale".to_string();
+
+        assert_eq!(
+            persisted_to_unified(task).status,
+            crate::task_scanner::TaskStatus::Stale
+        );
     }
 
     #[test]
