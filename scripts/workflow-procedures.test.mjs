@@ -502,11 +502,13 @@ describe('workflow procedures — the Codex lane', () => {
     // response was rejected by its courier after the work was committed.
     const implementationSchema = implementation.opts.schema.anyOf.find((schema) => schema.properties?.model_used)
     const completionSignal = implementation.prompt.indexOf(' --completion-signal')
-    const deliverable = implementation.prompt.slice(
-      implementation.prompt.lastIndexOf('--deliverable ', completionSignal),
-      completionSignal
+    const resultStart = implementation.prompt.indexOf(
+      'When completely done, return a JSON object',
+      implementation.prompt.lastIndexOf('--deliverable ', completionSignal)
     )
-    for (const key of implementationSchema.required) expect(deliverable, key).toContain(key)
+    expect(resultStart).toBeGreaterThan(-1)
+    const resultSentence = implementation.prompt.slice(resultStart, completionSignal)
+    for (const key of implementationSchema.required) expect(resultSentence, key).toContain(key)
   })
 
   it('keeps the exec transport when a team-backed feature explicitly requests it', async () => {
