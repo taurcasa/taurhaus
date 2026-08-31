@@ -51,12 +51,16 @@ describe('statusBadgeClass', () => {
     expect(statusBadgeClass('completed')).toContain('zinc-500')
   })
 
-  it('returns zinc classes for stale', () => {
-    expect(statusBadgeClass('stale')).toContain('zinc-500')
+  it('renders stale exactly like completed, unlike the open statuses', () => {
+    expect(statusBadgeClass('stale')).toBe(statusBadgeClass('completed'))
+    expect(statusBadgeClass('stale')).not.toBe(statusBadgeClass('in_progress'))
+    expect(statusBadgeClass('stale')).not.toBe(statusBadgeClass('pending'))
   })
 
-  it('returns zinc classes for unknown status', () => {
-    expect(statusBadgeClass('unknown')).toContain('zinc-500')
+  it('folds a future status token into the closed bucket, visibly', () => {
+    const grouped = groupTasksByStatus([{ id: '9', status: 'unknown', subject: 'x' }])
+    expect(grouped.completed.map((task) => task.id)).toEqual(['9'])
+    expect(statusLabel('unknown')).toBe('Unknown')
   })
 })
 

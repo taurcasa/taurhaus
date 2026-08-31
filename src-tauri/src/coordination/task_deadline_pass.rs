@@ -74,7 +74,9 @@ fn apply_member_deadline(
 
     // W4 deadlines apply only after work has started. The stricter
     // in-progress gate is this pass's scope; every other status is inert.
-    if snapshot.task.status.trim() != "in_progress" {
+    if !crate::coordination::operational_context::is_deadline_eligible_task_status(
+        &snapshot.task.status,
+    ) {
         return Ok(());
     }
     let action = decide(
@@ -104,6 +106,17 @@ fn apply_member_deadline(
         return Ok(());
     };
 
+    if action == DeadlineAction::Nudge
+        && !mesh_task_is_still_open(
+            &orchestrator.teams_dir,
+            team_name,
+            member_name,
+            &snapshot.task.id,
+        )
+    {
+        rollback_claim(&orchestrator.teams_dir, &claimed, action, now)?;
+        return Ok(());
+    }
     let action_result = match action {
         DeadlineAction::Nothing => Ok(()),
         DeadlineAction::Nudge => orchestrator
@@ -128,7 +141,12 @@ fn apply_member_deadline(
 
     if let Err(error) = action_result {
         rollback_claim(&orchestrator.teams_dir, &claimed, action, now)?;
-        if action == DeadlineAction::MarkStale && matches!(&error, CoordinationError::Conflict(_)) {
+        if action == DeadlineAction::MarkStale
+            && matches!(
+                &error,
+                CoordinationError::Conflict(_) | CoordinationError::NotFound(_)
+            )
+        {
             return Ok(());
         }
         return Err(error);
@@ -222,12 +240,11 @@ fn rollback_claim(
     action: DeadlineAction,
     now: Timestamp,
 ) -> Result<(), CoordinationError> {
-    let marker_still_owned = match action {
-        DeadlineAction::Nothing => false,
-        DeadlineAction::Nudge => claimed.current.task.nudged_at == Some(now),
-        DeadlineAction::MarkStale => claimed.current.task.stale_at == Some(now),
-    };
-    if !marker_still_owned {
+    // Ownership is proven by the compare-and-commit below: it rolls the
+    // marker back only if the stored snapshot is still exactly the one this
+    // pass wrote (`claimed.current`); any concurrent movement skips.
+    let _ = now;
+    if action == DeadlineAction::Nothing {
         return Ok(());
     }
     let outcome = OperationalContextSnapshotStore::commit_if_unchanged(
@@ -299,6 +316,37 @@ fn member_has_fresh_active_signal(
         SnapshotActivityConfidence::Active | SnapshotActivityConfidence::LikelyWorking
     );
     fresh && active
+}
+
+/// Whether the mesh task record still names this owner with `in_progress`.
+///
+/// Read-only and tolerant: a missing, unreadable, oversized or moved record
+/// answers `false`, making the caller's action a harmless skip — the write
+/// path keeps its own locked validation.
+fn mesh_task_is_still_open(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+    task_id: &str,
+) -> bool {
+    let Ok(path) = mesh_task_path(teams_dir, team_name, task_id) else {
+        return false;
+    };
+    let Ok(metadata) = fs::metadata(&path) else {
+        return false;
+    };
+    if metadata.len() > MAX_TASK_RECORD_BYTES {
+        return false;
+    }
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return false;
+    };
+    let Ok(task) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return false;
+    };
+    task.get("id").and_then(serde_json::Value::as_str) == Some(task_id)
+        && task.get("owner").and_then(serde_json::Value::as_str) == Some(member_name)
+        && task.get("status").and_then(serde_json::Value::as_str) == Some("in_progress")
 }
 
 fn mark_mesh_task_stale(

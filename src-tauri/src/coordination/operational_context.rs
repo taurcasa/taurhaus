@@ -371,6 +371,13 @@ pub(crate) fn is_resumable_task_status(status: &str) -> bool {
     matches!(status.trim(), "pending" | "in_progress")
 }
 
+/// The narrower gate the deadline pass applies: deadlines run only after work
+/// has started. A sibling of `is_resumable_task_status`, owned here so the
+/// status vocabulary never gets re-derived in a consumer.
+pub(crate) fn is_deadline_eligible_task_status(status: &str) -> bool {
+    status.trim() == "in_progress"
+}
+
 fn task_priority(task: &taurhaus_lib::db::task_queries::PersistedTask) -> u8 {
     match task.status.as_str() {
         "in_progress" => 3,

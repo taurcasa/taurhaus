@@ -16,6 +16,7 @@ export function statusLabel(status) {
     case 'pending': return 'Pending'
     case 'completed': return 'Done'
     case 'stale': return 'Timed out'
+    case 'unknown': return 'Unknown'
     default: return status
   }
 }
@@ -85,7 +86,7 @@ export function groupTasksByStatus(tasks) {
         return taskSortIdentity(a).localeCompare(taskSortIdentity(b))
       }),
     completed: tasks
-      .filter((task) => task.status === 'completed' || task.status === 'stale')
+      .filter((task) => task.status !== 'in_progress' && task.status !== 'pending')
       .slice()
       .sort((a, b) => {
         const updatedDelta = parseTimeMs(b.updated_at) - parseTimeMs(a.updated_at)
