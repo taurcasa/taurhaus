@@ -29,6 +29,32 @@ ensure-tauri-resources:
     @if [ ! -s src-tauri/resources/mesh.version ]; then echo "0.0.0-dev" > src-tauri/resources/mesh.version; fi
     @if [ ! -s src-tauri/resources/mesh.manifest.json ]; then printf '%s\n' '{"version":"0.0.0-dev","protocol_version":1,"schema_version":1,"git_commit":null,"bundled_at_utc":"unknown"}' > src-tauri/resources/mesh.manifest.json; fi
 
+# Provision an isolated development lane using the proven fetch, worktree-add,
+# and frozen Bun install sequence. The worktree-local Cargo config affects only
+# that lane: the main checkout and release builds keep src-tauri/target untouched.
+# Cargo's own locking serializes concurrent lanes sharing the cache.
+provision-worktree PATH BRANCH BASE="origin/main":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    lane_path={{quote(PATH)}}
+    lane_branch={{quote(BRANCH)}}
+    lane_base={{quote(BASE)}}
+    shared_target="${HOME:?}/.cache/taurhaus-lane-target"
+    git fetch origin
+    git worktree add "$lane_path" -b "$lane_branch" "$lane_base"
+    (
+        cd -- "$lane_path"
+        bun install --frozen-lockfile
+    )
+    mkdir -p -- "$shared_target" "$lane_path/.cargo"
+    {
+        printf '%s\n' '# Shared Cargo target for taurhaus lane worktrees.'
+        printf '%s\n' '# This worktree-local config affects only this lane; the main checkout and release builds keep src-tauri/target untouched.'
+        printf '%s\n' '# Deleting ~/.cache/taurhaus-lane-target is always safe; Cargo'\''s own locking serializes concurrent lane builds.'
+        printf '%s\n' '[build]'
+        printf 'target-dir = "%s"\n' "$shared_target"
+    } > "$lane_path/.cargo/config.toml"
+
 # Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
 # Use this when you need the definitive "is this ready?" signal.
 # TAURHAUS_CHECK_SEED_FAILURE=rust|frontend|late-failure|fast-failure|green is test-only: it replaces both lanes
@@ -181,6 +207,7 @@ lint-workflows:
 # Exercise the real full-gate lane joiner with test-only seeded commands.
 lint-just-gates:
     scripts/check-just-gates.sh
+    scripts/check-lane-worktree-recipes.sh
 
 # Typecheck frontend code
 typecheck:
