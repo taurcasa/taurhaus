@@ -226,7 +226,7 @@ Model editing uses the shared effort-aware `ModelSelect` (model plus reasoning e
 
 The builder's catalog hand-off (`onBrowseCatalog`) opens `TemplateBrowserPanel` for advanced import/export/history work, and preset editing/saving can flow through the advanced customizer panel when needed.
 
-When more than one **Claude** account is registered, the builder notes that team members run on the team's config dir — per-team account selection is a follow-up. The note is scoped to Claude: it reads the first tool declaring `teamConfigNamespace` (`MeshTeamBuilder.svelte:82-89`), and Claude is the only harness that does (`cli_tool.rs:248`), so extra Codex or Grok accounts produce no note. A launch that names an account anyway is dropped and logged once as `launch.account.ignored_for_team`.
+When more than one **Claude** account is registered, the builder notes that team members run on the team's config dir — per-team account selection is a follow-up. The note is scoped to Claude: it reads the first tool declaring `teamConfigNamespace` (`teamAccountNote`, `MeshTeamBuilder.svelte:83-91`), and Claude is the only harness that does (`cli_tool.rs:299` — every other entry declares `false`), so extra Codex or Grok accounts produce no note. A launch that names an account anyway is dropped and logged once as `launch.account.ignored_for_team`.
 
 ## Composition And Validation
 

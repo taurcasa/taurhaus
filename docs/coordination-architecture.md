@@ -313,7 +313,7 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
   - project mesh snapshot returns `teamRuntimeState` with `none | active | degraded | cold_resume`
   - runtime header/UI maps that into `none | active | degraded | coldResume`
   - cold restart recovery is surfaced in the runtime header (`MeshRuntimeBar`) with `Resume Team`
-  - degraded teams surface `Resume Offline (n)` plus per-member retry from node detail
+  - degraded teams surface `Resume Stopped (n)` plus per-member retry from node detail
   - in-flight team resume shows per-member progress rows and disables conflicting runtime actions until completion
 
 **Rationale**: Resume preserves team identity and historical context while minimizing operator friction and avoiding destructive config churn. Team-level resume gives cold-restart recovery a single explicit action without inventing a second launch pipeline.

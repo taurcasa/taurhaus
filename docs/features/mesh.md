@@ -161,6 +161,8 @@ The compaction audit surface shows the last known member, tool, session id, comp
 `MeshCanvas.svelte` renders lead and agent nodes directly from explicit layout geometry. Selecting a node opens `MeshNodeDetail.svelte`, which shows:
 
 - tool/model and project placement
+- the launch effort the session was started at and, beside it, the effort the lead attached to the current assignment (hovering gives the lead's stated reason) — a task asking for more than the session runs at is the case worth seeing
+- a warning where taurhaus could not guarantee account selection, because the member's launch command runs a wrapper it will not execute to identify
 - cross-project placement details
 - role details (name, focus area, context, behavior guidance, communication style, quality gates, definition of done, phase scope, mode, inheritance, and required artifacts when present)
 - runtime details like terminal pane, session ID, and current state
