@@ -388,6 +388,15 @@ pub(crate) fn retain_interactive_processes(entries: &mut Vec<InventoryEntry>) {
 /// highest pid wins — and runs only on the runtime-session path, not on
 /// the authoritative display snapshot, which relies on this structural
 /// rule alone for its dedup.
+///
+/// Known residual class (follow-up): the walk keeps the deepest matched
+/// entry without checking that its own stdio is a terminal. A same-tool
+/// child with piped stdio that inherits the controlling terminal — e.g. the
+/// harness run as a stdio MCP server inside its own session (`claude mcp
+/// serve`, `codex mcp-server`) — would still steal the session the way
+/// `codex-code-mode-host` did before the package-signature rule excluded
+/// it. The structural fix is to prefer the deepest entry whose `fd/0`
+/// resolves to a terminal.
 fn deduplicate_wrapper_processes(entries: &mut Vec<InventoryEntry>) {
     let entries_by_pid: HashMap<u32, usize> = entries
         .iter()
@@ -809,7 +818,10 @@ fn ps_tty_is_a_terminal(column: &str) -> bool {
 ///
 /// Matches:
 /// - **Codex**: `codex`, `/path/to/codex`
-/// - **Claude**: `claude`, `/path/to/claude`, `node .../claude`, `node .../@anthropic-ai/claude-code/...`
+/// - **Claude**: `claude`, `/path/to/claude`, `node .../claude`, and the
+///   package's own entry script (`node .../@anthropic-ai/claude-code/cli.js`;
+///   see `CliToolSpec::token_is_package_entry_script` — vendored helpers under
+///   the package tree never match)
 /// - **Antigravity**: `agy`, `/path/to/agy` (interactive argv only)
 /// - **Grok**: `grok`, `/path/to/grok` (interactive argv only)
 ///
@@ -1201,6 +1213,44 @@ mod tests {
         assert_eq!(
             entries.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
             vec![5300]
+        );
+    }
+
+    // Regression: the 0.8.6 symptom end to end — the live three-rung chain
+    // (nvm shim -> vendored native codex -> codex-code-mode-host, one
+    // terminal) must classify into an inventory of exactly the shim and the
+    // native CLI, and retention must keep only the native pid. Tools come
+    // from `detect_cli_tool_argv` so the test breaks if the matcher ever
+    // re-admits the service child.
+    #[test]
+    fn live_codex_chain_retains_only_the_native_process() {
+        let chain: [(u32, u32, Vec<&str>); 3] = [
+            (8100, 8000, vec!["node", "/home/user/.nvm/versions/node/v24.14.1/bin/codex", "--yolo"]),
+            (8200, 8100, vec!["/home/user/.nvm/versions/node/v24.14.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex", "--yolo"]),
+            (8300, 8200, vec!["/home/user/.nvm/versions/node/v24.14.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host"]),
+        ];
+        let mut entries: Vec<InventoryEntry> = chain
+            .iter()
+            .filter_map(|(pid, ppid, argv)| {
+                let argv: Vec<String> = argv.iter().map(|s| s.to_string()).collect();
+                detect_cli_tool_argv(&argv).map(|tool| {
+                    InventoryEntry::new(*pid, &argv.join(" "), tool, true)
+                        .with_parent_and_terminal(*ppid, "pts/9")
+                })
+            })
+            .collect();
+        assert_eq!(
+            entries.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
+            vec![8100, 8200],
+            "the service child must not classify into the inventory at all"
+        );
+
+        retain_inventory_processes(&mut entries);
+
+        assert_eq!(
+            entries.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
+            vec![8200],
+            "the native CLI must be the one surviving session"
         );
     }
 
@@ -1790,6 +1840,85 @@ mod tests {
         // Real native binary path (observed from live ps output)
         assert_eq!(
             detect_cli_tool("/home/testuser/.local/share/fnm/node-versions/v22.19.0/installation/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex/codex --yolo"),
+            Some(CliTool::Codex)
+        );
+    }
+
+    // Regression: the `@openai/codex` package signature matched by bare
+    // substring containment, so EVERY binary vendored under the package tree
+    // counted as a codex session — including `codex-code-mode-host`, a piped
+    // background service child. It inherits the controlling terminal in
+    // `/proc/<pid>/stat`, so it entered the inventory, and the wrapper dedup's
+    // "keep the deepest" then dropped both real codex processes in its favor:
+    // one tile per agent, whose pipe stdio maps to no tmux pane, so clicking
+    // it could not focus the pane and the focused pane resolved to no session.
+    // A package-path signature must also require the token to BE the tool
+    // binary.
+    #[test]
+    fn codex_code_mode_host_never_matches_as_a_codex_session() {
+        // Exact argv observed live (single element, as /proc/<pid>/cmdline
+        // delivers it).
+        let host = "/home/user/.nvm/versions/node/v24.14.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host";
+        assert_eq!(detect_cli_tool_argv(&[host.to_string()]), None);
+        assert_eq!(detect_cli_tool(host), None);
+        // The same rule protects every '@' package signature: a vendored
+        // helper under the Claude package dir is not a claude session.
+        assert_eq!(
+            detect_cli_tool(
+                "/usr/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/rg --files"
+            ),
+            None
+        );
+        // An entry script of a NESTED dependency package is not the tool's
+        // entry script either.
+        assert_eq!(
+            detect_cli_tool("/usr/lib/node_modules/@openai/codex/node_modules/leftpad/cli.js"),
+            None
+        );
+        // The vendored native binary keeps matching through its plain
+        // basename signature, untouched by the package rule.
+        assert_eq!(
+            detect_cli_tool_argv(&[
+                "/home/user/.nvm/versions/node/v24.14.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex".to_string(),
+                "--yolo".to_string(),
+            ]),
+            Some(CliTool::Codex)
+        );
+        // The package signature still qualifies the package's own entry
+        // script: the WSL view of a Windows npm global install, and bun's
+        // version-suffixed cache directory.
+        assert_eq!(
+            detect_cli_tool_argv(&[
+                "node".to_string(),
+                "/mnt/c/Users/user/AppData/Roaming/npm/node_modules/@openai/codex/bin/codex.js"
+                    .to_string(),
+                "--yolo".to_string(),
+            ]),
+            Some(CliTool::Codex)
+        );
+        assert_eq!(
+            detect_cli_tool_argv(&[
+                "node".to_string(),
+                "/home/user/.bun/install/cache/@openai/codex@0.151.0@@@1/bin/codex.js".to_string(),
+            ]),
+            Some(CliTool::Codex)
+        );
+        // Boundary guards: a sibling package whose name merely continues the
+        // signature (`@openai/codex-linux-x64`) is not the package dir, and
+        // an occurrence not on a path-component boundary never anchors.
+        assert_eq!(
+            detect_cli_tool("/usr/lib/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/helper.js"),
+            None
+        );
+        assert_eq!(detect_cli_tool("/opt/my@openai/codex/dist/cli.js"), None);
+        // The live middle rung of the fixed chain: the nvm shim matches via
+        // the plain basename signature, not the package rule.
+        assert_eq!(
+            detect_cli_tool_argv(&[
+                "node".to_string(),
+                "/home/user/.nvm/versions/node/v24.14.1/bin/codex".to_string(),
+                "--yolo".to_string(),
+            ]),
             Some(CliTool::Codex)
         );
     }
