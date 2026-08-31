@@ -59,22 +59,34 @@ describe('default WDIO spec list', () => {
     expect(suppression).toBeGreaterThan(stall)
   })
 
-  // Regression: e1c38eef let the follow-up assignment race a live completion
-  // turn. Mesh recorded the notice as delivered, but the member never acted on it.
+  // Regression: 04bb0b0e captured the settle baseline before the stall assignment,
+  // so the stall's first turn satisfied the gate before its later nudge turn ended.
   it('settles the prior final turn before assigning the follow-up suppression task', () => {
     const suppressionBody = managedDeadlineSource.slice(
       managedDeadlineSource.indexOf('async function runActivitySuppressionCase()'),
       managedDeadlineSource.indexOf('async function runDeadlineStallCase()')
+    )
+    const stallBody = managedDeadlineSource.slice(
+      managedDeadlineSource.indexOf('async function runDeadlineStallCase()'),
+      managedDeadlineSource.indexOf('// Programmatic per-case retries')
     )
     const settle = suppressionBody.indexOf('await settlePreviousCaseBeforeAssignment()')
     const assignment = suppressionBody.indexOf('const assigned = assignDeadlineTask({')
     const delivery = suppressionBody.indexOf(
       'const attention = await waitForAttentionDelivery(assigned.taskId)'
     )
+    const firstStallTurn = stallBody.indexOf(
+      'expect(await waitForTurnAfter(turnCount, ONBOARDING_TURN_TIMEOUT_MS)).toBe(true)'
+    )
+    const finalTurnBaseline = stallBody.indexOf(
+      'previousCaseFinalTurnBaseline = completedTurns()'
+    )
 
     expect(settle).toBeGreaterThanOrEqual(0)
     expect(assignment).toBeGreaterThan(settle)
     expect(delivery).toBeGreaterThan(assignment)
+    expect(firstStallTurn).toBeGreaterThanOrEqual(0)
+    expect(finalTurnBaseline).toBeGreaterThan(firstStallTurn)
     expect(managedDeadlineSource).toContain(
       'waitForTurnAfter(previousCaseFinalTurnBaseline, ONBOARDING_TURN_TIMEOUT_MS)'
     )
@@ -82,6 +94,40 @@ describe('default WDIO spec list', () => {
     expect(managedDeadlineSource).toMatch(
       /notice delivered into a mid-turn pane can be[\s\S]*swallowed member-side[\s\S]*mesh records it as delivered/i
     )
+  })
+
+  // Regression: 04bb0b0e required state that only the preceding stall case
+  // records, so a focused/manual suppression re-run failed before assignment.
+  it('allows the follow-up suppression case to settle when run by itself', () => {
+    const settleHelper = managedDeadlineSource.slice(
+      managedDeadlineSource.indexOf('async function settlePreviousCaseBeforeAssignment()'),
+      managedDeadlineSource.indexOf('async function ensureMemberHasTakenATurn')
+    )
+
+    expect(settleHelper).not.toMatch(/did not record its final-turn baseline/)
+    expect(settleHelper).toMatch(/previousCaseFinalTurnBaseline\s*\?\?[^\n]*completedTurns\(\)/)
+  })
+
+  // Regression: 348204fa moved suppression behind a stale task but left the
+  // deadline-marker snapshot assertions unable to distinguish that prior task.
+  it('scopes suppression deadline-marker assertions to the assigned task', () => {
+    const suppressionBody = managedDeadlineSource.slice(
+      managedDeadlineSource.indexOf('async function runActivitySuppressionCase()'),
+      managedDeadlineSource.indexOf('async function runDeadlineStallCase()')
+    )
+    const snapshotRead = suppressionBody.indexOf(
+      'const suppressionSnapshot = readOperationalSnapshot()'
+    )
+    const identityCheck = suppressionBody.indexOf(
+      'expect(suppressionSnapshot?.task?.id).toBe(assigned.taskId)'
+    )
+    const markerCheck = suppressionBody.indexOf(
+      'expect(suppressionSnapshot?.task?.nudged_at ?? null).toBeNull()'
+    )
+
+    expect(snapshotRead).toBeGreaterThanOrEqual(0)
+    expect(identityCheck).toBeGreaterThan(snapshotRead)
+    expect(markerCheck).toBeGreaterThan(identityCheck)
   })
 
   it('attaches record diagnostics to an in-progress assignment timeout', () => {
@@ -108,10 +154,8 @@ describe('default WDIO spec list', () => {
     expect(header).not.toMatch(/before that stall/i)
     expect(header).not.toMatch(/retries the stall/i)
 
-    expect(managedDeadlineSource).toContain(
-      "if (Object.keys(measured).length > 0) {\n" +
-        '      console.log(`[e2e] managed deadline measured: ${JSON.stringify(measured, null, 2)}`)\n' +
-        '    }'
+    expect(managedDeadlineSource).toMatch(
+      /Object\.keys\(measured\)\.length > 0[\s\S]{0,120}managed deadline measured: \$\{JSON\.stringify\(measured, null, 2\)\}/
     )
   })
 

@@ -508,9 +508,7 @@ async function waitForTurnAfter(previousTurns, timeoutMs) {
 }
 
 async function settlePreviousCaseBeforeAssignment() {
-  if (previousCaseFinalTurnBaseline == null) {
-    throw new Error('the previous case did not record its final-turn baseline')
-  }
+  previousCaseFinalTurnBaseline ??= Math.max(0, completedTurns() - 1)
   if (!(await waitForTurnAfter(previousCaseFinalTurnBaseline, ONBOARDING_TURN_TIMEOUT_MS))) {
     throw new Error('the previous case did not finish its final Codex turn before follow-up assignment')
   }
@@ -917,8 +915,10 @@ describe('managed stage deadline semantics', function () {
 
     expect(suppressionEvidence.activityConfidence).toMatch(/^(active|likely_working)$/)
     expect(nudgeMessages(assigned.taskId)).toEqual([])
-    expect(readOperationalSnapshot()?.task?.nudged_at ?? null).toBeNull()
-    expect(readOperationalSnapshot()?.task?.stale_at ?? null).toBeNull()
+    const suppressionSnapshot = readOperationalSnapshot()
+    expect(suppressionSnapshot?.task?.id).toBe(assigned.taskId)
+    expect(suppressionSnapshot?.task?.nudged_at ?? null).toBeNull()
+    expect(suppressionSnapshot?.task?.stale_at ?? null).toBeNull()
 
     const completedRecord = await waitForTaskStatus(assigned.taskId, 'completed', 180_000)
     expect(await waitForTurnAfter(turnCount, ONBOARDING_TURN_TIMEOUT_MS)).toBe(true)
@@ -974,7 +974,6 @@ describe('managed stage deadline semantics', function () {
 
     const logOffset = currentLogOffset()
     const turnCount = completedTurns()
-    previousCaseFinalTurnBaseline = turnCount
     const assigned = assignDeadlineTask({
       subject: 'Wait for the managed stage deadline',
       description: 'W4 experiment 4: start honestly, then remain idle so the production deadline pass acts.',
@@ -1001,6 +1000,7 @@ describe('managed stage deadline semantics', function () {
     // resulting in-progress transition. The completed Codex turn proves it then
     // returned to silence rather than the test holding a fake status open.
     expect(await waitForTurnAfter(turnCount, ONBOARDING_TURN_TIMEOUT_MS)).toBe(true)
+    previousCaseFinalTurnBaseline = completedTurns()
     expect(imported.task.deadline_minutes).toBe(DEADLINE_MINUTES)
     expect(Number.isFinite(Date.parse(imported.task.assigned_at))).toBe(true)
     expect(imported.task.nudged_at ?? null).toBeNull()
