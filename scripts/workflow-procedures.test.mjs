@@ -248,12 +248,29 @@ describe('workflow procedures — the shared lib', () => {
   it('bounds polling even when the app-side stale transition never arrives', async () => {
     // Regression: 6e377dad forbade a courier fallback while making `stale`
     // depend on the desktop app, allowing a managed stage to poll forever.
+    // Regression: 9c8eb0f9 bounded the poll count but did not tell the courier
+    // to split a long deadline across the Workflow Bash-call time limit.
     const staged = await runSharedStage(managedStageTask({ deadline: 20 }))
     const prompt = staged.calls[0].prompt
 
     expect(prompt).toContain('no more than 360 polls')
+    expect(prompt).toContain('repeated Bash calls of at most 9 minutes each')
+    expect(prompt).toContain('roughly 100 polls per call')
+    expect(prompt).toContain('count is cumulative across calls')
+    expect(prompt).toContain('time limit is not a lane failure')
     expect(prompt).toContain('one final `mesh task get')
     expect(prompt).toContain("return exactly `{status: 'timeout'}`")
+  })
+
+  it('accepts both mesh result shapes before validating the stage schema', async () => {
+    // Regression: 9c8eb0f9 assumed completion.result was always a fenced
+    // string even though mesh parses unfenced JSON into an object.
+    const staged = await runSharedStage(managedStageTask())
+    const prompt = staged.calls[0].prompt
+
+    expect(prompt).toContain('either the parsed JSON object or a string containing a fenced `json` block')
+    expect(prompt).toContain('take the object as-is, or extract and parse the fence')
+    expect(prompt).not.toContain('Inline JSON is not a mesh completion block')
   })
 
   it('closes a successful mesh task after publishing its result', async () => {
@@ -479,6 +496,17 @@ describe('workflow procedures — the Codex lane', () => {
     expect(implementation.prompt).toContain("--deadline '60'")
     expect(implementation.prompt).toContain('You are the implementer for Managed implementation')
     expect(implementation.prompt).toContain('gpt-5.6-terra')
+
+    // Regression: 388a4de0 paired a closed ten-key result schema with a
+    // managed-member deliverable that named only seven, so a compliant member
+    // response was rejected by its courier after the work was committed.
+    const implementationSchema = implementation.opts.schema.anyOf.find((schema) => schema.properties?.model_used)
+    const completionSignal = implementation.prompt.indexOf(' --completion-signal')
+    const deliverable = implementation.prompt.slice(
+      implementation.prompt.lastIndexOf('--deliverable ', completionSignal),
+      completionSignal
+    )
+    for (const key of implementationSchema.required) expect(deliverable, key).toContain(key)
   })
 
   it('keeps the exec transport when a team-backed feature explicitly requests it', async () => {
