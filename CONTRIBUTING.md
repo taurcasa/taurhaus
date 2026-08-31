@@ -143,9 +143,9 @@ Linux `/proc` start time in a checkout-scoped ledger. Cleanup kills only identit
 *and* start time still match, so a concurrent run and a reused PID are both left alone. One disclosed exception: clearing a worker's own driver ports falls back to a port-derived process pattern (`4500 + pid % 300`), so two concurrent runs that collide on a derived port are not isolated from each other on that path.
 
 `e2e/specList.js` is the sealed spec manifest: every non-paid `e2e/specs/*.js` file must belong
-to a named group, and `e2e/specList.test.js` fails on an ungrouped file. The two paid Codex
-lanes (`compaction-codex-hooks`, `managed-stage-codex`) are never in a default suite run and
-must be named on the command line.
+to a named group, and `e2e/specList.test.js` fails on an ungrouped file. The three paid Codex
+lanes (`compaction-codex-hooks`, `managed-stage-codex`, `managed-stage-deadline`) are never in
+a default suite run and must be named on the command line.
 
 Useful E2E env knobs:
 

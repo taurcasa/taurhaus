@@ -146,18 +146,19 @@ and paid specs remain excluded.
 
 #### Paid E2E lanes
 
-Two specs drive a real Codex subscription and cost money every time they run. `e2e/specList.js` keeps both out of the config's spec list, so no suite run — including a bare `bunx wdio run e2e/wdio.conf.js` — picks them up; each is started by name and nothing else starts it.
+Three specs drive a real Codex subscription and cost money every time they run. `e2e/specList.js` keeps all three out of the config's spec list, so no suite run — including a bare `bunx wdio run e2e/wdio.conf.js` — picks them up; each is started by name and nothing else starts it.
 
 | Lane | Recipe | What it proves |
 |---|---|---|
 | `compaction-codex-hooks` | `E2E_INSTALL_DAEMON=0 just test-e2e-spec compaction-codex-hooks` | A managed Codex member gets its restored-context card back through the native hook bridge. See [compaction-testing.md](compaction-testing.md). |
 | `managed-stage-codex` | `E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex` | A managed Codex member completes a bounded task through the mesh assignment contract, with the assignment's effort put into force before the notice is delivered (W4 experiment 3). |
+| `managed-stage-deadline` | `E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-deadline` | Deadline semantics on a real managed member (W4 experiment 4): active work suppresses the half-time nudge and completes normally; an honestly started then silent one-minute task receives one nudge, becomes stale, yields the stage-shaped `timeout` verdict, and keeps its pane/session alive. Evidence comes from task, operational, activity, attention, inbox, runtime, and structured-event records. |
 
-Both use the same five isolated worker roots. Their scratch `CODEX_HOME` holds only a copy of `auth.json` plus a generated `config.toml`. The operator's `~/.codex` is read once at copy time and never written; `~/.claude`, `~/.grok` and `~/.gemini` are neither read nor written. Naming either lane on the command line is what tells `wdio.conf.js` to populate that already-isolated Codex home.
+All three use the same five isolated worker roots. Their scratch `CODEX_HOME` holds only a copy of `auth.json` plus a generated `config.toml`. The operator's `~/.codex` is read once at copy time and never written; `~/.claude`, `~/.grok` and `~/.gemini` are neither read nor written. Naming any paid lane on the command line is what tells `wdio.conf.js` to populate that already-isolated Codex home.
 
-`managed-stage-codex` additionally sets `CLAUDE_DIR` on the panes it creates, because its member runs `mesh` itself: taurhaus passes `--claude-dir` to the member *daemon* it spawns but exports no Claude root into the pane, so without it the member's own `mesh send` would bootstrap the run's team inside the operator's real home. Its team lead is a Claude identity and an inbox, not a working agent — it is launched into the isolated, credential-free `CLAUDE_CONFIG_DIR` and never takes a turn, so the lane spends nothing on Claude. Measured cost and wall clock: [w4-experiment-3.md](../design/research/w4-experiment-3.md).
+The two managed-stage lanes additionally set `CLAUDE_DIR` on the panes they create, because their members run `mesh` themselves: taurhaus passes `--claude-dir` to the member *daemon* it spawns but exports no Claude root into the pane, so without it a member's own mesh command would bootstrap the run's team inside the operator's real home. Their team lead is a Claude identity and an inbox, not a working agent — it is launched into the isolated, credential-free `CLAUDE_CONFIG_DIR` and never takes a turn, so these lanes spend nothing on Claude. Experiment 3's measured cost and wall clock are in [w4-experiment-3.md](../design/research/w4-experiment-3.md); the experiment 4 research note is written from the named deadline run after this lane merges.
 
-Both lanes take on every host change they make as an undo (`e2e/helpers/laneCleanup.js`) that runs on interrupt as well as on teardown. Like every ordinary spec, they run on the worker's private tmux server; the tmux-driving source guard requires an isolation assertion before the first tmux call, and teardown takes the whole worker server down. `managed-stage-codex` additionally checks the app's own `/proc/<pid>/environ` before it spends a turn.
+All paid lanes take on every host change they make as an undo (`e2e/helpers/laneCleanup.js`) that runs on interrupt as well as on teardown. Like every ordinary spec, they run on the worker's private tmux server; the tmux-driving source guard requires an isolation assertion before the first tmux call, and teardown takes the whole worker server down. Both managed-stage lanes additionally check the app's own `/proc/<pid>/environ` before they spend a turn.
 
 ## Test lanes
 
@@ -178,6 +179,7 @@ Both lanes take on every host change they make as an undo (`e2e/helpers/laneClea
 | `just test-e2e-spec SPEC` | Single E2E spec |
 | `just test-e2e-spec compaction-codex-hooks` | Paid Codex compaction lane (never in a suite run) |
 | `just test-e2e-spec managed-stage-codex` | Paid managed Codex stage lane (never in a suite run) |
+| `just test-e2e-spec managed-stage-deadline` | Paid managed stage deadline lane (never in a suite run) |
 | `just test-macos` | Rust tests on remote Mac Mini |
 | `just test-macos-e2e` | macOS E2E on remote Mac Mini |
 | `just agent-quality` | Agent-facing wrapper around `just check-quick` |

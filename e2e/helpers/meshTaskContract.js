@@ -36,8 +36,10 @@ function runMesh(claudeDir, args, { timeout = 60_000 } = {}) {
 }
 
 /** `mesh task create --json`, returning the created record. */
-export function createTask({ claudeDir, team, actor, subject, description, effort, why, firstStep, deliverable }) {
-  const raw = runMesh(claudeDir, [
+export function createTask({
+  claudeDir, team, actor, subject, description, effort, why, deadline, firstStep, deliverable,
+}) {
+  const args = [
     '--team', team,
     '--name', actor,
     'task', 'create',
@@ -47,8 +49,10 @@ export function createTask({ claudeDir, team, actor, subject, description, effor
     '--why', why,
     '--first-step', firstStep,
     '--deliverable', deliverable,
-    '--json',
-  ])
+  ]
+  if (deadline != null) args.push('--deadline', String(deadline))
+  args.push('--json')
+  const raw = runMesh(claudeDir, args)
   return JSON.parse(raw)
 }
 
@@ -60,9 +64,10 @@ export function createTask({ claudeDir, team, actor, subject, description, effor
  * been created — so it is passed here and not at creation.
  */
 export function assignTask({
-  claudeDir, team, actor, taskId, owner, effort, why, firstStep, deliverable, completionSignal,
+  claudeDir, team, actor, taskId, owner, status, effort, why, deadline, firstStep, deliverable,
+  completionSignal,
 }) {
-  return runMesh(claudeDir, [
+  const args = [
     '--team', team,
     '--name', actor,
     'task', 'assign', String(taskId),
@@ -72,7 +77,10 @@ export function assignTask({
     '--first-step', firstStep,
     '--deliverable', deliverable,
     '--completion-signal', completionSignal,
-  ])
+  ]
+  if (status) args.push('--status', status)
+  if (deadline != null) args.push('--deadline', String(deadline))
+  return runMesh(claudeDir, args)
 }
 
 /**
@@ -85,6 +93,146 @@ export function taskRecord({ claudeDir, team, actor, taskId }) {
   return JSON.parse(runMesh(claudeDir, [
     '--team', team, '--name', actor, 'task', 'get', String(taskId), '--json',
   ]))
+}
+
+/**
+ * The timeout branch used by the managed `stage()` courier.
+ *
+ * The task record is the canonical authority: inbox state and a local elapsed
+ * timer cannot turn a still-open task into a stage timeout. Returning null for
+ * every non-stale record lets callers keep polling without inventing another
+ * terminal state.
+ */
+export function stagePollVerdict(record) {
+  return record?.status === 'stale' ? { status: 'timeout' } : null
+}
+
+/**
+ * Classify the operational record available after a mesh task becomes stale.
+ *
+ * The deadline pass first writes a stale marker, but the task importer removes
+ * non-resumable tasks from the member snapshot. Either record can therefore be
+ * the first one a polling lane observes after the durable stale event.
+ */
+export function operationalStaleEvidence(snapshot, taskId) {
+  const task = snapshot?.task
+  if (!task) return null
+
+  const expectedTaskId = String(taskId)
+  const observedTaskId = String(task.id ?? '').trim()
+  const status = String(task.status ?? '').trim()
+  if (observedTaskId !== expectedTaskId) {
+    return {
+      state: 'task-cleared',
+      observedTaskId: observedTaskId || null,
+      status: status || null,
+      staleAt: null,
+    }
+  }
+
+  if (status !== 'stale' || !Number.isFinite(Date.parse(task.stale_at))) return null
+  return {
+    state: 'marked',
+    observedTaskId,
+    status,
+    staleAt: task.stale_at,
+  }
+}
+
+/**
+ * Build the active negative path around the production self-heal cadence.
+ *
+ * The heartbeat spans half the deadline plus the configured inter-pass sleep,
+ * and its output must be dense enough for Codex's `/proc` read-rate signal.
+ * The production loop period also includes the preceding pass's duration.
+ */
+export function activeDeadlineHeartbeatPlan({
+  deadlineMinutes,
+  passCadenceMs,
+  intervalMs,
+  payloadBytes,
+}) {
+  const deadlineMs = Number(deadlineMinutes) * 60_000
+  const numericInputs = [deadlineMs, passCadenceMs, intervalMs, payloadBytes]
+  if (numericInputs.some((value) => !Number.isFinite(value) || value <= 0)) {
+    throw new Error('active deadline heartbeat inputs must be positive finite numbers')
+  }
+
+  const neededActiveMs = deadlineMs / 2 + passCadenceMs
+  const iterations = Math.ceil(neededActiveMs / intervalMs)
+  const durationMs = iterations * intervalMs
+  const completionSlackMs = deadlineMs - durationMs
+  if (completionSlackMs <= 0) {
+    throw new Error('active deadline heartbeat must leave time to complete before stale')
+  }
+
+  const command =
+    `bun -e 'const payload = "x".repeat(${payloadBytes}); ` +
+    `for (let i = 0; i < ${iterations}; i += 1) { console.log(payload); await Bun.sleep(${intervalMs}) }'`
+
+  return {
+    command,
+    commandWithCompletion(completionCommand) {
+      // Keep the member active until mesh closes the task: suppression does
+      // not stamp `nudged_at`, so a later pass may otherwise nudge it.
+      return `${command} && ${completionCommand}`
+    },
+    deadlineMs,
+    neededActiveMs,
+    iterations,
+    durationMs,
+    completionSlackMs,
+    outputBytesPerSecond: payloadBytes * 1_000 / intervalMs,
+  }
+}
+
+/**
+ * Join a half-deadline self-heal pass to the fresh active snapshot it read.
+ *
+ * The production deadline pass accepts `active` and `likely_working` snapshots
+ * no more than 120 seconds old. A later activity record cannot explain an
+ * earlier pass, so this chooses the newest snapshot at or before each eligible
+ * pass and only then applies the production freshness and confidence checks.
+ * The caller checks committed deadline actions itself before asking for
+ * evidence; this helper judges activity joins alone.
+ */
+export function activeDeadlinePassEvidence({
+  assignedAt,
+  deadlineMinutes,
+  activitySnapshots = [],
+  passEvents = [],
+}) {
+  const assignedAtMs = Date.parse(assignedAt)
+  const deadlineMs = Number(deadlineMinutes) * 60_000
+  if (!Number.isFinite(assignedAtMs) || !Number.isFinite(deadlineMs) || deadlineMs <= 0) return null
+  const halfDueMs = assignedAtMs + deadlineMs / 2
+
+  const observed = activitySnapshots
+    .map((snapshot) => ({ snapshot, observedAtMs: Date.parse(snapshot?.observed_at) }))
+    .filter(({ observedAtMs }) =>
+      Number.isFinite(observedAtMs) &&
+      observedAtMs >= assignedAtMs
+    )
+
+  for (const pass of passEvents) {
+    const passAtMs = Date.parse(pass?.ts)
+    if (!Number.isFinite(passAtMs) || passAtMs < halfDueMs) continue
+    const snapshot = observed
+      .filter(({ observedAtMs }) => observedAtMs <= passAtMs)
+      .sort((left, right) => right.observedAtMs - left.observedAtMs)[0]
+    if (
+      !snapshot ||
+      passAtMs - snapshot.observedAtMs > 120_000 ||
+      !['active', 'likely_working'].includes(snapshot.snapshot?.activity_confidence)
+    ) continue
+    return {
+      halfDueAt: new Date(halfDueMs).toISOString(),
+      passAt: pass.ts,
+      activityObservedAt: snapshot.snapshot.observed_at,
+      activityConfidence: snapshot.snapshot.activity_confidence,
+    }
+  }
+  return null
 }
 
 /** The attention projection for one task, or null before mesh has written it. */

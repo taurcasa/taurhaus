@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  activeDeadlineHeartbeatPlan,
+  activeDeadlinePassEvidence,
   effortDeliveryVerdict,
   effortWaitBoundMs,
   expiredEffortWaitProblem,
   extractJsonBlock,
   findBlockedMessage,
   findResultMessage,
+  operationalStaleEvidence,
   parseResultMessage,
   resultContractViolations,
+  stagePollVerdict,
 } from './meshTaskContract.js'
 
 describe('extractJsonBlock', () => {
@@ -198,5 +202,151 @@ describe('expiredEffortWaitProblem', () => {
   it('reports unreadable timestamps rather than calling them a pass', () => {
     expect(expiredEffortWaitProblem({ assignedAtMs: NaN, deliveredAtMs: 2_230, boundMs: 180_000 })).toMatch(/timestamp/)
     expect(expiredEffortWaitProblem({ assignedAtMs: 1_000, deliveredAtMs: null, boundMs: 180_000 })).toMatch(/timestamp/)
+  })
+})
+
+describe('stagePollVerdict', () => {
+  it('returns the managed stage timeout shape when the task record becomes stale', () => {
+    expect(stagePollVerdict({ id: '42', status: 'stale' })).toEqual({ status: 'timeout' })
+  })
+
+  it('keeps polling every non-stale task record', () => {
+    expect(stagePollVerdict({ id: '42', status: 'in_progress' })).toBeNull()
+    expect(stagePollVerdict(null)).toBeNull()
+  })
+})
+
+describe('operationalStaleEvidence', () => {
+  // Regression: c12c506c required the operational snapshot to retain the
+  // stale task, but the importer deliberately clears non-resumable tasks once
+  // the mesh status round-trips.
+  it('accepts the stale marker or the already-cleared post-import snapshot', () => {
+    expect(
+      operationalStaleEvidence({
+        task: { id: '42', status: 'stale', stale_at: '2026-08-31T10:01:00.000Z' },
+      }, '42')
+    ).toEqual({
+      state: 'marked',
+      observedTaskId: '42',
+      status: 'stale',
+      staleAt: '2026-08-31T10:01:00.000Z',
+    })
+    expect(operationalStaleEvidence({ task: { id: '', status: '' } }, '42')).toEqual({
+      state: 'task-cleared',
+      observedTaskId: null,
+      status: null,
+      staleAt: null,
+    })
+  })
+
+  it('keeps polling while the expected task is present without a valid stale marker', () => {
+    expect(operationalStaleEvidence({ task: { id: '42', status: 'in_progress' } }, '42')).toBeNull()
+    expect(operationalStaleEvidence({ task: { id: '42', status: 'stale' } }, '42')).toBeNull()
+    expect(operationalStaleEvidence(null, '42')).toBeNull()
+  })
+})
+
+describe('activeDeadlineHeartbeatPlan', () => {
+  // Regression: e1c38eef emitted about 10 bytes/s during the long command, so
+  // Codex never cleared the production 1 kB/s recent-IO activity threshold.
+  it('sustains enough command output for the activity pipeline to observe', () => {
+    const plan = activeDeadlineHeartbeatPlan({
+      deadlineMinutes: 3,
+      passCadenceMs: 30_000,
+      intervalMs: 500,
+      payloadBytes: 4_095,
+    })
+
+    expect(plan.outputBytesPerSecond).toBeGreaterThanOrEqual(1_000)
+    expect(plan.command).toContain('"x".repeat(4095)')
+    expect(plan.command).toContain('Bun.sleep(500)')
+  })
+
+  // Regression: e1c38eef spent 96 seconds of a 120-second deadline in the
+  // heartbeat, leaving only 24 seconds for two Codex command turns before the
+  // unsuppressed stale action could fire.
+  it('covers half-time plus one pass while reserving a full minute to complete', () => {
+    const plan = activeDeadlineHeartbeatPlan({
+      deadlineMinutes: 3,
+      passCadenceMs: 30_000,
+      intervalMs: 500,
+      payloadBytes: 4_095,
+    })
+
+    expect(plan.neededActiveMs).toBe(120_000)
+    expect(plan.iterations).toBe(240)
+    expect(plan.durationMs).toBe(120_000)
+    expect(plan.completionSlackMs).toBe(60_000)
+  })
+
+  // Regression: commit 3b603679 put the heartbeat and task completion in
+  // separate member commands, leaving an inactive self-heal pass free to nudge
+  // after the observed suppression interval.
+  it('chains completion to the heartbeat without an inactive command gap', () => {
+    const plan = activeDeadlineHeartbeatPlan({
+      deadlineMinutes: 3,
+      passCadenceMs: 30_000,
+      intervalMs: 500,
+      payloadBytes: 4_095,
+    })
+    const completionCommand = "CLAUDE_DIR=/tmp/scratch mesh task complete 7 --summary 'done'"
+
+    expect(plan.commandWithCompletion(completionCommand)).toBe(
+      `${plan.command} && ${completionCommand}`
+    )
+  })
+})
+
+describe('activeDeadlinePassEvidence', () => {
+  it('joins an eligible self-heal pass to the fresh active record it evaluated', () => {
+    expect(
+      activeDeadlinePassEvidence({
+        assignedAt: '2026-08-31T10:00:00.000Z',
+        deadlineMinutes: 2,
+        activitySnapshots: [
+          { observed_at: '2026-08-31T10:01:05.000Z', activity_confidence: 'likely_working' },
+        ],
+        passEvents: [{ ts: '2026-08-31T10:01:10.000Z' }],
+      })
+    ).toEqual({
+      halfDueAt: '2026-08-31T10:01:00.000Z',
+      passAt: '2026-08-31T10:01:10.000Z',
+      activityObservedAt: '2026-08-31T10:01:05.000Z',
+      activityConfidence: 'likely_working',
+    })
+  })
+
+  it('rejects a pre-half pass or idle evidence', () => {
+    const base = {
+      assignedAt: '2026-08-31T10:00:00.000Z',
+      deadlineMinutes: 2,
+      activitySnapshots: [{ observed_at: '2026-08-31T10:00:55.000Z', activity_confidence: 'active' }],
+      passEvents: [{ ts: '2026-08-31T10:00:59.000Z' }],
+    }
+    expect(activeDeadlinePassEvidence(base)).toBeNull()
+    expect(
+      activeDeadlinePassEvidence({
+        ...base,
+        activitySnapshots: [{ observed_at: '2026-08-31T10:01:05.000Z', activity_confidence: 'idle' }],
+        passEvents: [{ ts: '2026-08-31T10:01:10.000Z' }],
+      })
+    ).toBeNull()
+  })
+
+  // Regression: e1c38eef filtered out non-active samples before joining the
+  // pass, so an older active record could certify a pass that actually read a
+  // newer idle record.
+  it('rejects an older active sample when a newer idle sample preceded the pass', () => {
+    expect(
+      activeDeadlinePassEvidence({
+        assignedAt: '2026-08-31T10:00:00.000Z',
+        deadlineMinutes: 2,
+        activitySnapshots: [
+          { observed_at: '2026-08-31T10:01:05.000Z', activity_confidence: 'active' },
+          { observed_at: '2026-08-31T10:01:08.000Z', activity_confidence: 'idle' },
+        ],
+        passEvents: [{ ts: '2026-08-31T10:01:10.000Z' }],
+      })
+    ).toBeNull()
   })
 })

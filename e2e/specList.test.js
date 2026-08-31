@@ -38,6 +38,10 @@ describe('default WDIO spec list', () => {
     }
   })
 
+  it('keeps the paid managed deadline measurement named-only', () => {
+    expect(paidSpecs).toContain('managed-stage-deadline.js')
+  })
+
   // Regression: commit 111c776c appended every ungrouped spec to a catch-all,
   // so a new stateful or paid lane could silently enter the default suite.
   it('rejects an ungrouped spec with instructions for sealing the manifest', () => {
