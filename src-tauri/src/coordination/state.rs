@@ -171,11 +171,31 @@ impl CoordinationState {
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
+        self.run_background_self_heal_pass_at_inner(cli_commands, tmux_layout, Utc::now())
+    }
+
+    #[cfg(test)]
+    fn run_background_self_heal_pass_at(
+        &self,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+        now: DateTime<Utc>,
+    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
+        self.run_background_self_heal_pass_at_inner(cli_commands, tmux_layout, now)
+    }
+
+    fn run_background_self_heal_pass_at_inner(
+        &self,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+        now: DateTime<Utc>,
+    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
         let mut cli_commands = cli_commands.clone();
-        self.run_background_self_heal_pass_with_launch_resolution(
+        self.run_background_self_heal_pass_with_launch_resolution_at(
             &mut cli_commands,
             tmux_layout,
             &mut |_, _| {},
+            now,
         )
     }
 
@@ -184,6 +204,21 @@ impl CoordinationState {
         cli_commands: &mut CliCommandSettings,
         tmux_layout: &str,
         resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
+    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
+        self.run_background_self_heal_pass_with_launch_resolution_at(
+            cli_commands,
+            tmux_layout,
+            resolve_launch_base,
+            Utc::now(),
+        )
+    }
+
+    fn run_background_self_heal_pass_with_launch_resolution_at(
+        &self,
+        cli_commands: &mut CliCommandSettings,
+        tmux_layout: &str,
+        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
+        now: DateTime<Utc>,
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
         let team_names = TeamConfigStore::list(&self.teams_dir)?;
         let mut summary = BackgroundSelfHealPassResult::default();
@@ -199,6 +234,32 @@ impl CoordinationState {
                         team = %team_name,
                         error = %err,
                         "background coordination self-heal failed"
+                    );
+                }
+            }
+
+            match crate::coordination::task_deadline_pass::apply_task_deadlines(
+                &mut orchestrator,
+                &team_name,
+                now,
+            ) {
+                Ok(outcome) => {
+                    summary.team_errors += outcome.failures.len();
+                    for (member, reason) in outcome.failures {
+                        tracing::warn!(
+                            team = %team_name,
+                            member = %member,
+                            error = %reason,
+                            "background task-deadline member failed"
+                        );
+                    }
+                }
+                Err(err) => {
+                    summary.team_errors += 1;
+                    tracing::warn!(
+                        team = %team_name,
+                        error = %err,
+                        "background task-deadline pass failed"
                     );
                 }
             }
@@ -1551,6 +1612,22 @@ mod tests {
             .to_string()
     }
 
+    fn set_mesh_task_status(teams_dir: &Path, status: &str) {
+        let task_path = teams_dir
+            .parent()
+            .expect("teams root parent")
+            .join("tasks/deadline-team/42.json");
+        let mut task: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&task_path).expect("read mesh task"))
+                .expect("parse mesh task");
+        task["status"] = serde_json::Value::String(status.to_string());
+        std::fs::write(
+            task_path,
+            serde_json::to_vec_pretty(&task).expect("serialize mesh task"),
+        )
+        .expect("write mesh task");
+    }
+
     fn write_activity_snapshot(teams_dir: &Path, observed_at: DateTime<Utc>, active: bool) {
         let activity_dir = teams_dir.join("deadline-team/state/activity");
         std::fs::create_dir_all(&activity_dir).expect("create activity dir");
@@ -1738,6 +1815,36 @@ mod tests {
         assert_eq!(stored.task.nudged_at, None);
         assert_eq!(stored.task.stale_at, None);
         assert_eq!(mesh_task_status(&teams_dir), "in_progress");
+        assert_no_deadline_termination(&runtime);
+    }
+
+    #[test]
+    fn deadline_self_heal_leaves_a_pending_deadline_untouched() {
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
+        let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
+        seed_deadline_task(&teams_dir, assigned_at, Some(20));
+        let mut snapshot = deadline_snapshot(&teams_dir);
+        snapshot.task.status = "pending".to_string();
+        crate::coordination::stores::OperationalContextSnapshotStore::save(&teams_dir, &snapshot)
+            .expect("save pending snapshot");
+        set_mesh_task_status(&teams_dir, "pending");
+
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                assigned_at + chrono::Duration::hours(2),
+            )
+            .expect("pending-deadline pass succeeds");
+
+        assert!(deadline_notices(&fake).is_empty());
+        let stored = deadline_snapshot(&teams_dir);
+        assert_eq!(stored.task.status, "pending");
+        assert_eq!(stored.task.nudged_at, None);
+        assert_eq!(stored.task.stale_at, None);
+        assert_eq!(mesh_task_status(&teams_dir), "pending");
         assert_no_deadline_termination(&runtime);
     }
 

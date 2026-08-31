@@ -21,8 +21,8 @@ pub use inbox::{MeshInboxMessage, MeshInboxStore, OPERATOR_SENDER_NAME};
 #[allow(unused_imports)]
 pub use operational::{
     read_snapshot, write_snapshot, OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,
-    OperationalContextSnapshotStore, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
-    OperationalWorkingSetSnapshot,
+    OperationalContextSnapshotStore, OperationalOwnershipSnapshot,
+    OperationalSnapshotCommitOutcome, OperationalTaskSnapshot, OperationalWorkingSetSnapshot,
 };
 pub use runtime::{
     EffortResumeFailure, MemberRuntimeRecord, MemberRuntimeSnapshot, MemberRuntimeStore,
