@@ -122,6 +122,30 @@ async function runSharedStage(task, options = {}, result = OK_WORK, workflowArgs
   return { result: output, calls }
 }
 
+function managedStageTask(overrides = {}) {
+  return {
+    harness: 'codex',
+    model: 'gpt-5.6-sol',
+    effort: 'high',
+    why: 'the implementation needs repository-wide reasoning',
+    deadline: 60,
+    worktree: '/home/dev/checkout',
+    firstStep: 'Read /home/dev/checkout/CLAUDE.md.',
+    deliverable: 'A committed implementation and its green validation.',
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['status', 'value'],
+      properties: {
+        status: { type: 'string', enum: ['ok'] },
+        value: { type: 'number' },
+      },
+    },
+    title: 'Implement the managed stage',
+    ...overrides,
+  }
+}
+
 const BASE_ARGS = { worktree: '/home/dev/checkout', branch: 'feat/x', spec: '/tmp/spec.md' }
 const MUTATING = ['feature-pr.js', 'small-change.js', 'fix-round.js', 'docs-sweep.js']
 const AUTHORITY_QUESTION =
@@ -183,6 +207,7 @@ describe('workflow procedures — the shared lib', () => {
     expect(staged.calls).toHaveLength(1)
     const [{ prompt, opts }] = staged.calls
     expect(opts.label).toBe('stage:codex:implement-the-managed-stage')
+    expect(opts.schema.type).toBe('object')
     expect(opts.schema.anyOf).toContainEqual(schema)
     expect(prompt).toContain('mesh task create')
     expect(prompt).toContain("--effort 'high'")
@@ -200,6 +225,55 @@ describe('workflow procedures — the shared lib', () => {
     expect(prompt).toContain('older than the current metadata.assigned_at')
     expect(prompt).toContain("return exactly `{status: 'timeout'}`")
     expect(prompt).toContain("return `{status: 'blocked', reason: completion.reason}`")
+  })
+
+  it('resolves team records from the same roots as mesh', async () => {
+    // Regression: 6e377dad treated CLAUDE_CONFIG_DIR as a team root even
+    // though it selects a Claude account and neither mesh nor taurhaus uses it.
+    const staged = await runSharedStage(managedStageTask())
+    const prompt = staged.calls[0].prompt
+
+    expect(prompt).toContain('Resolve the team root from `TAURHAUS_CLAUDE_DIR`, then `CLAUDE_DIR`')
+    expect(prompt).not.toContain('CLAUDE_CONFIG_DIR')
+  })
+
+  it('activates the task deadline as part of assignment', async () => {
+    // Regression: 6e377dad left staged assignments pending, so a member that
+    // never picked one up could never be nudged or staled by the deadline pass.
+    const staged = await runSharedStage(managedStageTask())
+
+    expect(staged.calls[0].prompt).toContain("--status 'in_progress'")
+  })
+
+  it('bounds polling even when the app-side stale transition never arrives', async () => {
+    // Regression: 6e377dad forbade a courier fallback while making `stale`
+    // depend on the desktop app, allowing a managed stage to poll forever.
+    const staged = await runSharedStage(managedStageTask({ deadline: 20 }))
+    const prompt = staged.calls[0].prompt
+
+    expect(prompt).toContain('no more than 360 polls')
+    expect(prompt).toContain('one final `mesh task get')
+    expect(prompt).toContain("return exactly `{status: 'timeout'}`")
+  })
+
+  it('closes a successful mesh task after publishing its result', async () => {
+    const staged = await runSharedStage(managedStageTask())
+    const prompt = staged.calls[0].prompt
+
+    expect(prompt).toContain('then run `mesh task complete <created-task-id>')
+  })
+
+  it('maps workflow max effort to the highest mesh effort', async () => {
+    const staged = await runSharedStage(managedStageTask({ effort: 'max' }))
+
+    expect(staged.calls[0].prompt).toContain("--effort 'xhigh'")
+  })
+
+  it('declares the phase used by the managed courier', () => {
+    const source = fs.readFileSync(path.join(WORKFLOWS, 'feature-pr.js'), 'utf8')
+    const meta = source.slice(0, source.indexOf('const NAME'))
+
+    expect(meta).toContain("{ title: 'Managed stage'")
   })
 
   it('resumes the existing task on its assigned member and ignores an old completion', async () => {

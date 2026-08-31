@@ -3,6 +3,7 @@ export const meta = {
   description: 'One feature PR: implement (Opus or Codex), cross-family two-lens review, fix loop, gate',
   phases: [
     { title: 'Implement', detail: 'the implementer works the spec red-first and commits per green step', model: 'opus' },
+    { title: 'Managed stage', detail: 'team-backed non-Claude implementation through a durable mesh task', model: 'opus' },
     { title: 'Review', detail: 'the other family reviews: conformance + operational lenses in parallel', model: 'opus' },
     { title: 'Fix', detail: 'fix -> re-review (conformance lens), max 3 rounds', model: 'opus' },
     { title: 'Gate', detail: 'check-quick, lint, targeted tests', model: 'opus' },
@@ -439,7 +440,7 @@ const STAGE_UNAVAILABLE_SCHEMA = {
 }
 
 function stageOutputSchema(schema) {
-  return { anyOf: [schema, STAGE_BLOCKED_SCHEMA, STAGE_TIMEOUT_SCHEMA, STAGE_UNAVAILABLE_SCHEMA] }
+  return { type: 'object', anyOf: [schema, STAGE_BLOCKED_SCHEMA, STAGE_TIMEOUT_SCHEMA, STAGE_UNAVAILABLE_SCHEMA] }
 }
 
 // A managed stage is still one Workflow agent call, but that agent is only the courier: it creates
@@ -456,14 +457,17 @@ async function stage(task, options) {
   if (['codex', 'agy', 'grok'].indexOf(harness) === -1) {
     throw new Error(NAME + ': stage task harness must be codex, agy, or grok — got ' + JSON.stringify(value.harness))
   }
-  const effort = String(value.effort || '').trim().toLowerCase()
+  const requestedEffort = String(value.effort || '').trim().toLowerCase()
+  const effort = requestedEffort === 'max' ? 'xhigh' : requestedEffort
   if (['low', 'medium', 'high', 'xhigh'].indexOf(effort) === -1) {
     throw new Error(NAME + ': stage task effort must be low, medium, high, or xhigh — got ' + JSON.stringify(value.effort))
   }
+  if (requestedEffort === 'max') log(NAME + ': managed stage maps workflow effort max to mesh xhigh')
   const deadline = Number(value.deadline)
   if (!Number.isInteger(deadline) || deadline <= 0) {
     throw new Error(NAME + ': stage task deadline must be a positive whole number of minutes — got ' + JSON.stringify(value.deadline))
   }
+  const fallbackPollLimit = (deadline + 10) * 12
   const worktree = posixPath(value.worktree, 'stage task worktree')
   const requiredStrings = ['why', 'firstStep', 'deliverable', 'title']
   for (const field of requiredStrings) {
@@ -520,19 +524,21 @@ async function stage(task, options) {
       'Use the current mesh actor identity (`MESH_NAME`) and always pass `--team ' + sh(team) + '`. If mesh cannot identify the current actor, return `{status: \'unavailable\', error: <reason>}`.',
       '',
       'MEMBER PRECONDITION:',
-      '- Run `mesh who --json --team ' + sh(team) + '` and inspect only this team\'s config plus its runtime records. Resolve the team root from `TAURHAUS_CLAUDE_DIR`, then `CLAUDE_DIR`, then `CLAUDE_CONFIG_DIR`; use the normal Claude root only if none is set.',
+      '- Run `mesh who --json --team ' + sh(team) + '` and inspect only this team\'s config plus its runtime records. Resolve the team root from `TAURHAUS_CLAUDE_DIR`, then `CLAUDE_DIR`; use the normal Claude root only if neither is set.',
       '- A fresh stage selects one online non-lead member whose config `cli_tool` is exactly ' + JSON.stringify(harness) + ', whose `cwd`/project path is exactly ' + JSON.stringify(worktree) + ', and whose runtime record has a non-empty `session_id`. ' +
         (model ? 'Its configured model must be ' + JSON.stringify(model) + '. ' : '') +
         'A member without a recorded session cannot have assignment effort applied and is not eligible. If there is not exactly one eligible member, return unavailable with the candidates and the violated precondition; never prompt or launch one to manufacture a session.',
       '- A resumed stage uses the task\'s existing owner, and verifies that same member is online, still uses harness ' + JSON.stringify(harness) + ', still belongs to this worktree, and still has its runtime `session_id`. This is what reuses the member\'s session.',
       '',
       createStep,
-      '2) Build the completion signal after the id is known. It must tell the member: on success, send the lead one message whose first line is `RESULT <created-task-id>` and whose only remaining content is a fenced `json` block matching this schema; on a real blocker, send `BLOCKED <created-task-id> <reason>`. Inline JSON is not a mesh completion block. Schema: ' + schemaText,
+      '2) Build the completion signal after the id is known. It must tell the member: on success, send the lead one message whose first line is `RESULT <created-task-id>` and whose only remaining content is a fenced `json` block matching this schema, then run `mesh task complete ' + taskRef + ' --summary "<brief result>" --team ' + sh(team) + '`; on a real blocker, send `BLOCKED <created-task-id> <reason>`. Send RESULT before completing the task. Inline JSON is not a mesh completion block. Schema: ' + schemaText,
       '3) ' +
         assignment +
         ' with `mesh task assign ' +
         taskRef +
-        ' --owner <selected-member> --effort ' +
+        ' --owner <selected-member> --status ' +
+        sh('in_progress') +
+        ' --effort ' +
         sh(effort) +
         ' --why ' +
         sh(String(value.why).trim()) +
@@ -546,9 +552,9 @@ async function stage(task, options) {
         sh(team) +
         '`.' +
         (resume ? ' Because this is an intentional reassignment to the same owner, pass `--admin-reason ' + sh('stage resume requested for task ' + resume) + '`.' : ''),
-      '4) Poll with `mesh task get ' + taskRef + ' --json --team ' + sh(team) + '` about every five seconds. This task record is the only completion and timeout authority; do not read the inbox separately and do not invent a wall-clock timeout.',
+      '4) Poll with `mesh task get ' + taskRef + ' --json --team ' + sh(team) + '` about every five seconds for no more than ' + fallbackPollLimit + ' polls. The task record remains the canonical completion and timeout authority; do not read the inbox separately.',
       '5) On every poll, compare `completion.at` with the current `metadata.assigned_at` as parsed timestamps. Ignore the entire completion when either timestamp is missing/invalid or when `completion.at` is older than the current metadata.assigned_at; this prevents a previous attempt\'s RESULT or BLOCKED from completing a reassigned stage.',
-      "6) If the task status is `stale`, return exactly `{status: 'timeout'}`. Otherwise, if the current completion.kind is `blocked`, return `{status: 'blocked', reason: completion.reason}`. If it is `result`, extract and parse the fenced JSON object in `completion.result`, verify it against the schema above, and return exactly that object as your structured output. Do not retry, create another task, or abandon the member's session.",
+      "6) If the task status is `stale`, return exactly `{status: 'timeout'}`. Otherwise, if the current completion.kind is `blocked`, return `{status: 'blocked', reason: completion.reason}`. If it is `result`, extract and parse the fenced JSON object in `completion.result`, verify it against the schema above, and return exactly that object as your structured output. After " + fallbackPollLimit + ' polls without a current completion or stale status, run one final `mesh task get ' + taskRef + ' --json --team ' + sh(team) + "`; handle a terminal record normally, but if it is still non-terminal return exactly `{status: 'timeout'}`. Do not retry, create another task, or abandon the member's session.",
       '7) If create/assign/get fails, the member precondition is not met, or a current completion is malformed or violates the schema, return `{status: \'unavailable\', error: <specific reason>}`. ' + RULES.honest,
     ].join('\n'),
     call({ label: 'stage:' + harness + ':' + slug, phase: 'Managed stage', schema: stageOutputSchema(value.schema) })
