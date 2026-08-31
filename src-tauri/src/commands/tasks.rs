@@ -504,6 +504,7 @@ mod tests {
             archived_reason: None,
             effort: None,
             effort_why: None,
+            deadline_minutes: None,
         };
 
         let conn = db.0.lock().expect("db lock");

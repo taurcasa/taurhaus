@@ -23,6 +23,8 @@ A journal `started` record can precede creation of its agent transcript. That sh
 
 Once `<run-id>.json` exists and parses as an object, its `workflowProgress` entries and aggregate totals are authoritative. `completed`/`success` map to `completed`, `failed`/`error` map to `failed`, and an unrecognised summary status remains `unknown` instead of being guessed. The persisted session copy of the script remains the preferred `script_path`.
 
+A managed `stage()` is represented here by its thin Claude courier, because that courier is the Workflow agent call. During the run it appears like any other live agent—flat, named from its prompt preview, with no inferred phase. Once the completed summary exists, its `stage:<harness>:<title>` label and `Managed stage` phase are available from `workflowProgress`. The Codex/Antigravity/Grok member that performs the repository work remains a normal managed team session with its own activity and task card; taurhaus does not invent it as a nested Workflow child. The courier's mesh task is the durable join between those two views.
+
 ## Bounded reads and cache
 
 Run scans are bounded even when an agent transcript has grown large:

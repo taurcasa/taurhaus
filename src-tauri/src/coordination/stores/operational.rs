@@ -20,6 +20,8 @@ pub struct OperationalTaskSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deadline_minutes: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assigned_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nudged_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stale_at: Option<DateTime<Utc>>,
@@ -294,6 +296,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let mut snapshot = sample_snapshot();
         snapshot.task.deadline_minutes = Some(20);
+        snapshot.task.assigned_at = Some(snapshot.updated_at);
         snapshot.task.nudged_at = Some(
             DateTime::parse_from_rfc3339("2026-03-08T14:20:00Z")
                 .expect("timestamp")
@@ -334,6 +337,7 @@ mod tests {
         .expect("legacy task snapshot");
 
         assert_eq!(task.deadline_minutes, None);
+        assert_eq!(task.assigned_at, None);
         assert_eq!(task.nudged_at, None);
         assert_eq!(task.stale_at, None);
     }

@@ -19,6 +19,14 @@ function compile(name) {
   return new AsyncFunction(API_GLOBALS, parseBody(fs.readFileSync(path.join(WORKFLOWS, name), 'utf8')))
 }
 
+function compileSharedStage() {
+  const source = fs.readFileSync(path.join(WORKFLOWS, 'feature-pr.js'), 'utf8')
+  const start = source.indexOf('// ── lib:')
+  const end = source.indexOf('// ── end lib ──')
+  const shared = source.slice(start, end)
+  return new AsyncFunction(API_GLOBALS, "const NAME = 'stage-test'\n" + shared + '\nreturn await stage(args.task, args.options)')
+}
+
 const OK_WORK = {
   status: 'ok',
   summary: 'did the thing',
@@ -89,6 +97,55 @@ async function run(name, workflowArgs, plan = {}) {
   return { result, calls, logs, state }
 }
 
+async function runSharedStage(task, options = {}, result = OK_WORK, workflowArgs = {}) {
+  const calls = []
+  const agent = async (prompt, opts = {}) => {
+    calls.push({ prompt, opts })
+    return result
+  }
+  const unsupported = async () => {
+    throw new Error('the shared stage test does not use this Workflow API primitive')
+  }
+  const body = compileSharedStage()
+  const args = {
+    worktree: '/home/dev/checkout',
+    team: 'feature-team',
+    task,
+    options,
+    ...workflowArgs,
+  }
+  const output = await body(agent, unsupported, unsupported, () => {}, () => {}, unsupported, args, {
+    total: null,
+    spent: () => 0,
+    remaining: () => Infinity,
+  })
+  return { result: output, calls }
+}
+
+function managedStageTask(overrides = {}) {
+  return {
+    harness: 'codex',
+    model: 'gpt-5.6-sol',
+    effort: 'high',
+    why: 'the implementation needs repository-wide reasoning',
+    deadline: 60,
+    worktree: '/home/dev/checkout',
+    firstStep: 'Read /home/dev/checkout/CLAUDE.md.',
+    deliverable: 'A committed implementation and its green validation.',
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['status', 'value'],
+      properties: {
+        status: { type: 'string', enum: ['ok'] },
+        value: { type: 'number' },
+      },
+    },
+    title: 'Implement the managed stage',
+    ...overrides,
+  }
+}
+
 const BASE_ARGS = { worktree: '/home/dev/checkout', branch: 'feat/x', spec: '/tmp/spec.md' }
 const MUTATING = ['feature-pr.js', 'small-change.js', 'fix-round.js', 'docs-sweep.js']
 const AUTHORITY_QUESTION =
@@ -118,6 +175,147 @@ describe('workflow procedures — the shared lib', () => {
 
   it('rejects an effort outside the harness vocabulary', async () => {
     await expect(run('feature-pr.js', { ...BASE_ARGS, effort: 'turbo' })).rejects.toThrow(/effort/)
+  })
+
+  it('stages a managed member through the mesh task contract and returns its JSON result', async () => {
+    const schema = {
+      type: 'object',
+      additionalProperties: false,
+      required: ['status', 'value'],
+      properties: {
+        status: { type: 'string', enum: ['ok'] },
+        value: { type: 'number' },
+      },
+    }
+    const task = {
+      harness: 'codex',
+      model: 'gpt-5.6-sol',
+      effort: 'high',
+      why: 'the implementation needs repository-wide reasoning',
+      deadline: 60,
+      worktree: '/home/dev/checkout',
+      firstStep: 'Read /home/dev/checkout/CLAUDE.md.',
+      deliverable: 'A committed implementation and its green validation.',
+      schema,
+      title: 'Implement the managed stage',
+    }
+    const completed = { status: 'ok', value: 7 }
+
+    const staged = await runSharedStage(task, {}, completed)
+
+    expect(staged.result).toEqual(completed)
+    expect(staged.calls).toHaveLength(1)
+    const [{ prompt, opts }] = staged.calls
+    expect(opts.label).toBe('stage:codex:implement-the-managed-stage')
+    expect(opts.schema.type).toBe('object')
+    expect(opts.schema.anyOf).toContainEqual(schema)
+    expect(prompt).toContain('mesh task create')
+    expect(prompt).toContain("--effort 'high'")
+    expect(prompt).toContain("--why 'the implementation needs repository-wide reasoning'")
+    expect(prompt).toContain("--deadline '60'")
+    expect(prompt).toContain("--first-step 'Read /home/dev/checkout/CLAUDE.md.'")
+    expect(prompt).toContain("--deliverable 'A committed implementation and its green validation.'")
+    expect(prompt).toContain('mesh task assign')
+    expect(prompt).toContain('RESULT <created-task-id>')
+    expect(prompt).toContain('BLOCKED <created-task-id> <reason>')
+    expect(prompt).toContain('mesh task get <created-task-id> --json')
+    expect(prompt).toContain('completion.result')
+    expect(prompt).toContain('completion.at')
+    expect(prompt).toContain('metadata.assigned_at')
+    expect(prompt).toContain('older than the current metadata.assigned_at')
+    expect(prompt).toContain("return exactly `{status: 'timeout'}`")
+    expect(prompt).toContain("return `{status: 'blocked', reason: completion.reason}`")
+  })
+
+  it('resolves team records from the same roots as mesh', async () => {
+    // Regression: 6e377dad treated CLAUDE_CONFIG_DIR as a team root even
+    // though it selects a Claude account and neither mesh nor taurhaus uses it.
+    const staged = await runSharedStage(managedStageTask())
+    const prompt = staged.calls[0].prompt
+
+    expect(prompt).toContain('Resolve the team root from `TAURHAUS_CLAUDE_DIR`, then `CLAUDE_DIR`')
+    expect(prompt).not.toContain('CLAUDE_CONFIG_DIR')
+  })
+
+  it('activates the task deadline as part of assignment', async () => {
+    // Regression: 6e377dad left staged assignments pending, so a member that
+    // never picked one up could never be nudged or staled by the deadline pass.
+    const staged = await runSharedStage(managedStageTask())
+
+    expect(staged.calls[0].prompt).toContain("--status 'in_progress'")
+  })
+
+  it('bounds polling even when the app-side stale transition never arrives', async () => {
+    // Regression: 6e377dad forbade a courier fallback while making `stale`
+    // depend on the desktop app, allowing a managed stage to poll forever.
+    // Regression: 9c8eb0f9 bounded the poll count but did not tell the courier
+    // to split a long deadline across the Workflow Bash-call time limit.
+    const staged = await runSharedStage(managedStageTask({ deadline: 20 }))
+    const prompt = staged.calls[0].prompt
+
+    expect(prompt).toContain('no more than 360 polls')
+    expect(prompt).toContain('repeated Bash calls of at most 9 minutes each')
+    expect(prompt).toContain('roughly 100 polls per call')
+    expect(prompt).toContain('count is cumulative across calls')
+    expect(prompt).toContain('time limit is not a lane failure')
+    expect(prompt).toContain('one final `mesh task get')
+    expect(prompt).toContain("return exactly `{status: 'timeout'}`")
+  })
+
+  it('accepts both mesh result shapes before validating the stage schema', async () => {
+    // Regression: 9c8eb0f9 assumed completion.result was always a fenced
+    // string even though mesh parses unfenced JSON into an object.
+    const staged = await runSharedStage(managedStageTask())
+    const prompt = staged.calls[0].prompt
+
+    expect(prompt).toContain('either the parsed JSON object or a string containing a fenced `json` block')
+    expect(prompt).toContain('take the object as-is, or extract and parse the fence')
+    expect(prompt).not.toContain('Inline JSON is not a mesh completion block')
+  })
+
+  it('closes a successful mesh task after publishing its result', async () => {
+    const staged = await runSharedStage(managedStageTask())
+    const prompt = staged.calls[0].prompt
+
+    expect(prompt).toContain('then run `mesh task complete <created-task-id>')
+  })
+
+  it('maps workflow max effort to the highest mesh effort', async () => {
+    const staged = await runSharedStage(managedStageTask({ effort: 'max' }))
+
+    expect(staged.calls[0].prompt).toContain("--effort 'xhigh'")
+  })
+
+  it('declares the phase used by the managed courier', () => {
+    const source = fs.readFileSync(path.join(WORKFLOWS, 'feature-pr.js'), 'utf8')
+    const meta = source.slice(0, source.indexOf('const NAME'))
+
+    expect(meta).toContain("{ title: 'Managed stage'")
+  })
+
+  it('resumes the existing task on its assigned member and ignores an old completion', async () => {
+    const task = {
+      harness: 'codex',
+      model: 'gpt-5.6-sol',
+      effort: 'medium',
+      why: 'continue the bounded implementation',
+      deadline: 20,
+      worktree: '/home/dev/checkout',
+      firstStep: 'Inspect the current diff.',
+      deliverable: 'Finish the same implementation.',
+      schema: { type: 'object', additionalProperties: false, required: ['status'], properties: { status: { type: 'string' } } },
+      title: 'Resume implementation',
+    }
+
+    const staged = await runSharedStage(task, { resume: '42' }, { status: 'timeout' })
+
+    expect(staged.result).toEqual({ status: 'timeout' })
+    const prompt = staged.calls[0].prompt
+    expect(prompt).toContain("mesh task get '42' --json")
+    expect(prompt).toContain('reuse its existing owner')
+    expect(prompt).toContain('same managed session')
+    expect(prompt).not.toContain('mesh task create --subject')
+    expect(prompt).toContain('Reassign task 42')
   })
 
   it('accepts array gates and hands every exact command to the gate agent', async () => {
@@ -286,6 +484,51 @@ describe('workflow procedures — the authority question', () => {
 
 describe('workflow procedures — the Codex lane', () => {
   const spacey = { ...BASE_ARGS, worktree: "/home/dev/Jane's checkout", scratch: '/tmp/scratch dir', implementer: 'codex', effort: 'high', codexModel: 'gpt-5.6-terra' }
+
+  it('uses a managed stage for the feature implementer when args.team names a team', async () => {
+    const { calls } = await run('feature-pr.js', { ...spacey, team: 'feature-team', title: 'Managed implementation' })
+    const implementation = calls[0]
+
+    expect(implementation.label).toBe('stage:codex:managed-implementation')
+    expect(implementation.prompt).not.toContain('codex exec')
+    expect(implementation.prompt).toContain("--team 'feature-team'")
+    expect(implementation.prompt).toContain("--effort 'high'")
+    expect(implementation.prompt).toContain("--deadline '60'")
+    expect(implementation.prompt).toContain('You are the implementer for Managed implementation')
+    expect(implementation.prompt).toContain('gpt-5.6-terra')
+
+    // Regression: 388a4de0 paired a closed ten-key result schema with a
+    // managed-member deliverable that named only seven, so a compliant member
+    // response was rejected by its courier after the work was committed.
+    const implementationSchema = implementation.opts.schema.anyOf.find((schema) => schema.properties?.model_used)
+    const completionSignal = implementation.prompt.indexOf(' --completion-signal')
+    const resultStart = implementation.prompt.indexOf(
+      'When completely done, return a JSON object',
+      implementation.prompt.lastIndexOf('--deliverable ', completionSignal)
+    )
+    expect(resultStart).toBeGreaterThan(-1)
+    const resultSentence = implementation.prompt.slice(resultStart, completionSignal)
+    for (const key of implementationSchema.required) expect(resultSentence, key).toContain(key)
+  })
+
+  it('keeps the exec transport when a team-backed feature explicitly requests it', async () => {
+    const { calls } = await run('feature-pr.js', { ...spacey, team: 'feature-team', transport: 'exec' })
+    expect(calls[0].label).toMatch(/^impl:.*:codex$/)
+    expect(calls[0].prompt).toContain('codex exec')
+    expect(calls[0].prompt).not.toContain('mesh task create')
+  })
+
+  it('reports the managed stage timeout instead of calling it an unavailable lane', async () => {
+    await expect(
+      run('feature-pr.js', { ...spacey, team: 'feature-team' }, { work: { status: 'timeout' } })
+    ).rejects.toThrow(/implementer timed out/i)
+  })
+
+  it('reports the managed member blocker reason', async () => {
+    await expect(
+      run('feature-pr.js', { ...spacey, team: 'feature-team' }, { work: { status: 'blocked', reason: 'dependency missing' } })
+    ).rejects.toThrow(/implementer is blocked: dependency missing/i)
+  })
 
   it('passes the requested model and reasoning effort to codex exec', async () => {
     const { calls } = await run('feature-pr.js', spacey)

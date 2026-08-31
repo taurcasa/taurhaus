@@ -65,6 +65,11 @@ pub(crate) const MIGRATIONS: &[(i64, &str, &str)] = &[
         "task_assignment_effort",
         include_str!("migrations/014_task_assignment_effort.sql"),
     ),
+    (
+        15,
+        "task_assignment_deadline",
+        include_str!("migrations/015_task_assignment_deadline.sql"),
+    ),
 ];
 
 /// Ensure the `_migrations` tracking table exists, then apply any migrations

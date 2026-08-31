@@ -511,6 +511,7 @@ fn parse_plan_from_line(line: &str, source_key: &str) -> Result<Vec<UnifiedTask>
                 archived_reason: None,
                 effort: None,
                 effort_why: None,
+                deadline_minutes: None,
             })
         })
         .collect();

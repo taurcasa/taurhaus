@@ -324,6 +324,7 @@ pub(crate) fn persisted_to_unified(
         archived_reason: t.archived_reason,
         effort: t.effort,
         effort_why: t.effort_why,
+        deadline_minutes: t.deadline_minutes,
     }
 }
 
@@ -680,6 +681,7 @@ mod tests {
             archived_reason: Some("completed_and_removed".to_string()),
             effort: None,
             effort_why: None,
+            deadline_minutes: None,
         }
     }
 
@@ -855,6 +857,7 @@ mod tests {
             archived_reason: None,
             effort: None,
             effort_why: None,
+            deadline_minutes: None,
         };
 
         let conn = db.0.lock().expect("db lock");

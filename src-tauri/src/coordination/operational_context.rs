@@ -239,6 +239,7 @@ fn latest_owned_task_from_tasks(
             id: task.source_task_id.clone(),
             subject: task.subject.clone(),
             status: task.status.clone(),
+            deadline_minutes: task.deadline_minutes,
             ..Default::default()
         })
         .unwrap_or_default();
@@ -310,9 +311,12 @@ fn preserve_task_deadline_markers(
     mut task: OperationalTaskSnapshot,
     task_state_changed_at: Option<DateTime<Utc>>,
 ) -> OperationalTaskSnapshot {
+    let observed_at = task_state_changed_at.unwrap_or_else(Utc::now);
     if !task.id.is_empty() {
         if let Some(existing) = existing.filter(|existing| existing.id == task.id) {
-            task.deadline_minutes = existing.deadline_minutes;
+            if task.deadline_minutes.is_none() {
+                task.deadline_minutes = existing.deadline_minutes;
+            }
             let reopened_after_stale = existing.status.trim() == "stale"
                 && is_resumable_task_status(&task.status)
                 && existing
@@ -320,9 +324,17 @@ fn preserve_task_deadline_markers(
                     .zip(task_state_changed_at)
                     .is_some_and(|(stale_at, state_changed_at)| state_changed_at > stale_at);
             if reopened_after_stale {
+                task.assigned_at = deadline_assignment_started(&task, None).then_some(observed_at);
                 task.nudged_at = None;
                 task.stale_at = None;
                 return task;
+            }
+            if task.assigned_at.is_none() {
+                task.assigned_at = if deadline_assignment_started(&task, Some(existing)) {
+                    Some(observed_at)
+                } else {
+                    existing.assigned_at
+                };
             }
             task.nudged_at = existing.nudged_at;
             task.stale_at = existing.stale_at;
@@ -330,9 +342,24 @@ fn preserve_task_deadline_markers(
                 task.status = existing.status.clone();
             }
         }
+        if task.assigned_at.is_none() && deadline_assignment_started(&task, None) {
+            task.assigned_at = Some(observed_at);
+        }
     }
 
     task
+}
+
+fn deadline_assignment_started(
+    task: &OperationalTaskSnapshot,
+    existing: Option<&OperationalTaskSnapshot>,
+) -> bool {
+    task.deadline_minutes.is_some()
+        && existing.is_none_or(|existing| {
+            existing.deadline_minutes.is_none()
+                || (!is_deadline_eligible_task_status(&existing.status)
+                    && is_deadline_eligible_task_status(&task.status))
+        })
 }
 
 fn save_snapshot_if_changed(
@@ -469,6 +496,7 @@ mod tests {
                 archived_reason: None,
                 effort: None,
                 effort_why: None,
+                deadline_minutes: None,
             },
         )
         .expect("upsert task");
@@ -487,6 +515,8 @@ mod tests {
         assert_eq!(snapshot.task.id, "42");
         assert_eq!(snapshot.task.subject, "Fix regression");
         assert_eq!(snapshot.task.status, "in_progress");
+        assert_eq!(snapshot.task.deadline_minutes, None);
+        assert_eq!(snapshot.task.assigned_at, None);
         assert_eq!(snapshot.working_set.project_path, "proj-web");
     }
 
@@ -538,6 +568,7 @@ mod tests {
             archived_reason: None,
             effort: effort.map(|(level, _)| level.to_string()),
             effort_why: effort.map(|(_, why)| why.to_string()),
+            deadline_minutes: None,
         }
     }
 
@@ -677,6 +708,7 @@ mod tests {
                 archived_reason: None,
                 effort: None,
                 effort_why: None,
+                deadline_minutes: None,
             },
         )
         .expect("upsert task");
@@ -727,6 +759,7 @@ mod tests {
                 archived_reason: None,
                 effort: None,
                 effort_why: None,
+                deadline_minutes: None,
             },
         )
         .expect("upsert task");
@@ -794,6 +827,9 @@ mod tests {
         let stale_at = chrono::DateTime::parse_from_rfc3339("2026-03-08T12:20:00Z")
             .expect("stale timestamp")
             .with_timezone(&Utc);
+        let assigned_at = chrono::DateTime::parse_from_rfc3339("2026-03-08T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
@@ -806,6 +842,7 @@ mod tests {
                     subject: "Fix regression".to_string(),
                     status: "in_progress".to_string(),
                     deadline_minutes: Some(20),
+                    assigned_at: Some(assigned_at),
                     nudged_at: Some(nudged_at),
                     stale_at: Some(stale_at),
                 },
@@ -829,6 +866,7 @@ mod tests {
         .expect("load snapshot")
         .expect("snapshot exists");
         assert_eq!(same_task.task.deadline_minutes, Some(20));
+        assert_eq!(same_task.task.assigned_at, Some(assigned_at));
         assert_eq!(same_task.task.nudged_at, Some(nudged_at));
         assert_eq!(same_task.task.stale_at, Some(stale_at));
 
@@ -854,8 +892,34 @@ mod tests {
         .expect("replacement snapshot exists");
         assert_eq!(replacement.task.id, "43");
         assert_eq!(replacement.task.deadline_minutes, None);
+        assert_eq!(replacement.task.assigned_at, None);
         assert_eq!(replacement.task.nudged_at, None);
         assert_eq!(replacement.task.stale_at, None);
+    }
+
+    #[test]
+    fn a_deadline_assignment_is_stamped_when_in_progress_first_appears() {
+        let mut pending = owned_task("42", "Fix regression", "pending", None);
+        pending.deadline_minutes = Some(20);
+        let (pending_task, _, _) = latest_owned_task_from_tasks(&[pending], "frontend-dev");
+        let pending_task = preserve_task_deadline_markers(None, pending_task, None);
+        let first_seen_at = pending_task.assigned_at.expect("first task observation");
+
+        let mut in_progress = owned_task("42", "Fix regression", "in_progress", None);
+        in_progress.deadline_minutes = Some(20);
+        in_progress.state_changed_at = Some("2026-03-08T12:30:00Z".to_string());
+        let (in_progress_task, _, _) = latest_owned_task_from_tasks(&[in_progress], "frontend-dev");
+        let in_progress_at = DateTime::parse_from_rfc3339("2026-03-08T12:30:00Z")
+            .expect("in-progress timestamp")
+            .with_timezone(&Utc);
+        let stamped = preserve_task_deadline_markers(
+            Some(&pending_task),
+            in_progress_task,
+            Some(in_progress_at),
+        );
+
+        assert_eq!(stamped.assigned_at, Some(in_progress_at));
+        assert_ne!(stamped.assigned_at, Some(first_seen_at));
     }
 
     // Regression: 04bda5ec made a stale snapshot sticky by task id alone, so
@@ -890,6 +954,7 @@ mod tests {
                     subject: "Fix regression".to_string(),
                     status: "stale".to_string(),
                     deadline_minutes: Some(20),
+                    assigned_at: Some(stale_at - chrono::Duration::minutes(20)),
                     nudged_at: Some(nudged_at),
                     stale_at: Some(stale_at),
                 },
@@ -947,6 +1012,7 @@ mod tests {
                     subject: "Fix regression".to_string(),
                     status: "stale".to_string(),
                     deadline_minutes: Some(20),
+                    assigned_at: Some(stale_at - chrono::Duration::minutes(20)),
                     nudged_at: None,
                     stale_at: Some(stale_at),
                 },
@@ -1002,6 +1068,7 @@ mod tests {
                     subject: "Fix regression".to_string(),
                     status: "stale".to_string(),
                     deadline_minutes: Some(20),
+                    assigned_at: Some(stale_at - chrono::Duration::minutes(20)),
                     nudged_at: None,
                     stale_at: Some(stale_at),
                 },
@@ -1181,6 +1248,7 @@ mod tests {
                     subject: "Fix regression".to_string(),
                     status: "in_progress".to_string(),
                     deadline_minutes: Some(20),
+                    assigned_at: Some(nudged_at - chrono::Duration::minutes(10)),
                     nudged_at: Some(nudged_at),
                     stale_at: None,
                 },

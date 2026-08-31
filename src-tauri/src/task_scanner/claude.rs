@@ -125,6 +125,15 @@ fn metadata_string(metadata: Option<&serde_json::Value>, keys: &[&str]) -> Optio
     })
 }
 
+fn metadata_u32(metadata: Option<&serde_json::Value>, key: &str) -> Option<u32> {
+    let value = metadata?.get(key)?;
+    value
+        .as_u64()
+        .and_then(|value| u32::try_from(value).ok())
+        .or_else(|| value.as_str()?.trim().parse::<u32>().ok())
+        .filter(|value| *value > 0)
+}
+
 /// Get tasks for a project from Claude Code's task storage.
 pub fn get_tasks(project_path: &str, sessions: &[&RuntimeSession]) -> ScanOutcome {
     let tasks_base = PlatformPaths::claude_dir().join("tasks");
@@ -407,6 +416,7 @@ fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<Uni
     let effort =
         metadata_string(raw.metadata.as_ref(), &["effort"]).map(|level| level.to_ascii_lowercase());
     let effort_why = metadata_string(raw.metadata.as_ref(), &["effort_why", "effortWhy"]);
+    let deadline_minutes = metadata_u32(raw.metadata.as_ref(), "deadline_minutes");
     Ok(Some(UnifiedTask {
         id: raw.id,
         source_key: task_source_key.clone(),
@@ -426,6 +436,7 @@ fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<Uni
         archived_reason: None,
         effort,
         effort_why,
+        deadline_minutes,
     }))
 }
 
@@ -453,6 +464,8 @@ mod tests {
 
     #[test]
     fn a_task_carries_the_effort_the_lead_assigned_it() {
+        // Regression: 7fb03376 modeled deadline_minutes as a JSON number even
+        // though mesh 0.2.24 writes assignment metadata values as strings.
         // `mesh task assign` requires an effort and a reason and writes both
         // into the task record's metadata, so the board can show what the lead
         // asked for without reading the assignment notice.
@@ -471,6 +484,7 @@ mod tests {
                 "metadata": {
                     "effort": "high",
                     "effort_why": "the migration is irreversible",
+                    "deadline_minutes": "20",
                     "first_step": "read the migration"
                 }
             }"#,
@@ -481,6 +495,18 @@ mod tests {
         assert_eq!(
             tasks[0].effort_why.as_deref(),
             Some("the migration is irreversible")
+        );
+        assert_eq!(tasks[0].deadline_minutes, Some(20));
+    }
+
+    #[test]
+    fn a_numeric_deadline_remains_tolerated() {
+        assert_eq!(
+            metadata_u32(
+                Some(&serde_json::json!({ "deadline_minutes": 20 })),
+                "deadline_minutes"
+            ),
+            Some(20)
         );
     }
 
@@ -499,6 +525,7 @@ mod tests {
         let tasks = parse_task_directory_for_test(&task_dir);
         assert_eq!(tasks[0].effort, None);
         assert_eq!(tasks[0].effort_why, None);
+        assert_eq!(tasks[0].deadline_minutes, None);
     }
 
     #[test]

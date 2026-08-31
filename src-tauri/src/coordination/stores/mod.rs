@@ -5,6 +5,7 @@ pub mod compaction;
 pub mod config;
 pub mod inbox;
 pub mod lock;
+pub mod mesh_task;
 pub mod operational;
 pub mod runtime;
 
