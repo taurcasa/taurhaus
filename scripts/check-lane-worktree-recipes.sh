@@ -113,9 +113,54 @@ grep -Fq "resolve(cargoTargetDir, 'debug', 'taurhaus-daemon')" "$repo_root/e2e/w
 grep -Fq 'target_directory' "$repo_root/e2e/wdio.conf.js" || \
     record_regression_failure "E2E configuration does not resolve Cargo metadata target_directory"
 
-# // Regression: cf6f7d55 allowed the lane-only Cargo redirect into platform build syncs.
-if [ "$(grep -Fc -- "--exclude='.cargo'" "$repo_root/justfile")" -lt 2 ]; then
-    record_regression_failure "platform sync recipes do not both exclude the lane-only .cargo directory"
+# // Regression: cf6f7d55 excluded the lane-only Cargo redirect with an unanchored rsync
+# // pattern, which matches a .cargo basename at any depth and therefore dropped the
+# // tracked src-tauri/.cargo/audit.toml from both --delete platform syncs.
+recipe_excludes() {
+    awk -v recipe="$1" '
+        $0 ~ "^" recipe ":" { inside = 1; next }
+        inside && /^[^ \t]/ { inside = 0 }
+        inside && /--exclude=/ { print }
+    ' "$repo_root/justfile" | sed -n "s/.*--exclude='\([^']*\)'.*/\1/p"
+}
+
+assert_sync_excludes() {
+    local recipe="$1"
+    local fixture="$tmp_dir/sync-$recipe"
+    local args=()
+    local pattern
+    while IFS= read -r pattern; do
+        args+=("--exclude=$pattern")
+    done < <(recipe_excludes "$recipe")
+    if [ "${#args[@]}" -eq 0 ]; then
+        record_regression_failure "$recipe declares no rsync excludes"
+        return
+    fi
+    rm -rf "$fixture"
+    mkdir -p "$fixture/src/.cargo" "$fixture/src/src-tauri/.cargo" "$fixture/src/node_modules" "$fixture/dst"
+    printf '%s\n' 'lane-only redirect' > "$fixture/src/.cargo/config.toml"
+    printf '%s\n' 'tracked audit config' > "$fixture/src/src-tauri/.cargo/audit.toml"
+    printf '%s\n' 'junk' > "$fixture/src/node_modules/marker"
+    rsync -a --delete "${args[@]}" "$fixture/src/" "$fixture/dst/"
+    if [ ! -f "$fixture/dst/src-tauri/.cargo/audit.toml" ]; then
+        record_regression_failure "$recipe drops the tracked src-tauri/.cargo/audit.toml from the build sync"
+    fi
+    if [ -e "$fixture/dst/.cargo/config.toml" ]; then
+        record_regression_failure "$recipe syncs the lane-only .cargo/config.toml into the platform build"
+    fi
+    if [ -e "$fixture/dst/node_modules" ]; then
+        record_regression_failure "$recipe no longer excludes node_modules"
+    fi
+}
+
+if command -v rsync >/dev/null 2>&1; then
+    assert_sync_excludes sync-windows
+    assert_sync_excludes sync-macos
+else
+    for sync_recipe in sync-windows sync-macos; do
+        recipe_excludes "$sync_recipe" | grep -Fxq '/.cargo/' || record_regression_failure \
+            "$sync_recipe does not anchor its lane-only .cargo exclude (rsync missing, behavioural check skipped)"
+    done
 fi
 
 run_just provision-worktree "$lane_path" lane-provision-smoke HEAD

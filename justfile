@@ -770,7 +770,7 @@ sync-windows:
     rsync -a --delete \
         --exclude='node_modules' \
         --exclude='target' \
-        --exclude='.cargo' \
+        --exclude='/.cargo/' \
         --exclude='dist' \
         --exclude='.git' \
         {{project}}/ {{win_dir}}/
@@ -833,7 +833,7 @@ sync-macos:
     rsync -az --delete \
         --exclude='node_modules' \
         --exclude='target' \
-        --exclude='.cargo' \
+        --exclude='/.cargo/' \
         --exclude='dist' \
         --exclude='.git' \
         {{project}}/ {{mac_host}}:{{mac_dir}}/
