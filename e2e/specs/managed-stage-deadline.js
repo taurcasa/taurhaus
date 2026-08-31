@@ -827,7 +827,6 @@ describe('managed stage deadline semantics', function () {
   async function runActivitySuppressionCase() {
     if (!laneEnabled) return this.skip()
     this.timeout(480_000)
-    this.retries(1)
 
     await settlePreviousCaseBeforeAssignment()
     const logOffset = currentLogOffset()
@@ -1028,14 +1027,9 @@ describe('managed stage deadline semantics', function () {
         ...(measured.deadlineCadenceSkips ?? []),
         cadenceObservation,
       ]
-      if (this.test.currentRetry() === 0) {
-        this.retries(1)
-        throw new Error(
-          `task #${assigned.taskId} reached stale in a skipped nudge window; retrying the measured stall once`
-        )
-      }
       throw new Error(
-        `the one-minute nudge window was skipped on both measured stall attempts; lane is inconclusive`
+        `task #${assigned.taskId} reached stale in a skipped nudge window; ` +
+          'the lane is inconclusive and must be re-run manually'
       )
     }
     const nudgeEvent = nudgeOutcome.event
@@ -1160,6 +1154,8 @@ describe('managed stage deadline semantics', function () {
     })
   }
 
+  // Programmatic per-case retries did not arm under this lane's WDIO
+  // mochaOpts in measured attempt 1. Failed paid attempts are re-run manually.
   it('nudges once, stales once, returns timeout, and preserves the managed session', runDeadlineStallCase)
   it('suppresses the half-time nudge while the member is actively working, then completes normally', runActivitySuppressionCase)
 

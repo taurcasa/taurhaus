@@ -91,6 +91,14 @@ describe('default WDIO spec list', () => {
     expect(managedDeadlineSource).toContain('runtime: readRuntimeRecord()')
   })
 
+  // Regression: 13f61dbe added per-case retries, but attempt 1 proved they do
+  // not arm under this WDIO lane's mochaOpts.
+  it('states the paid retry policy without claiming an unarmed automatic retry', () => {
+    expect(managedDeadlineSource).not.toMatch(/\bthis\.retries\(/)
+    expect(managedDeadlineSource).not.toContain('currentRetry()')
+    expect(managedDeadlineSource).toMatch(/failed paid attempts are re-run manually/i)
+  })
+
   // Regression: commit 111c776c appended every ungrouped spec to a catch-all,
   // so a new stateful or paid lane could silently enter the default suite.
   it('rejects an ungrouped spec with instructions for sealing the manifest', () => {
