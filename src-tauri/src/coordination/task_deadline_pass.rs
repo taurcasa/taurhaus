@@ -71,6 +71,9 @@ fn apply_member_deadline(
     let Some(deadline_minutes) = snapshot.task.deadline_minutes else {
         return Ok(());
     };
+    let Some(assigned_at) = snapshot.task.assigned_at else {
+        return Ok(());
+    };
 
     // W4 deadlines apply only after work has started. The stricter
     // in-progress gate is this pass's scope; every other status is inert.
@@ -81,10 +84,7 @@ fn apply_member_deadline(
     }
     let action = decide(
         &DeadlineInput {
-            // Until mesh supplies an assignment timestamp, the latest saved
-            // operational snapshot write is the deadline clock origin. Any
-            // snapshot content refresh therefore restarts this clock.
-            assigned_at: snapshot.updated_at,
+            assigned_at,
             deadline_minutes,
             nudged_at: snapshot.task.nudged_at,
             stale_at: snapshot.task.stale_at,
@@ -496,6 +496,7 @@ mod tests {
                 subject: "Fix regression".to_string(),
                 status: "in_progress ".to_string(),
                 deadline_minutes: Some(20),
+                assigned_at: Some(now - Duration::minutes(20)),
                 nudged_at: None,
                 stale_at: None,
             },

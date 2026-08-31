@@ -162,6 +162,7 @@ mod tests {
                 archived_reason: None,
                 effort: None,
                 effort_why: None,
+                deadline_minutes: None,
             }],
             errors: vec![],
             source_outcomes: vec![],

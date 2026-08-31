@@ -1569,6 +1569,7 @@ mod tests {
         .expect("operational snapshot");
         snapshot.updated_at = assigned_at;
         snapshot.task.deadline_minutes = deadline_minutes;
+        snapshot.task.assigned_at = deadline_minutes.map(|_| assigned_at);
         crate::coordination::stores::OperationalContextSnapshotStore::save(teams_dir, &snapshot)
             .expect("save deadline snapshot");
 
@@ -1754,6 +1755,111 @@ mod tests {
         let runtime_record = MemberRuntimeStore::load(&teams_dir, "deadline-team", "builder")
             .expect("load surviving runtime");
         assert_eq!(runtime_record.pane_id.as_deref(), Some("%41"));
+    }
+
+    #[test]
+    fn imported_mesh_deadline_drives_nudge_then_stale_from_assigned_at() {
+        let (tmp, teams_dir, runtime, fake, state) = deadline_fixture();
+        let tasks_base = tmp.path().join("tasks");
+        let task_dir = tasks_base.join("deadline-team");
+        std::fs::create_dir_all(&task_dir).expect("create mesh task dir");
+        std::fs::write(
+            task_dir.join("42.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "id": "42",
+                "subject": "Run the migration",
+                "status": "in_progress",
+                "owner": "builder",
+                "metadata": {
+                    "deadline_minutes": 20,
+                    "effort": "high",
+                    "effort_why": "the migration is irreversible"
+                }
+            }))
+            .expect("serialize mesh task"),
+        )
+        .expect("write mesh task");
+        let scan = taurhaus_lib::task_scanner::claude::get_tasks_in(
+            "/tmp/app",
+            &[],
+            &tasks_base,
+            &tmp.path().join("projects"),
+            &teams_dir,
+        );
+        let tasks = match &scan {
+            taurhaus_lib::task_scanner::ScanOutcome::Data(tasks) => tasks,
+            other => panic!("metadata fixture should scan: {other:?}"),
+        };
+        let scanned = &tasks[0];
+        let database = tempfile::NamedTempFile::new().expect("task database");
+        let connection =
+            taurhaus_lib::db::init_db(database.path()).expect("initialize task database");
+        let observed_at = Utc::now().to_rfc3339();
+        taurhaus_lib::db::task_queries::upsert_task(
+            &connection,
+            &taurhaus_lib::db::task_queries::PersistedTask {
+                project_path: "/tmp/app".to_string(),
+                source: scanned.source.to_string(),
+                source_key: scanned.source_key.clone(),
+                source_task_id: scanned.id.clone(),
+                subject: scanned.subject.clone(),
+                description: scanned.description.clone(),
+                active_form: scanned.active_form.clone(),
+                status: scanned.status.to_string(),
+                blocks: scanned.blocks.clone(),
+                blocked_by: scanned.blocked_by.clone(),
+                owner: scanned.owner.clone(),
+                session_id: scanned.session_id.clone(),
+                first_seen_at: observed_at.clone(),
+                state_changed_at: Some(observed_at.clone()),
+                updated_at: observed_at,
+                archived_at: None,
+                last_status: Some(scanned.status.to_string()),
+                archived_reason: None,
+                effort: scanned.effort.clone(),
+                effort_why: scanned.effort_why.clone(),
+                deadline_minutes: scanned.deadline_minutes,
+            },
+        )
+        .expect("persist scanned task");
+        crate::coordination::operational_context::sync_member_snapshot(
+            &teams_dir,
+            &connection,
+            "deadline-team",
+            "builder",
+        )
+        .expect("import operational snapshot");
+
+        let imported = deadline_snapshot(&teams_dir);
+        assert_eq!(imported.task.deadline_minutes, Some(20));
+        let assigned_at = imported.task.assigned_at.expect("assignment timestamp");
+
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                assigned_at + chrono::Duration::minutes(10),
+            )
+            .expect("half-deadline pass succeeds");
+        assert_eq!(deadline_notices(&fake).len(), 1);
+        assert_eq!(
+            deadline_snapshot(&teams_dir).task.nudged_at,
+            Some(assigned_at + chrono::Duration::minutes(10))
+        );
+
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                assigned_at + chrono::Duration::minutes(20),
+            )
+            .expect("deadline pass succeeds");
+        assert_eq!(mesh_task_status(&teams_dir), "stale");
+        assert_eq!(
+            deadline_snapshot(&teams_dir).task.stale_at,
+            Some(assigned_at + chrono::Duration::minutes(20))
+        );
+        assert_no_deadline_termination(&runtime);
     }
 
     #[test]

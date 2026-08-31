@@ -3577,6 +3577,7 @@ fn seed_assignment_effort(teams_dir: &std::path::Path, member_name: &str, level:
             archived_reason: None,
             effort: Some(level.to_string()),
             effort_why: Some(why.to_string()),
+            deadline_minutes: None,
         },
     )
     .expect("upsert assigned task");

@@ -130,6 +130,7 @@ fn persist_task_scan_with_generation_and_operational_dir(
                         archived_reason: None,
                         effort: t.effort.clone(),
                         effort_why: t.effort_why.clone(),
+                        deadline_minutes: t.deadline_minutes,
                     });
             }
         }
@@ -517,6 +518,7 @@ mod tests {
                 archived_reason: None,
                 effort: None,
                 effort_why: None,
+                deadline_minutes: None,
             }],
             errors: vec![],
             source_outcomes: vec![crate::task_scanner::SourceScanOutcome {
@@ -541,6 +543,7 @@ mod tests {
                         archived_reason: None,
                         effort: None,
                         effort_why: None,
+                        deadline_minutes: None,
                     },
                 ]),
             }],
@@ -660,6 +663,7 @@ mod tests {
                 archived_reason: None,
                 effort: None,
                 effort_why: None,
+                deadline_minutes: None,
             }],
             errors: vec![],
             source_outcomes: vec![crate::task_scanner::SourceScanOutcome {
@@ -684,6 +688,7 @@ mod tests {
                         archived_reason: None,
                         effort: None,
                         effort_why: None,
+                        deadline_minutes: None,
                     },
                 ]),
             }],

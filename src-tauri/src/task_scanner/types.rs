@@ -81,6 +81,9 @@ pub struct ScannedTask {
     /// Why the lead chose that level.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort_why: Option<String>,
+    /// Assignment deadline in minutes, read from mesh task metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline_minutes: Option<u32>,
 }
 
 /// Backward-compatible alias used by existing command/frontend code.
