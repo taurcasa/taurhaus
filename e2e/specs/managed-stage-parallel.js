@@ -38,7 +38,7 @@ import { ensureMainApp, waitForAppReady } from '../helpers.js'
 import { trustProject } from '../helpers/codexScratchHome.js'
 import { createLaneCleanup } from '../helpers/laneCleanup.js'
 import { assertTmuxIsolation, isolatedTmuxTmpdir, parseProcEnviron, tmuxIsolationProblem } from '../helpers/laneTmux.js'
-import { launchManagedMembersSerially } from '../helpers/managedStageParallel.js'
+import { codexStateDatabaseDiagnostic, launchManagedMembersSerially } from '../helpers/managedStageParallel.js'
 import {
   attentionRecord,
   assignTaskAsync,
@@ -703,6 +703,8 @@ describe('parallel managed Codex stages', function () {
     }
 
     for (const stage of stages) trustProject(join(codexHome, 'config.toml'), stage.worktree)
+    const stateDatabase = codexStateDatabaseDiagnostic(codexHome)
+    console.log(`[e2e] Codex state DB before managed member launches: ${stateDatabase.path} exists=${stateDatabase.exists}`)
     measured.model = await initializeParallelTeam()
     measured.sessions = Object.fromEntries(
       stages.map((stage) => [stage.owner, readRuntimeRecord(stage.owner)?.session_id ?? null])
