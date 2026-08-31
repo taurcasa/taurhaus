@@ -131,7 +131,7 @@ describe('runFixtureTestsAtCommit', () => {
     execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'feat: greet'], { encoding: 'utf8' })
     const head = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
 
-    const result = runFixtureTestsAtCommit(repo, head)
+    const result = runFixtureTestsAtCommit(repo, head, { root })
     expect(result.passed).toBe(true)
     expect(result.command).toBe('bun test')
   })
@@ -146,13 +146,13 @@ describe('runFixtureTestsAtCommit', () => {
     writeFileSync(join(repo, 'src/lib/greet.test.js'), GREET_TEST)
 
     expect(runFixtureTests(repo).passed).toBe(true)
-    expect(runFixtureTestsAtCommit(repo, created.headCommit).passed).toBe(false)
+    expect(runFixtureTestsAtCommit(repo, created.headCommit, { root }).passed).toBe(false)
   })
 
   it('leaves no worktree behind', () => {
     const repo = join(root, 'stage-k')
     const created = createStageFixtureProject(repo)
-    runFixtureTestsAtCommit(repo, created.headCommit)
+    runFixtureTestsAtCommit(repo, created.headCommit, { root })
     const listed = execFileSync('git', ['-C', repo, 'worktree', 'list'], { encoding: 'utf8' }).trim().split('\n')
     expect(listed).toHaveLength(1)
   })

@@ -216,7 +216,12 @@ export function worktreeTreeDiff(worktreePath, baseline) {
  * keeping it inside the worker session root. It is removed on every path out;
  * a `bun test` in it sees exactly the tree the commit records.
  */
-export function runFixtureTestsAtCommit(repoPath, revision, { root = dirname(repoPath) } = {}) {
+export function runFixtureTestsAtCommit(repoPath, revision, { root } = {}) {
+  if (!root || !String(root).trim()) {
+    // Never default near the scanned projects dir: a transient checkout there
+    // would be picked up as a project. The caller owns the session temp root.
+    throw new Error('runFixtureTestsAtCommit requires an explicit root for its validation checkout')
+  }
   mkdirSync(root, { recursive: true })
   const checkout = mkdtempSync(join(root, 'stage-commit-'))
   try {

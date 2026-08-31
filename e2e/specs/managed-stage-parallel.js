@@ -76,6 +76,9 @@ const DEADLINE_MINUTES = 10
 const TEAM_READY_TIMEOUT_MS = 240_000
 const SESSION_BIND_TIMEOUT_MS = 180_000
 const RESULT_TIMEOUT_MS = 1_200_000
+// Delivery closes within mesh's effort-wait bound; a lost projection should
+// be reported minutes after the stages start, not at the 20-minute RESULT cap.
+const DELIVERY_TIMEOUT_MS = 180_000
 
 const dataDir = process.env.TAURHAUS_DATA_DIR || ''
 const codexHome = process.env.CODEX_HOME || ''
@@ -503,7 +506,7 @@ async function createAndAssignStage(stage) {
   assignedStage.deliveryPromise = captureStageDelivery({
     taskId,
     owner: stage.owner,
-    timeout: RESULT_TIMEOUT_MS,
+    timeout: DELIVERY_TIMEOUT_MS,
     waitUntil: (predicate, options) => browser.waitUntil(predicate, options),
     refreshTask: () => taskRecord({ claudeDir, team: TEAM_NAME, actor: LEAD_NAME, taskId }),
     readAttention: () => attentionRecord({ claudeDir, team: TEAM_NAME, taskId }),

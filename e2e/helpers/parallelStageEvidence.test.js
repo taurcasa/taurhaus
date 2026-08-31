@@ -55,10 +55,10 @@ describe('captureStageDelivery', () => {
     )
     const start = source.indexOf('async function createAndAssignStage')
     const end = source.indexOf('async function waitForStageCompletion')
-    const createAndAssign = source.slice(start, end)
-
     expect(start).toBeGreaterThanOrEqual(0)
     expect(end).toBeGreaterThan(start)
+    const createAndAssign = source.slice(start, end)
+
     expect(createAndAssign).not.toContain("status: 'in_progress'")
     expect(createAndAssign).toContain('captureStageDelivery({')
   })
