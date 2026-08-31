@@ -121,12 +121,12 @@ Right-clicking a project in the sidebar opens a per-project context menu.
 Core actions:
 - `Copy Path`
 - Launch tool sessions by mode:
-  - Continue (`Continue Claude` and `Continue Grok` — the two entries the menu hard-codes, `Sidebar.svelte:536-537`. Antigravity's continue command also differs from its fresh one (`agy … --continue`, `cli_tool.rs:367-370`) but is deliberately not exposed here yet)
+  - Continue (`Continue Claude` and `Continue Grok` — the two entries the menu hard-codes, `Sidebar.svelte:549-550`. Antigravity's continue command also differs from its fresh one (`agy … --continue`, `cli_tool.rs:431-432`) but is deliberately not exposed here yet)
   - Fresh (`New ... Session`)
   - Resume (`Resume ...`)
 - `Open in Terminal` (when live session metadata is available)
 - Per-running-session actions: `Restart <Tool>`, `Stop <Tool>` (confirm step)
-- An `Account` submenu on a launch item of a tool with an account selector (Claude, Codex, Grok) **and at least two signed-in accounts** — `accountSubmenuApplies` (`src/lib/accountMenu.js:59-63`) requires both, so a host with one account keeps the plain launch item — plus a `<Tool> account` submenu that pins or clears the project's choice
+- An `Account` submenu on a launch item of a tool with an account selector (Claude, Codex, Grok) **and at least two signed-in accounts** — `accountSubmenuApplies` (`src/lib/accountMenu.js:59-64`) requires both, so a host with one account keeps the plain launch item — plus a `<Tool> account` submenu that pins or clears the project's choice
 - `Remove from taurhaus` (confirm step)
 
 Safety/confirmation behavior:

@@ -92,7 +92,7 @@ Members can be "detached" (pane died) but remain on the team. Rebind via process
 
 **Status**: Partial
 
-**Decision**: Claude Code agents use native CLI flags. Every other harness — Codex, Antigravity, Grok — uses the mesh daemon bridge. The split is capability-driven, not a per-tool branch: `should_use_mesh_sidecar_for_cli_tool` is `!capabilities.native_inbox_poller` (`coordination/pipelines/helpers.rs:320-322`).
+**Decision**: Claude Code agents use native CLI flags. Every other harness — Codex, Antigravity, Grok — uses the mesh daemon bridge. The split is capability-driven, not a per-tool branch: `should_use_mesh_sidecar_for_cli_tool` is `!capabilities.native_inbox_poller` (`coordination/pipelines/helpers.rs:363-366`).
 
 | Agent Type | Launch Method | Delivery | Wake | Messaging |
 |---|---|---|---|---|
@@ -107,9 +107,9 @@ Launch flags are rendered by `LaunchSpec::render` in `session_scanner/launch.rs`
 
 **Rationale**: Claude Code is the only registered harness with `native_inbox_poller` (researched 2026-03-01). Codex has a hidden `multi_agent` experimental flag but no public surface. Antigravity and Grok have no local team features either; Grok's ACP/leader surface exists but is deliberately out of scope.
 
-**Which account a team runs on**: team members always launch on the team's config dir, not on a per-project account. For Claude that is `PlatformPaths::claude_dir()` (honouring a `TAURHAUS_CLAUDE_DIR` override via the `CLAUDE_CONFIG_DIR=` prefix), because inboxes live under the single `PlatformPaths::teams_dir()`. Codex is the one harness that declares `managed_home`, so a managed Codex setup pins `CODEX_HOME` through `cli_commands.account_selector_dirs` (`commands/terminal_settings.rs:101-120`). A launch that names an account anyway is not silently obeyed: it is dropped and logged once per project as `launch.account.ignored_for_team` (warn). `MeshTeamBuilder` says so in one line when more than one **Claude** account is registered — the note reads the first tool declaring `team_config_namespace`, and Claude is the only one that does (`cli_tool.rs:248`), so extra Codex or Grok accounts are silent.
+**Which account a team runs on**: team members always launch on the team's config dir, not on a per-project account. For Claude that is `PlatformPaths::claude_dir()` (honouring a `TAURHAUS_CLAUDE_DIR` override via the `CLAUDE_CONFIG_DIR=` prefix), because inboxes live under the single `PlatformPaths::teams_dir()`. Codex is the one harness that declares `managed_home`, so a managed Codex setup pins `CODEX_HOME` through `cli_commands.account_selector_dirs` (`apply_managed_account_selector`, `commands/terminal_settings.rs:101-119`). A launch that names an account anyway is not silently obeyed: it is dropped and logged once per project as `launch.account.ignored_for_team` (warn). `MeshTeamBuilder` says so in one line when more than one **Claude** account is registered — the note reads the first tool declaring `team_config_namespace`, and Claude is the only one that does (`cli_tool.rs:299` — every other entry declares `false`), so extra Codex or Grok accounts are silent.
 
-**Model and effort**: `Member.model` and `Member.reasoning_effort` are persisted separately, surfaced in live status, and passed to `mesh join --model`. The UI model list comes from `ModelCatalog` on `TerminalPlatformContract`.
+**Model and effort**: `Member.model` and `Member.reasoning_effort` are persisted separately and surfaced in live status; the model is passed to `mesh join --model`, while the member's reasoning effort reaches the harness through the launch renderer (`pipelines/helpers.rs`), never the join. The UI model list comes from `ModelCatalog` on `TerminalPlatformContract`. That launch effort is a property of the *member*; the effort a lead attaches to one assignment is a separate level owned by mesh, and the one path mesh cannot take — relaunching a `ResumeWithFlag` harness with the effort flag — lives in `coordination/pipelines/effort.rs` and `coordination/task_effort.rs`. See [harness-model.md](architecture/harness-model.md#task-level-effort).
 
 ### D6: Delivery lease for daemon conflict avoidance
 
@@ -230,7 +230,7 @@ src-tauri/src/
       mod.rs  audit_logging.rs  delivery.rs  helpers.rs
       lifecycle.rs  liveness.rs  teardown.rs
     pipelines/
-      mod.rs  initialize.rs  members.rs  lifecycle.rs  helpers.rs
+      mod.rs  initialize.rs  members.rs  effort.rs  lifecycle.rs  helpers.rs
     runtime/
       mod.rs  process.rs  recording.rs  system.rs  tmux.rs
     compact_hook.rs         # Claude + Codex + Grok hook bridge
@@ -239,6 +239,8 @@ src-tauri/src/
     activity_export.rs  activity_schema.rs
     delivery.rs             # DeliveryRenderer / onboarding
     member_activation.rs  mesh_cli.rs  operational_context.rs
+    task_effort.rs          # assignment-effort policy shared with pipelines/effort.rs
+    task_deadline.rs        # pure deadline policy, not yet wired (D7)
     reconcile.rs  reinjection.rs  roster.rs  validation.rs  state.rs
 ```
 
@@ -254,7 +256,7 @@ The one configuration taurhaus does own is the compact-hook registration, becaus
 |---|---|---|
 | Claude | `<claude_dir>/settings.json` (`SessionStart` matcher `compact`) + `<claude_dir>/hooks/taurhaus-session-start-compact.*` | whenever any team has a managed Claude member — reconciled at startup and after team mutations |
 | Codex | `<CODEX_HOME>/hooks.json` + `<CODEX_HOME>/hooks/taurhaus-session-start-compact.*` | by default while a managed Codex member exists and Codex >= 0.147; startup and terminal-settings reconciliation repair the taurhaus entry without replacing foreign hooks |
-| Grok | `<GROK_HOME>/hooks/taurhaus.json` (registering both `SessionStart` matcher `compact` and `PostCompact` matcher `manual\|auto`) + `<GROK_HOME>/hooks/taurhaus-session-start-compact.*` | while `harness.grok_hooks` is on (the default) and at least one managed grok member exists; grok registers hooks per home, not per session, so every roster mutation reconciles it, not just startup and a Settings save (`commands/terminal_settings.rs:328-364`). grok's personal hook dir is always trusted, so no trust grant or bypass flag is involved |
+| Grok | `<GROK_HOME>/hooks/taurhaus.json` (registering both `SessionStart` matcher `compact` and `PostCompact` matcher `manual\|auto`) + `<GROK_HOME>/hooks/taurhaus-session-start-compact.*` | while `harness.grok_hooks` is on (the default) and at least one managed grok member exists; grok registers hooks per home, not per session, so every roster mutation reconciles it, not just startup and a Settings save (`reconcile_grok_hooks_for_roster`, `commands/terminal_settings.rs:413-458`). grok's personal hook dir is always trusted, so no trust grant or bypass flag is involved |
 
 Writes are scoped to the taurhaus hook entry — `remove_source_hook` retains foreign hooks — and settings files are rewritten atomically.
 
@@ -311,7 +313,7 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
   - project mesh snapshot returns `teamRuntimeState` with `none | active | degraded | cold_resume`
   - runtime header/UI maps that into `none | active | degraded | coldResume`
   - cold restart recovery is surfaced in the runtime header (`MeshRuntimeBar`) with `Resume Team`
-  - degraded teams surface `Resume Offline (n)` plus per-member retry from node detail
+  - degraded teams surface `Resume Stopped (n)` plus per-member retry from node detail
   - in-flight team resume shows per-member progress rows and disables conflicting runtime actions until completion
 
 **Rationale**: Resume preserves team identity and historical context while minimizing operator friction and avoiding destructive config churn. Team-level resume gives cold-restart recovery a single explicit action without inventing a second launch pipeline.
@@ -350,7 +352,7 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
   - background self-heal runs on a dedicated orchestrator instance, not the app-owned cached orchestrator
   - tmux, WSL, and process probes run before any filesystem lock is acquired, so the dedicated background instance keeps probe latency off the app-owned coordination mutex and off the team lock
   - each individual runtime-record decision commits inside a per-team critical section: acquire the team lock, re-read under the target-file lock, compare `pane_id`, `pane_pid`, `pane_start_time`, `session_id`, `daemon_pid`, `health`, and `appliedEffort`, then apply the patch through the locked save only when those dependencies are unchanged; a pass over several members releases the lock between records and is not atomic as a whole
-  - a stale decision is dropped and logs `coordination.runtime.commit_skipped` with `member` and `changed_fields`; the array contains dependency field names, or `record` when the runtime record itself appeared or disappeared, and the command and background orchestrators therefore cannot interleave a write to the same runtime record even though they remain separate instances
+  - a stale decision is dropped and logs `coordination.runtime.commit_skipped` with `member` and `changed_fields`; the array contains dependency field names, or the sentinel `record` when the runtime record itself appeared, disappeared, or would not parse — one member's unreadable record skips its own commit and leaves the file to the next `load_all` sweep rather than aborting the pass. The command and background orchestrators therefore cannot interleave a write to the same runtime record even though they remain separate instances
 
 **Rationale**: This keeps first-render and polling snapshots cheap and predictable while still giving taurhaus a bounded repair path for stale panes/daemons and cold-restart recovery.
 
@@ -395,7 +397,7 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 
 **Decision**: Implementation tasks must pass `just check-quick` before being reported complete.
 
-- Runs `cargo check --tests`, frontend typecheck, and frontend unit tests
+- Runs `cargo fmt`, `cargo check --tests`, frontend typecheck, and frontend unit tests
 - Captures compile/type/test regressions for routine iteration
 - Ensures integration shim breakages are caught when included source files gain new imports
 
@@ -410,7 +412,7 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 - Backend template IPC (`templates_*`) handles role/preset storage, composition, history, diff, and revert.
 - Frontend template flow now centers on `MeshTeamBuilder` inside `MeshSetupView`, while `TemplateBrowserPanel` and `TeamCustomizerPanel` remain advanced catalog/history/edit surfaces. All of them still resolve to the same `InitializeTeamRequest` shape used by manual setup.
 - Coordination runtime continues to start teams only through `coordination_initialize_team`. Preset application resolves earlier, in `commands/coordination/request_normalization.rs` (`compose_team` with `CompositionOverrides { lead: preset.lead_overrides }`), and then enters that same pipeline — there is no `templates_apply_composition` command.
-- Registered template commands: `templates_list_roles_full`, `templates_get_role`, `templates_upsert_role`, `templates_delete_role`, `import_role_from_file`, `templates_list_presets_full`, `templates_get_preset`, `templates_upsert_preset`, `templates_delete_preset`, `templates_compose_team`, `templates_get_storage_status`, `templates_get_history`, `templates_get_diff`, `templates_revert`, `templates_flush_pending`, `export_role_to_file`.
+- Registered template commands (17): `templates_list_roles_full`, `templates_get_role`, `templates_upsert_role`, `templates_delete_role`, `import_role_from_file`, `templates_list_presets_full`, `templates_get_preset`, `templates_upsert_preset`, `templates_delete_preset`, `templates_compose_team`, `templates_get_storage_status`, `templates_get_history`, `templates_get_diff`, `templates_revert`, `templates_flush_pending`, `export_role_to_file`, `export_agent_definitions`.
 
 **Integration points**:
 - `src-tauri/src/templates/storage/`: git-backed template persistence and pending-action state

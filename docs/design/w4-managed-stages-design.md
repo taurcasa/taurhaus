@@ -1,6 +1,6 @@
 # W4 — taurhaus-managed non-Claude stages: design
 
-Status: design for review, 2026-08-29. Row W4 in [`workflows-integration-plan.md`](workflows-integration-plan.md); builds on W1 (procedures), W2 (run scanner), W3 (agent definitions), W5 (assignment effort in mesh 0.2.22/0.2.23 and taurhaus #68).
+Status: design approved; experiment 3 measured 2026-08-30 (#71, shipped in 0.8.4), experiments 4 and 5 outstanding and unblocked since the hardening milestone closed. Row W4 in [`workflows-integration-plan.md`](workflows-integration-plan.md); builds on W1 (procedures), W2 (run scanner), W3 (agent definitions), W5 (assignment effort in mesh 0.2.22/0.2.23 and taurhaus #68).
 
 ## Problem
 

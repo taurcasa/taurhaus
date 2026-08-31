@@ -4,7 +4,7 @@ The daemon is a companion process that handles filesystem access, process scanni
 
 ![Daemon Protocol](../images/daemon-protocol.jpg)
 
-> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 27 callable methods (28 constants — `list_directory` has no handler) plus 3 push events at protocol 13; the tables below are authoritative.
+> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 29 callable methods (30 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 14; the tables below are authoritative.
 
 ## Why a daemon
 
@@ -180,6 +180,15 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 | `stop_session` | `{ tmux_pane, cli_tool? }` | — | Stop a running CLI tool session |
 | `navigate_to_session` | `{ tmux_session, tmux_window, tmux_pane }` | — | Focus a tmux pane |
 
+### Workflow runs
+
+| Method | Params | Result | Description |
+|--------|--------|--------|-------------|
+| `list_workflow_runs` | `{ session_id }` | `WorkflowRunSummary[]` | Completed and live workflow runs under one Claude session. |
+| `get_workflow_run` | `{ session_id, run_id }` | `WorkflowRun` | One full run including agents and result. |
+
+Both are additive methods added for the Windows split, where the journal and transcripts live inside WSL; `workflow_ledger_row` is rendered in the app from the run these return and has no daemon method.
+
 **Launch modes** (`mode` field):
 - `continue` — resume the last session (e.g., `claude --continue`)
 - `fresh` — start a new session
@@ -195,8 +204,9 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 | `list_accounts` | `{ tool }` | `AccountsResult` (`{ accounts[], degraded, error? }`) | Provider accounts visible to the daemon's host, with cached in-memory usage attached. |
 | `project_transcript` | `{ tool, project }` | `{ transcript }` | The newest provider transcript that owns the tool's project history. |
 | `refresh_usage` | `{ tool }` | `{ started }` | Requests an on-demand, debounced provider usage refresh. |
+| `resolve_launch_base` | `{ tool, base, force? }` | `ResolvedBase` (`{ command, expansions[], opaqueHead }`) | Reads a configured launch command the way the pane's own interactive shell reads it — alias expansion, opaque-head detection — so a Windows app can see what a WSL alias carries. The result is camelCase on the wire — the handler serializes `ResolvedBase` itself (`daemon/handlers.rs:130-137`) and that struct is `rename_all = "camelCase"` (`session_scanner/launch_base.rs:68-79`) — so the key is `opaqueHead`, not `opaque_head`. Both keys are always present — `expansions` is `[]` when nothing was expanded, `opaqueHead` is `null` when the head word is the tool's own executable — and each expansion is `{ name, body }`, outermost first. Additive: `force` defaults to `false` for an older app payload. |
 
-On Windows, config dirs and transcripts live inside WSL, so the daemon owns these reads. These methods replaced the Claude-only ones in protocol 11 (shipped with app 0.7.0); the older names are intentionally incompatible. `tool` is any registered harness — all four have an account provider, but only the three with an `account_selector` (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME`) can be switched; Antigravity returns one implicit account. `refresh_usage` answers `{"started": false}` for a tool with no usage provider (grok) and for a request inside the 5-second debounce (`daemon/usage_poller.rs:113-133`).
+On Windows, config dirs and transcripts live inside WSL, so the daemon owns these reads. These methods replaced the Claude-only ones in protocol 11 (shipped with app 0.7.0); the older names are intentionally incompatible. `tool` is any registered harness — all four have an account provider, but only the three with an `account_selector` (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME`) can be switched; Antigravity returns one implicit account. `refresh_usage` answers `{"started": false}` for a tool with no usage provider (grok) and for a request inside the 5-second debounce (`refresh`, `daemon/usage_poller.rs:113-134`).
 
 ### Session activity stream (app bridge)
 

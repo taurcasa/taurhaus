@@ -1,8 +1,9 @@
 /**
  * Shared SVG icon data for CLI tools.
  *
- * Single source of truth — imported by sessionIndicator.js,
- * TaskBoard.svelte, TaskDetailPanel.svelte, SessionHistory.svelte.
+ * Single source of truth for every surface that draws a tool mark — the
+ * sidebar indicator, task board and detail, session history, mesh nodes and
+ * cards, Overview, Settings, and the template catalog.
  *
  * Monochrome paths using currentColor so state colors apply.
  *

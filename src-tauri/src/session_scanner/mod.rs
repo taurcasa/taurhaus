@@ -5,9 +5,12 @@
 //! 2. tmux mapping — map terminal TTYs to tmux pane/window IDs
 //! 3. Idle detection — check tool-specific transcript/runtime signals to determine active vs idle
 //!
-//! State changes use bidirectional hysteresis: a transition (idle↔active)
-//! only takes effect after 2 consecutive polls agree on the new state.
-//! This eliminates flickering from transient signals in either direction.
+//! A *heuristic* state change uses bidirectional hysteresis: the transition
+//! (idle↔active) only takes effect after 2 consecutive polls agree, which
+//! eliminates flickering from transient signals in either direction. A state
+//! the harness itself reports is authoritative and skips both the rchar poll
+//! and the hysteresis, landing on the poll that observed it
+//! (`classification.rs`).
 //!
 //! Warning:
 //! - `DisplaySession` is the UI-safe view and intentionally strips transcript

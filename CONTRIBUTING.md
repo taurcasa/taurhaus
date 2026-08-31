@@ -123,17 +123,36 @@ E2E recipes are safe-by-default: they no longer force `install-daemon` (which ca
 E2E_INSTALL_DAEMON=1 just test-e2e
 ```
 
-Session isolation is enabled in `e2e/wdio.conf.js`:
+Each WDIO worker is fully isolated by `e2e/wdio.conf.js` and `e2e/helpers/workerEnv.js`.
+Every writable product root is pointed inside that worker's session temp directory:
 
-- `TAURHAUS_DATA_DIR` is set to a per-session temp app-data directory
-- `TAURHAUS_CLAUDE_DIR` is set to a per-session temp Claude root
+- `HOME` — an isolated login home, so account discovery cannot reach the operator's dot-directories
+- `TAURHAUS_DATA_DIR` — per-session app-data directory
+- `TAURHAUS_CLAUDE_DIR` — per-session Claude root
+- `CODEX_HOME`, `GROK_HOME`, and the taurhaus-only `TAURHAUS_AGY_DIR` — per-session tool homes
+- `TAURHAUS_DAEMON_PORT` — a private daemon port derived from the session root and probed for
+  availability in 20000-31999; port 17233 belongs to the operator and is never used
+- `TMUX_TMPDIR` — the worker's own tmux *server* socket directory, with any inherited `TMUX`
+  removed (a client inside a tmux pane resolves the socket from `$TMUX` and ignores
+  `TMUX_TMPDIR`); teardown kills that server (`e2e/helpers/laneTmux.js`)
 - A per-session fixture git repo is created for deterministic onboarding and validation flows
+
+Process cleanup is ownership-checked (`e2e/helpers/laneCleanup.js`): a run token is inherited by
+the driver, WebKitWebDriver, app and daemons, and every live process is recorded as PID plus
+Linux `/proc` start time in a checkout-scoped ledger. Cleanup kills only identities whose PID
+*and* start time still match, so a concurrent run and a reused PID are both left alone. One disclosed exception: clearing a worker's own driver ports falls back to a port-derived process pattern (`4500 + pid % 300`), so two concurrent runs that collide on a derived port are not isolated from each other on that path.
+
+`e2e/specList.js` is the sealed spec manifest: every non-paid `e2e/specs/*.js` file must belong
+to a named group, and `e2e/specList.test.js` fails on an ungrouped file. The two paid Codex
+lanes (`compaction-codex-hooks`, `managed-stage-codex`) are never in a default suite run and
+must be named on the command line.
 
 Useful E2E env knobs:
 
 - `E2E_PROJECTS_DIR` — project scan root used by E2E helpers
 - `E2E_TAURHAUS_PROJECT_PATH` — stable taurhaus fixture path used in duplicate-path tests
 - `E2E_INSTALL_DAEMON=1` — opt-in daemon reinstall for E2E recipes
+- `E2E_CODEX_SOURCE_HOME` — the Codex home a paid lane copies `auth.json` from
 
 ### Regression Testing
 
