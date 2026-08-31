@@ -226,7 +226,7 @@ just check         # Full gate (team-lead serialized runs or pre-release)
 | Rust | `just lint-rust` (clippy), `just test-rust` (compile check + unit + integration) |
 | Frontend | `just lint-frontend`, `just lint-workflows`, `just typecheck`, `just test-frontend` |
 
-Full output is tee'd to `.check-logs/check-<timestamp>.log` (override the directory with `TAURHAUS_CHECK_LOG_DIR`) and only the five newest logs are kept. `just lint` is a superset: it adds `lint-just-gates`, which re-runs the real lane joiner against seeded failures to prove `just check` still fails closed.
+Full output is tee'd to `.check-logs/check-<timestamp>.log` (override the directory with `TAURHAUS_CHECK_LOG_DIR`) and only the five newest logs are kept. `just lint` is a superset of the *lint* steps above and of nothing else: it runs `lint-rust`, `lint-frontend`, `lint-workflows` and adds `lint-just-gates`, which re-runs the real lane joiner against seeded failures to prove `just check` still fails closed (`justfile:167`). It is not a broader gate than `just check` — it never runs `fmt`, `typecheck`, `test-rust` or `test-frontend`, so it is no substitute for the full gate.
 
 **Run `just check-quick` on every task.** In team/agent workflows, agents should not run `just check`; team-lead owns serialized full-gate runs.
 
