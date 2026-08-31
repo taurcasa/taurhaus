@@ -49,7 +49,8 @@ provision-worktree PATH BRANCH BASE="origin/main":
     {
         printf '%s\n' '# Shared Cargo target for taurhaus lane worktrees.'
         printf '%s\n' '# This worktree-local config affects only this lane; the main checkout and release builds keep src-tauri/target untouched.'
-        printf '%s\n' '# Deleting ~/.cache/taurhaus-lane-target is always safe; Cargo'\''s own locking serializes concurrent lane builds.'
+        printf '%s\n' '# Deleting ~/.cache/taurhaus-lane-target is always safe; Cargo'\''s own locking serializes concurrent lane compiles.'
+        printf '%s\n' '# Binaries in the shared target are last-writer-wins, so recipes that run one (E2E) pin CARGO_TARGET_DIR back to this lane.'
         printf '%s\n' '[build]'
         printf 'target-dir = "%s"\n' "$shared_target"
     } > "$lane_path/.cargo/config.toml"
@@ -395,15 +396,20 @@ test-watch:
 # IMPORTANT: Always use this (not raw `cargo build`) — Tauri needs --debug --no-bundle
 # for embedded asset serving. A plain `cargo build` produces a binary that tries to
 # connect to a dev server, resulting in a blank page.
+# CARGO_TARGET_DIR keeps the E2E app and daemon in this checkout's own target even in a
+# provisioned lane: a shared target is last-writer-wins for binaries, so a concurrent
+# lane's build would replace the app underneath a live run.
 build-e2e:
-    bunx tauri build --debug --no-bundle
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" bunx tauri build --debug --no-bundle
 
 # Run E2E tests — Tier 1 only.
+# The recipe pins CARGO_TARGET_DIR to this checkout so a provisioned lane's shared
+# Cargo target never hands two lanes the same app binary.
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
 # opt-in that only rebuilds/restarts the operator's installed daemon.
 # Builds the app automatically unless E2E_SKIP_BUILD=1 is set.
 test-e2e: e2e-prepare-daemon
-    bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
 
 # Run E2E tests — Tier 1 + Tier 2 (daemon must be running)
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
@@ -412,14 +418,14 @@ test-e2e: e2e-prepare-daemon
 # is never part of a suite run: `e2e/specList.js` keeps every paid lane out of
 # the config's spec list. Start it by name with test-e2e-spec.
 test-e2e-full: e2e-prepare-daemon
-    bunx wdio run e2e/wdio.conf.js
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" bunx wdio run e2e/wdio.conf.js
 
 # Run a single E2E spec file.
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
 # opt-in that only rebuilds/restarts the operator's installed daemon.
 # Builds by default (safe). Set E2E_SKIP_BUILD=1 explicitly if you already built.
 test-e2e-spec SPEC: e2e-prepare-daemon
-    bunx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" bunx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
 
 # Legacy operator-daemon prep; isolated workers do not use this install.
 # Default is safe/no-op. Set E2E_INSTALL_DAEMON=1 only to mutate the host install.

@@ -36,9 +36,12 @@ Use `just provision-worktree PATH BRANCH [BASE]` from the main checkout whenever
 you create a development lane. `BASE` defaults to `origin/main`; the recipe
 fetches first, creates the branch worktree, runs `bun install --frozen-lockfile`
 inside it, and gives only that worktree a Cargo config pointing at the shared
-`~/.cache/taurhaus-lane-target`. Cargo's own locking safely serializes concurrent
-lane builds. The main checkout and release builds continue using their existing
-`src-tauri/target` directories.
+`~/.cache/taurhaus-lane-target`. Cargo's own locking serializes concurrent lane
+*compiles*; the artifacts they write are last-writer-wins, so a recipe that runs
+a built binary keeps it lane-local — `build-e2e`, `test-e2e`, `test-e2e-full` and
+`test-e2e-spec` pin `CARGO_TARGET_DIR` to the lane's own `src-tauri/target` while
+the shared cache still saves the dependency compile. The main checkout and release
+builds continue using their existing `src-tauri/target` directories.
 
 After the branch is merged, run `just remove-worktree PATH`. It removes the
 worktree and branch, but refuses an unmerged branch unless you explicitly set

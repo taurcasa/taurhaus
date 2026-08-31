@@ -17,6 +17,7 @@ test_home="$tmp_dir/home"
 fake_bin="$tmp_dir/bin"
 git_log="$tmp_dir/git.log"
 bun_log="$tmp_dir/bun.log"
+bunx_log="$tmp_dir/bunx.log"
 real_git=$(command -v git)
 
 cleanup() {
@@ -68,7 +69,12 @@ printf '%s\n' \
     'printf '\''cwd=%s\nargs=%s\n'\'' "$PWD" "$*" > "$LANE_TEST_BUN_LOG"' \
     'if [ "${LANE_TEST_BUN_FAIL:-0}" = "1" ]; then exit 42; fi' \
     > "$fake_bin/bun"
-chmod +x "$fake_bin/git" "$fake_bin/bun"
+printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'set -euo pipefail' \
+    'printf '\''cwd=%s target=%s args=%s\n'\'' "$PWD" "${CARGO_TARGET_DIR:-<unset>}" "$*" >> "$LANE_TEST_BUNX_LOG"' \
+    > "$fake_bin/bunx"
+chmod +x "$fake_bin/git" "$fake_bin/bun" "$fake_bin/bunx"
 
 run_just_from() {
     local invocation_dir="$1"
@@ -81,6 +87,7 @@ run_just_from() {
             LANE_TEST_REAL_GIT="$real_git" \
             LANE_TEST_GIT_LOG="$git_log" \
             LANE_TEST_BUN_LOG="$bun_log" \
+            LANE_TEST_BUNX_LOG="$bunx_log" \
             LANE_TEST_BUN_FAIL="${LANE_TEST_BUN_FAIL:-0}" \
             PATH="$fake_bin:$PATH" \
             just --justfile "$repo_root/justfile" --working-directory "$source_checkout" "$@" 2>&1
@@ -163,6 +170,24 @@ else
     done
 fi
 
+# // Regression: cf6f7d55 resolved the E2E binaries from Cargo's target directory, so every
+# // provisioned lane launched one shared debug build and a concurrent lane's compile replaced
+# // the app underneath a live run. The E2E recipes must pin their artifacts to the checkout.
+: > "$bunx_log"
+e2e_target="$source_checkout/src-tauri/target"
+for e2e_recipe in build-e2e test-e2e test-e2e-full; do
+    run_just "$e2e_recipe" || record_regression_failure "$e2e_recipe failed with a stubbed bunx"
+done
+run_just test-e2e-spec mesh-workflow || record_regression_failure "test-e2e-spec failed with a stubbed bunx"
+e2e_invocations=$(grep -c '^cwd=' "$bunx_log" || true)
+if [ "$e2e_invocations" -ne 4 ]; then
+    record_regression_failure "expected four stubbed bunx invocations from the E2E recipes, saw $e2e_invocations"
+fi
+if grep -Fvq "target=$e2e_target " "$bunx_log"; then
+    record_regression_failure "an E2E recipe did not pin CARGO_TARGET_DIR to the checkout-local target"
+    sed -n '1,10p' "$bunx_log" >&2
+fi
+
 run_just provision-worktree "$lane_path" lane-provision-smoke HEAD
 
 config_path="$lane_path/.cargo/config.toml"
@@ -183,8 +208,12 @@ grep -F 'Deleting ~/.cache/taurhaus-lane-target is always safe' "$config_path" >
     echo "worktree Cargo config omits the safe-deletion note" >&2
     exit 1
 }
-grep -Fi "Cargo's own locking serializes concurrent lane builds" "$config_path" >/dev/null || {
+grep -Fi "Cargo's own locking serializes concurrent lane compiles" "$config_path" >/dev/null || {
     echo "worktree Cargo config omits the concurrent-lane locking note" >&2
+    exit 1
+}
+grep -F 'last-writer-wins' "$config_path" >/dev/null || {
+    echo "worktree Cargo config omits the shared-artifact caveat" >&2
     exit 1
 }
 grep -F 'main checkout and release builds keep src-tauri/target untouched' "$config_path" >/dev/null || {
