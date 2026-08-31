@@ -107,7 +107,7 @@ Use those fields to express how a role should communicate, what checks it must s
 
 Role metadata remains visible through setup and runtime so the lead can route work with more than just a name and tool. The richer schema makes it possible to tell, for example, whether a role is meant for planning vs review, what kind of evidence it should return, and what a successful handoff should include.
 
-The lead is no longer fixed to Claude. The selected lead role determines tool/model defaults, and the built-in lead roles cover Claude, Codex and Antigravity (`claude-orchestrator`, `codex-orchestrator`, `antigravity-orchestrator`, plus the `v2`/`v3` lead roles). The shipped Grok roles are agent roles — `v4-developer-grok`, which the `Grok Pair` preset staffs, and the superseded `grok-developer` — so a Grok lead needs a user template.
+The lead is no longer fixed to Claude. The selected lead role determines tool/model defaults, and the canonical built-in leads cover Claude, Codex and Antigravity: `v3-lead-claude`, `codex-orchestrator`, and `antigravity-orchestrator`. The shipped Grok role is the agent role `v4-developer-grok`, which the `Grok Pair` preset staffs, so a Grok lead needs a user template.
 
 Lead-mode rule:
 

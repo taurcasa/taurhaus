@@ -1267,6 +1267,14 @@ mod tests {
         );
 
         for role in &roles {
+            // Regression: 9a6b9596 consolidated the v2/v3 role generations but
+            // dropped compaction summaries from nine surviving concepts.
+            assert!(
+                role.runtime_compact_summary.is_some(),
+                "canonical role '{}' should preserve its purpose after compaction",
+                role.role_id
+            );
+
             let communication = role.communication_style.as_deref().unwrap_or_default();
             for mark in [
                 "objective",

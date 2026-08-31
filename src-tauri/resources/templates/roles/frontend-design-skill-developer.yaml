@@ -136,7 +136,7 @@ runtime_compact_summary:
     - "Confirm approved direction, user outcome, states, and constraints."
     - "Implement with real data, project tokens, and complete interaction states."
     - "Verify both themes, write tests for logic paths."
-    - "Commit and report with screenshots, skill usage, and evidence."
+    - "Commit and report with screenshots, direction mapping, and evidence."
   avoid:
     - "Do not invent creative direction when the approved concept is missing or contradictory."
     - "Do not introduce arbitrary design values without documenting them."

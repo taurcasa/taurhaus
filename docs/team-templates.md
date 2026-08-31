@@ -379,7 +379,7 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 Current built-ins ship from `src-tauri/resources/templates/`:
 
 - **Roles (16)**:
-  - orchestration: `v3-lead-claude` (Fable 5), `codex-orchestrator` (GPT-5.6 Sol), and `antigravity-orchestrator` (the Gemini-harness alternative)
+  - orchestration: `v3-lead-claude` (Fable 5), `codex-orchestrator` (GPT-5.6 Sol), and `antigravity-orchestrator` (the Antigravity/agy alternative)
   - implementation: `v4-developer-claude`, `v4-developer-codex`, `v4-developer-agy`, `v4-developer-grok`, `quick-dev-codex`, and `frontend-design-skill-developer`
   - review and decision support: `v3-architect-codex`, `adversarial-reviewer-claude`, `claude-product-checker`, `claude-design-lead`, `claude-researcher`, `docs-verifier-codex`, and `codex-qa`
 - **Presets (5)**:
@@ -393,6 +393,7 @@ Every preset names its lead explicitly, references only canonical role ids, and
 inherits model and effort from each role instead of pinning slot overrides. The
 historical `v3-lead-claude` and `v3-architect-codex` ids remain because presets
 already reference them; their bodies and versions carry the current playbook.
+Those frozen compatibility ids no longer indicate which harness runs the role.
 
 The architect and researcher are open model slots. Architect defaults to Fable 5
 with GPT-5.6 Sol named as the fallback; researcher defaults to session-proven Sol

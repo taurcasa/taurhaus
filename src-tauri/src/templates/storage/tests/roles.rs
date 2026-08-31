@@ -502,14 +502,12 @@ fn previous_release_builtins_reconcile_before_catalog_reads_and_export() {
         .expect("quick dev");
     assert_eq!(quick_dev.template.version, "2.0.0");
     assert_eq!(quick_dev.template.defaults.model, "gpt-5.6-sol");
-    assert!(
-        quick_dev
-            .template
-            .behavioral_contract
-            .communication
-            .join("\n")
-            .contains("RESULT <id>")
-    );
+    assert!(quick_dev
+        .template
+        .behavioral_contract
+        .communication
+        .join("\n")
+        .contains("RESULT <id>"));
 
     let pair = store.get_preset("pair").expect("reconciled pair preset");
     assert_eq!(pair.template.version, "4.0.0");

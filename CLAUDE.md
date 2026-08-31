@@ -414,7 +414,7 @@ This is non-negotiable. No regression fix ships without a corresponding test.
 - E2E at milestones.
 - Visual review (frontend tasks): 8 categories, scored 1-10, **min 9 per category**
 - Visual dual review: self-review + a cross-review from the other model family (Opus ↔ Codex, as every PR review loop runs). Lower score wins, the orchestrator is final arbiter with justified override.
-- **Design-led UI work** follows the design-first loop: brief → design proposal → approval → implement → review. See the archived v0.5.x process note at [`docs/archive/design-workflow.md`](docs/archive/design-workflow.md). The UI specialist role (`antigravity-ui-specialist`, run on the Antigravity CLI) is the design lead — give it functional requirements and creative freedom, not pixel-level specs.
+- **Design-led UI work** follows the design-first loop: brief → design proposal → approval → implement → review. See the archived v0.5.x process note at [`docs/archive/design-workflow.md`](docs/archive/design-workflow.md). Use `claude-design-lead` for creative direction and `frontend-design-skill-developer` for UI implementation — give the direction lane functional requirements and creative freedom, not pixel-level specs.
 
 ### Tasks
 - Claude Code native task format (subject, description, status, blocks/blockedBy, metadata)
