@@ -3,11 +3,11 @@ function timestamp(value) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-/** The positive-duration intersection of two assigned-to-RESULT windows. */
+/** The positive-duration intersection of two delivered-to-RESULT windows. */
 export function stageWindowOverlap(left, right) {
-  const leftStart = timestamp(left?.assignedAt)
+  const leftStart = timestamp(left?.deliveredAt)
   const leftEnd = timestamp(left?.resultAt)
-  const rightStart = timestamp(right?.assignedAt)
+  const rightStart = timestamp(right?.deliveredAt)
   const rightEnd = timestamp(right?.resultAt)
   if ([leftStart, leftEnd, rightStart, rightEnd].some((value) => value == null)) return null
   if (leftEnd <= leftStart || rightEnd <= rightStart) return null

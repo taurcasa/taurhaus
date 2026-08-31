@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest'
 import { completedParallelRunSummary, stageWindowOverlap } from './parallelStageEvidence.js'
 
 describe('stageWindowOverlap', () => {
-  it('returns the real intersection of two assigned-to-RESULT windows', () => {
+  it('returns the real intersection of two delivered-to-RESULT windows', () => {
     expect(
       stageWindowOverlap(
-        { assignedAt: '2026-08-31T10:00:00.000Z', resultAt: '2026-08-31T10:00:40.000Z' },
-        { assignedAt: '2026-08-31T10:00:03.000Z', resultAt: '2026-08-31T10:00:30.000Z' }
+        { deliveredAt: '2026-08-31T10:00:00.000Z', resultAt: '2026-08-31T10:00:40.000Z' },
+        { deliveredAt: '2026-08-31T10:00:03.000Z', resultAt: '2026-08-31T10:00:30.000Z' }
       )
     ).toEqual({
       startAt: '2026-08-31T10:00:03.000Z',
@@ -19,11 +19,31 @@ describe('stageWindowOverlap', () => {
   it('rejects serialized, touching, or malformed windows', () => {
     expect(
       stageWindowOverlap(
-        { assignedAt: '2026-08-31T10:00:00.000Z', resultAt: '2026-08-31T10:00:10.000Z' },
-        { assignedAt: '2026-08-31T10:00:10.000Z', resultAt: '2026-08-31T10:00:20.000Z' }
+        { deliveredAt: '2026-08-31T10:00:00.000Z', resultAt: '2026-08-31T10:00:10.000Z' },
+        { deliveredAt: '2026-08-31T10:00:10.000Z', resultAt: '2026-08-31T10:00:20.000Z' }
       )
     ).toBeNull()
-    expect(stageWindowOverlap({ assignedAt: 'bad', resultAt: 'also bad' }, {})).toBeNull()
+    expect(stageWindowOverlap({ deliveredAt: 'bad', resultAt: 'also bad' }, {})).toBeNull()
+  })
+
+  // Regression: b23cbbdb started both windows at assignment time, so two
+  // simultaneously assigned but strictly serialized member turns overlapped
+  // by construction and were misreported as concurrent.
+  it('rejects serialized work even when both assignments happened first', () => {
+    expect(
+      stageWindowOverlap(
+        {
+          assignedAt: '2026-08-31T10:00:00.000Z',
+          deliveredAt: '2026-08-31T10:00:01.000Z',
+          resultAt: '2026-08-31T10:00:10.000Z',
+        },
+        {
+          assignedAt: '2026-08-31T10:00:00.010Z',
+          deliveredAt: '2026-08-31T10:00:10.000Z',
+          resultAt: '2026-08-31T10:00:20.000Z',
+        }
+      )
+    ).toBeNull()
   })
 })
 

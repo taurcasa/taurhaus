@@ -119,7 +119,8 @@ before the notice is delivered, and then that the commit the member reports exis
 in the fixture repo and the test it wrote passes. `managed-stage-deadline` measures
 the live deadline policy. `managed-stage-parallel` (experiment 5) launches two Codex
 members in two fixture worktrees and positively proves their tree, inbox, completion,
-wall-clock overlap, and lead W2 run-tree isolation.
+and attention-delivered-to-RESULT wall-clock overlap. Its W2 scanner check is described
+in the operations testing guide.
 
 All four read `~/.codex` once, copying only `auth.json` into a scratch `CODEX_HOME` under
 the session temp root, and never write back to it. The scratch `config.toml` is

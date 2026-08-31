@@ -34,6 +34,7 @@ import { trustProject } from '../helpers/codexScratchHome.js'
 import { createLaneCleanup } from '../helpers/laneCleanup.js'
 import { assertTmuxIsolation, isolatedTmuxTmpdir, parseProcEnviron, tmuxIsolationProblem } from '../helpers/laneTmux.js'
 import {
+  attentionRecord,
   findBlockedMessage,
   findResultMessage,
   readInbox,
@@ -736,7 +737,17 @@ describe('parallel managed Codex stages', function () {
       assignedAt: stage.assignedAt,
       resultAt: record.completion.at,
     }))
-    const overlap = stageWindowOverlap(windows[0], windows[1])
+    const deliveredWindows = completed.map(({ stage, record }) => {
+      const attention = attentionRecord({ claudeDir, team: TEAM_NAME, taskId: stage.taskId })
+      const deliveredAt = attention?.deliveredAt ?? attention?.delivered_at ?? null
+      expect(Number.isFinite(Date.parse(deliveredAt))).toBe(true)
+      return {
+        key: stage.key,
+        deliveredAt,
+        resultAt: record.completion.at,
+      }
+    })
+    const overlap = stageWindowOverlap(deliveredWindows[0], deliveredWindows[1])
     expect(overlap).not.toBeNull()
     expect(overlap.durationMs).toBeGreaterThan(0)
 
@@ -757,6 +768,7 @@ describe('parallel managed Codex stages', function () {
       })),
       completions,
       windows,
+      deliveredWindows,
       overlap,
       runTree,
       worktreeTrees: {
