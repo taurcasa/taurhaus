@@ -142,9 +142,9 @@ export function operationalStaleEvidence(snapshot, taskId) {
 /**
  * Build the active negative path around the production self-heal cadence.
  *
- * The heartbeat must span half the deadline plus one complete pass cadence,
+ * The heartbeat spans half the deadline plus the configured inter-pass sleep,
  * and its output must be dense enough for Codex's `/proc` read-rate signal.
- * What remains before the full deadline is the two-turn completion allowance.
+ * The production loop period also includes the preceding pass's duration.
  */
 export function activeDeadlineHeartbeatPlan({
   deadlineMinutes,
@@ -173,6 +173,8 @@ export function activeDeadlineHeartbeatPlan({
   return {
     command,
     commandWithCompletion(completionCommand) {
+      // Keep the member active until mesh closes the task: suppression does
+      // not stamp `nudged_at`, so a later pass may otherwise nudge it.
       return `${command} && ${completionCommand}`
     },
     deadlineMs,

@@ -254,11 +254,11 @@ describe('activeDeadlineHeartbeatPlan', () => {
       deadlineMinutes: 3,
       passCadenceMs: 30_000,
       intervalMs: 500,
-      payloadBytes: 4_096,
+      payloadBytes: 4_095,
     })
 
     expect(plan.outputBytesPerSecond).toBeGreaterThanOrEqual(1_000)
-    expect(plan.command).toContain('"x".repeat(4096)')
+    expect(plan.command).toContain('"x".repeat(4095)')
     expect(plan.command).toContain('Bun.sleep(500)')
   })
 
@@ -270,7 +270,7 @@ describe('activeDeadlineHeartbeatPlan', () => {
       deadlineMinutes: 3,
       passCadenceMs: 30_000,
       intervalMs: 500,
-      payloadBytes: 4_096,
+      payloadBytes: 4_095,
     })
 
     expect(plan.neededActiveMs).toBe(120_000)
