@@ -259,4 +259,22 @@ describe('activeDeadlinePassEvidence', () => {
       })
     ).toBeNull()
   })
+
+  // Regression: e1c38eef filtered out non-active samples before joining the
+  // pass, so an older active record could certify a pass that actually read a
+  // newer idle record.
+  it('rejects an older active sample when a newer idle sample preceded the pass', () => {
+    expect(
+      activeDeadlinePassEvidence({
+        assignedAt: '2026-08-31T10:00:00.000Z',
+        deadlineMinutes: 2,
+        activitySnapshots: [
+          { observed_at: '2026-08-31T10:01:05.000Z', activity_confidence: 'active' },
+          { observed_at: '2026-08-31T10:01:08.000Z', activity_confidence: 'idle' },
+        ],
+        passEvents: [{ ts: '2026-08-31T10:01:10.000Z' }],
+        deadlineEvents: [],
+      })
+    ).toBeNull()
+  })
 })

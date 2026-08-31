@@ -112,9 +112,10 @@ export function stagePollVerdict(record) {
  *
  * The production deadline pass accepts `active` and `likely_working` snapshots
  * no more than 120 seconds old. A later activity record cannot explain an
- * earlier pass, so this chooses only the newest qualifying snapshot at or
- * before each eligible pass. Any committed deadline action makes the negative
- * path false rather than letting a later active sample cover it up.
+ * earlier pass, so this chooses the newest snapshot at or before each eligible
+ * pass and only then applies the production freshness and confidence checks.
+ * Any committed deadline action makes the negative path false rather than
+ * letting a later active sample cover it up.
  */
 export function activeDeadlinePassEvidence({
   assignedAt,
@@ -129,21 +130,24 @@ export function activeDeadlinePassEvidence({
   if (!Number.isFinite(assignedAtMs) || !Number.isFinite(deadlineMs) || deadlineMs <= 0) return null
   const halfDueMs = assignedAtMs + deadlineMs / 2
 
-  const active = activitySnapshots
+  const observed = activitySnapshots
     .map((snapshot) => ({ snapshot, observedAtMs: Date.parse(snapshot?.observed_at) }))
-    .filter(({ snapshot, observedAtMs }) =>
+    .filter(({ observedAtMs }) =>
       Number.isFinite(observedAtMs) &&
-      observedAtMs >= assignedAtMs &&
-      ['active', 'likely_working'].includes(snapshot?.activity_confidence)
+      observedAtMs >= assignedAtMs
     )
 
   for (const pass of passEvents) {
     const passAtMs = Date.parse(pass?.ts)
     if (!Number.isFinite(passAtMs) || passAtMs < halfDueMs) continue
-    const snapshot = active
-      .filter(({ observedAtMs }) => observedAtMs <= passAtMs && passAtMs - observedAtMs <= 120_000)
+    const snapshot = observed
+      .filter(({ observedAtMs }) => observedAtMs <= passAtMs)
       .sort((left, right) => right.observedAtMs - left.observedAtMs)[0]
-    if (!snapshot) continue
+    if (
+      !snapshot ||
+      passAtMs - snapshot.observedAtMs > 120_000 ||
+      !['active', 'likely_working'].includes(snapshot.snapshot?.activity_confidence)
+    ) continue
     return {
       halfDueAt: new Date(halfDueMs).toISOString(),
       passAt: pass.ts,
