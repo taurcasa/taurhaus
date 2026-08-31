@@ -18,6 +18,8 @@ fake_bin="$tmp_dir/bin"
 git_log="$tmp_dir/git.log"
 bun_log="$tmp_dir/bun.log"
 bunx_log="$tmp_dir/bunx.log"
+daemon_log="$tmp_dir/daemon-launch.log"
+stub_target_dir="$tmp_dir/stub-cargo-target"
 real_git=$(command -v git)
 
 cleanup() {
@@ -74,7 +76,26 @@ printf '%s\n' \
     'set -euo pipefail' \
     'printf '\''cwd=%s target=%s args=%s\n'\'' "$PWD" "${CARGO_TARGET_DIR:-<unset>}" "$*" >> "$LANE_TEST_BUNX_LOG"' \
     > "$fake_bin/bunx"
-chmod +x "$fake_bin/git" "$fake_bin/bun" "$fake_bin/bunx"
+printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'set -euo pipefail' \
+    'if [ "${1:-}" = "metadata" ]; then' \
+    '    printf '\''{"version":1,"packages":[],"workspace_members":[],"target_directory":"%s"}\n'\'' "$LANE_TEST_TARGET_DIR"' \
+    'fi' \
+    > "$fake_bin/cargo"
+printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'cat >/dev/null 2>&1 || true' \
+    'printf '\''%s\n'\'' '\''{"id":"t1","result":{"version":"stub"}}'\''' \
+    > "$fake_bin/nc"
+mkdir -p "$stub_target_dir/debug"
+printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'printf '\''%s\n'\'' "$0" >> "$LANE_TEST_DAEMON_LOG"' \
+    'exec sleep 5' \
+    > "$stub_target_dir/debug/taurhaus-daemon"
+chmod +x "$fake_bin/git" "$fake_bin/bun" "$fake_bin/bunx" "$fake_bin/cargo" "$fake_bin/nc" \
+    "$stub_target_dir/debug/taurhaus-daemon"
 
 run_just_from() {
     local invocation_dir="$1"
@@ -88,6 +109,8 @@ run_just_from() {
             LANE_TEST_GIT_LOG="$git_log" \
             LANE_TEST_BUN_LOG="$bun_log" \
             LANE_TEST_BUNX_LOG="$bunx_log" \
+            LANE_TEST_TARGET_DIR="$stub_target_dir" \
+            LANE_TEST_DAEMON_LOG="$daemon_log" \
             LANE_TEST_BUN_FAIL="${LANE_TEST_BUN_FAIL:-0}" \
             PATH="$fake_bin:$PATH" \
             just --justfile "$repo_root/justfile" --working-directory "$source_checkout" "$@" 2>&1
@@ -186,6 +209,24 @@ fi
 if grep -Fvq "target=$e2e_target " "$bunx_log"; then
     record_regression_failure "an E2E recipe did not pin CARGO_TARGET_DIR to the checkout-local target"
     sed -n '1,10p' "$bunx_log" >&2
+fi
+
+# // Regression: cf6f7d55 redirected lane artifacts while the daemon connectivity
+# // diagnostics kept launching a checkout-relative ./target/debug binary, which a lane
+# // never populates: the launch failed and the recipe blamed WSL2 NAT mode instead.
+mkdir -p "$source_checkout/src-tauri"
+: > "$daemon_log"
+daemon_probe_status=0
+run_just test-daemon-local || daemon_probe_status=$?
+if [ "$daemon_probe_status" -ne 0 ]; then
+    record_regression_failure "test-daemon-local failed against the stubbed cargo/nc toolchain"
+fi
+if ! grep -Fq "$stub_target_dir/debug/taurhaus-daemon" "$daemon_log"; then
+    record_regression_failure "test-daemon-local did not launch the daemon from Cargo's resolved target directory"
+fi
+# test-daemon-windows needs a real PowerShell host, so assert the shape it shares instead.
+if grep -Fq './target/debug/taurhaus-daemon' "$repo_root/justfile"; then
+    record_regression_failure "a daemon diagnostic still launches the checkout-relative ./target/debug binary"
 fi
 
 run_just provision-worktree "$lane_path" lane-provision-smoke HEAD

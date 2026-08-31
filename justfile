@@ -1205,12 +1205,16 @@ test-daemon-local:
     set -euo pipefail
     echo "── Step 1: Linux → Linux daemon connectivity ──"
     echo ""
-    # Build daemon
+    # Build daemon (a lane worktree redirects target-dir, so ask Cargo where it landed)
+    cargo_target_dir=$(
+        cargo metadata --format-version 1 --no-deps --manifest-path src-tauri/Cargo.toml |
+            node -e 'const fs = require("node:fs"); const metadata = JSON.parse(fs.readFileSync(0, "utf8")); process.stdout.write(metadata.target_directory)'
+    )
     cd src-tauri && cargo build --bin taurhaus-daemon 2>&1 | tail -1
     echo "✓ Daemon built"
     # Start daemon on a random-ish port to avoid conflicts
     PORT=17299
-    ./target/debug/taurhaus-daemon --port $PORT &
+    "$cargo_target_dir/debug/taurhaus-daemon" --port $PORT &
     DAEMON_PID=$!
     sleep 0.5
     # Ping it
@@ -1235,11 +1239,15 @@ test-daemon-windows:
     set -euo pipefail
     echo "── Step 2: Windows → Linux daemon connectivity ──"
     echo ""
-    # Build daemon
+    # Build daemon (a lane worktree redirects target-dir, so ask Cargo where it landed)
+    cargo_target_dir=$(
+        cargo metadata --format-version 1 --no-deps --manifest-path src-tauri/Cargo.toml |
+            node -e 'const fs = require("node:fs"); const metadata = JSON.parse(fs.readFileSync(0, "utf8")); process.stdout.write(metadata.target_directory)'
+    )
     cd src-tauri && cargo build --bin taurhaus-daemon 2>&1 | tail -1
     echo "✓ Daemon built"
     PORT=17299
-    ./target/debug/taurhaus-daemon --port $PORT &
+    "$cargo_target_dir/debug/taurhaus-daemon" --port $PORT &
     DAEMON_PID=$!
     sleep 0.5
     echo "✓ Daemon running on :$PORT (PID $DAEMON_PID)"
