@@ -415,13 +415,20 @@ async function waitForMemberBinding(stage) {
     throw new Error(`${stage.owner} is parked on an interactive prompt:\n${pane.trimEnd()}`)
   }
 
-  // The onboarding submission can land while Codex is still starting. Add a
-  // tiny prompt and submit once; the resulting first turn gives the managed
-  // member the durable session id a real stage requires.
+  // A literal send can park unsubmitted in the composer while Codex finishes
+  // its cold start — measured attempt 2 found 'Reply with only the word
+  // READY.' AND mesh's own onboarding notice sitting in the input box with
+  // the Enter lost. So the nudge retries: a bare Enter every window submits
+  // whatever is parked (mesh's notice included), and one re-prompt fires at
+  // half budget. The sibling deadline lane's retrying nudge never lost a
+  // bind; this ports that behavior.
   tmuxQuietly(['send-keys', '-t', runtime.pane_id, '-l', 'Reply with only the word READY.'])
   await browser.pause(600)
   tmuxQuietly(['send-keys', '-t', runtime.pane_id, 'Enter'])
 
+  const bindStartedAt = Date.now()
+  let lastNudgeAt = Date.now()
+  let reprompted = false
   await waitWithPaneTail({
     memberName: stage.owner,
     paneId: runtime.pane_id,
@@ -430,7 +437,18 @@ async function waitForMemberBinding(stage) {
       await browser.waitUntil(
         async () => {
           await invokeTauri('coordination_get_live_team_status', { teamName: TEAM_NAME })
-          return Boolean(readRuntimeRecord(stage.owner)?.session_id)
+          if (readRuntimeRecord(stage.owner)?.session_id) return true
+          const now = Date.now()
+          if (now - lastNudgeAt >= 15_000) {
+            lastNudgeAt = now
+            if (!reprompted && now - bindStartedAt >= SESSION_BIND_TIMEOUT_MS / 2) {
+              reprompted = true
+              tmuxQuietly(['send-keys', '-t', runtime.pane_id, '-l', 'Reply with only the word READY.'])
+              await browser.pause(600)
+            }
+            tmuxQuietly(['send-keys', '-t', runtime.pane_id, 'Enter'])
+          }
+          return false
         },
         {
           timeout: SESSION_BIND_TIMEOUT_MS,
