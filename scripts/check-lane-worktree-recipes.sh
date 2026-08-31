@@ -402,13 +402,19 @@ if [ -e "$shared_target" ]; then
 fi
 run_just clean-lane-target
 
-if ! grep -Fq '`just provision-worktree PATH BRANCH [BASE]`' "$repo_root/CONTRIBUTING.md"; then
+if ! grep -Fq '`just provision-worktree LANE_PATH BRANCH [BASE]`' "$repo_root/CONTRIBUTING.md"; then
     echo "CONTRIBUTING.md does not name the lane provisioning recipe" >&2
     exit 1
 fi
 if ! grep -Fq '**Cached lane worktrees**' "$repo_root/CHANGELOG.md"; then
     echo "CHANGELOG.md does not record cached lane worktrees" >&2
     exit 1
+fi
+
+# // Regression: cf6f7d55 named the lane parameter PATH, shadowing the environment
+# // variable every git and bun lookup in these recipes resolves through.
+if grep -Eq '^(provision|remove)-worktree PATH\b' "$repo_root/justfile"; then
+    record_regression_failure "a lane recipe still names its parameter PATH"
 fi
 
 if [ "$regression_failures" -ne 0 ]; then

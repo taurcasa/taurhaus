@@ -33,10 +33,10 @@ ensure-tauri-resources:
 # and frozen Bun install sequence. The worktree-local Cargo config affects only
 # that lane: the main checkout and release builds keep src-tauri/target untouched.
 # Cargo's own locking serializes concurrent lanes sharing the cache.
-provision-worktree PATH BRANCH BASE="origin/main":
+provision-worktree LANE_PATH BRANCH BASE="origin/main":
     #!/usr/bin/env bash
     set -euo pipefail
-    lane_input={{quote(PATH)}}
+    lane_input={{quote(LANE_PATH)}}
     lane_parent=$(cd -- {{quote(invocation_directory())}} && cd -- "$(dirname -- "$lane_input")" && pwd)
     lane_path="$lane_parent/$(basename -- "$lane_input")"
     lane_branch={{quote(BRANCH)}}
@@ -61,10 +61,10 @@ provision-worktree PATH BRANCH BASE="origin/main":
 
 # Remove a lane worktree and its branch. Unmerged branches are preserved unless
 # the caller explicitly acknowledges the destructive cleanup with FORCE_BRANCH=1.
-remove-worktree PATH:
+remove-worktree LANE_PATH:
     #!/usr/bin/env bash
     set -euo pipefail
-    lane_input={{quote(PATH)}}
+    lane_input={{quote(LANE_PATH)}}
     lane_parent=$(cd -- {{quote(invocation_directory())}} && cd -- "$(dirname -- "$lane_input")" && pwd)
     lane_path="$lane_parent/$(basename -- "$lane_input")"
     lane_branch=$(git -C "$lane_path" symbolic-ref --quiet --short HEAD) || {

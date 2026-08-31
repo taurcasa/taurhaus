@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- **Cached lane worktrees** — `just provision-worktree PATH BRANCH [BASE]` now performs the standard fetch, branch-worktree creation, and frozen Bun install, then gives only the lane a Cargo config backed by `~/.cache/taurhaus-lane-target`; Cargo locking serializes concurrent lane compiles, the E2E recipes keep their built binaries lane-local, and the main checkout and release targets remain unchanged. `just remove-worktree PATH` cleans up merged lanes but protects unmerged branches unless `FORCE_BRANCH=1`, and `just clean-lane-target` safely reclaims the shared cache.
+- **Cached lane worktrees** — `just provision-worktree LANE_PATH BRANCH [BASE]` now performs the standard fetch, branch-worktree creation, and frozen Bun install, then gives only the lane a Cargo config backed by `~/.cache/taurhaus-lane-target`; Cargo locking serializes concurrent lane compiles, the E2E recipes keep their built binaries lane-local, and the main checkout and release targets remain unchanged. `just remove-worktree LANE_PATH` cleans up merged lanes but protects unmerged branches unless `FORCE_BRANCH=1`, and `just clean-lane-target` safely reclaims the shared cache.
 
 ## [0.8.5] - 2026-08-31
 
