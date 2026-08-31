@@ -1389,7 +1389,7 @@ mod tests {
         assert_eq!(creative.defaults.model, "fable");
         assert!(creative
             .instructions
-            .contains("CREATIVE DIRECTION candidates: Fable 5 (preferred) or Gemini via agy"));
+            .contains("CREATIVE DIRECTION candidates: Fable 5 (preferred) or Antigravity via agy"));
         assert!(creative.instructions.contains("human validation required"));
 
         let implementation = find("frontend-design-skill-developer");

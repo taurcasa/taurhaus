@@ -1507,6 +1507,14 @@ mod tests {
     }
 
     #[test]
+    fn model_compatibility_accepts_catalog_aliases_for_their_harness_only() {
+        // Regression: 9a6b9596 introduced catalog aliases such as `fable` in
+        // role defaults without directly pinning the compatibility contract.
+        assert!(model_is_compatible(CliTool::Claude, "fable"));
+        assert!(!model_is_compatible(CliTool::Claude, "gpt-5.6-sol"));
+    }
+
+    #[test]
     fn cli_tool_from_str_is_case_insensitive() {
         assert_eq!("Claude".parse::<CliTool>().unwrap(), CliTool::Claude);
         assert_eq!("CODEX".parse::<CliTool>().unwrap(), CliTool::Codex);

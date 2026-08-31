@@ -32,7 +32,7 @@ export const FALLBACK_TOOLS = Object.freeze([
     displayName: 'Claude Code',
     accent: 'emerald',
     medallionAccent: 'amber',
-    defaultAgentRoleId: 'claude-reviewer',
+    defaultAgentRoleId: 'v4-developer-claude',
     aliases: ['claude', 'claude_native'],
     capabilities: {
       modelFlag: '--model',
@@ -65,7 +65,7 @@ export const FALLBACK_TOOLS = Object.freeze([
     displayName: 'Codex',
     accent: 'sky',
     medallionAccent: 'emerald',
-    defaultAgentRoleId: 'codex-developer',
+    defaultAgentRoleId: 'v4-developer-codex',
     aliases: ['codex', 'mesh', 'mesh_bridged'],
     capabilities: {
       modelFlag: '-m',
@@ -98,7 +98,7 @@ export const FALLBACK_TOOLS = Object.freeze([
     displayName: 'Antigravity CLI',
     accent: 'google-blue',
     medallionAccent: 'google-blue',
-    defaultAgentRoleId: 'antigravity-ui-specialist',
+    defaultAgentRoleId: 'v4-developer-agy',
     aliases: ['agy', 'antigravity'],
     capabilities: {
       modelFlag: '--model',
@@ -131,7 +131,7 @@ export const FALLBACK_TOOLS = Object.freeze([
     displayName: 'Grok CLI',
     accent: 'graphite',
     medallionAccent: 'graphite',
-    defaultAgentRoleId: 'grok-developer',
+    defaultAgentRoleId: 'v4-developer-grok',
     aliases: ['grok'],
     capabilities: {
       modelFlag: '--model',

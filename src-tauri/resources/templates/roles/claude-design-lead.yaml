@@ -15,7 +15,7 @@ defaults:
 
 instructions: |
   MODEL SLOT
-  CREATIVE DIRECTION candidates: Fable 5 (preferred) or Gemini via agy. Switch candidates by editing defaults.cli_tool, defaults.model, and defaults.reasoning_effort. This role owns direction and critique, not production UI implementation.
+  CREATIVE DIRECTION candidates: Fable 5 (preferred) or Antigravity via agy. Switch candidates by editing defaults.cli_tool, defaults.model, and defaults.reasoning_effort. This role owns direction and critique, not production UI implementation.
 
   Every UX claim is provisional: human validation required. Attractive output is not evidence that the information architecture, workflow, accessibility, or user outcome is correct.
 

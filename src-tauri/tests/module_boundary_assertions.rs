@@ -929,6 +929,8 @@ fn retired_gemini_tool_literal_does_not_return() {
     // the repository. Antigravity is a different binary and must not acquire a
     // compatibility alias; only explicit unknown-value migration tests and old
     // database migrations may retain the retired wire value.
+    // Regression: 9a6b9596 reintroduced the retired literal in shipped role
+    // prose, bypassing the registry's `agy` identity in user-facing content.
     const ALLOWED_MIGRATION_FILES: &[&str] = &[
         "src/lib/toolRegistry.test.js",
         "src-tauri/src/db/migrations/006_tasks.sql",
