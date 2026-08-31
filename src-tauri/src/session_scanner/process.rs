@@ -13,6 +13,7 @@
 //! sees it — see `retain_interactive_processes`, the one place the rule is
 //! applied. The rule is terminal-based, never tool-based.
 
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Read};
 use std::process::{Child, Command, Stdio};
 use std::sync::{mpsc, Mutex, OnceLock};
@@ -352,13 +353,19 @@ fn list_cli_tool_processes() -> Option<Vec<(u32, String, CliTool)>> {
 /// of sessions.
 fn read_cli_tool_inventory() -> Option<Vec<(u32, String, CliTool)>> {
     let mut entries = read_inventory_entries()?;
-    retain_interactive_processes(&mut entries);
+    retain_inventory_processes(&mut entries);
     Some(
         entries
             .into_iter()
             .map(|entry| (entry.pid, entry.args, entry.cli_tool))
             .collect(),
     )
+}
+
+/// Apply every retention rule before either inventory consumer sees a PID.
+fn retain_inventory_processes(entries: &mut Vec<InventoryEntry>) {
+    retain_interactive_processes(entries);
+    deduplicate_wrapper_processes(entries);
 }
 
 /// Drop every tool process that has no controlling terminal.
@@ -370,6 +377,53 @@ fn read_cli_tool_inventory() -> Option<Vec<(u32, String, CliTool)>> {
 /// with no terminal is not.
 pub(crate) fn retain_interactive_processes(entries: &mut Vec<InventoryEntry>) {
     entries.retain(|entry| entry.has_terminal);
+}
+
+/// Drop matched wrapper ancestors while keeping the deepest harness process.
+fn deduplicate_wrapper_processes(entries: &mut Vec<InventoryEntry>) {
+    let entries_by_pid: HashMap<u32, usize> = entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| (entry.pid, index))
+        .collect();
+    let mut dropped = HashSet::new();
+
+    for entry in entries.iter() {
+        let Some(terminal) = entry.controlling_terminal.as_deref() else {
+            continue;
+        };
+        let mut parent_pid = entry.ppid;
+        let mut visited = HashSet::new();
+
+        while parent_pid != 0 && parent_pid != entry.pid && visited.insert(parent_pid) {
+            let Some(parent_index) = entries_by_pid.get(&parent_pid) else {
+                break;
+            };
+            let parent = &entries[*parent_index];
+            if parent.cli_tool != entry.cli_tool
+                || parent.controlling_terminal.as_deref() != Some(terminal)
+            {
+                break;
+            }
+
+            dropped.insert(parent.pid);
+            parent_pid = parent.ppid;
+        }
+    }
+
+    entries.retain(|entry| {
+        if !dropped.contains(&entry.pid) {
+            return true;
+        }
+        tracing::debug!(
+            event = "session_scanner.inventory.wrapper_deduped",
+            pid = entry.pid,
+            ppid = entry.ppid,
+            tool = %entry.cli_tool,
+            "deduplicated CLI wrapper ancestor"
+        );
+        false
+    });
 }
 
 /// Detect CLI tools from the selected inventory backend, unfiltered.
@@ -1049,6 +1103,56 @@ mod tests {
 
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].pid, 4246);
+    }
+
+    // Regression: commit 665abc94 taught the inventory to match both Codex's
+    // JavaScript shim and native binary, but retained both when Codex 0.151
+    // stopped exec-replacing the shim. The observed chain was:
+    // `node ~/.nvm/.../bin/codex --yolo (pid A) -> vendor .../codex-linux-x64/.../bin/codex --yolo (pid B, child of A, same pts) -> codex-code-mode-host (child of B, unmatched)`.
+    #[test]
+    fn codex_npm_shim_ancestor_is_deduped() {
+        let mut entries = vec![
+            InventoryEntry::new(
+                4100,
+                "node /home/user/.nvm/versions/node/v24/bin/codex --yolo",
+                CliTool::Codex,
+                true,
+            )
+            .with_parent_and_terminal(4000, "pts/7"),
+            InventoryEntry::new(
+                4200,
+                "/node_modules/@openai/codex-linux-x64/vendor/codex --yolo",
+                CliTool::Codex,
+                true,
+            )
+            .with_parent_and_terminal(4100, "pts/7"),
+        ];
+
+        retain_inventory_processes(&mut entries);
+
+        assert_eq!(
+            entries.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
+            vec![4200]
+        );
+    }
+
+    #[test]
+    fn wrapper_dedup_walks_a_three_deep_matched_chain() {
+        let mut entries = vec![
+            InventoryEntry::new(5100, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(5000, "pts/8"),
+            InventoryEntry::new(5200, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(5100, "pts/8"),
+            InventoryEntry::new(5300, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(5200, "pts/8"),
+        ];
+
+        retain_inventory_processes(&mut entries);
+
+        assert_eq!(
+            entries.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
+            vec![5300]
+        );
     }
 
     // Regression: the `ps` backend's own reading of the same rule. macOS prints
