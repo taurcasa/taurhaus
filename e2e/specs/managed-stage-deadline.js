@@ -782,7 +782,7 @@ describe('managed stage deadline semantics', function () {
     laneCleanup.run()
   })
 
-  it('suppresses the half-time nudge while the member is actively working, then completes normally', async function () {
+  async function runActivitySuppressionCase() {
     if (!laneEnabled) return this.skip()
     this.timeout(480_000)
     this.retries(1)
@@ -911,9 +911,9 @@ describe('managed stage deadline semantics', function () {
       deadlineActionCount: 0,
       sessionEvidence,
     }
-  })
+  }
 
-  it('nudges once, stales once, returns timeout, and preserves the managed session', async function () {
+  async function runDeadlineStallCase() {
     if (!laneEnabled) return this.skip()
     this.timeout(600_000)
 
@@ -1101,7 +1101,10 @@ describe('managed stage deadline semantics', function () {
         },
       },
     })
-  })
+  }
+
+  it('nudges once, stales once, returns timeout, and preserves the managed session', runDeadlineStallCase)
+  it('suppresses the half-time nudge while the member is actively working, then completes normally', runActivitySuppressionCase)
 
   it('records why the managed deadline lane was unavailable', async function () {
     if (laneEnabled) return this.skip()

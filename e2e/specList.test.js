@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
 import { buildSpecList, listSpecFiles, paidSpecs, specGroups } from './specList.js'
@@ -6,6 +7,7 @@ import { buildSpecList, listSpecFiles, paidSpecs, specGroups } from './specList.
 // Vitest runs from the repository root (see CLAUDE.md), which is what makes
 // this the real specs directory rather than a fixture.
 const specsDir = resolve('e2e/specs')
+const managedDeadlineSource = readFileSync(resolve(specsDir, 'managed-stage-deadline.js'), 'utf8')
 
 function flatNames(specList) {
   return specList.flat().map((path) => basename(path))
@@ -40,6 +42,21 @@ describe('default WDIO spec list', () => {
 
   it('keeps the paid managed deadline measurement named-only', () => {
     expect(paidSpecs).toContain('managed-stage-deadline.js')
+  })
+
+  // Regression: e1c38eef registered the suppression case before the primary
+  // stall, so attempt 1 assigned the stall while the member's prior completion
+  // turn was still closing and the delivered notice was never acted on.
+  it('runs the primary stall before the suppression case', () => {
+    const stall = managedDeadlineSource.indexOf(
+      "it('nudges once, stales once, returns timeout, and preserves the managed session'"
+    )
+    const suppression = managedDeadlineSource.indexOf(
+      "it('suppresses the half-time nudge while the member is actively working, then completes normally'"
+    )
+
+    expect(stall).toBeGreaterThanOrEqual(0)
+    expect(suppression).toBeGreaterThan(stall)
   })
 
   // Regression: commit 111c776c appended every ungrouped spec to a catch-all,
