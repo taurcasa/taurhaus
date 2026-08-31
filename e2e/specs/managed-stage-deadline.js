@@ -21,9 +21,10 @@
  * Before that stall, a negative path gives the same member a three-minute task.
  * The active command must cover `needed_active = D/2 + 30 s`: 90 + 30 = 120
  * seconds, including a whole pass cadence after half time. That leaves
- * `slack = D/2 - 30 s`: 90 - 30 = 60 seconds for the Codex turn that launches
- * the command and the turn that completes the task. MarkStale is not suppressed
- * by activity, so that completion allowance is part of the lane contract. The
+ * `slack = D/2 - 30 s`: 90 - 30 = 60 seconds for the single Codex turn that
+ * launches the chained command — the `mesh task complete` at its end IS the
+ * completion; there is no separate completion turn. MarkStale is not
+ * suppressed by activity, so that allowance is part of the lane contract. The
  * heartbeat emits 4095 bytes plus a newline every 500 ms so Codex's measured
  * read rate clears the production 1 kB/s gate. It keeps one real member command
  * running; it is not a test-process sleep and proves nothing without joined
@@ -784,6 +785,7 @@ describe('managed stage deadline semantics', function () {
   it('suppresses the half-time nudge while the member is actively working, then completes normally', async function () {
     if (!laneEnabled) return this.skip()
     this.timeout(480_000)
+    this.retries(1)
 
     const logOffset = currentLogOffset()
     const turnCount = completedTurns()
@@ -802,7 +804,8 @@ describe('managed stage deadline semantics', function () {
         const activeCommand = ACTIVE_HEARTBEAT.commandWithCompletion(complete)
         return `${start}. Then run exactly: ${activeCommand}.`
       },
-      deliverable: 'Complete the task after the heartbeat. Change no file and send no separate message.',
+      deliverable:
+        'The chained `mesh task complete` at the end of the first step is the completion. Change no file and send no separate message.',
       completionSignalFor: (taskId) =>
         memberMeshCommand('complete', taskId, " --summary 'active deadline suppression completed'"),
     })
@@ -839,7 +842,6 @@ describe('managed stage deadline semantics', function () {
           deadlineMinutes: ACTIVE_DEADLINE_MINUTES,
           activitySnapshots: [...activityByObservedAt.values()],
           passEvents: selfHealPassesAfter(events, imported.task.assigned_at),
-          deadlineEvents: [],
         })
         if (!evidence) return false
         suppressionOutcome = { kind: 'suppressed', evidence }

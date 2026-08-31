@@ -307,7 +307,6 @@ describe('activeDeadlinePassEvidence', () => {
           { observed_at: '2026-08-31T10:01:05.000Z', activity_confidence: 'likely_working' },
         ],
         passEvents: [{ ts: '2026-08-31T10:01:10.000Z' }],
-        deadlineEvents: [],
       })
     ).toEqual({
       halfDueAt: '2026-08-31T10:01:00.000Z',
@@ -317,13 +316,12 @@ describe('activeDeadlinePassEvidence', () => {
     })
   })
 
-  it('rejects a pre-half pass, idle evidence, or a pass that already acted', () => {
+  it('rejects a pre-half pass or idle evidence', () => {
     const base = {
       assignedAt: '2026-08-31T10:00:00.000Z',
       deadlineMinutes: 2,
       activitySnapshots: [{ observed_at: '2026-08-31T10:00:55.000Z', activity_confidence: 'active' }],
       passEvents: [{ ts: '2026-08-31T10:00:59.000Z' }],
-      deadlineEvents: [],
     }
     expect(activeDeadlinePassEvidence(base)).toBeNull()
     expect(
@@ -331,14 +329,6 @@ describe('activeDeadlinePassEvidence', () => {
         ...base,
         activitySnapshots: [{ observed_at: '2026-08-31T10:01:05.000Z', activity_confidence: 'idle' }],
         passEvents: [{ ts: '2026-08-31T10:01:10.000Z' }],
-      })
-    ).toBeNull()
-    expect(
-      activeDeadlinePassEvidence({
-        ...base,
-        activitySnapshots: [{ observed_at: '2026-08-31T10:01:05.000Z', activity_confidence: 'active' }],
-        passEvents: [{ ts: '2026-08-31T10:01:10.000Z' }],
-        deadlineEvents: [{ event: 'deadline.nudge.sent' }],
       })
     ).toBeNull()
   })
@@ -356,7 +346,6 @@ describe('activeDeadlinePassEvidence', () => {
           { observed_at: '2026-08-31T10:01:08.000Z', activity_confidence: 'idle' },
         ],
         passEvents: [{ ts: '2026-08-31T10:01:10.000Z' }],
-        deadlineEvents: [],
       })
     ).toBeNull()
   })

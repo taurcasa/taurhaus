@@ -193,17 +193,15 @@ export function activeDeadlineHeartbeatPlan({
  * no more than 120 seconds old. A later activity record cannot explain an
  * earlier pass, so this chooses the newest snapshot at or before each eligible
  * pass and only then applies the production freshness and confidence checks.
- * Any committed deadline action makes the negative path false rather than
- * letting a later active sample cover it up.
+ * The caller checks committed deadline actions itself before asking for
+ * evidence; this helper judges activity joins alone.
  */
 export function activeDeadlinePassEvidence({
   assignedAt,
   deadlineMinutes,
   activitySnapshots = [],
   passEvents = [],
-  deadlineEvents = [],
 }) {
-  if (deadlineEvents.length > 0) return null
   const assignedAtMs = Date.parse(assignedAt)
   const deadlineMs = Number(deadlineMinutes) * 60_000
   if (!Number.isFinite(assignedAtMs) || !Number.isFinite(deadlineMs) || deadlineMs <= 0) return null
