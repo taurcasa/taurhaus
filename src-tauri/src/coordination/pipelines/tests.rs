@@ -3,6 +3,7 @@ use fs2::FileExt;
 use std::fs;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
@@ -11,7 +12,9 @@ use taurhaus_lib::session_scanner::launch_base::{AliasExpansion, ResolvedBase};
 use tempfile::TempDir;
 
 use crate::coordination::backend::fake::FakeBackend;
-use crate::coordination::backend::{BackendCapabilities, BackendKind, CoordinationBackend};
+use crate::coordination::backend::{
+    BackendCapabilities, BackendKind, CoordinationBackend, MeshBridgedBackend,
+};
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::{
@@ -21,14 +24,15 @@ use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryRequest, DeliveryResult, InitializeTeamRequest,
     LaunchRequest, LaunchResult, LeadMode, ProbeRequest, ProbeResult, ResumeMemberRequest,
-    StepStatus, TeardownRequest, TeardownResult,
+    StepStatus, TeardownRequest, TeardownResult, WakeDisposition,
 };
 use crate::coordination::runtime::{
     CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
 };
 use crate::coordination::stores::lock::TargetFileLock;
 use crate::coordination::stores::{
-    MemberRuntimeSnapshot, MemberRuntimeStore, RuntimeCommitOutcome, TeamConfigStore,
+    MemberRuntimeSnapshot, MemberRuntimeStore, MeshInboxStore, RuntimeCommitOutcome,
+    TeamConfigStore,
 };
 use crate::coordination::task_effort::EffortPassScope;
 use crate::models::CliCommandSettings;
@@ -49,6 +53,50 @@ fn optional_pane_identity_capture_failure_does_not_abort_activation() {
 
     assert_eq!(state.pane_pid, None);
     assert_eq!(state.pane_start_time, None);
+}
+
+#[test]
+fn member_action_warning_surfaces_unread_not_attempted_dispositions() {
+    // Regression: d4ebdf76 surfaced only `Failed` wake dispositions, hiding
+    // durable notices that a confirmed dead or absent pane would not read.
+    for reason in ["member pane is dead", "member pane not found"] {
+        assert_eq!(
+            members::onboarding_wake_warning(&WakeDisposition::NotAttempted {
+                reason: reason.to_string(),
+            }),
+            Some(format!("onboarding wake not attempted: {reason}"))
+        );
+    }
+
+    assert_eq!(
+        members::onboarding_wake_warning(&WakeDisposition::NotAttempted {
+            reason: "member uses a native inbox poller".to_string(),
+        }),
+        None,
+        "native inbox polling is an expected no-wake disposition"
+    );
+}
+
+#[test]
+fn failed_add_agent_report_preserves_delivery_warnings() {
+    // Regression: 7fdad577 added a frontend warning branch while the backend's
+    // structured add-agent failure helper discarded warnings already collected.
+    let mut steps = Vec::new();
+
+    let report = helpers::failed_add_agent_report(
+        "wake-warning-add",
+        "builder",
+        "update_roster",
+        CoordinationError::StoreError("forced commit failure".to_string()),
+        vec!["send_onboarding".to_string()],
+        &mut steps,
+        vec!["onboarding wake failed: forced wake failure".to_string()],
+    );
+
+    assert_eq!(
+        report.warnings,
+        vec!["onboarding wake failed: forced wake failure".to_string()]
+    );
 }
 
 #[test]
@@ -317,6 +365,202 @@ impl CoordinationRuntime for SequencedRuntime {
 
     fn pane_current_command(&self, pane_id: &str) -> Result<Option<String>, CoordinationError> {
         self.inner.pane_current_command(pane_id)
+    }
+
+    fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
+        self.inner.kill_aitx_pane(pane_id)
+    }
+
+    fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError> {
+        self.inner.terminate_process_by_pid(pid)
+    }
+
+    fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
+        self.inner.is_process_running_by_pid(pid)
+    }
+
+    fn mesh_daemon_uses_current_binary(&self, pid: u32) -> Result<bool, CoordinationError> {
+        self.inner.mesh_daemon_uses_current_binary(pid)
+    }
+
+    fn team_daemon_uses_current_binary(&self, team_name: &str) -> Result<bool, CoordinationError> {
+        self.inner.team_daemon_uses_current_binary(team_name)
+    }
+
+    fn clear_mesh_daemon_pid_file(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner
+            .clear_mesh_daemon_pid_file(team_name, member_name)
+    }
+
+    fn stop_team_daemon(&self, team_name: &str) -> Result<(), CoordinationError> {
+        self.inner.stop_team_daemon(team_name)
+    }
+}
+
+#[derive(Debug)]
+struct DeliveryWakePipelineRuntime {
+    inner: RecordingCoordinationRuntime,
+    teams_dir: PathBuf,
+    mesh_spawn_count: AtomicUsize,
+}
+
+impl DeliveryWakePipelineRuntime {
+    fn new(teams_dir: &Path) -> Self {
+        let inner = RecordingCoordinationRuntime::default();
+        inner.set_mesh_join_teams_dir(teams_dir);
+        Self {
+            inner,
+            teams_dir: teams_dir.to_path_buf(),
+            mesh_spawn_count: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl CoordinationRuntime for DeliveryWakePipelineRuntime {
+    fn create_aitx_pane(
+        &self,
+        project_id: &str,
+        tmux_layout: &str,
+    ) -> Result<String, CoordinationError> {
+        self.inner.create_aitx_pane(project_id, tmux_layout)
+    }
+
+    fn create_aitx_pane_and_launch_in_target(
+        &self,
+        project_id: &str,
+        target_pane: &str,
+        launch_cmd: &str,
+    ) -> Result<String, CoordinationError> {
+        self.inner
+            .create_aitx_pane_and_launch_in_target(project_id, target_pane, launch_cmd)
+    }
+
+    fn send_tmux_keys_with_enter(
+        &self,
+        pane_id: &str,
+        keys: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner.send_tmux_keys_with_enter(pane_id, keys)
+    }
+
+    fn detect_session_id(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<Option<String>, CoordinationError> {
+        self.inner.detect_session_id(pane_id, cli_tool)
+    }
+
+    fn detect_runtime_session(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<crate::coordination::runtime::DetectedRuntimeSession, CoordinationError> {
+        self.inner.detect_runtime_session(pane_id, cli_tool)
+    }
+
+    fn join_mesh(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        project_id: &str,
+        member_type: &str,
+        model: &str,
+        claude_dir: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner.join_mesh(
+            team_name,
+            member_name,
+            project_id,
+            member_type,
+            model,
+            claude_dir,
+        )
+    }
+
+    fn spawn_mesh_daemon(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        let spawn_index = self.mesh_spawn_count.fetch_add(1, Ordering::SeqCst);
+        if spawn_index > 0 {
+            return Err(CoordinationError::Backend(
+                "forced onboarding wake spawn failure".to_string(),
+            ));
+        }
+
+        let pid = self
+            .inner
+            .spawn_mesh_daemon(pane_id, team_name, member_name)?;
+        let mut runtime = MemberRuntimeStore::load(&self.teams_dir, team_name, member_name)?;
+        runtime.pane_id = Some(pane_id.to_string());
+        runtime.daemon_pid = None;
+        MemberRuntimeStore::save(&self.teams_dir, team_name, member_name, &runtime)?;
+        Ok(pid)
+    }
+
+    fn spawn_team_daemon(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner.spawn_team_daemon(team_name, operator_name)
+    }
+
+    fn find_existing_mesh_daemon_pids(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<Vec<u32>, CoordinationError> {
+        self.inner
+            .find_existing_mesh_daemon_pids(pane_id, team_name, member_name)
+    }
+
+    fn find_existing_mesh_daemon_pid_by_member(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<Option<u32>, CoordinationError> {
+        self.inner
+            .find_existing_mesh_daemon_pid_by_member(team_name, member_name)
+    }
+
+    fn pane_belongs_to_project(
+        &self,
+        pane_id: &str,
+        project_id: &str,
+    ) -> Result<bool, CoordinationError> {
+        self.inner.pane_belongs_to_project(pane_id, project_id)
+    }
+
+    fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_exists(pane_id)
+    }
+
+    fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_dead(pane_id)
+    }
+
+    fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_shell(pane_id)
+    }
+
+    fn pane_current_command(&self, pane_id: &str) -> Result<Option<String>, CoordinationError> {
+        self.inner.pane_current_command(pane_id)
+    }
+
+    fn live_pane(
+        &self,
+        pane_id: &str,
+    ) -> Result<Option<crate::coordination::runtime::LivePane>, CoordinationError> {
+        self.inner.live_pane(pane_id)
     }
 
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
@@ -3696,6 +3940,80 @@ fn resume_pipeline_non_claude_reuses_pane_but_starts_fresh_session_and_updates_r
 }
 
 #[test]
+fn resume_report_carries_onboarding_wake_failure() {
+    // Regression: 7fdad577 surfaced warnings from a mocked frontend payload
+    // without proving the member pipeline carried the real wake disposition.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(DeliveryWakePipelineRuntime::new(tmp.path()));
+    runtime.inner.set_pane_exists("%11", true);
+    runtime.inner.set_pane_dead("%11", false);
+    runtime.inner.set_pane_current_command("%11", Some("codex"));
+    runtime
+        .inner
+        .set_pane_current_path("%11", Some("/tmp/builder"));
+    let backend: Arc<dyn CoordinationBackend> = Arc::new(MeshBridgedBackend::new_with_teams_dir(
+        tmp.path().to_path_buf(),
+    ));
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime);
+
+    orchestrator
+        .create_team("wake-warning-resume", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "wake-warning-resume",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "wake-warning-resume",
+            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+        )
+        .expect("add member");
+    let mut member_runtime =
+        MemberRuntimeStore::load(tmp.path(), "wake-warning-resume", "builder").expect("runtime");
+    member_runtime.pane_id = Some("%11".to_string());
+    member_runtime.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(
+        tmp.path(),
+        "wake-warning-resume",
+        "builder",
+        &member_runtime,
+    )
+    .expect("save runtime");
+
+    let report = orchestrator
+        .resume_member("wake-warning-resume", "builder")
+        .expect("resume report");
+
+    assert!(
+        report.resumed,
+        "resume should remain successful: {report:?}"
+    );
+    assert_eq!(
+        report.warnings,
+        vec![
+            "onboarding wake failed: daemon spawn failed: Backend error: forced onboarding wake spawn failure"
+                .to_string()
+        ]
+    );
+    assert_eq!(
+        MeshInboxStore::load(tmp.path(), "wake-warning-resume", "builder")
+            .expect("inbox")
+            .len(),
+        1,
+        "report mapping must not retry the durable onboarding append"
+    );
+}
+
+#[test]
 fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_with_session_capture() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
@@ -4212,6 +4530,59 @@ fn add_agent_failure_clears_daemon_pid_file() {
     assert!(
         !config.members.iter().any(|entry| entry.name == "builder"),
         "failed hot-add should not leave the member in config"
+    );
+}
+
+#[test]
+fn add_agent_report_carries_onboarding_wake_failure() {
+    // Regression: 7fdad577 taught the frontend to read `warnings`, but the
+    // add-agent domain and IPC reports dropped the pipeline's real warnings.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(DeliveryWakePipelineRuntime::new(tmp.path()));
+    let backend: Arc<dyn CoordinationBackend> = Arc::new(MeshBridgedBackend::new_with_teams_dir(
+        tmp.path().to_path_buf(),
+    ));
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime);
+    orchestrator
+        .create_team("wake-warning-add", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "wake-warning-add",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+
+    let report = orchestrator
+        .add_agent_to_team(&AddAgentRequest {
+            team_name: "wake-warning-add".to_string(),
+            agent: setup_config("builder", "codex", "gpt-5.4", "/tmp/builder"),
+        })
+        .expect("add-agent report");
+
+    assert!(
+        report.failed_step.is_none(),
+        "wake failure is a warning after durable delivery: {report:?}"
+    );
+    let serialized = serde_json::to_value(&report).expect("serialize add-agent report");
+    assert_eq!(
+        serialized["warnings"],
+        serde_json::json!([
+            "onboarding wake failed: daemon spawn failed: Backend error: forced onboarding wake spawn failure"
+        ])
+    );
+    assert_eq!(
+        MeshInboxStore::load(tmp.path(), "wake-warning-add", "builder")
+            .expect("inbox")
+            .len(),
+        1,
+        "report mapping must not retry the durable onboarding append"
     );
 }
 
