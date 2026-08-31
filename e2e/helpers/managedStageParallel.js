@@ -2,13 +2,18 @@ import { existsSync, readdirSync } from 'node:fs'
 
 /** Inspect the current Codex state database without creating or opening it. */
 export function codexStateDatabaseDiagnostic(codexHome) {
-  const filenames = existsSync(codexHome)
-    ? readdirSync(codexHome, { withFileTypes: true })
-        .filter((entry) => entry.isFile() && /^state_\d+\.sqlite$/.test(entry.name))
-        .map((entry) => entry.name)
-        .sort()
-    : []
-  return { directory: codexHome, filenames, exists: filenames.length > 0 }
+  try {
+    const filenames = existsSync(codexHome)
+      ? readdirSync(codexHome, { withFileTypes: true })
+          .filter((entry) => entry.isFile() && /^state_\d+\.sqlite$/.test(entry.name))
+          .map((entry) => entry.name)
+          .sort()
+      : []
+    return { directory: codexHome, filenames, exists: filenames.length > 0 }
+  } catch (error) {
+    // Pure diagnostics: an unreadable home is reported, never thrown.
+    return { directory: codexHome, filenames: [], exists: false, error: String(error?.message ?? error) }
+  }
 }
 
 /** Preserve the pane's bounded tail when a managed session bind wait fails. */

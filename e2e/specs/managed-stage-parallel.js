@@ -87,6 +87,9 @@ const DEADLINE_MINUTES = 10
 
 const TEAM_READY_TIMEOUT_MS = 240_000
 const SESSION_BIND_TIMEOUT_MS = 180_000
+// Two serialized member bring-ups (pane wait + bind wait each) plus fixed
+// setup overhead margin. A third member must grow the multiplier with it.
+const BEFORE_HOOK_TIMEOUT_MS = 2 * (TEAM_READY_TIMEOUT_MS + SESSION_BIND_TIMEOUT_MS) + 660_000
 const RESULT_TIMEOUT_MS = 1_200_000
 // Delivery closes within mesh's effort-wait bound; a lost projection should
 // be reported minutes after the stages start, not at the 20-minute RESULT cap.
@@ -481,11 +484,13 @@ async function initializeParallelTeam() {
           },
         })
       )
-      if (report?.failedStep) {
-        throw new Error(`Adding ${stage.owner} failed at ${report.failedStep}: ${report.message}`)
-      }
+      // Warnings first: a failed AddAgentReport still carries the pane and
+      // onboarding degradation notes that explain the failure it precedes.
       if (report?.warnings?.length) {
         console.log(`[e2e] ${stage.owner} hot-add warnings: ${report.warnings.join(' | ')}`)
+      }
+      if (report?.failedStep) {
+        throw new Error(`Adding ${stage.owner} failed at ${report.failedStep}: ${report.message}`)
       }
     },
     waitForBinding: waitForMemberBinding,
@@ -692,7 +697,7 @@ describe('parallel managed Codex stages', function () {
   this.timeout(1_200_000)
 
   before(async function () {
-    this.timeout(1_500_000)
+    this.timeout(BEFORE_HOOK_TIMEOUT_MS)
     await bootApp()
     if (!(await ensureMainApp())) {
       laneSkipReason = 'Main app unavailable'

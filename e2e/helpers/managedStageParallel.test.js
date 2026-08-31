@@ -17,17 +17,19 @@ const parallelSpecSource = readFileSync(
 describe('parallel managed-stage spec contract', () => {
   // Regression: 8438876a serialized two 420-second member bring-up budgets
   // without expanding the 900-second before-hook cap that contains them.
-  it('leaves enough hook time for serialized cold-start waits and setup overhead', () => {
-    const beforeHookTimeout = parallelSpecSource.match(
-      /before\(async function \(\) \{\s*this\.timeout\(([\d_]+)\)/
+  it('derives the hook budget from the waits it must contain', () => {
+    expect(parallelSpecSource).toMatch(
+      /BEFORE_HOOK_TIMEOUT_MS =\s*2 \* \(TEAM_READY_TIMEOUT_MS \+ SESSION_BIND_TIMEOUT_MS\)/
     )
-
-    expect(beforeHookTimeout?.[1]).toBe('1_500_000')
+    expect(parallelSpecSource).toMatch(
+      /before\(async function \(\) \{\s*this\.timeout\(BEFORE_HOOK_TIMEOUT_MS\)/
+    )
   })
 
-  // Regression: 8438876a ignored AddAgentReport warnings after hot-adding
-  // beta, so non-fatal pane and onboarding degradation had no lane diagnostic.
-  it('logs hot-add warnings after rejecting a failed add report', () => {
+  // Regression: a failed AddAgentReport still carries the degradation notes
+  // that explain it; logging them only after the throw discarded them on the
+  // one path they matter most.
+  it('logs hot-add warnings before rejecting a failed add report', () => {
     const addCallback = parallelSpecSource.slice(
       parallelSpecSource.indexOf('add: async (stage) => {'),
       parallelSpecSource.indexOf('waitForBinding: waitForMemberBinding')
@@ -35,8 +37,8 @@ describe('parallel managed-stage spec contract', () => {
     const failureCheck = addCallback.indexOf('if (report?.failedStep)')
     const warningCheck = addCallback.indexOf('if (report?.warnings?.length)')
 
-    expect(failureCheck).toBeGreaterThanOrEqual(0)
-    expect(warningCheck).toBeGreaterThan(failureCheck)
+    expect(warningCheck).toBeGreaterThanOrEqual(0)
+    expect(failureCheck).toBeGreaterThan(warningCheck)
     expect(addCallback.indexOf('hot-add warnings:', warningCheck)).toBeGreaterThan(warningCheck)
   })
 })
