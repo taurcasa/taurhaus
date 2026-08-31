@@ -1016,7 +1016,12 @@ impl CliToolSpec {
         while let Some(pos) = rest.find(package) {
             let on_boundary = pos == 0 || rest.as_bytes()[pos - 1] == b'/';
             let after = &rest[pos + package.len()..];
-            if on_boundary && after.starts_with('/') && !after.contains("/node_modules/") {
+            // `/` ends the package dir in npm/pnpm layouts; `@` ends it in
+            // bun's cache (`.../cache/@openai/codex@0.151.0@@@1/bin/codex.js`).
+            // A sibling package like `@openai/codex-linux-x64` continues with
+            // `-` and stays rejected.
+            let terminated = after.starts_with('/') || after.starts_with('@');
+            if on_boundary && terminated && !after.contains("/node_modules/") {
                 return true;
             }
             rest = &rest[pos + 1..];
