@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  activeDeadlinePassEvidence,
   effortDeliveryVerdict,
   effortWaitBoundMs,
   expiredEffortWaitProblem,
@@ -210,5 +211,52 @@ describe('stagePollVerdict', () => {
   it('keeps polling every non-stale task record', () => {
     expect(stagePollVerdict({ id: '42', status: 'in_progress' })).toBeNull()
     expect(stagePollVerdict(null)).toBeNull()
+  })
+})
+
+describe('activeDeadlinePassEvidence', () => {
+  it('joins an eligible self-heal pass to the fresh active record it evaluated', () => {
+    expect(
+      activeDeadlinePassEvidence({
+        assignedAt: '2026-08-31T10:00:00.000Z',
+        deadlineMinutes: 2,
+        activitySnapshots: [
+          { observed_at: '2026-08-31T10:01:05.000Z', activity_confidence: 'likely_working' },
+        ],
+        passEvents: [{ ts: '2026-08-31T10:01:10.000Z' }],
+        deadlineEvents: [],
+      })
+    ).toEqual({
+      halfDueAt: '2026-08-31T10:01:00.000Z',
+      passAt: '2026-08-31T10:01:10.000Z',
+      activityObservedAt: '2026-08-31T10:01:05.000Z',
+      activityConfidence: 'likely_working',
+    })
+  })
+
+  it('rejects a pre-half pass, idle evidence, or a pass that already acted', () => {
+    const base = {
+      assignedAt: '2026-08-31T10:00:00.000Z',
+      deadlineMinutes: 2,
+      activitySnapshots: [{ observed_at: '2026-08-31T10:00:55.000Z', activity_confidence: 'active' }],
+      passEvents: [{ ts: '2026-08-31T10:00:59.000Z' }],
+      deadlineEvents: [],
+    }
+    expect(activeDeadlinePassEvidence(base)).toBeNull()
+    expect(
+      activeDeadlinePassEvidence({
+        ...base,
+        activitySnapshots: [{ observed_at: '2026-08-31T10:01:05.000Z', activity_confidence: 'idle' }],
+        passEvents: [{ ts: '2026-08-31T10:01:10.000Z' }],
+      })
+    ).toBeNull()
+    expect(
+      activeDeadlinePassEvidence({
+        ...base,
+        activitySnapshots: [{ observed_at: '2026-08-31T10:01:05.000Z', activity_confidence: 'active' }],
+        passEvents: [{ ts: '2026-08-31T10:01:10.000Z' }],
+        deadlineEvents: [{ event: 'deadline.nudge.sent' }],
+      })
+    ).toBeNull()
   })
 })

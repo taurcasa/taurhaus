@@ -107,6 +107,53 @@ export function stagePollVerdict(record) {
   return record?.status === 'stale' ? { status: 'timeout' } : null
 }
 
+/**
+ * Join a half-deadline self-heal pass to the fresh active snapshot it read.
+ *
+ * The production deadline pass accepts `active` and `likely_working` snapshots
+ * no more than 120 seconds old. A later activity record cannot explain an
+ * earlier pass, so this chooses only the newest qualifying snapshot at or
+ * before each eligible pass. Any committed deadline action makes the negative
+ * path false rather than letting a later active sample cover it up.
+ */
+export function activeDeadlinePassEvidence({
+  assignedAt,
+  deadlineMinutes,
+  activitySnapshots = [],
+  passEvents = [],
+  deadlineEvents = [],
+}) {
+  if (deadlineEvents.length > 0) return null
+  const assignedAtMs = Date.parse(assignedAt)
+  const deadlineMs = Number(deadlineMinutes) * 60_000
+  if (!Number.isFinite(assignedAtMs) || !Number.isFinite(deadlineMs) || deadlineMs <= 0) return null
+  const halfDueMs = assignedAtMs + deadlineMs / 2
+
+  const active = activitySnapshots
+    .map((snapshot) => ({ snapshot, observedAtMs: Date.parse(snapshot?.observed_at) }))
+    .filter(({ snapshot, observedAtMs }) =>
+      Number.isFinite(observedAtMs) &&
+      observedAtMs >= assignedAtMs &&
+      ['active', 'likely_working'].includes(snapshot?.activity_confidence)
+    )
+
+  for (const pass of passEvents) {
+    const passAtMs = Date.parse(pass?.ts)
+    if (!Number.isFinite(passAtMs) || passAtMs < halfDueMs) continue
+    const snapshot = active
+      .filter(({ observedAtMs }) => observedAtMs <= passAtMs && passAtMs - observedAtMs <= 120_000)
+      .sort((left, right) => right.observedAtMs - left.observedAtMs)[0]
+    if (!snapshot) continue
+    return {
+      halfDueAt: new Date(halfDueMs).toISOString(),
+      passAt: pass.ts,
+      activityObservedAt: snapshot.snapshot.observed_at,
+      activityConfidence: snapshot.snapshot.activity_confidence,
+    }
+  }
+  return null
+}
+
 /** The attention projection for one task, or null before mesh has written it. */
 export function attentionRecord({ claudeDir, team, taskId }) {
   try {

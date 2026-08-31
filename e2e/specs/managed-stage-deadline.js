@@ -16,6 +16,15 @@
  * events after `assigned_at`; elapsed sleeps are never accepted as proof that
  * those passes ran.
  *
+ * Before that stall, a negative path gives the same member a two-minute task
+ * whose first step starts the task and runs a low-frequency 96-second Bun
+ * heartbeat. Half time is 60 seconds and the next 30-second pass is therefore
+ * no later than 90 seconds, while the full deadline is 120 seconds. That leaves
+ * a recorded eligible pass while the activity projection says `active` or
+ * `likely_working`, followed by enough room to complete normally. The heartbeat
+ * keeps one real member command running; it is not a test-process sleep and its
+ * duration proves nothing without the joined activity/pass records.
+ *
  * Every acceptance assertion reads a durable record:
  *
  *   - mesh task records provide pending/in-progress/stale status;
@@ -54,6 +63,7 @@ import { readLogEventsSince, selectEvents } from '../helpers/compactionLog.js'
 import { trustProject } from '../helpers/codexScratchHome.js'
 import { createLaneCleanup } from '../helpers/laneCleanup.js'
 import {
+  activeDeadlinePassEvidence,
   assignTask,
   attentionRecord,
   createTask,
@@ -79,6 +89,8 @@ const TAURHAUS_MESH_BINARY = join(homedir(), '.local', 'bin', 'mesh')
 const TMUX_SESSION = 'taurhaus'
 const LAUNCH_EFFORT = 'low'
 const DEADLINE_MINUTES = 1
+const ACTIVE_DEADLINE_MINUTES = 2
+const ACTIVE_HEARTBEAT_ITERATIONS = 48
 const REQUIRED_PASS_COUNT = 3
 
 const APP_BINARY = resolve(import.meta.dirname, '..', '..', 'src-tauri', 'target', 'debug', 'taurhaus')
@@ -249,6 +261,7 @@ function hostSkipReason() {
   if (fixtureSetupError) return `the deadline fixture project could not be created: ${fixtureSetupError}`
   if (!fixtureProject) return 'E2E_PROJECTS_DIR is not set, so the fixture project has no isolated root'
   if (!commandExists('claude')) return 'claude CLI is not on PATH for the credential-free lead pane'
+  if (!commandExists('bun')) return 'bun is not on PATH for the active negative path'
 
   const tmuxProblem = tmuxIsolationProblem(process.env, sessionTempRoot)
   if (tmuxProblem) return `the lane needs a tmux server of its own: ${tmuxProblem}`
@@ -734,6 +747,123 @@ describe('managed stage deadline semantics', function () {
     }
     createdTeamNames.clear()
     laneCleanup.run()
+  })
+
+  it('suppresses the half-time nudge while the member is actively working, then completes normally', async function () {
+    if (!laneEnabled) return this.skip()
+    this.timeout(480_000)
+
+    const logOffset = currentLogOffset()
+    const turnCount = completedTurns()
+    const assigned = assignDeadlineTask({
+      subject: 'Exercise active deadline suppression',
+      description:
+        'W4 experiment 4 negative path: keep one honest command active through an eligible half-time pass.',
+      deadlineMinutes: ACTIVE_DEADLINE_MINUTES,
+      firstStepFor: (taskId) => {
+        const start = memberMeshCommand('start', taskId, " --active-form 'Running deadline heartbeat'")
+        const heartbeat =
+          `bun -e 'for (let i = 0; i < ${ACTIVE_HEARTBEAT_ITERATIONS}; i += 1) { ` +
+          'console.log("deadline-activity-" + i); await Bun.sleep(2000) }\''
+        const complete = memberMeshCommand(
+          'complete',
+          taskId,
+          " --summary 'active deadline suppression completed'"
+        )
+        return `${start}. Then run exactly: ${heartbeat}. After it exits, run exactly: ${complete}.`
+      },
+      deliverable: 'Complete the task after the heartbeat. Change no file and send no separate message.',
+      completionSignalFor: (taskId) =>
+        memberMeshCommand('complete', taskId, " --summary 'active deadline suppression completed'"),
+    })
+
+    const attention = await waitForAttentionDelivery(assigned.taskId)
+    const inProgressRecord = await waitForTaskStatus(assigned.taskId, 'in_progress')
+    const imported = await waitForOperationalTask(assigned.taskId, 'in_progress')
+    expect(imported.task.deadline_minutes).toBe(ACTIVE_DEADLINE_MINUTES)
+    expect(Number.isFinite(Date.parse(imported.task.assigned_at))).toBe(true)
+
+    const activityByObservedAt = new Map()
+    let suppressionEvidence = null
+    await browser.waitUntil(
+      async () => {
+        const activity = readActivitySnapshot()
+        if (
+          activity?.observed_at &&
+          Date.parse(activity.observed_at) >= Date.parse(imported.task.assigned_at)
+        ) {
+          activityByObservedAt.set(activity.observed_at, activity)
+        }
+
+        const events = eventsSince(logOffset)
+        const actions = [
+          ...deadlineEvents(events, 'deadline.nudge.sent', assigned.taskId, ACTIVE_DEADLINE_MINUTES),
+          ...deadlineEvents(events, 'deadline.task.staled', assigned.taskId, ACTIVE_DEADLINE_MINUTES),
+        ]
+        suppressionEvidence = activeDeadlinePassEvidence({
+          assignedAt: imported.task.assigned_at,
+          deadlineMinutes: ACTIVE_DEADLINE_MINUTES,
+          activitySnapshots: [...activityByObservedAt.values()],
+          passEvents: selfHealPassesAfter(events, imported.task.assigned_at),
+          deadlineEvents: actions,
+        })
+        return Boolean(suppressionEvidence)
+      },
+      {
+        timeout: 150_000,
+        interval: 1_000,
+        timeoutMsg: `no eligible self-heal pass observed active work on task #${assigned.taskId}`,
+      }
+    )
+
+    expect(suppressionEvidence.activityConfidence).toMatch(/^(active|likely_working)$/)
+    expect(nudgeMessages(assigned.taskId)).toEqual([])
+    expect(readOperationalSnapshot()?.task?.nudged_at ?? null).toBeNull()
+    expect(readOperationalSnapshot()?.task?.stale_at ?? null).toBeNull()
+
+    const completedRecord = await waitForTaskStatus(assigned.taskId, 'completed', 180_000)
+    expect(await waitForTurnAfter(turnCount, ONBOARDING_TURN_TIMEOUT_MS)).toBe(true)
+    expect(completedRecord.status).toBe('completed')
+
+    const finalEvents = eventsSince(logOffset)
+    expect(
+      deadlineEvents(finalEvents, 'deadline.nudge.sent', assigned.taskId, ACTIVE_DEADLINE_MINUTES)
+    ).toEqual([])
+    expect(
+      deadlineEvents(finalEvents, 'deadline.task.staled', assigned.taskId, ACTIVE_DEADLINE_MINUTES)
+    ).toEqual([])
+    expect(nudgeMessages(assigned.taskId)).toEqual([])
+    const sessionEvidence = memberAliveEvidence()
+    const finalAttention = refreshAttentionRecord(assigned.taskId)
+
+    measured.activitySuppression = {
+      taskId: assigned.taskId,
+      deadlineMinutes: ACTIVE_DEADLINE_MINUTES,
+      halfDueMs: ACTIVE_DEADLINE_MINUTES * 60_000 / 2,
+      fullDueMs: ACTIVE_DEADLINE_MINUTES * 60_000,
+      taskTransitions: [
+        { status: assigned.created.status, recordTimestamps: taskRecordTimestamps(assigned.created) },
+        {
+          status: inProgressRecord.status,
+          at: imported.task.assigned_at,
+          recordTimestamps: taskRecordTimestamps(inProgressRecord),
+        },
+        { status: completedRecord.status, recordTimestamps: taskRecordTimestamps(completedRecord) },
+      ],
+      operationalImport: {
+        updatedAt: imported.updated_at,
+        assignedAt: imported.task.assigned_at,
+        deadlineMinutes: imported.task.deadline_minutes,
+      },
+      attention: {
+        assignedAt: finalAttention?.assignedAt ?? attention?.assignedAt ?? null,
+        deliveredAt: finalAttention?.deliveredAt ?? attention?.deliveredAt ?? null,
+        deliveryState: finalAttention?.deliveryState ?? attention?.deliveryState ?? null,
+      },
+      suppressionEvidence,
+      deadlineActionCount: 0,
+      sessionEvidence,
+    }
   })
 
   it('nudges once, stales once, returns timeout, and preserves the managed session', async function () {
