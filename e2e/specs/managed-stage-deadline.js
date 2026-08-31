@@ -76,6 +76,7 @@ import { createLaneCleanup } from '../helpers/laneCleanup.js'
 import {
   activeDeadlineHeartbeatPlan,
   activeDeadlinePassEvidence,
+  assignmentStartTimeoutProblem,
   assignTask,
   attentionRecord,
   createTask,
@@ -641,19 +642,45 @@ async function waitForAttentionDelivery(taskId) {
   return record
 }
 
-async function waitForTaskStatus(taskId, status, timeout = ASSIGNMENT_START_TIMEOUT_MS) {
+async function waitForTaskStatus(
+  taskId,
+  status,
+  timeout = ASSIGNMENT_START_TIMEOUT_MS,
+  assignmentTurnCount = null
+) {
   let record = null
-  await browser.waitUntil(
-    async () => {
-      try {
-        record = taskRecord({ ...meshArgs(), taskId })
-        return record?.status === status
-      } catch {
-        return false
-      }
-    },
-    { timeout, interval: 2_000, timeoutMsg: `task #${taskId} never reached ${status}` }
-  )
+  try {
+    await browser.waitUntil(
+      async () => {
+        try {
+          record = taskRecord({ ...meshArgs(), taskId })
+          return record?.status === status
+        } catch {
+          return false
+        }
+      },
+      { timeout, interval: 2_000, timeoutMsg: `task #${taskId} never reached ${status}` }
+    )
+  } catch (error) {
+    if (status !== 'in_progress' || !Number.isFinite(assignmentTurnCount)) throw error
+
+    let attention = null
+    try {
+      attention = refreshAttentionRecord(taskId)
+    } catch {
+      // The diagnostic still names the absent attention record.
+    }
+    throw new Error(
+      assignmentStartTimeoutProblem({
+        taskId,
+        attention,
+        turnCountAtAssignment: assignmentTurnCount,
+        turnCountNow: completedTurns(),
+        runtime: readRuntimeRecord(),
+      }),
+      { cause: error }
+    )
+  }
   return record
 }
 
@@ -830,7 +857,12 @@ describe('managed stage deadline semantics', function () {
     })
 
     const attention = await waitForAttentionDelivery(assigned.taskId)
-    const inProgressRecord = await waitForTaskStatus(assigned.taskId, 'in_progress')
+    const inProgressRecord = await waitForTaskStatus(
+      assigned.taskId,
+      'in_progress',
+      ASSIGNMENT_START_TIMEOUT_MS,
+      turnCount
+    )
     const imported = await waitForOperationalTask(assigned.taskId, 'in_progress')
     expect(imported.task.deadline_minutes).toBe(ACTIVE_DEADLINE_MINUTES)
     expect(Number.isFinite(Date.parse(imported.task.assigned_at))).toBe(true)
@@ -952,7 +984,12 @@ describe('managed stage deadline semantics', function () {
     })
 
     const attention = await waitForAttentionDelivery(assigned.taskId)
-    const inProgressRecord = await waitForTaskStatus(assigned.taskId, 'in_progress')
+    const inProgressRecord = await waitForTaskStatus(
+      assigned.taskId,
+      'in_progress',
+      ASSIGNMENT_START_TIMEOUT_MS,
+      turnCount
+    )
     const imported = await waitForOperationalTask(assigned.taskId, 'in_progress')
 
     // This is the honest-stall proof: assignment defaulted to pending, only the

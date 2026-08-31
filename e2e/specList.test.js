@@ -84,6 +84,13 @@ describe('default WDIO spec list', () => {
     )
   })
 
+  it('attaches record diagnostics to an in-progress assignment timeout', () => {
+    expect(managedDeadlineSource).toContain('assignmentStartTimeoutProblem({')
+    expect(managedDeadlineSource).toContain('turnCountAtAssignment: assignmentTurnCount')
+    expect(managedDeadlineSource).toContain('turnCountNow: completedTurns()')
+    expect(managedDeadlineSource).toContain('runtime: readRuntimeRecord()')
+  })
+
   // Regression: commit 111c776c appended every ungrouped spec to a catch-all,
   // so a new stateful or paid lane could silently enter the default suite.
   it('rejects an ungrouped spec with instructions for sealing the manifest', () => {

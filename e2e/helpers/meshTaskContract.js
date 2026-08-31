@@ -107,6 +107,39 @@ export function stagePollVerdict(record) {
   return record?.status === 'stale' ? { status: 'timeout' } : null
 }
 
+/** Build a self-contained failure for a delivered assignment that never starts. */
+export function assignmentStartTimeoutProblem({
+  taskId,
+  attention,
+  turnCountAtAssignment,
+  turnCountNow,
+  runtime,
+}) {
+  const attentionEvidence = {
+    deliveryState: attention?.deliveryState ?? attention?.delivery_state ?? null,
+    deliveredAt: attention?.deliveredAt ?? attention?.delivered_at ?? null,
+  }
+  const runtimeHealth = {
+    health: runtime?.health ?? null,
+    paneId: runtime?.pane_id ?? runtime?.paneId ?? null,
+    panePid: runtime?.pane_pid ?? runtime?.panePid ?? null,
+    daemonPid: runtime?.daemon_pid ?? runtime?.daemonPid ?? null,
+    sessionId: runtime?.session_id ?? runtime?.sessionId ?? null,
+    lastSeenAt: runtime?.last_seen_at ?? runtime?.lastSeenAt ?? null,
+  }
+  const turnsBefore = Number(turnCountAtAssignment)
+  const turnsAfter = Number(turnCountNow)
+  const turnDelta =
+    Number.isFinite(turnsBefore) && Number.isFinite(turnsAfter) ? turnsAfter - turnsBefore : null
+
+  return (
+    `task #${taskId} never reached in_progress; ` +
+    `attentionRecord=${JSON.stringify(attentionEvidence)}; ` +
+    `turnCountDelta=${turnDelta} (${turnsBefore} -> ${turnsAfter}); ` +
+    `runtimeHealth=${JSON.stringify(runtimeHealth)}`
+  )
+}
+
 /**
  * Classify the operational record available after a mesh task becomes stale.
  *

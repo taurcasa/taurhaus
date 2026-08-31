@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   activeDeadlineHeartbeatPlan,
   activeDeadlinePassEvidence,
+  assignmentStartTimeoutProblem,
   effortDeliveryVerdict,
   effortWaitBoundMs,
   expiredEffortWaitProblem,
@@ -14,6 +15,39 @@ import {
   resultContractViolations,
   stagePollVerdict,
 } from './meshTaskContract.js'
+
+describe('assignmentStartTimeoutProblem', () => {
+  // Regression: c12c506c reported only that the task never reached
+  // in_progress, leaving attempt 1's delivered-but-unhandled notice impossible
+  // to diagnose after the isolated worker root was removed.
+  it('carries attention delivery, turn delta, and runtime health', () => {
+    const problem = assignmentStartTimeoutProblem({
+      taskId: '42',
+      attention: {
+        deliveryState: 'delivered',
+        deliveredAt: '2026-08-31T10:47:48.000Z',
+      },
+      turnCountAtAssignment: 7,
+      turnCountNow: 7,
+      runtime: {
+        health: 'healthy',
+        pane_id: '%9',
+        pane_pid: 1200,
+        daemon_pid: 1201,
+        session_id: 'session-42',
+        last_seen_at: '2026-08-31T10:51:44.000Z',
+      },
+    })
+
+    expect(problem).toContain('task #42 never reached in_progress')
+    expect(problem).toContain('"deliveryState":"delivered"')
+    expect(problem).toContain('"deliveredAt":"2026-08-31T10:47:48.000Z"')
+    expect(problem).toContain('turnCountDelta=0 (7 -> 7)')
+    expect(problem).toContain('"health":"healthy"')
+    expect(problem).toContain('"paneId":"%9"')
+    expect(problem).toContain('"daemonPid":1201')
+  })
+})
 
 describe('extractJsonBlock', () => {
   it('reads a fenced json block', () => {
