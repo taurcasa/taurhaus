@@ -16,6 +16,12 @@
  * each member inbox contains only its own assignment notice, and both mesh task
  * records are completed with their own completion timestamp.
  *
+ * The W2 portion is explicitly a scanner-contract read-back: after the live
+ * stages finish, this lane writes a production-shaped summary containing their
+ * real task ids and timestamps under a synthetic session id. The
+ * credential-free lead does not emit a Workflow run, so this does not claim
+ * that a lead-produced run tree filed the stages.
+ *
  * Every writable product root, fixture path and tmux socket lives below the
  * WDIO worker's session temp root. `CODEX_HOME` is the generated scratch home,
  * `CLAUDE_DIR` is explicitly put into the managed panes, and every mesh command
@@ -42,7 +48,11 @@ import {
   taskRecord,
 } from '../helpers/meshTaskContract.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
-import { completedParallelRunSummary, stageWindowOverlap } from '../helpers/parallelStageEvidence.js'
+import {
+  completedParallelRunSummary,
+  managedStageVocabulary,
+  stageWindowOverlap,
+} from '../helpers/parallelStageEvidence.js'
 import { TAURHAUS_CLAUDE_DIR } from '../helpers/platform.js'
 import {
   addStageFixtureWorktree,
@@ -57,6 +67,7 @@ const MIN_CODEX_VERSION = [0, 147, 0]
 const MIN_MESH_VERSION = [0, 2, 23]
 const TAURHAUS_MESH_BINARY = join(homedir(), '.local', 'bin', 'mesh')
 const APP_BINARY = resolve(import.meta.dirname, '..', '..', 'src-tauri', 'target', 'debug', 'taurhaus')
+const FEATURE_PR_WORKFLOW = resolve(import.meta.dirname, '..', '..', '.claude', 'workflows', 'feature-pr.js')
 const TMUX_SESSION = 'taurhaus'
 const EFFORT = 'medium'
 const DEADLINE_MINUTES = 10
@@ -71,6 +82,7 @@ const claudeDir = TAURHAUS_CLAUDE_DIR
 const teamsDir = join(claudeDir, 'teams')
 const sessionTempRoot = dataDir ? dirname(dataDir) : ''
 const projectsDir = process.env.E2E_PROJECTS_DIR || (sessionTempRoot ? join(sessionTempRoot, 'projects') : '')
+const MANAGED_STAGE_VOCABULARY = managedStageVocabulary(readFileSync(FEATURE_PR_WORKFLOW, 'utf8'), 'codex')
 
 const PANE_ENVIRONMENT = new Map(
   [
@@ -528,39 +540,20 @@ function assignmentNoticeTaskIds(memberName) {
     .filter(Boolean)
 }
 
-function leadWorkflowSessionId() {
-  let config = null
-  try {
-    config = JSON.parse(readFileSync(join(teamsDir, TEAM_NAME, 'config.json'), 'utf8'))
-  } catch {
-    // The runtime record below still names the lead session when config readback
-    // races a mesh projection refresh.
-  }
-  const sessionId =
-    readRuntimeRecord(LEAD_NAME)?.session_id ??
-    config?.leadSessionId ??
-    config?.lead_session_id ??
-    null
-  if (!/^[A-Za-z0-9_-]+$/.test(String(sessionId ?? ''))) {
-    throw new Error(`The isolated team config/runtime names no W2-safe lead session: ${sessionId}`)
-  }
-  return String(sessionId)
-}
-
 /**
- * Put a completed two-stage Workflow summary under the isolated lead session,
+ * Put a production-shaped completed summary under a synthetic scanner session,
  * then read it back through the production W2 IPC scanner.
  *
  * The experiment assigns the two mesh stages directly so its only paid
- * sessions are the two Codex members. W2's input is Claude's on-disk Workflow
- * summary, so this fixture records the two real task ids and RESULT timestamps
- * after both stages finish. The scanner — not this fixture builder — decides
- * which agents and phases the lead's run tree exposes.
+ * sessions are the two Codex members. The credential-free lead emits no
+ * Workflow summary. This fixture records the two real task ids and RESULT
+ * timestamps, derives its vocabulary from the production workflow emitter,
+ * and proves only the scanner contract over that synthesized input.
  */
-async function readLeadRunTree(completed, overlap) {
-  const sessionId = leadWorkflowSessionId()
+async function readScannerContractRunTree(completed, overlap) {
+  const sessionId = `e2e-scanner-contract-${uniqueSuffix}`
   const runId = `w4-exp5-${uniqueSuffix}`
-  const sessionDir = join(claudeDir, 'projects', `e2e-parallel-${uniqueSuffix}`, sessionId)
+  const sessionDir = join(claudeDir, 'projects', `e2e-parallel-scanner-${uniqueSuffix}`, sessionId)
   const runDir = join(sessionDir, 'subagents', 'workflows', runId)
   const workflowDir = join(sessionDir, 'workflows')
   const scriptDir = join(workflowDir, 'scripts')
@@ -581,11 +574,13 @@ async function readLeadRunTree(completed, overlap) {
     startedAt,
     finishedAt,
     stages: stageRecords,
+    vocabulary: MANAGED_STAGE_VOCABULARY,
   })
 
+  const scriptPath = join(scriptDir, `feature-pr-parallel-isolation-${runId}.js`)
   writeFileSync(
-    join(scriptDir, `feature-pr-parallel-isolation-${runId}.js`),
-    "export const meta = { name: 'feature-pr-parallel-isolation', description: 'W4 experiment 5', phases: [{ title: 'Managed stage' }] }\n"
+    scriptPath,
+    `export const meta = { name: 'feature-pr-parallel-isolation', description: 'W4 experiment 5', phases: [{ title: ${JSON.stringify(MANAGED_STAGE_VOCABULARY.phaseTitle)} }] }\n`
   )
   writeFileSync(join(workflowDir, `${runId}.json`), `${JSON.stringify(summary, null, 2)}\n`)
 
@@ -596,14 +591,20 @@ async function readLeadRunTree(completed, overlap) {
 
   const run = await invokeTauriOrThrow('get_workflow_run', { sessionId, runId })
   expect(run.status).toBe('completed')
-  expect(run.phases).toEqual(['Managed stage'])
-  expect(run.agents.map((agent) => agent.label).sort()).toEqual([
-    'stage:codex:alpha',
-    'stage:codex:beta',
-  ])
-  expect(run.agents.every((agent) => agent.phase === 'Managed stage' && agent.state === 'done')).toBe(true)
+  expect(run.phases).toEqual([MANAGED_STAGE_VOCABULARY.phaseTitle])
+  expect(run.agents.map((agent) => agent.label).sort()).toEqual(
+    stages.map((stage) => `${MANAGED_STAGE_VOCABULARY.labelPrefix}${stage.key}`).sort()
+  )
+  expect(
+    run.agents.every(
+      (agent) => agent.phase === MANAGED_STAGE_VOCABULARY.phaseTitle && agent.state === 'done'
+    )
+  ).toBe(true)
   expect(run.result?.tasks?.map(String).sort()).toEqual(stageRecords.map((stage) => stage.taskId).sort())
+  expect(run.result?.evidenceSource).toBe('synthesized-scanner-contract')
+  expect(resolve(run.script_path)).toBe(resolve(scriptPath))
   return {
+    evidenceSource: run.result.evidenceSource,
     sessionId,
     runId,
     status: run.status,
@@ -751,11 +752,10 @@ describe('parallel managed Codex stages', function () {
     expect(overlap).not.toBeNull()
     expect(overlap.durationMs).toBeGreaterThan(0)
 
-    // A managed implement step is filed under the production run-tree phase
-    // `Managed stage`; the separate exec transport uses `Implement`. Seeing
-    // both labels here is the W2 assertion, not a claim that an Implement phase
-    // disappeared.
-    const runTree = await readLeadRunTree(completed, overlap)
+    // The production-shaped fixture uses the stage vocabulary parsed from the
+    // workflow emitter. The scanner read-back below checks that contract; it
+    // is not evidence that the credential-free lead emitted a Workflow run.
+    const scannerContractRunTree = await readScannerContractRunTree(completed, overlap)
 
     Object.assign(measured, {
       team: TEAM_NAME,
@@ -770,7 +770,7 @@ describe('parallel managed Codex stages', function () {
       windows,
       deliveredWindows,
       overlap,
-      runTree,
+      scannerContractRunTree,
       worktreeTrees: {
         alpha: alphaTree.evidence,
         beta: betaTree.evidence,

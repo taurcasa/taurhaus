@@ -120,7 +120,8 @@ in the fixture repo and the test it wrote passes. `managed-stage-deadline` measu
 the live deadline policy. `managed-stage-parallel` (experiment 5) launches two Codex
 members in two fixture worktrees and positively proves their tree, inbox, completion,
 and attention-delivered-to-RESULT wall-clock overlap. Its W2 scanner check is described
-in the operations testing guide.
+in the operations testing guide: it reads back a production-shaped summary synthesized
+from the two real task ids and timestamps, not a Workflow run emitted by the idle lead.
 
 All four read `~/.codex` once, copying only `auth.json` into a scratch `CODEX_HOME` under
 the session temp root, and never write back to it. The scratch `config.toml` is

@@ -3,6 +3,22 @@ function timestamp(value) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+/** The stage label prefix and phase emitted by the production workflow. */
+export function managedStageVocabulary(workflowSource, harness) {
+  const source = String(workflowSource ?? '')
+  const harnessName = String(harness ?? '').trim()
+  const match = source.match(
+    /call\(\{\s*label:\s*'([^']*)'\s*\+\s*harness\s*\+\s*'([^']*)'\s*\+\s*slug,\s*phase:\s*'([^']+)'/
+  )
+  if (!match || !harnessName) {
+    throw new Error('production workflow has no readable managed-stage vocabulary')
+  }
+  return {
+    labelPrefix: `${match[1]}${harnessName}${match[2]}`,
+    phaseTitle: match[3],
+  }
+}
+
 /** The positive-duration intersection of two delivered-to-RESULT windows. */
 export function stageWindowOverlap(left, right) {
   const leftStart = timestamp(left?.deliveredAt)
@@ -23,11 +39,11 @@ export function stageWindowOverlap(left, right) {
 }
 
 /**
- * The completed Workflow summary the W2 scanner reads for the isolated lead.
+ * A production-shaped completed Workflow summary for a W2 scanner read-back.
  *
- * A managed stage appears as its thin Claude courier in this tree. The real
- * Codex member remains a sibling team session, so both entries deliberately
- * use the production `stage:codex:<title>` label and `Managed stage` phase.
+ * This is synthesized scanner-contract evidence, not a summary emitted by the
+ * credential-free lead. Its vocabulary must be captured from the production
+ * workflow so emitter drift makes the lane fail instead of certifying itself.
  */
 export function completedParallelRunSummary({
   runId,
@@ -35,11 +51,17 @@ export function completedParallelRunSummary({
   startedAt,
   finishedAt,
   stages,
+  vocabulary,
 }) {
   const startTime = timestamp(startedAt)
   const finishTime = timestamp(finishedAt)
   if (startTime == null || finishTime == null || finishTime < startTime) {
     throw new Error('parallel run summary requires an ordered start and finish')
+  }
+  const labelPrefix = String(vocabulary?.labelPrefix ?? '')
+  const phaseTitle = String(vocabulary?.phaseTitle ?? '')
+  if (!labelPrefix || !phaseTitle) {
+    throw new Error('parallel run summary requires production workflow vocabulary')
   }
 
   const workflowProgress = stages.map((stage) => {
@@ -48,8 +70,8 @@ export function completedParallelRunSummary({
     return {
       type: 'workflow_agent',
       agentId: `stage-${stage.key}-${stage.taskId}`,
-      label: `stage:codex:${stage.key}`,
-      phaseTitle: 'Managed stage',
+      label: `${labelPrefix}${stage.key}`,
+      phaseTitle,
       model: stage.model ?? 'codex',
       state: 'done',
       lastToolName: 'Bash',
@@ -66,6 +88,7 @@ export function completedParallelRunSummary({
     status: 'completed',
     result: {
       experiment: 'w4-experiment-5',
+      evidenceSource: 'synthesized-scanner-contract',
       tasks: stages.map((stage) => String(stage.taskId)),
     },
     agentCount: workflowProgress.length,
@@ -73,7 +96,7 @@ export function completedParallelRunSummary({
     totalTokens: 0,
     totalToolCalls: 0,
     workflowName,
-    phases: [{ title: 'Managed stage' }],
+    phases: [{ title: phaseTitle }],
     startTime,
     timestamp: new Date(finishTime).toISOString(),
     workflowProgress,
