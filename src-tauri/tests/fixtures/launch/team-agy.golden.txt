@@ -1,0 +1,1 @@
+agy --dangerously-skip-permissions --model 'gemini-3.7-flash-high' --effort 'high'

@@ -182,6 +182,13 @@ function normalizeCoordinationMember(value) {
 
   assignIfDefined(normalized, 'taskEffort', value.taskEffort ?? value.task_effort)
   assignIfDefined(normalized, 'taskEffortWhy', value.taskEffortWhy ?? value.task_effort_why)
+  assignIfDefined(normalized, 'accountApplied', value.accountApplied ?? value.account_applied)
+  assignIfDefined(normalized, 'accountNote', value.accountNote ?? value.account_note)
+  assignIfDefined(
+    normalized,
+    'accountNoteDetail',
+    value.accountNoteDetail ?? value.account_note_detail
+  )
 
   const model = String(value.model ?? '').trim()
   if (model) normalized.model = model

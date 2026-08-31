@@ -26,6 +26,7 @@ use crate::session_scanner::launch::{
     base_command, redact_command_for_logging, shell_escape, LaunchNote, LaunchSpec, ModelSpec,
     TeamContext,
 };
+use taurhaus_lib::session_scanner::launch_base::LaunchAccountResult;
 
 const TMUX_SEND_RETRY_DELAYS: [Duration; 2] =
     [Duration::from_millis(150), Duration::from_millis(350)];
@@ -46,6 +47,7 @@ pub(super) struct MemberActivationRuntimeState {
     pub(super) health: Option<HealthState>,
     pub(super) mesh_joined: bool,
     pub(super) member_added: bool,
+    pub(super) launch_account: Option<LaunchAccountResult>,
 }
 
 pub(super) type PendingRuntimeState = MemberActivationRuntimeState;
@@ -64,6 +66,7 @@ pub(super) struct RuntimeCommitPatch {
     pub(super) daemon_pid: Option<Option<u32>>,
     pub(super) attached_at: Option<Option<chrono::DateTime<Utc>>>,
     pub(super) health: Option<HealthState>,
+    pub(super) launch_account: Option<Option<LaunchAccountResult>>,
 }
 
 impl RuntimeCommitPatch {
@@ -77,6 +80,7 @@ impl RuntimeCommitPatch {
             daemon_pid: Some(state.daemon_pid),
             attached_at: Some(state.attached_at),
             health: state.health,
+            launch_account: Some(state.launch_account.clone()),
         }
     }
 
@@ -94,6 +98,7 @@ impl RuntimeCommitPatch {
             daemon_pid: Some(state.daemon_pid),
             attached_at: Some(Some(attached_at)),
             health: Some(health),
+            launch_account: Some(state.launch_account.clone()),
         }
     }
 }
@@ -225,6 +230,7 @@ pub(super) fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {
         last_seen_at: None,
         applied_effort: None,
         effort_resume_failure: None,
+        launch_account: Default::default(),
         extra: Default::default(),
     }
 }
@@ -269,11 +275,14 @@ pub(super) fn run_member_session_phase(
     context: &MemberActivationContext,
     pane_id: &str,
     phase: MemberSessionPhase<'_>,
+    runtime_state: &mut MemberActivationRuntimeState,
 ) -> Result<DetectedRuntimeSession, CoordinationError> {
     match phase {
         MemberSessionPhase::LaunchOnly(cli_commands) => {
-            let launch_cmd = build_member_activation_launch_command(context, cli_commands)?;
-            send_launch_command_with_retry(runtime, pane_id, launch_cmd.as_str())?;
+            let launch = build_member_activation_launch_command(context, cli_commands)?;
+            send_launch_command_with_retry(runtime, pane_id, launch.command.as_str())?;
+            let account = launch.account_result();
+            runtime_state.launch_account = (!account.is_empty()).then_some(account);
             Ok(DetectedRuntimeSession::default())
         }
         MemberSessionPhase::CaptureOnly => {
@@ -470,8 +479,8 @@ pub(super) fn send_launch_command_with_retry(
 pub(super) fn build_member_activation_launch_command(
     context: &MemberActivationContext,
     cli_commands: &CliCommandSettings,
-) -> Result<String, CoordinationError> {
-    render_team_launch_command(
+) -> Result<TeamLaunchResult, CoordinationError> {
+    render_team_launch(
         cli_commands,
         context.member.cli_tool,
         &context.member.model,
@@ -631,7 +640,7 @@ fn is_env_assignment(word: &str) -> bool {
 // independent from ambient CODEX_HOME state; grouping the stable team/member
 // fields would add a second launch context type for this single renderer.
 #[allow(clippy::too_many_arguments)]
-fn render_team_launch_command(
+pub fn render_team_launch_command(
     cli_commands: &CliCommandSettings,
     cli_tool: CliTool,
     model: &str,
@@ -642,18 +651,88 @@ fn render_team_launch_command(
     codex_bypass_hook_trust: bool,
     resume_session_id: Option<&str>,
 ) -> Result<String, CoordinationError> {
+    render_team_launch(
+        cli_commands,
+        cli_tool,
+        model,
+        reasoning_effort,
+        team_name,
+        agent_name,
+        role,
+        codex_bypass_hook_trust,
+        resume_session_id,
+    )
+    .map(|result| result.command)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct TeamLaunchResult {
+    pub(super) command: String,
+    pub(super) account: LaunchAccountResult,
+}
+
+impl TeamLaunchResult {
+    pub(super) fn account_result(&self) -> LaunchAccountResult {
+        self.account.clone()
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn render_team_launch(
+    cli_commands: &CliCommandSettings,
+    cli_tool: CliTool,
+    model: &str,
+    reasoning_effort: Option<&str>,
+    team_name: &str,
+    agent_name: &str,
+    role: MemberRole,
+    codex_bypass_hook_trust: bool,
+    resume_session_id: Option<&str>,
+) -> Result<TeamLaunchResult, CoordinationError> {
     let mode = if resume_session_id.is_some() {
         LaunchMode::Resume
     } else {
         LaunchMode::Fresh
     };
-    let base = base_command(cli_commands, cli_tool, mode);
-    if base.trim().is_empty() {
+    let configured_base = base_command(cli_commands, cli_tool, mode);
+    if configured_base.trim().is_empty() {
         return Err(CoordinationError::Validation(format!(
             "configured launch command is empty for '{}'",
             cli_tool
         )));
     }
+    let resolved_base = cli_commands.resolved_bases.get(&(cli_tool, mode));
+    let base = match resolved_base {
+        Some(resolved) => resolved.command.as_str(),
+        None => {
+            let mut fields = Map::new();
+            fields.insert("team".to_string(), Value::String(team_name.to_string()));
+            fields.insert("member".to_string(), Value::String(agent_name.to_string()));
+            fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
+            fields.insert(
+                "mode".to_string(),
+                Value::String(
+                    match mode {
+                        LaunchMode::Continue => "continue",
+                        LaunchMode::Fresh => "fresh",
+                        LaunchMode::Resume => "resume",
+                    }
+                    .to_string(),
+                ),
+            );
+            emit_global(
+                "warn",
+                "coordination",
+                "launch.base.unresolved",
+                Some(
+                    "Launch base resolution was unavailable; using the configured command"
+                        .to_string(),
+                ),
+                fields,
+            );
+            configured_base
+        }
+    };
     let base = without_frozen_effort_env(base, cli_tool, team_name, agent_name)?;
     let base = match resume_session_id {
         Some(session_id) => Cow::Owned(resume_base_for_session(base.as_ref(), session_id)),
@@ -701,6 +780,26 @@ fn render_team_launch_command(
     }
     .render();
     validate_command_override(&rendered.command).map_err(CoordinationError::Validation)?;
+
+    let account = LaunchAccountResult::for_opaque_head(
+        resolved_base.and_then(|resolved| resolved.opaque_head.as_deref()),
+    );
+    if let Some(head) = account.account_note_detail.as_deref() {
+        let mut fields = Map::new();
+        fields.insert("team".to_string(), Value::String(team_name.to_string()));
+        fields.insert("member".to_string(), Value::String(agent_name.to_string()));
+        fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
+        fields.insert("head".to_string(), Value::String(head.to_string()));
+        emit_global(
+            "warn",
+            "coordination",
+            "launch.base.opaque",
+            Some(
+                "Launch command does not run the CLI taurhaus selected an account for".to_string(),
+            ),
+            fields,
+        );
+    }
 
     let mut fields = Map::new();
     fields.insert("team".to_string(), Value::String(team_name.to_string()));
@@ -792,7 +891,10 @@ fn render_team_launch_command(
         );
     }
 
-    Ok(rendered.command)
+    Ok(TeamLaunchResult {
+        command: rendered.command,
+        account,
+    })
 }
 
 fn detect_member_session_identity(

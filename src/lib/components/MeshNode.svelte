@@ -1,7 +1,9 @@
 <script>
+  import { opaqueBaseNotice } from '../accounts.svelte.js'
   import { activityLevel } from '../activitySignal.js'
   import { getToolIcon } from '../toolLogos.js'
   import { normalizeTool } from '../toolRegistry.js'
+  import { hasOpaqueAccountNote, memberNodeHeight } from './meshLayout.js'
 
   let {
     nodeId = '',
@@ -16,12 +18,16 @@
     reasoningEffort = '',
     taskEffort = '',
     taskEffortWhy = '',
+    accountApplied = null,
+    accountNote = '',
+    accountNoteDetail = '',
     status = 'offline',
     isCrossProject = false,
     projectLabel = '',
     selected = false,
     position = { x: 0, y: 0 },
     width = 180,
+    height = null,
     dark = false,
     onClick = () => {},
     onHoverStart = () => {},
@@ -30,7 +36,24 @@
 
   const normalizedRole = $derived(role === 'lead' ? 'lead' : 'agent')
   const isLead = $derived(normalizedRole === 'lead')
-  const nodeHeight = $derived(isLead ? 72 : 64)
+  const safeTool = $derived.by(() => normalizeTool(tool))
+  const safeAccountNoteDetail = $derived(String(accountNoteDetail || '').trim())
+  const launchAccountResult = $derived.by(() => ({
+    accountApplied,
+    accountNote,
+    accountNoteDetail: safeAccountNoteDetail,
+  }))
+  const showOpaqueAccountNote = $derived(hasOpaqueAccountNote(launchAccountResult))
+  const accountNoteSentence = $derived(opaqueBaseNotice(safeAccountNoteDetail, safeTool))
+  // Node-sized variant: the wrapper head is the part that must survive the
+  // ellipsis; the full sentence rides on the title.
+  const accountNoteLabel = $derived(`Account not guaranteed: "${safeAccountNoteDetail}"`)
+  const requestedHeight = $derived(Number(height))
+  const nodeHeight = $derived(
+    Number.isFinite(requestedHeight) && requestedHeight > 0
+      ? requestedHeight
+      : memberNodeHeight(launchAccountResult, isLead)
+  )
 
   const safeName = $derived(String(name || '').trim() || 'unnamed')
   const safeModel = $derived(String(model || '').trim())
@@ -54,10 +77,6 @@
       ? `Task effort: ${safeTaskEffort} — ${safeTaskEffortWhy}`
       : `Task effort: ${safeTaskEffort}`
   )
-
-  const safeTool = $derived.by(() => {
-    return normalizeTool(tool)
-  })
 
   const icon = $derived.by(() => getToolIcon(safeTool))
 
@@ -170,6 +189,14 @@
           </span>
         {/if}
       </span>
+    {/if}
+
+    {#if showOpaqueAccountNote}
+      <span
+        class="mesh-node-account-note"
+        data-testid={`mesh-node-account-note-${normalizedRole}`}
+        title={accountNoteSentence}
+      >{accountNoteLabel}</span>
     {/if}
   </span>
 </button>
@@ -325,6 +352,15 @@
     color: var(--mesh-node-model-dark);
     min-width: 0;
     flex: 1 1 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mesh-node-account-note {
+    color: var(--color-warning-500);
+    font-size: 10px;
+    line-height: 1.2;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

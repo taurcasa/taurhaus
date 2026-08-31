@@ -18,7 +18,6 @@ use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntim
 use crate::coordination::stores::TeamConfigStore;
 use crate::models::CliCommandSettings;
 use crate::provider::platform_paths::PlatformPaths;
-#[cfg(test)]
 use crate::session_scanner::cli_tool::CliTool;
 
 type BackendFactory = dyn Fn(BackendKind, &Path) -> Result<Arc<dyn CoordinationBackend>, CoordinationError>
@@ -172,6 +171,20 @@ impl CoordinationState {
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
+        let mut cli_commands = cli_commands.clone();
+        self.run_background_self_heal_pass_with_launch_resolution(
+            &mut cli_commands,
+            tmux_layout,
+            &mut |_, _| {},
+        )
+    }
+
+    pub(crate) fn run_background_self_heal_pass_with_launch_resolution(
+        &self,
+        cli_commands: &mut CliCommandSettings,
+        tmux_layout: &str,
+        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
+    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
         let team_names = TeamConfigStore::list(&self.teams_dir)?;
         let mut summary = BackgroundSelfHealPassResult::default();
         let mut orchestrator = self.build_background_orchestrator()?;
@@ -200,6 +213,7 @@ impl CoordinationState {
                 cli_commands,
                 tmux_layout,
                 crate::coordination::task_effort::EffortPassScope::RetryPending,
+                resolve_launch_base,
             ) {
                 Ok(outcome) => {
                     summary.members_effort_resumed += outcome.switched.len();
@@ -253,6 +267,25 @@ impl CoordinationState {
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<EffortPassOutcome, CoordinationError> {
+        let mut cli_commands = cli_commands.clone();
+        self.apply_task_effort_for_project_with_launch_resolution(
+            project_path,
+            &mut cli_commands,
+            tmux_layout,
+            &mut |_, _| {},
+        )
+    }
+
+    /// The typed pass with the launch-base resolver threaded through: the
+    /// commands boundary resolves a member's base only when it is actually
+    /// about to relaunch it.
+    pub(crate) fn apply_task_effort_for_project_with_launch_resolution(
+        &self,
+        project_path: &str,
+        cli_commands: &mut CliCommandSettings,
+        tmux_layout: &str,
+        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
+    ) -> Result<EffortPassOutcome, CoordinationError> {
         let (teams, skipped_teams) = self.project_effort_teams(project_path)?;
         let mut outcome = EffortPassOutcome {
             skipped_teams,
@@ -268,6 +301,7 @@ impl CoordinationState {
                     cli_commands,
                     tmux_layout,
                     crate::coordination::task_effort::EffortPassScope::TaskChanged,
+                    resolve_launch_base,
                 ) {
                     Ok(team_outcome) => {
                         outcome.switched.extend(team_outcome.switched);

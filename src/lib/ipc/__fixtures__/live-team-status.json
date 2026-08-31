@@ -2,6 +2,9 @@
   "leadName": "team-lead",
   "members": [
     {
+      "accountApplied": false,
+      "accountNote": "opaque_base_command",
+      "accountNoteDetail": "fixture-wrapper",
       "behaviorSummary": "Preserve future fields",
       "cliTool": "codex",
       "contextSummary": "Own the frontend contract",

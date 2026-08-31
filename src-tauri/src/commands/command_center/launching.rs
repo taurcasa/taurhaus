@@ -83,6 +83,7 @@ pub(super) fn launch_cli_session_impl(
                     );
                     let mut result = delegate_launch_to_coordination_resume(
                         db,
+                        provider,
                         coordination_state,
                         &target,
                         tool,
@@ -95,6 +96,7 @@ pub(super) fn launch_cli_session_impl(
                         note_team_account_ignored(&project_id, wanted);
                         result.account_applied = Some(false);
                         result.account_note = Some(TEAM_DEFAULT_ACCOUNT.to_string());
+                        result.account_note_detail = None;
                     }
                     return Ok(result);
                 }
@@ -499,21 +501,17 @@ pub(super) fn launch_cli_session_impl(
     ))
 }
 
-/// The head of the base command is not the tool's own executable, so what it
-/// does with the rendered account selector is its own business.
-pub(super) const OPAQUE_BASE_COMMAND: &str = "opaque_base_command";
-
 /// Say that a launch could not promise the account it selected.
 pub(super) fn note_opaque_base(
     mut result: protocol::LaunchSessionResult,
     opaque_head: Option<&str>,
 ) -> protocol::LaunchSessionResult {
-    let Some(head) = opaque_head else {
-        return result;
-    };
-    result.account_applied = Some(false);
-    result.account_note = Some(OPAQUE_BASE_COMMAND.to_string());
-    result.account_note_detail = Some(head.to_string());
+    let note = taurhaus_lib::session_scanner::launch_base::LaunchAccountResult::for_opaque_head(
+        opaque_head,
+    );
+    result.account_applied = note.account_applied;
+    result.account_note = note.account_note;
+    result.account_note_detail = note.account_note_detail;
     result
 }
 

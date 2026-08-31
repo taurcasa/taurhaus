@@ -171,6 +171,7 @@ impl CoordinationOrchestrator {
             last_seen_at: None,
             applied_effort: None,
             effort_resume_failure: None,
+            launch_account: Default::default(),
             extra: Default::default(),
         };
         MemberRuntimeStore::save(&self.teams_dir, team_name, &member.name, &runtime)?;

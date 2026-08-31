@@ -573,3 +573,28 @@ describe('meshTabUtils runtime session identity', () => {
     expect(config.lead.sessionId).toBeNull()
   })
 })
+
+describe('meshTabUtils launch account note', () => {
+  it('carries the opaque wrapper note onto the runtime member node', () => {
+    const config = buildTeamConfigFromRuntimeStatus({
+      leadName: 'team-lead',
+      members: [
+        { name: 'team-lead', role: 'lead', cliTool: 'claude' },
+        {
+          name: 'dev-1',
+          role: 'member',
+          cliTool: 'codex',
+          accountApplied: false,
+          accountNote: 'opaque_base_command',
+          accountNoteDetail: 'team-wrapper',
+        },
+      ],
+    })
+
+    expect(config.agents[0]).toEqual(expect.objectContaining({
+      accountApplied: false,
+      accountNote: 'opaque_base_command',
+      accountNoteDetail: 'team-wrapper',
+    }))
+  })
+})

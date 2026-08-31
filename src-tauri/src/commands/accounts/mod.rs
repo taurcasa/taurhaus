@@ -272,6 +272,102 @@ pub(crate) fn resolve_launch_base(
     resolve_launch_base_with_force(provider, tool, base, false)
 }
 
+/// Resolve the shell bases a managed team launch can render, then carry them
+/// across the commands-to-coordination boundary on the existing settings
+/// payload. Resolution stays here because coordination may not import commands.
+pub(crate) fn apply_team_launch_base_resolutions(
+    provider: &ProviderState,
+    commands: &mut crate::models::CliCommandSettings,
+    tools: impl IntoIterator<Item = CliTool>,
+) {
+    let tools = tools.into_iter().collect::<Vec<_>>();
+    apply_team_account_selector_dirs(commands, tools.iter().copied());
+    let probe = (!cfg!(target_os = "windows"))
+        .then(crate::session_scanner::launch_base::ShellAliasProbe::for_pane);
+    apply_team_launch_base_resolutions_with(commands, tools, |base, tool| {
+        resolve_launch_base_with_force_and_probe_tracked(
+            provider,
+            tool,
+            base,
+            false,
+            probe.as_ref(),
+        )
+    });
+}
+
+/// Resolve only the resume base an already-selected background relaunch needs.
+///
+/// The caller invokes this after coordination has found a member it will
+/// actually relaunch. Idle self-heal/task passes therefore never probe a shell.
+pub(crate) fn apply_team_resume_launch_base_resolution(
+    provider: &ProviderState,
+    commands: &mut crate::models::CliCommandSettings,
+    tool: CliTool,
+) {
+    apply_team_account_selector_dirs(commands, [tool]);
+    let mode = protocol::LaunchMode::Resume;
+    if commands.resolved_bases.contains_key(&(tool, mode)) {
+        return;
+    }
+    let base = crate::session_scanner::launch::base_command(commands, tool, mode).to_string();
+    let (resolved, answered) = resolve_launch_base_with_force_tracked(provider, tool, &base, false);
+    if answered {
+        commands.resolved_bases.insert((tool, mode), resolved);
+    }
+}
+
+fn apply_team_account_selector_dirs(
+    commands: &mut crate::models::CliCommandSettings,
+    tools: impl IntoIterator<Item = CliTool>,
+) {
+    apply_team_account_selector_dirs_with(commands, tools, |tool| {
+        crate::provider::platform_paths::PlatformPaths::tool_home(tool)
+    });
+}
+
+fn apply_team_account_selector_dirs_with(
+    commands: &mut crate::models::CliCommandSettings,
+    tools: impl IntoIterator<Item = CliTool>,
+    mut tool_home: impl FnMut(CliTool) -> std::path::PathBuf,
+) {
+    for tool in tools {
+        if let Some(selector) = crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .account_selector
+        {
+            commands
+                .account_selector_dirs
+                .entry(selector.to_string())
+                .or_insert_with(|| tool_home(tool));
+        }
+    }
+}
+
+fn apply_team_launch_base_resolutions_with(
+    commands: &mut crate::models::CliCommandSettings,
+    tools: impl IntoIterator<Item = CliTool>,
+    mut resolve: impl FnMut(&str, CliTool) -> (ResolvedBase, bool),
+) {
+    let mut seen = std::collections::HashSet::new();
+    let mut requested = Vec::new();
+    for tool in tools.into_iter().filter(|tool| seen.insert(*tool)) {
+        for mode in [protocol::LaunchMode::Fresh, protocol::LaunchMode::Resume] {
+            requested.push((
+                tool,
+                mode,
+                crate::session_scanner::launch::base_command(commands, tool, mode).to_string(),
+            ));
+        }
+    }
+
+    for (tool, mode, base) in requested {
+        let (resolved, answered) = resolve(&base, tool);
+        if answered {
+            commands.resolved_bases.insert((tool, mode), resolved);
+        }
+    }
+}
+
 fn resolve_launch_base_with_force(
     provider: &ProviderState,
     tool: CliTool,
@@ -289,6 +385,18 @@ fn resolve_launch_base_with_force_tracked(
     base: &str,
     force: bool,
 ) -> (ResolvedBase, bool) {
+    let probe = (!cfg!(target_os = "windows"))
+        .then(crate::session_scanner::launch_base::ShellAliasProbe::for_pane);
+    resolve_launch_base_with_force_and_probe_tracked(provider, tool, base, force, probe.as_ref())
+}
+
+fn resolve_launch_base_with_force_and_probe_tracked(
+    provider: &ProviderState,
+    tool: CliTool,
+    base: &str,
+    force: bool,
+    probe: Option<&crate::session_scanner::launch_base::ShellAliasProbe>,
+) -> (ResolvedBase, bool) {
     #[cfg(test)]
     if let Some(resolved) = test_resolution_probe(base) {
         return (resolved, true);
@@ -300,7 +408,7 @@ fn resolve_launch_base_with_force_tracked(
         launch_base::resolve_base_command_cached(
             base,
             tool,
-            &launch_base::ShellAliasProbe::for_pane(),
+            probe.expect("non-Windows launch resolution has a pane-shell probe"),
         ),
         true,
     )
