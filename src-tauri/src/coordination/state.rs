@@ -516,6 +516,9 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::coordination::activity_schema::{
+        MemberActivitySnapshot, SnapshotActivityConfidence, ACTIVITY_SNAPSHOT_SCHEMA_VERSION,
+    };
     use crate::coordination::backend::fake::FakeBackend;
     use crate::coordination::domain::{HealthState, Member, MemberRole};
     use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
@@ -1628,24 +1631,30 @@ mod tests {
         .expect("write mesh task");
     }
 
-    fn write_activity_snapshot(teams_dir: &Path, observed_at: DateTime<Utc>, active: bool) {
+    fn write_activity_snapshot(
+        teams_dir: &Path,
+        observed_at: DateTime<Utc>,
+        confidence: SnapshotActivityConfidence,
+    ) {
         let activity_dir = teams_dir.join("deadline-team/state/activity");
         std::fs::create_dir_all(&activity_dir).expect("create activity dir");
+        let active = confidence == SnapshotActivityConfidence::Active;
+        let likely_working = confidence == SnapshotActivityConfidence::LikelyWorking;
         std::fs::write(
             activity_dir.join("builder.json"),
-            serde_json::to_vec_pretty(&serde_json::json!({
-                "version": 1,
-                "observed_at": observed_at.to_rfc3339(),
-                "stall_recent_activity": active,
-                "stall_no_output": !active,
-                "stall_no_active_process": !active,
-                "active_non_shell_process": active,
-                "recent_io": active,
-                "pane_alive": true,
-                "pane_foreign": false,
-                "last_output_age_secs": if active { Some(1) } else { None },
-                "activity_confidence": if active { "active" } else { "idle" },
-            }))
+            serde_json::to_vec_pretty(&MemberActivitySnapshot {
+                version: ACTIVITY_SNAPSHOT_SCHEMA_VERSION,
+                observed_at: observed_at.to_rfc3339(),
+                stall_recent_activity: active,
+                stall_no_output: !active,
+                stall_no_active_process: !active && !likely_working,
+                active_non_shell_process: active || likely_working,
+                recent_io: active,
+                pane_alive: true,
+                pane_foreign: false,
+                last_output_age_secs: (active || likely_working).then_some(1),
+                activity_confidence: confidence,
+            })
             .expect("serialize activity snapshot"),
         )
         .expect("write activity snapshot");
@@ -1777,7 +1786,11 @@ mod tests {
             .with_timezone(&Utc);
         let half_deadline = assigned_at + chrono::Duration::minutes(10);
         seed_deadline_task(&teams_dir, assigned_at, Some(20));
-        write_activity_snapshot(&teams_dir, half_deadline, true);
+        write_activity_snapshot(
+            &teams_dir,
+            half_deadline,
+            SnapshotActivityConfidence::Active,
+        );
 
         state
             .run_background_self_heal_pass_at(
@@ -1792,6 +1805,39 @@ mod tests {
         assert_eq!(stored.task.nudged_at, None);
         assert_eq!(stored.task.stale_at, None);
         assert_eq!(mesh_task_status(&teams_dir), "in_progress");
+    }
+
+    // Regression: 1bb8668e hand-derived activity from two JSON fields and
+    // treated the exporter's `likely_working` verdict as idle, sending a
+    // half-time nudge while attributed work was still running.
+    #[test]
+    fn deadline_self_heal_does_not_nudge_a_likely_working_member() {
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
+        let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
+        let half_deadline = assigned_at + chrono::Duration::minutes(10);
+        seed_deadline_task(&teams_dir, assigned_at, Some(20));
+        write_activity_snapshot(
+            &teams_dir,
+            half_deadline,
+            SnapshotActivityConfidence::LikelyWorking,
+        );
+
+        state
+            .run_background_self_heal_pass_at(
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                half_deadline,
+            )
+            .expect("likely-working pass succeeds");
+
+        assert!(deadline_notices(&fake).is_empty());
+        let stored = deadline_snapshot(&teams_dir);
+        assert_eq!(stored.task.nudged_at, None);
+        assert_eq!(stored.task.stale_at, None);
+        assert_eq!(mesh_task_status(&teams_dir), "in_progress");
+        assert_no_deadline_termination(&runtime);
     }
 
     #[test]

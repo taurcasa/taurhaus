@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Duration, Utc};
 
+use crate::coordination::activity_export::read_member_activity_snapshot;
+use crate::coordination::activity_schema::SnapshotActivityConfidence;
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::operational_context::is_resumable_task_status;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
@@ -16,7 +18,6 @@ use crate::coordination::stores::{
 use crate::coordination::task_deadline::{decide, DeadlineAction, DeadlineInput, Timestamp};
 
 const ACTIVITY_FRESHNESS: Duration = Duration::seconds(120);
-const MAX_ACTIVITY_SNAPSHOT_BYTES: u64 = 1_048_576;
 const MAX_TASK_RECORD_BYTES: usize = 1_048_576;
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -242,43 +243,21 @@ fn member_has_fresh_active_signal(
     member_name: &str,
     now: Timestamp,
 ) -> bool {
-    let path = teams_dir
-        .join(team_name)
-        .join("state/activity")
-        .join(format!("{member_name}.json"));
-    if fs::metadata(&path)
+    let Some(snapshot) = read_member_activity_snapshot(teams_dir, team_name, member_name) else {
+        return false;
+    };
+    let Some(observed_at) = DateTime::parse_from_rfc3339(&snapshot.observed_at)
         .ok()
-        .is_none_or(|metadata| metadata.len() > MAX_ACTIVITY_SNAPSHOT_BYTES)
-    {
-        return false;
-    }
-    let Ok(raw) = fs::read_to_string(path) else {
-        return false;
-    };
-    let Ok(snapshot) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return false;
-    };
-    if snapshot.get("version").and_then(serde_json::Value::as_u64) != Some(1) {
-        return false;
-    }
-    let Some(observed_at) = snapshot
-        .get("observed_at")
-        .and_then(serde_json::Value::as_str)
-        .and_then(|timestamp| DateTime::parse_from_rfc3339(timestamp).ok())
         .map(|timestamp| timestamp.with_timezone(&Utc))
     else {
         return false;
     };
     let age = now.signed_duration_since(observed_at);
     let fresh = age <= ACTIVITY_FRESHNESS && age >= -ACTIVITY_FRESHNESS;
-    let active = snapshot
-        .get("stall_recent_activity")
-        .and_then(serde_json::Value::as_bool)
-        == Some(true)
-        || snapshot
-            .get("activity_confidence")
-            .and_then(serde_json::Value::as_str)
-            == Some("active");
+    let active = matches!(
+        snapshot.activity_confidence,
+        SnapshotActivityConfidence::Active | SnapshotActivityConfidence::LikelyWorking
+    );
     fresh && active
 }
 
