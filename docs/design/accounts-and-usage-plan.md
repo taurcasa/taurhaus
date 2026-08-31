@@ -1,6 +1,6 @@
 # Accounts and usage across CLIs — architecture and execution plan
 
-Status: approved design, executed 2026-08-27 → 2026-08-28 (PRs 17a–17c, 18a, 18b, 19). 17d was cancelled and 17e was folded into the 0.7.0 release. Accounts and usage (daemon protocol 11) shipped in **0.7.0**; the Antigravity and Grok harnesses (daemon protocol 12 then 13) are merged to `main` and sit under `[Unreleased]`, targeted at **0.8.0** — the repo is still at 0.7.0 until that version bump and release land. Companion to [`harness-realignment-plan.md`](harness-realignment-plan.md) and [`../architecture/harness-model.md`](../architecture/harness-model.md). 2026-08-30: 20a (chooser on an exhausted account, #74) and 20b (base command resolved through the pane shell, #75) close the account-picker report of that morning; both ship with the next release.
+Status: approved design, executed 2026-08-27 → 2026-08-28 (PRs 17a–17c, 18a, 18b, 19). 17d was cancelled and 17e was folded into the 0.7.0 release. Accounts and usage (daemon protocol 11) shipped in **0.7.0**; the Antigravity and Grok harnesses (daemon protocol 12 then 13) shipped in **0.8.0** (2026-08-28). Companion to [`harness-realignment-plan.md`](harness-realignment-plan.md) and [`../architecture/harness-model.md`](../architecture/harness-model.md). 2026-08-30: 20a (chooser on an exhausted account, #74) and 20b (base command resolved through the pane shell, #75) close the account-picker report of that morning; both shipped in **0.8.4**.
 
 ## Goal
 
