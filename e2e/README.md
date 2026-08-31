@@ -7,7 +7,7 @@ This runbook covers the WebdriverIO + `tauri-driver` lane (`just test-e2e`,
 supported there: the shared app data directory and tantivy index corruption
 make reliable isolation impractical.
 
-macOS has a separate lane. `just test-macos-e2e` (`justfile:785-790`) syncs the
+macOS has a separate lane. `just test-macos-e2e` (`justfile:887-892`) syncs the
 tree to the Mac mini and runs `scripts/macos-e2e-test.sh` over SSH — a shell
 smoke suite over the built `.app` bundle, tmux and the CLI harnesses, not a
 WDIO suite. Nothing below applies to it.
@@ -164,10 +164,10 @@ cd src-tauri && rg 'PROTOCOL_VERSION: u32' src/daemon/protocol.rs
 Then rebuild E2E so the checkout-local app and daemon are paired (`just build-e2e`).
 The app's gate is exact-match, not a floor. On a mismatch
 `ensure_expected_daemon_runtime` disconnects the daemon
-(`startup/daemon.rs:380-395`), so look for `daemon.connection.lost` with
+(`ensure_expected_daemon_runtime`, `startup/daemon.rs:377-404`), so look for `daemon.connection.lost` with
 `reason: startup_runtime_mismatch` in `taurhaus.log.jsonl`, plus the
 `daemon protocol mismatch: running=…, expected=…` error text.
 `startup.daemon_protocol.checked` is a *separate*, conditional line: it is only emitted
 while the daemon is still connected at that point in bootstrap
-(`startup/daemon.rs:223-282`), and it labels only a lower version `outdated`. Do not
+(`startup/daemon.rs:222-304`), and it labels only a lower version `outdated`. Do not
 expect it on a rejected daemon.

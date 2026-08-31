@@ -11,7 +11,7 @@
  *   2. Features — cross-cutting features (read-only)
  *   3. Shell    — app chrome & platform integration
  *   4. Config   — state mutation & validation
- *   5. Guards   — regressions & visual capture
+ *   5. Guards   — general visual capture and non-tmux guards
  * Stateful additions use named UI, template, mesh, and tmux groups. The
  * manifest is sealed: every non-paid spec must be named by one group.
  *
@@ -35,8 +35,12 @@
  * `managed-stage-codex` spend real subscription turns and are only ever started
  * by name:
  *
- *   E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
+ *   E2E_INSTALL_DAEMON=0 just test-e2e-spec compaction-codex-hooks
  *   E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex
+ *
+ * `E2E_INSTALL_DAEMON` stays at its safe default of 0: every worker launches
+ * the checkout-local daemon on its own private port, so 1 only rebuilds and
+ * restarts the operator's installed daemon and changes nothing about the run.
  */
 
 import { spawn, spawnSync } from 'node:child_process'

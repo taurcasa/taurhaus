@@ -34,12 +34,15 @@
  * `e2e/specList.js` keeps it out of the config's spec list — no suite run picks
  * it up — and it runs only as
  *
- *     E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
+ *     E2E_INSTALL_DAEMON=0 just test-e2e-spec compaction-codex-hooks
  *
- * Isolation: `TAURHAUS_DATA_DIR` and `TAURHAUS_CLAUDE_DIR` are the wdio session
- * temp roots, and `CODEX_HOME` is a scratch copy holding only `auth.json` and
- * `config.toml` (see `e2e/helpers/codexScratchHome.js`). The real `~/.codex`
- * and `~/.claude` are read once, at copy time, and never written.
+ * Isolation: every writable root is the worker's own — `HOME`,
+ * `TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR`, `CODEX_HOME`, `GROK_HOME` and
+ * `TAURHAUS_AGY_DIR` all sit under the wdio session temp root, alongside a
+ * private daemon port and a private tmux server (`e2e/helpers/workerEnv.js`).
+ * That `CODEX_HOME` is a scratch copy holding only `auth.json` plus a
+ * *generated* `config.toml` (see `e2e/helpers/codexScratchHome.js`). The real
+ * `~/.codex` and `~/.claude` are read once, at copy time, and never written.
  *
  * The hook runs as its own process spawned by Codex, so it resolves the teams
  * dir and the log sink from *its* environment — which it inherits from the
