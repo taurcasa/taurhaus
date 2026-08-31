@@ -147,6 +147,12 @@ pub enum DeliveryMethod {
     NativeMessageApi,
 }
 
+/// The wake reasons that mean "a wake was required but the pane was gone" —
+/// minted in `orchestrator/delivery.rs`, surfaced by `pipelines/members.rs`.
+/// One constant per string so the mint and the match cannot drift apart.
+pub(crate) const WAKE_REASON_PANE_DEAD: &str = "member pane is dead";
+pub(crate) const WAKE_REASON_PANE_NOT_FOUND: &str = "member pane not found";
+
 /// Outcome of the best-effort member wake that follows a durable inbox append.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "status")]
@@ -160,6 +166,7 @@ pub enum WakeDisposition {
 
 /// Delivery completion response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeliveryResult {
     /// Whether the backend completed its delivery operation. For inbox-file
     /// delivery this means exactly one append completed.

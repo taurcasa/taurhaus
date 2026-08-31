@@ -2,7 +2,7 @@
   "delivered": true,
   "durable": true,
   "method": "inbox_file",
-  "post_write_warnings": [
+  "postWriteWarnings": [
     "fixture operational context warning",
     "fixture runtime state warning"
   ],

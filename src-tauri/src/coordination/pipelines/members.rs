@@ -48,7 +48,8 @@ pub(super) fn onboarding_wake_warning(wake: &WakeDisposition) -> Option<String> 
         WakeDisposition::NotAttempted { reason }
             if matches!(
                 reason.as_str(),
-                "member pane is dead" | "member pane not found"
+                crate::coordination::requests::WAKE_REASON_PANE_DEAD
+                    | crate::coordination::requests::WAKE_REASON_PANE_NOT_FOUND
             ) =>
         {
             Some(format!("onboarding wake not attempted: {reason}"))

@@ -237,7 +237,7 @@ impl CoordinationOrchestrator {
                     "inbox append succeeded but member pane was dead during daemon wake"
                 );
                 return WakeDisposition::NotAttempted {
-                    reason: "member pane is dead".to_string(),
+                    reason: crate::coordination::requests::WAKE_REASON_PANE_DEAD.to_string(),
                 };
             }
             Ok(None) => {
@@ -248,7 +248,7 @@ impl CoordinationOrchestrator {
                     "inbox append succeeded but member pane was absent during daemon wake"
                 );
                 return WakeDisposition::NotAttempted {
-                    reason: "member pane not found".to_string(),
+                    reason: crate::coordination::requests::WAKE_REASON_PANE_NOT_FOUND.to_string(),
                 };
             }
             Err(err) => {
