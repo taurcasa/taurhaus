@@ -5,11 +5,14 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use serde_json::{Map, Value};
+
 use crate::coordination::state::CoordinationState;
 
 const INITIAL_DELAY: Duration = Duration::from_secs(5);
 const CHECK_INTERVAL: Duration = Duration::from_secs(30);
-const STOP_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const STOP_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const SHUTDOWN_JOIN_GRACE: Duration = Duration::from_secs(1);
 
 pub(crate) struct DeadlineScheduler {
     handle: Option<thread::JoinHandle<()>>,
@@ -33,8 +36,14 @@ impl DeadlineScheduler {
                     return;
                 }
                 while !shutdown.load(Ordering::Relaxed) {
+                    let started = Instant::now();
                     match state.run_background_task_deadline_pass() {
                         Ok(summary) => {
+                            emit_pass_completed(
+                                summary.teams_scanned,
+                                summary.team_errors,
+                                started.elapsed(),
+                            );
                             if summary.team_errors > 0 {
                                 tracing::warn!(
                                     teams_scanned = summary.teams_scanned,
@@ -44,6 +53,7 @@ impl DeadlineScheduler {
                             }
                         }
                         Err(error) => {
+                            emit_pass_failed(&error.to_string(), started.elapsed(), "pass");
                             tracing::warn!(error = %error, "daemon task-deadline pass failed");
                         }
                     }
@@ -51,18 +61,75 @@ impl DeadlineScheduler {
                         return;
                     }
                 }
-            })
-            .unwrap_or_else(|error| panic!("failed to start deadline scheduler: {error}"));
-        Self {
-            handle: Some(handle),
+            });
+        match handle {
+            Ok(handle) => Self {
+                handle: Some(handle),
+            },
+            Err(error) => {
+                emit_pass_failed(&error.to_string(), Duration::ZERO, "spawn");
+                tracing::warn!(error = %error, "daemon task-deadline scheduler not spawned");
+                Self { handle: None }
+            }
         }
     }
 
     pub(crate) fn join(mut self) {
         if let Some(handle) = self.handle.take() {
+            let deadline = Instant::now() + SHUTDOWN_JOIN_GRACE;
+            while !handle.is_finished() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(10));
+            }
+            if !handle.is_finished() {
+                emit_pass_failed(
+                    "deadline scheduler did not stop before shutdown grace elapsed",
+                    SHUTDOWN_JOIN_GRACE,
+                    "shutdown",
+                );
+                tracing::warn!("daemon task-deadline scheduler detached during shutdown");
+                return;
+            }
             let _ = handle.join();
         }
     }
+}
+
+fn duration_millis(duration: Duration) -> u64 {
+    duration.as_millis().min(u64::MAX as u128) as u64
+}
+
+fn emit_pass_completed(teams_scanned: usize, team_errors: usize, duration: Duration) {
+    let mut fields = Map::new();
+    fields.insert("teams_scanned".to_string(), Value::from(teams_scanned));
+    fields.insert("team_errors".to_string(), Value::from(team_errors));
+    fields.insert(
+        "duration_ms".to_string(),
+        Value::from(duration_millis(duration)),
+    );
+    taurhaus_lib::logging::emit_global(
+        "info",
+        "coordination",
+        "deadline.pass.completed",
+        Some("Daemon task-deadline pass completed".to_string()),
+        fields,
+    );
+}
+
+fn emit_pass_failed(error: &str, duration: Duration, phase: &str) {
+    let mut fields = Map::new();
+    fields.insert("error".to_string(), Value::String(error.to_string()));
+    fields.insert("phase".to_string(), Value::String(phase.to_string()));
+    fields.insert(
+        "duration_ms".to_string(),
+        Value::from(duration_millis(duration)),
+    );
+    taurhaus_lib::logging::emit_global(
+        "warn",
+        "coordination",
+        "deadline.pass.failed",
+        Some("Daemon task-deadline pass failed".to_string()),
+        fields,
+    );
 }
 
 fn wait_or_shutdown(shutdown: &AtomicBool, duration: Duration) -> bool {
@@ -99,6 +166,32 @@ mod tests {
         OperationalWorkingSetSnapshot, TeamConfig, TeamConfigStore,
     };
     use crate::session_scanner::cli_tool::CliTool;
+
+    fn install_log_tap(root: &std::path::Path) -> std::sync::mpsc::Receiver<serde_json::Value> {
+        let log_state =
+            crate::commands::logging::LogFileState::new(root.join("taurhaus.log.jsonl"))
+                .expect("log state");
+        crate::commands::logging::install_global_sink(&log_state);
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
+        crate::commands::logging::install_test_tap(event_tx);
+        event_rx
+    }
+
+    fn receive_event(
+        event_rx: &std::sync::mpsc::Receiver<serde_json::Value>,
+        expected: &str,
+    ) -> serde_json::Value {
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            let record = event_rx
+                .recv_timeout(remaining)
+                .unwrap_or_else(|_| panic!("{expected} event within two seconds"));
+            if record["event"] == expected {
+                return record;
+            }
+        }
+    }
 
     fn member(name: &str, role: MemberRole) -> Member {
         Member {
@@ -193,12 +286,7 @@ mod tests {
     fn registered_daemon_scheduler_fires_the_deadline_pass() {
         let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let temp = tempfile::TempDir::new().expect("tempdir");
-        let log_state =
-            crate::commands::logging::LogFileState::new(temp.path().join("taurhaus.log.jsonl"))
-                .expect("log state");
-        crate::commands::logging::install_global_sink(&log_state);
-        let (event_tx, event_rx) = std::sync::mpsc::channel();
-        crate::commands::logging::install_test_tap(event_tx);
+        let event_rx = install_log_tap(temp.path());
 
         let (teams_dir, _assigned_at) = seed_overdue_task(temp.path());
         let fake = FakeBackend::default();
@@ -219,16 +307,7 @@ mod tests {
             Duration::from_millis(10),
         );
 
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
-        let event = loop {
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            let record = event_rx
-                .recv_timeout(remaining)
-                .expect("deadline event within two seconds");
-            if record["event"] == "deadline.task.staled" {
-                break record;
-            }
-        };
+        let event = receive_event(&event_rx, "deadline.task.staled");
         shutdown.store(true, Ordering::Relaxed);
         scheduler.join();
         crate::commands::logging::clear_test_tap();
@@ -251,5 +330,78 @@ mod tests {
         )
         .expect("parse task");
         assert_eq!(task["status"], "stale");
+    }
+
+    // Regression: 34fdeead moved deadline execution into the daemon but emitted
+    // no successful-pass record, so the paid E2E lane could mistake an unrelated
+    // app self-heal event for proof that the daemon scheduler was alive.
+    #[test]
+    fn daemon_scheduler_emits_a_record_for_each_completed_pass() {
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let event_rx = install_log_tap(temp.path());
+        let teams_dir = temp.path().join("teams");
+        std::fs::create_dir_all(&teams_dir).expect("teams dir");
+        let state = CoordinationState::with_components_and_runtime(
+            teams_dir,
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+            Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
+        );
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let scheduler = DeadlineScheduler::start_with_cadence(
+            state,
+            shutdown.clone(),
+            Duration::ZERO,
+            Duration::from_millis(10),
+        );
+
+        let event = receive_event(&event_rx, "deadline.pass.completed");
+        shutdown.store(true, Ordering::Relaxed);
+        scheduler.join();
+        crate::commands::logging::clear_test_tap();
+
+        assert_eq!(event["component"], "coordination");
+        assert_eq!(event["fields"]["teams_scanned"], 0);
+        assert_eq!(event["fields"]["team_errors"], 0);
+        assert!(event["fields"]["duration_ms"].is_number());
+    }
+
+    // Regression: 34fdeead reported daemon deadline-pass failures only through
+    // tracing stderr, which production launchers discard instead of retaining in
+    // the canonical JSONL log.
+    #[test]
+    fn daemon_scheduler_emits_a_record_when_a_pass_fails() {
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let event_rx = install_log_tap(temp.path());
+        let teams_dir = temp.path().join("teams-not-a-directory");
+        std::fs::write(&teams_dir, "not a directory").expect("invalid teams root");
+        let state = CoordinationState::with_components_and_runtime(
+            teams_dir,
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+            Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
+        );
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let scheduler = DeadlineScheduler::start_with_cadence(
+            state,
+            shutdown.clone(),
+            Duration::ZERO,
+            Duration::from_millis(10),
+        );
+
+        let event = receive_event(&event_rx, "deadline.pass.failed");
+        shutdown.store(true, Ordering::Relaxed);
+        scheduler.join();
+        crate::commands::logging::clear_test_tap();
+
+        assert_eq!(event["component"], "coordination");
+        assert!(event["fields"]["error"].is_string());
+        assert!(event["fields"]["duration_ms"].is_number());
     }
 }
