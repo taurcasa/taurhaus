@@ -158,14 +158,19 @@ The compaction audit surface shows the last known member, tool, session id, comp
 
 ### Canvas and node detail
 
-`MeshCanvas.svelte` renders lead and agent nodes directly from explicit layout geometry. Selecting a node opens `MeshNodeDetail.svelte`, which shows:
+`MeshCanvas.svelte` renders lead and agent nodes directly from explicit layout geometry. The compact indicators live on the node box itself (`MeshNode.svelte`), not in the detail panel:
 
-- tool/model and project placement
-- the launch effort the session was started at and, beside it, the effort the lead attached to the current assignment (hovering gives the lead's stated reason) — a task asking for more than the session runs at is the case worth seeing
-- a warning where taurhaus could not guarantee account selection, because the member's launch command runs a wrapper it will not execute to identify
-- cross-project placement details
+- the launch effort the session was started at and, beside it, the effort the lead attached to the current assignment — the two sit side by side precisely so they can be read against each other, since a task asking for more than the session runs at is the case worth seeing. Each chip names itself on hover — `Launch effort: high`, and `Task effort: high — <the lead's stated reason>` where the lead gave one, else just `Task effort: high` (`MeshNode.svelte:69-79,162-181`)
+- a `[project]` chip when the member works outside the team's own project
+- `Account not guaranteed: "<the wrapper head>"` where taurhaus could not guarantee account selection, because the member's launch command runs a wrapper it will not execute to identify — the label keeps the head visible through the ellipsis and the full sentence rides on the hover title (`MeshNode.svelte:46-50,194-199`)
+
+Selecting a node opens `MeshNodeDetail.svelte`, which lists the same facts as separate configuration entries rather than side-by-side chips, and carries no account warning of its own:
+
+- **Tool**, and **Model** with the launch effort appended to it (`gpt-5.6-sol · high`)
+- **Task effort** as its own entry, set only for a runtime node, hovering it gives the lead's stated reason where there is one and otherwise repeats the level (`MeshNodeDetail.svelte:79-86,273-285`)
+- **Project** when the node has one, and **Role ID**
 - role details (name, focus area, context, behavior guidance, communication style, quality gates, definition of done, phase scope, mode, inheritance, and required artifacts when present)
-- runtime details like terminal pane, session ID, and current state
+- runtime details like terminal pane, session ID, session state, and current status
 
 Runtime node actions include:
 
