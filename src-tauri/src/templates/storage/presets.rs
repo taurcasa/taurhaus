@@ -10,10 +10,18 @@ impl TemplateStore {
         for preset_file in
             self.load_preset_files_from_dir(&self.builtins_dir.join(PRESETS_DIRNAME))?
         {
-            preset_file
+            if let Err(err) = preset_file
                 .template
                 .validate_with_role_catalog(&role_catalog)
-                .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
+            {
+                tracing::warn!(
+                    preset_id = %preset_file.template.preset_id,
+                    source = "built_in",
+                    error = %err,
+                    "skipping invalid team preset"
+                );
+                continue;
+            }
             merged.insert(
                 preset_file.template.preset_id.clone(),
                 TeamPresetRecord {
@@ -25,10 +33,18 @@ impl TemplateStore {
         }
 
         for preset_file in self.load_preset_files_from_dir(&self.presets_dir())? {
-            preset_file
+            if let Err(err) = preset_file
                 .template
                 .validate_with_role_catalog(&role_catalog)
-                .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
+            {
+                tracing::warn!(
+                    preset_id = %preset_file.template.preset_id,
+                    source = "user",
+                    error = %err,
+                    "skipping invalid team preset"
+                );
+                continue;
+            }
             merged.insert(
                 preset_file.template.preset_id.clone(),
                 TeamPresetRecord {
@@ -48,29 +64,51 @@ impl TemplateStore {
         let role_catalog = self.load_role_catalog()?;
 
         if let Some(preset_file) = self.load_preset_file_by_id(&self.presets_dir(), preset_id)? {
-            preset_file
+            match preset_file
                 .template
                 .validate_with_role_catalog(&role_catalog)
-                .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
-            return Ok(TeamPresetRecord {
-                template: preset_file.template,
-                source: TemplateSource::User,
-                read_only: false,
-            });
+            {
+                Ok(()) => {
+                    return Ok(TeamPresetRecord {
+                        template: preset_file.template,
+                        source: TemplateSource::User,
+                        read_only: false,
+                    });
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        preset_id = %preset_file.template.preset_id,
+                        source = "user",
+                        error = %err,
+                        "skipping invalid team preset"
+                    );
+                }
+            }
         }
 
         if let Some(preset_file) =
             self.load_preset_file_by_id(&self.builtins_dir.join(PRESETS_DIRNAME), preset_id)?
         {
-            preset_file
+            match preset_file
                 .template
                 .validate_with_role_catalog(&role_catalog)
-                .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
-            return Ok(TeamPresetRecord {
-                template: preset_file.template,
-                source: TemplateSource::BuiltIn,
-                read_only: true,
-            });
+            {
+                Ok(()) => {
+                    return Ok(TeamPresetRecord {
+                        template: preset_file.template,
+                        source: TemplateSource::BuiltIn,
+                        read_only: true,
+                    });
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        preset_id = %preset_file.template.preset_id,
+                        source = "built_in",
+                        error = %err,
+                        "skipping invalid team preset"
+                    );
+                }
+            }
         }
 
         Err(TemplateStoreError::NotFound(format!(

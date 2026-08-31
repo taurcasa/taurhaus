@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
@@ -41,17 +41,31 @@ const BUILTIN_CATALOG_REVISION: u32 = 1;
 
 const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n.lock\n.lock.fallback\n";
 
-// Exact SHA-256 fingerprints of the template bytes bundled in 0.8.5. A file
-// must match both its old path and its old bytes before the catalog migration
-// may replace or remove it; locally edited copies remain user-owned.
+// Exact SHA-256 fingerprints of template bytes shipped from 0.8.0 through
+// 0.8.5. A file must match both an old path and known shipped bytes before the
+// catalog migration may remove it; locally edited copies remain user-owned.
+// Reconciliation removes redundant copies, so later bundle edits are read
+// directly and do not require another fingerprint for already-migrated stores.
 const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
+    (
+        "presets/dev-team.yaml",
+        "0b21738499d30483be03427845cca63da1bd399caf4431d634790876749f28ed",
+    ),
     (
         "presets/dev-team.yaml",
         "bf753d6513394eb6c61e33788b1b65f77e2d3e7fd05b4f4bbf559ec257980648",
     ),
     (
         "presets/full-team.yaml",
+        "d39d3082c563769a249246b769dd2f46c612eaea0f7877c1d122aafba67c44a0",
+    ),
+    (
+        "presets/full-team.yaml",
         "1352a9cb3b709188d1f8bfd52ae69de7c90cae164d5e32bf0b87dc92a9ea720f",
+    ),
+    (
+        "presets/grok-pair.yaml",
+        "869793213f7aeb8c204719ff1dc726c9b0211f1b0908b3d8c907996685c14c72",
     ),
     (
         "presets/grok-pair.yaml",
@@ -64,6 +78,10 @@ const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
     (
         "presets/research-team.yaml",
         "16196e7a24218a3679fff2a6fcda41f6e4ca8bb195a34c02eb7c000c7b9813ee",
+    ),
+    (
+        "presets/research-team.yaml",
+        "06be090b1c326440526554415f9967c2adf0436c8fc578b0a364fb0157c82021",
     ),
     (
         "roles/adversarial-reviewer-claude.yaml",
@@ -218,8 +236,16 @@ const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
         "9743b89d88ea1f706119cf2b5b2079348c56e3b14998e4635df9d31c63cd1a50",
     ),
     (
+        "roles/v3-lead-claude.yaml",
+        "48ad6b77969c9e37deaa5fc466c4e644315d71a1f1c8d46536deb46193f5c014",
+    ),
+    (
         "roles/v3-lead-codex.yaml",
         "353777544aff901fed99dc882fb6ddafce23f3e861a4fdbde49ce4092623c8e1",
+    ),
+    (
+        "roles/v3-lead-codex.yaml",
+        "db8a1f434df71e4fcf145fbebd1aaf5722dbe5a01485829ecba14053fc0390ac",
     ),
     (
         "roles/v3-product-checker-claude.yaml",
@@ -606,6 +632,10 @@ impl TemplateStore {
 
     fn reconcile_builtins_if_needed(&self) -> Result<(), TemplateStoreError> {
         self.ensure_directories()?;
+        if self.load_state_unlocked()?.builtin_catalog_revision >= BUILTIN_CATALOG_REVISION {
+            return Ok(());
+        }
+
         let lock = self.acquire_lock()?;
         if self.load_state_unlocked()?.builtin_catalog_revision >= BUILTIN_CATALOG_REVISION {
             return Ok(());
@@ -629,9 +659,18 @@ impl TemplateStore {
             }
         }
 
-        if !changed_paths.is_empty() {
-            self.commit_paths_unlocked(
-                &changed_paths,
+        if !changed_paths.is_empty() && self.git_dir().is_dir() {
+            let repo = Repository::open(self.templates_dir())?;
+            let changes = changed_paths
+                .iter()
+                .map(|path| PathChange {
+                    path: path.clone(),
+                    deleted: !self.templates_dir.join(path).exists(),
+                })
+                .collect::<Vec<_>>();
+            let _ = self.commit_with_repo(
+                &repo,
+                &changes,
                 &format!("templates: reconcile built-in catalog v{BUILTIN_CATALOG_REVISION}"),
             )?;
         }
@@ -640,10 +679,6 @@ impl TemplateStore {
         state.builtin_catalog_revision = BUILTIN_CATALOG_REVISION;
         self.save_state_unlocked(&state)?;
         drop(lock);
-
-        if !changed_paths.is_empty() {
-            let _ = self.flush_pending_commits()?;
-        }
         Ok(())
     }
 
@@ -651,33 +686,88 @@ impl TemplateStore {
         &self,
     ) -> Result<Vec<TemplateFileMutation>, TemplateStoreError> {
         let mut mutations = Vec::new();
-        for directory in [ROLES_DIRNAME, PRESETS_DIRNAME] {
-            let target_dir = self.templates_dir.join(directory);
-            let mut entries = fs::read_dir(&target_dir)?
-                .map(|entry| entry.map(|entry| entry.path()))
-                .collect::<Result<Vec<_>, std::io::Error>>()?;
-            entries.sort();
+        let mut removed_preset_paths = BTreeSet::new();
+        let mut preset_entries = fs::read_dir(self.presets_dir())?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<Result<Vec<_>, std::io::Error>>()?;
+        preset_entries.sort();
 
-            for target in entries {
-                if !target.is_file() || !is_yaml_file(&target) {
-                    continue;
-                }
-                let Some(file_name) = target.file_name() else {
-                    continue;
-                };
-                let relative = PathBuf::from(directory).join(file_name);
-                let existing = fs::read(&target)?;
-                if !was_previously_shipped_builtin(&relative, &existing) {
-                    continue;
-                }
+        for target in &preset_entries {
+            if !target.is_file() || !is_yaml_file(target) {
+                continue;
+            }
+            let Some(file_name) = target.file_name() else {
+                continue;
+            };
+            let relative = PathBuf::from(PRESETS_DIRNAME).join(file_name);
+            let existing = fs::read(target)?;
+            if was_previously_shipped_builtin(&relative, &existing) {
+                removed_preset_paths.insert(relative.clone());
+                mutations.push(TemplateFileMutation::delete(relative));
+            }
+        }
 
-                let bundled = self.builtins_dir.join(&relative);
-                if bundled.is_file() {
-                    mutations.push(TemplateFileMutation::write(relative, fs::read(bundled)?));
-                } else {
-                    mutations.push(TemplateFileMutation::delete(relative));
+        let mut referenced_role_ids = BTreeSet::new();
+        for preset in self.load_presets_from_dir(&self.builtins_dir.join(PRESETS_DIRNAME))? {
+            insert_preset_role_ids(&preset, &mut referenced_role_ids);
+        }
+        for target in preset_entries {
+            if !target.is_file() || !is_yaml_file(&target) {
+                continue;
+            }
+            let Some(file_name) = target.file_name() else {
+                continue;
+            };
+            let relative = PathBuf::from(PRESETS_DIRNAME).join(file_name);
+            if removed_preset_paths.contains(&relative) {
+                continue;
+            }
+            let raw = fs::read_to_string(&target)?;
+            let preset = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
+                TemplateStoreError::Parse(format!(
+                    "failed to parse preset {}: {err}",
+                    target.display()
+                ))
+            })?;
+            insert_preset_role_ids(&preset, &mut referenced_role_ids);
+        }
+
+        let mut role_entries = fs::read_dir(self.roles_dir())?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<Result<Vec<_>, std::io::Error>>()?;
+        role_entries.sort();
+        for target in role_entries {
+            if !target.is_file() || !is_yaml_file(&target) {
+                continue;
+            }
+            let Some(file_name) = target.file_name() else {
+                continue;
+            };
+            let relative = PathBuf::from(ROLES_DIRNAME).join(file_name);
+            let existing = fs::read(&target)?;
+            if !was_previously_shipped_builtin(&relative, &existing) {
+                continue;
+            }
+
+            let bundled = self.builtins_dir.join(&relative);
+            if !bundled.is_file() {
+                let raw = String::from_utf8(existing).map_err(|err| {
+                    TemplateStoreError::Parse(format!(
+                        "failed to read role {} as UTF-8: {err}",
+                        target.display()
+                    ))
+                })?;
+                let role = serde_norway::from_str::<RoleTemplate>(&raw).map_err(|err| {
+                    TemplateStoreError::Parse(format!(
+                        "failed to parse role {}: {err}",
+                        target.display()
+                    ))
+                })?;
+                if referenced_role_ids.contains(&role.role_id) {
+                    continue;
                 }
             }
+            mutations.push(TemplateFileMutation::delete(relative));
         }
         Ok(mutations)
     }
@@ -709,20 +799,30 @@ impl TemplateStore {
 
         let mut presets_by_id: BTreeMap<String, TeamPreset> = BTreeMap::new();
         for preset in self.load_presets_from_dir(&self.builtins_dir.join(PRESETS_DIRNAME))? {
+            if let Err(err) = preset.validate_with_role_catalog(role_catalog) {
+                tracing::warn!(
+                    preset_id = %preset.preset_id,
+                    source = "built_in",
+                    error = %err,
+                    "skipping invalid team preset"
+                );
+                continue;
+            }
             presets_by_id.insert(preset.preset_id.clone(), preset);
         }
         for preset in self.load_presets_from_dir(&self.presets_dir())? {
+            if let Err(err) = preset.validate_with_role_catalog(role_catalog) {
+                tracing::warn!(
+                    preset_id = %preset.preset_id,
+                    source = "user",
+                    error = %err,
+                    "skipping invalid team preset"
+                );
+                continue;
+            }
             presets_by_id.insert(preset.preset_id.clone(), preset);
         }
-
-        let presets = presets_by_id.into_values().collect::<Vec<_>>();
-        for preset in &presets {
-            preset
-                .validate_with_role_catalog(role_catalog)
-                .map_err(|err| TemplateStoreError::Parse(err.to_string()))?;
-        }
-
-        Ok(presets)
+        Ok(presets_by_id.into_values().collect())
     }
 
     fn roles_dir(&self) -> PathBuf {
@@ -1070,6 +1170,11 @@ fn was_previously_shipped_builtin(relative_path: &Path, bytes: &[u8]) -> bool {
     PREVIOUS_BUNDLED_TEMPLATE_HASHES
         .iter()
         .any(|(path, hash)| Path::new(path) == relative_path && *hash == digest)
+}
+
+fn insert_preset_role_ids(preset: &TeamPreset, role_ids: &mut BTreeSet<String>) {
+    role_ids.insert(preset.lead_role_id.clone());
+    role_ids.extend(preset.agent_slots.iter().map(|slot| slot.role_id.clone()));
 }
 
 fn temp_path_for(path: &Path) -> PathBuf {

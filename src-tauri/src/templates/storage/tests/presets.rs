@@ -246,3 +246,36 @@ fn list_presets_picks_up_external_files_added_to_presets_directory() {
         .expect("external preset present");
     assert_eq!(ext.source, TemplateSource::User);
 }
+
+// Regression: 27c3e32e made one dangling user preset fail every catalog read,
+// so operators could not reach otherwise valid built-in presets to recover.
+#[test]
+fn invalid_user_preset_is_skipped_without_hiding_valid_builtin() {
+    let (_root, app_data, builtins) = setup_dirs();
+    seed_valid_catalog(&builtins);
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    store.ensure_directories().expect("ensure dirs");
+    write(
+        &app_data.join("templates/presets/base.yaml"),
+        &preset_yaml_with_agent("base", "retired-role"),
+    );
+
+    let listed = store
+        .list_presets()
+        .expect("invalid override should not fail the catalog");
+    let base = listed
+        .iter()
+        .find(|preset| preset.template.preset_id == "base")
+        .expect("valid built-in remains visible");
+    assert_eq!(base.source, TemplateSource::BuiltIn);
+
+    let fetched = store
+        .get_preset("base")
+        .expect("get should fall back from an invalid user override");
+    assert_eq!(fetched.source, TemplateSource::BuiltIn);
+
+    let catalog = store
+        .load_catalog()
+        .expect("invalid override should not brick merged catalog consumers");
+    assert_eq!(catalog.presets, vec![parse_preset(&preset_yaml("base"))]);
+}

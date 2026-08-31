@@ -468,6 +468,11 @@ fn previous_release_builtins_reconcile_before_catalog_reads_and_export() {
         &app_data.join("templates/presets/pair.yaml"),
         PREVIOUS_PAIR_PRESET,
     );
+    Repository::init(store.templates_dir()).expect("initialize previous store repository");
+    store
+        .recover_dirty_tree()
+        .expect("commit previous store baseline")
+        .expect("baseline commit");
 
     let roles = store.list_roles().expect("list reconciled roles");
     let actual = roles
@@ -564,6 +569,157 @@ fn previous_release_builtin_with_user_edits_is_preserved() {
         fs::read_to_string(target).expect("read custom role"),
         customized
     );
+}
+
+// Regression: 27c3e32e deleted retired built-in roles without considering
+// user-authored presets that still referenced them, bricking preset reads.
+#[test]
+fn reconciliation_preserves_retired_role_referenced_by_user_preset() {
+    let (_root, app_data, _fixture_builtins) = setup_dirs();
+    let builtins = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("templates");
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    store.ensure_directories().expect("ensure dirs");
+
+    let retired_role = app_data.join("templates/roles/claude-reviewer.yaml");
+    write(&retired_role, PREVIOUS_CLAUDE_REVIEWER);
+    write(
+        &app_data.join("templates/presets/my-team.yaml"),
+        &preset_yaml_with_agent("my-team", "claude-reviewer")
+            .replace("lead_role_id: lead", "lead_role_id: v3-lead-claude"),
+    );
+
+    let presets = store
+        .list_presets()
+        .expect("a referenced retired role should keep the preset catalog readable");
+    assert!(presets
+        .iter()
+        .any(|preset| preset.template.preset_id == "my-team"));
+    assert!(retired_role.exists(), "the referenced role was deleted");
+    store
+        .load_catalog()
+        .expect("the merged catalog should remain readable");
+}
+
+// Regression: 27c3e32e recognized only 0.8.4+ bytes, so presets copied by
+// 0.8.3 stayed stale and prevented the canonical catalog from loading.
+#[test]
+fn v0_8_3_seeded_presets_reconcile_to_the_canonical_catalog() {
+    let (_root, app_data, _fixture_builtins) = setup_dirs();
+    let builtins = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("templates");
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    store.ensure_directories().expect("ensure dirs");
+
+    for (name, contents) in [
+        ("dev-team.yaml", V0_8_3_DEV_TEAM_PRESET),
+        ("full-team.yaml", V0_8_3_FULL_TEAM_PRESET),
+        ("grok-pair.yaml", V0_8_3_GROK_PAIR_PRESET),
+        ("pair.yaml", PREVIOUS_PAIR_PRESET),
+        ("research-team.yaml", V0_8_3_RESEARCH_TEAM_PRESET),
+    ] {
+        write(&app_data.join("templates/presets").join(name), contents);
+    }
+
+    let catalog = store
+        .load_catalog()
+        .expect("0.8.3 preset copies should reconcile");
+    let role_ids = catalog
+        .roles
+        .iter()
+        .map(|role| role.role_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let preset_ids = catalog
+        .presets
+        .iter()
+        .map(|preset| preset.preset_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    assert_eq!(
+        role_ids,
+        [
+            "adversarial-reviewer-claude",
+            "antigravity-orchestrator",
+            "claude-design-lead",
+            "claude-product-checker",
+            "claude-researcher",
+            "codex-orchestrator",
+            "codex-qa",
+            "docs-verifier-codex",
+            "frontend-design-skill-developer",
+            "quick-dev-codex",
+            "v3-architect-codex",
+            "v3-lead-claude",
+            "v4-developer-agy",
+            "v4-developer-claude",
+            "v4-developer-codex",
+            "v4-developer-grok",
+        ]
+        .into_iter()
+        .collect()
+    );
+    assert_eq!(
+        preset_ids,
+        [
+            "dev-team",
+            "full-team",
+            "grok-pair",
+            "pair",
+            "research-team",
+        ]
+        .into_iter()
+        .collect()
+    );
+    for name in [
+        "dev-team.yaml",
+        "full-team.yaml",
+        "grok-pair.yaml",
+        "pair.yaml",
+        "research-team.yaml",
+    ] {
+        assert!(
+            !app_data.join("templates/presets").join(name).exists(),
+            "redundant shipped copy {name} should be removed"
+        );
+    }
+}
+
+#[test]
+fn known_shipped_hashes_cover_pre_0_8_4_catalog_deltas() {
+    for expected in [
+        (
+            "presets/dev-team.yaml",
+            "0b21738499d30483be03427845cca63da1bd399caf4431d634790876749f28ed",
+        ),
+        (
+            "presets/full-team.yaml",
+            "d39d3082c563769a249246b769dd2f46c612eaea0f7877c1d122aafba67c44a0",
+        ),
+        (
+            "presets/grok-pair.yaml",
+            "869793213f7aeb8c204719ff1dc726c9b0211f1b0908b3d8c907996685c14c72",
+        ),
+        (
+            "presets/research-team.yaml",
+            "06be090b1c326440526554415f9967c2adf0436c8fc578b0a364fb0157c82021",
+        ),
+        (
+            "roles/v3-lead-claude.yaml",
+            "48ad6b77969c9e37deaa5fc466c4e644315d71a1f1c8d46536deb46193f5c014",
+        ),
+        (
+            "roles/v3-lead-codex.yaml",
+            "db8a1f434df71e4fcf145fbebd1aaf5722dbe5a01485829ecba14053fc0390ac",
+        ),
+    ] {
+        assert!(
+            PREVIOUS_BUNDLED_TEMPLATE_HASHES.contains(&expected),
+            "missing known shipped fingerprint for {}",
+            expected.0
+        );
+    }
 }
 
 const PREVIOUS_CLAUDE_REVIEWER: &str = r#"schema:
@@ -749,6 +905,98 @@ agent_slots:
     project_binding: lead_project
     overrides:
       name_pattern: quick-dev
+
+defaults:
+  team_name_pattern: "{project}-team"
+  tmux_layout: tiled
+"#;
+
+const V0_8_3_DEV_TEAM_PRESET: &str = r#"schema:
+  kind: team_preset
+  version: 1
+
+preset_id: dev-team
+name: Dev Team
+description: "One lead and two vertical-slice developers for parallel product-visible implementation with shared review gates."
+version: "3.0.0"
+lead_role_id: v3-lead-claude
+
+agent_slots:
+  - role_id: v3-developer-codex
+    count: 2
+    project_binding: lead_project
+
+defaults:
+  team_name_pattern: "{project}-team"
+  tmux_layout: tiled
+"#;
+
+const V0_8_3_FULL_TEAM_PRESET: &str = r#"schema:
+  kind: team_preset
+  version: 1
+
+preset_id: full-team
+name: Full Team
+description: "One lead, one architect, and two developers for structural guidance, implementation throughput, and stronger readiness checks."
+version: "3.0.0"
+lead_role_id: v3-lead-claude
+
+agent_slots:
+  - role_id: v3-architect-codex
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: architect
+  - role_id: v3-developer-codex
+    count: 2
+    project_binding: lead_project
+
+defaults:
+  team_name_pattern: "{project}-team"
+  tmux_layout: tiled
+"#;
+
+const V0_8_3_GROK_PAIR_PRESET: &str = r#"schema:
+  kind: team_preset
+  version: 1
+
+preset_id: grok-pair
+name: Grok Pair
+description: "One lead and one Grok developer for the smallest scoped build-and-review loop on the xAI harness."
+version: "1.0.0"
+lead_role_id: v3-lead-claude
+
+agent_slots:
+  - role_id: grok-developer
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: grok-dev
+
+defaults:
+  team_name_pattern: "{project}-team"
+  tmux_layout: tiled
+"#;
+
+const V0_8_3_RESEARCH_TEAM_PRESET: &str = r#"schema:
+  kind: team_preset
+  version: 1
+
+preset_id: research-team
+name: Research Team
+description: "One lead, one researcher, and one developer for evidence gathering paired with implementation and decision-ready handoff."
+version: "3.0.0"
+lead_role_id: v3-lead-claude
+
+agent_slots:
+  - role_id: claude-researcher
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: researcher
+  - role_id: v3-developer-codex
+    count: 1
+    project_binding: lead_project
 
 defaults:
   team_name_pattern: "{project}-team"

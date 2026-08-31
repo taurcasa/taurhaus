@@ -522,7 +522,7 @@ impl TemplateStore {
         Ok(by_path.into_values().collect())
     }
 
-    fn commit_with_repo(
+    pub(super) fn commit_with_repo(
         &self,
         repo: &Repository,
         changes: &[PathChange],
