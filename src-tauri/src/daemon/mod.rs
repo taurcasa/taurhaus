@@ -1,6 +1,8 @@
 pub mod agy_hooks;
 pub mod auth;
 pub mod codex_notify;
+#[cfg(feature = "mesh-bridged-backend")]
+pub(crate) mod deadline_scheduler;
 pub mod event_listener;
 pub(crate) mod handlers;
 pub mod launcher;

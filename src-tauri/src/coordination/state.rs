@@ -37,6 +37,12 @@ pub struct BackgroundSelfHealPassResult {
     pub members_effort_resumed: usize,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct BackgroundDeadlinePassResult {
+    pub teams_scanned: usize,
+    pub team_errors: usize,
+}
+
 /// Layout the background pass relaunches a member into when the caller has no
 /// configured one: the same default every operator-driven resume uses.
 #[cfg(test)]
@@ -159,6 +165,53 @@ impl CoordinationState {
         self.with_orchestrator(|orchestrator| orchestrator.trigger_team_self_heal(team_name))
     }
 
+    /// One deadline pass over every team, independent of app self-heal work.
+    pub(crate) fn run_background_task_deadline_pass(
+        &self,
+    ) -> Result<BackgroundDeadlinePassResult, CoordinationError> {
+        self.run_background_task_deadline_pass_at(Utc::now())
+    }
+
+    fn run_background_task_deadline_pass_at(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<BackgroundDeadlinePassResult, CoordinationError> {
+        let team_names = TeamConfigStore::list(&self.teams_dir)?;
+        let mut summary = BackgroundDeadlinePassResult::default();
+        let mut orchestrator = self.build_background_orchestrator()?;
+
+        for team_name in team_names {
+            summary.teams_scanned += 1;
+            match crate::coordination::task_deadline_pass::apply_task_deadlines(
+                &mut orchestrator,
+                &team_name,
+                now,
+            ) {
+                Ok(outcome) => {
+                    summary.team_errors += outcome.failures.len();
+                    for (member, reason) in outcome.failures {
+                        tracing::warn!(
+                            team = %team_name,
+                            member = %member,
+                            error = %reason,
+                            "background task-deadline member failed"
+                        );
+                    }
+                }
+                Err(err) => {
+                    summary.team_errors += 1;
+                    tracing::warn!(
+                        team = %team_name,
+                        error = %err,
+                        "background task-deadline pass failed"
+                    );
+                }
+            }
+        }
+
+        Ok(summary)
+    }
+
     /// One background pass over every team.
     ///
     /// `cli_commands` and `tmux_layout` are the operator's own launch settings,
@@ -172,16 +225,6 @@ impl CoordinationState {
         tmux_layout: &str,
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
         self.run_background_self_heal_pass_at_inner(cli_commands, tmux_layout, Utc::now())
-    }
-
-    #[cfg(test)]
-    fn run_background_self_heal_pass_at(
-        &self,
-        cli_commands: &CliCommandSettings,
-        tmux_layout: &str,
-        now: DateTime<Utc>,
-    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
-        self.run_background_self_heal_pass_at_inner(cli_commands, tmux_layout, now)
     }
 
     fn run_background_self_heal_pass_at_inner(
@@ -1687,7 +1730,7 @@ mod tests {
     }
 
     #[test]
-    fn deadline_self_heal_nudges_once_then_stales_once_without_stopping_the_session() {
+    fn deadline_pass_nudges_once_then_stales_once_without_stopping_the_session() {
         let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
         let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
             .expect("assigned timestamp")
@@ -1697,18 +1740,10 @@ mod tests {
         seed_deadline_task(&teams_dir, assigned_at, Some(20));
 
         state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                half_deadline,
-            )
+            .run_background_task_deadline_pass_at(half_deadline)
             .expect("half-deadline pass succeeds");
         state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                half_deadline,
-            )
+            .run_background_task_deadline_pass_at(half_deadline)
             .expect("repeated half-deadline pass succeeds");
 
         let notices = deadline_notices(&fake);
@@ -1727,18 +1762,10 @@ mod tests {
         assert_eq!(mesh_task_status(&teams_dir), "in_progress");
 
         state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                full_deadline,
-            )
+            .run_background_task_deadline_pass_at(full_deadline)
             .expect("deadline pass succeeds");
         state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                full_deadline,
-            )
+            .run_background_task_deadline_pass_at(full_deadline)
             .expect("repeated deadline pass succeeds");
 
         assert_eq!(
@@ -1837,11 +1864,7 @@ mod tests {
         let assigned_at = imported.task.assigned_at.expect("assignment timestamp");
 
         state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                assigned_at + chrono::Duration::minutes(10),
-            )
+            .run_background_task_deadline_pass_at(assigned_at + chrono::Duration::minutes(10))
             .expect("half-deadline pass succeeds");
         assert_eq!(deadline_notices(&fake).len(), 1);
         assert_eq!(
@@ -1850,11 +1873,7 @@ mod tests {
         );
 
         state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                assigned_at + chrono::Duration::minutes(20),
-            )
+            .run_background_task_deadline_pass_at(assigned_at + chrono::Duration::minutes(20))
             .expect("deadline pass succeeds");
         assert_eq!(mesh_task_status(&teams_dir), "stale");
         assert_eq!(
@@ -1865,7 +1884,7 @@ mod tests {
     }
 
     #[test]
-    fn deadline_self_heal_stale_supersedes_a_late_first_nudge() {
+    fn deadline_pass_stale_supersedes_a_late_first_nudge() {
         let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
         let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
             .expect("assigned timestamp")
@@ -1874,11 +1893,7 @@ mod tests {
         seed_deadline_task(&teams_dir, assigned_at, Some(20));
 
         state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                full_deadline,
-            )
+            .run_background_task_deadline_pass_at(full_deadline)
             .expect("deadline pass succeeds");
 
         assert!(deadline_notices(&fake).is_empty());
@@ -1890,7 +1905,7 @@ mod tests {
     }
 
     #[test]
-    fn deadline_self_heal_does_not_nudge_a_member_with_fresh_active_activity() {
+    fn deadline_pass_does_not_nudge_a_member_with_fresh_active_activity() {
         let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
         let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
             .expect("assigned timestamp")
@@ -1904,11 +1919,7 @@ mod tests {
         );
 
         state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                half_deadline,
-            )
+            .run_background_task_deadline_pass_at(half_deadline)
             .expect("active-member pass succeeds");
 
         assert!(deadline_notices(&fake).is_empty());
@@ -1923,7 +1934,7 @@ mod tests {
     // treated the exporter's `likely_working` verdict as idle, sending a
     // half-time nudge while attributed work was still running.
     #[test]
-    fn deadline_self_heal_does_not_nudge_a_likely_working_member() {
+    fn deadline_pass_does_not_nudge_a_likely_working_member() {
         let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
         let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
             .expect("assigned timestamp")
@@ -1937,11 +1948,7 @@ mod tests {
         );
 
         state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                half_deadline,
-            )
+            .run_background_task_deadline_pass_at(half_deadline)
             .expect("likely-working pass succeeds");
 
         assert!(deadline_notices(&fake).is_empty());
@@ -1953,7 +1960,7 @@ mod tests {
     }
 
     #[test]
-    fn deadline_self_heal_leaves_a_task_without_a_deadline_untouched() {
+    fn deadline_pass_leaves_a_task_without_a_deadline_untouched() {
         let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
         let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
             .expect("assigned timestamp")
@@ -1961,11 +1968,7 @@ mod tests {
         seed_deadline_task(&teams_dir, assigned_at, None);
 
         state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                assigned_at + chrono::Duration::hours(2),
-            )
+            .run_background_task_deadline_pass_at(assigned_at + chrono::Duration::hours(2))
             .expect("no-deadline pass succeeds");
 
         assert!(deadline_notices(&fake).is_empty());
@@ -1978,7 +1981,7 @@ mod tests {
     }
 
     #[test]
-    fn deadline_self_heal_leaves_a_pending_deadline_untouched() {
+    fn deadline_pass_leaves_a_pending_deadline_untouched() {
         let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
         let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
             .expect("assigned timestamp")
@@ -1991,11 +1994,7 @@ mod tests {
         set_mesh_task_status(&teams_dir, "pending");
 
         state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                assigned_at + chrono::Duration::hours(2),
-            )
+            .run_background_task_deadline_pass_at(assigned_at + chrono::Duration::hours(2))
             .expect("pending-deadline pass succeeds");
 
         assert!(deadline_notices(&fake).is_empty());
@@ -2011,7 +2010,7 @@ mod tests {
     // completed the task after the operational snapshot was loaded but before
     // the stale write landed.
     #[test]
-    fn deadline_self_heal_skips_a_mesh_task_that_already_moved_on() {
+    fn deadline_pass_skips_a_mesh_task_that_already_moved_on() {
         let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
         let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
             .expect("assigned timestamp")
@@ -2020,11 +2019,7 @@ mod tests {
         set_mesh_task_status(&teams_dir, "completed");
 
         let summary = state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                assigned_at + chrono::Duration::minutes(20),
-            )
+            .run_background_task_deadline_pass_at(assigned_at + chrono::Duration::minutes(20))
             .expect("moved-on task is a harmless deadline skip");
 
         assert_eq!(summary.team_errors, 0);
@@ -2066,11 +2061,7 @@ mod tests {
         assert!(deadline_notices(&fake).is_empty());
 
         state
-            .run_background_self_heal_pass_at(
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-                half_deadline,
-            )
+            .run_background_task_deadline_pass_at(half_deadline)
             .expect("next pass re-decides");
 
         assert_eq!(deadline_notices(&fake).len(), 1);

@@ -94,7 +94,7 @@ pub fn run(
 ) -> std::io::Result<()> {
     // Passed as a closure rather than called here so `run_for_test` never
     // writes into real config dirs.
-    run_with_legacy_cleanup(config, shutdown, provider, retire_legacy_bridge)
+    run_with_legacy_cleanup(config, shutdown, provider, retire_legacy_bridge, true)
 }
 
 fn retire_legacy_bridge() {
@@ -107,6 +107,7 @@ fn run_with_legacy_cleanup<F>(
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
     cleanup: F,
+    schedule_deadlines: bool,
 ) -> std::io::Result<()>
 where
     F: FnOnce() + Send + 'static,
@@ -121,7 +122,26 @@ where
     let _ = session_hub.wait_for_update(0, 0, Duration::from_millis(750));
 
     let listener = bind_listener(config)?;
-    serve(config, listener, shutdown, provider)
+    #[cfg(feature = "mesh-bridged-backend")]
+    let deadline_scheduler = schedule_deadlines.then(|| {
+        // The hub above owns and refreshes the member-activity snapshots that
+        // the shared deadline pass reads. Register only after that activity
+        // source is live so the pass keeps its existing input seam.
+        crate::daemon::deadline_scheduler::DeadlineScheduler::start(
+            crate::coordination::state::CoordinationState::for_app_startup(),
+            shutdown.clone(),
+        )
+    });
+    #[cfg(not(feature = "mesh-bridged-backend"))]
+    let _ = schedule_deadlines;
+
+    let result = serve(config, listener, shutdown.clone(), provider);
+    shutdown.store(true, Ordering::Relaxed);
+    #[cfg(feature = "mesh-bridged-backend")]
+    if let Some(scheduler) = deadline_scheduler {
+        scheduler.join();
+    }
+    result
 }
 
 /// Bind and listen on the daemon's port, without serving on it yet.
@@ -292,7 +312,7 @@ pub(crate) fn run_for_test_with_legacy_cleanup<F>(
 where
     F: FnOnce() + Send + 'static,
 {
-    run_with_legacy_cleanup(config, shutdown, provider, cleanup)
+    run_with_legacy_cleanup(config, shutdown, provider, cleanup, false)
 }
 
 /// Read a newline-terminated line from a `BufReader`, respecting a max byte limit.

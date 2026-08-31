@@ -1,4 +1,4 @@
-//! Deadline side effects owned by the background self-heal pass.
+//! Shared managed-task deadline policy driver.
 
 use std::path::Path;
 
