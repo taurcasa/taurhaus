@@ -96,6 +96,11 @@ pub fn process_has_controlling_terminal(_pid: u32) -> Option<bool> {
     None
 }
 
+/// The macOS session inventory obtains both values from its single `ps` row.
+pub fn process_parent_and_tty(_pid: u32) -> Option<(u32, i64)> {
+    None
+}
+
 /// Read one variable from another process's environment via `ps -Eww`.
 ///
 /// macOS has no `/proc`, but `ps -E` appends a process's environment to its

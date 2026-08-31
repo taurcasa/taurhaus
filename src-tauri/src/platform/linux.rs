@@ -108,6 +108,14 @@ fn parse_start_ticks(stat: &str) -> Option<u64> {
         .ok()
 }
 
+/// Parent PID and controlling terminal from `/proc/{pid}/stat` fields 4 and 7.
+///
+/// Both values come from one read because the session inventory needs them as
+/// one coherent process snapshot.
+pub fn process_parent_and_tty(pid: u32) -> Option<(u32, i64)> {
+    parse_parent_and_tty(&fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)
+}
+
 /// Whether a process has a controlling terminal (`/proc/{pid}/stat` field 7).
 ///
 /// `tty_nr == 0` means the process was started with no controlling terminal —
@@ -116,21 +124,19 @@ fn parse_start_ticks(stat: &str) -> Option<u64> {
 /// sessions. Returns `None` when the process is gone or its stat line cannot
 /// be parsed, which the caller reads as "unknown", not as "no terminal".
 pub fn process_has_controlling_terminal(pid: u32) -> Option<bool> {
-    parse_tty_nr(&fs::read_to_string(format!("/proc/{pid}/stat")).ok()?).map(|tty_nr| tty_nr != 0)
+    process_parent_and_tty(pid).map(|(_, tty_nr)| tty_nr != 0)
 }
 
-/// Field 7 of a `/proc/<pid>/stat` line.
+/// Fields 4 and 7 of a `/proc/<pid>/stat` line.
 ///
 /// Field 2 (`comm`) is parenthesised and may itself contain spaces and
 /// parentheses, so everything up to the last `)` is skipped; the tokens that
 /// follow start at field 3.
-fn parse_tty_nr(stat: &str) -> Option<i64> {
-    stat.rsplit_once(')')?
-        .1
-        .split_whitespace()
-        .nth(4)?
-        .parse()
-        .ok()
+fn parse_parent_and_tty(stat: &str) -> Option<(u32, i64)> {
+    let fields: Vec<&str> = stat.rsplit_once(')')?.1.split_whitespace().collect();
+    let ppid = fields.get(1)?.parse().ok()?;
+    let tty_nr = fields.get(4)?.parse().ok()?;
+    Some((ppid, tty_nr))
 }
 
 /// Read the executable path of a process from `/proc/{pid}/exe`.
@@ -501,13 +507,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_tty_nr_reads_field_7_past_a_comm_with_spaces_and_parens() {
-        // Field 3 is the state; fields 4..=22 follow, so field 7 (tty_nr) is
-        // the 5th token after the comm.
+    fn parse_parent_and_tty_reads_fields_4_and_7_past_a_complex_comm() {
+        // Field 3 is the state; fields 4..=22 follow, so field 4 (ppid) is the
+        // 2nd token and field 7 (tty_nr) is the 5th token after the comm.
         let fields: Vec<String> = (4..=22).map(|field| field.to_string()).collect();
         let stat = format!("4242 (weird (name) here) S {}", fields.join(" "));
-        assert_eq!(parse_tty_nr(&stat), Some(7));
-        assert_eq!(parse_tty_nr("4242 (short) S 1 2"), None);
+        assert_eq!(parse_parent_and_tty(&stat), Some((4, 7)));
+        assert_eq!(parse_parent_and_tty("4242 (short) S 1 2"), None);
     }
 
     // Regression: the session scanner drops processes with no controlling

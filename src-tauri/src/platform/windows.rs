@@ -28,6 +28,11 @@ pub fn process_has_controlling_terminal(_pid: u32) -> Option<bool> {
     None
 }
 
+/// Native Windows processes are outside the WSL session inventory.
+pub fn process_parent_and_tty(_pid: u32) -> Option<(u32, i64)> {
+    None
+}
+
 /// CLI tools run inside WSL2 here, so their environment is read by the WSL
 /// daemon's Linux implementation, not from a native Windows process.
 pub fn process_env_var(_pid: u32, _name: &str) -> Option<String> {

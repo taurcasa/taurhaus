@@ -53,6 +53,7 @@ pub struct ProcessScan {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InventoryEntry {
     pub(crate) pid: u32,
+    pub(crate) ppid: u32,
     pub(crate) args: String,
     pub(crate) cli_tool: CliTool,
     /// Whether the backend sees a controlling terminal for this process:
@@ -60,6 +61,9 @@ pub(crate) struct InventoryEntry {
     /// Only `retain_interactive_processes` reads it; `ProcessInfo::tty` stays
     /// the stdin device the tmux pane map is keyed by.
     pub(crate) has_terminal: bool,
+    /// Backend-native controlling-terminal identity: Linux `tty_nr` or the
+    /// macOS `ps` TTY column. `None` means detached or unreadable.
+    pub(crate) controlling_terminal: Option<String>,
 }
 
 #[cfg(test)]
@@ -67,10 +71,19 @@ impl InventoryEntry {
     pub(crate) fn new(pid: u32, args: &str, cli_tool: CliTool, has_terminal: bool) -> Self {
         Self {
             pid,
+            ppid: 0,
             args: args.to_string(),
             cli_tool,
             has_terminal,
+            controlling_terminal: has_terminal.then(|| format!("test-tty-{pid}")),
         }
+    }
+
+    pub(crate) fn with_parent_and_terminal(mut self, ppid: u32, terminal: &str) -> Self {
+        self.ppid = ppid;
+        self.has_terminal = true;
+        self.controlling_terminal = Some(terminal.to_string());
+        self
     }
 }
 
@@ -100,7 +113,7 @@ const TARGET_OS: TargetOs = TargetOs::Windows;
 enum InventoryBackend {
     /// `/proc/*/cmdline`.
     Proc,
-    /// `ps -eo pid,tty,args`.
+    /// `ps -eo pid=,ppid=,tty=,args=`.
     Ps,
     /// No native inventory: CLI tools run inside WSL2 and the session scan
     /// goes through the WSL daemon, so the local read is always degraded.
@@ -377,20 +390,27 @@ fn read_inventory_entries() -> Option<Vec<InventoryEntry>> {
                         // stat line will not parse): keep it. Enrichment drops
                         // dead PIDs anyway, and dropping a session we cannot
                         // classify would be worse than keeping a phantom one.
-                        let has_terminal =
-                            crate::platform::process_has_controlling_terminal(pid).unwrap_or(true);
+                        let (ppid, controlling_terminal, has_terminal) =
+                            match crate::platform::process_parent_and_tty(pid) {
+                                Some((ppid, tty_nr)) => {
+                                    (ppid, (tty_nr != 0).then(|| tty_nr.to_string()), tty_nr != 0)
+                                }
+                                None => (0, None, true),
+                            };
                         Some(InventoryEntry {
                             pid,
+                            ppid,
                             args,
                             cli_tool,
                             has_terminal,
+                            controlling_terminal,
                         })
                     })
                     .collect(),
             )
         }
         InventoryBackend::Ps => {
-            let output = run_with_timeout("ps", &["-eo", "pid,tty,args"])?;
+            let output = run_with_timeout("ps", &["-eo", "pid=,ppid=,tty=,args="])?;
             Some(parse_ps_output(&output))
         }
         InventoryBackend::None => None,
@@ -658,7 +678,7 @@ fn kill_and_reap(child: &mut Child) {
     let _ = child.wait();
 }
 
-/// Parse `ps -eo pid,tty,args` output into inventory entries for detected CLI tools.
+/// Parse `ps -eo pid=,ppid=,tty=,args=` output into inventory entries for detected CLI tools.
 ///
 /// The TTY column is the process's controlling terminal, which is how the
 /// `ps` backend answers `InventoryEntry::has_terminal`.
@@ -667,18 +687,23 @@ pub(crate) fn parse_ps_output(output: &str) -> Vec<InventoryEntry> {
         .lines()
         .filter_map(|line| {
             let line = line.trim();
-            // Split into PID, TTY, and rest (args).
+            // Split into PID, PPID, TTY, and rest (args).
             let (pid_str, rest) = line.split_once(char::is_whitespace)?;
+            let (ppid_str, rest) = rest.trim_start().split_once(char::is_whitespace)?;
             let (tty, args) = rest.trim_start().split_once(char::is_whitespace)?;
             let args = args.trim();
 
             let cli_tool = detect_cli_tool(args)?;
             let pid: u32 = pid_str.parse().ok()?;
+            let ppid: u32 = ppid_str.parse().ok()?;
+            let has_terminal = ps_tty_is_a_terminal(tty);
             Some(InventoryEntry {
                 pid,
+                ppid,
                 args: args.to_string(),
                 cli_tool,
-                has_terminal: ps_tty_is_a_terminal(tty),
+                has_terminal,
+                controlling_terminal: has_terminal.then(|| tty.to_string()),
             })
         })
         .collect()
@@ -790,9 +815,9 @@ mod tests {
     #[test]
     fn parse_ps_finds_bare_claude() {
         let output = "\
-  PID TTY      COMMAND
- 1234 s001     claude
- 5678 s001     bash";
+  PID PPID TTY      COMMAND
+ 1234   12 s001     claude
+ 5678   56 s001     bash";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].pid, 1234);
@@ -804,10 +829,10 @@ mod tests {
     #[test]
     fn parse_ps_finds_claude_with_flags() {
         let output = "\
-  PID TTY      COMMAND
- 4927 s001     claude --dangerously-skip-permissions
- 4928 s002     claude --dangerously-skip-permissions --continue
- 4929 s003     claude --resume";
+  PID PPID TTY      COMMAND
+ 4927   49 s001     claude --dangerously-skip-permissions
+ 4928   49 s002     claude --dangerously-skip-permissions --continue
+ 4929   49 s003     claude --resume";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].pid, 4927);
@@ -822,8 +847,8 @@ mod tests {
     #[test]
     fn parse_ps_finds_full_path_claude() {
         let output = "\
-  PID TTY      COMMAND
- 1000 ttys001  /home/user/.local/bin/claude --dangerously-skip-permissions";
+  PID PPID TTY      COMMAND
+ 1000   10 ttys001  /home/user/.local/bin/claude --dangerously-skip-permissions";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].pid, 1000);
@@ -833,16 +858,16 @@ mod tests {
     #[test]
     fn parse_ps_finds_node_launched_claude() {
         let output = "\
-  PID TTY      COMMAND
- 2000 s001     node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js";
+  PID PPID TTY      COMMAND
+ 2000   20 s001     node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].pid, 2000);
         assert_eq!(result[0].cli_tool, CliTool::Claude);
 
         let output2 = "\
-  PID TTY      COMMAND
- 2000 s001     node /usr/local/bin/claude --dangerously-skip-permissions";
+  PID PPID TTY      COMMAND
+ 2000   20 s001     node /usr/local/bin/claude --dangerously-skip-permissions";
         let result2 = parse_ps_output(output2);
         assert_eq!(result2.len(), 1);
         assert_eq!(result2[0].cli_tool, CliTool::Claude);
@@ -851,10 +876,10 @@ mod tests {
     #[test]
     fn parse_ps_excludes_grep_and_ps() {
         let output = "\
-  PID TTY      COMMAND
- 1234 s001     claude --dangerously-skip-permissions
- 5555 s001     grep claude
- 6666 s001     ps -eo pid,tty,args";
+  PID PPID TTY      COMMAND
+ 1234   12 s001     claude --dangerously-skip-permissions
+ 5555   55 s001     grep claude
+ 6666   66 s001     ps -eo pid,ppid,tty,args";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].pid, 1234);
@@ -863,9 +888,9 @@ mod tests {
     #[test]
     fn parse_ps_excludes_claude_prefixed() {
         let output = "\
-  PID TTY      COMMAND
- 1234 s001     claude-code-server
- 5678 s001     claude";
+  PID PPID TTY      COMMAND
+ 1234   12 s001     claude-code-server
+ 5678   56 s001     claude";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].pid, 5678);
@@ -879,7 +904,7 @@ mod tests {
 
     #[test]
     fn parse_ps_handles_header_only() {
-        let result = parse_ps_output("  PID TTY      COMMAND\n");
+        let result = parse_ps_output("  PID PPID TTY      COMMAND\n");
         assert!(result.is_empty());
     }
 
@@ -1051,10 +1076,10 @@ mod tests {
     #[test]
     fn parse_ps_marks_detached_processes_non_interactive() {
         let output = "\
-  PID TTY      COMMAND
- 1234 s001     claude --continue
- 5678 ??       codex exec --json review
- 9012 ttys002  codex --yolo";
+  PID PPID TTY      COMMAND
+ 1234   12 s001     claude --continue
+ 5678   56 ??       codex exec --json review
+ 9012   90 ttys002  codex --yolo";
         let mut result = parse_ps_output(output);
         assert_eq!(result.len(), 3);
         assert_eq!(result[1].args, "codex exec --json review");
@@ -1673,25 +1698,31 @@ mod tests {
     #[test]
     fn parse_ps_detects_mixed_tools() {
         let output = "\
-  PID TTY      COMMAND
- 1000 s001     claude --continue
- 2000 s002     codex --full-auto
- 3000 s003     agy --continue
- 4000 s004     bash
- 5000 s005     vim";
+  PID  PPID TTY      COMMAND
+ 1000    10 s001     claude --continue
+ 2000    20 s002     codex --full-auto
+ 3000    30 s003     agy --continue
+ 4000    40 s004     bash
+ 5000    50 s005     vim";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 3);
+        assert_eq!(result[0].ppid, 10);
+        assert_eq!(result[1].ppid, 20);
+        assert_eq!(result[2].ppid, 30);
         assert_eq!(
             result[0],
             InventoryEntry::new(1000, "claude --continue", CliTool::Claude, true)
+                .with_parent_and_terminal(10, "s001")
         );
         assert_eq!(
             result[1],
             InventoryEntry::new(2000, "codex --full-auto", CliTool::Codex, true)
+                .with_parent_and_terminal(20, "s002")
         );
         assert_eq!(
             result[2],
             InventoryEntry::new(3000, "agy --continue", CliTool::Agy, true)
+                .with_parent_and_terminal(30, "s003")
         );
     }
 }
