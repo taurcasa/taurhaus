@@ -4,7 +4,7 @@ Reference for taurhaus Tauri IPC commands exposed from `src-tauri/src/commands/`
 
 ## Overview
 
-The backend currently registers 90 `#[tauri::command]` functions in `src-tauri/src/lib.rs` `generate_handler!` (with `mesh-bridged-backend` enabled). Command names are snake_case (for example, `get_project`), while frontend wrapper arguments are camelCase (for example, `projectId`) via Tauri's serde argument mapping.
+The backend registers 95 `#[tauri::command]` functions in `src-tauri/src/lib.rs` `generate_handler!` with the default `mesh-bridged-backend` feature enabled, and 80 without it — that feature gates the 15 coordination commands and nothing else. Command names are snake_case (for example, `get_project`), while frontend wrapper arguments are camelCase (for example, `projectId`) via Tauri's serde argument mapping.
 
 ## Projects commands
 
@@ -58,6 +58,14 @@ The backend currently registers 90 `#[tauri::command]` functions in `src-tauri/s
 | `list_sessions` | `projectId: string`, `limit?: number`, `offset?: number` | `Result<Vec<SessionSummary>, String>` | `sessions.rs` | Returns paginated session summaries for a project. |
 | `get_session` | `sessionId: string` | `Result<SessionDetail, String>` | `sessions.rs` | Returns full details for a specific session ID. |
 
+## Workflow-run commands
+
+| Command | Parameters (frontend args) | Return type | Module | Description |
+|---|---|---|---|---|
+| `list_workflow_runs` | `sessionId: string` | `Result<Vec<WorkflowRunSummary>, String>` | `workflow_runs/mod.rs` | Lists the workflow runs the session's journal and transcript know about. |
+| `get_workflow_run` | `sessionId: string`, `runId: string` | `Result<WorkflowRun, String>` | `workflow_runs/mod.rs` | Returns one run with its phases and agent rows. |
+| `workflow_ledger_row` | `sessionId: string`, `runId: string` | `Result<Option<String>, String>` | `workflow_runs/mod.rs` | Renders the run's ledger row, or `None` when the run cannot produce one. |
+
 ## Relationships commands
 
 | Command | Parameters (frontend args) | Return type | Module | Description |
@@ -85,6 +93,7 @@ The backend currently registers 90 `#[tauri::command]` functions in `src-tauri/s
 | Command | Parameters (frontend args) | Return type | Module | Description |
 |---|---|---|---|---|
 | `list_accounts` | `tool: CliTool` | `Result<AccountsResult, String>` | `accounts/mod.rs` | Detects provider accounts natively, or through the daemon on Windows, and attaches memory-only usage snapshots. |
+| `resolve_launch_bases` | `tool: CliTool`, `force?: boolean` | `Result<Vec<ResolvedLaunchBase>, String>` | `accounts/mod.rs` | Resolves the configured launch commands through the pane's own shell for the Settings accounts surface only, reporting each resolved base plus the selector value it classified. Cached per command head; `force` bypasses the cache. |
 | `refresh_accounts_usage` | `tool: CliTool` | `Result<bool, String>` | `accounts/mod.rs` | Requests a debounced usage refresh for the tool's detected accounts. |
 | `set_project_account` | `projectId: string`, `tool: CliTool`, `accountId?: string \| null` | `Result<(), String>` | `accounts/mod.rs` | Pins an account for a project and tool; `null` removes the pin. |
 | `resolve_launch_account` | `projectId: string`, `tool: CliTool`, `mode: LaunchMode`, `sessionId?: string \| null` | `Result<LaunchAccountPreview, String>` | `command_center/mod.rs` | Resolves the effective account and origin without launching. |
@@ -125,6 +134,7 @@ Session update behavior:
 | `templates_revert` | `request: TemplateRevertRequest` | `Result<(), String>` | `templates.rs` | Reverts a template to a selected commit state. |
 | `templates_flush_pending` | none | `Result<TemplateFlushResult, String>` | `templates.rs` | Flushes pending template actions into a commit (used by E2E and maintenance flows). |
 | `export_role_to_file` | `request: RoleExportRequest` | `Result<RoleExportResult, String>` | `templates.rs` | Exports a stored role to Claude Code or Copilot custom-agent markdown. |
+| `export_agent_definitions` | `projectId: string` | `Result<AgentDefinitionExport, String>` | `templates.rs` | Writes every Claude role in the catalog into the project's `.claude/agents`, replacing only files carrying the generated marker and reporting hand-written ones as skipped. |
 
 ## Daemon commands
 
