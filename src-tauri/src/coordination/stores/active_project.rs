@@ -153,8 +153,25 @@ fn save_state(teams_dir: &Path, state: &ActiveProjectTeamState) -> Result<(), Co
 
     let path = active_projects_path(teams_dir);
     let tmp_path = teams_dir.join(ACTIVE_PROJECTS_TMP_FILENAME);
-    fs::write(&tmp_path, payload)?;
+    fs::write(&tmp_path, payload.as_bytes())?;
     if let Err(err) = fs::rename(&tmp_path, &path) {
+        // The last step of a successful team init runs through here; it must
+        // degrade on a volume that refuses atomic replacement like every
+        // other teams-dir store, not fail the init.
+        if super::lock::is_windows_unsupported_rename_error(&err) {
+            tracing::warn!(
+                target = %path.display(),
+                raw_os_error = ?err.raw_os_error(),
+                "atomic active-project rename failed; falling back to direct write"
+            );
+            super::lock::report_atomic_write_degraded(&path, "active_project", err.raw_os_error());
+            if let Err(write_err) = super::lock::write_direct_synced(&path, payload.as_bytes()) {
+                let _ = fs::remove_file(&tmp_path);
+                return Err(CoordinationError::Io(write_err));
+            }
+            let _ = fs::remove_file(&tmp_path);
+            return Ok(());
+        }
         let _ = fs::remove_file(&tmp_path);
         return Err(CoordinationError::Io(err));
     }

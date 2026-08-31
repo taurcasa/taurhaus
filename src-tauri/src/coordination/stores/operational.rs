@@ -197,7 +197,14 @@ fn save_snapshot_locked(
     fs::write(&tmp_path, payload.as_bytes())?;
     if let Err(err) = fs::rename(&tmp_path, &target_path) {
         if is_windows_unsupported_rename_error(&err) {
-            if let Err(write_err) = fs::write(&target_path, payload.as_bytes()) {
+            super::lock::report_atomic_write_degraded(
+                &target_path,
+                "operational",
+                err.raw_os_error(),
+            );
+            if let Err(write_err) =
+                super::lock::write_direct_synced(&target_path, payload.as_bytes())
+            {
                 let _ = fs::remove_file(&tmp_path);
                 return Err(CoordinationError::Io(write_err));
             }
@@ -232,16 +239,7 @@ pub fn write_snapshot(snapshot: &OperationalContextSnapshot) -> Result<(), Coord
     OperationalContextSnapshotStore::save(&PlatformPaths::teams_dir(), snapshot)
 }
 
-/// Rename errors a volume answers when it cannot atomically replace the
-/// target: ERROR_INVALID_FUNCTION (1), ERROR_ACCESS_DENIED (5 — the 9p
-/// server behind a `\\wsl.localhost` teams dir refuses to replace a file
-/// any handle holds open, our own target lock included; NTFS replaces an
-/// open file via POSIX-semantics rename, so this only fires where the
-/// atomic path truly is unavailable), and ERROR_SHARING_VIOLATION (32).
-/// The same codes the config and runtime stores' fallback predicate uses.
-pub(crate) fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
-    matches!(err.raw_os_error(), Some(1 | 5 | 32))
-}
+pub(crate) use super::lock::is_windows_unsupported_rename_error;
 
 fn operational_snapshot_dir(teams_dir: &Path, team_name: &str) -> PathBuf {
     teams_dir.join(team_name).join("state").join("operational")

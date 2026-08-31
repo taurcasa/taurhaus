@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -29,14 +29,7 @@ thread_local! {
 }
 
 fn is_windows_unsupported_lock_error(err: &std::io::Error) -> bool {
-    // ERROR_INVALID_FUNCTION (1) and ERROR_ACCESS_DENIED (5): which one the
-    // 9p server behind a `\\wsl.localhost` path answers for `LockFileEx`
-    // depends on the Windows/WSL build — newer builds answer 5 where older
-    // ones answered 1. Both callers reach this check only after successfully
-    // opening the file for WRITE, so a 5 here reports missing lock support,
-    // not permissions; a real ACL denial fails at open. Lock contention is
-    // ERROR_LOCK_VIOLATION (33) and stays on the transient path.
-    cfg!(target_os = "windows") && matches!(err.raw_os_error(), Some(1) | Some(5))
+    cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
 }
 
 /// Paths already reported as unlockable, so one degraded volume does not
@@ -84,6 +77,65 @@ fn report_unsupported_lock(path: &Path, scope: &str) {
         Some("Advisory file locks are unsupported for this path".to_string()),
         fields,
     );
+}
+
+/// Rename errors Windows answers when a volume cannot atomically replace
+/// the target: ERROR_INVALID_FUNCTION (1), ERROR_ACCESS_DENIED (5 — the 9p
+/// server behind a `\\wsl.localhost` teams dir refuses to replace a file
+/// any handle holds open, our own target lock included; NTFS replaces an
+/// open file via POSIX-semantics rename, so this only fires where the
+/// atomic path truly is unavailable), and ERROR_SHARING_VIOLATION (32).
+/// Platform-gated deliberately: only the Windows app drives these volumes,
+/// and the same numbers on Linux are EPERM/EIO/EPIPE — real faults a
+/// truncating fallback must never paper over.
+pub(crate) fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
+    cfg!(target_os = "windows") && matches!(err.raw_os_error(), Some(1 | 5 | 32))
+}
+
+/// Paths already reported for the non-atomic write fallback, so a degraded
+/// volume produces one structured event per path, not one per save.
+fn reported_degraded_writes() -> &'static Mutex<HashSet<PathBuf>> {
+    static REPORTED: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+    REPORTED.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// A save fell back from the atomic rename to a direct write. Structured,
+/// once per path, like `report_unsupported_lock`: an operator has to be able
+/// to see which stores are publishing non-atomically.
+pub(crate) fn report_atomic_write_degraded(path: &Path, scope: &str, raw_os_error: Option<i32>) {
+    let inserted = reported_degraded_writes()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(path.to_path_buf());
+    if !inserted {
+        return;
+    }
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "path".to_string(),
+        serde_json::Value::String(path.display().to_string()),
+    );
+    fields.insert(
+        "scope".to_string(),
+        serde_json::Value::String(scope.to_string()),
+    );
+    if let Some(code) = raw_os_error {
+        fields.insert("raw_os_error".to_string(), serde_json::Value::from(code));
+    }
+    emit_global(
+        "warn",
+        "coordination",
+        "coordination.store.atomic_write_degraded",
+        Some("Store save fell back to a non-atomic direct write".to_string()),
+        fields,
+    );
+}
+
+/// Synced direct write for fallbacks at sites that hold no target lock.
+pub(crate) fn write_direct_synced(path: &Path, payload: &[u8]) -> std::io::Result<()> {
+    let mut file = File::create(path)?;
+    file.write_all(payload)?;
+    file.sync_all()
 }
 
 pub(super) fn is_transient_file_lock_error(err: &std::io::Error) -> bool {
@@ -277,8 +329,24 @@ impl TargetFileLock {
     pub fn read_contents(&self) -> Result<String, CoordinationError> {
         let mut contents = String::new();
         let mut file = &self.file;
+        file.seek(SeekFrom::Start(0))?;
         file.read_to_string(&mut contents)?;
         Ok(contents)
+    }
+
+    /// Replace the locked target's contents through the very handle that
+    /// owns the lock — the direct-write fallback for volumes that refuse to
+    /// rename over an open file. A second handle would be blocked by our own
+    /// byte-range lock where locking works, and is pointless where it
+    /// degraded; this handle works in both worlds. Not atomic: a concurrent
+    /// reader on a lock-degraded volume can observe a torn state, which the
+    /// stores' readers treat as a transient before quarantining anything.
+    pub fn overwrite(&self, payload: &[u8]) -> std::io::Result<()> {
+        let mut file = &self.file;
+        file.seek(SeekFrom::Start(0))?;
+        file.write_all(payload)?;
+        self.file.set_len(payload.len() as u64)?;
+        self.file.sync_all()
     }
 }
 
@@ -311,30 +379,63 @@ mod tests {
 
     #[test]
     fn unsupported_lock_error_detection_is_platform_aware() {
-        // Regression: initializing a team from the Windows app failed hard at
-        // "Sending agent instructions" with os error 5, and every locked
-        // runtime-record save left a zero-byte file: this Windows/WSL build
-        // answers ERROR_ACCESS_DENIED for LockFileEx over `\\wsl.localhost`
-        // where older builds answered ERROR_INVALID_FUNCTION. Both spellings
-        // of "this path cannot lock" must take the degrade-and-report path.
-        for code in [1, 5] {
-            let err = std::io::Error::from_raw_os_error(code);
-            assert_eq!(
-                is_windows_unsupported_lock_error(&err),
-                cfg!(target_os = "windows"),
-                "os error {code}"
-            );
+        // Verified live during the Windows team-init failure: LockFileEx over
+        // `\\wsl.localhost` answers ERROR_INVALID_FUNCTION (1) — this
+        // degrade path — while the RENAME over the open handle is what
+        // answers ERROR_ACCESS_DENIED (5); 5 stays on the transient/read
+        // retry policy and must never silently disable locking.
+        let err = std::io::Error::from_raw_os_error(1);
+        assert_eq!(
+            is_windows_unsupported_lock_error(&err),
+            cfg!(target_os = "windows")
+        );
+        for code in [5, 33] {
+            assert!(!is_windows_unsupported_lock_error(
+                &std::io::Error::from_raw_os_error(code)
+            ));
         }
-        // Contention (ERROR_LOCK_VIOLATION) is transient, never "unsupported".
-        assert!(!is_windows_unsupported_lock_error(
-            &std::io::Error::from_raw_os_error(33)
-        ));
     }
 
     #[test]
     fn non_unsupported_lock_error_is_rejected() {
         let err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
         assert!(!is_windows_unsupported_lock_error(&err));
+    }
+
+    #[test]
+    fn rename_fallback_predicate_is_platform_gated() {
+        // Regression: Windows team init failed at "Sending agent
+        // instructions" — the 9p server refuses to rename over an open
+        // handle with ERROR_ACCESS_DENIED (5); ERROR_INVALID_FUNCTION (1)
+        // and ERROR_SHARING_VIOLATION (32) are the sibling spellings. On
+        // Linux the same numbers are EPERM/EIO/EPIPE and must never trigger
+        // a truncating fallback.
+        for code in [1, 5, 32] {
+            assert_eq!(
+                is_windows_unsupported_rename_error(&std::io::Error::from_raw_os_error(code)),
+                cfg!(target_os = "windows"),
+                "os error {code}"
+            );
+        }
+        for code in [2, 13, 33] {
+            assert!(!is_windows_unsupported_rename_error(
+                &std::io::Error::from_raw_os_error(code)
+            ));
+        }
+    }
+
+    #[test]
+    fn overwrite_replaces_longer_content_through_the_lock_handle() {
+        let tmp = TempDir::new().expect("tempdir");
+        let path = tmp.path().join("record.json");
+        std::fs::write(&path, "the previous, much longer record body").expect("seed");
+
+        let lock = TargetFileLock::acquire_or_create(&path).expect("lock");
+        lock.overwrite(b"short").expect("overwrite");
+
+        assert_eq!(lock.read_contents().expect("read back"), "short");
+        drop(lock);
+        assert_eq!(std::fs::read_to_string(&path).expect("reread"), "short");
     }
 
     #[test]

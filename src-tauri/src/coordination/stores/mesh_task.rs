@@ -54,8 +54,11 @@ pub(crate) fn commit_status_if_unchanged(
     let tmp_path = task_tmp_path(&path);
     write_file_synced(&tmp_path, &payload, Some(&path))?;
     if let Err(error) = fs::rename(&tmp_path, &path) {
-        if super::operational::is_windows_unsupported_rename_error(&error) {
-            write_file_synced(&path, &payload, Some(&path))?;
+        if super::lock::is_windows_unsupported_rename_error(&error) {
+            super::lock::report_atomic_write_degraded(&path, "mesh_task", error.raw_os_error());
+            target_lock
+                .overwrite(payload.as_bytes())
+                .map_err(CoordinationError::Io)?;
             let _ = fs::remove_file(&tmp_path);
         } else {
             let _ = fs::remove_file(&tmp_path);

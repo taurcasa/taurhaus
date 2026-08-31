@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
@@ -110,11 +112,13 @@ impl MeshInboxStore {
             Err(err) => return Err(CoordinationError::Io(err)),
         };
 
-        if raw.trim().is_empty() {
-            return Ok(Vec::new());
-        }
-
-        parse_inbox_contents(teams_dir, &path, team_name, member_name, &raw)
+        parse_inbox_tolerating_torn_reads(teams_dir, &path, team_name, member_name, raw, || {
+            match super::lock::read_to_string_with_retry(&path) {
+                Ok(raw) => Ok(raw),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+                Err(err) => Err(CoordinationError::Io(err)),
+            }
+        })
     }
 
     pub fn append(
@@ -129,11 +133,14 @@ impl MeshInboxStore {
         let target_path = inbox_path(teams_dir, team_name, member_name);
         let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)?;
         let raw = target_lock.read_contents()?;
-        let mut messages = if raw.trim().is_empty() {
-            Vec::new()
-        } else {
-            parse_inbox_contents(teams_dir, &target_path, team_name, member_name, &raw)?
-        };
+        let mut messages = parse_inbox_tolerating_torn_reads(
+            teams_dir,
+            &target_path,
+            team_name,
+            member_name,
+            raw,
+            || target_lock.read_contents(),
+        )?;
         let mut message = message.clone();
         message.remove_authored_keys_from_extra();
         for existing in &mut messages {
@@ -159,7 +166,7 @@ impl MeshInboxStore {
             // (config, runtime, operational, mesh_task) already degrades to
             // a direct write on these volumes; the inbox was the one store
             // without the fallback.
-            if super::operational::is_windows_unsupported_rename_error(&err) {
+            if super::lock::is_windows_unsupported_rename_error(&err) {
                 tracing::warn!(
                     team_name,
                     member_name,
@@ -167,7 +174,16 @@ impl MeshInboxStore {
                     raw_os_error = ?err.raw_os_error(),
                     "atomic inbox rename failed; falling back to direct write"
                 );
-                if let Err(write_err) = fs::write(&target_path, payload.as_bytes()) {
+                super::lock::report_atomic_write_degraded(
+                    &target_path,
+                    "inbox",
+                    err.raw_os_error(),
+                );
+                // Through the handle that owns the lock: a second handle
+                // would be blocked by our own byte-range lock where locking
+                // works, and the rename this replaces already proved the
+                // volume refuses to replace an open file.
+                if let Err(write_err) = target_lock.overwrite(payload.as_bytes()) {
                     let _ = fs::remove_file(&tmp_path);
                     return Err(CoordinationError::Io(write_err));
                 }
@@ -179,6 +195,42 @@ impl MeshInboxStore {
         }
         Ok(())
     }
+}
+
+/// Backoffs before a persistently unparsable inbox is quarantined. On a
+/// volume whose advisory locks degraded (`\\wsl.localhost`), another
+/// process's direct-write fallback can expose a torn state mid-write, so an
+/// unparsable read is first treated as a transient and re-read — the inbox
+/// is the one store whose corruption handling is destructive (quarantine),
+/// and a torn transient must never cost the unread messages.
+const TORN_READ_BACKOFFS: [Duration; 3] = [
+    Duration::from_millis(100),
+    Duration::from_millis(200),
+    Duration::from_millis(500),
+];
+
+fn parse_inbox_tolerating_torn_reads(
+    teams_dir: &Path,
+    path: &Path,
+    team_name: &str,
+    member_name: &str,
+    mut raw: String,
+    reread: impl Fn() -> Result<String, CoordinationError>,
+) -> Result<Vec<MeshInboxMessage>, CoordinationError> {
+    for backoff in TORN_READ_BACKOFFS {
+        if raw.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        if let Ok(messages) = serde_json::from_str::<Vec<MeshInboxMessage>>(&raw) {
+            return Ok(messages);
+        }
+        thread::sleep(backoff);
+        raw = reread()?;
+    }
+    if raw.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    parse_inbox_contents(teams_dir, path, team_name, member_name, &raw)
 }
 
 fn parse_inbox_contents(
@@ -471,6 +523,46 @@ mod tests {
         let contents = wait_for_log_contains(&log_path, "\"event\":\"mesh.inbox.corrupt\"");
         assert!(contents.contains("\"team_name\":\"t\""));
         assert!(contents.contains("\"member_name\":\"agent\""));
+    }
+
+    #[test]
+    fn a_torn_read_heals_before_the_inbox_is_quarantined() {
+        // Regression: the direct-write fallback on lock-degraded volumes can
+        // expose a torn state to a concurrent reader, and the inbox's
+        // corruption handling is destructive (quarantine). A read that heals
+        // within the backoff window must deliver the messages, not destroy
+        // them.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let inbox_dir = teams_dir.join("t").join("inboxes");
+        fs::create_dir_all(&inbox_dir).expect("inbox dir");
+        let inbox_path = inbox_dir.join("agent.json");
+        fs::write(&inbox_path, "[{\"torn").expect("write torn inbox");
+
+        let healed = serde_json::to_string(&vec![MeshInboxMessage::new(
+            "taurhaus",
+            "delivered".to_string(),
+            None,
+            DateTime::parse_from_rfc3339("2026-03-09T00:05:00Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+        )])
+        .expect("serialize healed inbox");
+        let heal_path = inbox_path.clone();
+        let writer = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(20));
+            fs::write(&heal_path, healed).expect("heal inbox");
+        });
+
+        let messages = MeshInboxStore::load(&teams_dir, "t", "agent").expect("torn read heals");
+        writer.join().expect("writer thread");
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].text, "delivered");
+        assert!(
+            inbox_path.exists(),
+            "a healed inbox must never be quarantined"
+        );
     }
 
     #[test]

@@ -559,7 +559,7 @@ fn save_runtime_record_locked(
     team_name: &str,
     member_name: &str,
     record: &MemberRuntimeRecord,
-    _target_lock: &super::lock::TargetFileLock,
+    target_lock: &super::lock::TargetFileLock,
 ) -> Result<(), CoordinationError> {
     let mut normalized = record.clone();
     normalized.schema_version = RUNTIME_SCHEMA_VERSION;
@@ -607,12 +607,13 @@ fn save_runtime_record_locked(
                 raw_os_error = ?err.raw_os_error(),
                 "atomic runtime rename failed on team state save; falling back to direct write"
             );
+            super::lock::report_atomic_write_degraded(&target_path, "runtime", err.raw_os_error());
             retry_file_operation(
                 "write",
                 &target_path,
                 None,
                 &SAVE_RETRY_BACKOFFS,
-                || write_file_synced(&target_path, &payload),
+                || target_lock.overwrite(payload.as_bytes()),
                 |write_err| log_runtime_store_io_error("write", &target_path, write_err, None),
             )
             .map_err(CoordinationError::Io)?;
@@ -860,7 +861,7 @@ fn is_transient_lock_error(err: &std::io::Error) -> bool {
 }
 
 fn is_atomic_write_fallback_error(err: &std::io::Error) -> bool {
-    matches!(err.raw_os_error(), Some(1 | 5 | 32))
+    super::lock::is_windows_unsupported_rename_error(err)
 }
 
 fn clone_io_error(err: &std::io::Error) -> std::io::Error {
@@ -1800,15 +1801,14 @@ mod tests {
 
     #[test]
     fn atomic_write_fallback_error_detection_includes_unc_locking_codes() {
-        assert!(is_atomic_write_fallback_error(
-            &std::io::Error::from_raw_os_error(1)
-        ));
-        assert!(is_atomic_write_fallback_error(
-            &std::io::Error::from_raw_os_error(5)
-        ));
-        assert!(is_atomic_write_fallback_error(
-            &std::io::Error::from_raw_os_error(32)
-        ));
+        // Platform-gated since the 9p rename fallback unification.
+        for code in [1, 5, 32] {
+            assert_eq!(
+                is_atomic_write_fallback_error(&std::io::Error::from_raw_os_error(code)),
+                cfg!(target_os = "windows"),
+                "os error {code}"
+            );
+        }
         assert!(!is_atomic_write_fallback_error(
             &std::io::Error::from_raw_os_error(13)
         ));

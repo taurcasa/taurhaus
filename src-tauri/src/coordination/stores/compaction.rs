@@ -265,9 +265,7 @@ pub fn emit_compaction_delivery_event(
     );
 }
 
-fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
-    cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
-}
+use super::lock::is_windows_unsupported_rename_error;
 
 fn compaction_state_dir(teams_dir: &Path, team_name: &str) -> PathBuf {
     teams_dir.join(team_name).join("state").join("compaction")

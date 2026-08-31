@@ -1431,9 +1431,7 @@ fn temp_path_for(path: &Path) -> PathBuf {
     path.with_file_name(format!("{file_name}.tmp.{random_suffix}"))
 }
 
-fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
-    cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
-}
+use crate::coordination::stores::lock::is_windows_unsupported_rename_error;
 
 fn remove_existing_taurhaus_compact_hooks(entries: &mut [Value]) {
     for entry in entries.iter_mut() {
