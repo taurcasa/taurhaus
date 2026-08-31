@@ -368,6 +368,7 @@ fn state_round_trip_persists_pending_actions() {
         }],
         last_commit_at: Some(99),
         repo_initialized: true,
+        builtin_catalog_revision: 0,
     };
 
     store.save_state(&state).expect("save state");

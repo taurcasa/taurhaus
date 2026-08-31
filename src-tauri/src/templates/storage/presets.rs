@@ -2,6 +2,7 @@ use super::*;
 
 impl TemplateStore {
     pub fn list_presets(&self) -> Result<Vec<TeamPresetRecord>, TemplateStoreError> {
+        self.reconcile_builtins_if_needed()?;
         self.ensure_directories()?;
         let role_catalog = self.load_role_catalog()?;
 
@@ -42,6 +43,7 @@ impl TemplateStore {
     }
 
     pub fn get_preset(&self, preset_id: &str) -> Result<TeamPresetRecord, TemplateStoreError> {
+        self.reconcile_builtins_if_needed()?;
         self.ensure_directories()?;
         let role_catalog = self.load_role_catalog()?;
 

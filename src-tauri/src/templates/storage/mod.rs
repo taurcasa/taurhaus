@@ -10,6 +10,7 @@ use fs2::FileExt;
 use git2::{Oid, Repository, Signature, Status};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::models::DiffHunk;
 
@@ -36,8 +37,211 @@ const DEFAULT_DEBOUNCE_WINDOW_SECS: i64 = 30;
 const FALLBACK_LOCK_RETRY_DELAY_MS: u64 = 20;
 const FALLBACK_LOCK_RETRY_ATTEMPTS: usize = 250;
 const TEMP_FILE_RANDOM_RETRY_ATTEMPTS: usize = 16;
+const BUILTIN_CATALOG_REVISION: u32 = 1;
 
 const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n.lock\n.lock.fallback\n";
+
+// Exact SHA-256 fingerprints of the template bytes bundled in 0.8.5. A file
+// must match both its old path and its old bytes before the catalog migration
+// may replace or remove it; locally edited copies remain user-owned.
+const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
+    (
+        "presets/dev-team.yaml",
+        "bf753d6513394eb6c61e33788b1b65f77e2d3e7fd05b4f4bbf559ec257980648",
+    ),
+    (
+        "presets/full-team.yaml",
+        "1352a9cb3b709188d1f8bfd52ae69de7c90cae164d5e32bf0b87dc92a9ea720f",
+    ),
+    (
+        "presets/grok-pair.yaml",
+        "4044bfd247c210dd44506fac800af8d2de2b3c9b90394030b532297b3faa1803",
+    ),
+    (
+        "presets/pair.yaml",
+        "9f81fce260790bd02215c9b596fe32465e17b3872384cfb7df662fe0e8c9087f",
+    ),
+    (
+        "presets/research-team.yaml",
+        "16196e7a24218a3679fff2a6fcda41f6e4ca8bb195a34c02eb7c000c7b9813ee",
+    ),
+    (
+        "roles/adversarial-reviewer-claude.yaml",
+        "88455a7e05876400d23f6bc10a6946bcfd14f297d8825aaaf16e058399a9e5e2",
+    ),
+    (
+        "roles/antigravity-orchestrator.yaml",
+        "4f8934db51767a484b397693cc39ebfa7b350dd382bc5e1c42b27aa3049b1c78",
+    ),
+    (
+        "roles/antigravity-ui-specialist.yaml",
+        "7c088eef6e08c3a2721fd096c575611b0c20b8fe63489129c5b80ee8032ca8c4",
+    ),
+    (
+        "roles/claude-design-lead.yaml",
+        "8a7fb6ada013ee8d287ab5fa1742be204d9776a424f4846a66511e93d0351b13",
+    ),
+    (
+        "roles/claude-orchestrator.yaml",
+        "1a78b6d3caa1b49d39ed30cce5b628cef3cac1d1cced327e4396c67a8b686dd6",
+    ),
+    (
+        "roles/claude-product-checker.yaml",
+        "8e928d24bf3bcd22ea21f8aec1e6bfd5c4aaeebc0cb382cc4c1e6794b961513c",
+    ),
+    (
+        "roles/claude-researcher.yaml",
+        "c02160b84df2c472d30d3d90fc63c733468f4b1dcedc55a60751e007cf13536a",
+    ),
+    (
+        "roles/claude-reviewer.yaml",
+        "0e0e0fd25390d779003af92edaf102bca08f4b49019c0c3d70207698198361dd",
+    ),
+    (
+        "roles/codex-architect.yaml",
+        "b258f6df20bbbc58d3e80e096c62125486817771a904fd5f87f09e86e15e62e4",
+    ),
+    (
+        "roles/codex-developer.yaml",
+        "8e4ef423a83fb05345e0ed85de67f72071fecb6c46adf6dce17ecb6e9ace0865",
+    ),
+    (
+        "roles/codex-orchestrator.yaml",
+        "56fa5a6c81e8f60cbacea56e6b3d20e947188f6533ccb4e5aae0fbc17c97e213",
+    ),
+    (
+        "roles/codex-product-lead.yaml",
+        "a2aadfd219c4cd0f7ca127c90e1a6a458f7c52329300bd01efaa8ee0a691bc77",
+    ),
+    (
+        "roles/codex-qa.yaml",
+        "5e1bed1a9ab767147411a79da1bd4f4f66a5604a0626fc5e252ec428a6d7c8ce",
+    ),
+    (
+        "roles/codex-vertical-slice-developer.yaml",
+        "3fc7b2da5f99b8d1063ec654f6329f572e6792b206623b86ddf1370de16369b9",
+    ),
+    (
+        "roles/docs-verifier-codex.yaml",
+        "f99584b53393743b7b45915775a9c9bdd2d70e4f544265fe0882407badee31b5",
+    ),
+    (
+        "roles/frontend-design-skill-developer.yaml",
+        "4f00b61eb26e3427713be0256d298333771235e570673c72d6d91f1af02bf251",
+    ),
+    (
+        "roles/grok-developer.yaml",
+        "f320dd351e40ce9ad60df393e758c4c894b51c86eaa8c5f8ee6d47ceaae78dc2",
+    ),
+    (
+        "roles/quick-dev-codex.yaml",
+        "0bd3723a6371fa7ee26494f24538482df5a1c4dfa26e2bf7b69cedcd48fe9058",
+    ),
+    (
+        "roles/taurhaus-architect.yaml",
+        "da6f7d5925563b8c293e3101b458149d36339faebb2ebdbd00ed4946bc8a96be",
+    ),
+    (
+        "roles/taurhaus-designer.yaml",
+        "83074a1b8331f963bf3e6dd1adda751f7a83f4f177087525840a703479887b89",
+    ),
+    (
+        "roles/taurhaus-developer.yaml",
+        "b6479a34469f6841564fd63ea4a7f8b2ee276689dc3765c6173366009e2f5cd6",
+    ),
+    (
+        "roles/taurhaus-lead-claude.yaml",
+        "8fb95527acd038562f821f60a2f24492af0685cf5adc6ff0da74c4af506e79be",
+    ),
+    (
+        "roles/taurhaus-lead-codex.yaml",
+        "15732abf22322f2b760fa59f4df2615a953644cf52b3eefd7e170ad36cca348b",
+    ),
+    (
+        "roles/v2-architect-claude.yaml",
+        "2249efc466d309cadece5506fcb741846f7b022da5167398085f67893bda34e0",
+    ),
+    (
+        "roles/v2-architect-codex.yaml",
+        "4deb2843884cfd9aace251ef2b18cb97cc48dcc803bf800e2d51426768e2dfa5",
+    ),
+    (
+        "roles/v2-design-lead-claude.yaml",
+        "e783c0e24f043b060c1cf5d54ccad6b3c23496e653f64fae2c8bcf009e1bf16c",
+    ),
+    (
+        "roles/v2-developer-claude.yaml",
+        "24378b7f1ffb3ce1c7a48d977c8216c8c99790c036759785cca2e30fd0f69e3c",
+    ),
+    (
+        "roles/v2-developer-codex.yaml",
+        "c33c164de1f92f769885f45dbb1adc9b3a8c1599088b85505930e1e403b26f61",
+    ),
+    (
+        "roles/v2-lead-claude.yaml",
+        "ea9519cef9ca21d82ca84ce709b5f2432878b955a48d73bb4f5a964acac2480c",
+    ),
+    (
+        "roles/v2-lead-codex.yaml",
+        "bf07a10022a86b39ef7530d87fb0351bec0eecc136d5272561b17b25dbd2e00b",
+    ),
+    (
+        "roles/v2-product-checker-claude.yaml",
+        "9af635391efdb3207237a77454ed539651eea0646af074470da232778264dda8",
+    ),
+    (
+        "roles/v3-architect-claude.yaml",
+        "e24ce908c7f24be6cc891cf6f9bb5f770a42d6a5b3f8ea3dee9cf711fa9b08c2",
+    ),
+    (
+        "roles/v3-architect-codex.yaml",
+        "bcbaf9a5f2ba18bf6bb134cbca804e9f23854719b28f65f0460823e7b2b8cdf5",
+    ),
+    (
+        "roles/v3-design-lead-claude.yaml",
+        "7e9de33cf464a4344f4d4eb5498a600df22f176d82e681cff2e48d8988c781bd",
+    ),
+    (
+        "roles/v3-developer-agy.yaml",
+        "734fe7efacdcb9597e32db4d1c14f83dbd04b16c8a4926cf59e5f6598f605c3c",
+    ),
+    (
+        "roles/v3-developer-claude.yaml",
+        "82d543bb5f754a4f752a91c898335a58cab10cdf39fc92975469d52a69575144",
+    ),
+    (
+        "roles/v3-developer-codex.yaml",
+        "f815b1b4fb1d231b4ef758307d53d57efe52a05ffc54a1cc9873e9598a67341e",
+    ),
+    (
+        "roles/v3-lead-claude.yaml",
+        "9743b89d88ea1f706119cf2b5b2079348c56e3b14998e4635df9d31c63cd1a50",
+    ),
+    (
+        "roles/v3-lead-codex.yaml",
+        "353777544aff901fed99dc882fb6ddafce23f3e861a4fdbde49ce4092623c8e1",
+    ),
+    (
+        "roles/v3-product-checker-claude.yaml",
+        "2240e616bafa22fc213c764fe5ecfb4efac4947d690f8c01b78d2040dceffcae",
+    ),
+    (
+        "roles/v4-developer-agy.yaml",
+        "1d006f6ddd06e895fe069814889ce8eb79778b2bdd85aa380923e071f6508dc3",
+    ),
+    (
+        "roles/v4-developer-claude.yaml",
+        "9a9db98fa92396f70011b3ef83f23e2888b17bf1942ec20f76c62dd6e8e91c38",
+    ),
+    (
+        "roles/v4-developer-codex.yaml",
+        "4dd3867ed317a686fc3231d7c9d3aabffb59944707cd2aa852b5595d0ba81fb2",
+    ),
+    (
+        "roles/v4-developer-grok.yaml",
+        "98f59514df7ba5cb046a654a29463bb48b30e174f6aaaf7b23dfe368f209341e",
+    ),
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TemplateCatalog {
@@ -143,6 +347,8 @@ pub struct TemplateStoreState {
     pub last_commit_at: Option<i64>,
     #[serde(default)]
     pub repo_initialized: bool,
+    #[serde(default)]
+    pub builtin_catalog_revision: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -387,10 +593,93 @@ impl TemplateStore {
     }
 
     pub fn load_catalog(&self) -> Result<TemplateCatalog, TemplateStoreError> {
+        self.reconcile_builtins_if_needed()?;
+        self.load_catalog_without_reconcile()
+    }
+
+    fn load_catalog_without_reconcile(&self) -> Result<TemplateCatalog, TemplateStoreError> {
         let roles = self.load_role_catalog()?;
         let presets = self.load_preset_catalog(&roles)?;
 
         Ok(TemplateCatalog { roles, presets })
+    }
+
+    fn reconcile_builtins_if_needed(&self) -> Result<(), TemplateStoreError> {
+        self.ensure_directories()?;
+        let lock = self.acquire_lock()?;
+        if self.load_state_unlocked()?.builtin_catalog_revision >= BUILTIN_CATALOG_REVISION {
+            return Ok(());
+        }
+
+        let mutations = self.builtin_reconciliation_mutations()?;
+        let changed_paths = mutations
+            .iter()
+            .map(|mutation| mutation.relative_path.clone())
+            .collect::<Vec<_>>();
+
+        for mutation in &mutations {
+            let target = self.templates_dir.join(&mutation.relative_path);
+            match mutation.contents.as_ref() {
+                Some(contents) => write_atomic_file(&target, contents)?,
+                None => match fs::remove_file(&target) {
+                    Ok(()) => {}
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(err) => return Err(TemplateStoreError::Io(err)),
+                },
+            }
+        }
+
+        if !changed_paths.is_empty() {
+            self.commit_paths_unlocked(
+                &changed_paths,
+                &format!("templates: reconcile built-in catalog v{BUILTIN_CATALOG_REVISION}"),
+            )?;
+        }
+
+        let mut state = self.load_state_unlocked()?;
+        state.builtin_catalog_revision = BUILTIN_CATALOG_REVISION;
+        self.save_state_unlocked(&state)?;
+        drop(lock);
+
+        if !changed_paths.is_empty() {
+            let _ = self.flush_pending_commits()?;
+        }
+        Ok(())
+    }
+
+    fn builtin_reconciliation_mutations(
+        &self,
+    ) -> Result<Vec<TemplateFileMutation>, TemplateStoreError> {
+        let mut mutations = Vec::new();
+        for directory in [ROLES_DIRNAME, PRESETS_DIRNAME] {
+            let target_dir = self.templates_dir.join(directory);
+            let mut entries = fs::read_dir(&target_dir)?
+                .map(|entry| entry.map(|entry| entry.path()))
+                .collect::<Result<Vec<_>, std::io::Error>>()?;
+            entries.sort();
+
+            for target in entries {
+                if !target.is_file() || !is_yaml_file(&target) {
+                    continue;
+                }
+                let Some(file_name) = target.file_name() else {
+                    continue;
+                };
+                let relative = PathBuf::from(directory).join(file_name);
+                let existing = fs::read(&target)?;
+                if !was_previously_shipped_builtin(&relative, &existing) {
+                    continue;
+                }
+
+                let bundled = self.builtins_dir.join(&relative);
+                if bundled.is_file() {
+                    mutations.push(TemplateFileMutation::write(relative, fs::read(bundled)?));
+                } else {
+                    mutations.push(TemplateFileMutation::delete(relative));
+                }
+            }
+        }
+        Ok(mutations)
     }
 
     fn load_role_catalog(&self) -> Result<Vec<RoleTemplate>, TemplateStoreError> {
@@ -774,6 +1063,13 @@ fn is_yaml_file(path: &Path) -> bool {
         path.extension().and_then(OsStr::to_str),
         Some("yaml") | Some("yml")
     )
+}
+
+fn was_previously_shipped_builtin(relative_path: &Path, bytes: &[u8]) -> bool {
+    let digest = format!("{:x}", Sha256::digest(bytes));
+    PREVIOUS_BUNDLED_TEMPLATE_HASHES
+        .iter()
+        .any(|(path, hash)| Path::new(path) == relative_path && *hash == digest)
 }
 
 fn temp_path_for(path: &Path) -> PathBuf {

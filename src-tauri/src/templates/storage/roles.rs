@@ -11,6 +11,7 @@ pub struct PreparedRoleImport {
 
 impl TemplateStore {
     pub fn list_roles(&self) -> Result<Vec<RoleTemplateRecord>, TemplateStoreError> {
+        self.reconcile_builtins_if_needed()?;
         self.ensure_directories()?;
 
         let mut merged: BTreeMap<String, RoleTemplateRecord> = BTreeMap::new();
@@ -48,6 +49,7 @@ impl TemplateStore {
     }
 
     pub fn get_role(&self, role_id: &str) -> Result<RoleTemplateRecord, TemplateStoreError> {
+        self.reconcile_builtins_if_needed()?;
         self.ensure_directories()?;
 
         if let Some(role_file) = self.load_role_file_by_id(&self.roles_dir(), role_id)? {
