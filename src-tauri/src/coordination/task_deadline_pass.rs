@@ -1,8 +1,6 @@
 //! Deadline side effects owned by the background self-heal pass.
 
-use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use chrono::{DateTime, Duration, Utc};
 
@@ -18,8 +16,6 @@ use crate::coordination::stores::{
 use crate::coordination::task_deadline::{decide, DeadlineAction, DeadlineInput, Timestamp};
 
 const ACTIVITY_FRESHNESS: Duration = Duration::seconds(120);
-const MAX_TASK_RECORD_BYTES: u64 = 1_048_576;
-
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct DeadlinePassOutcome {
     pub failures: Vec<(String, String)>,
@@ -107,7 +103,7 @@ fn apply_member_deadline(
     };
 
     if action == DeadlineAction::Nudge
-        && !mesh_task_is_still_open(
+        && !crate::coordination::stores::mesh_task::is_still_open(
             &orchestrator.teams_dir,
             team_name,
             member_name,
@@ -131,11 +127,13 @@ fn apply_member_deadline(
                 operational_context: None,
             }))
             .map(|_| ()),
-        DeadlineAction::MarkStale => mark_mesh_task_stale(
+        DeadlineAction::MarkStale => crate::coordination::stores::mesh_task::commit_status_if_unchanged(
             &orchestrator.teams_dir,
             team_name,
             member_name,
             &snapshot.task.id,
+            "in_progress",
+            "stale",
         ),
     };
 
@@ -316,130 +314,6 @@ fn member_has_fresh_active_signal(
         SnapshotActivityConfidence::Active | SnapshotActivityConfidence::LikelyWorking
     );
     fresh && active
-}
-
-/// Whether the mesh task record still names this owner with `in_progress`.
-///
-/// Read-only and tolerant: a missing, unreadable, oversized or moved record
-/// answers `false`, making the caller's action a harmless skip — the write
-/// path keeps its own locked validation.
-fn mesh_task_is_still_open(
-    teams_dir: &Path,
-    team_name: &str,
-    member_name: &str,
-    task_id: &str,
-) -> bool {
-    let Ok(path) = mesh_task_path(teams_dir, team_name, task_id) else {
-        return false;
-    };
-    let Ok(metadata) = fs::metadata(&path) else {
-        return false;
-    };
-    if metadata.len() > MAX_TASK_RECORD_BYTES {
-        return false;
-    }
-    let Ok(raw) = fs::read_to_string(&path) else {
-        return false;
-    };
-    let Ok(task) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return false;
-    };
-    task.get("id").and_then(serde_json::Value::as_str) == Some(task_id)
-        && task.get("owner").and_then(serde_json::Value::as_str) == Some(member_name)
-        && task.get("status").and_then(serde_json::Value::as_str) == Some("in_progress")
-}
-
-fn mark_mesh_task_stale(
-    teams_dir: &Path,
-    team_name: &str,
-    member_name: &str,
-    task_id: &str,
-) -> Result<(), CoordinationError> {
-    // The mesh task file remains the source of truth. Its normal watcher/task
-    // sync path will carry this status into derived views; the deadline pass
-    // must not invent a second database write path.
-    let path = mesh_task_path(teams_dir, team_name, task_id)?;
-    let target_lock = crate::coordination::stores::lock::TargetFileLock::acquire_if_exists(&path)?
-        .ok_or_else(|| {
-            CoordinationError::NotFound(format!(
-                "mesh task '{task_id}' not found for team '{team_name}'"
-            ))
-        })?;
-    if fs::metadata(&path)?.len() > MAX_TASK_RECORD_BYTES {
-        return Err(CoordinationError::Validation(format!(
-            "mesh task '{task_id}' exceeds the 1 MiB record limit"
-        )));
-    }
-    let raw = target_lock.read_contents()?;
-    let mut task: serde_json::Value = serde_json::from_str(&raw).map_err(|error| {
-        CoordinationError::StoreError(format!(
-            "failed to parse mesh task '{task_id}' for team '{team_name}': {error}"
-        ))
-    })?;
-    if task.get("id").and_then(serde_json::Value::as_str) != Some(task_id)
-        || task.get("owner").and_then(serde_json::Value::as_str) != Some(member_name)
-        || task.get("status").and_then(serde_json::Value::as_str) != Some("in_progress")
-    {
-        return Err(CoordinationError::Conflict(format!(
-            "mesh task '{task_id}' changed before its deadline action committed"
-        )));
-    }
-    task["status"] = serde_json::Value::String("stale".to_string());
-
-    let payload = serde_json::to_string_pretty(&task).map_err(|error| {
-        CoordinationError::StoreError(format!(
-            "failed to serialize stale mesh task '{task_id}': {error}"
-        ))
-    })?;
-    let tmp_path = deadline_task_tmp_path(&path);
-    write_file_synced(&tmp_path, &payload)?;
-    if let Err(error) = fs::rename(&tmp_path, &path) {
-        if crate::coordination::stores::operational::is_windows_unsupported_rename_error(&error) {
-            write_file_synced(&path, &payload)?;
-            let _ = fs::remove_file(&tmp_path);
-        } else {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(CoordinationError::Io(error));
-        }
-    }
-
-    Ok(())
-}
-
-fn mesh_task_path(
-    teams_dir: &Path,
-    team_name: &str,
-    task_id: &str,
-) -> Result<PathBuf, CoordinationError> {
-    if task_id.is_empty()
-        || !task_id
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
-    {
-        return Err(CoordinationError::Validation(format!(
-            "invalid mesh task id '{task_id}'"
-        )));
-    }
-    let tasks_dir = crate::coordination::pipelines::mesh_tasks_dir(teams_dir, team_name)
-        .ok_or_else(|| {
-            CoordinationError::StoreError(format!(
-                "coordination teams root is not canonical: {}",
-                teams_dir.display()
-            ))
-        })?;
-    Ok(tasks_dir.join(format!("{task_id}.json")))
-}
-
-fn deadline_task_tmp_path(path: &Path) -> PathBuf {
-    let mut tmp = path.as_os_str().to_os_string();
-    tmp.push(".deadline.tmp");
-    PathBuf::from(tmp)
-}
-
-fn write_file_synced(path: &Path, payload: &str) -> std::io::Result<()> {
-    let mut file = fs::File::create(path)?;
-    file.write_all(payload.as_bytes())?;
-    file.sync_all()
 }
 
 #[cfg(test)]
