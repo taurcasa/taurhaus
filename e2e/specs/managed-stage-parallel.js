@@ -51,6 +51,7 @@ import {
 } from '../helpers/meshTaskContract.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
 import {
+  captureStageDelivery,
   completedParallelRunSummary,
   managedStageVocabulary,
   stageWindowOverlap,
@@ -486,7 +487,6 @@ async function createAndAssignStage(stage) {
     actor: LEAD_NAME,
     taskId,
     owner: stage.owner,
-    status: 'in_progress',
     effort: EFFORT,
     why,
     deadline: DEADLINE_MINUTES,
@@ -495,11 +495,23 @@ async function createAndAssignStage(stage) {
     completionSignal: completionSignal(stage, taskId),
   })
   const record = taskRecord({ claudeDir, team: TEAM_NAME, actor: LEAD_NAME, taskId })
-  return {
+  const assignedStage = {
     ...stage,
     taskId,
     assignedAt: record?.metadata?.assigned_at ?? null,
   }
+  assignedStage.deliveryPromise = captureStageDelivery({
+    taskId,
+    owner: stage.owner,
+    timeout: RESULT_TIMEOUT_MS,
+    waitUntil: (predicate, options) => browser.waitUntil(predicate, options),
+    refreshTask: () => taskRecord({ claudeDir, team: TEAM_NAME, actor: LEAD_NAME, taskId }),
+    readAttention: () => attentionRecord({ claudeDir, team: TEAM_NAME, taskId }),
+  }).then((deliveredAt) => {
+    assignedStage.deliveredAt = deliveredAt
+    return deliveredAt
+  })
+  return assignedStage
 }
 
 async function waitForStageCompletion(stage) {
@@ -698,7 +710,10 @@ describe('parallel managed Codex stages', function () {
       expect(record.metadata?.effort).toBe(EFFORT)
     }
 
-    const completed = await Promise.all(assigned.map((stage) => waitForStageCompletion(stage)))
+    const [, completed] = await Promise.all([
+      Promise.all(assigned.map((stage) => stage.deliveryPromise)),
+      Promise.all(assigned.map((stage) => waitForStageCompletion(stage))),
+    ])
     const byKey = Object.fromEntries(completed.map((entry) => [entry.stage.key, entry]))
 
     // Positive inbox evidence: each member retains exactly its own assignment
@@ -726,16 +741,11 @@ describe('parallel managed Codex stages', function () {
       assignedAt: stage.assignedAt,
       resultAt: record.completion.at,
     }))
-    const deliveredWindows = completed.map(({ stage, record }) => {
-      const attention = attentionRecord({ claudeDir, team: TEAM_NAME, taskId: stage.taskId })
-      const deliveredAt = attention?.deliveredAt ?? attention?.delivered_at ?? null
-      expect(Number.isFinite(Date.parse(deliveredAt))).toBe(true)
-      return {
-        key: stage.key,
-        deliveredAt,
-        resultAt: record.completion.at,
-      }
-    })
+    const deliveredWindows = completed.map(({ stage, record }) => ({
+      key: stage.key,
+      deliveredAt: stage.deliveredAt,
+      resultAt: record.completion.at,
+    }))
     const overlap = stageWindowOverlap(deliveredWindows[0], deliveredWindows[1])
     expect(overlap).not.toBeNull()
     expect(overlap.durationMs).toBeGreaterThan(0)

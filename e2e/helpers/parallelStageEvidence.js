@@ -3,6 +3,32 @@ function timestamp(value) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+/** Capture mesh's delivery timestamp while its attention projection is live. */
+export async function captureStageDelivery({
+  taskId,
+  owner,
+  timeout,
+  waitUntil,
+  refreshTask,
+  readAttention,
+}) {
+  let deliveredAt = null
+  const timeoutMsg =
+    `mesh attention projection for ${owner}'s task #${taskId} never exposed deliveredAt ` +
+    `before the task left the attention set`
+  await waitUntil(
+    async () => {
+      refreshTask()
+      const attention = readAttention()
+      deliveredAt = attention?.deliveredAt ?? attention?.delivered_at ?? null
+      return timestamp(deliveredAt) != null
+    },
+    { timeout, interval: 2_000, timeoutMsg }
+  )
+  if (timestamp(deliveredAt) == null) throw new Error(timeoutMsg)
+  return deliveredAt
+}
+
 /** The stage label prefix and phase emitted by the production workflow. */
 export function managedStageVocabulary(workflowSource, harness) {
   const source = String(workflowSource ?? '')

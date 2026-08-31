@@ -3,10 +3,66 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import {
+  captureStageDelivery,
   completedParallelRunSummary,
   managedStageVocabulary,
   stageWindowOverlap,
 } from './parallelStageEvidence.js'
+
+describe('captureStageDelivery', () => {
+  // Regression: 15186d56 first read deliveredAt after task completion, while
+  // d114a405 assigned the task directly as in_progress. Mesh keeps the
+  // timestamp only in a pending attention projection, so neither path left
+  // delivery evidence for the paid lane to read.
+  it('captures deliveredAt from the live attention projection before completion', async () => {
+    const calls = []
+    const attentionRecords = [null, { delivered_at: '2026-08-31T10:00:03.000Z' }]
+    let waitOptions = null
+    const waitUntil = async (predicate, options) => {
+      waitOptions = options
+      expect(await predicate()).toBe(false)
+      expect(await predicate()).toBe(true)
+    }
+
+    const deliveredAt = await captureStageDelivery({
+      taskId: '42',
+      owner: 'codex-alpha',
+      timeout: 10_000,
+      waitUntil,
+      refreshTask() {
+        calls.push('task')
+      },
+      readAttention() {
+        calls.push('attention')
+        return attentionRecords.shift()
+      },
+    })
+
+    expect(deliveredAt).toBe('2026-08-31T10:00:03.000Z')
+    expect(calls).toEqual(['task', 'attention', 'task', 'attention'])
+    expect(waitOptions).toMatchObject({ timeout: 10_000, interval: 2_000 })
+    expect(waitOptions.timeoutMsg).toContain('attention projection')
+    expect(waitOptions.timeoutMsg).toContain('task #42')
+  })
+
+  // Regression: d114a405 assigned the paid stages directly as in_progress,
+  // which bypassed the pending attention projection that owns deliveredAt.
+  // The paid spec must start capture from create+assign while it is still live.
+  it('wires pending assignments to live delivery capture', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, '..', 'specs', 'managed-stage-parallel.js'),
+      'utf8'
+    )
+    const start = source.indexOf('async function createAndAssignStage')
+    const end = source.indexOf('async function waitForStageCompletion')
+    const createAndAssign = source.slice(start, end)
+
+    expect(start).toBeGreaterThanOrEqual(0)
+    expect(end).toBeGreaterThan(start)
+    expect(createAndAssign).not.toContain("status: 'in_progress'")
+    expect(createAndAssign).toContain('captureStageDelivery({')
+  })
+})
 
 describe('stageWindowOverlap', () => {
   it('returns the real intersection of two delivered-to-RESULT windows', () => {
