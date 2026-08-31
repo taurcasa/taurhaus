@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-08-31
+
 ### Fixed
 
 - **Codex sessions map to their tmux pane again (0.8.6 regression)** — the `@openai/codex` package signature matched by bare substring containment, so `codex-code-mode-host` — a piped background service child that inherits the controlling terminal — counted as a codex session, and 0.8.6's wrapper dedup then kept it as the deepest match: both real codex processes were dropped, leaving one tile whose pipe stdio mapped to no tmux pane, so clicking it could not focus the pane and the focused pane resolved to no session. A package-path signature now qualifies only the package's own JS entry script (`dist/cli.js`, `bin/codex.js`); vendored helpers and nested-dependency scripts never enter the session inventory, while native binaries keep matching through their plain basename signature.
