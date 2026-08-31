@@ -99,6 +99,22 @@ describe('default WDIO spec list', () => {
     expect(managedDeadlineSource).toMatch(/failed paid attempts are re-run manually/i)
   })
 
+  it('documents the measured order and preserves the attempt-1 result block shape', () => {
+    const header = managedDeadlineSource.slice(0, managedDeadlineSource.indexOf("import { execFileSync"))
+    expect(header).toMatch(/stall runs first, straight after onboarding/i)
+    expect(header).toMatch(/fresh member with one assignment/i)
+    expect(header).toMatch(/after that stall[\s\S]*three-minute task/i)
+    expect(header).toMatch(/failed paid attempts are re-run manually/i)
+    expect(header).not.toMatch(/before that stall/i)
+    expect(header).not.toMatch(/retries the stall/i)
+
+    expect(managedDeadlineSource).toContain(
+      "if (Object.keys(measured).length > 0) {\n" +
+        '      console.log(`[e2e] managed deadline measured: ${JSON.stringify(measured, null, 2)}`)\n' +
+        '    }'
+    )
+  })
+
   // Regression: commit 111c776c appended every ungrouped spec to a catch-all,
   // so a new stateful or paid lane could silently enter the default suite.
   it('rejects an ungrouped spec with instructions for sealing the manifest', () => {

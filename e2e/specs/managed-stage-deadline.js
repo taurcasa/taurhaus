@@ -2,7 +2,9 @@
  * A managed Codex stage reaches its one-shot deadline actions end to end
  * (Tier 2, Linux, paid). W4 experiment 4.
  *
- * This is a measured lane, not a fast simulation. A real managed member runs
+ * This is a measured lane, not a fast simulation.
+ * The primary stall runs first, straight after onboarding;
+ * a fresh member with one assignment runs
  * `mesh task start` and then ends its turn without completing the task. The
  * production 30-second self-heal pass must nudge it once, mark the mesh task
  * stale once, and leave the member session alive for a later resumed stage.
@@ -14,21 +16,24 @@
  * after each pass (`startup/orchestration.rs`), making the observed period 30 s
  * plus the preceding pass duration. The one-minute task's nudge window is only
  * 30 s and can therefore be skipped. The lane records that cadence outcome and
- * retries the stall once instead of reporting a production deadline defect.
- * It still requires three recorded `startup.self_heal.completed` events after
- * `assigned_at`; elapsed sleeps are never proof that those passes ran.
+ * reports that paid run as inconclusive instead of a production deadline
+ * defect; failed paid attempts are re-run manually. It still requires three
+ * recorded `startup.self_heal.completed` events after `assigned_at`; elapsed
+ * sleeps are never proof that those passes ran.
  *
- * Before that stall, a negative path gives the same member a three-minute task.
- * The active command must cover `needed_active = D/2 + 30 s`: 90 + 30 = 120
- * seconds, including a whole pass cadence after half time. That leaves
- * `slack = D/2 - 30 s`: 90 - 30 = 60 seconds for the single Codex turn that
- * launches the chained command — the `mesh task complete` at its end IS the
- * completion; there is no separate completion turn. MarkStale is not
- * suppressed by activity, so that allowance is part of the lane contract. The
- * heartbeat emits 4095 bytes plus a newline every 500 ms so Codex's measured
- * read rate clears the production 1 kB/s gate. It keeps one real member command
- * running; it is not a test-process sleep and proves nothing without joined
- * activity/pass records.
+ * After that stall, a negative path gives the same member a three-minute task.
+ * The lane first observes the stall case's final turn and waits a fixed settle,
+ * then explicitly assigns the new task despite the prior stale task and checks
+ * its delivery record independently. The active command must cover
+ * `needed_active = D/2 + 30 s`: 90 + 30 = 120 seconds, including a whole pass
+ * cadence after half time. That leaves `slack = D/2 - 30 s`: 90 - 30 = 60
+ * seconds for the single Codex turn that launches the chained command — the
+ * `mesh task complete` at its end IS the completion; there is no separate
+ * completion turn. MarkStale is not suppressed by activity, so that allowance
+ * is part of the lane contract. The heartbeat emits 4095 bytes plus a newline
+ * every 500 ms so Codex's measured read rate clears the production 1 kB/s gate.
+ * It keeps one real member command running; it is not a test-process sleep and
+ * proves nothing without joined activity/pass records.
  *
  * The operational stale marker is intentionally transient. `operational_context.rs`
  * owns its lifetime: once the stale mesh status round-trips through the task
