@@ -689,7 +689,7 @@ describe('parallel managed Codex stages', function () {
   this.timeout(1_200_000)
 
   before(async function () {
-    this.timeout(900_000)
+    this.timeout(1_500_000)
     await bootApp()
     if (!(await ensureMainApp())) {
       laneSkipReason = 'Main app unavailable'

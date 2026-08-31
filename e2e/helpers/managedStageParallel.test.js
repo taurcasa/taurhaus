@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -8,6 +8,23 @@ import {
   launchManagedMembersSerially,
   waitWithPaneTail,
 } from './managedStageParallel.js'
+
+const parallelSpecSource = readFileSync(
+  join(process.cwd(), 'e2e/specs/managed-stage-parallel.js'),
+  'utf8'
+)
+
+describe('parallel managed-stage spec contract', () => {
+  // Regression: 8438876a serialized two 420-second member bring-up budgets
+  // without expanding the 900-second before-hook cap that contains them.
+  it('leaves enough hook time for serialized cold-start waits and setup overhead', () => {
+    const beforeHookTimeout = parallelSpecSource.match(
+      /before\(async function \(\) \{\s*this\.timeout\(([\d_]+)\)/
+    )
+
+    expect(beforeHookTimeout?.[1]).toBe('1_500_000')
+  })
+})
 
 describe('launchManagedMembersSerially', () => {
   // Regression: 94fdab40 initialized both managed Codex members together, so
