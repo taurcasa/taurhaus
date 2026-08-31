@@ -73,9 +73,11 @@ remove-worktree LANE_PATH:
     }
     force_branch="${FORCE_BRANCH:-0}"
     integration_ref="origin/main"
-    git fetch origin
-    if ! git merge-base --is-ancestor "refs/heads/$lane_branch" "$integration_ref"; then
-        if [ "$force_branch" != "1" ]; then
+    # FORCE_BRANCH=1 is the explicit destructive override, so it must work
+    # with origin unreachable: skip the fetch and the ancestry check entirely.
+    if [ "$force_branch" != "1" ]; then
+        git fetch origin
+        if ! git merge-base --is-ancestor "refs/heads/$lane_branch" "$integration_ref"; then
             echo "Refusing to remove '$lane_path': branch '$lane_branch' is not merged into $integration_ref." >&2
             echo "Set FORCE_BRANCH=1 to remove the worktree and delete the unmerged branch." >&2
             exit 1

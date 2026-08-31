@@ -12,6 +12,7 @@ relative_lane_path="$relative_invocation_dir/relative-lane"
 relative_remove_lane_path="$relative_invocation_dir/relative-remove-lane"
 misplaced_relative_lane_path="$source_checkout/relative-lane"
 stacked_lane_path="$tmp_dir/stacked-lane"
+offline_lane_path="$tmp_dir/offline-lane"
 failed_install_lane_path="$tmp_dir/failed-install-lane"
 test_home="$tmp_dir/home"
 fake_bin="$tmp_dir/bin"
@@ -30,12 +31,14 @@ cleanup() {
         "$real_git" -C "$source_checkout" worktree remove "$relative_remove_lane_path" --force 2>/dev/null || true
         "$real_git" -C "$source_checkout" worktree remove "$misplaced_relative_lane_path" --force 2>/dev/null || true
         "$real_git" -C "$source_checkout" worktree remove "$stacked_lane_path" --force 2>/dev/null || true
+        "$real_git" -C "$source_checkout" worktree remove "$offline_lane_path" --force 2>/dev/null || true
         "$real_git" -C "$source_checkout" worktree remove "$failed_install_lane_path" --force 2>/dev/null || true
         "$real_git" -C "$source_checkout" branch -D lane-provision-smoke 2>/dev/null || true
         "$real_git" -C "$source_checkout" branch -D lane-unmerged-smoke 2>/dev/null || true
         "$real_git" -C "$source_checkout" branch -D lane-relative-smoke 2>/dev/null || true
         "$real_git" -C "$source_checkout" branch -D lane-relative-remove-smoke 2>/dev/null || true
         "$real_git" -C "$source_checkout" branch -D lane-stacked-smoke 2>/dev/null || true
+        "$real_git" -C "$source_checkout" branch -D lane-offline-smoke 2>/dev/null || true
         "$real_git" -C "$source_checkout" branch -D lane-failed-install-smoke 2>/dev/null || true
         "$real_git" -C "$source_checkout" branch -D stacked-parent-smoke 2>/dev/null || true
     fi
@@ -357,6 +360,25 @@ fi
 if "$real_git" -C "$source_checkout" show-ref --verify --quiet refs/heads/lane-unmerged-smoke; then
     echo "forced remove-worktree left the lane branch behind" >&2
     exit 1
+fi
+
+# // Regression: FORCE_BRANCH=1 must not depend on origin being reachable —
+# // an unconditional `git fetch origin` made forced cleanup exit 128 offline
+# // and left both the worktree and the branch behind.
+run_just provision-worktree "$offline_lane_path" lane-offline-smoke HEAD
+printf '%s\n' 'offline lane work' > "$offline_lane_path/offline.txt"
+"$real_git" -C "$offline_lane_path" add offline.txt
+"$real_git" -C "$offline_lane_path" commit -m "offline lane work" >/dev/null
+"$real_git" -C "$source_checkout" remote set-url origin "$tmp_dir/missing-origin.git"
+offline_status=0
+FORCE_BRANCH=1 run_just remove-worktree "$offline_lane_path" || offline_status=$?
+"$real_git" -C "$source_checkout" remote set-url origin "$origin_repo"
+if [ "$offline_status" -ne 0 ]; then
+    record_regression_failure "FORCE_BRANCH=1 remove-worktree failed with origin unreachable"
+elif [ -e "$offline_lane_path" ]; then
+    record_regression_failure "forced offline remove-worktree left the lane on disk"
+elif "$real_git" -C "$source_checkout" show-ref --verify --quiet refs/heads/lane-offline-smoke; then
+    record_regression_failure "forced offline remove-worktree left the lane branch behind"
 fi
 
 # // Regression: be9d2897 treated a stacked feature HEAD as proof that a lane reached main.
