@@ -343,7 +343,8 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `docs/archive/design/agent-role-visibility.md` | Archived: mesh runtime role-visibility guidance built around focus area, context summary, and behavior boundaries |
 | `docs/archive/design/sidebar-session-grouping.md` | Archived: sidebar grouping thresholds and behavior for team-linked live sessions |
 | `docs/archive/design/sidebar-team-session-visuals.md` | Archived: sidebar connector-rail and stacked-logo treatment for grouped team indicators |
-| `docs/testing-guide.md` | Visual testing lane boundaries, usage, and screenshot conventions. |
+| `docs/operations/testing-guide.md` | Test lanes, verification gates, E2E worker isolation, paid lanes, and regression-testing rules (`docs/testing-guide.md` is a redirect stub). |
+| `docs/operations/visual-testing-guide.md` | Visual testing lane boundaries, the fixture host, and screenshot conventions. |
 | `docs/images/system-architecture.jpg` | System architecture infographic |
 | `docs/file-rendering-pipeline.md` | File viewing/rendering pipeline + asset cache |
 | `docs/images/file-rendering-pipeline.jpg` | File rendering pipeline infographic |

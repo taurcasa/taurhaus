@@ -42,8 +42,8 @@ Project-specific environment assumptions from `justfile`:
 | `just dev-frontend` | Frontend-only development server. |
 | `just test-fast` | Fast Rust compile + frontend unit lane. |
 | `just test-visual` | Browser-mode visual screenshot lane. |
-| `just check-quick` | Standard iteration gate (`cargo check --tests`, typecheck, frontend tests). |
-| `just check` | Full quality gate (`fmt`, lint, typecheck, tests) for team-lead serialized runs or release validation. |
+| `just check-quick` | Standard iteration gate (`cargo fmt`, `cargo check --tests`, typecheck, frontend tests). |
+| `just check` | Full quality gate: `fmt`, then a Rust lane (clippy + all Rust tests) and a frontend lane (lint, workflow lint, typecheck, tests) in parallel, joined on every lane's status. Team-lead serialized runs or release validation. |
 | `just build-daemon` | Build the WSL/native daemon binary only. |
 | `just install-daemon` | Install/update the daemon in `~/.local/bin/`. |
 | `just build-mesh` | Resolve a lock-matching mesh CLI, building from the local mesh workspace when available. |
@@ -190,7 +190,7 @@ just bundle-mesh      # Verify the pinned contract, then copy binary and version
 - `src-tauri/resources/mesh.version` — pinned version string (read at runtime by `check_mesh_install_status`)
 - `src-tauri/resources/mesh.manifest.json` — version/protocol/schema metadata stamped at bundle time
 
-The `build-linux`, `build-windows`, and `build-macos` recipes automatically include `bundle-mesh` as a dependency.
+`build-linux` takes `bundle-daemon bundle-mesh` as recipe dependencies (`justfile:382`); `build-windows` reaches the same gate through `scripts/build-windows.sh`, which runs `just bundle-mesh` as a measured step; the macOS recipes verify the built mesh against the lock and fail on a mismatch. Either way, no platform artifact is produced from a mesh binary the lock does not match.
 
 ## Daemon build and install
 

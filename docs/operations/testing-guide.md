@@ -191,7 +191,7 @@ Both lanes take on every host change they make as an undo (`e2e/helpers/laneClea
 
 Both Rust jobs cache build artifacts, including failed builds for faster retries, without skipping test execution. The Rust-only lanes need Cargo, `just`, and the Linux/Tauri system libraries installed by the workflow; the current recipe's tmux interactions use a fake executable, while its Git fixtures use libgit2 with explicit signatures.
 
-`just test-rust-integration` currently executes seven integration binaries. The four other binaries in `src-tauri/tests` — `agy_hook_cli`, `codex_notify_cli`, `harness_conformance`, and `mesh_binary_resolution` — are not yet named by any recipe and therefore do not run in CI. [Hardening lane 1a](../design/hardening-milestone-plan.md) remains their owner because prerequisite PR #82 closed without merging; this CI lane deliberately reuses the recipe instead of changing test selection.
+`just test-rust-integration` runs **every** binary in `src-tauri/tests` — all 11 of them — because the recipe derives its `--test` arguments from a `justfile` variable that globs `src-tauri/tests/*.rs` rather than from a hand-kept list (`justfile:9`). A guard in `src-tauri/tests/module_boundary_assertions.rs` evaluates that variable and fails the build if the derived manifest and the directory disagree in either direction, and a second guard requires both Rust lanes to source the heavy-suite filters from the same `heavy_rust_test_filters` variable (`justfile:10`), so a heavy suite the unit lane skips is a heavy suite the integration lane re-runs.
 
 ### Bisection recipes
 
@@ -219,12 +219,14 @@ just check         # Full gate (team-lead serialized runs or pre-release)
 
 `just agent-quality` delegates to `just check-quick` and exists as the explicit pre-completion gate for agent workflows.
 
-`just check` runs the full gate:
-1. `cargo fmt --check` via `just fmt` — Rust formatting enforcement
-2. `cargo clippy` — Rust lints
-3. `bun run lint` — frontend lint
-4. `bun run typecheck` — Svelte type checking
-5. All non-E2E tests via `just test`
+`just check` runs `just fmt` first, then two lanes in parallel and joins on every lane's status — the first non-zero exit kills the other lane and fails the gate:
+
+| Lane | Steps |
+|---|---|
+| Rust | `just lint-rust` (clippy), `just test-rust` (compile check + unit + integration) |
+| Frontend | `just lint-frontend`, `just lint-workflows`, `just typecheck`, `just test-frontend` |
+
+Full output is tee'd to `.check-logs/check-<timestamp>.log` (override the directory with `TAURHAUS_CHECK_LOG_DIR`) and only the five newest logs are kept. `just lint` is a superset: it adds `lint-just-gates`, which re-runs the real lane joiner against seeded failures to prove `just check` still fails closed.
 
 **Run `just check-quick` on every task.** In team/agent workflows, agents should not run `just check`; team-lead owns serialized full-gate runs.
 

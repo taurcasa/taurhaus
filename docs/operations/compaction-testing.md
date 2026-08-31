@@ -149,8 +149,10 @@ It reports counts by tool/action, terminal outcomes, skip/failure reasons and re
 `e2e/specs/compaction-codex-hooks.js` builds a Claude-led team with one managed Codex member and proves default hook delivery. It is Linux-only, spends real Claude and Codex subscription turns, is excluded from `just test-e2e` and `just test-e2e-full`, and must be invoked explicitly:
 
 ```bash
-E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
+E2E_INSTALL_DAEMON=0 just test-e2e-spec compaction-codex-hooks
 ```
+
+Keep `E2E_INSTALL_DAEMON` at its safe default of `0`. The worker launches the checkout-local `src-tauri/target/debug/taurhaus-daemon` on its own private port, so setting it to `1` only rebuilds and restarts the *operator's* installed daemon and contributes nothing to the run.
 
 The lane asserts the retired `codexCompaction` and `codex_compaction` settings are absent, lowers `model_auto_compact_token_limit` in a scratch Codex config **before launch**, triggers bounded automatic compaction, and requires:
 
@@ -161,7 +163,7 @@ The lane asserts the retired `codexCompaction` and `codex_compaction` settings a
 
 A second case sends manual `/compact`, requires Codex's own transcript boundary, and asserts that no native-hook event appeared. It pins the measured 0.149/0.150 contract; if Codex later emits `SessionStart(compact)` for manual compaction, the test and this runbook must change together.
 
-Isolation requirements are strict: `TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR` and `CODEX_HOME` are scratch roots. The scratch Codex home contains only the authentication material and minimal config needed by the paid lane; operator config, sessions, history and databases are never copied or written back. Unit and integration tests use generated temporary directories and must never read or write `~/.codex` or `~/.claude*`.
+Isolation requirements are strict, and the worker owns every writable root: `HOME`, `TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR`, `CODEX_HOME`, `GROK_HOME` and the taurhaus-only `TAURHAUS_AGY_DIR` all point inside the session temp directory, alongside a private daemon port and a private tmux server (`e2e/helpers/workerEnv.js`, `e2e/helpers/laneTmux.js`). The scratch Codex home contains only `auth.json` copied from the source home plus a *generated* `config.toml` — the operator's own config can register things Codex executes, and a configured `notify` in particular would displace the notifier taurhaus installs, which is this lane's only turn signal. Operator config, sessions, history and databases are never copied or written back. Unit and integration tests use generated temporary directories and must never read or write `~/.codex` or `~/.claude*`.
 
 ## Success and failure interpretation
 
