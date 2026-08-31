@@ -215,36 +215,35 @@ impl LaunchSpec<'_> {
             }
         }
 
-        // Codex-specific additions precede model and effort exactly as they do
-        // in the command line. The selection logic below is shared by all four
-        // registered tools.
-        if self.tool == CliTool::Codex {
-            if capabilities.hook_trust
-                && self.codex_bypass_hook_trust
-                && !command_contains_flag(&command, "--dangerously-bypass-hook-trust")
-            {
-                command.push_str(" --dangerously-bypass-hook-trust");
+        // Capability-gated additions precede model and effort exactly as they
+        // do in the command line. Only Codex declares `hook_trust`,
+        // `notify_sink`, or a deprecated flag today, so no tool identity is
+        // consulted; the selection logic below is shared by all four tools.
+        if capabilities.hook_trust
+            && self.codex_bypass_hook_trust
+            && !command_contains_flag(&command, "--dangerously-bypass-hook-trust")
+        {
+            command.push_str(" --dangerously-bypass-hook-trust");
+        }
+        if let Some(executable) = self
+            .codex_notify_executable
+            .filter(|_| capabilities.notify_sink)
+        {
+            if command_contains_codex_config(self.base, "notify") {
+                notes.push(LaunchNote::NotifyIgnored {
+                    found: "notify".to_string(),
+                });
+            } else {
+                let notify =
+                    serde_json::to_string(&[executable.to_string_lossy().as_ref(), "codex-notify"])
+                        .expect("string-only Codex notify command serializes");
+                append_flag(&mut command, "-c", &format!("notify={notify}"));
             }
-            if let Some(executable) = self
-                .codex_notify_executable
-                .filter(|_| capabilities.notify_sink)
-            {
-                if command_contains_codex_config(self.base, "notify") {
-                    notes.push(LaunchNote::NotifyIgnored {
-                        found: "notify".to_string(),
-                    });
-                } else {
-                    let notify = serde_json::to_string(&[
-                        executable.to_string_lossy().as_ref(),
-                        "codex-notify",
-                    ])
-                    .expect("string-only Codex notify command serializes");
-                    append_flag(&mut command, "-c", &format!("notify={notify}"));
-                }
-            }
-            if command_contains_flag(self.base, "--full-auto") {
+        }
+        for flag in capabilities.deprecated_flags {
+            if command_contains_flag(self.base, flag) {
                 notes.push(LaunchNote::DeprecatedFlag {
-                    flag: "--full-auto".to_string(),
+                    flag: (*flag).to_string(),
                 });
             }
         }

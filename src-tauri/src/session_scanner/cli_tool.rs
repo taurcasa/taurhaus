@@ -147,6 +147,9 @@ pub struct CliCapabilities {
     /// Alternate spellings of the effort flag the tool also accepts.
     /// Alternate spellings of the effort flag the tool also accepts.
     pub effort_flag_aliases: &'static [&'static str],
+    /// Flags the tool still accepts but has deprecated; a base carrying one
+    /// gets a `DeprecatedFlag` note.
+    pub deprecated_flags: &'static [&'static str],
     pub effort_flag: Option<EffortFlag>,
     /// How the level changes once the session is already running.
     pub runtime_effort: RuntimeEffort,
@@ -274,6 +277,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 model_flag: Some("--model"),
                 model_flag_aliases: &[],
                 effort_flag_aliases: &[],
+                deprecated_flags: &[],
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
                 runtime_effort: RuntimeEffort::SlashCommand,
                 runtime_effort_frozen_env: Some("CLAUDE_CODE_EFFORT_LEVEL"),
@@ -339,6 +343,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 model_flag: Some("-m"),
                 model_flag_aliases: &["--model"],
                 effort_flag_aliases: &[],
+                deprecated_flags: &["--full-auto"],
                 effort_flag: Some(EffortFlag::Config {
                     flag: "-c",
                     key: "model_reasoning_effort",
@@ -435,6 +440,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 model_flag: Some("--model"),
                 model_flag_aliases: &[],
                 effort_flag_aliases: &[],
+                deprecated_flags: &[],
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
                 runtime_effort: RuntimeEffort::SlashCommand,
                 runtime_effort_frozen_env: None,
@@ -579,6 +585,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 model_flag: Some("--model"),
                 model_flag_aliases: &["-m"],
                 effort_flag_aliases: &["--reasoning-effort"],
+                deprecated_flags: &[],
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
                 runtime_effort: RuntimeEffort::SlashCommand,
                 runtime_effort_frozen_env: None,
@@ -656,6 +663,7 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
         model_flag: None,
         model_flag_aliases: &[],
         effort_flag_aliases: &[],
+        deprecated_flags: &[],
         effort_flag: None,
         runtime_effort: RuntimeEffort::None,
         runtime_effort_frozen_env: None,
