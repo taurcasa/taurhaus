@@ -166,10 +166,15 @@ export function activeDeadlineHeartbeatPlan({
     throw new Error('active deadline heartbeat must leave time to complete before stale')
   }
 
+  const command =
+    `bun -e 'const payload = "x".repeat(${payloadBytes}); ` +
+    `for (let i = 0; i < ${iterations}; i += 1) { console.log(payload); await Bun.sleep(${intervalMs}) }'`
+
   return {
-    command:
-      `bun -e 'const payload = "x".repeat(${payloadBytes}); ` +
-      `for (let i = 0; i < ${iterations}; i += 1) { console.log(payload); await Bun.sleep(${intervalMs}) }'`,
+    command,
+    commandWithCompletion(completionCommand) {
+      return `${command} && ${completionCommand}`
+    },
     deadlineMs,
     neededActiveMs,
     iterations,

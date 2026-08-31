@@ -278,6 +278,23 @@ describe('activeDeadlineHeartbeatPlan', () => {
     expect(plan.durationMs).toBe(120_000)
     expect(plan.completionSlackMs).toBe(60_000)
   })
+
+  // Regression: commit 3b603679 put the heartbeat and task completion in
+  // separate member commands, leaving an inactive self-heal pass free to nudge
+  // after the observed suppression interval.
+  it('chains completion to the heartbeat without an inactive command gap', () => {
+    const plan = activeDeadlineHeartbeatPlan({
+      deadlineMinutes: 3,
+      passCadenceMs: 30_000,
+      intervalMs: 500,
+      payloadBytes: 4_095,
+    })
+    const completionCommand = "CLAUDE_DIR=/tmp/scratch mesh task complete 7 --summary 'done'"
+
+    expect(plan.commandWithCompletion(completionCommand)).toBe(
+      `${plan.command} && ${completionCommand}`
+    )
+  })
 })
 
 describe('activeDeadlinePassEvidence', () => {

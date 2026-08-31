@@ -797,7 +797,8 @@ describe('managed stage deadline semantics', function () {
           taskId,
           " --summary 'active deadline suppression completed'"
         )
-        return `${start}. Then run exactly: ${ACTIVE_HEARTBEAT.command}. After it exits, run exactly: ${complete}.`
+        const activeCommand = ACTIVE_HEARTBEAT.commandWithCompletion(complete)
+        return `${start}. Then run exactly: ${activeCommand}.`
       },
       deliverable: 'Complete the task after the heartbeat. Change no file and send no separate message.',
       completionSignalFor: (taskId) =>
