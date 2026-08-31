@@ -2139,8 +2139,8 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
         lead: AgentSetupConfig {
             name: "team-lead".to_string(),
             cli_tool: "claude".to_string(),
-            model: "claude-opus-4-6".to_string(),
-            role_id: Some("claude-orchestrator".to_string()),
+            model: "fable".to_string(),
+            role_id: Some("v3-lead-claude".to_string()),
             role_name: None,
             focus_area: None,
             context_summary: None,
@@ -2165,8 +2165,8 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
             AgentSetupConfig {
                 name: "reviewer-1".to_string(),
                 cli_tool: "claude".to_string(),
-                model: "claude-opus-4-6".to_string(),
-                role_id: Some("claude-reviewer".to_string()),
+                model: "opus".to_string(),
+                role_id: Some("adversarial-reviewer-claude".to_string()),
                 role_name: None,
                 focus_area: None,
                 context_summary: None,
@@ -2190,8 +2190,8 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
             AgentSetupConfig {
                 name: "reviewer-2".to_string(),
                 cli_tool: "claude".to_string(),
-                model: "claude-opus-4-6".to_string(),
-                role_id: Some("claude-reviewer".to_string()),
+                model: "opus".to_string(),
+                role_id: Some("adversarial-reviewer-claude".to_string()),
                 role_name: None,
                 focus_area: None,
                 context_summary: None,
@@ -2236,27 +2236,33 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
         .find(|member| member.name == "reviewer-1")
         .expect("reviewer-1 should be present");
 
-    assert_eq!(reviewer.role_id.as_deref(), Some("claude-reviewer"));
-    assert_eq!(reviewer.role_name.as_deref(), Some("Claude Reviewer"));
+    assert_eq!(
+        reviewer.role_id.as_deref(),
+        Some("adversarial-reviewer-claude")
+    );
+    assert_eq!(
+        reviewer.role_name.as_deref(),
+        Some("Adversarial Reviewer (Claude)")
+    );
     assert_eq!(
         reviewer.focus_area.as_deref(),
-        Some("Risk-focused review and validation")
+        Some("Adversarial correctness review with evidence-backed findings")
     );
     assert!(reviewer
         .context_summary
         .as_deref()
         .unwrap_or_default()
-        .contains("risk hotspots"));
+        .contains("defect hot spots"));
     assert!(reviewer
         .behavior_summary
         .as_deref()
         .unwrap_or_default()
-        .contains("Reports findings by severity"));
+        .contains("Assumes defects exist"));
     assert!(reviewer
         .description
         .as_deref()
         .unwrap_or_default()
-        .contains("Perform code reviews focused on correctness"));
+        .contains("Default: Opus 5"));
 }
 
 // Regression: a79d392 hydrated role models without checking the requested CLI,
@@ -2268,7 +2274,7 @@ fn role_hydration_cli_mismatch_uses_the_requested_tools_catalog_default() {
     let mut request = sample_preflight_request();
     request.agents[0].cli_tool = "claude".to_string();
     request.agents[0].model.clear();
-    request.agents[0].role_id = Some("v3-developer-codex".to_string());
+    request.agents[0].role_id = Some("v4-developer-codex".to_string());
     request.agents[0].role_name = None;
 
     let hydrated = hydrate_initialize_request_role_metadata(&state, request)
@@ -2446,10 +2452,10 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
         .expect("developer");
 
     assert_eq!(lead.role_id.as_deref(), Some("v3-lead-claude"));
-    assert_eq!(lead.role_name.as_deref(), Some("V3 Team Lead (Claude)"));
+    assert_eq!(lead.role_name.as_deref(), Some("Team Lead (Claude)"));
     assert_eq!(lead.cli_tool, CliTool::Claude);
     assert_eq!(developer.role_id.as_deref(), Some("v4-developer-codex"));
-    assert_eq!(developer.role_name.as_deref(), Some("V4 Developer (Codex)"));
+    assert_eq!(developer.role_name.as_deref(), Some("Developer (Codex)"));
     assert_eq!(developer.cli_tool, CliTool::Codex);
     assert_eq!(developer.model.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(developer.reasoning_effort.as_deref(), Some("medium"));

@@ -905,15 +905,15 @@ mod tests {
     }
 
     #[test]
-    fn representative_taurhaus_roles_render_materially_different_compaction_cards() {
+    fn representative_canonical_roles_render_materially_different_compaction_cards() {
         let snapshot = sample_snapshot();
         let generated_at = DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
             .expect("timestamp")
             .with_timezone(&Utc);
 
-        let developer_role = load_role_template("taurhaus-developer");
-        let architect_role = load_role_template("taurhaus-architect");
-        let lead_role = load_role_template("taurhaus-lead-codex");
+        let developer_role = load_role_template("v4-developer-codex");
+        let architect_role = load_role_template("v3-architect-codex");
+        let lead_role = load_role_template("v3-lead-claude");
 
         let developer_rendered = CompactionReinjectionService::render_additional_context_text(
             &CompactionReinjectionService::compose_at(
@@ -945,13 +945,13 @@ mod tests {
         assert_ne!(architect_rendered, lead_rendered);
 
         assert!(developer_rendered.contains(
-            "Role purpose: Keep scoped implementation and validation discipline intact after compaction."
+            "Role purpose: Build one user-visible behavior with real data; report in the labeled shape."
         ));
         assert!(architect_rendered.contains(
-            "Role purpose: Preserve cross-layer diagnosis and boundary clarity after compaction."
+            "Role purpose: Architecture review — structural coherence, functional honesty, and complexity justification."
         ));
         assert!(lead_rendered.contains(
-            "Role purpose: Preserve explicit task protocol and routing discipline after compaction."
+            "Role purpose: Preserve task protocol, product gating, and review routing after compaction."
         ));
     }
 
