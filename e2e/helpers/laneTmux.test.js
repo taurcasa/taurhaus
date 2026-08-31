@@ -89,6 +89,7 @@ describe('tmux-driving spec coverage', () => {
       'compaction-codex-hooks.js',
       'managed-stage-codex.js',
       'managed-stage-deadline.js',
+      'managed-stage-parallel.js',
       'mesh-recovery.js',
       'mesh-screenshots.js',
       'mesh-workflow.js',

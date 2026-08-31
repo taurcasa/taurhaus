@@ -50,6 +50,7 @@ export const CODEX_SCRATCH_SPECS = [
   'compaction-codex-hooks.js',
   'managed-stage-codex.js',
   'managed-stage-deadline.js',
+  'managed-stage-parallel.js',
 ]
 export const paidSpecs = [...CODEX_SCRATCH_SPECS]
 

@@ -18,7 +18,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 /** The command the stage is asked to validate its own work with. */
 const FIXTURE_TEST_COMMAND = 'bun test'
@@ -159,6 +159,47 @@ export function runFixtureTests(directory) {
   }
 }
 
+/** Add a detached fixture worktree at `revision`. */
+export function addStageFixtureWorktree(repoPath, worktreePath, revision) {
+  mkdirSync(dirname(worktreePath), { recursive: true })
+  git(repoPath, ['worktree', 'add', '--detach', worktreePath, String(revision ?? '')])
+  return {
+    path: worktreePath,
+    headCommit: git(worktreePath, ['rev-parse', 'HEAD']).trim(),
+  }
+}
+
+/** Remove one fixture worktree and its directory. */
+export function removeStageFixtureWorktree(repoPath, worktreePath) {
+  git(repoPath, ['worktree', 'remove', '--force', worktreePath])
+  rmSync(worktreePath, { recursive: true, force: true })
+}
+
+/**
+ * Positive evidence for the tree checked out by one stage member.
+ *
+ * Linked worktrees share a Git object database, so asking whether the sibling
+ * can resolve a commit SHA does not prove isolation. The checked-out HEAD and
+ * its name-status diff from the common baseline do.
+ */
+export function worktreeTreeDiff(worktreePath, baseline) {
+  const headCommit = git(worktreePath, ['rev-parse', 'HEAD']).trim()
+  const raw = git(worktreePath, ['diff', '--name-status', String(baseline ?? ''), headCommit])
+  const entries = raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [status, ...pathParts] = line.split('\t')
+      return { status, path: pathParts.join('\t') }
+    })
+  return {
+    headCommit,
+    entries,
+    workingTreeStatus: git(worktreePath, ['status', '--porcelain']).trim(),
+  }
+}
+
 /**
  * Run the fixture's tests from a clean checkout of `revision`.
  *
@@ -174,7 +215,7 @@ export function runFixtureTestsAtCommit(repoPath, revision) {
   const checkout = mkdtempSync(join(tmpdir(), 'taurhaus-stage-commit-'))
   try {
     try {
-      git(repoPath, ['worktree', 'add', '--detach', checkout, String(revision ?? '')])
+      addStageFixtureWorktree(repoPath, checkout, revision)
     } catch (error) {
       return {
         command: FIXTURE_TEST_COMMAND,
@@ -185,7 +226,7 @@ export function runFixtureTestsAtCommit(repoPath, revision) {
     return runFixtureTests(checkout)
   } finally {
     try {
-      git(repoPath, ['worktree', 'remove', '--force', checkout])
+      removeStageFixtureWorktree(repoPath, checkout)
     } catch {
       // The directory below is removed either way; a worktree entry that could
       // not be dropped is pruned by git on its own and lives in a temp dir.

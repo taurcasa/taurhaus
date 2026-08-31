@@ -5,11 +5,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  addStageFixtureWorktree,
   commitExists,
   createStageFixtureProject,
   filesAddedByCommit,
+  removeStageFixtureWorktree,
   runFixtureTests,
   runFixtureTestsAtCommit,
+  worktreeTreeDiff,
 } from './stageFixtureProject.js'
 
 let root
@@ -152,5 +155,36 @@ describe('runFixtureTestsAtCommit', () => {
     runFixtureTestsAtCommit(repo, created.headCommit)
     const listed = execFileSync('git', ['-C', repo, 'worktree', 'list'], { encoding: 'utf8' }).trim().split('\n')
     expect(listed).toHaveLength(1)
+  })
+})
+
+describe('stage fixture worktrees', () => {
+  it('keeps two detached worktree heads and their tree diffs independent', () => {
+    const repo = join(root, 'parallel-source')
+    const baseline = createStageFixtureProject(repo).headCommit
+    const alpha = join(root, 'parallel-alpha')
+    const beta = join(root, 'parallel-beta')
+
+    addStageFixtureWorktree(repo, alpha, baseline)
+    addStageFixtureWorktree(repo, beta, baseline)
+    try {
+      writeFileSync(join(alpha, 'src/lib/greet-alpha.js'), 'export const greetAlpha = () => "alpha"\n')
+      execFileSync('git', ['-C', alpha, 'add', 'src/lib/greet-alpha.js'])
+      execFileSync('git', ['-C', alpha, 'commit', '-q', '-m', 'feat: add alpha greeting'])
+      writeFileSync(join(beta, 'src/lib/greet-beta.js'), 'export const greetBeta = () => "beta"\n')
+      execFileSync('git', ['-C', beta, 'add', 'src/lib/greet-beta.js'])
+      execFileSync('git', ['-C', beta, 'commit', '-q', '-m', 'feat: add beta greeting'])
+
+      const alphaEvidence = worktreeTreeDiff(alpha, baseline)
+      const betaEvidence = worktreeTreeDiff(beta, baseline)
+      expect(alphaEvidence.headCommit).not.toBe(betaEvidence.headCommit)
+      expect(alphaEvidence.entries).toEqual([{ status: 'A', path: 'src/lib/greet-alpha.js' }])
+      expect(betaEvidence.entries).toEqual([{ status: 'A', path: 'src/lib/greet-beta.js' }])
+      expect(existsSync(join(alpha, 'src/lib/greet-beta.js'))).toBe(false)
+      expect(existsSync(join(beta, 'src/lib/greet-alpha.js'))).toBe(false)
+    } finally {
+      removeStageFixtureWorktree(repo, alpha)
+      removeStageFixtureWorktree(repo, beta)
+    }
   })
 })

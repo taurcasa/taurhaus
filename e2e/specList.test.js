@@ -44,6 +44,11 @@ describe('default WDIO spec list', () => {
     expect(paidSpecs).toContain('managed-stage-deadline.js')
   })
 
+  it('keeps the paid parallel-stage isolation measurement named-only', () => {
+    expect(paidSpecs).toHaveLength(4)
+    expect(paidSpecs).toContain('managed-stage-parallel.js')
+  })
+
   // Regression: e1c38eef registered the suppression case before the primary
   // stall, so attempt 1 assigned the stall while the member's prior completion
   // turn was still closing and the delivered notice was never acted on.
