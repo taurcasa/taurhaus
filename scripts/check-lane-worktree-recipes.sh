@@ -161,4 +161,12 @@ if "$real_git" -C "$source_checkout" show-ref --verify --quiet refs/heads/lane-u
     exit 1
 fi
 
+printf '%s\n' 'discardable Cargo artifact' > "$shared_target/artifact.txt"
+run_just clean-lane-target
+if [ -e "$shared_target" ]; then
+    echo "clean-lane-target left the shared Cargo target on disk" >&2
+    exit 1
+fi
+run_just clean-lane-target
+
 echo "lane worktree recipe guard passed."

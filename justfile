@@ -80,6 +80,13 @@ remove-worktree PATH:
         git branch -d -- "$lane_branch"
     fi
 
+# Reclaim the shared lane Cargo artifacts. This cache is always safe to delete.
+clean-lane-target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shared_target="${HOME:?}/.cache/taurhaus-lane-target"
+    rm -rf -- "$shared_target"
+
 # Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
 # Use this when you need the definitive "is this ready?" signal.
 # TAURHAUS_CHECK_SEED_FAILURE=rust|frontend|late-failure|fast-failure|green is test-only: it replaces both lanes
