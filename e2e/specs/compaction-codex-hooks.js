@@ -41,8 +41,12 @@
  * `TAURHAUS_AGY_DIR` all sit under the wdio session temp root, alongside a
  * private daemon port and a private tmux server (`e2e/helpers/workerEnv.js`).
  * That `CODEX_HOME` is a scratch copy holding only `auth.json` plus a
- * *generated* `config.toml` (see `e2e/helpers/codexScratchHome.js`). The real
- * `~/.codex` and `~/.claude` are read once, at copy time, and never written.
+ * *generated* `config.toml` (see `e2e/helpers/codexScratchHome.js`). That one
+ * credential file is the only thing read out of a home the lane does not own —
+ * copied once from `E2E_CODEX_SOURCE_HOME`, else `~/.codex`, and never written
+ * back. The operator's Claude home is not read at all: `TAURHAUS_CLAUDE_DIR`
+ * and `HOME` are created empty under the session temp root, so the Claude team
+ * lead runs against the worker's own dot-directories.
  *
  * The hook runs as its own process spawned by Codex, so it resolves the teams
  * dir and the log sink from *its* environment — which it inherits from the
