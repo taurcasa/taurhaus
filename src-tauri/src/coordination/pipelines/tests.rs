@@ -77,6 +77,28 @@ fn member_action_warning_surfaces_unread_not_attempted_dispositions() {
 }
 
 #[test]
+fn failed_add_agent_report_preserves_delivery_warnings() {
+    // Regression: 7fdad577 added a frontend warning branch while the backend's
+    // structured add-agent failure helper discarded warnings already collected.
+    let mut steps = Vec::new();
+
+    let report = helpers::failed_add_agent_report(
+        "wake-warning-add",
+        "builder",
+        "update_roster",
+        CoordinationError::StoreError("forced commit failure".to_string()),
+        vec!["send_onboarding".to_string()],
+        &mut steps,
+        vec!["onboarding wake failed: forced wake failure".to_string()],
+    );
+
+    assert_eq!(
+        report.warnings,
+        vec!["onboarding wake failed: forced wake failure".to_string()]
+    );
+}
+
+#[test]
 fn dead_pane_identity_capture_erases_previous_identity() {
     // Regression: aecc8ac made identity capture fail-soft but collapsed a
     // confirmed dead pane and a transient probe failure into the same state.

@@ -2453,6 +2453,7 @@ describe('MeshTab', () => {
 
   // Regression: 19b405a7 removed the out-of-scope re-onboard notice without
   // moving delivery warnings onto the existing add-agent success sentence.
+  // Regression: 7fdad577 also half-translated backend pane diagnostics.
   it('shows add-agent delivery warnings in the existing success notice', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
     coordinationAddAgent.mockResolvedValueOnce({
@@ -3788,6 +3789,7 @@ describe('MeshTab', () => {
 
   // Regression: 19b405a7 removed the out-of-scope re-onboard notice without
   // moving delivery warnings onto the existing member-resume success sentence.
+  // Regression: 7fdad577 also half-translated backend pane diagnostics.
   it('shows member-resume delivery warnings in the existing success notice', async () => {
     coordinationResumeMember.mockResolvedValueOnce({
       teamName: 'architecture-final',
