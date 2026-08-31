@@ -100,13 +100,15 @@ implicitly.
 
 ## Paid lanes
 
-Two specs drive a real Codex subscription. `e2e/specList.js` keeps both out of the
+Four specs drive a real Codex subscription. `e2e/specList.js` keeps all four out of the
 config's spec list — a suite run, including a bare `bunx wdio run e2e/wdio.conf.js`,
-never picks either up — and each only runs when asked for by name:
+never picks one up — and each only runs when asked for by name:
 
 ```bash
 E2E_INSTALL_DAEMON=0 just test-e2e-spec compaction-codex-hooks
 E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex
+E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-deadline
+E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-parallel
 ```
 
 `compaction-codex-hooks` builds a managed team and pays for the turns that take its
@@ -114,17 +116,20 @@ Codex member to compaction, manually and automatically. `managed-stage-codex` (W
 experiment 3) hands a managed Codex member one bounded implementation task through
 the mesh assignment contract: it proves the assignment's effort is put into force
 before the notice is delivered, and then that the commit the member reports exists
-in the fixture repo and the test it wrote passes.
+in the fixture repo and the test it wrote passes. `managed-stage-deadline` measures
+the live deadline policy. `managed-stage-parallel` (experiment 5) launches two Codex
+members in two fixture worktrees and positively proves their tree, inbox, completion,
+wall-clock overlap, and lead W2 run-tree isolation.
 
-Both read `~/.codex` once, copying only `auth.json` into a scratch `CODEX_HOME` under
+All four read `~/.codex` once, copying only `auth.json` into a scratch `CODEX_HOME` under
 the session temp root, and never write back to it. The scratch `config.toml` is
 generated, not copied: the operator's own config can register things Codex executes
 (`notify`, MCP servers), and a configured `notify` in particular would displace the
 notifier taurhaus installs, which is the compaction lane's only turn signal. Point
 `E2E_CODEX_SOURCE_HOME` somewhere else to copy from another Codex home. On a host
 without `codex` ≥ 0.147, without Codex credentials, or without mesh/tmux, a lane
-skips itself and prints why; `managed-stage-codex` additionally needs `mesh` ≥ 0.2.23
-for the pending-effort gate and `bun` to validate the deliverable. See
+skips itself and prints why; the managed-stage lanes additionally need `mesh` ≥ 0.2.23,
+and the implementation lanes need `bun` to validate their deliverables. See
 [`docs/operations/compaction-testing.md`](../docs/operations/compaction-testing.md)
 and [`docs/operations/testing-guide.md`](../docs/operations/testing-guide.md).
 

@@ -146,19 +146,22 @@ and paid specs remain excluded.
 
 #### Paid E2E lanes
 
-Three specs drive a real Codex subscription and cost money every time they run. `e2e/specList.js` keeps all three out of the config's spec list, so no suite run — including a bare `bunx wdio run e2e/wdio.conf.js` — picks them up; each is started by name and nothing else starts it.
+Four specs drive a real Codex subscription and cost money every time they run. `e2e/specList.js` keeps all four out of the config's spec list, so no suite run — including a bare `bunx wdio run e2e/wdio.conf.js` — picks them up; each is started by name and nothing else starts it.
 
 | Lane | Recipe | What it proves |
 |---|---|---|
 | `compaction-codex-hooks` | `E2E_INSTALL_DAEMON=0 just test-e2e-spec compaction-codex-hooks` | A managed Codex member gets its restored-context card back through the native hook bridge. See [compaction-testing.md](compaction-testing.md). |
 | `managed-stage-codex` | `E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex` | A managed Codex member completes a bounded task through the mesh assignment contract, with the assignment's effort put into force before the notice is delivered (W4 experiment 3). |
 | `managed-stage-deadline` | `E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-deadline` | Deadline semantics on a real managed member (W4 experiment 4): active work suppresses the half-time nudge and completes normally; an honestly started then silent one-minute task receives one nudge, becomes stale, yields the stage-shaped `timeout` verdict, and keeps its pane/session alive. Evidence comes from task, operational, activity, attention, inbox, runtime, and structured-event records. |
+| `managed-stage-parallel` | `E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-parallel` | Two medium-effort assignments run concurrently on two Codex members in two detached worktrees of one fixture repo (W4 experiment 5). Evidence is each checked-out HEAD tree's baseline diff, each member inbox's assignment IDs, distinct task `completion.at` values, a positive-duration intersection of both assigned-to-RESULT windows, and both `stage:codex:*` entries read through the lead session's W2 scanner. |
 
-All three use the same five isolated worker roots. Their scratch `CODEX_HOME` holds only a copy of `auth.json` plus a generated `config.toml`. The operator's `~/.codex` is read once at copy time and never written; `~/.claude`, `~/.grok` and `~/.gemini` are neither read nor written. Naming any paid lane on the command line is what tells `wdio.conf.js` to populate that already-isolated Codex home.
+All four use the same five isolated worker roots. Their scratch `CODEX_HOME` holds only a copy of `auth.json` plus a generated `config.toml`. The operator's `~/.codex` is read once at copy time and never written; `~/.claude`, `~/.grok` and `~/.gemini` are neither read nor written. Naming any paid lane on the command line is what tells `wdio.conf.js` to populate that already-isolated Codex home.
 
-The two managed-stage lanes additionally set `CLAUDE_DIR` on the panes they create, because their members run `mesh` themselves: taurhaus passes `--claude-dir` to the member *daemon* it spawns but exports no Claude root into the pane, so without it a member's own mesh command would bootstrap the run's team inside the operator's real home. Their team lead is a Claude identity and an inbox, not a working agent — it is launched into the isolated, credential-free `CLAUDE_CONFIG_DIR` and never takes a turn, so these lanes spend nothing on Claude. Experiment 3's measured cost and wall clock are in [w4-experiment-3.md](../design/research/w4-experiment-3.md); the experiment 4 research note is written from the named deadline run after this lane merges.
+The three managed-stage lanes additionally set `CLAUDE_DIR` on the panes they create, because their members run `mesh` themselves: taurhaus passes `--claude-dir` to the member *daemon* it spawns but exports no Claude root into the pane, so without it a member's own mesh command would bootstrap the run's team inside the operator's real home. Their team lead is a Claude identity and an inbox, not a working agent — it is launched into the isolated, credential-free `CLAUDE_CONFIG_DIR` and never takes a turn, so these lanes spend nothing on Claude. Experiment 3's measured cost and wall clock are in [w4-experiment-3.md](../design/research/w4-experiment-3.md); the experiment 4 and 5 research notes are written from their named runs after each lane merges.
 
-All paid lanes take on every host change they make as an undo (`e2e/helpers/laneCleanup.js`) that runs on interrupt as well as on teardown. Like every ordinary spec, they run on the worker's private tmux server; the tmux-driving source guard requires an isolation assertion before the first tmux call, and teardown takes the whole worker server down. Both managed-stage lanes additionally check the app's own `/proc/<pid>/environ` before they spend a turn.
+`managed-stage-parallel` is a one-spec measured lane, never a suite ingredient. It creates one fixture repository plus both member worktrees under the worker session temp root, launches exactly two Codex sessions, assigns both tasks through concurrent create+assign pipelines with `--effort medium --deadline 10`, and tears down the private tmux server in the shared interrupt-safe cleanup path. Run it once after merge for the experiment report. A managed implementation courier is filed by the completed Workflow summary under `Managed stage`; that is the production W2 phase for `stage()`, while the exec transport uses `Implement`, so the phase name is not evidence that an implementation step went missing.
+
+All paid lanes take on every host change they make as an undo (`e2e/helpers/laneCleanup.js`) that runs on interrupt as well as on teardown. Like every ordinary spec, they run on the worker's private tmux server; the tmux-driving source guard requires an isolation assertion before the first tmux call, and teardown takes the whole worker server down. All three managed-stage lanes additionally check the app's own `/proc/<pid>/environ` before they spend a turn.
 
 ## Test lanes
 
@@ -180,6 +183,7 @@ All paid lanes take on every host change they make as an undo (`e2e/helpers/lane
 | `just test-e2e-spec compaction-codex-hooks` | Paid Codex compaction lane (never in a suite run) |
 | `just test-e2e-spec managed-stage-codex` | Paid managed Codex stage lane (never in a suite run) |
 | `just test-e2e-spec managed-stage-deadline` | Paid managed stage deadline lane (never in a suite run) |
+| `just test-e2e-spec managed-stage-parallel` | Paid parallel managed-stage isolation lane (never in a suite run) |
 | `just test-macos` | Rust tests on remote Mac Mini |
 | `just test-macos-e2e` | macOS E2E on remote Mac Mini |
 | `just agent-quality` | Agent-facing wrapper around `just check-quick` |
