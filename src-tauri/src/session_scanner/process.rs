@@ -1794,6 +1794,56 @@ mod tests {
         );
     }
 
+    // Regression: the `@openai/codex` package signature matched by bare
+    // substring containment, so EVERY binary vendored under the package tree
+    // counted as a codex session — including `codex-code-mode-host`, a piped
+    // background service child. It inherits the controlling terminal in
+    // `/proc/<pid>/stat`, so it entered the inventory, and the wrapper dedup's
+    // "keep the deepest" then dropped both real codex processes in its favor:
+    // one tile per agent, whose pipe stdio maps to no tmux pane, so clicking
+    // it could not focus the pane and the focused pane resolved to no session.
+    // A package-path signature must also require the token to BE the tool
+    // binary.
+    #[test]
+    fn codex_code_mode_host_never_matches_as_a_codex_session() {
+        // Exact argv observed live (single element, as /proc/<pid>/cmdline
+        // delivers it).
+        let host = "/home/user/.nvm/versions/node/v24.14.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host";
+        assert_eq!(detect_cli_tool_argv(&[host.to_string()]), None);
+        assert_eq!(detect_cli_tool(host), None);
+        // The same rule protects every '@' package signature: a vendored
+        // helper under the Claude package dir is not a claude session.
+        assert_eq!(
+            detect_cli_tool("/usr/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/rg --files"),
+            None
+        );
+        // An entry script of a NESTED dependency package is not the tool's
+        // entry script either.
+        assert_eq!(
+            detect_cli_tool("/usr/lib/node_modules/@openai/codex/node_modules/leftpad/cli.js"),
+            None
+        );
+        // The vendored native binary keeps matching through its plain
+        // basename signature, untouched by the package rule.
+        assert_eq!(
+            detect_cli_tool_argv(&[
+                "/home/user/.nvm/versions/node/v24.14.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex".to_string(),
+                "--yolo".to_string(),
+            ]),
+            Some(CliTool::Codex)
+        );
+        // The package signature still qualifies the npm shim script itself,
+        // whose basename carries the `.js` extension.
+        assert_eq!(
+            detect_cli_tool_argv(&[
+                "node".to_string(),
+                "/home/user/AppData/Roaming/npm/node_modules/@openai/codex/bin/codex.js".to_string(),
+                "--yolo".to_string(),
+            ]),
+            Some(CliTool::Codex)
+        );
+    }
+
     #[test]
     fn detect_agy_interactive_processes_only() {
         // Regression: commit 9a66d1c treated every matching harness process as

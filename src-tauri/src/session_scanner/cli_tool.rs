@@ -984,7 +984,7 @@ impl CliToolSpec {
     pub fn matches_argv_token(&self, token: &str) -> bool {
         self.argv_signatures.iter().any(|signature| {
             if signature.starts_with('@') {
-                token.contains(signature)
+                Self::token_is_package_entry_script(token, signature)
             } else {
                 token == *signature
                     || token
@@ -992,6 +992,36 @@ impl CliToolSpec {
                         .is_some_and(|(_, file_name)| file_name == *signature)
             }
         })
+    }
+
+    /// A package-path signature (`@scope/name`) qualifies a token only when
+    /// the token is an entry *script* of that package itself: the package
+    /// path occurs on a path-component boundary, nothing below it crosses
+    /// into a nested `node_modules` dependency, and the basename is a JS
+    /// entry point (`dist/cli.js`, `bin/codex.js`). It used to be a bare
+    /// substring match, which made every file vendored under the package
+    /// tree count as the tool — `codex-code-mode-host`, a piped service
+    /// child that inherits the controlling terminal, entered the session
+    /// inventory this way (and won the wrapper dedup as the deepest match),
+    /// as would Claude's vendored ripgrep. Real tool binaries carry the
+    /// tool's own name and are matched by the plain basename signatures.
+    fn token_is_package_entry_script(token: &str, package: &str) -> bool {
+        let is_entry_script = token.rsplit('/').next().is_some_and(|basename| {
+            basename.ends_with(".js") || basename.ends_with(".mjs") || basename.ends_with(".cjs")
+        });
+        if !is_entry_script {
+            return false;
+        }
+        let mut rest = token;
+        while let Some(pos) = rest.find(package) {
+            let on_boundary = pos == 0 || rest.as_bytes()[pos - 1] == b'/';
+            let after = &rest[pos + package.len()..];
+            if on_boundary && after.starts_with('/') && !after.contains("/node_modules/") {
+                return true;
+            }
+            rest = &rest[pos + 1..];
+        }
+        false
     }
 
     /// Whether a matching executable invocation represents an interactive
