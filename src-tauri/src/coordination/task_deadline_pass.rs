@@ -1,6 +1,7 @@
 //! Deadline side effects owned by the background self-heal pass.
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Duration, Utc};
@@ -8,7 +9,6 @@ use chrono::{DateTime, Duration, Utc};
 use crate::coordination::activity_export::read_member_activity_snapshot;
 use crate::coordination::activity_schema::SnapshotActivityConfidence;
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::operational_context::is_resumable_task_status;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
 use crate::coordination::stores::{
@@ -18,7 +18,7 @@ use crate::coordination::stores::{
 use crate::coordination::task_deadline::{decide, DeadlineAction, DeadlineInput, Timestamp};
 
 const ACTIVITY_FRESHNESS: Duration = Duration::seconds(120);
-const MAX_TASK_RECORD_BYTES: usize = 1_048_576;
+const MAX_TASK_RECORD_BYTES: u64 = 1_048_576;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct DeadlinePassOutcome {
@@ -72,19 +72,24 @@ fn apply_member_deadline(
         return Ok(());
     };
 
-    // W4 deadlines apply only after work has started. The shared predicate
-    // remains the status authority passed into the pure policy; the stricter
-    // in-progress gate is this pass's scope, not a second vocabulary.
+    // W4 deadlines apply only after work has started. The stricter
+    // in-progress gate is this pass's scope; every other status is inert.
     if snapshot.task.status.trim() != "in_progress" {
         return Ok(());
     }
     let action = decide(
         &DeadlineInput {
+            // Until mesh supplies an assignment timestamp, the latest
+            // operational task-content write is the deadline clock origin.
+            // A later content refresh therefore restarts this clock.
             assigned_at: snapshot.updated_at,
             deadline_minutes,
             nudged_at: snapshot.task.nudged_at,
             stale_at: snapshot.task.stale_at,
-            active: is_resumable_task_status(&snapshot.task.status),
+            // `DeadlineInput::active` means the assignment remains open. The
+            // in-progress scope gate above proves that verdict here; member
+            // activity suppresses only Nudge in the pass below.
+            active: true,
         },
         now,
     );
@@ -106,7 +111,7 @@ fn apply_member_deadline(
                 team_name: team_name.to_string(),
                 member_name: member_name.to_string(),
                 message: format!(
-                    "ACTION REQUIRED: Task #{} is halfway through its {}-minute deadline; half the deadline is gone; report progress or BLOCKED.",
+                    "ACTION REQUIRED: Task #{} — half the deadline is gone ({} minutes total); report progress or BLOCKED.",
                     snapshot.task.id, deadline_minutes
                 ),
                 sender_name: sender_name.map(ToString::to_string),
@@ -123,9 +128,7 @@ fn apply_member_deadline(
 
     if let Err(error) = action_result {
         rollback_claim(&orchestrator.teams_dir, &claimed, action, now)?;
-        if action == DeadlineAction::MarkStale
-            && matches!(&error, CoordinationError::Conflict(_))
-        {
+        if action == DeadlineAction::MarkStale && matches!(&error, CoordinationError::Conflict(_)) {
             return Ok(());
         }
         return Err(error);
@@ -282,12 +285,12 @@ fn mark_mesh_task_stale(
                 "mesh task '{task_id}' not found for team '{team_name}'"
             ))
         })?;
-    let raw = target_lock.read_contents()?;
-    if raw.len() > MAX_TASK_RECORD_BYTES {
+    if fs::metadata(&path)?.len() > MAX_TASK_RECORD_BYTES {
         return Err(CoordinationError::Validation(format!(
             "mesh task '{task_id}' exceeds the 1 MiB record limit"
         )));
     }
+    let raw = target_lock.read_contents()?;
     let mut task: serde_json::Value = serde_json::from_str(&raw).map_err(|error| {
         CoordinationError::StoreError(format!(
             "failed to parse mesh task '{task_id}' for team '{team_name}': {error}"
@@ -303,23 +306,16 @@ fn mark_mesh_task_stale(
     }
     task["status"] = serde_json::Value::String("stale".to_string());
 
-    let payload = serde_json::to_vec_pretty(&task).map_err(|error| {
+    let payload = serde_json::to_string_pretty(&task).map_err(|error| {
         CoordinationError::StoreError(format!(
             "failed to serialize stale mesh task '{task_id}': {error}"
         ))
     })?;
     let tmp_path = deadline_task_tmp_path(&path);
-    fs::write(&tmp_path, payload)?;
+    write_file_synced(&tmp_path, &payload)?;
     if let Err(error) = fs::rename(&tmp_path, &path) {
-        if cfg!(target_os = "windows") && error.raw_os_error() == Some(1) {
-            fs::write(
-                &path,
-                serde_json::to_vec_pretty(&task).map_err(|serialize_error| {
-                    CoordinationError::StoreError(format!(
-                        "failed to serialize stale mesh task '{task_id}': {serialize_error}"
-                    ))
-                })?,
-            )?;
+        if crate::coordination::stores::operational::is_windows_unsupported_rename_error(&error) {
+            write_file_synced(&path, &payload)?;
             let _ = fs::remove_file(&tmp_path);
         } else {
             let _ = fs::remove_file(&tmp_path);
@@ -335,12 +331,6 @@ fn mesh_task_path(
     team_name: &str,
     task_id: &str,
 ) -> Result<PathBuf, CoordinationError> {
-    if teams_dir.file_name().and_then(|name| name.to_str()) != Some("teams") {
-        return Err(CoordinationError::StoreError(format!(
-            "coordination teams root is not canonical: {}",
-            teams_dir.display()
-        )));
-    }
     if task_id.is_empty()
         || !task_id
             .chars()
@@ -350,19 +340,26 @@ fn mesh_task_path(
             "invalid mesh task id '{task_id}'"
         )));
     }
-    let tasks_root = teams_dir.parent().ok_or_else(|| {
-        CoordinationError::StoreError("coordination teams root has no parent".to_string())
-    })?;
-    Ok(tasks_root
-        .join("tasks")
-        .join(team_name)
-        .join(format!("{task_id}.json")))
+    let tasks_dir = crate::coordination::pipelines::mesh_tasks_dir(teams_dir, team_name)
+        .ok_or_else(|| {
+            CoordinationError::StoreError(format!(
+                "coordination teams root is not canonical: {}",
+                teams_dir.display()
+            ))
+        })?;
+    Ok(tasks_dir.join(format!("{task_id}.json")))
 }
 
 fn deadline_task_tmp_path(path: &Path) -> PathBuf {
     let mut tmp = path.as_os_str().to_os_string();
     tmp.push(".deadline.tmp");
     PathBuf::from(tmp)
+}
+
+fn write_file_synced(path: &Path, payload: &str) -> std::io::Result<()> {
+    let mut file = fs::File::create(path)?;
+    file.write_all(payload.as_bytes())?;
+    file.sync_all()
 }
 
 #[cfg(test)]

@@ -171,7 +171,7 @@ fn open_mesh_assignments(
         .collect()
 }
 
-fn mesh_tasks_dir(teams_dir: &Path, team_name: &str) -> Option<PathBuf> {
+pub(crate) fn mesh_tasks_dir(teams_dir: &Path, team_name: &str) -> Option<PathBuf> {
     if teams_dir.file_name()?.to_str()? != "teams" {
         return None;
     }

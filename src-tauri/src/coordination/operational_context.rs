@@ -310,10 +310,8 @@ fn save_snapshot_if_changed(
     teams_dir: &Path,
     mut snapshot: OperationalContextSnapshot,
 ) -> Result<(), CoordinationError> {
-    let guard = crate::coordination::stores::lock::acquire_team_lock(
-        teams_dir,
-        &snapshot.team_name,
-    )?;
+    let guard =
+        crate::coordination::stores::lock::acquire_team_lock(teams_dir, &snapshot.team_name)?;
     let current = OperationalContextSnapshotStore::load(
         teams_dir,
         &snapshot.team_name,

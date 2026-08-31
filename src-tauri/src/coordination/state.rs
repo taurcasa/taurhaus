@@ -1497,6 +1497,9 @@ mod tests {
         assert_eq!(record.applied_effort.as_deref(), Some("low"));
     }
 
+    // Regression: bb32cbb8 used the tempdir itself as the teams root, so
+    // Claude hook/task path resolution escaped the fixture instead of staying
+    // under the sibling `teams` and `tasks` directories.
     fn deadline_fixture() -> (
         TempDir,
         PathBuf,
@@ -1780,7 +1783,7 @@ mod tests {
 
     #[test]
     fn deadline_self_heal_does_not_nudge_a_member_with_fresh_active_activity() {
-        let (_tmp, teams_dir, _runtime, fake, state) = deadline_fixture();
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
         let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
             .expect("assigned timestamp")
             .with_timezone(&Utc);
@@ -1805,6 +1808,7 @@ mod tests {
         assert_eq!(stored.task.nudged_at, None);
         assert_eq!(stored.task.stale_at, None);
         assert_eq!(mesh_task_status(&teams_dir), "in_progress");
+        assert_no_deadline_termination(&runtime);
     }
 
     // Regression: 1bb8668e hand-derived activity from two JSON fields and
@@ -1930,7 +1934,7 @@ mod tests {
             OperationalContextSnapshotStore, OperationalSnapshotCommitOutcome,
         };
 
-        let (_tmp, teams_dir, _runtime, fake, state) = deadline_fixture();
+        let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
         let assigned_at = DateTime::parse_from_rfc3339("2026-08-30T12:00:00Z")
             .expect("assigned timestamp")
             .with_timezone(&Utc);
@@ -1965,6 +1969,7 @@ mod tests {
         let stored = deadline_snapshot(&teams_dir);
         assert_eq!(stored.task.subject, "Concurrent task refresh");
         assert_eq!(stored.task.nudged_at, Some(half_deadline));
+        assert_no_deadline_termination(&runtime);
     }
 
     // Regression: 2529309 ran the effort relaunch with

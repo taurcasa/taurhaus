@@ -230,7 +230,7 @@ pub fn write_snapshot(snapshot: &OperationalContextSnapshot) -> Result<(), Coord
     OperationalContextSnapshotStore::save(&PlatformPaths::teams_dir(), snapshot)
 }
 
-fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
+pub(crate) fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
     cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
 }
 
