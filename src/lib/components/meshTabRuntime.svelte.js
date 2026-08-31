@@ -206,7 +206,24 @@ function formatResumeWarning(warning) {
     const [memberName] = warning.split(':', 1)
     return `${memberName}: started a replacement terminal session.`
   }
-  return warning.replaceAll('pane', 'terminal session')
+  // The two warnings members.rs really emits; anything else passes verbatim
+  // because backend wake reasons must not be reworded here.
+  if (warning.includes('existing pane was not reusable for')) {
+    return warning.replaceAll('pane', 'terminal session')
+  }
+  if (warning.includes('failed to clear foreign-pane daemon pid file')) {
+    return warning.replace('foreign-pane', 'foreign terminal-session')
+  }
+  return warning
+}
+
+export function buildMemberActionMessage(message, warnings) {
+  const formattedWarnings = (warnings ?? [])
+    .map((warning) => formatResumeWarning(warning))
+    .filter(Boolean)
+  return formattedWarnings.length > 0
+    ? `${message} Notes: ${formattedWarnings.join(' ')}`
+    : message
 }
 
 function buildResumeFooterMessage(normalizeResumeTeamReport, report) {
@@ -371,10 +388,16 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
     try {
       const report = await deps.coordinationResumeMember(state.teamName, currentNode.name)
       if (!report?.resumed) {
-        state.errorMessage = report?.message || `Failed to resume member '${currentNode.name}'.`
+        state.errorMessage = buildMemberActionMessage(
+          report?.message || `Failed to resume member '${currentNode.name}'.`,
+          report?.warnings
+        )
         return
       }
-      state.runtimeMessage = `Resumed '${currentNode.name}'.`
+      state.runtimeMessage = buildMemberActionMessage(
+        `Resumed '${currentNode.name}'.`,
+        report.warnings
+      )
       state.selectedNodeId = null
       const sequence = ++refs.discoverySequence
       await gate.refreshProjectMeshSnapshot(sequence, { preserveNotices: true })

@@ -481,7 +481,7 @@ impl CoordinationOrchestrator {
         request: &InitializeTeamRequest,
     ) -> Result<(), CoordinationError> {
         let entries = self.prepare_initialize_onboarding_entries(request)?;
-        self.deliver_onboarding_entries(entries)
+        self.deliver_onboarding_entries(entries).map(|_| ())
     }
 
     #[allow(clippy::too_many_arguments)]

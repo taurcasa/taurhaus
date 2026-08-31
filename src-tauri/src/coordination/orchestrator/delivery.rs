@@ -6,7 +6,9 @@ use crate::coordination::audit::{
 };
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::operational_context::apply_delivery_context;
-use crate::coordination::requests::{DeliveryMethod, DeliveryRequest, DeliveryResult};
+use crate::coordination::requests::{
+    DeliveryMethod, DeliveryRequest, DeliveryResult, WakeDisposition,
+};
 use crate::coordination::runtime::{
     pane_belongs_to_member, quarantine_foreign_member, PaneOwnership,
 };
@@ -90,7 +92,7 @@ impl CoordinationOrchestrator {
             }));
 
         match effective_backend.deliver(request) {
-            Ok(result) => {
+            Ok(mut result) => {
                 if !result.delivered {
                     let error = CoordinationError::Backend(format!(
                         "backend reported undelivered {delivery_type} for '{member_name_owned}' in team '{team_name_owned}'"
@@ -106,16 +108,29 @@ impl CoordinationOrchestrator {
                     return Err(error);
                 }
 
-                let ensured_daemon_pid = if result.method == DeliveryMethod::InboxFile
-                    && !spec(member_cli_tool).capabilities.native_inbox_poller
-                {
+                let wake = if result.method != DeliveryMethod::InboxFile {
+                    WakeDisposition::NotAttempted {
+                        reason: "delivery method does not require an inbox wake".to_string(),
+                    }
+                } else if spec(member_cli_tool).capabilities.native_inbox_poller {
+                    WakeDisposition::NotAttempted {
+                        reason: "member uses a native inbox poller".to_string(),
+                    }
+                } else {
                     self.ensure_member_daemon_after_inbox_append_best_effort(
                         &team_name_owned,
                         &member_name_owned,
                     )
-                } else {
-                    None
                 };
+                let ensured_daemon_pid = match &wake {
+                    WakeDisposition::Spawned { pid } | WakeDisposition::Adopted { pid } => {
+                        Some(*pid)
+                    }
+                    WakeDisposition::AlreadyLive
+                    | WakeDisposition::NotAttempted { .. }
+                    | WakeDisposition::Failed { .. } => None,
+                };
+                let mut post_write_warnings = Vec::new();
 
                 self.audit_log
                     .push(AuditEvent::DeliverySucceeded(DeliverySucceededEvent {
@@ -133,6 +148,7 @@ impl CoordinationOrchestrator {
                         &member_name_owned,
                         context,
                     ) {
+                        post_write_warnings.push(err.to_string());
                         tracing::warn!(
                             team_name = %team_name_owned,
                             member_name = %member_name_owned,
@@ -154,6 +170,7 @@ impl CoordinationOrchestrator {
                         }
                     },
                 ) {
+                    post_write_warnings.push(err.to_string());
                     tracing::warn!(
                         team_name = %team_name_owned,
                         member_name = %member_name_owned,
@@ -162,6 +179,8 @@ impl CoordinationOrchestrator {
                     );
                 }
 
+                result.wake = wake;
+                result.post_write_warnings.extend(post_write_warnings);
                 Ok(result)
             }
             Err(err) => {
@@ -182,14 +201,20 @@ impl CoordinationOrchestrator {
         &self,
         team_name: &str,
         member_name: &str,
-    ) -> Option<u32> {
-        let Ok(runtime) = MemberRuntimeStore::load(&self.teams_dir, team_name, member_name) else {
-            tracing::warn!(
-                team = %team_name,
-                member = %member_name,
-                "inbox append succeeded but member runtime was unavailable for daemon wake"
-            );
-            return None;
+    ) -> WakeDisposition {
+        let runtime = match MemberRuntimeStore::load(&self.teams_dir, team_name, member_name) {
+            Ok(runtime) => runtime,
+            Err(err) => {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    error = %err,
+                    "inbox append succeeded but member runtime was unavailable for daemon wake"
+                );
+                return WakeDisposition::Failed {
+                    reason: format!("member runtime unavailable: {err}"),
+                };
+            }
         };
         let Some(pane_id) = runtime.pane_id.clone() else {
             tracing::warn!(
@@ -197,19 +222,34 @@ impl CoordinationOrchestrator {
                 member = %member_name,
                 "inbox append succeeded but member has no pane for daemon wake"
             );
-            return None;
+            return WakeDisposition::NotAttempted {
+                reason: "member has no pane".to_string(),
+            };
         };
 
         let live_pane = match self.runtime.live_pane(&pane_id) {
             Ok(Some(live_pane)) if !live_pane.is_dead => live_pane,
-            Ok(Some(_)) | Ok(None) => {
+            Ok(Some(_)) => {
                 tracing::warn!(
                     team = %team_name,
                     member = %member_name,
                     pane_id = %pane_id,
-                    "inbox append succeeded but member pane was unavailable for daemon wake"
+                    "inbox append succeeded but member pane was dead during daemon wake"
                 );
-                return None;
+                return WakeDisposition::NotAttempted {
+                    reason: crate::coordination::requests::WAKE_REASON_PANE_DEAD.to_string(),
+                };
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    pane_id = %pane_id,
+                    "inbox append succeeded but member pane was absent during daemon wake"
+                );
+                return WakeDisposition::NotAttempted {
+                    reason: crate::coordination::requests::WAKE_REASON_PANE_NOT_FOUND.to_string(),
+                };
             }
             Err(err) => {
                 tracing::warn!(
@@ -219,7 +259,9 @@ impl CoordinationOrchestrator {
                     error = %err,
                     "inbox append succeeded but pane ownership could not be verified for daemon wake"
                 );
-                return None;
+                return WakeDisposition::Failed {
+                    reason: format!("pane probe failed: {err}"),
+                };
             }
         };
         if let PaneOwnership::Foreign { reason } = pane_belongs_to_member(&runtime, &live_pane) {
@@ -240,14 +282,16 @@ impl CoordinationOrchestrator {
                     "failed to quarantine foreign pane after inbox append"
                 );
             }
-            return None;
+            return WakeDisposition::Failed {
+                reason: format!("member pane is foreign: {reason}"),
+            };
         }
 
         let daemon_is_live = runtime
             .daemon_pid
             .is_some_and(|pid| self.runtime.is_process_running_by_pid(pid).unwrap_or(false));
         if daemon_is_live {
-            return None;
+            return WakeDisposition::AlreadyLive;
         }
 
         let existing_pid = self
@@ -255,25 +299,28 @@ impl CoordinationOrchestrator {
             .find_existing_mesh_daemon_pids(&pane_id, team_name, member_name)
             .ok()
             .and_then(|pids| pids.into_iter().next());
-        let daemon_pid = existing_pid.or_else(|| {
-            match self
-                .runtime
-                .spawn_mesh_daemon(&pane_id, team_name, member_name)
-            {
-                Ok(pid) => Some(pid),
-                Err(err) => {
-                    tracing::warn!(
-                        team = %team_name,
-                        member = %member_name,
-                        pane_id = %pane_id,
-                        error = %err,
-                        "inbox append succeeded but member daemon wake could not be ensured"
-                    );
-                    None
+        if let Some(pid) = existing_pid {
+            return WakeDisposition::Adopted { pid };
+        }
+
+        match self
+            .runtime
+            .spawn_mesh_daemon(&pane_id, team_name, member_name)
+        {
+            Ok(pid) => WakeDisposition::Spawned { pid },
+            Err(err) => {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    pane_id = %pane_id,
+                    error = %err,
+                    "inbox append succeeded but member daemon wake could not be ensured"
+                );
+                WakeDisposition::Failed {
+                    reason: format!("daemon spawn failed: {err}"),
                 }
             }
-        });
-        daemon_pid
+        }
     }
 
     /// Record a lease-claim audit event.

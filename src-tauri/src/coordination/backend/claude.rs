@@ -48,6 +48,11 @@ impl ClaudeNativeBackend {
         Ok(DeliveryResult {
             delivered: true,
             method: DeliveryMethod::InboxFile,
+            durable: true,
+            wake: crate::coordination::requests::WakeDisposition::NotAttempted {
+                reason: "wake not evaluated by backend".to_string(),
+            },
+            post_write_warnings: Vec::new(),
         })
     }
 }

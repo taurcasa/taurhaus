@@ -130,6 +130,7 @@ pub struct AddAgentReport {
     pub retryable: bool,
     pub message: String,
     pub steps: Vec<StepProgress>,
+    pub warnings: Vec<String>,
 }
 
 /// IPC response for resume operation.

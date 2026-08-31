@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -13,9 +13,9 @@ use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryMethod, DeliveryRequest, DeliveryResult,
-    InitializeTeamRequest, LaunchRequest, LaunchResult, LeadMode, OperatorNoticeDelivery,
-    ProbeEvidence, ProbeRequest, ProbeResult, ResumeTeamRequest, StepStatus, TeardownRequest,
-    TeardownResult,
+    InitializeTeamRequest, LaunchRequest, LaunchResult, LeadMode, OperationalContextUpdate,
+    OperatorNoticeDelivery, ProbeEvidence, ProbeRequest, ProbeResult, ResumeTeamRequest,
+    StepStatus, TeardownRequest, TeardownResult, WakeDisposition,
 };
 use crate::coordination::runtime::{
     CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
@@ -114,6 +114,317 @@ fn new_orchestrator_with_recording_runtime(
 }
 
 #[derive(Debug)]
+struct DeliveryWakeRuntime {
+    inner: RecordingCoordinationRuntime,
+    spawn_error: Option<String>,
+    remove_runtime_on_pid_probe: Option<PathBuf>,
+}
+
+impl DeliveryWakeRuntime {
+    fn new(spawn_error: Option<&str>, remove_runtime_on_pid_probe: Option<PathBuf>) -> Self {
+        Self {
+            inner: RecordingCoordinationRuntime::default(),
+            spawn_error: spawn_error.map(ToString::to_string),
+            remove_runtime_on_pid_probe,
+        }
+    }
+}
+
+impl CoordinationRuntime for DeliveryWakeRuntime {
+    fn create_aitx_pane(
+        &self,
+        project_id: &str,
+        tmux_layout: &str,
+    ) -> Result<String, CoordinationError> {
+        self.inner.create_aitx_pane(project_id, tmux_layout)
+    }
+
+    fn create_aitx_pane_and_launch_in_target(
+        &self,
+        project_id: &str,
+        target_pane: &str,
+        launch_cmd: &str,
+    ) -> Result<String, CoordinationError> {
+        self.inner
+            .create_aitx_pane_and_launch_in_target(project_id, target_pane, launch_cmd)
+    }
+
+    fn send_tmux_keys_with_enter(
+        &self,
+        pane_id: &str,
+        keys: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner.send_tmux_keys_with_enter(pane_id, keys)
+    }
+
+    fn detect_session_id(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<Option<String>, CoordinationError> {
+        self.inner.detect_session_id(pane_id, cli_tool)
+    }
+
+    fn detect_runtime_session(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<crate::coordination::runtime::DetectedRuntimeSession, CoordinationError> {
+        self.inner.detect_runtime_session(pane_id, cli_tool)
+    }
+
+    fn join_mesh(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        project_id: &str,
+        member_type: &str,
+        model: &str,
+        claude_dir: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner.join_mesh(
+            team_name,
+            member_name,
+            project_id,
+            member_type,
+            model,
+            claude_dir,
+        )
+    }
+
+    fn spawn_mesh_daemon(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        if let Some(message) = &self.spawn_error {
+            return Err(CoordinationError::Backend(message.clone()));
+        }
+        self.inner
+            .spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
+    fn spawn_team_daemon(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner.spawn_team_daemon(team_name, operator_name)
+    }
+
+    fn find_existing_mesh_daemon_pids(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<Vec<u32>, CoordinationError> {
+        self.inner
+            .find_existing_mesh_daemon_pids(pane_id, team_name, member_name)
+    }
+
+    fn find_existing_mesh_daemon_pid_by_member(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<Option<u32>, CoordinationError> {
+        self.inner
+            .find_existing_mesh_daemon_pid_by_member(team_name, member_name)
+    }
+
+    fn pane_belongs_to_project(
+        &self,
+        pane_id: &str,
+        project_id: &str,
+    ) -> Result<bool, CoordinationError> {
+        self.inner.pane_belongs_to_project(pane_id, project_id)
+    }
+
+    fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_exists(pane_id)
+    }
+
+    fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_dead(pane_id)
+    }
+
+    fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_shell(pane_id)
+    }
+
+    fn pane_current_command(&self, pane_id: &str) -> Result<Option<String>, CoordinationError> {
+        self.inner.pane_current_command(pane_id)
+    }
+
+    fn live_pane(
+        &self,
+        pane_id: &str,
+    ) -> Result<Option<crate::coordination::runtime::LivePane>, CoordinationError> {
+        self.inner.live_pane(pane_id)
+    }
+
+    fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
+        self.inner.kill_aitx_pane(pane_id)
+    }
+
+    fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError> {
+        self.inner.terminate_process_by_pid(pid)
+    }
+
+    fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
+        if let Some(path) = &self.remove_runtime_on_pid_probe {
+            std::fs::remove_file(path).expect("remove runtime before delivery-state update");
+        }
+        self.inner.is_process_running_by_pid(pid)
+    }
+
+    fn mesh_daemon_uses_current_binary(&self, pid: u32) -> Result<bool, CoordinationError> {
+        self.inner.mesh_daemon_uses_current_binary(pid)
+    }
+
+    fn team_daemon_uses_current_binary(&self, team_name: &str) -> Result<bool, CoordinationError> {
+        self.inner.team_daemon_uses_current_binary(team_name)
+    }
+
+    fn clear_mesh_daemon_pid_file(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner
+            .clear_mesh_daemon_pid_file(team_name, member_name)
+    }
+
+    fn stop_team_daemon(&self, team_name: &str) -> Result<(), CoordinationError> {
+        self.inner.stop_team_daemon(team_name)
+    }
+}
+
+#[test]
+fn delivery_wake_runtime_forwards_recording_runtime_overrides() {
+    // Regression: 31b19a4d let methods with trait defaults bypass the recording
+    // runtime, so reusing the delivery double could silently change test behavior.
+    let runtime = DeliveryWakeRuntime::new(None, None);
+
+    runtime
+        .create_aitx_pane_and_launch_in_target("/project", "%target", "codex")
+        .expect("create pane in target");
+    runtime
+        .detect_runtime_session("%pane", CliTool::Codex)
+        .expect("detect runtime session");
+    runtime
+        .spawn_team_daemon("team", "lead")
+        .expect("spawn team daemon");
+    runtime
+        .find_existing_mesh_daemon_pid_by_member("team", "member")
+        .expect("find daemon by member");
+    runtime
+        .mesh_daemon_uses_current_binary(4242)
+        .expect("check member daemon binary");
+    runtime
+        .team_daemon_uses_current_binary("team")
+        .expect("check team daemon binary");
+    runtime
+        .clear_mesh_daemon_pid_file("team", "member")
+        .expect("clear member daemon pid file");
+    runtime.stop_team_daemon("team").expect("stop team daemon");
+
+    let calls = runtime.inner.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CreatePaneInTarget { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::DetectSessionId { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnTeamDaemon { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::FindDaemonByMember { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CheckPidCurrentMeshBinary { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::CheckTeamDaemonCurrentMeshBinary { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::ClearDaemonPidFile { .. })));
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::StopTeamDaemon { .. })));
+}
+
+fn new_inbox_delivery_orchestrator(
+    tmp: &TempDir,
+    runtime: Arc<dyn CoordinationRuntime>,
+    team_name: &str,
+    member_name: &str,
+) -> CoordinationOrchestrator {
+    let backend: Arc<dyn CoordinationBackend> = Arc::new(MeshBridgedBackend::new_with_teams_dir(
+        tmp.path().to_path_buf(),
+    ));
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime);
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create delivery test team");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add delivery test member");
+    orchestrator
+}
+
+fn deliver_inbox_notice(
+    orchestrator: &mut CoordinationOrchestrator,
+    team_name: &str,
+    member_name: &str,
+    operational_context: Option<OperationalContextUpdate>,
+) -> DeliveryResult {
+    let result = orchestrator
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            member_name: member_name.to_string(),
+            team_name: team_name.to_string(),
+            message: "wake disposition preservation".to_string(),
+            sender_name: None,
+            operational_context,
+        }))
+        .expect("durable inbox delivery should succeed");
+    assert!(
+        result.delivered,
+        "delivered still means the append happened"
+    );
+    assert!(result.durable, "the successful append must be durable");
+    result
+}
+
+fn assert_one_inbox_append(teams_dir: &Path, team_name: &str, member_name: &str) {
+    assert_eq!(
+        MeshInboxStore::load(teams_dir, team_name, member_name)
+            .expect("inbox")
+            .len(),
+        1,
+        "wake and post-write outcomes must never retry the durable append"
+    );
+}
+
+fn set_delivery_runtime(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+    pane_id: Option<&str>,
+    daemon_pid: Option<u32>,
+) {
+    let mut runtime =
+        MemberRuntimeStore::load(teams_dir, team_name, member_name).expect("delivery runtime");
+    runtime.pane_id = pane_id.map(ToString::to_string);
+    runtime.daemon_pid = daemon_pid;
+    MemberRuntimeStore::save(teams_dir, team_name, member_name, &runtime)
+        .expect("save delivery runtime");
+}
+
+#[derive(Debug)]
 struct UndeliveredBackend;
 
 impl CoordinationBackend for UndeliveredBackend {
@@ -133,6 +444,11 @@ impl CoordinationBackend for UndeliveredBackend {
         Ok(DeliveryResult {
             delivered: false,
             method: DeliveryMethod::NativeMessageApi,
+            durable: false,
+            wake: WakeDisposition::NotAttempted {
+                reason: "delivery did not happen".to_string(),
+            },
+            post_write_warnings: Vec::new(),
         })
     }
 
@@ -169,6 +485,11 @@ impl CoordinationBackend for InboxFileBackend {
         Ok(DeliveryResult {
             delivered: true,
             method: DeliveryMethod::InboxFile,
+            durable: true,
+            wake: WakeDisposition::NotAttempted {
+                reason: "wake not evaluated by backend".to_string(),
+            },
+            post_write_warnings: Vec::new(),
         })
     }
 
@@ -3786,8 +4107,8 @@ fn delivery_audit_reports_the_inbox_file_method_that_actually_ran() {
 
 #[test]
 fn inbox_delivery_ensures_the_non_claude_member_daemon() {
-    // Regression: mesh-findings H2; bypassing `mesh send` also bypassed its
-    // wake path unless Taurhaus explicitly ensured the recipient daemon.
+    // Regression: 694b130c / mesh-findings H2; bypassing `mesh send` also
+    // bypassed its wake path unless Taurhaus explicitly ensured the daemon.
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let backend: Arc<dyn CoordinationBackend> = Arc::new(MeshBridgedBackend::new_with_teams_dir(
@@ -3815,16 +4136,9 @@ fn inbox_delivery_ensures_the_non_claude_member_daemon() {
     // a known mismatched agent CLI proves that a legacy pane is foreign.
     runtime.set_pane_current_command("%31", Some("cat"));
 
-    orchestrator
-        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-            member_name: member_name.to_string(),
-            team_name: team_name.to_string(),
-            message: "wake".to_string(),
-            sender_name: None,
-            operational_context: None,
-        }))
-        .expect("deliver");
+    let result = deliver_inbox_notice(&mut orchestrator, team_name, member_name, None);
 
+    assert_eq!(result.wake, WakeDisposition::Spawned { pid: 10000 });
     assert!(runtime.calls().iter().any(|call| matches!(
         call,
         RuntimeCall::SpawnDaemon {
@@ -3836,18 +4150,278 @@ fn inbox_delivery_ensures_the_non_claude_member_daemon() {
     let saved_runtime =
         MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("saved runtime");
     assert_eq!(saved_runtime.daemon_pid, Some(10000));
+    assert_one_inbox_append(tmp.path(), team_name, member_name);
+}
+
+#[test]
+fn inbox_delivery_reports_an_already_live_daemon_without_reappending() {
+    // Regression: 694b130c represented both an already-live daemon and every
+    // wake failure as `None`, hiding whether the appended notice could run.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let team_name = "already-live-inbox-wake";
+    let member_name = "codex-reviewer";
+    let mut orchestrator =
+        new_inbox_delivery_orchestrator(&tmp, runtime.clone(), team_name, member_name);
+    set_delivery_runtime(tmp.path(), team_name, member_name, Some("%31"), Some(4242));
+    runtime.set_pane_current_command("%31", Some("cat"));
+    runtime.set_pid_running(4242, true);
+
+    let result = deliver_inbox_notice(&mut orchestrator, team_name, member_name, None);
+
+    assert_eq!(result.wake, WakeDisposition::AlreadyLive);
+    assert!(runtime
+        .calls()
+        .iter()
+        .all(|call| !matches!(call, RuntimeCall::SpawnDaemon { .. })));
+    assert_one_inbox_append(tmp.path(), team_name, member_name);
+}
+
+#[test]
+fn inbox_delivery_reports_an_adopted_daemon_without_reappending() {
+    // Regression: 694b130c returned only a pid for both adopted and newly
+    // spawned daemons, so callers could not tell which wake action occurred.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let team_name = "adopted-inbox-wake";
+    let member_name = "codex-reviewer";
+    let mut orchestrator =
+        new_inbox_delivery_orchestrator(&tmp, runtime.clone(), team_name, member_name);
+    set_delivery_runtime(tmp.path(), team_name, member_name, Some("%31"), None);
+    runtime.set_pane_current_command("%31", Some("cat"));
+    runtime.set_matching_daemon_pids("%31", team_name, member_name, &[5555]);
+
+    let result = deliver_inbox_notice(&mut orchestrator, team_name, member_name, None);
+
+    assert_eq!(result.wake, WakeDisposition::Adopted { pid: 5555 });
+    assert!(runtime
+        .calls()
+        .iter()
+        .all(|call| !matches!(call, RuntimeCall::SpawnDaemon { .. })));
     assert_eq!(
-        MeshInboxStore::load(tmp.path(), team_name, member_name)
-            .expect("inbox")
-            .len(),
-        1
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("saved runtime")
+            .daemon_pid,
+        Some(5555)
     );
+    assert_one_inbox_append(tmp.path(), team_name, member_name);
+}
+
+#[test]
+fn inbox_delivery_reports_a_missing_runtime_without_reappending() {
+    // Regression: e87a3de6 classified a runtime-load error as `NotAttempted`,
+    // so member-action reports omitted the wake failure after the durable append.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let team_name = "missing-runtime-inbox-wake";
+    let member_name = "codex-reviewer";
+    let mut orchestrator = new_inbox_delivery_orchestrator(&tmp, runtime, team_name, member_name);
+    std::fs::remove_file(
+        tmp.path()
+            .join(team_name)
+            .join("runtime")
+            .join(format!("{member_name}.json")),
+    )
+    .expect("remove runtime fixture");
+
+    let result = deliver_inbox_notice(&mut orchestrator, team_name, member_name, None);
+
+    assert!(matches!(
+        &result.wake,
+        WakeDisposition::Failed { reason } if reason.starts_with("member runtime unavailable: Not found:")
+    ));
+    assert_one_inbox_append(tmp.path(), team_name, member_name);
+}
+
+#[test]
+fn inbox_delivery_reports_a_runtime_without_a_pane_without_reappending() {
+    // Regression: 694b130c collapsed the no-pane prerequisite into the same
+    // `None` returned for a successful already-live wake.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let team_name = "no-pane-inbox-wake";
+    let member_name = "codex-reviewer";
+    let mut orchestrator = new_inbox_delivery_orchestrator(&tmp, runtime, team_name, member_name);
+
+    let result = deliver_inbox_notice(&mut orchestrator, team_name, member_name, None);
+
+    assert_eq!(
+        result.wake,
+        WakeDisposition::NotAttempted {
+            reason: "member has no pane".to_string(),
+        }
+    );
+    assert_one_inbox_append(tmp.path(), team_name, member_name);
+}
+
+#[test]
+fn inbox_delivery_reports_a_missing_pane_without_reappending() {
+    // Regression: 694b130c used one ambiguous `None` for an absent pane and
+    // every other wake outcome after the durable append.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let team_name = "missing-pane-inbox-wake";
+    let member_name = "codex-reviewer";
+    let mut orchestrator =
+        new_inbox_delivery_orchestrator(&tmp, runtime.clone(), team_name, member_name);
+    set_delivery_runtime(tmp.path(), team_name, member_name, Some("%31"), None);
+    runtime.set_pane_exists("%31", false);
+
+    let result = deliver_inbox_notice(&mut orchestrator, team_name, member_name, None);
+
+    assert_eq!(
+        result.wake,
+        WakeDisposition::NotAttempted {
+            reason: "member pane not found".to_string(),
+        }
+    );
+    assert_one_inbox_append(tmp.path(), team_name, member_name);
+}
+
+#[test]
+fn inbox_delivery_reports_a_dead_pane_without_reappending() {
+    // Regression: 694b130c used one ambiguous `None` for a dead pane and
+    // every other wake outcome after the durable append.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let team_name = "dead-pane-inbox-wake";
+    let member_name = "codex-reviewer";
+    let mut orchestrator =
+        new_inbox_delivery_orchestrator(&tmp, runtime.clone(), team_name, member_name);
+    set_delivery_runtime(tmp.path(), team_name, member_name, Some("%31"), None);
+    runtime.set_pane_dead("%31", true);
+
+    let result = deliver_inbox_notice(&mut orchestrator, team_name, member_name, None);
+
+    assert_eq!(
+        result.wake,
+        WakeDisposition::NotAttempted {
+            reason: "member pane is dead".to_string(),
+        }
+    );
+    assert_one_inbox_append(tmp.path(), team_name, member_name);
+}
+
+#[test]
+fn inbox_delivery_reports_a_pane_probe_failure_without_reappending() {
+    // Regression: 694b130c collapsed a failed pane probe into the same `None`
+    // returned for a successful already-live wake.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let team_name = "probe-failed-inbox-wake";
+    let member_name = "codex-reviewer";
+    let mut orchestrator =
+        new_inbox_delivery_orchestrator(&tmp, runtime.clone(), team_name, member_name);
+    set_delivery_runtime(tmp.path(), team_name, member_name, Some("%31"), None);
+    runtime.set_live_pane_failure("%31", "forced delivery wake probe failure");
+
+    let result = deliver_inbox_notice(&mut orchestrator, team_name, member_name, None);
+
+    assert_eq!(
+        result.wake,
+        WakeDisposition::Failed {
+            reason: "pane probe failed: Backend error: forced delivery wake probe failure"
+                .to_string(),
+        }
+    );
+    assert_one_inbox_append(tmp.path(), team_name, member_name);
+}
+
+#[test]
+fn inbox_delivery_reports_a_daemon_spawn_failure_without_reappending() {
+    // Regression: 694b130c collapsed a failed daemon spawn into the same
+    // `None` returned for a successful already-live wake.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(DeliveryWakeRuntime::new(
+        Some("forced delivery wake spawn failure"),
+        None,
+    ));
+    let team_name = "spawn-failed-inbox-wake";
+    let member_name = "codex-reviewer";
+    let mut orchestrator =
+        new_inbox_delivery_orchestrator(&tmp, runtime.clone(), team_name, member_name);
+    set_delivery_runtime(tmp.path(), team_name, member_name, Some("%31"), None);
+    runtime.inner.set_pane_current_command("%31", Some("cat"));
+
+    let result = deliver_inbox_notice(&mut orchestrator, team_name, member_name, None);
+
+    assert_eq!(
+        result.wake,
+        WakeDisposition::Failed {
+            reason: "daemon spawn failed: Backend error: forced delivery wake spawn failure"
+                .to_string(),
+        }
+    );
+    assert_one_inbox_append(tmp.path(), team_name, member_name);
+}
+
+#[test]
+fn inbox_delivery_carries_operational_context_warning_without_reappending() {
+    // Regression: 4344edb4 logged an operational-context failure after the
+    // append but returned no fact a delivery caller could observe.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let team_name = "context-warning-inbox-delivery";
+    let member_name = "codex-reviewer";
+    let mut orchestrator = new_inbox_delivery_orchestrator(&tmp, runtime, team_name, member_name);
+    std::fs::create_dir_all(
+        tmp.path()
+            .join(team_name)
+            .join("state")
+            .join("operational")
+            .join(format!("{member_name}.json")),
+    )
+    .expect("create invalid operational snapshot target");
+
+    let result = deliver_inbox_notice(
+        &mut orchestrator,
+        team_name,
+        member_name,
+        Some(OperationalContextUpdate::default()),
+    );
+
+    assert_eq!(result.post_write_warnings.len(), 1);
+    assert!(result.post_write_warnings[0].starts_with("IO error:"));
+    assert_one_inbox_append(tmp.path(), team_name, member_name);
+}
+
+#[test]
+fn inbox_delivery_carries_runtime_update_warning_without_reappending() {
+    // Regression: e19ffad0 logged a runtime-state failure after the append but
+    // returned no fact a delivery caller could observe.
+    let tmp = TempDir::new().expect("tempdir");
+    let team_name = "runtime-warning-inbox-delivery";
+    let member_name = "codex-reviewer";
+    let runtime_path = tmp
+        .path()
+        .join(team_name)
+        .join("runtime")
+        .join(format!("{member_name}.json"));
+    let runtime = Arc::new(DeliveryWakeRuntime::new(None, Some(runtime_path)));
+    let mut orchestrator =
+        new_inbox_delivery_orchestrator(&tmp, runtime.clone(), team_name, member_name);
+    set_delivery_runtime(tmp.path(), team_name, member_name, Some("%31"), Some(4242));
+    runtime.inner.set_pane_current_command("%31", Some("cat"));
+    runtime.inner.set_pid_running(4242, true);
+
+    let result = deliver_inbox_notice(&mut orchestrator, team_name, member_name, None);
+
+    assert_eq!(result.wake, WakeDisposition::AlreadyLive);
+    assert_eq!(
+        result.post_write_warnings,
+        vec![format!(
+            "Not found: runtime state not found for member '{member_name}' in team '{team_name}'"
+        )]
+    );
+    assert_one_inbox_append(tmp.path(), team_name, member_name);
 }
 
 #[test]
 fn inbox_delivery_does_not_wake_a_foreign_cli_pane() {
-    // Regression: mesh-findings P3, tmux reused pane ids; daemons for
-    // taurrust/gotaurus/espn pointed at claude panes.
+    // Regression: aecc8acd / mesh-findings P3, tmux reused pane ids; daemons
+    // for taurrust/gotaurus/espn pointed at claude panes.
+    // Regression: e87a3de6 classified the resulting quarantine as `NotAttempted`,
+    // so member-action reports hid the failed wake after the durable append.
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let backend: Arc<dyn CoordinationBackend> = Arc::new(MeshBridgedBackend::new_with_teams_dir(
@@ -3874,16 +4448,15 @@ fn inbox_delivery_does_not_wake_a_foreign_cli_pane() {
         .expect("save runtime");
     runtime.set_pane_current_command("%31", Some("claude"));
 
-    orchestrator
-        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-            member_name: member_name.to_string(),
-            team_name: team_name.to_string(),
-            message: "do not wake the foreign pane".to_string(),
-            sender_name: None,
-            operational_context: None,
-        }))
-        .expect("durable inbox delivery should still succeed");
+    let result = deliver_inbox_notice(&mut orchestrator, team_name, member_name, None);
 
+    assert_eq!(
+        result.wake,
+        WakeDisposition::Failed {
+            reason: "member pane is foreign: cli_tool_mismatch: expected=codex found=claude"
+                .to_string(),
+        }
+    );
     assert!(runtime
         .calls()
         .iter()
@@ -3892,12 +4465,7 @@ fn inbox_delivery_does_not_wake_a_foreign_cli_pane() {
         MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("saved runtime");
     assert_eq!(saved_runtime.health, HealthState::SessionDead);
     assert_eq!(saved_runtime.daemon_pid, None);
-    assert_eq!(
-        MeshInboxStore::load(tmp.path(), team_name, member_name)
-            .expect("inbox")
-            .len(),
-        1
-    );
+    assert_one_inbox_append(tmp.path(), team_name, member_name);
 }
 
 #[test]

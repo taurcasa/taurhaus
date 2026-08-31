@@ -10,8 +10,9 @@ use crate::coordination::member_activation::{
 };
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
-    AddAgentReport, AddAgentRequest, DeliveryRequest, InitializeTeamRequest, MemberActivationStage,
-    OperatorNoticeDelivery, ResumeAgentReport, ResumeMemberRequest, StepProgress, StepStatus,
+    AddAgentReport, AddAgentRequest, DeliveryRequest, DeliveryResult, InitializeTeamRequest,
+    MemberActivationStage, OperatorNoticeDelivery, ResumeAgentReport, ResumeMemberRequest,
+    StepProgress, StepStatus, WakeDisposition,
 };
 use crate::coordination::runtime::{
     emit_foreign_pane_event, resolve_or_create_pane_for_member, PaneResolution,
@@ -39,6 +40,25 @@ pub(super) enum InitializeMemberActivationStage {
     LaunchSessions,
     JoinMesh,
     StartDaemons,
+}
+
+pub(super) fn onboarding_wake_warning(wake: &WakeDisposition) -> Option<String> {
+    match wake {
+        WakeDisposition::Failed { reason } => Some(format!("onboarding wake failed: {reason}")),
+        WakeDisposition::NotAttempted { reason }
+            if matches!(
+                reason.as_str(),
+                crate::coordination::requests::WAKE_REASON_PANE_DEAD
+                    | crate::coordination::requests::WAKE_REASON_PANE_NOT_FOUND
+            ) =>
+        {
+            Some(format!("onboarding wake not attempted: {reason}"))
+        }
+        WakeDisposition::AlreadyLive
+        | WakeDisposition::Spawned { .. }
+        | WakeDisposition::Adopted { .. }
+        | WakeDisposition::NotAttempted { .. } => None,
+    }
 }
 
 impl CoordinationOrchestrator {
@@ -388,6 +408,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 err,
                 self.succeeded_steps,
                 &mut self.steps,
+                self.warnings,
             ));
         }
         self.record_step_success("validate", "request validated");
@@ -401,6 +422,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 err,
                 self.succeeded_steps,
                 &mut self.steps,
+                self.warnings,
             ));
         }
 
@@ -414,6 +436,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             retryable: false,
             message: "agent added".to_string(),
             steps: self.steps,
+            warnings: self.warnings,
         })
     }
 
@@ -1177,7 +1200,13 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         };
 
         match delivery_result {
-            Ok(()) => {
+            Ok(results) => {
+                for result in results {
+                    self.warnings.extend(result.post_write_warnings);
+                    if let Some(warning) = onboarding_wake_warning(&result.wake) {
+                        self.warnings.push(warning);
+                    }
+                }
                 self.record_step_success("send_onboarding", "onboarding delivered");
                 self.emit_stage(
                     MemberActivationStage::DeliverOnboarding,
@@ -1336,21 +1365,20 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         &mut self,
         request: &ResumeMemberRequest,
         prepared: &PreparedMemberActivation,
-    ) -> Result<(), CoordinationError> {
+    ) -> Result<Vec<DeliveryResult>, CoordinationError> {
         if let Some(entry) = self.orchestrator.prepare_resume_onboarding_entry(
             request,
             &prepared.member,
             &prepared.lead_name,
         ) {
-            self.orchestrator.deliver_onboarding_entries(vec![entry])?;
-            return Ok(());
+            return self.orchestrator.deliver_onboarding_entries(vec![entry]);
         }
 
         if !crate::session_scanner::cli_tool::spec(prepared.member.cli_tool)
             .capabilities
             .native_inbox_poller
         {
-            return Ok(());
+            return Ok(Vec::new());
         }
 
         let message = DeliveryRenderer::render_onboarding(
@@ -1376,7 +1404,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 sender_name: Some(prepared.lead_name.clone()),
                 operational_context: None,
             }))
-            .map(|_| ())
+            .map(|result| vec![result])
     }
 
     fn add_agent_request(&self) -> &'b AddAgentRequest {

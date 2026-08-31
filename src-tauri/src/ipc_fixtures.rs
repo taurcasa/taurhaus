@@ -9,6 +9,7 @@ use crate::commands::accounts::AccountsResult;
 use crate::commands::coordination_types::{
     AgentRole, LiveAgentStatus, LiveRuntimeSnapshotFreshness, LiveTeamStatus, SessionStatus,
 };
+use crate::coordination::requests::{DeliveryMethod, DeliveryResult, WakeDisposition};
 use crate::models::{
     ActivityThresholds, AppPlatform, CliCommandSettings, CliVersions, CodeThemeSettings,
     DaemonSettings, HarnessSettings, ModelCatalog, ModelCatalogEntry, Settings,
@@ -286,6 +287,19 @@ fn fully_populated_accounts_result() -> AccountsResult {
     }
 }
 
+fn fully_populated_delivery_result() -> DeliveryResult {
+    DeliveryResult {
+        delivered: true,
+        method: DeliveryMethod::InboxFile,
+        durable: true,
+        wake: WakeDisposition::Adopted { pid: 4242 },
+        post_write_warnings: vec![
+            "fixture operational context warning".to_string(),
+            "fixture runtime state warning".to_string(),
+        ],
+    }
+}
+
 // Regenerate with:
 // `cd src-tauri && UPDATE_IPC_FIXTURES=1 cargo test --lib -- ipc_fixtures`
 #[test]
@@ -305,4 +319,12 @@ fn live_team_status_fixture_matches_the_exported_contract() {
 #[test]
 fn accounts_result_fixture_matches_the_exported_contract() {
     assert_fixture("accounts-result.json", &fully_populated_accounts_result());
+}
+
+// Regenerate with:
+// `cd src-tauri && UPDATE_IPC_FIXTURES=1 cargo test --lib -- ipc_fixtures`
+#[test]
+fn delivery_result_fixture_matches_the_exported_contract() {
+    // This pins the Rust wire shape only; DeliveryResult has no JS consumer.
+    assert_fixture("delivery-result.json", &fully_populated_delivery_result());
 }

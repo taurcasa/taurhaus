@@ -147,11 +147,39 @@ pub enum DeliveryMethod {
     NativeMessageApi,
 }
 
+/// The wake reasons that mean "a wake was required but the pane was gone" —
+/// minted in `orchestrator/delivery.rs`, surfaced by `pipelines/members.rs`.
+/// One constant per string so the mint and the match cannot drift apart.
+pub(crate) const WAKE_REASON_PANE_DEAD: &str = "member pane is dead";
+pub(crate) const WAKE_REASON_PANE_NOT_FOUND: &str = "member pane not found";
+
+/// Outcome of the best-effort member wake that follows a durable inbox append.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum WakeDisposition {
+    AlreadyLive,
+    Spawned { pid: u32 },
+    Adopted { pid: u32 },
+    NotAttempted { reason: String },
+    Failed { reason: String },
+}
+
 /// Delivery completion response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeliveryResult {
+    /// Whether the backend completed its delivery operation. For inbox-file
+    /// delivery this means exactly one append completed.
     pub delivered: bool,
     pub method: DeliveryMethod,
+    /// Whether the selected delivery method persisted the message. For
+    /// `InboxFile`, this means `MeshInboxStore::append` returned successfully;
+    /// it is an outcome fact, not an additional delivery success gate.
+    pub durable: bool,
+    /// Replaced by the orchestrator after the backend delivery succeeds.
+    pub wake: WakeDisposition,
+    /// Extended by the orchestrator with failures that happen after delivery.
+    pub post_write_warnings: Vec<String>,
 }
 
 /// Request to probe a member's process and interaction health.
@@ -562,6 +590,7 @@ pub struct AddAgentResult {
     pub retryable: bool,
     pub message: String,
     pub steps: Vec<StepProgress>,
+    pub warnings: Vec<String>,
 }
 
 /// Request contract for resuming a team member session.
@@ -899,6 +928,7 @@ mod tests {
                 status: StepStatus::Succeeded,
                 message: Some("ok".to_string()),
             }],
+            warnings: vec!["onboarding wake failed".to_string()],
         };
         let add_json = serde_json::to_string(&add_report).expect("serialize add report");
         let add_decoded: AddAgentResult =

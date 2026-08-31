@@ -134,6 +134,11 @@ impl CoordinationBackend for FakeBackend {
         Ok(DeliveryResult {
             delivered: true,
             method: DeliveryMethod::TmuxInjection,
+            durable: false,
+            wake: crate::coordination::requests::WakeDisposition::NotAttempted {
+                reason: "delivery method does not require an inbox wake".to_string(),
+            },
+            post_write_warnings: Vec::new(),
         })
     }
 
