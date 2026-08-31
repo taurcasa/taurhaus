@@ -88,6 +88,7 @@ describe('tmux-driving spec coverage', () => {
       'command-center-real-actions.js',
       'compaction-codex-hooks.js',
       'managed-stage-codex.js',
+      'managed-stage-deadline.js',
       'mesh-recovery.js',
       'mesh-screenshots.js',
       'mesh-workflow.js',

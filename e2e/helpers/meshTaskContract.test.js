@@ -9,6 +9,7 @@ import {
   findResultMessage,
   parseResultMessage,
   resultContractViolations,
+  stagePollVerdict,
 } from './meshTaskContract.js'
 
 describe('extractJsonBlock', () => {
@@ -198,5 +199,16 @@ describe('expiredEffortWaitProblem', () => {
   it('reports unreadable timestamps rather than calling them a pass', () => {
     expect(expiredEffortWaitProblem({ assignedAtMs: NaN, deliveredAtMs: 2_230, boundMs: 180_000 })).toMatch(/timestamp/)
     expect(expiredEffortWaitProblem({ assignedAtMs: 1_000, deliveredAtMs: null, boundMs: 180_000 })).toMatch(/timestamp/)
+  })
+})
+
+describe('stagePollVerdict', () => {
+  it('returns the managed stage timeout shape when the task record becomes stale', () => {
+    expect(stagePollVerdict({ id: '42', status: 'stale' })).toEqual({ status: 'timeout' })
+  })
+
+  it('keeps polling every non-stale task record', () => {
+    expect(stagePollVerdict({ id: '42', status: 'in_progress' })).toBeNull()
+    expect(stagePollVerdict(null)).toBeNull()
   })
 })

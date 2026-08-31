@@ -36,8 +36,10 @@ function runMesh(claudeDir, args, { timeout = 60_000 } = {}) {
 }
 
 /** `mesh task create --json`, returning the created record. */
-export function createTask({ claudeDir, team, actor, subject, description, effort, why, firstStep, deliverable }) {
-  const raw = runMesh(claudeDir, [
+export function createTask({
+  claudeDir, team, actor, subject, description, effort, why, deadline, firstStep, deliverable,
+}) {
+  const args = [
     '--team', team,
     '--name', actor,
     'task', 'create',
@@ -47,8 +49,10 @@ export function createTask({ claudeDir, team, actor, subject, description, effor
     '--why', why,
     '--first-step', firstStep,
     '--deliverable', deliverable,
-    '--json',
-  ])
+  ]
+  if (deadline != null) args.push('--deadline', String(deadline))
+  args.push('--json')
+  const raw = runMesh(claudeDir, args)
   return JSON.parse(raw)
 }
 
@@ -60,9 +64,10 @@ export function createTask({ claudeDir, team, actor, subject, description, effor
  * been created — so it is passed here and not at creation.
  */
 export function assignTask({
-  claudeDir, team, actor, taskId, owner, effort, why, firstStep, deliverable, completionSignal,
+  claudeDir, team, actor, taskId, owner, status, effort, why, deadline, firstStep, deliverable,
+  completionSignal,
 }) {
-  return runMesh(claudeDir, [
+  const args = [
     '--team', team,
     '--name', actor,
     'task', 'assign', String(taskId),
@@ -72,7 +77,10 @@ export function assignTask({
     '--first-step', firstStep,
     '--deliverable', deliverable,
     '--completion-signal', completionSignal,
-  ])
+  ]
+  if (status) args.push('--status', status)
+  if (deadline != null) args.push('--deadline', String(deadline))
+  return runMesh(claudeDir, args)
 }
 
 /**
@@ -85,6 +93,18 @@ export function taskRecord({ claudeDir, team, actor, taskId }) {
   return JSON.parse(runMesh(claudeDir, [
     '--team', team, '--name', actor, 'task', 'get', String(taskId), '--json',
   ]))
+}
+
+/**
+ * The timeout branch used by the managed `stage()` courier.
+ *
+ * The task record is the canonical authority: inbox state and a local elapsed
+ * timer cannot turn a still-open task into a stage timeout. Returning null for
+ * every non-stale record lets callers keep polling without inventing another
+ * terminal state.
+ */
+export function stagePollVerdict(record) {
+  return record?.status === 'stale' ? { status: 'timeout' } : null
 }
 
 /** The attention projection for one task, or null before mesh has written it. */
