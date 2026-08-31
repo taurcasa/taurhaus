@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-08-31
+
 ### Changed
 
 - **Bundled mesh 0.2.24** — assignment deadlines travel (`--deadline <minutes>` on `task create`/`task assign`, stored as task metadata `deadline_minutes` and shown wherever effort is shown), and `task get` recognises the member's completion signal from the lead inbox (`RESULT <id>` with its JSON block, `BLOCKED <id> <reason>`, tolerant header spellings, `completion.at` provenance from the matched message) — the mesh half of W4's stage contract, feeding the deadline pass #100 wired.
