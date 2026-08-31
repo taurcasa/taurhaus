@@ -1759,6 +1759,8 @@ mod tests {
 
     #[test]
     fn imported_mesh_deadline_drives_nudge_then_stale_from_assigned_at() {
+        // Regression: 7fb03376 used a numeric deadline fixture, masking that
+        // mesh 0.2.24 writes deadline_minutes as a string on the real record.
         let (tmp, teams_dir, runtime, fake, state) = deadline_fixture();
         let tasks_base = tmp.path().join("tasks");
         let task_dir = tasks_base.join("deadline-team");
@@ -1771,7 +1773,7 @@ mod tests {
                 "status": "in_progress",
                 "owner": "builder",
                 "metadata": {
-                    "deadline_minutes": 20,
+                    "deadline_minutes": "20",
                     "effort": "high",
                     "effort_why": "the migration is irreversible"
                 }

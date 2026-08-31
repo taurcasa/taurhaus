@@ -16,6 +16,7 @@ use crate::coordination::stores::{
 use crate::coordination::task_deadline::{decide, DeadlineAction, DeadlineInput, Timestamp};
 
 const ACTIVITY_FRESHNESS: Duration = Duration::seconds(120);
+
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct DeadlinePassOutcome {
     pub failures: Vec<(String, String)>,

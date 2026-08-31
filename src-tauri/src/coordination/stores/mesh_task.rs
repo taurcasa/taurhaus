@@ -1,8 +1,11 @@
 //! Bounded, compare-before-write access to mesh-owned task records.
 
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
 use crate::coordination::errors::CoordinationError;
 
@@ -49,10 +52,10 @@ pub(crate) fn commit_status_if_unchanged(
         ))
     })?;
     let tmp_path = task_tmp_path(&path);
-    write_file_synced(&tmp_path, &payload)?;
+    write_file_synced(&tmp_path, &payload, Some(&path))?;
     if let Err(error) = fs::rename(&tmp_path, &path) {
         if super::operational::is_windows_unsupported_rename_error(&error) {
-            write_file_synced(&path, &payload)?;
+            write_file_synced(&path, &payload, Some(&path))?;
             let _ = fs::remove_file(&tmp_path);
         } else {
             let _ = fs::remove_file(&tmp_path);
@@ -114,8 +117,26 @@ fn task_tmp_path(path: &Path) -> PathBuf {
     PathBuf::from(tmp)
 }
 
-fn write_file_synced(path: &Path, payload: &str) -> std::io::Result<()> {
-    let mut file = fs::File::create(path)?;
+fn write_file_synced(
+    path: &Path,
+    payload: &str,
+    permissions_from: Option<&Path>,
+) -> std::io::Result<()> {
+    let mut options = OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        let mode = permissions_from
+            .and_then(|source| fs::metadata(source).ok())
+            .map(|metadata| metadata.permissions().mode())
+            .unwrap_or(0o600);
+        file.set_permissions(fs::Permissions::from_mode(mode))?;
+    }
+    #[cfg(not(unix))]
+    let _ = permissions_from;
     file.write_all(payload.as_bytes())?;
     file.sync_all()
 }
@@ -181,6 +202,40 @@ mod tests {
         assert_eq!(task["status"], "stale");
         assert_eq!(task["metadata"]["deadline_minutes"], 20);
         assert_eq!(task["subject"], "Run the migration");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn deadline_status_commit_preserves_mesh_task_permissions() {
+        // Regression: 008536ec replaced mesh's 0600 record with a temp file
+        // created under the process umask, widening the final mode to 0644.
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().expect("root");
+        let teams_dir = root.path().join("teams");
+        write_task(&teams_dir, "42", "42", "builder", "in_progress");
+        let path = task_path(&teams_dir, "deadline-team", "42");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .expect("set mesh permissions");
+
+        commit_status_if_unchanged(
+            &teams_dir,
+            "deadline-team",
+            "builder",
+            "42",
+            "in_progress",
+            "stale",
+        )
+        .expect("commit task status");
+
+        assert_eq!(
+            std::fs::metadata(path)
+                .expect("task metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
     }
 
     #[test]
