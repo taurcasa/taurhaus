@@ -125,7 +125,61 @@ fn apply_member_deadline(
         return Err(error);
     }
 
+    emit_deadline_action(
+        action,
+        team_name,
+        member_name,
+        &snapshot.task.id,
+        deadline_minutes,
+    );
     Ok(())
+}
+
+fn emit_deadline_action(
+    action: DeadlineAction,
+    team_name: &str,
+    member_name: &str,
+    task_id: &str,
+    deadline_minutes: u32,
+) {
+    let (event_name, message) = match action {
+        DeadlineAction::Nothing => return,
+        DeadlineAction::Nudge => ("deadline.nudge.sent", "Task deadline nudge sent"),
+        DeadlineAction::MarkStale => ("deadline.task.staled", "Task deadline marked stale"),
+    };
+    taurhaus_lib::logging::emit_global(
+        "info",
+        "coordination",
+        event_name,
+        Some(message.to_string()),
+        deadline_event_fields(team_name, member_name, task_id, deadline_minutes),
+    );
+}
+
+fn deadline_event_fields(
+    team_name: &str,
+    member_name: &str,
+    task_id: &str,
+    deadline_minutes: u32,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "team".to_string(),
+        serde_json::Value::String(team_name.to_string()),
+    );
+    fields.insert(
+        "member".to_string(),
+        serde_json::Value::String(member_name.to_string()),
+    );
+    fields.insert(
+        "task_id".to_string(),
+        serde_json::Value::String(task_id.to_string()),
+    );
+    fields.insert(
+        "deadline_minutes".to_string(),
+        serde_json::Value::Number(deadline_minutes.into()),
+    );
+    fields
 }
 
 fn claim_action(
@@ -318,4 +372,34 @@ fn deadline_task_tmp_path(path: &Path) -> PathBuf {
     let mut tmp = path.as_os_str().to_os_string();
     tmp.push(".deadline.tmp");
     PathBuf::from(tmp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deadline_events_carry_the_bounded_action_context() {
+        assert_eq!(
+            deadline_event_fields("deadline-team", "builder", "42", 20),
+            serde_json::Map::from_iter([
+                (
+                    "team".to_string(),
+                    serde_json::Value::String("deadline-team".to_string()),
+                ),
+                (
+                    "member".to_string(),
+                    serde_json::Value::String("builder".to_string()),
+                ),
+                (
+                    "task_id".to_string(),
+                    serde_json::Value::String("42".to_string()),
+                ),
+                (
+                    "deadline_minutes".to_string(),
+                    serde_json::Value::Number(20.into()),
+                ),
+            ])
+        );
+    }
 }

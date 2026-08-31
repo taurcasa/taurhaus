@@ -132,7 +132,7 @@ This lease still exists for daemon ownership coordination, but it is no longer t
 
 **Shipped**: only `HealthState` — Healthy, AwaitingRead, SuspectedStuck, Rebriefed, Suppressed, SessionDead. `health/transition.rs` is an identity placeholder (`transition(current) -> current`), there is no event enum, and `health/policy.rs` is a placeholder `RecoveryPolicy { cooldown_secs }`.
 
-Task deadlines do not extend that placeholder framework. `coordination/task_deadline.rs` is a separate pure policy with an injected timestamp and caller-persisted one-shot markers: it decides `Nothing`, `Nudge`, or `MarkStale`, but reads no clock, performs no I/O, and is not yet called by self-heal. A module-boundary test keeps it fenced from `health/transition.rs` and `RecoveryPolicy`; wiring the policy is an explicit future W4 change.
+Task deadlines do not extend that placeholder framework. `coordination/task_deadline.rs` remains a separate pure policy with an injected timestamp and caller-persisted one-shot markers: it decides `Nothing`, `Nudge`, or `MarkStale`, but reads no clock and performs no I/O. The background self-heal pass now calls it only for an operational snapshot whose task is `in_progress` and carries `deadline_minutes`. At half time a fresh `active` activity snapshot suppresses the nudge; otherwise the pass sends one operator notice and persists `nudged_at`. At the deadline it marks the mesh task `stale` and persists `stale_at`, with stale superseding a late first nudge. Marker claims use a per-team compare-and-commit, so a concurrent operational refresh wins and the next pass re-decides. Neither action stops, restarts, or terminates the member session. `deadline.nudge.sent` and `deadline.task.staled` are emitted once after their successful action. A module-boundary test keeps the policy itself fenced from `health/transition.rs` and `RecoveryPolicy`.
 
 **The live health mutations** are two, both written by `orchestrator/liveness.rs` during a reconciliation pass — there is no transition function between them:
 
@@ -240,7 +240,8 @@ src-tauri/src/
     delivery.rs             # DeliveryRenderer / onboarding
     member_activation.rs  mesh_cli.rs  operational_context.rs
     task_effort.rs          # assignment-effort policy shared with pipelines/effort.rs
-    task_deadline.rs        # pure deadline policy, not yet wired (D7)
+    task_deadline.rs        # pure deadline policy (D7)
+    task_deadline_pass.rs   # self-heal deadline actions and one-shot markers
     reconcile.rs  reinjection.rs  roster.rs  validation.rs  state.rs
 ```
 

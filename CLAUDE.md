@@ -95,6 +95,7 @@ Unified structured logging pipeline:
 - `src-tauri/src/daemon/usage_poller.rs` (`usage.fetched` debug, `usage.failed` warn — never tokens, never a URL with a query string)
 - `src-tauri/src/session_scanner/accounts/mod.rs` (`account.provider.floor`) and `accounts/legacy_statusline.rs` (`claude.usage.legacy_bridge.removed`)
 - `src-tauri/src/coordination/task_effort.rs` (`effort.resume.started/completed/failed` — the Codex relaunch that puts an assignment's effort into force; budget exhaustion is one `failed` record with `reason: budget_exhausted`, `attempts: 3`, and `task_id`)
+- `src-tauri/src/coordination/task_deadline_pass.rs` (`deadline.nudge.sent` / `deadline.task.staled` — one info record per committed deadline action, with `team`, `member`, `task_id`, and `deadline_minutes`)
 - `src-tauri/src/coordination/stores/runtime.rs` (`coordination.runtime.record_skipped` for each unreadable runtime record, with `member` and `reason`; `coordination.runtime.commit_skipped` when a probe-time snapshot changed before commit, with `member` and `changed_fields`)
 - `src-tauri/src/coordination/pipelines/helpers.rs` (`coordination.pane.probe_failed` when a transient identity probe preserves the previous pane identity)
 - `src-tauri/src/coordination/agy_hooks_installer.rs` (`agy.hooks.degraded`)
