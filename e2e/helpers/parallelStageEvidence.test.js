@@ -1,0 +1,52 @@
+import { describe, expect, it } from 'vitest'
+
+import { completedParallelRunSummary, stageWindowOverlap } from './parallelStageEvidence.js'
+
+describe('stageWindowOverlap', () => {
+  it('returns the real intersection of two assigned-to-RESULT windows', () => {
+    expect(
+      stageWindowOverlap(
+        { assignedAt: '2026-08-31T10:00:00.000Z', resultAt: '2026-08-31T10:00:40.000Z' },
+        { assignedAt: '2026-08-31T10:00:03.000Z', resultAt: '2026-08-31T10:00:30.000Z' }
+      )
+    ).toEqual({
+      startAt: '2026-08-31T10:00:03.000Z',
+      endAt: '2026-08-31T10:00:30.000Z',
+      durationMs: 27_000,
+    })
+  })
+
+  it('rejects serialized, touching, or malformed windows', () => {
+    expect(
+      stageWindowOverlap(
+        { assignedAt: '2026-08-31T10:00:00.000Z', resultAt: '2026-08-31T10:00:10.000Z' },
+        { assignedAt: '2026-08-31T10:00:10.000Z', resultAt: '2026-08-31T10:00:20.000Z' }
+      )
+    ).toBeNull()
+    expect(stageWindowOverlap({ assignedAt: 'bad', resultAt: 'also bad' }, {})).toBeNull()
+  })
+})
+
+describe('completedParallelRunSummary', () => {
+  it('records both managed couriers under the W2 run-tree phase', () => {
+    const summary = completedParallelRunSummary({
+      runId: 'parallel-run-1',
+      workflowName: 'feature-pr-parallel-isolation',
+      startedAt: '2026-08-31T10:00:00.000Z',
+      finishedAt: '2026-08-31T10:00:40.000Z',
+      stages: [
+        { key: 'alpha', taskId: '1', resultAt: '2026-08-31T10:00:35.000Z' },
+        { key: 'beta', taskId: '2', resultAt: '2026-08-31T10:00:40.000Z' },
+      ],
+    })
+
+    expect(summary.phases).toEqual([{ title: 'Managed stage' }])
+    expect(summary.workflowProgress.map((agent) => agent.label)).toEqual([
+      'stage:codex:alpha',
+      'stage:codex:beta',
+    ])
+    expect(summary.workflowProgress.every((agent) => agent.phaseTitle === 'Managed stage')).toBe(true)
+    expect(summary.agentCount).toBe(2)
+    expect(summary.durationMs).toBe(40_000)
+  })
+})

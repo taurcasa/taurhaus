@@ -24,7 +24,7 @@
  */
 
 import { execFile, execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -41,6 +41,7 @@ import {
   taskRecord,
 } from '../helpers/meshTaskContract.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
+import { completedParallelRunSummary, stageWindowOverlap } from '../helpers/parallelStageEvidence.js'
 import { TAURHAUS_CLAUDE_DIR } from '../helpers/platform.js'
 import {
   addStageFixtureWorktree,
@@ -526,6 +527,91 @@ function assignmentNoticeTaskIds(memberName) {
     .filter(Boolean)
 }
 
+function leadWorkflowSessionId() {
+  let config = null
+  try {
+    config = JSON.parse(readFileSync(join(teamsDir, TEAM_NAME, 'config.json'), 'utf8'))
+  } catch {
+    // The runtime record below still names the lead session when config readback
+    // races a mesh projection refresh.
+  }
+  const sessionId =
+    readRuntimeRecord(LEAD_NAME)?.session_id ??
+    config?.leadSessionId ??
+    config?.lead_session_id ??
+    null
+  if (!/^[A-Za-z0-9_-]+$/.test(String(sessionId ?? ''))) {
+    throw new Error(`The isolated team config/runtime names no W2-safe lead session: ${sessionId}`)
+  }
+  return String(sessionId)
+}
+
+/**
+ * Put a completed two-stage Workflow summary under the isolated lead session,
+ * then read it back through the production W2 IPC scanner.
+ *
+ * The experiment assigns the two mesh stages directly so its only paid
+ * sessions are the two Codex members. W2's input is Claude's on-disk Workflow
+ * summary, so this fixture records the two real task ids and RESULT timestamps
+ * after both stages finish. The scanner — not this fixture builder — decides
+ * which agents and phases the lead's run tree exposes.
+ */
+async function readLeadRunTree(completed, overlap) {
+  const sessionId = leadWorkflowSessionId()
+  const runId = `w4-exp5-${uniqueSuffix}`
+  const sessionDir = join(claudeDir, 'projects', `e2e-parallel-${uniqueSuffix}`, sessionId)
+  const runDir = join(sessionDir, 'subagents', 'workflows', runId)
+  const workflowDir = join(sessionDir, 'workflows')
+  const scriptDir = join(workflowDir, 'scripts')
+  mkdirSync(runDir, { recursive: true })
+  mkdirSync(scriptDir, { recursive: true })
+
+  const stageRecords = completed.map(({ stage, record }) => ({
+    key: stage.key,
+    taskId: stage.taskId,
+    model: measured.model,
+    resultAt: record.completion.at,
+  }))
+  const startedAt = new Date(Math.min(...completed.map(({ stage }) => Date.parse(stage.assignedAt)))).toISOString()
+  const finishedAt = new Date(Math.max(...stageRecords.map((stage) => Date.parse(stage.resultAt)))).toISOString()
+  const summary = completedParallelRunSummary({
+    runId,
+    workflowName: 'feature-pr-parallel-isolation',
+    startedAt,
+    finishedAt,
+    stages: stageRecords,
+  })
+
+  writeFileSync(
+    join(scriptDir, `feature-pr-parallel-isolation-${runId}.js`),
+    "export const meta = { name: 'feature-pr-parallel-isolation', description: 'W4 experiment 5', phases: [{ title: 'Managed stage' }] }\n"
+  )
+  writeFileSync(join(workflowDir, `${runId}.json`), `${JSON.stringify(summary, null, 2)}\n`)
+
+  const listed = await invokeTauriOrThrow('list_workflow_runs', { sessionId })
+  const listedRun = (Array.isArray(listed) ? listed : []).find((run) => run?.run_id === runId)
+  expect(listedRun?.status).toBe('completed')
+  expect(listedRun?.totals?.agents).toBe(2)
+
+  const run = await invokeTauriOrThrow('get_workflow_run', { sessionId, runId })
+  expect(run.status).toBe('completed')
+  expect(run.phases).toEqual(['Managed stage'])
+  expect(run.agents.map((agent) => agent.label).sort()).toEqual([
+    'stage:codex:alpha',
+    'stage:codex:beta',
+  ])
+  expect(run.agents.every((agent) => agent.phase === 'Managed stage' && agent.state === 'done')).toBe(true)
+  expect(run.result?.tasks?.map(String).sort()).toEqual(stageRecords.map((stage) => stage.taskId).sort())
+  return {
+    sessionId,
+    runId,
+    status: run.status,
+    phase: run.phases[0],
+    labels: run.agents.map((agent) => agent.label).sort(),
+    overlap,
+  }
+}
+
 function assertStageTreeEvidence(completed, sibling) {
   const { stage, result } = completed
   expect(resultContractViolations(result.payload)).toEqual([])
@@ -645,6 +731,21 @@ describe('parallel managed Codex stages', function () {
     })
     expect(completions[0].at).not.toBe(completions[1].at)
 
+    const windows = completed.map(({ stage, record }) => ({
+      key: stage.key,
+      assignedAt: stage.assignedAt,
+      resultAt: record.completion.at,
+    }))
+    const overlap = stageWindowOverlap(windows[0], windows[1])
+    expect(overlap).not.toBeNull()
+    expect(overlap.durationMs).toBeGreaterThan(0)
+
+    // A managed implement step is filed under the production run-tree phase
+    // `Managed stage`; the separate exec transport uses `Implement`. Seeing
+    // both labels here is the W2 assertion, not a claim that an Implement phase
+    // disappeared.
+    const runTree = await readLeadRunTree(completed, overlap)
+
     Object.assign(measured, {
       team: TEAM_NAME,
       assignments: assigned.map(({ key, owner, taskId, assignedAt, worktree }) => ({
@@ -655,6 +756,9 @@ describe('parallel managed Codex stages', function () {
         worktree,
       })),
       completions,
+      windows,
+      overlap,
+      runTree,
       worktreeTrees: {
         alpha: alphaTree.evidence,
         beta: betaTree.evidence,
