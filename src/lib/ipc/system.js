@@ -547,6 +547,7 @@ function normalizeResolvedBase(raw) {
   if (!command) return null
   const expansions = Array.isArray(base.expansions) ? base.expansions : []
   const opaqueHead = base.opaqueHead ?? base.opaque_head ?? null
+  const selectorValue = base.selectorValue ?? base.selector_value ?? null
   const normalized = {
     ...base,
     command,
@@ -558,8 +559,10 @@ function normalizeResolvedBase(raw) {
       }))
       .filter((expansion) => expansion.name),
     opaqueHead: opaqueHead == null ? null : String(opaqueHead),
+    selectorValue: selectorValue == null ? null : String(selectorValue),
   }
   delete normalized.opaque_head
+  delete normalized.selector_value
   return normalized
 }
 
@@ -573,8 +576,9 @@ function normalizeAccountsResult(raw) {
     source: String(result.source ?? 'native'),
     degraded: Boolean(result.degraded),
     error: result.error == null ? null : String(result.error),
-    // A backend that reports none — an older one, or a caller that did not ask
-    // — leaves the frontend with the literal commands in settings.
+    // A backend that reports none — an older one, or a caller that did not
+    // ask — contributes nothing to the effective-default line; Settings shows
+    // "resolving…" while a resolution is in flight.
     resolvedBases: (Array.isArray(resolvedBases) ? resolvedBases : [])
       .map(normalizeResolvedBase)
       .filter(Boolean),

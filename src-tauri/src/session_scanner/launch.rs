@@ -2,6 +2,7 @@ use crate::coordination::domain::MemberRole;
 use crate::daemon::protocol::LaunchMode;
 use crate::models::{CliCommandSettings, ModelCatalog};
 use crate::session_scanner::cli_tool::{spec, CliCapabilities, CliTool, EffortFlag};
+use crate::session_scanner::shell_words::{leading_assignments, words};
 
 /// Model + effort as the role/member declared them. Parsed from the legacy single string
 /// ("gpt-5.4 high", "gpt-5.4-high", "gpt-5.4", "claude-opus-4-6", "") until PR 5a splits the schema.
@@ -214,75 +215,81 @@ impl LaunchSpec<'_> {
             }
         }
 
+        // Capability-gated additions precede model and effort exactly as they
+        // do in the command line. Only Codex declares `hook_trust`,
+        // `notify_sink`, or a deprecated flag today, so no tool identity is
+        // consulted; the selection logic below is shared by all four tools.
+        if capabilities.hook_trust
+            && self.codex_bypass_hook_trust
+            && !command_contains_flag(&command, "--dangerously-bypass-hook-trust")
+        {
+            command.push_str(" --dangerously-bypass-hook-trust");
+        }
+        if let Some(executable) = self
+            .codex_notify_executable
+            .filter(|_| capabilities.notify_sink)
+        {
+            if command_contains_codex_config(self.base, "notify") {
+                notes.push(LaunchNote::NotifyIgnored {
+                    found: "notify".to_string(),
+                });
+            } else {
+                let notify =
+                    serde_json::to_string(&[executable.to_string_lossy().as_ref(), "codex-notify"])
+                        .expect("string-only Codex notify command serializes");
+                append_flag(&mut command, "-c", &format!("notify={notify}"));
+            }
+        }
+        for flag in capabilities.deprecated_flags {
+            if command_contains_flag(self.base, flag) {
+                notes.push(LaunchNote::DeprecatedFlag {
+                    flag: (*flag).to_string(),
+                });
+            }
+        }
+
+        let model_selection = resolve_model_selection(self.base, requested_model, capabilities);
+        if let Some(model) = requested_model {
+            match (capabilities.model_flag, model_selection.found_flag) {
+                (_, Some(found)) => notes.push(LaunchNote::ModelIgnored {
+                    found: found.to_string(),
+                }),
+                (Some(model_flag), None) => {
+                    if let Some(entry) =
+                        ModelCatalog::entry_for(self.tool, model).filter(|entry| entry.deprecated)
+                    {
+                        notes.push(LaunchNote::ModelDeprecated {
+                            found: model.to_string(),
+                            replacement: entry.replacement.clone(),
+                        });
+                    }
+                    append_flag(&mut command, model_flag, model);
+                }
+                (None, None) => notes.push(LaunchNote::CapabilityMissing {
+                    capability: LaunchCapability::Model,
+                    found: model.to_string(),
+                }),
+            }
+        }
+
+        if let Some(effort) = requested_effort {
+            if !ModelCatalog::supports_effort(
+                self.tool,
+                model_selection.effective_model.as_deref(),
+                effort,
+            ) {
+                notes.push(LaunchNote::EffortIgnored {
+                    found: effort.to_string(),
+                    reason: EffortIgnoreReason::Invalid,
+                });
+                requested_effort = None;
+            }
+        }
+
         match self.tool {
             CliTool::Codex => {
-                if capabilities.hook_trust
-                    && self.codex_bypass_hook_trust
-                    && !command_contains_flag(&command, "--dangerously-bypass-hook-trust")
-                {
-                    command.push_str(" --dangerously-bypass-hook-trust");
-                }
-                if let Some(executable) = self
-                    .codex_notify_executable
-                    .filter(|_| capabilities.notify_sink)
-                {
-                    if command_contains_codex_config(self.base, "notify") {
-                        notes.push(LaunchNote::NotifyIgnored {
-                            found: "notify".to_string(),
-                        });
-                    } else {
-                        let notify = serde_json::to_string(&[
-                            executable.to_string_lossy().as_ref(),
-                            "codex-notify",
-                        ])
-                        .expect("string-only Codex notify command serializes");
-                        append_flag(&mut command, "-c", &format!("notify={notify}"));
-                    }
-                }
-                if command_contains_flag(self.base, "--full-auto") {
-                    notes.push(LaunchNote::DeprecatedFlag {
-                        flag: "--full-auto".to_string(),
-                    });
-                }
-
-                let base_model = capabilities.model_flag.and_then(|model_flag| {
-                    first_present_flag_value(self.base, &[model_flag, "--model"])
-                });
-                if let Some(model) = requested_model {
-                    if let Some(model_flag) = capabilities.model_flag {
-                        if let Some(found) = first_present_flag(self.base, &[model_flag, "--model"])
-                        {
-                            notes.push(LaunchNote::ModelIgnored {
-                                found: found.to_string(),
-                            });
-                        } else {
-                            if let Some(entry) = ModelCatalog::entry_for(self.tool, model)
-                                .filter(|entry| entry.deprecated)
-                            {
-                                notes.push(LaunchNote::ModelDeprecated {
-                                    found: model.to_string(),
-                                    replacement: entry.replacement.clone(),
-                                });
-                            }
-                            append_flag(&mut command, model_flag, model);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Model,
-                            found: model.to_string(),
-                        });
-                    }
-                }
-
                 if let Some(effort) = requested_effort {
-                    let effective_model = base_model.as_deref().or(requested_model);
-                    if !ModelCatalog::supports_effort(self.tool, effective_model, effort) {
-                        notes.push(LaunchNote::EffortIgnored {
-                            found: effort.to_string(),
-                            reason: EffortIgnoreReason::Invalid,
-                        });
-                    } else if let Some(EffortFlag::Config { flag, key }) = capabilities.effort_flag
-                    {
+                    if let Some(EffortFlag::Config { flag, key }) = capabilities.effort_flag {
                         if command_contains_flag(self.base, key) {
                             notes.push(LaunchNote::EffortIgnored {
                                 found: key.to_string(),
@@ -300,54 +307,13 @@ impl LaunchSpec<'_> {
                 }
             }
             CliTool::Claude => {
-                if let Some(model) = requested_model {
-                    if let Some(model_flag) = capabilities.model_flag {
-                        if command_contains_flag(self.base, model_flag) {
-                            notes.push(LaunchNote::ModelIgnored {
-                                found: model_flag.to_string(),
-                            });
-                        } else {
-                            if let Some(entry) = ModelCatalog::entry_for(self.tool, model)
-                                .filter(|entry| entry.deprecated)
-                            {
-                                notes.push(LaunchNote::ModelDeprecated {
-                                    found: model.to_string(),
-                                    replacement: entry.replacement.clone(),
-                                });
-                            }
-                            append_flag(&mut command, model_flag, model);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Model,
-                            found: model.to_string(),
-                        });
-                    }
-                }
-
-                if let Some(effort) = requested_effort {
-                    if !ModelCatalog::supports_effort(self.tool, requested_model, effort) {
-                        notes.push(LaunchNote::EffortIgnored {
-                            found: effort.to_string(),
-                            reason: EffortIgnoreReason::Invalid,
-                        });
-                    } else if let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag {
-                        if command_contains_flag(self.base, flag) {
-                            notes.push(LaunchNote::EffortIgnored {
-                                found: flag.to_string(),
-                                reason: EffortIgnoreReason::BaseOverride,
-                            });
-                        } else {
-                            append_flag(&mut command, flag, effort);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Effort,
-                            found: effort.to_string(),
-                        });
-                    }
-                }
-
+                render_argument_effort(
+                    &mut command,
+                    &mut notes,
+                    self.base,
+                    requested_effort,
+                    capabilities,
+                );
                 if let Some(team) = self.team.as_ref().filter(|_| capabilities.team_flags) {
                     if !self.base.contains("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=") {
                         command = format!(
@@ -392,98 +358,22 @@ impl LaunchSpec<'_> {
                 }
             }
             CliTool::Agy => {
-                if let Some(model) = requested_model {
-                    if let Some(model_flag) = capabilities.model_flag {
-                        if let Some(found) = first_present_flag(self.base, &[model_flag, "--model"])
-                        {
-                            notes.push(LaunchNote::ModelIgnored {
-                                found: found.to_string(),
-                            });
-                        } else {
-                            append_flag(&mut command, model_flag, model);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Model,
-                            found: model.to_string(),
-                        });
-                    }
-                }
-
-                if let Some(effort) = requested_effort {
-                    if !ModelCatalog::supports_effort(self.tool, requested_model, effort) {
-                        notes.push(LaunchNote::EffortIgnored {
-                            found: effort.to_string(),
-                            reason: EffortIgnoreReason::Invalid,
-                        });
-                    } else if let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag {
-                        if command_contains_flag(self.base, flag) {
-                            notes.push(LaunchNote::EffortIgnored {
-                                found: flag.to_string(),
-                                reason: EffortIgnoreReason::BaseOverride,
-                            });
-                        } else {
-                            append_flag(&mut command, flag, effort);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Effort,
-                            found: effort.to_string(),
-                        });
-                    }
-                }
+                render_argument_effort(
+                    &mut command,
+                    &mut notes,
+                    self.base,
+                    requested_effort,
+                    capabilities,
+                );
             }
             CliTool::Grok => {
-                if let Some(model) = requested_model {
-                    if let Some(model_flag) = capabilities.model_flag {
-                        if let Some(found) =
-                            first_present_flag(self.base, &[model_flag, "--model", "-m"])
-                        {
-                            notes.push(LaunchNote::ModelIgnored {
-                                found: found.to_string(),
-                            });
-                        } else {
-                            append_flag(&mut command, model_flag, model);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Model,
-                            found: model.to_string(),
-                        });
-                    }
-                }
-
-                if let Some(effort) = requested_effort {
-                    let effective_model = capabilities
-                        .model_flag
-                        .and_then(|model_flag| {
-                            first_present_flag_value(self.base, &[model_flag, "--model", "-m"])
-                        })
-                        .or_else(|| requested_model.map(str::to_string));
-                    if !ModelCatalog::supports_effort(self.tool, effective_model.as_deref(), effort)
-                    {
-                        notes.push(LaunchNote::EffortIgnored {
-                            found: effort.to_string(),
-                            reason: EffortIgnoreReason::Invalid,
-                        });
-                    } else if let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag {
-                        if let Some(found) =
-                            first_present_flag(self.base, &[flag, "--reasoning-effort"])
-                        {
-                            notes.push(LaunchNote::EffortIgnored {
-                                found: found.to_string(),
-                                reason: EffortIgnoreReason::BaseOverride,
-                            });
-                        } else {
-                            append_flag(&mut command, flag, effort);
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::Effort,
-                            found: effort.to_string(),
-                        });
-                    }
-                }
+                render_argument_effort(
+                    &mut command,
+                    &mut notes,
+                    self.base,
+                    requested_effort,
+                    capabilities,
+                );
             }
             CliTool::Unknown => {}
         }
@@ -541,34 +431,16 @@ impl LaunchSpec<'_> {
 /// assignment rather than as a command name. Expanding an alias can leave two
 /// of them — a configured prefix plus the alias's own — and the shell obeys
 /// the last, so replacing only the first would still lose the launch.
-fn replace_env_assignment(
+pub(crate) fn replace_env_assignment(
     command: &str,
     selector: &str,
     assignment: &str,
 ) -> Option<(String, String)> {
-    let prefix = format!("{selector}=");
-    let mut spans = Vec::new();
-    let mut cursor = 0;
-    while cursor < command.len() {
-        let Some(character) = command[cursor..].chars().next() else {
-            break;
-        };
-        if character.is_whitespace() {
-            cursor += character.len_utf8();
-            continue;
-        }
-        let end = shell_word_end(command, cursor);
-        // A shell reads assignments only in front of the command name. Past it
-        // every word is an argument the program receives verbatim, however much
-        // it looks like an assignment, so the scan stops there.
-        if !is_assignment_word(&command[cursor..end]) {
-            break;
-        }
-        if command[cursor..end].starts_with(&prefix) {
-            spans.push((cursor, end));
-        }
-        cursor = end;
-    }
+    let spans = leading_assignments(command)
+        .into_iter()
+        .filter(|word| word.assignment_name() == Some(selector))
+        .map(|word| (word.start, word.end))
+        .collect::<Vec<_>>();
 
     let (in_force_start, in_force_end) = *spans.last()?;
     let in_force = command[in_force_start..in_force_end].to_string();
@@ -586,22 +458,6 @@ fn replace_env_assignment(
     }
     rewritten.push_str(&command[copied..]);
     Some((rewritten, in_force))
-}
-
-/// Whether a raw shell word is a `NAME=value` assignment rather than a command
-/// name or an argument.
-///
-/// Only an unquoted name counts: `'NAME=value'` is a word the shell looks up as
-/// a command, not an assignment it puts in the environment.
-fn is_assignment_word(word: &str) -> bool {
-    let Some((name, _)) = word.split_once('=') else {
-        return false;
-    };
-    !name.is_empty()
-        && name.starts_with(|character: char| character.is_ascii_alphabetic() || character == '_')
-        && name
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 /// Return the configured base command without normalizing or rewriting it.
@@ -647,69 +503,25 @@ pub fn shell_escape(value: &str) -> String {
 /// The executable command remains untouched; this is only for structured logs.
 pub fn redact_command_for_logging(command: &str) -> String {
     let mut redacted = String::with_capacity(command.len());
-    let mut cursor = 0;
+    let mut copied = 0;
 
-    while cursor < command.len() {
-        let character = command[cursor..]
-            .chars()
-            .next()
-            .expect("cursor remains on a character boundary");
-        if character.is_whitespace() {
-            redacted.push(character);
-            cursor += character.len_utf8();
-            continue;
-        }
-
-        let word_end = shell_word_end(command, cursor);
-        let word = &command[cursor..word_end];
-        if let Some((name, _)) = word.split_once('=') {
+    for word in words(command) {
+        redacted.push_str(&command[copied..word.start]);
+        if let Some((name, _)) = word.text.split_once('=') {
             if is_secret_assignment_name(name) {
                 redacted.push_str(name);
                 redacted.push_str("=[REDACTED]");
-                cursor = word_end;
+                copied = word.end;
                 continue;
             }
         }
 
-        redacted.push_str(word);
-        cursor = word_end;
+        redacted.push_str(&command[word.start..word.end]);
+        copied = word.end;
     }
 
+    redacted.push_str(&command[copied..]);
     redacted
-}
-
-fn shell_word_end(command: &str, start: usize) -> usize {
-    let mut quote = None;
-    let mut escaped = false;
-
-    for (offset, character) in command[start..].char_indices() {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-
-        match quote {
-            Some('\'') => {
-                if character == '\'' {
-                    quote = None;
-                }
-            }
-            Some('"') => match character {
-                '"' => quote = None,
-                '\\' => escaped = true,
-                _ => {}
-            },
-            Some(_) => unreachable!("only shell quote characters are stored"),
-            None => match character {
-                '\'' | '"' => quote = Some(character),
-                '\\' => escaped = true,
-                _ if character.is_whitespace() => return start + offset,
-                _ => {}
-            },
-        }
-    }
-
-    command.len()
 }
 
 fn is_secret_assignment_name(name: &str) -> bool {
@@ -753,6 +565,70 @@ fn first_present_flag_value(command: &str, flags: &[&str]) -> Option<String> {
         }
     }
     None
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ModelSelection {
+    found_flag: Option<&'static str>,
+    effective_model: Option<String>,
+}
+
+/// Resolve the model once for every renderer arm.
+///
+/// The registry owns every accepted flag spelling. A model already present in
+/// the base wins over the requested model because that is what the CLI will
+/// run; effort validation must inspect the same effective model.
+fn resolve_model_selection(
+    base: &str,
+    requested_model: Option<&str>,
+    capabilities: CliCapabilities,
+) -> ModelSelection {
+    let flags = capabilities
+        .model_flag
+        .into_iter()
+        .chain(capabilities.model_flag_aliases.iter().copied())
+        .collect::<Vec<_>>();
+    let found_flag = flags
+        .iter()
+        .copied()
+        .find(|flag| command_contains_flag(base, flag));
+    let base_model = first_present_flag_value(base, &flags);
+    let effective_model = base_model.or_else(|| requested_model.map(str::to_string));
+    ModelSelection {
+        found_flag,
+        effective_model,
+    }
+}
+
+fn render_argument_effort(
+    command: &mut String,
+    notes: &mut Vec<LaunchNote>,
+    base: &str,
+    requested_effort: Option<&str>,
+    capabilities: CliCapabilities,
+) {
+    let aliases = capabilities.effort_flag_aliases;
+    let Some(effort) = requested_effort else {
+        return;
+    };
+    let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag else {
+        notes.push(LaunchNote::CapabilityMissing {
+            capability: LaunchCapability::Effort,
+            found: effort.to_string(),
+        });
+        return;
+    };
+    let flags = std::iter::once(flag)
+        .chain(aliases.iter().copied())
+        .collect::<Vec<_>>();
+    if let Some(found) = first_present_flag(base, &flags) {
+        notes.push(LaunchNote::EffortIgnored {
+            found: found.to_string(),
+            reason: EffortIgnoreReason::BaseOverride,
+        });
+    } else {
+        append_flag(command, flag, effort);
+    }
 }
 
 fn append_flag(command: &mut String, flag: &str, value: &str) {
@@ -1126,6 +1002,39 @@ mod tests {
                     reason: EffortIgnoreReason::Invalid,
                 },
             ]
+        );
+    }
+
+    // Pins the shared resolver: the base-pinned model is the effective one.
+    // Claude's effort vocabulary is tool-wide today, so the render half is a
+    // preservation check; `codex_effort_is_validated_against_base_model` is
+    // the test whose vocabulary makes the wiring observable.
+    #[test]
+    fn claude_effort_is_resolved_against_base_model() {
+        let base = "claude --model opus";
+        let resolved =
+            resolve_model_selection(base, Some("fable"), spec(CliTool::Claude).capabilities);
+        assert_eq!(resolved.effective_model.as_deref(), Some("opus"));
+
+        let rendered = LaunchSpec {
+            tool: CliTool::Claude,
+            mode: LaunchMode::Fresh,
+            base,
+            model: model_spec("fable", Some("high")),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.command, "claude --model opus --effort 'high'");
+        assert_eq!(
+            rendered.notes,
+            vec![LaunchNote::ModelIgnored {
+                found: "--model".to_string(),
+            }]
         );
     }
 
@@ -1512,6 +1421,65 @@ mod tests {
                 found: "--model".to_string()
             }]
         );
+    }
+
+    // Pins the shared resolver for Antigravity: the base-pinned model is the
+    // effective one. Agy's effort vocabulary is tool-wide today, so the render
+    // half is a preservation check (see the Codex sibling for the
+    // vocabulary-observable case).
+    #[test]
+    fn agy_effort_is_resolved_against_base_model() {
+        let base = "agy --model gemini-3.7-flash-low";
+        let resolved = resolve_model_selection(
+            base,
+            Some("gemini-3.7-flash-high"),
+            spec(CliTool::Agy).capabilities,
+        );
+        assert_eq!(
+            resolved.effective_model.as_deref(),
+            Some("gemini-3.7-flash-low")
+        );
+
+        let rendered = LaunchSpec {
+            tool: CliTool::Agy,
+            mode: LaunchMode::Fresh,
+            base,
+            model: model_spec("gemini-3.7-flash-high", Some("low")),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(
+            rendered.command,
+            "agy --model gemini-3.7-flash-low --effort 'low'"
+        );
+        assert_eq!(
+            rendered.notes,
+            vec![LaunchNote::ModelIgnored {
+                found: "--model".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn model_flag_aliases_are_declared_by_the_registry() {
+        assert!(spec(CliTool::Claude)
+            .capabilities
+            .model_flag_aliases
+            .is_empty());
+        assert_eq!(
+            spec(CliTool::Codex).capabilities.model_flag_aliases,
+            &["--model"]
+        );
+        assert!(spec(CliTool::Agy)
+            .capabilities
+            .model_flag_aliases
+            .is_empty());
+        assert_eq!(spec(CliTool::Grok).capabilities.model_flag_aliases, &["-m"]);
     }
 
     #[test]

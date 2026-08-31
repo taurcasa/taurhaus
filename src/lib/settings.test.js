@@ -323,6 +323,7 @@ describe('Settings component', () => {
         {
           command:
             "CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude --dangerously-skip-permissions",
+          selectorValue: '/home/mstie/.claude-account2',
           expansions: [
             { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
           ],
@@ -340,15 +341,40 @@ describe('Settings component', () => {
     )
   })
 
-  // Regression: 1c779eb compared the selector value verbatim against absolute
-  // account dirs, and the operator's own alias is `~/.claude-account2`, so a
-  // base nothing expanded — an older backend, or the literal fallback — matched
-  // no account and the line claimed the default config directory.
-  it('matches a tilde selector nothing expanded', async () => {
+  // Regression: commit 89e73bd left Settings tokenizing resolved command text
+  // even though the backend is the authority on leading shell assignments.
+  it('renders the launch account from resolved_bases metadata alone', async () => {
+    listAccounts.mockImplementation(
+      withResolvedBases([
+        {
+          // Deliberately carries no selector text: selectorValue is the only
+          // account fact Settings receives from the resolved base.
+          command: 'claude --dangerously-skip-permissions',
+          selectorValue: '/home/mstie/.claude-account2',
+          expansions: [
+            { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
+          ],
+          opaqueHead: null,
+        },
+      ])
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    const line = await settledEffectiveDefault()
+    expect(line).toHaveTextContent(
+      'Effective default: B — from your launch command "claude2" (alias for CLAUDE_CONFIG_DIR=~/.claude-account2 claude)'
+    )
+  })
+
+  // Regression: 1c779eb compared a reported tilde value verbatim against
+  // absolute account dirs, so an unresolved fallback matched no account.
+  it('matches a tilde selector value the backend reports', async () => {
     listAccounts.mockImplementation(
       withResolvedBases([
         {
           command: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude --dangerously-skip-permissions',
+          selectorValue: '~/.claude-account2',
           expansions: [
             { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
           ],
@@ -364,14 +390,15 @@ describe('Settings component', () => {
     expect(line).toHaveTextContent('alias for CLAUDE_CONFIG_DIR=~/.claude-account2 claude')
   })
 
-  // The shell reads the last assignment of a name, and an expanded alias can
-  // leave a configured prefix in front of its own.
-  it('reads the last selector the launch command assigns', async () => {
+  // The backend reports the assignment the shared parser found in force; the
+  // frontend consumes that fact without re-tokenizing the command.
+  it('uses the selector value the backend reports in force', async () => {
     listAccounts.mockImplementation(
       withResolvedBases([
         {
           command:
             "CLAUDE_CONFIG_DIR='/home/mstie/.claude' CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude",
+          selectorValue: '/home/mstie/.claude-account2',
           expansions: [
             { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
           ],
@@ -486,6 +513,7 @@ describe('Settings component', () => {
         {
           command:
             "CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude --dangerously-skip-permissions",
+          selectorValue: '/home/mstie/.claude-account2',
           expansions: [
             { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
           ],

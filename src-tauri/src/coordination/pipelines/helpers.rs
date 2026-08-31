@@ -545,7 +545,7 @@ pub(super) fn resume_base_for_session(base: &str, session_id: &str) -> String {
 /// spelling is refused rather than rewritten: this renderer cannot promise to
 /// edit arbitrary shell safely, and the level must not reach a managed pane by
 /// a route it did not check.
-fn without_frozen_effort_env<'a>(
+pub(super) fn without_frozen_effort_env<'a>(
     base: &'a str,
     cli_tool: CliTool,
     team_name: &str,
@@ -558,21 +558,18 @@ fn without_frozen_effort_env<'a>(
         return Ok(Cow::Borrowed(base));
     }
 
-    let assignment = format!("{variable}=");
     let mut kept = String::with_capacity(base.len());
     let mut cursor = 0;
-    let mut in_env_prefix = true;
-    for (start, end) in word_spans(base) {
-        let word = base[start..end].trim_start_matches(['\'', '"']);
-        if in_env_prefix && word.starts_with(assignment.as_str()) {
-            kept.push_str(&base[cursor..start]);
-            cursor = base[end..]
+    for word in taurhaus_lib::session_scanner::shell_words::words(base) {
+        if word.assignment_name() == Some(variable) {
+            kept.push_str(&base[cursor..word.start]);
+            cursor = base[word.end..]
                 .find(|character: char| !character.is_whitespace())
-                .map_or(end, |offset| end + offset);
+                .map_or(word.end, |offset| word.end + offset);
             continue;
         }
-        if word != "env" && !is_env_assignment(word) {
-            in_env_prefix = false;
+        if word.text != "env" && !word.is_assignment() {
+            break;
         }
     }
     kept.push_str(&base[cursor..]);
@@ -599,41 +596,6 @@ fn without_frozen_effort_env<'a>(
         fields,
     );
     Ok(Cow::Owned(kept))
-}
-
-/// Byte spans of the whitespace-separated words in `command`.
-fn word_spans(command: &str) -> Vec<(usize, usize)> {
-    let mut spans = Vec::new();
-    let mut start = None;
-    for (index, character) in command.char_indices() {
-        match (character.is_whitespace(), start) {
-            (false, None) => start = Some(index),
-            (true, Some(begin)) => {
-                spans.push((begin, index));
-                start = None;
-            }
-            _ => {}
-        }
-    }
-    if let Some(begin) = start {
-        spans.push((begin, command.len()));
-    }
-    spans
-}
-
-/// Whether `word` is a shell `NAME=value` environment assignment.
-fn is_env_assignment(word: &str) -> bool {
-    let Some((name, _)) = word.split_once('=') else {
-        return false;
-    };
-    !name.is_empty()
-        && name
-            .chars()
-            .next()
-            .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
-        && name
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 // Runtime-only Codex inputs on `CliCommandSettings` keep command rendering

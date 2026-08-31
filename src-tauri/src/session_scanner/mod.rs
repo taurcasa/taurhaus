@@ -29,6 +29,7 @@ pub mod launch;
 pub mod launch_base;
 pub mod proc_io;
 pub mod process;
+pub mod shell_words;
 pub mod tmux;
 pub mod transcript_boundary;
 
