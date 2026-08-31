@@ -19,6 +19,14 @@ function compile(name) {
   return new AsyncFunction(API_GLOBALS, parseBody(fs.readFileSync(path.join(WORKFLOWS, name), 'utf8')))
 }
 
+function compileSharedStage() {
+  const source = fs.readFileSync(path.join(WORKFLOWS, 'feature-pr.js'), 'utf8')
+  const start = source.indexOf('// ── lib:')
+  const end = source.indexOf('// ── end lib ──')
+  const shared = source.slice(start, end)
+  return new AsyncFunction(API_GLOBALS, "const NAME = 'stage-test'\n" + shared + '\nreturn await stage(args.task, args.options)')
+}
+
 const OK_WORK = {
   status: 'ok',
   summary: 'did the thing',
@@ -89,6 +97,31 @@ async function run(name, workflowArgs, plan = {}) {
   return { result, calls, logs, state }
 }
 
+async function runSharedStage(task, options = {}, result = OK_WORK, workflowArgs = {}) {
+  const calls = []
+  const agent = async (prompt, opts = {}) => {
+    calls.push({ prompt, opts })
+    return result
+  }
+  const unsupported = async () => {
+    throw new Error('the shared stage test does not use this Workflow API primitive')
+  }
+  const body = compileSharedStage()
+  const args = {
+    worktree: '/home/dev/checkout',
+    team: 'feature-team',
+    task,
+    options,
+    ...workflowArgs,
+  }
+  const output = await body(agent, unsupported, unsupported, () => {}, () => {}, unsupported, args, {
+    total: null,
+    spent: () => 0,
+    remaining: () => Infinity,
+  })
+  return { result: output, calls }
+}
+
 const BASE_ARGS = { worktree: '/home/dev/checkout', branch: 'feat/x', spec: '/tmp/spec.md' }
 const MUTATING = ['feature-pr.js', 'small-change.js', 'fix-round.js', 'docs-sweep.js']
 const AUTHORITY_QUESTION =
@@ -118,6 +151,80 @@ describe('workflow procedures — the shared lib', () => {
 
   it('rejects an effort outside the harness vocabulary', async () => {
     await expect(run('feature-pr.js', { ...BASE_ARGS, effort: 'turbo' })).rejects.toThrow(/effort/)
+  })
+
+  it('stages a managed member through the mesh task contract and returns its JSON result', async () => {
+    const schema = {
+      type: 'object',
+      additionalProperties: false,
+      required: ['status', 'value'],
+      properties: {
+        status: { type: 'string', enum: ['ok'] },
+        value: { type: 'number' },
+      },
+    }
+    const task = {
+      harness: 'codex',
+      model: 'gpt-5.6-sol',
+      effort: 'high',
+      why: 'the implementation needs repository-wide reasoning',
+      deadline: 60,
+      worktree: '/home/dev/checkout',
+      firstStep: 'Read /home/dev/checkout/CLAUDE.md.',
+      deliverable: 'A committed implementation and its green validation.',
+      schema,
+      title: 'Implement the managed stage',
+    }
+    const completed = { status: 'ok', value: 7 }
+
+    const staged = await runSharedStage(task, {}, completed)
+
+    expect(staged.result).toEqual(completed)
+    expect(staged.calls).toHaveLength(1)
+    const [{ prompt, opts }] = staged.calls
+    expect(opts.label).toBe('stage:codex:implement-the-managed-stage')
+    expect(opts.schema.anyOf).toContainEqual(schema)
+    expect(prompt).toContain('mesh task create')
+    expect(prompt).toContain("--effort 'high'")
+    expect(prompt).toContain("--why 'the implementation needs repository-wide reasoning'")
+    expect(prompt).toContain("--deadline '60'")
+    expect(prompt).toContain("--first-step 'Read /home/dev/checkout/CLAUDE.md.'")
+    expect(prompt).toContain("--deliverable 'A committed implementation and its green validation.'")
+    expect(prompt).toContain('mesh task assign')
+    expect(prompt).toContain('RESULT <created-task-id>')
+    expect(prompt).toContain('BLOCKED <created-task-id> <reason>')
+    expect(prompt).toContain('mesh task get <created-task-id> --json')
+    expect(prompt).toContain('completion.result')
+    expect(prompt).toContain('completion.at')
+    expect(prompt).toContain('metadata.assigned_at')
+    expect(prompt).toContain('older than the current metadata.assigned_at')
+    expect(prompt).toContain("return exactly `{status: 'timeout'}`")
+    expect(prompt).toContain("return `{status: 'blocked', reason: completion.reason}`")
+  })
+
+  it('resumes the existing task on its assigned member and ignores an old completion', async () => {
+    const task = {
+      harness: 'codex',
+      model: 'gpt-5.6-sol',
+      effort: 'medium',
+      why: 'continue the bounded implementation',
+      deadline: 20,
+      worktree: '/home/dev/checkout',
+      firstStep: 'Inspect the current diff.',
+      deliverable: 'Finish the same implementation.',
+      schema: { type: 'object', additionalProperties: false, required: ['status'], properties: { status: { type: 'string' } } },
+      title: 'Resume implementation',
+    }
+
+    const staged = await runSharedStage(task, { resume: '42' }, { status: 'timeout' })
+
+    expect(staged.result).toEqual({ status: 'timeout' })
+    const prompt = staged.calls[0].prompt
+    expect(prompt).toContain("mesh task get '42' --json")
+    expect(prompt).toContain('reuse its existing owner')
+    expect(prompt).toContain('same managed session')
+    expect(prompt).not.toContain('mesh task create --subject')
+    expect(prompt).toContain('Reassign task 42')
   })
 
   it('accepts array gates and hands every exact command to the gate agent', async () => {

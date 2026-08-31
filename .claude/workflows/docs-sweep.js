@@ -406,6 +406,152 @@ const RULES = {
     "HONESTY: set status='ok' only for work you actually did and saw succeed. If your lane could not run, return status='unavailable' with the error — never an invented result, an approval you did not reach, or a gate you did not watch pass. The caller fails the run closed on an unavailable lane, and that is the correct outcome.",
 }
 
+const STAGE_BLOCKED_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['status', 'reason'],
+  properties: {
+    status: { type: 'string', enum: ['blocked'] },
+    reason: { type: 'string' },
+  },
+}
+
+const STAGE_TIMEOUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['status'],
+  properties: {
+    status: { type: 'string', enum: ['timeout'] },
+  },
+}
+
+const STAGE_UNAVAILABLE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['status', 'error'],
+  properties: {
+    status: { type: 'string', enum: ['unavailable'] },
+    error: { type: 'string' },
+  },
+}
+
+function stageOutputSchema(schema) {
+  return { anyOf: [schema, STAGE_BLOCKED_SCHEMA, STAGE_TIMEOUT_SCHEMA, STAGE_UNAVAILABLE_SCHEMA] }
+}
+
+// A managed stage is still one Workflow agent call, but that agent is only the courier: it creates
+// and assigns a durable mesh task, then waits on mesh's canonical task record. The requested harness
+// does the repository work in its already-running taurhaus session. Keeping the shell interaction in
+// the courier is intentional — Workflow scripts have no process API, and teaching every procedure a
+// second transport would duplicate the babysitter this path replaces.
+async function stage(task, options) {
+  const value = task && typeof task === 'object' && !Array.isArray(task) ? task : null
+  if (!value) throw new Error(NAME + ': stage(task) requires a task object')
+  const team = String(A.team || '').trim()
+  if (!team) throw new Error(NAME + ': stage(task) requires args.team')
+  const harness = String(value.harness || '').trim().toLowerCase()
+  if (['codex', 'agy', 'grok'].indexOf(harness) === -1) {
+    throw new Error(NAME + ': stage task harness must be codex, agy, or grok — got ' + JSON.stringify(value.harness))
+  }
+  const effort = String(value.effort || '').trim().toLowerCase()
+  if (['low', 'medium', 'high', 'xhigh'].indexOf(effort) === -1) {
+    throw new Error(NAME + ': stage task effort must be low, medium, high, or xhigh — got ' + JSON.stringify(value.effort))
+  }
+  const deadline = Number(value.deadline)
+  if (!Number.isInteger(deadline) || deadline <= 0) {
+    throw new Error(NAME + ': stage task deadline must be a positive whole number of minutes — got ' + JSON.stringify(value.deadline))
+  }
+  const worktree = posixPath(value.worktree, 'stage task worktree')
+  const requiredStrings = ['why', 'firstStep', 'deliverable', 'title']
+  for (const field of requiredStrings) {
+    if (!String(value[field] || '').trim()) throw new Error(NAME + ': stage task ' + field + ' must be a non-empty string')
+  }
+  if (!value.schema || typeof value.schema !== 'object' || Array.isArray(value.schema)) {
+    throw new Error(NAME + ': stage task schema must be a JSON Schema object')
+  }
+  const model = String(value.model || '').trim()
+  const resume = options && options.resume != null ? String(options.resume).trim() : ''
+  if (resume && !/^[A-Za-z0-9_-]+$/.test(resume)) {
+    throw new Error(NAME + ': stage resume task id must contain only letters, numbers, `_`, or `-` — got ' + JSON.stringify(options.resume))
+  }
+  const slug = String(value.title)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'task'
+  const schemaText = JSON.stringify(value.schema)
+  const taskRef = resume ? sh(resume) : '<created-task-id>'
+  const createStep = resume
+    ? '1) Resume task ' +
+      resume +
+      ': run `mesh task get ' +
+      sh(resume) +
+      ' --json --team ' +
+      sh(team) +
+      '`. Read its owner and reuse its existing owner and same managed session. Do not create a replacement task.'
+    : '1) Create the durable task and parse its `id`: `mesh task create --subject ' +
+      sh(String(value.title).trim()) +
+      ' --description ' +
+      sh(String(value.why).trim()) +
+      ' --effort ' +
+      sh(effort) +
+      ' --why ' +
+      sh(String(value.why).trim()) +
+      ' --deadline ' +
+      sh(String(deadline)) +
+      ' --first-step ' +
+      sh(String(value.firstStep).trim()) +
+      ' --deliverable ' +
+      sh(String(value.deliverable).trim()) +
+      ' --json --team ' +
+      sh(team) +
+      '`. Call that id `<created-task-id>` below.'
+  const assignment = resume
+    ? 'Reassign task ' + resume + ' to the owner read in step 1'
+    : 'Assign `<created-task-id>` to the selected member'
+
+  return await agent(
+    [
+      'You are a thin courier for a taurhaus-managed ' + harness + ' stage. The managed member does the task; you do not edit the checkout, implement it, review it, or invoke ' + harness + ' yourself.',
+      'Work only with team ' + JSON.stringify(team) + ' and checkout ' + JSON.stringify(worktree) + '. Do not start, stop, restart, or kill a member or daemon. Do not create an unmanaged CLI session.',
+      'Use the current mesh actor identity (`MESH_NAME`) and always pass `--team ' + sh(team) + '`. If mesh cannot identify the current actor, return `{status: \'unavailable\', error: <reason>}`.',
+      '',
+      'MEMBER PRECONDITION:',
+      '- Run `mesh who --json --team ' + sh(team) + '` and inspect only this team\'s config plus its runtime records. Resolve the team root from `TAURHAUS_CLAUDE_DIR`, then `CLAUDE_DIR`, then `CLAUDE_CONFIG_DIR`; use the normal Claude root only if none is set.',
+      '- A fresh stage selects one online non-lead member whose config `cli_tool` is exactly ' + JSON.stringify(harness) + ', whose `cwd`/project path is exactly ' + JSON.stringify(worktree) + ', and whose runtime record has a non-empty `session_id`. ' +
+        (model ? 'Its configured model must be ' + JSON.stringify(model) + '. ' : '') +
+        'A member without a recorded session cannot have assignment effort applied and is not eligible. If there is not exactly one eligible member, return unavailable with the candidates and the violated precondition; never prompt or launch one to manufacture a session.',
+      '- A resumed stage uses the task\'s existing owner, and verifies that same member is online, still uses harness ' + JSON.stringify(harness) + ', still belongs to this worktree, and still has its runtime `session_id`. This is what reuses the member\'s session.',
+      '',
+      createStep,
+      '2) Build the completion signal after the id is known. It must tell the member: on success, send the lead one message whose first line is `RESULT <created-task-id>` and whose only remaining content is a fenced `json` block matching this schema; on a real blocker, send `BLOCKED <created-task-id> <reason>`. Inline JSON is not a mesh completion block. Schema: ' + schemaText,
+      '3) ' +
+        assignment +
+        ' with `mesh task assign ' +
+        taskRef +
+        ' --owner <selected-member> --effort ' +
+        sh(effort) +
+        ' --why ' +
+        sh(String(value.why).trim()) +
+        ' --deadline ' +
+        sh(String(deadline)) +
+        ' --first-step ' +
+        sh(String(value.firstStep).trim()) +
+        ' --deliverable ' +
+        sh(String(value.deliverable).trim()) +
+        ' --completion-signal <the-signal-from-step-2> --team ' +
+        sh(team) +
+        '`.' +
+        (resume ? ' Because this is an intentional reassignment to the same owner, pass `--admin-reason ' + sh('stage resume requested for task ' + resume) + '`.' : ''),
+      '4) Poll with `mesh task get ' + taskRef + ' --json --team ' + sh(team) + '` about every five seconds. This task record is the only completion and timeout authority; do not read the inbox separately and do not invent a wall-clock timeout.',
+      '5) On every poll, compare `completion.at` with the current `metadata.assigned_at` as parsed timestamps. Ignore the entire completion when either timestamp is missing/invalid or when `completion.at` is older than the current metadata.assigned_at; this prevents a previous attempt\'s RESULT or BLOCKED from completing a reassigned stage.',
+      "6) If the task status is `stale`, return exactly `{status: 'timeout'}`. Otherwise, if the current completion.kind is `blocked`, return `{status: 'blocked', reason: completion.reason}`. If it is `result`, extract and parse the fenced JSON object in `completion.result`, verify it against the schema above, and return exactly that object as your structured output. Do not retry, create another task, or abandon the member's session.",
+      '7) If create/assign/get fails, the member precondition is not met, or a current completion is malformed or violates the schema, return `{status: \'unavailable\', error: <specific reason>}`. ' + RULES.honest,
+    ].join('\n'),
+    call({ label: 'stage:' + harness + ':' + slug, phase: 'Managed stage', schema: stageOutputSchema(value.schema) })
+  )
+}
+
 // The Codex lane: a thin Opus wrapper drives `codex exec` detached and polls for the EXIT marker,
 // because one Bash call is capped at 10 minutes and Codex runs take longer. The command lives in a
 // runner script so nothing is nested inside quotes, and every path is one single-quoted word.
