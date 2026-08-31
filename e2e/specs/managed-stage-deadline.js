@@ -2,7 +2,9 @@
  * A managed Codex stage reaches its one-shot deadline actions end to end
  * (Tier 2, Linux, paid). W4 experiment 4.
  *
- * This is a measured lane, not a fast simulation. A real managed member runs
+ * This is a measured lane, not a fast simulation.
+ * The primary stall runs first, straight after onboarding;
+ * a fresh member with one assignment runs
  * `mesh task start` and then ends its turn without completing the task. The
  * production 30-second self-heal pass must nudge it once, mark the mesh task
  * stale once, and leave the member session alive for a later resumed stage.
@@ -14,21 +16,24 @@
  * after each pass (`startup/orchestration.rs`), making the observed period 30 s
  * plus the preceding pass duration. The one-minute task's nudge window is only
  * 30 s and can therefore be skipped. The lane records that cadence outcome and
- * retries the stall once instead of reporting a production deadline defect.
- * It still requires three recorded `startup.self_heal.completed` events after
- * `assigned_at`; elapsed sleeps are never proof that those passes ran.
+ * reports that paid run as inconclusive instead of a production deadline
+ * defect; failed paid attempts are re-run manually. It still requires three
+ * recorded `startup.self_heal.completed` events after `assigned_at`; elapsed
+ * sleeps are never proof that those passes ran.
  *
- * Before that stall, a negative path gives the same member a three-minute task.
- * The active command must cover `needed_active = D/2 + 30 s`: 90 + 30 = 120
- * seconds, including a whole pass cadence after half time. That leaves
- * `slack = D/2 - 30 s`: 90 - 30 = 60 seconds for the single Codex turn that
- * launches the chained command — the `mesh task complete` at its end IS the
- * completion; there is no separate completion turn. MarkStale is not
- * suppressed by activity, so that allowance is part of the lane contract. The
- * heartbeat emits 4095 bytes plus a newline every 500 ms so Codex's measured
- * read rate clears the production 1 kB/s gate. It keeps one real member command
- * running; it is not a test-process sleep and proves nothing without joined
- * activity/pass records.
+ * After that stall, a negative path gives the same member a three-minute task.
+ * The lane first observes the stall case's final turn and waits a fixed settle,
+ * then explicitly assigns the new task despite the prior stale task and checks
+ * its delivery record independently. The active command must cover
+ * `needed_active = D/2 + 30 s`: 90 + 30 = 120 seconds, including a whole pass
+ * cadence after half time. That leaves `slack = D/2 - 30 s`: 90 - 30 = 60
+ * seconds for the single Codex turn that launches the chained command — the
+ * `mesh task complete` at its end IS the completion; there is no separate
+ * completion turn. MarkStale is not suppressed by activity, so that allowance
+ * is part of the lane contract. The heartbeat emits 4095 bytes plus a newline
+ * every 500 ms so Codex's measured read rate clears the production 1 kB/s gate.
+ * It keeps one real member command running; it is not a test-process sleep and
+ * proves nothing without joined activity/pass records.
  *
  * The operational stale marker is intentionally transient. `operational_context.rs`
  * owns its lifetime: once the stale mesh status round-trips through the task
@@ -76,6 +81,7 @@ import { createLaneCleanup } from '../helpers/laneCleanup.js'
 import {
   activeDeadlineHeartbeatPlan,
   activeDeadlinePassEvidence,
+  assignmentStartTimeoutProblem,
   assignTask,
   attentionRecord,
   createTask,
@@ -118,6 +124,8 @@ const ONBOARDING_TURN_TIMEOUT_MS = 120_000
 const ASSIGNMENT_START_TIMEOUT_MS = 240_000
 const DEADLINE_ACTION_TIMEOUT_MS = 180_000
 const PASS_EVIDENCE_TIMEOUT_MS = 210_000
+const FOLLOWUP_ASSIGNMENT_SETTLE_MS = 3_000
+const SETTLE_QUIESCENCE_CAP_MS = 30_000
 
 const dataDir = process.env.TAURHAUS_DATA_DIR || ''
 const codexHome = process.env.CODEX_HOME || ''
@@ -499,6 +507,28 @@ async function waitForTurnAfter(previousTurns, timeoutMs) {
   }
 }
 
+async function settlePreviousCaseBeforeAssignment() {
+  // Observed attempt 1: a notice delivered into a mid-turn pane can be
+  // swallowed member-side even though mesh records it as delivered. Wait for
+  // turn QUIESCENCE — the completed-turn count unchanged for a full settle
+  // window — instead of demanding a further turn the product never promises:
+  // a failed or inconclusive previous case must not also destroy this
+  // measurement, and a focused single-case re-run settles the same way.
+  const cap = Date.now() + SETTLE_QUIESCENCE_CAP_MS
+  let stable = completedTurns()
+  let stableSince = Date.now()
+  while (Date.now() < cap) {
+    await browser.pause(500)
+    const now = completedTurns()
+    if (now !== stable) {
+      stable = now
+      stableSince = Date.now()
+    } else if (Date.now() - stableSince >= FOLLOWUP_ASSIGNMENT_SETTLE_MS) {
+      return
+    }
+  }
+}
+
 async function ensureMemberHasTakenATurn(paneId) {
   if (completedTurns() > 0) return 'already'
   tmuxQuietly(['send-keys', '-t', paneId, 'Enter'])
@@ -626,19 +656,45 @@ async function waitForAttentionDelivery(taskId) {
   return record
 }
 
-async function waitForTaskStatus(taskId, status, timeout = ASSIGNMENT_START_TIMEOUT_MS) {
+async function waitForTaskStatus(
+  taskId,
+  status,
+  timeout = ASSIGNMENT_START_TIMEOUT_MS,
+  assignmentTurnCount = null
+) {
   let record = null
-  await browser.waitUntil(
-    async () => {
-      try {
-        record = taskRecord({ ...meshArgs(), taskId })
-        return record?.status === status
-      } catch {
-        return false
-      }
-    },
-    { timeout, interval: 2_000, timeoutMsg: `task #${taskId} never reached ${status}` }
-  )
+  try {
+    await browser.waitUntil(
+      async () => {
+        try {
+          record = taskRecord({ ...meshArgs(), taskId })
+          return record?.status === status
+        } catch {
+          return false
+        }
+      },
+      { timeout, interval: 2_000, timeoutMsg: `task #${taskId} never reached ${status}` }
+    )
+  } catch (error) {
+    if (status !== 'in_progress' || !Number.isFinite(assignmentTurnCount)) throw error
+
+    let attention = null
+    try {
+      attention = refreshAttentionRecord(taskId)
+    } catch {
+      // The diagnostic still names the absent attention record.
+    }
+    throw new Error(
+      assignmentStartTimeoutProblem({
+        taskId,
+        attention,
+        turnCountAtAssignment: assignmentTurnCount,
+        turnCountNow: completedTurns(),
+        runtime: readRuntimeRecord(),
+      }),
+      { cause: error }
+    )
+  }
   return record
 }
 
@@ -782,13 +838,16 @@ describe('managed stage deadline semantics', function () {
     laneCleanup.run()
   })
 
-  it('suppresses the half-time nudge while the member is actively working, then completes normally', async function () {
+  async function runActivitySuppressionCase() {
     if (!laneEnabled) return this.skip()
     this.timeout(480_000)
-    this.retries(1)
 
+    await settlePreviousCaseBeforeAssignment()
     const logOffset = currentLogOffset()
     const turnCount = completedTurns()
+    // The prior case intentionally leaves a stale task. This creates and
+    // explicitly assigns a new task; its attention assertion below is scoped
+    // independently to the new task id.
     const assigned = assignDeadlineTask({
       subject: 'Exercise active deadline suppression',
       description:
@@ -811,7 +870,12 @@ describe('managed stage deadline semantics', function () {
     })
 
     const attention = await waitForAttentionDelivery(assigned.taskId)
-    const inProgressRecord = await waitForTaskStatus(assigned.taskId, 'in_progress')
+    const inProgressRecord = await waitForTaskStatus(
+      assigned.taskId,
+      'in_progress',
+      ASSIGNMENT_START_TIMEOUT_MS,
+      turnCount
+    )
     const imported = await waitForOperationalTask(assigned.taskId, 'in_progress')
     expect(imported.task.deadline_minutes).toBe(ACTIVE_DEADLINE_MINUTES)
     expect(Number.isFinite(Date.parse(imported.task.assigned_at))).toBe(true)
@@ -862,8 +926,10 @@ describe('managed stage deadline semantics', function () {
 
     expect(suppressionEvidence.activityConfidence).toMatch(/^(active|likely_working)$/)
     expect(nudgeMessages(assigned.taskId)).toEqual([])
-    expect(readOperationalSnapshot()?.task?.nudged_at ?? null).toBeNull()
-    expect(readOperationalSnapshot()?.task?.stale_at ?? null).toBeNull()
+    const suppressionSnapshot = readOperationalSnapshot()
+    expect(suppressionSnapshot?.task?.id).toBe(assigned.taskId)
+    expect(suppressionSnapshot?.task?.nudged_at ?? null).toBeNull()
+    expect(suppressionSnapshot?.task?.stale_at ?? null).toBeNull()
 
     const completedRecord = await waitForTaskStatus(assigned.taskId, 'completed', 180_000)
     expect(await waitForTurnAfter(turnCount, ONBOARDING_TURN_TIMEOUT_MS)).toBe(true)
@@ -911,9 +977,9 @@ describe('managed stage deadline semantics', function () {
       deadlineActionCount: 0,
       sessionEvidence,
     }
-  })
+  }
 
-  it('nudges once, stales once, returns timeout, and preserves the managed session', async function () {
+  async function runDeadlineStallCase() {
     if (!laneEnabled) return this.skip()
     this.timeout(600_000)
 
@@ -932,7 +998,12 @@ describe('managed stage deadline semantics', function () {
     })
 
     const attention = await waitForAttentionDelivery(assigned.taskId)
-    const inProgressRecord = await waitForTaskStatus(assigned.taskId, 'in_progress')
+    const inProgressRecord = await waitForTaskStatus(
+      assigned.taskId,
+      'in_progress',
+      ASSIGNMENT_START_TIMEOUT_MS,
+      turnCount
+    )
     const imported = await waitForOperationalTask(assigned.taskId, 'in_progress')
 
     // This is the honest-stall proof: assignment defaulted to pending, only the
@@ -971,14 +1042,9 @@ describe('managed stage deadline semantics', function () {
         ...(measured.deadlineCadenceSkips ?? []),
         cadenceObservation,
       ]
-      if (this.test.currentRetry() === 0) {
-        this.retries(1)
-        throw new Error(
-          `task #${assigned.taskId} reached stale in a skipped nudge window; retrying the measured stall once`
-        )
-      }
       throw new Error(
-        `the one-minute nudge window was skipped on both measured stall attempts; lane is inconclusive`
+        `task #${assigned.taskId} reached stale in a skipped nudge window; ` +
+          'the lane is inconclusive and must be re-run manually'
       )
     }
     const nudgeEvent = nudgeOutcome.event
@@ -1101,7 +1167,12 @@ describe('managed stage deadline semantics', function () {
         },
       },
     })
-  })
+  }
+
+  // Programmatic per-case retries did not arm under this lane's WDIO
+  // mochaOpts in measured attempt 1. Failed paid attempts are re-run manually.
+  it('nudges once, stales once, returns timeout, and preserves the managed session', runDeadlineStallCase)
+  it('suppresses the half-time nudge while the member is actively working, then completes normally', runActivitySuppressionCase)
 
   it('records why the managed deadline lane was unavailable', async function () {
     if (laneEnabled) return this.skip()
