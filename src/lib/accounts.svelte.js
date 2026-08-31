@@ -185,7 +185,8 @@ const usageSyncTimers = new Map()
  *
  * A command the operator has just edited was never resolved, and the answer to
  * the one it replaced describes a command no launch will run. Until a refresh
- * lands, the literal commands in settings are the honest answer.
+ * lands, the tool reports no launch-command attribution and Settings shows
+ * "resolving…".
  */
 export function forgetResolvedBases(tool = providerTool()) {
   const id = toolId(tool)

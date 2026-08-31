@@ -576,8 +576,9 @@ function normalizeAccountsResult(raw) {
     source: String(result.source ?? 'native'),
     degraded: Boolean(result.degraded),
     error: result.error == null ? null : String(result.error),
-    // A backend that reports none — an older one, or a caller that did not ask
-    // — leaves the frontend with the literal commands in settings.
+    // A backend that reports none — an older one, or a caller that did not
+    // ask — contributes nothing to the effective-default line; Settings shows
+    // "resolving…" while a resolution is in flight.
     resolvedBases: (Array.isArray(resolvedBases) ? resolvedBases : [])
       .map(normalizeResolvedBase)
       .filter(Boolean),

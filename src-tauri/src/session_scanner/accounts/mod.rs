@@ -345,14 +345,9 @@ pub fn command_contains_env(command: &str, selector: &str) -> bool {
 /// becomes `CLAUDE_CONFIG_DIR=… CLAUDE_CONFIG_DIR=… claude`. The one in force
 /// is the one this reports. Only the leading run counts — a shell puts a word
 /// in the environment only in front of the command name.
-fn command_env_assignment(command: &str, selector: &str) -> Option<Option<PathBuf>> {
-    let assignment = assignment_in_force(command, selector)?;
-    let (_, value) = assignment
-        .text
-        .split_once('=')
-        .expect("assignment_in_force returns an assignment");
-    let value = value.trim();
-    Some((!value.is_empty()).then(|| expand_home(value)))
+pub(crate) fn command_env_assignment(command: &str, selector: &str) -> Option<Option<PathBuf>> {
+    let value = env_assignment_value(command, selector)?;
+    Some((!value.is_empty()).then(|| expand_home(&value)))
 }
 
 /// A leading `~` in a base command is the launching shell's home directory,
@@ -364,6 +359,16 @@ fn command_env_assignment(command: &str, selector: &str) -> Option<Option<PathBu
 /// `resolve_launch_base` — and there the home is this process's. On Windows
 /// that names no detected account, the resolution falls through as it always
 /// did, and the account it lands on has its own directory rendered.
+/// The decoded value of the selector assignment in force, unexpanded.
+pub(crate) fn env_assignment_value(command: &str, selector: &str) -> Option<String> {
+    let assignment = assignment_in_force(command, selector)?;
+    let (_, value) = assignment
+        .text
+        .split_once('=')
+        .expect("assignment_in_force returns an assignment");
+    Some(value.trim().to_string())
+}
+
 fn expand_home(value: &str) -> PathBuf {
     let Some(rest) = value.strip_prefix('~') else {
         return PathBuf::from(value);

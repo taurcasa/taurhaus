@@ -5820,3 +5820,18 @@ fn a_pin_the_rewrite_cannot_read_leaves_the_member_running() {
     let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
     assert_eq!(record.health, HealthState::Healthy);
 }
+
+// Regression: word_spans split on whitespace alone, so a quoted assignment
+// ahead of the frozen variable ('A="b c"') broke the env prefix early and the
+// frozen effort level survived into the managed launch.
+#[test]
+fn a_quoted_assignment_before_the_frozen_effort_env_is_still_stripped() {
+    let cleaned = without_frozen_effort_env(
+        "A='b c' CLAUDE_CODE_EFFORT_LEVEL=high claude",
+        CliTool::Claude,
+        "quoted-env-team",
+        "builder",
+    )
+    .expect("the frozen variable is removable");
+    assert_eq!(cleaned.as_ref(), "A='b c' claude");
+}

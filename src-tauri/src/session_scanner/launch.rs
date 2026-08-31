@@ -314,7 +314,6 @@ impl LaunchSpec<'_> {
                     self.base,
                     requested_effort,
                     capabilities,
-                    &[],
                 );
                 if let Some(team) = self.team.as_ref().filter(|_| capabilities.team_flags) {
                     if !self.base.contains("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=") {
@@ -366,7 +365,6 @@ impl LaunchSpec<'_> {
                     self.base,
                     requested_effort,
                     capabilities,
-                    &[],
                 );
             }
             CliTool::Grok => {
@@ -376,7 +374,6 @@ impl LaunchSpec<'_> {
                     self.base,
                     requested_effort,
                     capabilities,
-                    &["--reasoning-effort"],
                 );
             }
             CliTool::Unknown => {}
@@ -435,7 +432,7 @@ impl LaunchSpec<'_> {
 /// assignment rather than as a command name. Expanding an alias can leave two
 /// of them — a configured prefix plus the alias's own — and the shell obeys
 /// the last, so replacing only the first would still lose the launch.
-fn replace_env_assignment(
+pub(crate) fn replace_env_assignment(
     command: &str,
     selector: &str,
     assignment: &str,
@@ -610,8 +607,8 @@ fn render_argument_effort(
     base: &str,
     requested_effort: Option<&str>,
     capabilities: CliCapabilities,
-    aliases: &[&str],
 ) {
+    let aliases = capabilities.effort_flag_aliases;
     let Some(effort) = requested_effort else {
         return;
     };
@@ -1009,9 +1006,10 @@ mod tests {
         );
     }
 
-    // Regression: commit ee810e3 validated Claude effort against the requested
-    // model even when the free-form base had already selected the model that
-    // actually runs.
+    // Pins the shared resolver: the base-pinned model is the effective one.
+    // Claude's effort vocabulary is tool-wide today, so the render half is a
+    // preservation check; `codex_effort_is_validated_against_base_model` is
+    // the test whose vocabulary makes the wiring observable.
     #[test]
     fn claude_effort_is_resolved_against_base_model() {
         let base = "claude --model opus";
@@ -1426,8 +1424,10 @@ mod tests {
         );
     }
 
-    // Regression: commit efcd7d2 validated Antigravity effort against the
-    // requested model rather than the base command's effective model.
+    // Pins the shared resolver for Antigravity: the base-pinned model is the
+    // effective one. Agy's effort vocabulary is tool-wide today, so the render
+    // half is a preservation check (see the Codex sibling for the
+    // vocabulary-observable case).
     #[test]
     fn agy_effort_is_resolved_against_base_model() {
         let base = "agy --model gemini-3.7-flash-low";

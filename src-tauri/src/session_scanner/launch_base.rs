@@ -446,7 +446,7 @@ fn runs_the_tool(tool: CliTool, head: &str) -> bool {
 }
 
 /// The first word that is not a leading `NAME=value` assignment.
-fn head_word(command: &str) -> Option<String> {
+pub(crate) fn head_word(command: &str) -> Option<String> {
     head(command).map(|word| word.text)
 }
 

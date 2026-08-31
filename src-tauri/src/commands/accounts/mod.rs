@@ -27,7 +27,6 @@ use crate::errors::{sanitize_error, AppError, CommandResultExt, IpcResult, Sanit
 use crate::session_scanner::accounts::{self, Account};
 use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::session_scanner::launch_base::{self, ResolvedBase};
-use crate::session_scanner::shell_words::assignment_in_force;
 use crate::ProviderState;
 
 /// Detection ran in this process.
@@ -76,14 +75,6 @@ pub struct ResolvedLaunchBase {
     pub base: ResolvedBase,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selector_value: Option<String>,
-}
-
-impl std::ops::Deref for ResolvedLaunchBase {
-    type Target = ResolvedBase;
-
-    fn deref(&self) -> &Self::Target {
-        &self.base
-    }
 }
 
 /// The transcript that owns a project's history, and whether the lookup ran.
@@ -175,12 +166,8 @@ fn resolved_launch_base(base: ResolvedBase, tool: CliTool) -> ResolvedLaunchBase
     let selector_value = spec(tool)
         .capabilities
         .account_selector
-        .and_then(|selector| assignment_in_force(&base.command, selector))
-        .and_then(|assignment| {
-            assignment
-                .text
-                .split_once('=')
-                .map(|(_, value)| value.to_string())
+        .and_then(|selector| {
+            crate::session_scanner::accounts::env_assignment_value(&base.command, selector)
         });
     ResolvedLaunchBase {
         base,

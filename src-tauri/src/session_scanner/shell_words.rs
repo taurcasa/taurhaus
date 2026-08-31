@@ -5,11 +5,11 @@
 
 /// One shell word, decoded for comparison while retaining its source span.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Word {
-    pub(crate) text: String,
-    pub(crate) quoted: bool,
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+pub struct Word {
+    pub text: String,
+    pub quoted: bool,
+    pub start: usize,
+    pub end: usize,
     name_quoted: bool,
 }
 
@@ -21,7 +21,7 @@ impl Word {
     /// assignments. Quotes and escapes after the unquoted `=` belong to the
     /// value and do not change the classification (`NAME='two words'`). This
     /// is the quoted-span rule shared by every launch-base consumer.
-    pub(crate) fn assignment_name(&self) -> Option<&str> {
+    pub fn assignment_name(&self) -> Option<&str> {
         if self.name_quoted {
             return None;
         }
@@ -35,13 +35,13 @@ impl Word {
         .then_some(name)
     }
 
-    pub(crate) fn is_assignment(&self) -> bool {
+    pub fn is_assignment(&self) -> bool {
         self.assignment_name().is_some()
     }
 }
 
 /// Split a command into shell words without expanding or executing anything.
-pub(crate) fn words(command: &str) -> Vec<Word> {
+pub fn words(command: &str) -> Vec<Word> {
     let mut words = Vec::new();
     let mut text = String::new();
     let mut start = 0usize;
@@ -136,7 +136,7 @@ pub(crate) fn words(command: &str) -> Vec<Word> {
 }
 
 /// The leading words a shell places in the command environment.
-pub(crate) fn leading_assignments(command: &str) -> Vec<Word> {
+pub fn leading_assignments(command: &str) -> Vec<Word> {
     words(command)
         .into_iter()
         .take_while(Word::is_assignment)
@@ -144,14 +144,14 @@ pub(crate) fn leading_assignments(command: &str) -> Vec<Word> {
 }
 
 /// The last leading assignment for `name`, which is the value the shell uses.
-pub(crate) fn assignment_in_force(command: &str, name: &str) -> Option<Word> {
+pub fn assignment_in_force(command: &str, name: &str) -> Option<Word> {
     leading_assignments(command)
         .into_iter()
         .rfind(|word| word.assignment_name() == Some(name))
 }
 
 /// The first word that is not a leading assignment.
-pub(crate) fn head(command: &str) -> Option<Word> {
+pub fn head(command: &str) -> Option<Word> {
     words(command)
         .into_iter()
         .find(|word| !word.is_assignment())
@@ -256,43 +256,69 @@ mod tests {
         ];
 
         for case in cases {
-            let parsed = words(case.command);
-            let from_words = parsed
-                .iter()
-                .take_while(|word| word.is_assignment())
-                .map(|word| word.text.as_str())
-                .collect::<Vec<_>>();
-
-            // launch.rs consumes the complete leading run.
-            let for_renderer = leading_assignments(case.command);
-            let renderer_assignments = for_renderer
+            // The module's own classification against the table.
+            let leading = leading_assignments(case.command);
+            let renderer_assignments = leading
                 .iter()
                 .map(|word| word.text.as_str())
                 .collect::<Vec<_>>();
             assert_eq!(renderer_assignments, case.assignments, "{case:?}");
-            assert_eq!(from_words, renderer_assignments, "{case:?}");
+            let for_accounts = assignment_in_force(case.command, "SELECTOR");
+            assert_eq!(
+                for_accounts.as_ref().map(|word| word.text.as_str()),
+                case.selector,
+                "{case:?}"
+            );
+            assert_eq!(
+                head(case.command)
+                    .as_ref()
+                    .map(|word| (word.text.as_str(), word.quoted)),
+                case.head,
+                "{case:?}"
+            );
 
-            // accounts/mod.rs consumes the last selector assignment in force.
-            let account_assignment = assignment_in_force(case.command, "SELECTOR");
-            let for_accounts = account_assignment.as_ref().map(|word| word.text.as_str());
-            let renderer_selector = for_renderer
-                .iter()
-                .rfind(|word| word.assignment_name() == Some("SELECTOR"))
-                .map(|word| word.text.as_str());
-            assert_eq!(for_accounts, case.selector, "{case:?}");
-            assert_eq!(renderer_selector, for_accounts, "{case:?}");
+            // launch_base.rs's real consumer: the head it resolves.
+            assert_eq!(
+                crate::session_scanner::launch_base::head_word(case.command).as_deref(),
+                case.head.map(|(text, _)| text),
+                "{case:?}"
+            );
 
-            // launch_base.rs consumes the first non-assignment word as head.
-            let from_words = parsed
-                .iter()
-                .find(|word| !word.is_assignment())
-                .map(|word| (word.text.as_str(), word.quoted));
-            let launch_base_head = head(case.command);
-            let for_launch_base = launch_base_head
-                .as_ref()
-                .map(|word| (word.text.as_str(), word.quoted));
-            assert_eq!(for_launch_base, case.head, "{case:?}");
-            assert_eq!(from_words, for_launch_base, "{case:?}");
+            // accounts/mod.rs's real consumer: the selector in force.
+            let account_value =
+                crate::session_scanner::accounts::command_env_assignment(case.command, "SELECTOR");
+            assert_eq!(account_value.is_some(), case.selector.is_some(), "{case:?}");
+            if let (Some(Some(path)), Some(selector)) = (&account_value, case.selector) {
+                let (_, raw_value) = selector.split_once('=').expect("selector assignment");
+                if !raw_value.trim().starts_with('~') {
+                    assert_eq!(
+                        path,
+                        &std::path::PathBuf::from(raw_value.trim()),
+                        "{case:?}"
+                    );
+                }
+            }
+
+            // launch.rs's real consumer: rewriting the selector in force
+            // leaves exactly one, and it is the new one.
+            if case.selector.is_some() {
+                let (rewritten, _) = crate::session_scanner::launch::replace_env_assignment(
+                    case.command,
+                    "SELECTOR",
+                    "SELECTOR='/rewritten'",
+                )
+                .expect("a selector in force can be rewritten");
+                let remaining = leading_assignments(&rewritten)
+                    .into_iter()
+                    .filter(|word| word.assignment_name() == Some("SELECTOR"))
+                    .count();
+                assert_eq!(remaining, 1, "{rewritten}");
+                assert_eq!(
+                    assignment_in_force(&rewritten, "SELECTOR").map(|word| word.text),
+                    Some("SELECTOR=/rewritten".to_string()),
+                    "{rewritten}"
+                );
+            }
         }
     }
 
