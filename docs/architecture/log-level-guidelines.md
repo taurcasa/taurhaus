@@ -55,7 +55,7 @@ Good examples from current code:
 
 - `tracing::info!("taurhaus starting")` in [`startup/mod.rs`](../../src-tauri/src/startup/mod.rs#L25)
 - `tracing::info!("Background bootstrap: daemon connected")` in [`startup/daemon.rs`](../../src-tauri/src/startup/daemon.rs#L146)
-- `tracing::info!(watched, unwatched, reason, ...)` in [`startup/watchers.rs`](../../src-tauri/src/startup/watchers.rs#L310-315)
+- `tracing::info!(watched, unwatched, reason, ...)` in [`startup/watchers.rs`](../../src-tauri/src/startup/watchers.rs#L310-L315)
 
 Do not use INFO for:
 
