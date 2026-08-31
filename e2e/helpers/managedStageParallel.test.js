@@ -3,7 +3,11 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { codexStateDatabaseDiagnostic, launchManagedMembersSerially } from './managedStageParallel.js'
+import {
+  codexStateDatabaseDiagnostic,
+  launchManagedMembersSerially,
+  waitWithPaneTail,
+} from './managedStageParallel.js'
 
 describe('launchManagedMembersSerially', () => {
   // Regression: 94fdab40 initialized both managed Codex members together, so
@@ -45,5 +49,25 @@ describe('codexStateDatabaseDiagnostic', () => {
     } finally {
       rmSync(home, { recursive: true, force: true })
     }
+  })
+})
+
+describe('waitWithPaneTail', () => {
+  // Regression: 94fdab40 let a session-bind timeout hide the managed member's
+  // pane, so the Codex startup failure that caused the timeout was absent.
+  it('adds the failing member pane tail to a bind-wait error', async () => {
+    const waiting = waitWithPaneTail({
+      memberName: 'codex-beta',
+      paneId: '%9',
+      tailLines: 2,
+      wait: async () => {
+        throw new Error('bind deadline expired')
+      },
+      capturePane: async () => 'old output\nmigration failed\nlocal database appears to be damaged\n',
+    })
+
+    await expect(waiting).rejects.toThrow(
+      'bind deadline expired\ncodex-beta pane %9 capture tail:\nmigration failed\nlocal database appears to be damaged'
+    )
   })
 })

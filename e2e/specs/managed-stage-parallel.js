@@ -38,7 +38,11 @@ import { ensureMainApp, waitForAppReady } from '../helpers.js'
 import { trustProject } from '../helpers/codexScratchHome.js'
 import { createLaneCleanup } from '../helpers/laneCleanup.js'
 import { assertTmuxIsolation, isolatedTmuxTmpdir, parseProcEnviron, tmuxIsolationProblem } from '../helpers/laneTmux.js'
-import { codexStateDatabaseDiagnostic, launchManagedMembersSerially } from '../helpers/managedStageParallel.js'
+import {
+  codexStateDatabaseDiagnostic,
+  launchManagedMembersSerially,
+  waitWithPaneTail,
+} from '../helpers/managedStageParallel.js'
 import {
   attentionRecord,
   assignTaskAsync,
@@ -408,17 +412,23 @@ async function waitForMemberBinding(stage) {
   await browser.pause(600)
   tmuxQuietly(['send-keys', '-t', runtime.pane_id, 'Enter'])
 
-  await browser.waitUntil(
-    async () => {
-      await invokeTauri('coordination_get_live_team_status', { teamName: TEAM_NAME })
-      return Boolean(readRuntimeRecord(stage.owner)?.session_id)
-    },
-    {
-      timeout: SESSION_BIND_TIMEOUT_MS,
-      interval: 3_000,
-      timeoutMsg: `${stage.owner} did not bind its scratch-home session`,
-    }
-  )
+  await waitWithPaneTail({
+    memberName: stage.owner,
+    paneId: runtime.pane_id,
+    capturePane,
+    wait: async () =>
+      await browser.waitUntil(
+        async () => {
+          await invokeTauri('coordination_get_live_team_status', { teamName: TEAM_NAME })
+          return Boolean(readRuntimeRecord(stage.owner)?.session_id)
+        },
+        {
+          timeout: SESSION_BIND_TIMEOUT_MS,
+          interval: 3_000,
+          timeoutMsg: `${stage.owner} did not bind its scratch-home session`,
+        }
+      ),
+  })
 }
 
 async function initializeParallelTeam() {
