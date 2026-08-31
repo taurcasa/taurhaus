@@ -148,7 +148,7 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 
 ### Storage
 
-- **SQLite** (`rusqlite`): 7 domain tables — `projects`, `sessions`, `session_activity`, `relationships`, `tasks`, `settings`, `archived_task_session_summaries` (migration 011) — plus the internal `_migrations` bookkeeping table created by `db/migrations.rs`. `projects.claude_account_id` (migration 012) pins a Claude subscription per project; `NULL` means the global default account. Source of truth for structured data.
+- **SQLite** (`rusqlite`): 8 domain tables — `projects`, `sessions`, `session_activity`, `relationships`, `tasks`, `settings`, `archived_task_session_summaries` (migration 011), `project_tool_accounts` (migration 013) — plus the internal `_migrations` bookkeeping table created by `db/migrations.rs`. `project_tool_accounts` holds one `pinned` or `last_used` account per (project, tool) and carries the old `projects.claude_account_id` pins (migration 012) forward; that column survives in the table but is read only as `_legacy_claude_account_id`. `tasks.effort`/`tasks.effort_why` (migration 014) carry the level a lead attached to an assignment. Source of truth for structured data.
 - **tantivy**: Full-text search index over files, commits, sessions. Rebuilt from filesystem on startup.
 - **Filesystem**: Source of truth for content. SQLite stores metadata; files are always read fresh.
 - **Path overrides**: `TAURHAUS_DATA_DIR` overrides Tauri `app_data_dir()` resolution; `TAURHAUS_CLAUDE_DIR` overrides Claude-derived roots used by task/coordination watchers.
@@ -157,7 +157,7 @@ See [data model reference](docs/architecture/data-model.md) for schema details.
 
 ### IPC Commands
 
-Fine-grained, one command per operation. The default build currently registers 90 commands in the authoritative [`generate_handler!` list](src-tauri/src/lib.rs#L171). Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the command catalog.
+Fine-grained, one command per operation. The default build registers 95 commands in the authoritative [`generate_handler!` list](src-tauri/src/lib.rs#L176) — 80 without the default `mesh-bridged-backend` feature, which gates the 15 coordination commands. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the command catalog.
 
 Grouped by command module:
 - **Projects** (12): includes `create_project`, registration flows, path/directory helpers, and first-run checks
@@ -165,15 +165,16 @@ Grouped by command module:
 - **Files** (5): file tree/read/readme/asset/path-type
 - **Search** (3): search, rebuild, index status
 - **Sessions** (3): list/latest/detail
+- **Workflow runs** (3): `list_workflow_runs`, `get_workflow_run`, `workflow_ledger_row`
 - **Relationships** (4): list/create/dismiss/remove
 - **Command Center** (9): launch/stop/navigate/list/list snapshot/resolve launch account/record activity/get project activity/get foreground project
-- **Accounts and usage** (3): `list_accounts`, `refresh_accounts_usage`, `set_project_account`
+- **Accounts and usage** (4): `list_accounts`, `resolve_launch_bases`, `refresh_accounts_usage`, `set_project_account`
 - **Tasks** (6): board data + detail + archive + commit context helpers
 - **Daemon** (5): platform/status/start/install checks
 - **Mesh install** (2): check/install mesh binary
 - **Settings** (2): get/update
 - **Coordination** (15): team lifecycle + member lifecycle + live status + snapshot + preflight/availability
-- **Templates** (16): role/preset CRUD, import/export, composition, storage status, history/diff/revert/flush
+- **Templates** (17): role/preset CRUD, import/export, composition, storage status, history/diff/revert/flush, agent-definition export
 - **Logging** (1): frontend `console.*` is bridged to `frontend_log` IPC with structured payloads. Backend emits structured events into a JSONL sink at `taurhaus.log.jsonl`.
 
 ### Logging and Observability
@@ -186,16 +187,18 @@ Logging is structured and machine-first:
 - **Rotation policy**: size-based rotation (20 MB segment threshold) with retention pruning (7 days).
 - **Frontend bridge**: `src/lib/logger.js` forwards structured payloads (`component`, `subsystem`, `event`, `message`, `context`) and emits drop telemetry (`frontend.logs.dropped`) under throttling.
 - **Lifecycle instrumentation**:
-  - startup phases (all from `src-tauri/src/startup/telemetry.rs`, one event family per phase — there is no generic `startup.phase.*`): `startup.app.started`, `startup.paths.resolved`, `startup.logging.initialized`, `startup.database.started/completed/failed`, `startup.daemon_phase.started/completed`, `startup.daemon_connect.succeeded/deferred`, `startup.orchestration.started/completed`, `startup.watchers.initialized/failed`, `startup.search.initialized/failed`, `startup.background_tasks.started/completed`, `startup.self_heal.started/completed/failed`
+  - startup phases (one event family per phase — there is no generic `startup.phase.*`; a test in `startup/telemetry.rs` asserts those legacy names are never emitted): `startup.app.started`, `startup.paths.resolved`, `startup.logging.initialized`, `startup.database.started/completed/failed`, `startup.daemon_phase.started/completed`, `startup.daemon_connect.succeeded/deferred`, `startup.orchestration.started/completed`, `startup.watchers.initialized`, `startup.search.initialized`, `startup.background_tasks.started/completed`, `startup.self_heal.started/completed/failed` from `startup/telemetry.rs`; `startup.watchers.failed`/`startup.search.failed` from `startup/orchestration.rs` and `startup/harness.rs`; `startup.watchers.bootstrap.started/completed` from `startup/watchers.rs`; `startup.bootstrap_thread.spawned`, `startup.daemon_bootstrap.*`, `startup.mesh_install.*` and `startup.daemon_protocol.checked` from `startup/daemon.rs`
   - IPC lifecycle: `ipc.command.received/completed/failed`, `ipc.lock.wait`
   - daemon RPC lifecycle: `daemon.rpc.sent/response/timeout`
   - coordination step lifecycle: `coordination.step.started/completed/failed`
+  - member runtime writes: `coordination.runtime.commit_skipped` (a compare-and-commit whose dependencies moved, with `changed_fields`), `coordination.runtime.record_skipped` (an unreadable record, deduplicated per member and reason), `coordination.runtime_store.io_failed`, `coordination.store.lock_unsupported`
+  - assignment effort: `effort.resume.started/completed/failed` (`coordination/task_effort.rs`), including the single `failed` record carrying `reason: budget_exhausted` once the three attempts for a task and level are spent
   - coordination audit stream: `coordination.audit.*`
   - project mutation and reseed outcomes: `projects.*`, `projects.reseed.degraded`
   - watch/index activity: `watch.batch.flushed`, `watch.git_status.*`, `search.file_index.*`
   - session activity transitions: `activity.state.changed` (`pid`, `tool`, `from`, `to`, `source`)
   - process inventory health: `session_scanner.process_scan.degraded/recovered` — one `degraded` on entry, a bounded 60s reminder while the outage lasts, one `recovered` on exit
-  - launch rendering: `launch.command.rendered`, `launch.account.*`, `launch.model.*`, `launch.effort.*`, `launch.flag.deprecated`
+  - launch rendering: `launch.command.rendered`, `launch.account.*`, `launch.model.*`, `launch.effort.*`, `launch.flag.deprecated`, `launch.capability_missing`, `launch.notify.ignored`, `launch.selector.ignored/rewritten`, and the base-command outcomes `launch.base.opaque` / `launch.base.unresolved`
   - compaction: `compaction.injected/skipped/failed`, `compaction.<tool>_hook.received/resolved/delivered/skipped/failed` (`claude`/`codex`/`grok`, built from the inferred tool in `compact_hook.rs`), `compaction.codex_hook.unsupported/version_unknown/reconciled/degraded`, `compaction.hook.compat_import`, `compaction.compact_hook.failed`
   - accounts and usage: `usage.fetched`, `usage.failed` (`daemon/usage_poller.rs`), `account.provider.floor` (`session_scanner/accounts/mod.rs`), `claude.usage.legacy_bridge.removed` (the one-shot status-line-bridge uninstall)
   - Antigravity activity hooks: `agy.hooks.degraded` (`coordination/agy_hooks_installer.rs`)
@@ -218,7 +221,9 @@ The `coordination/` subsystem powers multi-agent team orchestration and is gated
 
 - **State bootstrap**: `CoordinationState` is app-managed and lazily builds the orchestrator on first coordination IPC use (no startup hard dependency on mesh availability).
 - **Persistence**: by default, team definitions are stored in `~/.claude/teams/<team>/config.json` (`TeamConfigStore`), while runtime attachment state lives in `~/.claude/teams/<team>/runtime/*.json` (`MemberRuntimeStore`). If `TAURHAUS_CLAUDE_DIR` is set, coordination uses `<TAURHAUS_CLAUDE_DIR>/teams/...` instead.
-- **Pipelines**: `coordination/pipelines/` drives initialize, hot-add, and resume flows (validate -> create/resolve panes -> launch sessions -> mesh join -> daemon start -> onboarding delivery).
+- **Pipelines**: `coordination/pipelines/` drives initialize, hot-add, and resume flows (validate -> create/resolve panes -> launch sessions -> mesh join -> daemon start -> onboarding delivery). `pipelines/effort.rs` is a separate pipeline for assignment effort: it owns held-task target selection, the launch-base rewrite, the stop-before-resume sequencing, and the three-attempt budget per task and level.
+- **Runtime write exclusion**: a runtime decision performs every external probe *outside* the locks, then commits through `MemberRuntimeStore::commit_if_unchanged`, which holds the team lock across target-file lock -> re-read -> compare -> mutate -> atomic save. If any dependency moved the commit is skipped and reports the `changed_fields` that moved — `pane_id`, `pane_pid`, `pane_start_time`, `session_id`, `daemon_pid`, `health`, `appliedEffort`, or the sentinel `record` when the file itself appeared, vanished, or could not be parsed. The app-owned and background self-heal orchestrators therefore cannot interleave a runtime-record write for the same team.
+- **Delivery outcomes are separate facts**: `DeliveryResult` carries `delivered` (the backend completed its operation), `method`, `durable` (the inbox append persisted), `wake` (a typed `WakeDisposition`: `AlreadyLive`, `Spawned`, `Adopted`, `NotAttempted { reason }`, `Failed { reason }`), and `post_write_warnings` — failures that happen *after* a successful delivery, such as the operational-snapshot or runtime-record update. The orchestrator replaces `wake` and extends `post_write_warnings`; the member pipeline lifts both into the report's warnings, promoting only a `Failed` wake or a `NotAttempted` whose reason is one of the two pane-dead constants into an operator-visible warning.
 - **Resume lifecycle**: recovery supports both per-member resume (`coordination_resume_member`) and team-level cold-restart resume (`coordination_resume_team`). Team resume reuses the existing member-resume pipeline, resumes the lead first, then the remaining members, and returns structured per-member progress/failure results.
 - **Snapshot classification**: project mesh snapshots and live team status use fast persisted config/runtime reads and classify team state as `none`, `active`, `degraded`, or `cold_resume`, which the frontend maps into recovery affordances like `Resume Team` and `Resume Offline (n)`.
 - **Windows runtime safety**: Windows coordination and command-center background calls use hidden-window spawning for `wsl`/mesh/tmux invocations, and runtime ownership comparisons normalize Windows, WSL UNC, and Linux project-path forms before matching sessions, panes, and team members.
