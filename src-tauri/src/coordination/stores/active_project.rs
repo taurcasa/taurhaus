@@ -123,7 +123,7 @@ impl ActiveProjectTeamStore {
 
 fn load_state(teams_dir: &Path) -> Result<ActiveProjectTeamState, CoordinationError> {
     let path = active_projects_path(teams_dir);
-    let raw = match fs::read_to_string(&path) {
+    let raw = match super::lock::read_to_string_with_retry(&path) {
         Ok(raw) => raw,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
             return Ok(ActiveProjectTeamState::default());
@@ -133,14 +133,18 @@ fn load_state(teams_dir: &Path) -> Result<ActiveProjectTeamState, CoordinationEr
 
     // Self-healing: this file gates every writer in the store (each save
     // does a load first), so an unparsable file must never wedge project →
-    // team discovery permanently. Start from an empty state and let the next
-    // save rewrite it.
+    // team discovery permanently. Quarantine the unreadable file so its
+    // mappings stay recoverable, then start from an empty state.
     match serde_json::from_str(&raw) {
         Ok(state) => Ok(state),
         Err(err) => {
+            let quarantine =
+                path.with_extension(format!("json.corrupt.{}", chrono::Utc::now().timestamp()));
+            let moved = fs::rename(&path, &quarantine);
             tracing::warn!(
                 path = %path.display(),
                 error = %err,
+                quarantined = moved.is_ok(),
                 "active project team state is unparsable; starting from an empty state"
             );
             Ok(ActiveProjectTeamState::default())
@@ -162,7 +166,7 @@ fn save_state(teams_dir: &Path, state: &ActiveProjectTeamState) -> Result<(), Co
 
     let path = active_projects_path(teams_dir);
     let tmp_path = teams_dir.join(ACTIVE_PROJECTS_TMP_FILENAME);
-    fs::write(&tmp_path, payload.as_bytes())?;
+    super::lock::stage_synced(&tmp_path, payload.as_bytes())?;
     if let Err(err) = fs::rename(&tmp_path, &path) {
         // The last step of a successful team init runs through here; it must
         // degrade on a volume that refuses atomic replacement like every

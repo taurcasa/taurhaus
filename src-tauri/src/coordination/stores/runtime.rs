@@ -567,6 +567,8 @@ fn save_runtime_record_locked(
     team_name: &str,
     member_name: &str,
     record: &MemberRuntimeRecord,
+    // Held for the duration of the publish: the caller's critical
+    // section is what makes the read-merge-write above coherent.
     _target_lock: &super::lock::TargetFileLock,
 ) -> Result<(), CoordinationError> {
     let mut normalized = record.clone();

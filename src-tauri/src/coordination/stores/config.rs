@@ -541,6 +541,8 @@ fn persist_config_payload(
     target_path: &Path,
     tmp_path: &Path,
     payload: &str,
+    // Held for the duration of the publish: the caller's critical
+    // section is what makes the read-merge-write above coherent.
     _target_lock: &super::lock::TargetFileLock,
 ) -> Result<(), CoordinationError> {
     retry_file_operation(
@@ -752,7 +754,15 @@ fn ensure_saved_config_visible(
         CONFIG_READBACK_ATTEMPTS,
         CONFIG_READBACK_DELAY,
         || TeamConfigStore::load(teams_dir, team_name).map(|_| ()),
-        || write_file_synced(target_path, payload).map_err(CoordinationError::Io),
+        || {
+            // The repair write must never truncate the live config in place:
+            // stage and publish through the same move-aside swap every
+            // fallback uses.
+            let repair_tmp = target_path.with_extension("json.repair.tmp");
+            super::lock::stage_synced(&repair_tmp, payload.as_bytes())
+                .and_then(|_| super::lock::replace_via_move_aside(&repair_tmp, target_path))
+                .map_err(CoordinationError::Io)
+        },
     )
 }
 

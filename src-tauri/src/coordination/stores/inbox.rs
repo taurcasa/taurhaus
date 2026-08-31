@@ -5,7 +5,6 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::Duration;
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
@@ -193,18 +192,10 @@ impl MeshInboxStore {
     }
 }
 
-/// Backoffs before a persistently unparsable inbox is quarantined. On a
-/// volume whose advisory locks degraded (`\\wsl.localhost`), another
-/// process's direct-write fallback can expose a torn state mid-write, so an
-/// unparsable read is first treated as a transient and re-read — the inbox
-/// is the one store whose corruption handling is destructive (quarantine),
-/// and a torn transient must never cost the unread messages.
-const TORN_READ_BACKOFFS: [Duration; 3] = [
-    Duration::from_millis(100),
-    Duration::from_millis(200),
-    Duration::from_millis(500),
-];
-
+/// Re-read a persistently unparsable inbox with backoff before letting the
+/// destructive quarantine fire: on a degraded volume a writer from an older
+/// build can still expose a torn state mid-write, and a torn transient must
+/// never cost the unread messages.
 fn parse_inbox_tolerating_torn_reads(
     teams_dir: &Path,
     path: &Path,
@@ -213,7 +204,7 @@ fn parse_inbox_tolerating_torn_reads(
     mut raw: String,
     reread: impl Fn() -> Result<String, CoordinationError>,
 ) -> Result<Vec<MeshInboxMessage>, CoordinationError> {
-    for backoff in TORN_READ_BACKOFFS {
+    for backoff in super::lock::READ_RETRY_BACKOFFS {
         if raw.trim().is_empty() {
             return Ok(Vec::new());
         }
@@ -344,6 +335,7 @@ fn emit_inbox_corruption_event(
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
     use tempfile::TempDir;
 
     use super::*;

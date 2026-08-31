@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -18,7 +18,7 @@ use crate::coordination::errors::CoordinationError;
 
 const LOCK_FILENAME: &str = ".lock";
 const INODE_RETRY_LIMIT: usize = 50;
-const READ_RETRY_BACKOFFS: [Duration; 3] = [
+pub(super) const READ_RETRY_BACKOFFS: [Duration; 3] = [
     Duration::from_millis(100),
     Duration::from_millis(200),
     Duration::from_millis(500),
@@ -89,7 +89,17 @@ fn report_unsupported_lock(path: &Path, scope: &str) {
 /// and the same numbers on Linux are EPERM/EIO/EPIPE — real faults a
 /// truncating fallback must never paper over.
 pub(crate) fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
+    if should_force_rename_fallback_for_tests() {
+        return true;
+    }
     cfg!(target_os = "windows") && matches!(err.raw_os_error(), Some(1 | 5 | 32))
+}
+
+/// Test-only forcing hook, mirroring the template store's
+/// `TAURHAUS_FORCE_TEMPLATE_LOCK_FALLBACK`: lets Linux CI drive the fallback
+/// branches that are otherwise dead behind the platform gate.
+fn should_force_rename_fallback_for_tests() -> bool {
+    std::env::var_os("TAURHAUS_FORCE_COORDINATION_RENAME_FALLBACK").is_some_and(|v| v == "1")
 }
 
 /// Paths already reported for the non-atomic write fallback, so a degraded
@@ -257,6 +267,12 @@ pub fn acquire_team_lock(
 /// lock discipline for config and inbox mutations.
 pub struct TargetFileLock {
     file: File,
+    path: PathBuf,
+    /// False when the advisory lock could not engage on this volume. Reads
+    /// then go through a fresh open of the path — after another writer's
+    /// move-aside publish the held handle follows the DISPLACED inode, and
+    /// only a path read sees the current record.
+    lock_engaged: bool,
 }
 
 impl TargetFileLock {
@@ -283,6 +299,10 @@ impl TargetFileLock {
     }
 
     fn acquire(path: &Path, create: bool) -> Result<Option<Self>, CoordinationError> {
+        // An interrupted move-aside swap leaves the record at its displaced
+        // sibling; settle it before opening, or `create` would bury the only
+        // copy under a fresh empty file.
+        recover_displaced(path, &displaced_path(path));
         for _ in 0..INODE_RETRY_LIMIT {
             let file = match OpenOptions::new()
                 .read(true)
@@ -297,9 +317,11 @@ impl TargetFileLock {
                 }
                 Err(err) => return Err(CoordinationError::Io(err)),
             };
+            let mut lock_engaged = true;
             match file.lock_exclusive() {
                 Ok(()) => {}
                 Err(err) if is_windows_unsupported_lock_error(&err) => {
+                    lock_engaged = false;
                     tracing::warn!(
                         path = %path.display(),
                         "target-file advisory locks are unsupported for this Windows path; continuing without lock"
@@ -309,7 +331,11 @@ impl TargetFileLock {
                 Err(err) => return Err(CoordinationError::Io(err)),
             }
             if inode_matches(&file, path) {
-                return Ok(Some(Self { file }));
+                return Ok(Some(Self {
+                    file,
+                    path: path.to_path_buf(),
+                    lock_engaged,
+                }));
             }
         }
 
@@ -320,6 +346,16 @@ impl TargetFileLock {
     }
 
     pub fn read_contents(&self) -> Result<String, CoordinationError> {
+        if !self.lock_engaged {
+            // The handle follows the inode it opened; after another writer's
+            // move-aside publish that is the displaced pre-image. Where the
+            // lock never engaged the handle buys nothing, so read the path.
+            return match fs::read_to_string(&self.path) {
+                Ok(contents) => Ok(contents),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+                Err(err) => Err(CoordinationError::Io(err)),
+            };
+        }
         let mut contents = String::new();
         let mut file = &self.file;
         file.seek(SeekFrom::Start(0))?;
@@ -339,42 +375,68 @@ impl TargetFileLock {
 /// left on disk as the intact copy of the intended state. Ported from the
 /// template store, which has published this way on unrenameable volumes all
 /// along.
-/// Read the locked target, re-reading with backoff while its contents are
-/// non-empty yet not valid JSON: on a volume whose locks degraded, another
-/// process's fallback publish can expose a transient state mid-swap. Returns
-/// the final read either way — a persistently unparsable file is the
-/// caller's decision (repair, skip, or error), but never on a torn read.
+/// Read the locked target, allowing one short re-read when its contents are
+/// non-empty yet not valid JSON. Move-aside publishes never expose torn
+/// content, so this guards only against writers from older builds or plain
+/// truncating tools; the wait is a single 100ms because both callers hold
+/// the team and target locks across it, and a persistently unparsable file
+/// is the caller's decision (repair, skip, or error) — never made on a
+/// transient.
 pub(crate) fn read_json_tolerating_torn(
     lock: &TargetFileLock,
 ) -> Result<String, CoordinationError> {
-    let mut raw = lock.read_contents()?;
-    for backoff in READ_RETRY_BACKOFFS {
-        if raw.trim().is_empty() || serde_json::from_str::<serde_json::Value>(&raw).is_ok() {
-            return Ok(raw);
-        }
-        thread::sleep(backoff);
-        raw = lock.read_contents()?;
+    let raw = lock.read_contents()?;
+    if raw.trim().is_empty() || serde_json::from_str::<serde_json::Value>(&raw).is_ok() {
+        return Ok(raw);
     }
-    Ok(raw)
+    thread::sleep(READ_RETRY_BACKOFFS[0]);
+    lock.read_contents()
 }
 
+/// The deterministic sibling a move-aside swap displaces the old target to:
+/// `<file name>.displaced`, appended so `team-lead.json` keeps its identity
+/// as `team-lead.json.displaced` (readers filter on the extension and never
+/// see it).
+pub(crate) fn displaced_path(target: &Path) -> PathBuf {
+    let mut name = target
+        .file_name()
+        .map(|name| name.to_os_string())
+        .unwrap_or_default();
+    name.push(".displaced");
+    target.with_file_name(name)
+}
+
+/// Publish `tmp` at `target` on a volume that refuses to rename over an open
+/// file (the 9p server behind `\\wsl.localhost`): move the current target
+/// aside — renaming an open file to a sibling name is legal everywhere, and
+/// a holder's handle transparently follows the old inode — then rename the
+/// fully written, synced tmp into the vacant slot. No reader can ever
+/// observe torn content; the worst case is a brief window where the path is
+/// absent, which every store reader treats as an empty or missing record.
+///
+/// The displaced sibling is NEVER removed during the swap. Removing a file
+/// whose handle is still open is deferred by the 9p server to handle close,
+/// and — verified live with a Rust probe on the affected machine — that
+/// deferred delete lands on the TARGET PATH's current file, silently
+/// destroying the record this function just published. Cleanup and crash
+/// recovery instead happen at the START of the next swap (and in
+/// `TargetFileLock::acquire`): a displaced sibling next to a present target
+/// is a husk whose holders are gone and is removed; one next to an absent
+/// target is an interrupted swap and is restored.
+///
+/// On failure the previous file is restored and the tmp is left on disk as
+/// the intact copy of the intended state — callers remove it only on paths
+/// where the target is known intact.
 pub(crate) fn replace_via_move_aside(tmp: &Path, target: &Path) -> std::io::Result<()> {
-    let displaced = target.with_extension(format!(
-        "displaced.{:016x}",
-        rand::RngCore::next_u64(&mut rand::thread_rng())
-    ));
+    let displaced = displaced_path(target);
+    recover_displaced(target, &displaced);
     let had_target = match fs::rename(target, &displaced) {
         Ok(()) => true,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
         Err(err) => return Err(err),
     };
     match fs::rename(tmp, target) {
-        Ok(()) => {
-            if had_target {
-                let _ = fs::remove_file(&displaced);
-            }
-            Ok(())
-        }
+        Ok(()) => Ok(()),
         Err(err) => {
             if had_target {
                 if let Err(restore) = fs::rename(&displaced, target) {
@@ -390,6 +452,45 @@ pub(crate) fn replace_via_move_aside(tmp: &Path, target: &Path) -> std::io::Resu
             Err(err)
         }
     }
+}
+
+/// Settle a previous swap's displaced sibling: restore it when the target is
+/// absent (an interrupted swap — the sibling is the only copy), remove it
+/// when the target is present (a husk whose handles are long gone; the
+/// deferred-delete hazard only applies while a holder is alive). Best-effort
+/// by design, but a failed removal is reported so leaks stay visible.
+fn recover_displaced(target: &Path, displaced: &Path) {
+    if !displaced.exists() {
+        return;
+    }
+    if target.exists() {
+        if let Err(err) = fs::remove_file(displaced) {
+            tracing::warn!(
+                path = %displaced.display(),
+                error = %err,
+                "failed to remove a settled displaced sibling; retried next swap"
+            );
+        }
+    } else {
+        tracing::warn!(
+            target = %target.display(),
+            "recovering an interrupted move-aside swap from its displaced sibling"
+        );
+        if let Err(err) = fs::rename(displaced, target) {
+            tracing::warn!(
+                path = %displaced.display(),
+                error = %err,
+                "failed to recover the displaced sibling"
+            );
+        }
+    }
+}
+
+/// Synced staging write for the tmp side of a move-aside publish.
+pub(crate) fn stage_synced(path: &Path, payload: &[u8]) -> std::io::Result<()> {
+    let mut file = File::create(path)?;
+    file.write_all(payload)?;
+    file.sync_all()
 }
 
 #[cfg(unix)]
@@ -489,12 +590,41 @@ mod tests {
             "the lock holder keeps reading the displaced old inode"
         );
         assert!(!staged.exists(), "the staged tmp is consumed on success");
-        let leftovers: Vec<_> = std::fs::read_dir(tmp.path())
-            .expect("dir")
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| entry.file_name().to_string_lossy().contains("displaced"))
-            .collect();
-        assert!(leftovers.is_empty(), "the displaced copy is cleaned up");
+        // Deferred cleanup: the displaced sibling stays until the NEXT swap
+        // — removing it while our handle lives would let the 9p server's
+        // deferred delete destroy the freshly published target (verified
+        // live; see replace_via_move_aside's doc).
+        let displaced = displaced_path(&target);
+        assert_eq!(
+            std::fs::read_to_string(&displaced).expect("displaced sibling remains"),
+            "the previous, much longer record body"
+        );
+
+        drop(lock);
+        std::fs::write(&staged, "second").expect("stage again");
+        replace_via_move_aside(&staged, &target).expect("second publish settles the husk");
+        assert_eq!(std::fs::read_to_string(&target).expect("path"), "second");
+        assert_eq!(
+            std::fs::read_to_string(&displaced).expect("displaced now holds the first publish"),
+            "new"
+        );
+    }
+
+    #[test]
+    fn an_interrupted_swap_is_recovered_on_the_next_acquire() {
+        // Regression: a crash between the two renames leaves the record only
+        // at its displaced sibling; acquire_or_create used to bury it under
+        // a fresh empty file, which read as "no record" forever.
+        let tmp = TempDir::new().expect("tempdir");
+        let target = tmp.path().join("record.json");
+        std::fs::write(displaced_path(&target), "the only copy").expect("simulate interruption");
+
+        let lock = TargetFileLock::acquire_or_create(&target).expect("lock");
+        assert_eq!(
+            lock.read_contents().expect("recovered"),
+            "the only copy",
+            "the displaced sibling must be restored before the open"
+        );
     }
 
     #[test]
