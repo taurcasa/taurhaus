@@ -10,6 +10,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 - **Cached lane worktrees** — `just provision-worktree LANE_PATH BRANCH [BASE]` now performs the standard fetch, branch-worktree creation, and frozen Bun install, then gives only the lane a Cargo config backed by `~/.cache/taurhaus-lane-target`; Cargo locking serializes concurrent lane compiles, the E2E recipes keep their built binaries lane-local, and the main checkout and release targets remain unchanged. `just remove-worktree LANE_PATH` cleans up merged lanes but protects unmerged branches unless `FORCE_BRANCH=1`, and `just clean-lane-target` safely reclaims the shared cache.
 
+## [0.8.6] - 2026-08-31
+
+### Fixed
+
+- **Codex npm installs show one session per agent** — newer Codex keeps its Node.js launcher alive beside the native CLI child on the same terminal, and both command lines match the harness inventory. The scanner now recognizes that same-tool, same-terminal parent chain as one harness and keeps the deepest native process, so each agent has one tile and clicking it focuses the correct tmux pane.
+
 ## [0.8.5] - 2026-08-31
 
 ### Changed
