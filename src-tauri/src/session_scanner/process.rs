@@ -866,6 +866,24 @@ mod tests {
     use crate::session_scanner::SCANNER_TEST_LOCK;
     use std::sync::atomic::{AtomicU8, Ordering};
 
+    /// Drive fake backend entries through production inventory retention, then
+    /// perform deterministic enrichment without touching a live process.
+    fn fake_process_infos(mut entries: Vec<InventoryEntry>) -> Vec<ProcessInfo> {
+        retain_inventory_processes(&mut entries);
+        entries
+            .into_iter()
+            .map(|entry| ProcessInfo {
+                pid: entry.pid,
+                project_path: "/fake/project".to_string(),
+                tty: entry
+                    .controlling_terminal
+                    .expect("retained fake process has a terminal"),
+                args: entry.args,
+                cli_tool: entry.cli_tool,
+            })
+            .collect()
+    }
+
     #[test]
     fn parse_ps_finds_bare_claude() {
         let output = "\
@@ -1153,6 +1171,116 @@ mod tests {
             entries.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
             vec![5300]
         );
+    }
+
+    // Regression: commit 665abc94 matched both sides of the npm Codex launch
+    // without recognizing that they are one harness, so one agent became two
+    // ProcessInfo rows. The fake inventory must retain only the native child.
+    #[test]
+    fn fake_inventory_keeps_only_the_native_codex_process_info() {
+        let processes = fake_process_infos(vec![
+            InventoryEntry::new(
+                6100,
+                "node /home/user/.nvm/versions/node/v24/bin/codex --yolo",
+                CliTool::Codex,
+                true,
+            )
+            .with_parent_and_terminal(6000, "pts/9"),
+            InventoryEntry::new(
+                6200,
+                "/node_modules/@openai/codex-linux-x64/vendor/codex --yolo",
+                CliTool::Codex,
+                true,
+            )
+            .with_parent_and_terminal(6100, "pts/9"),
+        ]);
+
+        assert_eq!(processes.len(), 1);
+        assert_eq!(processes[0].pid, 6200);
+    }
+
+    // Regression: commit 665abc94 had no wrapper-chain retention at all; a
+    // later extra matched wrapper must not make the intermediate child survive.
+    #[test]
+    fn fake_inventory_keeps_only_the_deepest_of_three_wrappers() {
+        let processes = fake_process_infos(vec![
+            InventoryEntry::new(7100, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(7000, "pts/10"),
+            InventoryEntry::new(7200, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(7100, "pts/10"),
+            InventoryEntry::new(7300, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(7200, "pts/10"),
+        ]);
+
+        assert_eq!(
+            processes
+                .iter()
+                .map(|process| process.pid)
+                .collect::<Vec<_>>(),
+            vec![7300]
+        );
+    }
+
+    // Regression: commit 665abc94 made argv matching independent of tool and
+    // terminal ancestry; dedup must not merge unrelated harness sessions.
+    #[test]
+    fn fake_inventory_preserves_different_tools_and_terminals() {
+        let processes = fake_process_infos(vec![
+            InventoryEntry::new(8100, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(8000, "pts/11"),
+            InventoryEntry::new(8200, "claude --continue", CliTool::Claude, true)
+                .with_parent_and_terminal(8100, "pts/11"),
+            InventoryEntry::new(8300, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(8000, "pts/12"),
+            InventoryEntry::new(8400, "codex --yolo", CliTool::Codex, true)
+                .with_parent_and_terminal(8300, "pts/13"),
+        ]);
+
+        assert_eq!(
+            processes
+                .iter()
+                .map(|process| process.pid)
+                .collect::<Vec<_>>(),
+            vec![8100, 8200, 8300, 8400]
+        );
+    }
+
+    // Regression: commit 665abc94 matched the Codex process but provided no
+    // parent inventory relation; an unmatched parent is not evidence to drop it.
+    #[test]
+    fn fake_inventory_preserves_a_process_with_an_unmatched_parent() {
+        let processes = fake_process_infos(vec![InventoryEntry::new(
+            9100,
+            "codex --yolo",
+            CliTool::Codex,
+            true,
+        )
+        .with_parent_and_terminal(9000, "pts/14")]);
+
+        assert_eq!(processes.len(), 1);
+        assert_eq!(processes[0].pid, 9100);
+    }
+
+    // Regression: commit 665abc94 expanded Codex matching; the fix must leave
+    // the pre-existing single-process Claude inventory exactly unchanged.
+    #[test]
+    fn fake_inventory_preserves_single_claude_process_info_exactly() {
+        let expected = ProcessInfo {
+            pid: 10_100,
+            project_path: "/fake/project".to_string(),
+            tty: "pts/15".to_string(),
+            args: "claude --continue".to_string(),
+            cli_tool: CliTool::Claude,
+        };
+        let processes = fake_process_infos(vec![InventoryEntry::new(
+            10_100,
+            "claude --continue",
+            CliTool::Claude,
+            true,
+        )
+        .with_parent_and_terminal(10_000, "pts/15")]);
+
+        assert_eq!(processes, vec![expected]);
     }
 
     // Regression: the `ps` backend's own reading of the same rule. macOS prints
