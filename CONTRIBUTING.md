@@ -30,6 +30,24 @@ For frontend-only development (no Rust backend):
 just dev-frontend
 ```
 
+### Parallel lane worktrees
+
+Use `just provision-worktree LANE_PATH BRANCH [BASE]` from the main checkout whenever
+you create a development lane. `BASE` defaults to `origin/main`; the recipe
+fetches first, creates the branch worktree, runs `bun install --frozen-lockfile`
+inside it, and gives only that worktree a Cargo config pointing at the shared
+`~/.cache/taurhaus-lane-target`. Cargo's own locking serializes concurrent lane
+*compiles*; the artifacts they write are last-writer-wins, so a recipe that runs
+a built binary keeps it lane-local — `build-e2e`, `test-e2e`, `test-e2e-full` and
+`test-e2e-spec` pin `CARGO_TARGET_DIR` to the lane's own `src-tauri/target` while
+the shared cache still saves the dependency compile. The main checkout and release
+builds continue using their existing `src-tauri/target` directories.
+
+After the branch is merged, run `just remove-worktree LANE_PATH`. It removes the
+worktree and branch, but refuses an unmerged branch unless you explicitly set
+`FORCE_BRANCH=1`. Run `just clean-lane-target` whenever you need to reclaim the
+shared Cargo cache; deleting it is always safe.
+
 Build, daemon, mesh, and release workflows are standardized in `justfile`. Use `just` recipes instead of raw `cargo tauri build`, `bunx tauri build`, or ad hoc cross-compilation commands.
 
 Nothing in the app needs an API key. One developer tool does: regenerating the

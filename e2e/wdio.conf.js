@@ -70,7 +70,24 @@ const specsDir = resolve(import.meta.dirname, 'specs')
 // operator's installed mesh lives at ~/.local/bin/mesh; keep them in step.
 const operatorMeshBinaryPath = resolve(homedir(), '.local', 'bin', 'mesh')
 
-const binaryPath = resolve(projectRoot, 'src-tauri', 'target', 'debug', 'taurhaus')
+function resolveCargoTargetDir() {
+  const result = spawnSync(
+    'cargo',
+    ['metadata', '--format-version', '1', '--no-deps', '--manifest-path', 'src-tauri/Cargo.toml'],
+    { cwd: projectRoot, encoding: 'utf8' }
+  )
+  if (result.error || result.status !== 0) {
+    throw new Error(`Failed to resolve Cargo target directory: ${result.error?.message || result.stderr}`)
+  }
+  const targetDirectory = JSON.parse(result.stdout).target_directory
+  if (typeof targetDirectory !== 'string' || targetDirectory.length === 0) {
+    throw new Error('Cargo metadata did not return target_directory')
+  }
+  return targetDirectory
+}
+
+const cargoTargetDir = resolveCargoTargetDir()
+const binaryPath = resolve(cargoTargetDir, 'debug', 'taurhaus')
 const localTauriDriverPath = resolve(projectRoot, 'node_modules', '.bin', 'tauri-driver')
 const nativeWebKitDriverPath = process.env.E2E_NATIVE_DRIVER_PATH || '/usr/bin/WebKitWebDriver'
 const wdioLogLevel = process.env.E2E_WDIO_LOG_LEVEL || 'error'
@@ -562,7 +579,7 @@ export const config = {
     const workerEnv = buildWorkerEnv(sessionTempRoot, {
       baseEnv: process.env,
       runToken: sessionRunToken,
-      daemonBinaryPath: resolve(projectRoot, 'src-tauri/target/debug/taurhaus-daemon'),
+      daemonBinaryPath: resolve(cargoTargetDir, 'debug', 'taurhaus-daemon'),
       daemonPort,
       skipCliVersionProbes: !paidCodexWorker,
     })
