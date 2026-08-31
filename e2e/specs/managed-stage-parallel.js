@@ -29,11 +29,10 @@
  * server this worker started.
  */
 
-import { execFile, execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { promisify } from 'node:util'
 
 import { ensureMainApp, waitForAppReady } from '../helpers.js'
 import { trustProject } from '../helpers/codexScratchHome.js'
@@ -41,10 +40,13 @@ import { createLaneCleanup } from '../helpers/laneCleanup.js'
 import { assertTmuxIsolation, isolatedTmuxTmpdir, parseProcEnviron, tmuxIsolationProblem } from '../helpers/laneTmux.js'
 import {
   attentionRecord,
+  assignTaskAsync,
+  createTaskAsync,
   findBlockedMessage,
   findResultMessage,
   readInbox,
   resultContractViolations,
+  taskAssignmentNoticeIds,
   taskRecord,
 } from '../helpers/meshTaskContract.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
@@ -60,8 +62,6 @@ import {
   runFixtureTestsAtCommit,
   worktreeTreeDiff,
 } from '../helpers/stageFixtureProject.js'
-
-const execFileAsync = promisify(execFile)
 
 const MIN_CODEX_VERSION = [0, 147, 0]
 const MIN_MESH_VERSION = [0, 2, 23]
@@ -442,18 +442,6 @@ async function initializeParallelTeam() {
   return model
 }
 
-function meshPrefix() {
-  return ['--team', TEAM_NAME, '--name', LEAD_NAME]
-}
-
-async function runMeshAsync(args) {
-  const { stdout } = await execFileAsync('mesh', ['--claude-dir', claudeDir, ...args], {
-    encoding: 'utf8',
-    timeout: 60_000,
-  })
-  return String(stdout).trim()
-}
-
 function completionSignal(stage, taskId) {
   const result =
     `RESULT #${taskId}\\n` +
@@ -479,31 +467,33 @@ async function createAndAssignStage(stage) {
     `The Bun test imports ${stage.exportName}, asserts ${stage.exportName}("ada") === "Hello, ada!", ` +
     `and passes under bun test. Install nothing.`
   const why = `experiment 5: isolated ${stage.key} worktree`
-  const created = JSON.parse(await runMeshAsync([
-    ...meshPrefix(),
-    'task', 'create',
-    '--subject', subject,
-    '--description', description,
-    '--effort', EFFORT,
-    '--why', why,
-    '--deadline', String(DEADLINE_MINUTES),
-    '--first-step', firstStep,
-    '--deliverable', deliverable,
-    '--json',
-  ]))
+  const created = await createTaskAsync({
+    claudeDir,
+    team: TEAM_NAME,
+    actor: LEAD_NAME,
+    subject,
+    description,
+    effort: EFFORT,
+    why,
+    deadline: DEADLINE_MINUTES,
+    firstStep,
+    deliverable,
+  })
   const taskId = String(created.id)
-  await runMeshAsync([
-    ...meshPrefix(),
-    'task', 'assign', taskId,
-    '--owner', stage.owner,
-    '--status', 'in_progress',
-    '--effort', EFFORT,
-    '--why', why,
-    '--deadline', String(DEADLINE_MINUTES),
-    '--first-step', firstStep,
-    '--deliverable', deliverable,
-    '--completion-signal', completionSignal(stage, taskId),
-  ])
+  await assignTaskAsync({
+    claudeDir,
+    team: TEAM_NAME,
+    actor: LEAD_NAME,
+    taskId,
+    owner: stage.owner,
+    status: 'in_progress',
+    effort: EFFORT,
+    why,
+    deadline: DEADLINE_MINUTES,
+    firstStep,
+    deliverable,
+    completionSignal: completionSignal(stage, taskId),
+  })
   const record = taskRecord({ claudeDir, team: TEAM_NAME, actor: LEAD_NAME, taskId })
   return {
     ...stage,
@@ -534,10 +524,7 @@ async function waitForStageCompletion(stage) {
 }
 
 function assignmentNoticeTaskIds(memberName) {
-  return readInbox({ claudeDir, team: TEAM_NAME, member: memberName })
-    .filter((message) => /^task #\S+ assignment$/.test(String(message?.summary ?? '')))
-    .map((message) => String(message.text ?? '').match(/(?:^|\n)Task ID: #(\S+)/)?.[1] ?? null)
-    .filter(Boolean)
+  return taskAssignmentNoticeIds(readInbox({ claudeDir, team: TEAM_NAME, member: memberName }))
 }
 
 /**
@@ -632,7 +619,7 @@ function assertStageTreeEvidence(completed, sibling) {
   expect(existsSync(join(stage.worktree, sibling.modulePath))).toBe(false)
   expect(existsSync(join(stage.worktree, sibling.testPath))).toBe(false)
 
-  const validation = runFixtureTestsAtCommit(stage.worktree, reportedCommit)
+  const validation = runFixtureTestsAtCommit(stage.worktree, reportedCommit, { root: sessionTempRoot })
   if (!validation.passed) {
     throw new Error(`${stage.owner}'s tests fail at ${reportedCommit}:\n${validation.output}`)
   }
@@ -702,6 +689,7 @@ describe('parallel managed Codex stages', function () {
     // Both create+assign pipelines are live together; neither waits for the
     // other task to be created, assigned, delivered, or completed.
     const assigned = await Promise.all(stages.map((stage) => createAndAssignStage(stage)))
+    expect(new Set(assigned.map((stage) => stage.taskId)).size).toBe(2)
     for (const stage of assigned) {
       expect(Number.isFinite(Date.parse(stage.assignedAt))).toBe(true)
       const record = taskRecord({ claudeDir, team: TEAM_NAME, actor: LEAD_NAME, taskId: stage.taskId })

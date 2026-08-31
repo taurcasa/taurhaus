@@ -156,6 +156,26 @@ describe('runFixtureTestsAtCommit', () => {
     const listed = execFileSync('git', ['-C', repo, 'worktree', 'list'], { encoding: 'utf8' }).trim().split('\n')
     expect(listed).toHaveLength(1)
   })
+
+  // Regression: 94fdab40 left validation worktrees in the host `/tmp`, where
+  // the worker's session-root teardown could not recover them after a crash.
+  it('creates the validation checkout below the caller-provided session root', () => {
+    const repo = join(root, 'stage-validation-root')
+    const validationRoot = join(root, 'session-validation-checkouts')
+    createStageFixtureProject(repo)
+    writeFileSync(join(repo, 'src/lib/greet.js'), GREET)
+    writeFileSync(
+      join(repo, 'src/lib/greet.test.js'),
+      `${GREET_TEST}\nconsole.log('VALIDATION_CWD=' + process.cwd())\n`
+    )
+    execFileSync('git', ['-C', repo, 'add', '.'], { encoding: 'utf8' })
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'feat: report validation cwd'], { encoding: 'utf8' })
+    const head = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+
+    const result = runFixtureTestsAtCommit(repo, head, { root: validationRoot })
+    expect(result.passed).toBe(true)
+    expect(result.output).toContain(`VALIDATION_CWD=${validationRoot}/stage-commit-`)
+  })
 })
 
 describe('stage fixture worktrees', () => {
@@ -186,5 +206,21 @@ describe('stage fixture worktrees', () => {
       removeStageFixtureWorktree(repo, alpha)
       removeStageFixtureWorktree(repo, beta)
     }
+  })
+
+  // Regression: 94fdab40 folded Git's `R100\told\tnew` record into one path,
+  // so a tree diff no longer named both paths involved in a rename.
+  it('reports both paths of a rename as independent tree changes', () => {
+    const repo = join(root, 'rename-source')
+    const baseline = createStageFixtureProject(repo).headCommit
+    execFileSync('git', [
+      '-C', repo, 'mv', 'src/lib/Greeting.svelte', 'src/lib/RenamedGreeting.svelte',
+    ])
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'refactor: rename greeting'])
+
+    expect(worktreeTreeDiff(repo, baseline).entries).toEqual([
+      { status: 'D', path: 'src/lib/Greeting.svelte' },
+      { status: 'A', path: 'src/lib/RenamedGreeting.svelte' },
+    ])
   })
 })
