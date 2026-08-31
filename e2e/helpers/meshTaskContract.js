@@ -108,6 +108,38 @@ export function stagePollVerdict(record) {
 }
 
 /**
+ * Classify the operational record available after a mesh task becomes stale.
+ *
+ * The deadline pass first writes a stale marker, but the task importer removes
+ * non-resumable tasks from the member snapshot. Either record can therefore be
+ * the first one a polling lane observes after the durable stale event.
+ */
+export function operationalStaleEvidence(snapshot, taskId) {
+  const task = snapshot?.task
+  if (!task) return null
+
+  const expectedTaskId = String(taskId)
+  const observedTaskId = String(task.id ?? '').trim()
+  const status = String(task.status ?? '').trim()
+  if (observedTaskId !== expectedTaskId) {
+    return {
+      state: 'task-cleared',
+      observedTaskId: observedTaskId || null,
+      status: status || null,
+      staleAt: null,
+    }
+  }
+
+  if (status !== 'stale' || !Number.isFinite(Date.parse(task.stale_at))) return null
+  return {
+    state: 'marked',
+    observedTaskId,
+    status,
+    staleAt: task.stale_at,
+  }
+}
+
+/**
  * Build the active negative path around the production self-heal cadence.
  *
  * The heartbeat must span half the deadline plus one complete pass cadence,

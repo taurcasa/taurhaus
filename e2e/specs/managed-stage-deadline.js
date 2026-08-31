@@ -4,7 +4,7 @@
  *
  * This is a measured lane, not a fast simulation. A real managed member runs
  * `mesh task start` and then ends its turn without completing the task. The
- * production 30-second self-heal pass must nudge it once, mark both task stores
+ * production 30-second self-heal pass must nudge it once, mark the mesh task
  * stale once, and leave the member session alive for a later resumed stage.
  *
  * Deadline arithmetic is intentionally small but exact. `--deadline 1` means
@@ -27,11 +27,17 @@
  * not a test-process sleep and proves nothing without joined activity/pass
  * records.
  *
- * Every acceptance assertion reads a durable record:
+ * The operational stale marker is intentionally transient. `operational_context.rs`
+ * owns its lifetime: once the stale mesh status round-trips through the task
+ * importer, the non-resumable task is cleared from the member snapshot. The
+ * lane records whether it observed the marked or already-cleared form and uses
+ * the durable event/task/inbox records for one-shot proof.
+ *
+ * Every acceptance assertion reads a product-owned record:
  *
  *   - mesh task records provide pending/in-progress/stale status;
  *   - taurhaus's operational snapshot provides imported `deadline_minutes`
- *     and the persisted `assigned_at`, `nudged_at`, and `stale_at` markers;
+ *     and `assigned_at`, plus deadline markers while their task remains there;
  *   - mesh's attention projection provides assignment/delivery timestamps;
  *   - the member inbox proves the nudge landed exactly once;
  *   - JSONL events prove each committed deadline action happened once;
@@ -70,6 +76,7 @@ import {
   assignTask,
   attentionRecord,
   createTask,
+  operationalStaleEvidence,
   readInbox,
   stagePollVerdict,
   taskRecord,
@@ -649,6 +656,22 @@ async function waitForOperationalTask(taskId, status) {
   return snapshot
 }
 
+async function waitForOperationalStaleEvidence(taskId) {
+  let evidence = null
+  await browser.waitUntil(
+    async () => {
+      evidence = operationalStaleEvidence(readOperationalSnapshot(), taskId)
+      return Boolean(evidence)
+    },
+    {
+      timeout: 30_000,
+      interval: 500,
+      timeoutMsg: `operational snapshot neither marked nor cleared stale task #${taskId}`,
+    }
+  )
+  return evidence
+}
+
 function nudgeMessages(taskId) {
   return readInbox({ claudeDir, team: TEAM_NAME, member: MEMBER_NAME }).filter((message) => {
     const text = String(message?.text ?? '')
@@ -952,16 +975,14 @@ describe('managed stage deadline semantics', function () {
       (events) => deadlineEvents(events, 'deadline.task.staled', assigned.taskId)[0] ?? null,
       { timeout: 30_000, timeoutMsg: `task #${assigned.taskId} staled without its structured event` }
     )
-    const staledSnapshot = readOperationalSnapshot()
+    const staleOperationalEvidence = await waitForOperationalStaleEvidence(assigned.taskId)
     expect(staleRecord.status).toBe('stale')
-    expect(staledSnapshot?.task?.id).toBe(assigned.taskId)
-    expect(staledSnapshot?.task?.status).toBe('stale')
-    expect(Number.isFinite(Date.parse(staledSnapshot?.task?.stale_at))).toBe(true)
+    expect(staleOperationalEvidence.state).toMatch(/^(marked|task-cleared)$/)
 
     // Wait for records from at least three real passes after assigned_at. This
     // includes a pass after one of the actions when cadence alignment makes the
-    // nudge/stale pair happen in the first two eligible passes, and proves the
-    // persisted one-shot markers suppress every later attempt.
+    // nudge/stale pair happen in the first two eligible passes. The event and
+    // inbox counts after those passes prove that no later attempt committed.
     const passEvents = await waitForLogEvidence(
       logOffset,
       (events) => {
@@ -980,8 +1001,14 @@ describe('managed stage deadline semantics', function () {
     expect(nudgeEvents).toHaveLength(1)
     expect(staleEvents).toHaveLength(1)
     expect(nudgeMessages(assigned.taskId)).toHaveLength(1)
-    expect(readOperationalSnapshot()?.task?.nudged_at).toBe(nudgedSnapshot.task.nudged_at)
-    expect(readOperationalSnapshot()?.task?.stale_at).toBe(staledSnapshot.task.stale_at)
+    const finalOperationalEvidence = operationalStaleEvidence(
+      readOperationalSnapshot(),
+      assigned.taskId
+    )
+    expect(finalOperationalEvidence).not.toBeNull()
+    if (staleOperationalEvidence.state === 'marked' && finalOperationalEvidence.state === 'marked') {
+      expect(finalOperationalEvidence.staleAt).toBe(staleOperationalEvidence.staleAt)
+    }
     const aliveAfterStale = memberAliveEvidence()
 
     const finalAttention = refreshAttentionRecord(assigned.taskId)
@@ -995,7 +1022,7 @@ describe('managed stage deadline semantics', function () {
         taskTransitions: [
           { status: assigned.created.status, recordTimestamps: taskRecordTimestamps(assigned.created) },
           { status: inProgressRecord.status, at: imported.task.assigned_at, recordTimestamps: taskRecordTimestamps(inProgressRecord) },
-          { status: staleRecord.status, at: staledSnapshot.task.stale_at, recordTimestamps: taskRecordTimestamps(staleRecord) },
+          { status: staleRecord.status, at: staleOperationalEvidence.staleAt ?? staleEvent.ts, recordTimestamps: taskRecordTimestamps(staleRecord) },
         ],
         operationalImport: {
           updatedAt: imported.updated_at,
@@ -1016,7 +1043,9 @@ describe('managed stage deadline semantics', function () {
         },
         stale: {
           eventAt: staleEvent.ts,
-          snapshotAt: staledSnapshot.task.stale_at,
+          operationalState: staleOperationalEvidence.state,
+          snapshotAt: staleOperationalEvidence.staleAt,
+          finalOperationalState: finalOperationalEvidence.state,
           eventCount: staleEvents.length,
         },
         selfHealPasses: passEvents.slice(0, REQUIRED_PASS_COUNT).map((event) => ({

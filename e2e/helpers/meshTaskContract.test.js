@@ -9,6 +9,7 @@ import {
   extractJsonBlock,
   findBlockedMessage,
   findResultMessage,
+  operationalStaleEvidence,
   parseResultMessage,
   resultContractViolations,
   stagePollVerdict,
@@ -212,6 +213,36 @@ describe('stagePollVerdict', () => {
   it('keeps polling every non-stale task record', () => {
     expect(stagePollVerdict({ id: '42', status: 'in_progress' })).toBeNull()
     expect(stagePollVerdict(null)).toBeNull()
+  })
+})
+
+describe('operationalStaleEvidence', () => {
+  // Regression: c12c506c required the operational snapshot to retain the
+  // stale task, but the importer deliberately clears non-resumable tasks once
+  // the mesh status round-trips.
+  it('accepts the stale marker or the already-cleared post-import snapshot', () => {
+    expect(
+      operationalStaleEvidence({
+        task: { id: '42', status: 'stale', stale_at: '2026-08-31T10:01:00.000Z' },
+      }, '42')
+    ).toEqual({
+      state: 'marked',
+      observedTaskId: '42',
+      status: 'stale',
+      staleAt: '2026-08-31T10:01:00.000Z',
+    })
+    expect(operationalStaleEvidence({ task: { id: '', status: '' } }, '42')).toEqual({
+      state: 'task-cleared',
+      observedTaskId: null,
+      status: null,
+      staleAt: null,
+    })
+  })
+
+  it('keeps polling while the expected task is present without a valid stale marker', () => {
+    expect(operationalStaleEvidence({ task: { id: '42', status: 'in_progress' } }, '42')).toBeNull()
+    expect(operationalStaleEvidence({ task: { id: '42', status: 'stale' } }, '42')).toBeNull()
+    expect(operationalStaleEvidence(null, '42')).toBeNull()
   })
 })
 
