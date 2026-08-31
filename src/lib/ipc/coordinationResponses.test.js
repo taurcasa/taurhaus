@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  normalizeLiveTeamStatus,
-  normalizeProjectMeshSnapshot,
-} from './coordinationResponses.js'
+import { normalizeLiveTeamStatus, normalizeProjectMeshSnapshot } from './coordinationResponses.js'
 
 describe('coordinationResponses agent snapshots', () => {
   // Regression: FastAgentSnapshot had no model field at all, so the runtime view

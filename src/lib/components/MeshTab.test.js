@@ -2461,7 +2461,9 @@ describe('MeshTab', () => {
       failedStep: null,
       message: 'agent added',
       steps: [],
-      warnings: ['backend-dev: created a replacement pane'],
+      warnings: [
+        'onboarding wake failed: member pane is foreign: cli_tool_mismatch: expected=codex found=claude',
+      ],
     })
 
     render(MeshTab, {
@@ -2506,7 +2508,7 @@ describe('MeshTab', () => {
         })
       )
       expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent(
-        "Agent 'backend-dev' added. Notes: backend-dev: started a replacement terminal session."
+        "Agent 'backend-dev' added. Notes: onboarding wake failed: member pane is foreign: cli_tool_mismatch: expected=codex found=claude"
       )
     })
   })
@@ -3795,7 +3797,7 @@ describe('MeshTab', () => {
       message: 'member resumed',
       steps: [],
       warnings: [
-        'onboarding wake failed: daemon spawn failed',
+        'onboarding wake failed: pane probe failed: Backend error: forced probe failure',
         'runtime state was not persisted',
       ],
     })
@@ -3812,7 +3814,7 @@ describe('MeshTab', () => {
       expect(coordinationResumeMember).toHaveBeenCalledWith('architecture-final', 'frontend-dev')
       expect(screen.queryByTestId('mesh-node-detail')).not.toBeInTheDocument()
       expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent(
-        "Resumed 'frontend-dev'. Notes: onboarding wake failed: daemon spawn failed runtime state was not persisted"
+        "Resumed 'frontend-dev'. Notes: onboarding wake failed: pane probe failed: Backend error: forced probe failure runtime state was not persisted"
       )
     })
   })

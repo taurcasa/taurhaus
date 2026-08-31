@@ -206,7 +206,7 @@ function formatResumeWarning(warning) {
     const [memberName] = warning.split(':', 1)
     return `${memberName}: started a replacement terminal session.`
   }
-  return warning.replaceAll('pane', 'terminal session')
+  return warning
 }
 
 export function buildMemberActionMessage(message, warnings) {

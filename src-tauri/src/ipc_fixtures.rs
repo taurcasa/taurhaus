@@ -321,5 +321,6 @@ fn accounts_result_fixture_matches_the_exported_contract() {
 // `cd src-tauri && UPDATE_IPC_FIXTURES=1 cargo test --lib -- ipc_fixtures`
 #[test]
 fn delivery_result_fixture_matches_the_exported_contract() {
+    // This pins the Rust wire shape only; DeliveryResult has no JS consumer.
     assert_fixture("delivery-result.json", &fully_populated_delivery_result());
 }
