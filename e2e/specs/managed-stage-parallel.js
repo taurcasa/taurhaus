@@ -2,6 +2,13 @@
  * Two managed Codex stages work concurrently in two Git worktrees on one team
  * (Tier 2, Linux, paid). W4 experiment 5.
  *
+ * Stage concurrency starts only after both members are ready: cold-starts are
+ * deliberately serialized (initialize lead + alpha, bind alpha, add + bind
+ * beta) because fresh-home Codex state migrations can race. A production team
+ * that initializes 2+ Codex members against one fresh home has the same risk;
+ * that product follow-up belongs in the measured experiment write-up, not in
+ * this lane-only fix.
+ *
  * This lane spends real Codex subscription turns and is named-only in
  * `e2e/specList.js`:
  *
