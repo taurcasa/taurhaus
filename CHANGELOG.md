@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-08-31
+
 ### Fixed
 
 - **Team initialization works from the Windows app again** — "Sending agent instructions" failed with Access denied (os error 5): the 9p server behind the WSL-resolved teams directory refuses to rename over a file any handle holds open, our own target-file lock included, and the inbox store was the one sibling without the direct-write fallback the config, runtime, operational and mesh-task stores already use. The shared rename-fallback predicate now also covers `ERROR_ACCESS_DENIED` and `ERROR_SHARING_VIOLATION`, and advisory-lock support detection accepts the `ERROR_ACCESS_DENIED` spelling newer Windows builds answer for `LockFileEx` on these paths.
