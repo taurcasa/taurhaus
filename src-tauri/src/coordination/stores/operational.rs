@@ -100,7 +100,22 @@ impl OperationalContextSnapshotStore {
         teams_dir: &Path,
         snapshot: &OperationalContextSnapshot,
     ) -> Result<(), CoordinationError> {
-        let _lock = super::lock::acquire_team_lock(teams_dir, &snapshot.team_name)?;
+        let lock = super::lock::acquire_team_lock(teams_dir, &snapshot.team_name)?;
+        Self::save_locked(&lock, teams_dir, snapshot)
+    }
+
+    /// Save while the caller holds this snapshot's team lock.
+    pub fn save_locked(
+        guard: &super::lock::TeamLockGuard,
+        teams_dir: &Path,
+        snapshot: &OperationalContextSnapshot,
+    ) -> Result<(), CoordinationError> {
+        if !guard.covers(teams_dir, &snapshot.team_name) {
+            return Err(CoordinationError::StoreError(format!(
+                "team lock guard does not cover team '{}'",
+                snapshot.team_name
+            )));
+        }
         save_snapshot_locked(teams_dir, snapshot)
     }
 

@@ -53,7 +53,7 @@ pub fn sync_member_snapshot(
         effort,
     );
 
-    save_snapshot_if_changed(teams_dir, existing.as_ref(), snapshot)
+    save_snapshot_if_changed(teams_dir, snapshot)
 }
 
 pub fn sync_project_task_snapshots(
@@ -91,7 +91,7 @@ pub fn sync_project_task_snapshots(
                 task,
                 effort,
             );
-            save_snapshot_if_changed(teams_dir, existing.as_ref(), snapshot)?;
+            save_snapshot_if_changed(teams_dir, snapshot)?;
         }
     }
     Ok(())
@@ -184,7 +184,7 @@ pub fn apply_delivery_context(
             }),
     };
 
-    save_snapshot_if_changed(teams_dir, existing.as_ref(), snapshot)
+    save_snapshot_if_changed(teams_dir, snapshot)
 }
 
 fn load_project_tasks(
@@ -308,18 +308,31 @@ fn preserve_task_deadline_markers(
 
 fn save_snapshot_if_changed(
     teams_dir: &Path,
-    existing: Option<&OperationalContextSnapshot>,
-    snapshot: OperationalContextSnapshot,
+    mut snapshot: OperationalContextSnapshot,
 ) -> Result<(), CoordinationError> {
-    if let Some(existing_snapshot) = existing {
+    let guard = crate::coordination::stores::lock::acquire_team_lock(
+        teams_dir,
+        &snapshot.team_name,
+    )?;
+    let current = OperationalContextSnapshotStore::load(
+        teams_dir,
+        &snapshot.team_name,
+        &snapshot.member_name,
+    )?;
+    snapshot.task = preserve_task_deadline_markers(
+        current.as_ref().map(|current| &current.task),
+        snapshot.task,
+    );
+
+    if let Some(existing_snapshot) = current.as_ref() {
         let mut candidate = snapshot.clone();
         candidate.updated_at = existing_snapshot.updated_at;
-        if &candidate == existing_snapshot {
+        if candidate == *existing_snapshot {
             return Ok(());
         }
     }
 
-    OperationalContextSnapshotStore::save(teams_dir, &snapshot)
+    OperationalContextSnapshotStore::save_locked(&guard, teams_dir, &snapshot)
 }
 
 /// The task statuses an assignment is still open in. This is the one place
@@ -807,6 +820,70 @@ mod tests {
         assert_eq!(replacement.task.deadline_minutes, None);
         assert_eq!(replacement.task.nudged_at, None);
         assert_eq!(replacement.task.stale_at, None);
+    }
+
+    // Regression: 1bb8668e let an operational refresh loaded before the
+    // deadline pass overwrite a one-shot marker the pass committed while the
+    // refresh was building its replacement snapshot.
+    #[test]
+    fn snapshot_refresh_preserves_a_marker_committed_after_its_load() {
+        let teams = TempDir::new().expect("teams dir");
+        write_team(teams.path());
+        let assigned_at = chrono::DateTime::parse_from_rfc3339("2026-03-08T12:00:00Z")
+            .expect("assigned timestamp")
+            .with_timezone(&Utc);
+        let nudged_at = assigned_at + chrono::Duration::minutes(10);
+        let original = OperationalContextSnapshot {
+            version: 1,
+            team_name: "architecture-final".to_string(),
+            member_name: "frontend-dev".to_string(),
+            updated_at: assigned_at,
+            task: OperationalTaskSnapshot {
+                id: "42".to_string(),
+                subject: "Original subject".to_string(),
+                status: "in_progress".to_string(),
+                deadline_minutes: Some(20),
+                ..Default::default()
+            },
+            assignment_footer: OperationalAssignmentFooterSnapshot::default(),
+            ownership: OperationalOwnershipSnapshot::default(),
+            working_set: OperationalWorkingSetSnapshot {
+                project_path: "proj-web".to_string(),
+                focal_files: Vec::new(),
+            },
+        };
+        OperationalContextSnapshotStore::save(teams.path(), &original)
+            .expect("seed original snapshot");
+
+        let refresh = build_member_snapshot(
+            Some(&original),
+            "architecture-final",
+            "frontend-dev",
+            "proj-web",
+            OperationalTaskSnapshot {
+                id: "42".to_string(),
+                subject: "Refreshed subject".to_string(),
+                status: "in_progress".to_string(),
+                ..Default::default()
+            },
+            None,
+        );
+        let mut concurrent = original.clone();
+        concurrent.task.nudged_at = Some(nudged_at);
+        OperationalContextSnapshotStore::save(teams.path(), &concurrent)
+            .expect("commit concurrent deadline marker");
+
+        save_snapshot_if_changed(teams.path(), refresh).expect("save refreshed snapshot");
+
+        let stored = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load refreshed snapshot")
+        .expect("refreshed snapshot exists");
+        assert_eq!(stored.task.subject, "Refreshed subject");
+        assert_eq!(stored.task.nudged_at, Some(nudged_at));
     }
 
     #[test]
