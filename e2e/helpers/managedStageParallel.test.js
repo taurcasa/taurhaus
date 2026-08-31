@@ -24,6 +24,21 @@ describe('parallel managed-stage spec contract', () => {
 
     expect(beforeHookTimeout?.[1]).toBe('1_500_000')
   })
+
+  // Regression: 8438876a ignored AddAgentReport warnings after hot-adding
+  // beta, so non-fatal pane and onboarding degradation had no lane diagnostic.
+  it('logs hot-add warnings after rejecting a failed add report', () => {
+    const addCallback = parallelSpecSource.slice(
+      parallelSpecSource.indexOf('add: async (stage) => {'),
+      parallelSpecSource.indexOf('waitForBinding: waitForMemberBinding')
+    )
+    const failureCheck = addCallback.indexOf('if (report?.failedStep)')
+    const warningCheck = addCallback.indexOf('if (report?.warnings?.length)')
+
+    expect(failureCheck).toBeGreaterThanOrEqual(0)
+    expect(warningCheck).toBeGreaterThan(failureCheck)
+    expect(addCallback.indexOf('hot-add warnings:', warningCheck)).toBeGreaterThan(warningCheck)
+  })
 })
 
 describe('launchManagedMembersSerially', () => {

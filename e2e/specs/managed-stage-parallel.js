@@ -484,6 +484,9 @@ async function initializeParallelTeam() {
       if (report?.failedStep) {
         throw new Error(`Adding ${stage.owner} failed at ${report.failedStep}: ${report.message}`)
       }
+      if (report?.warnings?.length) {
+        console.log(`[e2e] ${stage.owner} hot-add warnings: ${report.warnings.join(' | ')}`)
+      }
     },
     waitForBinding: waitForMemberBinding,
   })
