@@ -59,6 +59,31 @@ describe('default WDIO spec list', () => {
     expect(suppression).toBeGreaterThan(stall)
   })
 
+  // Regression: e1c38eef let the follow-up assignment race a live completion
+  // turn. Mesh recorded the notice as delivered, but the member never acted on it.
+  it('settles the prior final turn before assigning the follow-up suppression task', () => {
+    const suppressionBody = managedDeadlineSource.slice(
+      managedDeadlineSource.indexOf('async function runActivitySuppressionCase()'),
+      managedDeadlineSource.indexOf('async function runDeadlineStallCase()')
+    )
+    const settle = suppressionBody.indexOf('await settlePreviousCaseBeforeAssignment()')
+    const assignment = suppressionBody.indexOf('const assigned = assignDeadlineTask({')
+    const delivery = suppressionBody.indexOf(
+      'const attention = await waitForAttentionDelivery(assigned.taskId)'
+    )
+
+    expect(settle).toBeGreaterThanOrEqual(0)
+    expect(assignment).toBeGreaterThan(settle)
+    expect(delivery).toBeGreaterThan(assignment)
+    expect(managedDeadlineSource).toContain(
+      'waitForTurnAfter(previousCaseFinalTurnBaseline, ONBOARDING_TURN_TIMEOUT_MS)'
+    )
+    expect(managedDeadlineSource).toContain('browser.pause(FOLLOWUP_ASSIGNMENT_SETTLE_MS)')
+    expect(managedDeadlineSource).toMatch(
+      /notice delivered into a mid-turn pane can be[\s\S]*swallowed member-side[\s\S]*mesh records it as delivered/i
+    )
+  })
+
   // Regression: commit 111c776c appended every ungrouped spec to a catch-all,
   // so a new stateful or paid lane could silently enter the default suite.
   it('rejects an ungrouped spec with instructions for sealing the manifest', () => {

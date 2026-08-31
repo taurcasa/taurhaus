@@ -118,6 +118,7 @@ const ONBOARDING_TURN_TIMEOUT_MS = 120_000
 const ASSIGNMENT_START_TIMEOUT_MS = 240_000
 const DEADLINE_ACTION_TIMEOUT_MS = 180_000
 const PASS_EVIDENCE_TIMEOUT_MS = 210_000
+const FOLLOWUP_ASSIGNMENT_SETTLE_MS = 3_000
 
 const dataDir = process.env.TAURHAUS_DATA_DIR || ''
 const codexHome = process.env.CODEX_HOME || ''
@@ -154,6 +155,7 @@ let fixtureSetupError = ''
 let fixtureProjectKey = null
 const createdTeamNames = new Set()
 const measured = {}
+let previousCaseFinalTurnBaseline = null
 
 // The first-run wizard scans E2E_PROJECTS_DIR inside the before hook, so this
 // throwaway project must exist at module load. The worker root removes it.
@@ -499,6 +501,19 @@ async function waitForTurnAfter(previousTurns, timeoutMs) {
   }
 }
 
+async function settlePreviousCaseBeforeAssignment() {
+  if (previousCaseFinalTurnBaseline == null) {
+    throw new Error('the previous case did not record its final-turn baseline')
+  }
+  if (!(await waitForTurnAfter(previousCaseFinalTurnBaseline, ONBOARDING_TURN_TIMEOUT_MS))) {
+    throw new Error('the previous case did not finish its final Codex turn before follow-up assignment')
+  }
+
+  // Observed attempt 1: a notice delivered into a mid-turn pane can be
+  // swallowed member-side even though mesh records it as delivered.
+  await browser.pause(FOLLOWUP_ASSIGNMENT_SETTLE_MS)
+}
+
 async function ensureMemberHasTakenATurn(paneId) {
   if (completedTurns() > 0) return 'already'
   tmuxQuietly(['send-keys', '-t', paneId, 'Enter'])
@@ -787,8 +802,12 @@ describe('managed stage deadline semantics', function () {
     this.timeout(480_000)
     this.retries(1)
 
+    await settlePreviousCaseBeforeAssignment()
     const logOffset = currentLogOffset()
     const turnCount = completedTurns()
+    // The prior case intentionally leaves a stale task. This creates and
+    // explicitly assigns a new task; its attention assertion below is scoped
+    // independently to the new task id.
     const assigned = assignDeadlineTask({
       subject: 'Exercise active deadline suppression',
       description:
@@ -919,6 +938,7 @@ describe('managed stage deadline semantics', function () {
 
     const logOffset = currentLogOffset()
     const turnCount = completedTurns()
+    previousCaseFinalTurnBaseline = turnCount
     const assigned = assignDeadlineTask({
       subject: 'Wait for the managed stage deadline',
       description: 'W4 experiment 4: start honestly, then remain idle so the production deadline pass acts.',
