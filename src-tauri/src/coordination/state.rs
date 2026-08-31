@@ -224,21 +224,11 @@ impl CoordinationState {
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
-        self.run_background_self_heal_pass_at_inner(cli_commands, tmux_layout, Utc::now())
-    }
-
-    fn run_background_self_heal_pass_at_inner(
-        &self,
-        cli_commands: &CliCommandSettings,
-        tmux_layout: &str,
-        now: DateTime<Utc>,
-    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
         let mut cli_commands = cli_commands.clone();
-        self.run_background_self_heal_pass_with_launch_resolution_at(
+        self.run_background_self_heal_pass_with_launch_resolution(
             &mut cli_commands,
             tmux_layout,
             &mut |_, _| {},
-            now,
         )
     }
 
@@ -247,21 +237,6 @@ impl CoordinationState {
         cli_commands: &mut CliCommandSettings,
         tmux_layout: &str,
         resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
-    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
-        self.run_background_self_heal_pass_with_launch_resolution_at(
-            cli_commands,
-            tmux_layout,
-            resolve_launch_base,
-            Utc::now(),
-        )
-    }
-
-    fn run_background_self_heal_pass_with_launch_resolution_at(
-        &self,
-        cli_commands: &mut CliCommandSettings,
-        tmux_layout: &str,
-        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
-        now: DateTime<Utc>,
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
         let team_names = TeamConfigStore::list(&self.teams_dir)?;
         let mut summary = BackgroundSelfHealPassResult::default();
@@ -277,32 +252,6 @@ impl CoordinationState {
                         team = %team_name,
                         error = %err,
                         "background coordination self-heal failed"
-                    );
-                }
-            }
-
-            match crate::coordination::task_deadline_pass::apply_task_deadlines(
-                &mut orchestrator,
-                &team_name,
-                now,
-            ) {
-                Ok(outcome) => {
-                    summary.team_errors += outcome.failures.len();
-                    for (member, reason) in outcome.failures {
-                        tracing::warn!(
-                            team = %team_name,
-                            member = %member,
-                            error = %reason,
-                            "background task-deadline member failed"
-                        );
-                    }
-                }
-                Err(err) => {
-                    summary.team_errors += 1;
-                    tracing::warn!(
-                        team = %team_name,
-                        error = %err,
-                        "background task-deadline pass failed"
                     );
                 }
             }
@@ -1727,6 +1676,26 @@ mod tests {
             )),
             "deadline actions must never stop a member session or daemon"
         );
+    }
+
+    // Regression: 1bb8668e registered task deadlines inside the app-owned
+    // self-heal pass. Once the daemon owns the pass, retaining that call would
+    // execute every action twice and keep a Windows writer on the 9p path.
+    #[test]
+    fn app_background_self_heal_does_not_schedule_task_deadlines() {
+        let (_tmp, teams_dir, _runtime, fake, state) = deadline_fixture();
+        let assigned_at = Utc::now() - chrono::Duration::minutes(30);
+        seed_deadline_task(&teams_dir, assigned_at, Some(20));
+
+        state
+            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
+            .expect("app self-heal succeeds");
+
+        assert!(deadline_notices(&fake).is_empty());
+        let snapshot = deadline_snapshot(&teams_dir);
+        assert_eq!(snapshot.task.status, "in_progress");
+        assert_eq!(snapshot.task.stale_at, None);
+        assert_eq!(mesh_task_status(&teams_dir), "in_progress");
     }
 
     #[test]
