@@ -718,8 +718,6 @@ function taskRecordTimestamps(record) {
   const candidates = {
     assignedAt: metadata.assigned_at ?? metadata.assignedAt,
     startedAt: metadata.started_at ?? metadata.startedAt,
-    stateChangedAt: record?.state_changed_at ?? record?.stateChangedAt,
-    updatedAt: record?.updated_at ?? record?.updatedAt,
     completedAt: metadata.completed_at ?? metadata.completedAt,
   }
   return Object.fromEntries(Object.entries(candidates).filter(([, value]) => value != null))
@@ -813,7 +811,7 @@ describe('managed stage deadline semantics', function () {
     expect(Number.isFinite(Date.parse(imported.task.assigned_at))).toBe(true)
 
     const activityByObservedAt = new Map()
-    let suppressionEvidence = null
+    let suppressionOutcome = null
     await browser.waitUntil(
       async () => {
         const activity = readActivitySnapshot()
@@ -829,14 +827,20 @@ describe('managed stage deadline semantics', function () {
           ...deadlineEvents(events, 'deadline.nudge.sent', assigned.taskId, ACTIVE_DEADLINE_MINUTES),
           ...deadlineEvents(events, 'deadline.task.staled', assigned.taskId, ACTIVE_DEADLINE_MINUTES),
         ]
-        suppressionEvidence = activeDeadlinePassEvidence({
+        if (actions.length > 0) {
+          suppressionOutcome = { kind: 'deadline-action', actions }
+          return true
+        }
+        const evidence = activeDeadlinePassEvidence({
           assignedAt: imported.task.assigned_at,
           deadlineMinutes: ACTIVE_DEADLINE_MINUTES,
           activitySnapshots: [...activityByObservedAt.values()],
           passEvents: selfHealPassesAfter(events, imported.task.assigned_at),
-          deadlineEvents: actions,
+          deadlineEvents: [],
         })
-        return Boolean(suppressionEvidence)
+        if (!evidence) return false
+        suppressionOutcome = { kind: 'suppressed', evidence }
+        return true
       },
       {
         timeout: 150_000,
@@ -844,6 +848,12 @@ describe('managed stage deadline semantics', function () {
         timeoutMsg: `no eligible self-heal pass observed active work on task #${assigned.taskId}`,
       }
     )
+
+    if (suppressionOutcome.kind === 'deadline-action') {
+      const actionNames = suppressionOutcome.actions.map((event) => event.event).join(', ')
+      throw new Error(`task #${assigned.taskId} received deadline action(s): ${actionNames}`)
+    }
+    const suppressionEvidence = suppressionOutcome.evidence
 
     expect(suppressionEvidence.activityConfidence).toMatch(/^(active|likely_working)$/)
     expect(nudgeMessages(assigned.taskId)).toEqual([])
@@ -931,17 +941,20 @@ describe('managed stage deadline semantics', function () {
     expect(imported.task.stale_at ?? null).toBeNull()
     const aliveAfterStart = memberAliveEvidence()
 
-    const nudgeEvent = await waitForLogEvidence(
+    const nudgeOutcome = await waitForLogEvidence(
       logOffset,
       (events) => {
-        const stale = deadlineEvents(events, 'deadline.task.staled', assigned.taskId)
-        if (stale.length > 0) {
-          throw new Error(`task #${assigned.taskId} became stale before its half-time nudge`)
-        }
-        return deadlineEvents(events, 'deadline.nudge.sent', assigned.taskId)[0] ?? null
+        const nudge = deadlineEvents(events, 'deadline.nudge.sent', assigned.taskId)[0]
+        if (nudge) return { kind: 'nudge', event: nudge }
+        const stale = deadlineEvents(events, 'deadline.task.staled', assigned.taskId)[0]
+        return stale ? { kind: 'stale-before-nudge', event: stale } : null
       },
       { timeout: DEADLINE_ACTION_TIMEOUT_MS, timeoutMsg: `task #${assigned.taskId} was never nudged` }
     )
+    if (nudgeOutcome.kind === 'stale-before-nudge') {
+      throw new Error(`task #${assigned.taskId} became stale before its half-time nudge`)
+    }
+    const nudgeEvent = nudgeOutcome.event
     expect(nudgeEvent.deadline_minutes).toBe(DEADLINE_MINUTES)
 
     const nudgedSnapshot = readOperationalSnapshot()
@@ -1016,7 +1029,7 @@ describe('managed stage deadline semantics', function () {
       deadline: {
         taskId: assigned.taskId,
         deadlineMinutes: DEADLINE_MINUTES,
-        passCadenceMs: 30_000,
+        configuredPassCadenceMs: PASS_CADENCE_MS,
         halfDueMs: DEADLINE_MINUTES * 60_000 / 2,
         fullDueMs: DEADLINE_MINUTES * 60_000,
         taskTransitions: [

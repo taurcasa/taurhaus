@@ -184,6 +184,7 @@ E2E tests launch the real app binary via tauri-driver + WebDriverIO. They run on
 | `just test-e2e-full` | Linux (WSL) | Tier 1 + Tier 2 (requires daemon running), safe-by-default daemon handling |
 | `just test-e2e-spec SPEC` | Linux (WSL) | Single spec file (e.g. `just test-e2e-spec search-workflow`), safe-by-default daemon handling |
 | `E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex` | Linux (WSL) | Paid lane: a managed Codex member completes a bounded task through the mesh assignment contract, with the assignment's effort put into force before delivery (W4 experiment 3). Never in a suite run; see [`docs/operations/testing-guide.md`](docs/operations/testing-guide.md). |
+| `E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-deadline` | Linux (WSL) | Paid lane: measures active nudge suppression, one-shot nudge/stale actions, stage timeout, and session survival on a managed Codex member (W4 experiment 4). Never in a suite run; see [`docs/operations/testing-guide.md`](docs/operations/testing-guide.md). |
 | `just test-macos-e2e` | **macOS** via SSH | macOS E2E test suite on remote Mac Mini. |
 
 For local runs that should rebuild/reinstall the daemon first, opt in explicitly: `E2E_INSTALL_DAEMON=1 just test-e2e`.
