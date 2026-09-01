@@ -1,6 +1,6 @@
 # Coordination Through the Daemon
 
-Status: **in progress** (operator decision 2026-09-01: "design now, build immediately"). The deadline pass is daemon-owned at protocol 15, initialization at protocol 16, and add-agent/resume-member/stop-member at protocol 17. Resume-team, reonboard, self-heal, effort, and the B3 writer boundary remain future slices.
+Status: **in progress** (operator decision 2026-09-01: "design now, build immediately"). The deadline pass is daemon-owned at protocol 15, initialization at protocol 16, add-agent/resume-member/stop-member at protocol 17, and resume-team/reonboard at protocol 18. Every interactive pipeline is daemon-owned; self-heal, effort, and the B3 writer boundary remain future slices.
 
 ## The problem, from the field
 
@@ -35,7 +35,7 @@ The round-3 move-aside/tolerant-reader machinery is **kept**, not reverted: it p
 
 ## Wire contract
 
-- `PROTOCOL_VERSION` bumped 14 → 15 for the deadline pass, 15 → 16 for initialization, and 16 → 17 for add/resume/stop; app and daemon move in lockstep via the existing exact-match gate and repair flow.
+- `PROTOCOL_VERSION` bumped 14 → 15 for the deadline pass, 15 → 16 for initialization, 16 → 17 for add/resume/stop, and 17 → 18 for resume-team/reonboard; app and daemon move in lockstep via the existing exact-match gate and repair flow.
 - New namespaced methods (`coordination.*`), each carrying its expectation (CAS semantics) even in phase B1 — the daemon validates under `flock` and returns typed conflict outcomes, mirroring today's `RuntimeCommitOutcome::Skipped` shapes.
 - **B2 progress decision**: initialize uses a `run_id`-keyed in-memory registry and status polling. The app polls at roughly 500 ms and re-emits the existing Tauri progress event; the daemon retains terminal runs for a bounded TTL. Push progress remains a possible later optimization, not part of this slice.
 
