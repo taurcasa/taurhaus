@@ -183,6 +183,7 @@ pub struct ResolveLaunchBaseParams {
 
 /// Self-contained team-initialization intent. The daemon derives host-local
 /// account selectors and launch-base resolutions before running the pipeline.
+#[cfg(feature = "mesh-bridged-backend")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CoordinationInitializeParams {
     pub request: crate::coordination::requests::InitializeTeamRequest,
@@ -190,16 +191,19 @@ pub struct CoordinationInitializeParams {
     pub tmux_layout: String,
 }
 
+#[cfg(feature = "mesh-bridged-backend")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CoordinationInitializeAccepted {
     pub run_id: String,
 }
 
+#[cfg(feature = "mesh-bridged-backend")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CoordinationInitializeStatusParams {
     pub run_id: String,
 }
 
+#[cfg(feature = "mesh-bridged-backend")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "status")]
 pub enum CoordinationInitializeOutcome {
@@ -212,6 +216,7 @@ pub enum CoordinationInitializeOutcome {
     },
 }
 
+#[cfg(feature = "mesh-bridged-backend")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CoordinationInitializeStatus {
     pub run_id: String,

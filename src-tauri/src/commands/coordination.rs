@@ -892,35 +892,10 @@ fn reconcile_codex_before_managed_launch(
     teams_dir: &std::path::Path,
     has_managed_codex: bool,
 ) -> bool {
-    match crate::commands::terminal_settings::reconcile_codex_hook_for_managed_launch(
+    crate::commands::terminal_settings::managed_codex_hook_trust_for_launch(
         teams_dir,
         has_managed_codex,
-    ) {
-        Ok(_) => {
-            has_managed_codex
-                && crate::coordination::compact_hook::codex_compact_hook_is_installed()
-        }
-        Err(error) => {
-            tracing::warn!(
-                error = %error,
-                "Codex compact hook reconciliation degraded; continuing managed launch"
-            );
-            let mut fields = Map::new();
-            fields.insert("tool".to_string(), Value::String("codex".to_string()));
-            fields.insert(
-                "error.message".to_string(),
-                Value::String(sanitize_error(&error.to_string())),
-            );
-            taurhaus_lib::logging::emit_global(
-                "warn",
-                "coordination",
-                "compaction.codex_hook.degraded",
-                Some("Managed launch continued without Codex hook trust bypass".to_string()),
-                fields,
-            );
-            false
-        }
-    }
+    )
 }
 
 fn maybe_ensure_compact_hooks_for_team<T>(
