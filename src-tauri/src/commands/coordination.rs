@@ -230,9 +230,15 @@ fn prepare_member_operation_snapshot(
     team_name: &str,
     member_name: &str,
     project_path: &str,
-) -> Result<crate::coordination::stores::OperationalContextSnapshot, String> {
+) -> Result<
+    (
+        crate::coordination::stores::OperationalContextSnapshot,
+        Option<chrono::DateTime<chrono::Utc>>,
+    ),
+    String,
+> {
     let conn = db.0.lock().map_err(|_| "db mutex poisoned".to_string())?;
-    crate::coordination::operational_context::prepare_member_snapshot(
+    crate::coordination::operational_context::prepare_member_snapshot_with_task_timestamp(
         state.teams_dir(),
         &conn,
         team_name,
@@ -719,7 +725,7 @@ pub async fn coordination_add_agent(
         validate_add_agent_request_fields(&request)?;
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         let contract_request = map_add_agent_request_to_contract(&request);
-        let operational_snapshot = prepare_member_operation_snapshot(
+        let (operational_snapshot, task_state_changed_at) = prepare_member_operation_snapshot(
             state.inner(),
             &db,
             &contract_request.team_name,
@@ -731,6 +737,7 @@ pub async fn coordination_add_agent(
             cli_commands,
             tmux_layout,
             operational_snapshot: Some(operational_snapshot),
+            task_state_changed_at,
         };
         let provider = app_for_task.state::<ProviderState>();
         let daemon = provider
@@ -790,7 +797,7 @@ pub async fn coordination_resume_member(
                     contract_request.member_name, contract_request.team_name
                 )
             })?;
-        let operational_snapshot = prepare_member_operation_snapshot(
+        let (operational_snapshot, task_state_changed_at) = prepare_member_operation_snapshot(
             state.inner(),
             &db,
             &contract_request.team_name,
@@ -802,6 +809,7 @@ pub async fn coordination_resume_member(
             cli_commands,
             tmux_layout,
             operational_snapshot: Some(operational_snapshot),
+            task_state_changed_at,
         };
         let provider = app_for_task.state::<ProviderState>();
         let daemon = provider

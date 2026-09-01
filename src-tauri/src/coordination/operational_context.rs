@@ -70,7 +70,7 @@ pub(crate) fn prepare_member_snapshot(
     .map(|(snapshot, _)| snapshot)
 }
 
-fn prepare_member_snapshot_with_task_timestamp(
+pub(crate) fn prepare_member_snapshot_with_task_timestamp(
     teams_dir: &Path,
     conn: &Connection,
     team_name: &str,
@@ -100,6 +100,22 @@ pub(crate) fn publish_initialize_snapshot(
     teams_dir: &Path,
     snapshot: &OperationalContextSnapshot,
 ) -> Result<(), CoordinationError> {
+    publish_snapshot(teams_dir, snapshot, None)
+}
+
+pub(crate) fn publish_member_operation_snapshot(
+    teams_dir: &Path,
+    snapshot: &OperationalContextSnapshot,
+    task_state_changed_at: Option<DateTime<Utc>>,
+) -> Result<(), CoordinationError> {
+    publish_snapshot(teams_dir, snapshot, task_state_changed_at)
+}
+
+fn publish_snapshot(
+    teams_dir: &Path,
+    snapshot: &OperationalContextSnapshot,
+    task_state_changed_at: Option<DateTime<Utc>>,
+) -> Result<(), CoordinationError> {
     let guard =
         crate::coordination::stores::lock::acquire_team_lock(teams_dir, &snapshot.team_name)?;
     let current = OperationalContextSnapshotStore::load(
@@ -117,7 +133,11 @@ pub(crate) fn publish_initialize_snapshot(
     let mut candidate = snapshot.clone();
     if let Some(current) = current {
         candidate.version = current.version;
-        candidate.task = preserve_task_deadline_markers(Some(&current.task), candidate.task, None);
+        candidate.task = preserve_task_deadline_markers(
+            Some(&current.task),
+            candidate.task,
+            task_state_changed_at,
+        );
         let task_effort = candidate.assignment_footer.task_effort.clone();
         let task_effort_why = candidate.assignment_footer.task_effort_why.clone();
         candidate.assignment_footer = current.assignment_footer;
@@ -1187,6 +1207,58 @@ mod tests {
         assert_eq!(snapshot.task.deadline_minutes, Some(20));
         assert_eq!(snapshot.task.nudged_at, None);
         assert_eq!(snapshot.task.stale_at, None);
+    }
+
+    // Regression: 639b340e published daemon member-operation snapshots without
+    // the task transition timestamp, so a reopened task was forced back stale.
+    #[test]
+    fn daemon_member_snapshot_publish_clears_stale_markers_for_a_reopened_task() {
+        let teams = TempDir::new().expect("teams dir");
+        write_team(teams.path());
+        let stale_at = chrono::DateTime::parse_from_rfc3339("2026-03-08T12:20:00Z")
+            .expect("stale timestamp")
+            .with_timezone(&Utc);
+        let state_changed_at = stale_at + chrono::Duration::minutes(10);
+        let existing = OperationalContextSnapshot {
+            version: 1,
+            team_name: "architecture-final".to_string(),
+            member_name: "frontend-dev".to_string(),
+            updated_at: stale_at,
+            task: OperationalTaskSnapshot {
+                id: "42".to_string(),
+                subject: "Fix regression".to_string(),
+                status: "stale".to_string(),
+                deadline_minutes: Some(20),
+                assigned_at: Some(stale_at - chrono::Duration::minutes(20)),
+                nudged_at: Some(stale_at - chrono::Duration::minutes(10)),
+                stale_at: Some(stale_at),
+            },
+            assignment_footer: OperationalAssignmentFooterSnapshot::default(),
+            ownership: OperationalOwnershipSnapshot::default(),
+            working_set: OperationalWorkingSetSnapshot {
+                project_path: "proj-web".to_string(),
+                focal_files: Vec::new(),
+            },
+        };
+        OperationalContextSnapshotStore::save(teams.path(), &existing)
+            .expect("seed stale snapshot");
+        let mut reopened = existing.clone();
+        reopened.updated_at = state_changed_at;
+        reopened.task.status = "in_progress".to_string();
+
+        publish_member_operation_snapshot(teams.path(), &reopened, Some(state_changed_at))
+            .expect("publish reopened snapshot");
+
+        let stored = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+        assert_eq!(stored.task.status, "in_progress");
+        assert_eq!(stored.task.nudged_at, None);
+        assert_eq!(stored.task.stale_at, None);
     }
 
     // Regression: 04bda5ec must keep the deadline pass's stale marker while

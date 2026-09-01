@@ -244,6 +244,8 @@ pub struct CoordinationAddAgentParams {
     pub tmux_layout: String,
     #[serde(default)]
     pub operational_snapshot: Option<crate::coordination::stores::OperationalContextSnapshot>,
+    #[serde(default)]
+    pub task_state_changed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
@@ -289,6 +291,8 @@ pub struct CoordinationResumeMemberParams {
     pub tmux_layout: String,
     #[serde(default)]
     pub operational_snapshot: Option<crate::coordination::stores::OperationalContextSnapshot>,
+    #[serde(default)]
+    pub task_state_changed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
@@ -1209,6 +1213,7 @@ mod tests {
             cli_commands: crate::models::CliCommandSettings::default(),
             tmux_layout: "new_window".to_string(),
             operational_snapshot: None,
+            task_state_changed_at: None,
         };
         let resume = CoordinationResumeMemberParams {
             request: crate::coordination::requests::ResumeMemberRequest {
@@ -1219,6 +1224,7 @@ mod tests {
             cli_commands: crate::models::CliCommandSettings::default(),
             tmux_layout: "new_window".to_string(),
             operational_snapshot: None,
+            task_state_changed_at: None,
         };
         let stop = CoordinationStopMemberParams {
             request: crate::coordination::requests::StopMemberRequest {

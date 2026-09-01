@@ -336,6 +336,7 @@ fn add_agent_daemon_poll_reemits_the_existing_progress_contract() {
         cli_commands: CliCommandSettings::default(),
         tmux_layout: "new_window".to_string(),
         operational_snapshot: None,
+        task_state_changed_at: None,
     };
     let progress = crate::coordination::requests::StepProgress {
         step: "validate".to_string(),
@@ -410,6 +411,7 @@ fn resume_and_stop_daemon_clients_use_their_run_status_methods() {
         cli_commands: CliCommandSettings::default(),
         tmux_layout: "new_window".to_string(),
         operational_snapshot: None,
+        task_state_changed_at: None,
     };
     let resume_report = crate::coordination::requests::ResumeAgentReport {
         team_name: "arch".to_string(),

@@ -102,6 +102,7 @@ impl MemberOperationsService {
                             &report.team_name,
                             &report.member_name,
                             params.operational_snapshot.as_ref(),
+                            params.task_state_changed_at,
                         )
                         .map_err(|error| error.to_string())?;
                     }
@@ -161,6 +162,7 @@ impl MemberOperationsService {
                         &report.team_name,
                         &report.member_name,
                         params.operational_snapshot.as_ref(),
+                        params.task_state_changed_at,
                     )
                     .map_err(|error| error.to_string())?;
                     Ok::<_, String>(report)
@@ -437,13 +439,16 @@ fn finalize_member_state(
     team_name: &str,
     member_name: &str,
     snapshot: Option<&crate::coordination::stores::OperationalContextSnapshot>,
+    task_state_changed_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<(), crate::coordination::errors::CoordinationError> {
     if let Some(snapshot) = snapshot {
         let belongs_to_member =
             snapshot.team_name == team_name && snapshot.member_name == member_name;
         if belongs_to_member {
-            crate::coordination::operational_context::publish_initialize_snapshot(
-                teams_dir, snapshot,
+            crate::coordination::operational_context::publish_member_operation_snapshot(
+                teams_dir,
+                snapshot,
+                task_state_changed_at,
             )?;
         } else {
             tracing::warn!(
@@ -585,6 +590,7 @@ mod tests {
                 cli_commands: CliCommandSettings::default(),
                 tmux_layout: "new_window".to_string(),
                 operational_snapshot: Some(snapshot("arch", "builder", &project)),
+                task_state_changed_at: None,
             })
             .expect("daemon worker starts");
         let status = wait_add(&service, &run_id);
@@ -636,6 +642,7 @@ mod tests {
                 cli_commands: CliCommandSettings::default(),
                 tmux_layout: "new_window".to_string(),
                 operational_snapshot: None,
+                task_state_changed_at: None,
             })
             .expect("add worker starts");
         let added = wait_add(&service, &add_id);
@@ -661,6 +668,7 @@ mod tests {
                 cli_commands: CliCommandSettings::default(),
                 tmux_layout: "new_window".to_string(),
                 operational_snapshot: Some(snapshot("arch", "builder", &project)),
+                task_state_changed_at: None,
             })
             .expect("resume worker starts");
         let deadline = Instant::now() + Duration::from_secs(2);
