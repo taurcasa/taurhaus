@@ -598,6 +598,32 @@ fn successful_team_commands_do_not_reconcile_the_codex_hook_twice() {
     assert!(!helper.contains("reconcile_codex_before_managed_launch"));
 }
 
+#[test]
+fn daemon_owned_member_launches_do_not_reconcile_codex_in_the_app() {
+    // Regression: 639b340e left app-side Codex reconciliation in add/resume
+    // after their launch decisions moved into the daemon, doubling host writes.
+    let source = include_str!("../coordination.rs");
+    for (command, next_boundary) in [
+        (
+            "coordination_add_agent",
+            "pub async fn coordination_resume_member",
+        ),
+        ("coordination_resume_member", "pub fn coordination_resume_team"),
+    ] {
+        let body = source
+            .split(&format!("pub async fn {command}"))
+            .nth(1)
+            .unwrap_or_else(|| panic!("{command} command body"))
+            .split(next_boundary)
+            .next()
+            .expect("next command boundary");
+        assert!(
+            !body.contains("reconcile_codex_before_managed_launch"),
+            "{command} must leave Codex hook reconciliation to the daemon"
+        );
+    }
+}
+
 // Regression: 06575d68 resolved both launch modes for every configured team
 // tool while merely assembling settings for the 30-second self-heal pass, so
 // an idle team paid shell/tmux probe cost despite launching nothing.

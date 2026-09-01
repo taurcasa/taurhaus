@@ -717,12 +717,6 @@ pub async fn coordination_add_agent(
         let request = normalize_add_agent_request_path(&db, request)?;
         let request = hydrate_add_agent_request_role_metadata(state.inner(), request)?;
         validate_add_agent_request_fields(&request)?;
-        let has_codex = CliTool::from_alias(&request.agent.cli_tool).is_ok_and(|tool| {
-            crate::session_scanner::cli_tool::spec(tool)
-                .capabilities
-                .hook_trust
-        });
-        let _ = reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         let contract_request = map_add_agent_request_to_contract(&request);
         let operational_snapshot = prepare_member_operation_snapshot(
@@ -775,17 +769,12 @@ pub async fn coordination_resume_member(
     let span = IpcCommandSpan::start("coordination_resume_member");
     let requested_team_name = request.team_name.clone();
     let requested_member_name = request.member_name.clone();
-    let requested_team_name_for_task = requested_team_name.clone();
     let app_for_task = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         validate_non_empty("team_name", &request.team_name)?;
         validate_non_empty("member_name", &request.member_name)?;
         let db = app_for_task.state::<DbState>();
         let state = app_for_task.state::<CoordinationState>();
-        let has_codex =
-            team_has_managed_codex_member(state.teams_dir(), &requested_team_name_for_task)
-                .map_err(|error| IpcError::internal(sanitize_error(&error.to_string())))?;
-        let _ = reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         let contract_request = map_resume_member_request_to_contract(&request);
         let config = TeamConfigStore::load(state.teams_dir(), &contract_request.team_name)

@@ -554,7 +554,14 @@ mod managed_launch_sites {
 
         let offenders: Vec<&str> = LAUNCH_SITES
             .into_iter()
-            .filter(|site| *site != "coordination_initialize_team")
+            .filter(|site| {
+                ![
+                    "coordination_initialize_team",
+                    "coordination_add_agent",
+                    "coordination_resume_member",
+                ]
+                .contains(site)
+            })
             .filter(|site| {
                 let body = function_body(&source, site);
                 !body.contains("reconcile_codex_before_managed_launch(state.teams_dir(),")
