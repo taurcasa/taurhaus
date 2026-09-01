@@ -131,8 +131,13 @@ impl DaemonRpcSpan {
     }
 
     pub fn response(&self, status: &'static str) {
+        let level = if self.method == protocol::method::COORDINATION_INITIALIZE_STATUS {
+            "debug"
+        } else {
+            "info"
+        };
         emit_daemon_rpc_event(
-            "info",
+            level,
             "daemon.rpc.response",
             &self.daemon_request_id,
             &self.method,
@@ -240,6 +245,33 @@ mod tests {
         assert_eq!(response["status"], "ok");
         assert_eq!(response["retry_count"], 1);
         assert!(response["duration_ms"].as_u64().unwrap() <= 1_000);
+    }
+
+    #[test]
+    fn initialize_status_poll_responses_are_debug_level() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let log_path = dir.path().join("daemon-rpc-init-poll.log.jsonl");
+        let state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&state);
+
+        let request = protocol::DaemonRequest::new(
+            "r-init-poll",
+            protocol::method::COORDINATION_INITIALIZE_STATUS,
+            Value::Null,
+        );
+        let span = DaemonRpcSpan::start(&request, 0);
+        span.response("ok");
+
+        let lines = wait_for_lines(&log_path, 2);
+        let response = lines
+            .iter()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("valid json"))
+            .find(|value| value["event"] == "daemon.rpc.response")
+            .expect("response event");
+        assert_eq!(response["method"], "coordination.initialize_status");
+        assert_eq!(response["level"], "DEBUG");
     }
 
     #[test]
