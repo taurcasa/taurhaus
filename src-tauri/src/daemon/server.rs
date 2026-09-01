@@ -778,7 +778,8 @@ mod tests {
             )
         });
 
-        let deadline = Instant::now() + Duration::from_secs(8);
+        // Measured ~6.3s on an idle host; generous for CI/loaded hosts.
+        let deadline = Instant::now() + Duration::from_secs(30);
         let pass = loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             let record = event_rx

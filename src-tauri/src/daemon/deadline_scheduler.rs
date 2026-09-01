@@ -81,11 +81,8 @@ impl DeadlineScheduler {
                 thread::sleep(Duration::from_millis(10));
             }
             if !handle.is_finished() {
-                emit_pass_failed(
-                    "deadline scheduler did not stop before shutdown grace elapsed",
-                    SHUTDOWN_JOIN_GRACE,
-                    "shutdown",
-                );
+                // An ordinary shutdown overlapping a slow pass is not a pass
+                // failure; the detach itself is the only noteworthy fact.
                 tracing::warn!("daemon task-deadline scheduler detached during shutdown");
                 return;
             }
@@ -106,8 +103,10 @@ fn emit_pass_completed(teams_scanned: usize, team_errors: usize, duration: Durat
         "duration_ms".to_string(),
         Value::from(duration_millis(duration)),
     );
+    // A 30-second heartbeat is periodic health, not an operator-actionable
+    // change: debug per the log-level policy. Errors surface separately.
     taurhaus_lib::logging::emit_global(
-        "info",
+        "debug",
         "coordination",
         "deadline.pass.completed",
         Some("Daemon task-deadline pass completed".to_string()),
