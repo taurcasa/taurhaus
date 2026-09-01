@@ -1,9 +1,12 @@
 use crate::commands::projects::DbState;
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::operational_context::{sync_member_snapshot, sync_team_snapshots};
+use crate::coordination::operational_context::sync_member_snapshot;
+#[cfg(test)]
+use crate::coordination::operational_context::sync_team_snapshots;
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{ActiveProjectTeamStore, TeamConfigStore};
 
+#[cfg(test)]
 pub(super) fn sync_team_snapshots_after_change(
     state: &CoordinationState,
     db: &DbState,

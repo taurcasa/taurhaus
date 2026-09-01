@@ -24,6 +24,32 @@ pub fn sync_team_snapshots(
     Ok(())
 }
 
+/// Build the app-DB-derived snapshots carried by a daemon initialization
+/// intent. This performs no team-store writes; the daemon publishes the
+/// snapshots only after the pipeline succeeds.
+pub(crate) fn prepare_initialize_snapshots(
+    conn: &Connection,
+    request: &crate::coordination::requests::InitializeTeamRequest,
+) -> Result<Vec<OperationalContextSnapshot>, CoordinationError> {
+    std::iter::once(&request.lead)
+        .chain(request.agents.iter())
+        .map(|member| {
+            let tasks = load_project_tasks(conn, &member.project_id)?;
+            let (task, effort, task_state_changed_at) =
+                latest_owned_task_from_tasks(&tasks, &member.name);
+            Ok(build_member_snapshot(
+                None,
+                &request.team_name,
+                &member.name,
+                &member.project_id,
+                task,
+                effort,
+                task_state_changed_at,
+            ))
+        })
+        .collect()
+}
+
 pub fn sync_member_snapshot(
     teams_dir: &Path,
     conn: &Connection,

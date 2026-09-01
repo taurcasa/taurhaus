@@ -18,14 +18,99 @@ use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{
     ActiveProjectTeamStore, MemberRuntimeStore, OperationalContextSnapshotStore, TeamConfigStore,
 };
-use taurhaus_lib::daemon_api::protocol;
+use crate::daemon::protocol;
 use taurhaus_lib::ProviderState;
+
+// Regression: 5cebfef8 installed the initialize pipeline behind the desktop
+// command's process-local orchestrator, so Windows mutated team state across
+// the WSL 9p bridge instead of in the daemon's ext4/flock domain.
+#[test]
+fn initialize_command_has_no_local_pipeline_execution_path() {
+    let source = include_str!("../coordination.rs");
+    assert!(
+        !source.contains("orchestrator.initialize_team_with_cli_commands_and_layout_and_progress")
+    );
+    assert!(source.contains("COORDINATION_INITIALIZE_TEAM"));
+    assert!(source.contains("COORDINATION_INITIALIZE_STATUS"));
+}
+
+#[test]
+fn initialize_daemon_poll_reemits_the_existing_progress_contract() {
+    let params = protocol::CoordinationInitializeParams {
+        request: map_initialize_request_to_contract(&sample_preflight_request()),
+        cli_commands: crate::models::CliCommandSettings::default(),
+        tmux_layout: "new_window".to_string(),
+        operational_snapshots: Vec::new(),
+    };
+    let progress = crate::coordination::requests::StepProgress {
+        step: "validate_configuration".to_string(),
+        status: StepStatus::Succeeded,
+        message: Some("configuration validated".to_string()),
+    };
+    let report = crate::coordination::requests::InitializeReport {
+        team_name: params.request.team_name.clone(),
+        succeeded_steps: vec![progress.step.clone()],
+        failed_step: None,
+        retryable: false,
+        message: "team initialized".to_string(),
+        steps: vec![progress.clone()],
+    };
+    let mut responses = std::collections::VecDeque::from([
+        serde_json::to_value(protocol::CoordinationInitializeAccepted {
+            run_id: "init-test".to_string(),
+        })
+        .expect("accepted payload"),
+        serde_json::to_value(protocol::CoordinationInitializeStatus {
+            run_id: "init-test".to_string(),
+            steps: vec![progress.clone()],
+            outcome: protocol::CoordinationInitializeOutcome::Completed {
+                report: report.clone(),
+            },
+        })
+        .expect("status payload"),
+    ]);
+    let mut methods = Vec::new();
+    let mut emitted = Vec::new();
+
+    let result = initialize_team_through_daemon_with(
+        params,
+        Some(&mut |event: &StepProgressEvent| emitted.push(event.clone())),
+        std::time::Duration::ZERO,
+        |method, _params| {
+            methods.push(method.to_string());
+            responses
+                .pop_front()
+                .ok_or_else(|| "unexpected extra daemon call".to_string())
+        },
+    )
+    .expect("daemon initialization completes");
+
+    assert_eq!(result, report);
+    assert_eq!(
+        methods,
+        vec![
+            protocol::method::COORDINATION_INITIALIZE_TEAM,
+            protocol::method::COORDINATION_INITIALIZE_STATUS,
+        ]
+    );
+    assert_eq!(emitted.len(), 1);
+    assert_eq!(emitted[0].team_name, "architecture-final");
+    assert_eq!(emitted[0].operation, "initialize_team");
+    assert_eq!(emitted[0].progress, progress);
+    assert_eq!(
+        emitted[0].canonical_stages,
+        crate::coordination::requests::canonical_member_activation_stages(
+            "initialize",
+            "validate_configuration",
+        )
+    );
+}
 
 #[test]
 fn codex_hook_reconcile_failure_is_degraded_for_managed_launches() {
     // Regression: 6fe0aa3 made Codex hook filesystem errors abort initialize,
     // add, and resume before the otherwise valid coordination pipeline ran.
-    let source = include_str!("../coordination.rs");
+    let source = include_str!("../terminal_settings.rs");
     assert!(source.contains("compaction.codex_hook.degraded"));
 }
 
@@ -598,7 +683,7 @@ fn feature_availability_reports_ready_when_required_tools_exist() {
 }
 
 #[test]
-fn initialize_ipc_delegates_to_orchestrator_and_returns_report_shape() {
+fn initialize_command_test_seam_uses_the_daemon_pipeline_host() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
     let (db, _db_file) = test_db_state();

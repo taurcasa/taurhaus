@@ -140,6 +140,7 @@ impl InitializeRunRegistry {
         })
     }
 
+    #[cfg(test)]
     fn prune_at(&self, now: Instant) {
         let mut records = self
             .records
@@ -207,26 +208,36 @@ impl InitializeTeamService {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let mut cli_commands = params.cli_commands;
                     prepare_launch_inputs(&params.request, &mut cli_commands);
-                    state.with_orchestrator(|orchestrator| {
-                        orchestrator.initialize_team_with_cli_commands_and_layout_and_progress(
-                            &params.request,
-                            &cli_commands,
-                            &params.tmux_layout,
-                            Some(&mut |step, status, message| {
-                                let progress = StepProgress {
-                                    step: step.to_string(),
-                                    status,
-                                    message,
-                                };
-                                emit_initialize_step_log(&params.request.team_name, &progress);
-                                let _ = registry.record_step(&run_id_for_task, progress);
-                            }),
-                        )
-                    })
+                    execute_initialize_pipeline(
+                        state.as_ref(),
+                        &params.request,
+                        &cli_commands,
+                        &params.tmux_layout,
+                        Some(&mut |progress| {
+                            emit_initialize_step_log(&params.request.team_name, &progress);
+                            let _ = registry.record_step(&run_id_for_task, progress);
+                        }),
+                    )
                 }));
                 match result {
                     Ok(Ok(report)) => {
-                        let _ = registry.complete(&run_id_for_task, report);
+                        let finalize = if report.failed_step.is_none() {
+                            finalize_initialize_state(
+                                state.teams_dir(),
+                                &report.team_name,
+                                &params.operational_snapshots,
+                            )
+                        } else {
+                            Ok(())
+                        };
+                        match finalize {
+                            Ok(()) => {
+                                let _ = registry.complete(&run_id_for_task, report);
+                            }
+                            Err(error) => {
+                                let _ = registry.fail(&run_id_for_task, error.to_string());
+                            }
+                        }
                     }
                     Ok(Err(error)) => {
                         let _ = registry.fail(&run_id_for_task, error.to_string());
@@ -252,6 +263,65 @@ impl InitializeTeamService {
     pub(crate) fn status(&self, run_id: &str) -> Option<InitializeRunStatus> {
         self.registry.status(run_id)
     }
+}
+
+fn finalize_initialize_state(
+    teams_dir: &Path,
+    team_name: &str,
+    operational_snapshots: &[crate::coordination::stores::OperationalContextSnapshot],
+) -> Result<(), crate::coordination::errors::CoordinationError> {
+    let config = crate::coordination::stores::TeamConfigStore::load(teams_dir, team_name)?;
+    for snapshot in operational_snapshots {
+        let belongs_to_team = snapshot.team_name == team_name
+            && config
+                .members
+                .iter()
+                .any(|member| member.name == snapshot.member_name);
+        if !belongs_to_team {
+            return Err(crate::coordination::errors::CoordinationError::Validation(
+                format!(
+                    "operational snapshot '{}' does not belong to initialized team '{team_name}'",
+                    snapshot.member_name
+                ),
+            ));
+        }
+        crate::coordination::stores::OperationalContextSnapshotStore::save(teams_dir, snapshot)?;
+    }
+    let project_paths = config
+        .members
+        .iter()
+        .map(|member| member.project_path.display().to_string())
+        .collect::<Vec<_>>();
+    crate::coordination::stores::ActiveProjectTeamStore::sync_team(
+        teams_dir,
+        team_name,
+        &project_paths,
+    )
+}
+
+pub(crate) fn execute_initialize_pipeline(
+    state: &CoordinationState,
+    request: &crate::coordination::requests::InitializeTeamRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
+    mut emit: Option<&mut dyn FnMut(StepProgress)>,
+) -> Result<InitializeReport, crate::coordination::errors::CoordinationError> {
+    state.with_orchestrator(|orchestrator| {
+        orchestrator.initialize_team_with_cli_commands_and_layout_and_progress(
+            request,
+            cli_commands,
+            tmux_layout,
+            Some(&mut |step, status, message| {
+                if let Some(emit) = emit.as_deref_mut() {
+                    emit(StepProgress {
+                        step: step.to_string(),
+                        status,
+                        message,
+                    });
+                }
+            }),
+        )
+    })
 }
 
 fn prepare_daemon_launch_inputs(
@@ -436,19 +506,30 @@ mod tests {
     }
 
     fn initialize_params(project: &std::path::Path) -> CoordinationInitializeParams {
+        let builder_project = project.join("builder").display().to_string();
         CoordinationInitializeParams {
             request: InitializeTeamRequest {
                 team_name: "daemon-init".to_string(),
                 team_description: Some("daemon pipeline test".to_string()),
                 lead_mode: LeadMode::LaunchNew,
                 lead: agent("team-lead", &project.join("lead").display().to_string()),
-                agents: vec![agent(
-                    "builder",
-                    &project.join("builder").display().to_string(),
-                )],
+                agents: vec![agent("builder", &builder_project)],
             },
             cli_commands: CliCommandSettings::default(),
             tmux_layout: "new_window".to_string(),
+            operational_snapshots: vec![crate::coordination::stores::OperationalContextSnapshot {
+                version: 1,
+                team_name: "daemon-init".to_string(),
+                member_name: "builder".to_string(),
+                updated_at: chrono::Utc::now(),
+                task: Default::default(),
+                assignment_footer: Default::default(),
+                ownership: Default::default(),
+                working_set: crate::coordination::stores::OperationalWorkingSetSnapshot {
+                    project_path: builder_project,
+                    focal_files: Vec::new(),
+                },
+            }],
         }
     }
 
@@ -590,6 +671,26 @@ mod tests {
                 .members
                 .len(),
             2
+        );
+        assert_eq!(
+            crate::coordination::stores::ActiveProjectTeamStore::load_active_team(
+                &teams_dir,
+                &temp.path().join("lead").display().to_string(),
+            )
+            .expect("active project mapping"),
+            Some("daemon-init".to_string())
+        );
+        assert_eq!(
+            crate::coordination::stores::OperationalContextSnapshotStore::load(
+                &teams_dir,
+                "daemon-init",
+                "builder",
+            )
+            .expect("operational snapshot load")
+            .expect("daemon saved the fat-intent snapshot")
+            .working_set
+            .project_path,
+            temp.path().join("builder").display().to_string()
         );
         assert!(runtime.calls().iter().any(|call| matches!(
             call,

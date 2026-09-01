@@ -236,6 +236,13 @@ mod commands {
             Ok(false)
         }
 
+        pub fn managed_codex_hook_trust_for_launch(
+            _teams_dir: &std::path::Path,
+            has_managed_codex: bool,
+        ) -> bool {
+            has_managed_codex
+        }
+
         pub fn reconcile_grok_hooks_for_roster(
             _teams_dir: &std::path::Path,
             _enabled: bool,

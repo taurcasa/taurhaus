@@ -34,7 +34,8 @@ use serde::{Deserialize, Serialize};
 /// v13: added the Grok CLI tool value to the shared wire vocabulary.
 /// v14: retired the Codex compaction mode method with the transcript pipeline.
 /// v15: moved the managed-task deadline pass from the app into the daemon.
-pub const PROTOCOL_VERSION: u32 = 15;
+/// v16: moved team initialization from the app into the daemon.
+pub const PROTOCOL_VERSION: u32 = 16;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -189,6 +190,8 @@ pub struct CoordinationInitializeParams {
     pub request: crate::coordination::requests::InitializeTeamRequest,
     pub cli_commands: crate::models::CliCommandSettings,
     pub tmux_layout: String,
+    #[serde(default)]
+    pub operational_snapshots: Vec<crate::coordination::stores::OperationalContextSnapshot>,
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
@@ -965,7 +968,7 @@ mod tests {
         let back: crate::session_scanner::launch_base::ResolvedBase =
             serde_json::from_str(&json).unwrap();
         assert_eq!(result, back);
-        assert_eq!(PROTOCOL_VERSION, 15);
+        assert_eq!(PROTOCOL_VERSION, 16);
     }
 
     // Regression: 3c5b6cd9 invalidated only the Windows app's process-local
@@ -1017,6 +1020,7 @@ mod tests {
             },
             cli_commands: crate::models::CliCommandSettings::default(),
             tmux_layout: "new_window".to_string(),
+            operational_snapshots: Vec::new(),
         };
         let decoded: CoordinationInitializeParams =
             serde_json::from_str(&serde_json::to_string(&params).unwrap()).unwrap();
@@ -1237,6 +1241,15 @@ mod tests {
     fn protocol_version_excludes_daemons_without_the_deadline_scheduler() {
         let last_protocol_without_daemon_deadlines = 14;
         assert!(PROTOCOL_VERSION > last_protocol_without_daemon_deadlines);
+    }
+
+    // Regression: 5cebfef8 let the app execute initialization locally. Once
+    // that fallback is removed, a protocol-15 daemon cannot satisfy the only
+    // remaining path and must be rejected by the exact-version gate.
+    #[test]
+    fn protocol_version_excludes_daemons_without_team_initialization() {
+        let last_protocol_without_daemon_team_initialization = 15;
+        assert!(PROTOCOL_VERSION > last_protocol_without_daemon_team_initialization);
     }
 
     #[test]

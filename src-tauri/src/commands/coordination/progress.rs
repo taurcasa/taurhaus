@@ -118,6 +118,7 @@ impl<'a> InitializeBatchStageProgressAdapter<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn emit(
         &self,
         step: &str,

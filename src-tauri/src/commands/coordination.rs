@@ -262,45 +262,34 @@ pub async fn coordination_initialize_team(
         let db = app_for_task.state::<DbState>();
         let state = app_for_task.state::<CoordinationState>();
         let request = normalize_initialize_request_paths(&db, request)?;
-        let has_codex = CliTool::from_alias(&request.lead.cli_tool).is_ok_and(|tool| {
-            crate::session_scanner::cli_tool::spec(tool)
-                .capabilities
-                .hook_trust
-        }) || request.agents.iter().any(|agent| {
-            CliTool::from_alias(&agent.cli_tool).is_ok_and(|tool| {
-                crate::session_scanner::cli_tool::spec(tool)
-                    .capabilities
-                    .hook_trust
-            })
-        });
-        let codex_bypass_hook_trust =
-            reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
-        let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-        crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
-            &mut cli_commands,
-            has_codex,
-            codex_bypass_hook_trust,
-        );
-        let launch_tools = std::iter::once(&request.lead)
-            .chain(request.agents.iter())
-            .filter_map(|member| CliTool::from_alias(&member.cli_tool).ok());
-        crate::commands::accounts::apply_team_launch_base_resolutions(
-            app_for_task.state::<ProviderState>().inner(),
-            &mut cli_commands,
-            launch_tools,
-        );
+        let request = hydrate_initialize_request_role_metadata(state.inner(), request)?;
+        validate_initialize_request_fields(&request)?;
+        let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+        let contract_request = map_initialize_request_to_contract(&request);
+        let operational_snapshots = {
+            let conn = db.0.lock().map_err(|_| "db mutex poisoned".to_string())?;
+            crate::coordination::operational_context::prepare_initialize_snapshots(
+                &conn,
+                &contract_request,
+            )
+            .map_err(map_coordination_error)?
+        };
+        let params = crate::daemon::protocol::CoordinationInitializeParams {
+            request: contract_request,
+            cli_commands,
+            tmux_layout,
+            operational_snapshots,
+        };
+        let provider = app_for_task.state::<ProviderState>();
+        let daemon = provider
+            .daemon
+            .as_ref()
+            .ok_or_else(|| "team initialization requires the taurhaus daemon".to_string())?;
         let mut emit = |event: &StepProgressEvent| {
             let _ = app_for_task.emit("coordination-step-progress", event);
         };
-        coordination_initialize_team_internal(
-            state.inner(),
-            Some(&db),
-            request,
-            &cli_commands,
-            &tmux_layout,
-            Some(&mut emit),
-        )
-        .ipc()
+        let report = initialize_team_through_daemon(daemon, params, Some(&mut emit))?;
+        Ok::<_, String>(map_initialize_report_from_contract(report)).ipc()
     })
     .await
     .unwrap_or_else(|err| {
@@ -328,6 +317,89 @@ pub async fn coordination_initialize_team(
     emit_initialize_pipeline_result(&requested_team_name, &result);
     span.finish_result(&result);
     result
+}
+
+const INITIALIZE_DAEMON_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+const INITIALIZE_DAEMON_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+fn initialize_team_through_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    params: crate::daemon::protocol::CoordinationInitializeParams,
+    emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
+) -> Result<crate::coordination::requests::InitializeReport, String> {
+    initialize_team_through_daemon_with(
+        params,
+        emit,
+        INITIALIZE_DAEMON_POLL_INTERVAL,
+        |method, params| call_coordination_daemon(daemon, method, params),
+    )
+}
+
+fn initialize_team_through_daemon_with(
+    params: crate::daemon::protocol::CoordinationInitializeParams,
+    mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
+    poll_interval: std::time::Duration,
+    mut call: impl FnMut(&str, serde_json::Value) -> Result<serde_json::Value, String>,
+) -> Result<crate::coordination::requests::InitializeReport, String> {
+    let accepted: crate::daemon::protocol::CoordinationInitializeAccepted =
+        serde_json::from_value(call(
+            crate::daemon::protocol::method::COORDINATION_INITIALIZE_TEAM,
+            serde_json::to_value(&params).map_err(|error| error.to_string())?,
+        )?)
+        .map_err(|error| error.to_string())?;
+    let adapter = InitializeBatchStageProgressAdapter::new(&params.request.team_name);
+    let mut emitted_steps = 0;
+    loop {
+        let status: crate::daemon::protocol::CoordinationInitializeStatus =
+            serde_json::from_value(call(
+                crate::daemon::protocol::method::COORDINATION_INITIALIZE_STATUS,
+                serde_json::to_value(
+                    &crate::daemon::protocol::CoordinationInitializeStatusParams {
+                        run_id: accepted.run_id.clone(),
+                    },
+                )
+                .map_err(|error| error.to_string())?,
+            )?)
+            .map_err(|error| error.to_string())?;
+        for progress in status.steps.iter().skip(emitted_steps) {
+            if let Some(emit) = emit.as_deref_mut() {
+                emit(&adapter.event(&progress.step, progress.status, progress.message.clone()));
+            }
+        }
+        emitted_steps = status.steps.len();
+        match status.outcome {
+            crate::daemon::protocol::CoordinationInitializeOutcome::Running => {
+                std::thread::sleep(poll_interval);
+            }
+            crate::daemon::protocol::CoordinationInitializeOutcome::Completed { report } => {
+                return Ok(report);
+            }
+            crate::daemon::protocol::CoordinationInitializeOutcome::Failed { error } => {
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn call_coordination_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    method: &str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let request = crate::daemon::protocol::DaemonRequest::new(
+        format!("coord-init-{}", uuid::Uuid::new_v4().simple()),
+        method,
+        params,
+    );
+    let response = daemon
+        .send_status_request_within(&request, INITIALIZE_DAEMON_REQUEST_TIMEOUT)
+        .map_err(|error| error.to_string())?;
+    if let Some(error) = response.error {
+        return Err(error.message);
+    }
+    response
+        .result
+        .ok_or_else(|| format!("daemon method '{method}' returned no result"))
 }
 
 #[tauri::command(async)]
@@ -631,6 +703,7 @@ pub fn coordination_get_project_mesh_snapshot(
     result
 }
 
+#[cfg(test)]
 fn coordination_initialize_team_internal(
     state: &CoordinationState,
     db: Option<&DbState>,
@@ -642,20 +715,18 @@ fn coordination_initialize_team_internal(
     let request = hydrate_initialize_request_role_metadata(state, request)?;
     validate_initialize_request_fields(&request)?;
     let contract_request = map_initialize_request_to_contract(&request);
-    let report = state
-        .with_orchestrator(|orchestrator| {
-            orchestrator.initialize_team_with_cli_commands_and_layout_and_progress(
-                &contract_request,
-                cli_commands,
-                tmux_layout,
-                Some(&mut |step, status, message| {
-                    let adapter = InitializeBatchStageProgressAdapter::new(&request.team_name);
-                    adapter.emit(step, status, message, &mut emit);
-                }),
-            )
-        })
-        .map(map_initialize_report_from_contract)
-        .map_err(map_coordination_error)?;
+    let report = crate::daemon::initialize_runs::execute_initialize_pipeline(
+        state,
+        &contract_request,
+        cli_commands,
+        tmux_layout,
+        Some(&mut |progress| {
+            let adapter = InitializeBatchStageProgressAdapter::new(&request.team_name);
+            adapter.emit(&progress.step, progress.status, progress.message, &mut emit);
+        }),
+    )
+    .map(map_initialize_report_from_contract)
+    .map_err(map_coordination_error)?;
     let team_was_created = report
         .succeeded_steps
         .iter()

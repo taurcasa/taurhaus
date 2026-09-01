@@ -25,6 +25,10 @@ pub mod templates {
 }
 
 pub mod provider {
+    pub mod daemon_client {
+        pub use taurhaus_lib::provider::daemon_client::*;
+    }
+
     pub mod path {
         pub use taurhaus_lib::provider::path::*;
     }
@@ -144,8 +148,84 @@ pub mod session_scanner {
 }
 
 pub mod daemon {
+    pub mod initialize_runs {
+        use crate::coordination::requests::{InitializeReport, StepProgress};
+        use crate::coordination::state::CoordinationState;
+        use crate::models::CliCommandSettings;
+
+        pub(crate) fn execute_initialize_pipeline(
+            state: &CoordinationState,
+            request: &crate::coordination::requests::InitializeTeamRequest,
+            cli_commands: &CliCommandSettings,
+            tmux_layout: &str,
+            mut emit: Option<&mut dyn FnMut(StepProgress)>,
+        ) -> Result<InitializeReport, crate::coordination::errors::CoordinationError> {
+            state.with_orchestrator(|orchestrator| {
+                orchestrator.initialize_team_with_cli_commands_and_layout_and_progress(
+                    request,
+                    cli_commands,
+                    tmux_layout,
+                    Some(&mut |step, status, message| {
+                        if let Some(emit) = emit.as_deref_mut() {
+                            emit(StepProgress {
+                                step: step.to_string(),
+                                status,
+                                message,
+                            });
+                        }
+                    }),
+                )
+            })
+        }
+    }
+
     pub mod protocol {
-        pub use taurhaus_lib::daemon_api::protocol::LaunchMode;
+        use serde::{Deserialize, Serialize};
+
+        pub use taurhaus_lib::daemon_api::protocol::{DaemonRequest, LaunchMode};
+
+        pub mod method {
+            pub const COORDINATION_INITIALIZE_TEAM: &str = "coordination.initialize_team";
+            pub const COORDINATION_INITIALIZE_STATUS: &str = "coordination.initialize_status";
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationInitializeParams {
+            pub request: crate::coordination::requests::InitializeTeamRequest,
+            pub cli_commands: crate::models::CliCommandSettings,
+            pub tmux_layout: String,
+            #[serde(default)]
+            pub operational_snapshots: Vec<crate::coordination::stores::OperationalContextSnapshot>,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationInitializeAccepted {
+            pub run_id: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationInitializeStatusParams {
+            pub run_id: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        #[serde(rename_all = "snake_case", tag = "status")]
+        pub enum CoordinationInitializeOutcome {
+            Running,
+            Completed {
+                report: crate::coordination::requests::InitializeReport,
+            },
+            Failed {
+                error: String,
+            },
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationInitializeStatus {
+            pub run_id: String,
+            pub steps: Vec<crate::coordination::requests::StepProgress>,
+            pub outcome: CoordinationInitializeOutcome,
+        }
     }
 }
 
