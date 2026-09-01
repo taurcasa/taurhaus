@@ -164,10 +164,15 @@ impl CoordinationRunRegistry {
             return Err(format!("coordination run '{run_id}' is already terminal"));
         }
         if !record.kind.accepts(&report) {
-            return Err(format!(
+            let error = format!(
                 "coordination {} run '{run_id}' cannot complete with a different report kind",
                 record.kind.operation_name()
-            ));
+            );
+            record.outcome = RunOutcome::Failed {
+                error: error.clone(),
+            };
+            record.terminal_at = Some(now);
+            return Err(error);
         }
         record.outcome = RunOutcome::Completed { report };
         record.terminal_at = Some(now);
@@ -291,6 +296,8 @@ mod tests {
 
     #[test]
     fn registry_rejects_a_completed_report_for_the_wrong_run_kind() {
+        // Regression: 3b81da38 left a mismatched completion Running forever,
+        // so the terminal-record pruner could never remove it.
         let registry = CoordinationRunRegistry::with_ttl(Duration::from_secs(600));
         let run_id = registry.start(CoordinationRunKind::StopMember);
 
@@ -311,13 +318,13 @@ mod tests {
             .expect_err("mismatched report rejected");
 
         assert!(error.contains("stop_member"));
-        assert_eq!(
+        assert!(matches!(
             registry
                 .status(&run_id)
-                .expect("run remains registered")
+                .expect("failed run remains registered")
                 .outcome,
-            RunOutcome::Running
-        );
+            RunOutcome::Failed { error } if error.contains("different report kind")
+        ));
     }
 
     #[test]
