@@ -171,7 +171,7 @@ fn progress_events_for_steps_with_adapter(
     events
 }
 
-fn canonical_stages_for_operation_step(
+pub(crate) fn canonical_stages_for_operation_step(
     operation: &str,
     legacy_step: &str,
 ) -> Vec<crate::coordination::requests::MemberActivationStage> {
@@ -182,6 +182,21 @@ fn canonical_stages_for_operation_step(
         _ => return Vec::new(),
     };
     canonical_member_activation_stages(wrapper, legacy_step).to_vec()
+}
+
+pub(crate) fn canonical_stages_for_daemon_member_step(
+    operation: &str,
+    step: &str,
+) -> Vec<MemberActivationStage> {
+    if operation == "resume_member" {
+        return MemberActivationStage::ALL
+            .iter()
+            .copied()
+            .find(|stage| stage.as_str() == step)
+            .into_iter()
+            .collect();
+    }
+    canonical_stages_for_operation_step(operation, step)
 }
 
 fn resume_member_stream_step_name(stage: MemberActivationStage) -> &'static str {

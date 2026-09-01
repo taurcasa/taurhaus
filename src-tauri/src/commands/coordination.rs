@@ -661,23 +661,16 @@ fn emit_member_run_steps(
     emitted_steps: &mut usize,
     emit: &mut Option<&mut dyn FnMut(&StepProgressEvent)>,
 ) {
-    let wrapper = match operation {
-        "add_agent" => "add_agent",
-        "resume_member" => "resume",
-        _ => return,
-    };
     for progress in steps.iter().skip(*emitted_steps) {
         if let Some(emit) = emit.as_deref_mut() {
             emit(&StepProgressEvent {
                 team_name: team_name.to_string(),
                 operation: operation.to_string(),
                 progress: progress.clone(),
-                canonical_stages:
-                    crate::coordination::requests::canonical_member_activation_stages(
-                        wrapper,
-                        &progress.step,
-                    )
-                    .to_vec(),
+                canonical_stages: canonical_stages_for_daemon_member_step(
+                    operation,
+                    &progress.step,
+                ),
             });
         }
     }

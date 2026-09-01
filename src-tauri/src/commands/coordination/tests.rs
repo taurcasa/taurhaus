@@ -424,6 +424,18 @@ fn resume_and_stop_daemon_clients_use_their_run_status_methods() {
         pane_id: Some("%2".to_string()),
         reused_pane: false,
     };
+    let resume_steps = vec![
+        StepProgress {
+            step: MemberActivationStage::PrepareMember.as_str().to_string(),
+            status: StepStatus::Running,
+            message: None,
+        },
+        StepProgress {
+            step: MemberActivationStage::CommitRuntime.as_str().to_string(),
+            status: StepStatus::Succeeded,
+            message: Some("runtime committed".to_string()),
+        },
+    ];
     let mut resume_responses = std::collections::VecDeque::from([
         serde_json::to_value(protocol::CoordinationResumeMemberAccepted {
             run_id: "resume-test".to_string(),
@@ -431,7 +443,7 @@ fn resume_and_stop_daemon_clients_use_their_run_status_methods() {
         .expect("accepted payload"),
         serde_json::to_value(protocol::CoordinationResumeMemberStatus {
             run_id: "resume-test".to_string(),
-            steps: Vec::new(),
+            steps: resume_steps.clone(),
             outcome: protocol::CoordinationResumeMemberOutcome::Completed {
                 report: resume_report.clone(),
             },
@@ -439,9 +451,11 @@ fn resume_and_stop_daemon_clients_use_their_run_status_methods() {
         .expect("status payload"),
     ]);
     let mut resume_methods = Vec::new();
+    let mut emitted_resume_steps = Vec::new();
+    let mut emit_resume = |event: &StepProgressEvent| emitted_resume_steps.push(event.clone());
     let resumed = resume_member_through_daemon_with(
         resume_params,
-        None,
+        Some(&mut emit_resume),
         std::time::Duration::ZERO,
         |method, _params| {
             resume_methods.push(method.to_string());
@@ -452,6 +466,19 @@ fn resume_and_stop_daemon_clients_use_their_run_status_methods() {
     )
     .expect("daemon resume completes");
     assert_eq!(resumed, resume_report);
+    // Regression: 639b340e dropped the daemon's canonical resume stage while
+    // rebuilding the frontend event through the legacy resume-step mapping.
+    assert_eq!(emitted_resume_steps.len(), 2);
+    assert_eq!(emitted_resume_steps[0].progress, resume_steps[0]);
+    assert_eq!(
+        emitted_resume_steps[0].canonical_stages,
+        vec![MemberActivationStage::PrepareMember]
+    );
+    assert_eq!(emitted_resume_steps[1].progress, resume_steps[1]);
+    assert_eq!(
+        emitted_resume_steps[1].canonical_stages,
+        vec![MemberActivationStage::CommitRuntime]
+    );
     assert_eq!(
         resume_methods,
         vec![
