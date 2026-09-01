@@ -78,9 +78,9 @@ fn initialize_daemon_poll_reemits_the_existing_progress_contract() {
         std::time::Duration::ZERO,
         |method, _params| {
             methods.push(method.to_string());
-            responses
-                .pop_front()
-                .ok_or_else(|| "unexpected extra daemon call".to_string())
+            responses.pop_front().ok_or_else(|| {
+                CoordinationDaemonCallError::Transport("unexpected extra daemon call".to_string())
+            })
         },
     )
     .expect("daemon initialization completes");
@@ -104,6 +104,62 @@ fn initialize_daemon_poll_reemits_the_existing_progress_contract() {
             "validate_configuration",
         )
     );
+}
+
+// Regression: 3f8b44ae made one transient status-poll transport failure abort
+// the app-side wait while the accepted daemon initialization kept running.
+#[test]
+fn initialize_daemon_poll_tolerates_a_transient_transport_failure() {
+    let params = protocol::CoordinationInitializeParams {
+        request: map_initialize_request_to_contract(&sample_preflight_request()),
+        cli_commands: crate::models::CliCommandSettings::default(),
+        tmux_layout: "new_window".to_string(),
+        operational_snapshots: Vec::new(),
+    };
+    let report = crate::coordination::requests::InitializeReport {
+        team_name: params.request.team_name.clone(),
+        succeeded_steps: Vec::new(),
+        failed_step: None,
+        retryable: false,
+        message: "team initialized".to_string(),
+        steps: Vec::new(),
+    };
+    let mut responses = std::collections::VecDeque::from([
+        Ok(
+            serde_json::to_value(protocol::CoordinationInitializeAccepted {
+                run_id: "init-test".to_string(),
+            })
+            .expect("accepted payload"),
+        ),
+        Err(CoordinationDaemonCallError::Transport(
+            "connection reset by peer".to_string(),
+        )),
+        Ok(
+            serde_json::to_value(protocol::CoordinationInitializeStatus {
+                run_id: "init-test".to_string(),
+                steps: Vec::new(),
+                outcome: protocol::CoordinationInitializeOutcome::Completed {
+                    report: report.clone(),
+                },
+            })
+            .expect("status payload"),
+        ),
+    ]);
+
+    let result = initialize_team_through_daemon_with(
+        params,
+        None,
+        std::time::Duration::ZERO,
+        |_method, _params| {
+            responses.pop_front().unwrap_or_else(|| {
+                Err(CoordinationDaemonCallError::Transport(
+                    "unexpected extra daemon call".to_string(),
+                ))
+            })
+        },
+    );
+
+    assert_eq!(result, Ok(report));
 }
 
 #[test]

@@ -321,6 +321,21 @@ pub async fn coordination_initialize_team(
 
 const INITIALIZE_DAEMON_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const INITIALIZE_DAEMON_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+const INITIALIZE_DAEMON_MAX_CONSECUTIVE_POLL_ERRORS: usize = 3;
+
+#[derive(Debug)]
+enum CoordinationDaemonCallError {
+    Transport(String),
+    Remote(String),
+}
+
+impl CoordinationDaemonCallError {
+    fn into_message(self) -> String {
+        match self {
+            Self::Transport(message) | Self::Remote(message) => message,
+        }
+    }
+}
 
 fn initialize_team_through_daemon(
     daemon: &crate::provider::daemon_client::DaemonProvider,
@@ -339,28 +354,48 @@ fn initialize_team_through_daemon_with(
     params: crate::daemon::protocol::CoordinationInitializeParams,
     mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
     poll_interval: std::time::Duration,
-    mut call: impl FnMut(&str, serde_json::Value) -> Result<serde_json::Value, String>,
+    mut call: impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
 ) -> Result<crate::coordination::requests::InitializeReport, String> {
-    let accepted: crate::daemon::protocol::CoordinationInitializeAccepted =
-        serde_json::from_value(call(
+    let accepted: crate::daemon::protocol::CoordinationInitializeAccepted = serde_json::from_value(
+        call(
             crate::daemon::protocol::method::COORDINATION_INITIALIZE_TEAM,
             serde_json::to_value(&params).map_err(|error| error.to_string())?,
-        )?)
-        .map_err(|error| error.to_string())?;
+        )
+        .map_err(CoordinationDaemonCallError::into_message)?,
+    )
+    .map_err(|error| error.to_string())?;
     let adapter = InitializeBatchStageProgressAdapter::new(&params.request.team_name);
     let mut emitted_steps = 0;
+    let mut consecutive_poll_errors = 0;
     loop {
+        let status_value = match call(
+            crate::daemon::protocol::method::COORDINATION_INITIALIZE_STATUS,
+            serde_json::to_value(
+                &crate::daemon::protocol::CoordinationInitializeStatusParams {
+                    run_id: accepted.run_id.clone(),
+                },
+            )
+            .map_err(|error| error.to_string())?,
+        ) {
+            Ok(value) => {
+                consecutive_poll_errors = 0;
+                value
+            }
+            Err(CoordinationDaemonCallError::Remote(message)) => return Err(message),
+            Err(CoordinationDaemonCallError::Transport(message)) => {
+                consecutive_poll_errors += 1;
+                if consecutive_poll_errors >= INITIALIZE_DAEMON_MAX_CONSECUTIVE_POLL_ERRORS {
+                    return Err(message);
+                }
+                std::thread::sleep(poll_interval);
+                continue;
+            }
+        };
         let status: crate::daemon::protocol::CoordinationInitializeStatus =
-            serde_json::from_value(call(
-                crate::daemon::protocol::method::COORDINATION_INITIALIZE_STATUS,
-                serde_json::to_value(
-                    &crate::daemon::protocol::CoordinationInitializeStatusParams {
-                        run_id: accepted.run_id.clone(),
-                    },
-                )
-                .map_err(|error| error.to_string())?,
-            )?)
-            .map_err(|error| error.to_string())?;
+            serde_json::from_value(status_value).map_err(|error| error.to_string())?;
         for progress in status.steps.iter().skip(emitted_steps) {
             if let Some(emit) = emit.as_deref_mut() {
                 emit(&adapter.event(&progress.step, progress.status, progress.message.clone()));
@@ -385,7 +420,12 @@ fn call_coordination_daemon(
     daemon: &crate::provider::daemon_client::DaemonProvider,
     method: &str,
     params: serde_json::Value,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, CoordinationDaemonCallError> {
+    if !daemon.is_connected() && !daemon.try_reconnect() {
+        return Err(CoordinationDaemonCallError::Transport(
+            "daemon is not connected".to_string(),
+        ));
+    }
     let request = crate::daemon::protocol::DaemonRequest::new(
         format!("coord-init-{}", uuid::Uuid::new_v4().simple()),
         method,
@@ -393,13 +433,13 @@ fn call_coordination_daemon(
     );
     let response = daemon
         .send_status_request_within(&request, INITIALIZE_DAEMON_REQUEST_TIMEOUT)
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| CoordinationDaemonCallError::Transport(error.to_string()))?;
     if let Some(error) = response.error {
-        return Err(error.message);
+        return Err(CoordinationDaemonCallError::Remote(error.message));
     }
-    response
-        .result
-        .ok_or_else(|| format!("daemon method '{method}' returned no result"))
+    response.result.ok_or_else(|| {
+        CoordinationDaemonCallError::Remote(format!("daemon method '{method}' returned no result"))
+    })
 }
 
 #[tauri::command(async)]
