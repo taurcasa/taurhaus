@@ -410,29 +410,13 @@ fn initialize_team_through_daemon_with(
     let mut emitted_steps = 0;
     let mut first_poll_error_at: Option<std::time::Instant> = None;
     loop {
-        let status_value = match call(
+        let status_value = poll_coordination_status(
+            &mut call,
             crate::daemon::protocol::method::COORDINATION_INITIALIZE_STATUS,
-            serde_json::to_value(
-                &crate::daemon::protocol::CoordinationInitializeStatusParams {
-                    run_id: accepted.run_id.clone(),
-                },
-            )
-            .map_err(|error| error.to_string())?,
-        ) {
-            Ok(value) => {
-                first_poll_error_at = None;
-                value
-            }
-            Err(CoordinationDaemonCallError::Remote(message)) => return Err(message),
-            Err(CoordinationDaemonCallError::Transport(message)) => {
-                let since = *first_poll_error_at.get_or_insert_with(std::time::Instant::now);
-                if since.elapsed() >= COORDINATION_DAEMON_POLL_ERROR_BUDGET {
-                    return Err(message);
-                }
-                std::thread::sleep(poll_interval);
-                continue;
-            }
-        };
+            &accepted.run_id,
+            poll_interval,
+            &mut first_poll_error_at,
+        )?;
         let status: crate::daemon::protocol::CoordinationInitializeStatus =
             serde_json::from_value(status_value).map_err(|error| error.to_string())?;
         for progress in status.steps.iter().skip(emitted_steps) {

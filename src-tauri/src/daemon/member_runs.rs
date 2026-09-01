@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::coordination::requests::{
-    AddAgentReport, AddAgentRequest, ResumeAgentReport, ResumeMemberRequest, StepProgress,
+    AddAgentReport, AddAgentRequest, ResumeAgentReport, ResumeMemberRequest,
     StopMemberReport, StopMemberRequest,
 };
 use crate::coordination::state::CoordinationState;
@@ -402,36 +402,7 @@ pub(crate) fn execute_stop_member_pipeline(
     let result = state.with_orchestrator(|orchestrator| {
         orchestrator.remove_member(&request.team_name, &request.member_name, None)
     })?;
-    let steps = result
-        .steps
-        .into_iter()
-        .map(|step| StepProgress {
-            step: step.step,
-            status: if step.success {
-                crate::coordination::requests::StepStatus::Succeeded
-            } else {
-                crate::coordination::requests::StepStatus::Failed
-            },
-            message: step.message,
-        })
-        .collect::<Vec<_>>();
-    let warning_count = result.warnings.len();
-    let message = if warning_count == 0 {
-        "member removed".to_string()
-    } else {
-        format!(
-            "member removed with {warning_count} warning{}",
-            if warning_count == 1 { "" } else { "s" }
-        )
-    };
-    Ok(StopMemberReport {
-        team_name: result.team_name,
-        member_name: result.member_name,
-        removed: result.removed,
-        message,
-        steps,
-        warnings: result.warnings,
-    })
+    Ok(StopMemberReport::from_remove_member_result(result))
 }
 
 fn finalize_member_state(
