@@ -7,11 +7,11 @@ use std::time::{Duration, Instant};
 
 use crate::coordination::requests::{InitializeReport, StepProgress};
 use crate::coordination::state::CoordinationState;
+use crate::daemon::protocol::CoordinationInitializeParams;
 pub(crate) use crate::daemon::protocol::{
     CoordinationInitializeOutcome as InitializeRunOutcome,
     CoordinationInitializeStatus as InitializeRunStatus,
 };
-use crate::daemon::protocol::{CoordinationInitializeParams, LaunchMode};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 
@@ -348,95 +348,38 @@ fn prepare_daemon_launch_inputs(
     );
 
     let probe = crate::session_scanner::launch_base::ShellAliasProbe::for_pane();
-    apply_local_account_and_base_resolutions_with(
-        request,
-        commands,
-        |base, tool| {
-            crate::session_scanner::launch_base::resolve_base_command_cached(base, tool, &probe)
-        },
-        crate::provider::platform_paths::PlatformPaths::tool_home,
-    );
-}
-
-fn apply_local_account_and_base_resolutions_with(
-    request: &crate::coordination::requests::InitializeTeamRequest,
-    commands: &mut CliCommandSettings,
-    mut resolve: impl FnMut(&str, CliTool) -> crate::session_scanner::launch_base::ResolvedBase,
-    mut tool_home: impl FnMut(CliTool) -> std::path::PathBuf,
-) {
     let tools = std::iter::once(&request.lead)
         .chain(request.agents.iter())
-        .filter_map(|member| CliTool::from_alias(&member.cli_tool).ok());
-    let mut seen = std::collections::HashSet::new();
-    for tool in tools.into_iter().filter(|tool| seen.insert(*tool)) {
-        if let Some(selector) = crate::session_scanner::cli_tool::spec(tool)
-            .capabilities
-            .account_selector
-        {
-            commands
-                .account_selector_dirs
-                .entry(selector.to_string())
-                .or_insert_with(|| tool_home(tool));
-        }
-        for mode in [LaunchMode::Fresh, LaunchMode::Resume] {
-            let base =
-                crate::session_scanner::launch::base_command(commands, tool, mode).to_string();
-            let resolved = resolve(&base, tool);
-            commands.resolved_bases.insert((tool, mode), resolved);
-        }
-    }
+        .filter_map(|member| CliTool::from_alias(&member.cli_tool).ok())
+        .collect::<Vec<_>>();
+    crate::commands::accounts::apply_team_account_selector_dirs(commands, tools.iter().copied());
+    crate::commands::accounts::apply_team_launch_base_resolutions_with(
+        commands,
+        tools,
+        |base, tool| {
+            (
+                crate::session_scanner::launch_base::resolve_base_command_cached(
+                    base, tool, &probe,
+                ),
+                true,
+            )
+        },
+    );
 }
 
 fn emit_initialize_step_log(team_name: &str, progress: &StepProgress) {
-    let (level, event) = match progress.status {
-        crate::coordination::requests::StepStatus::Pending => {
-            ("debug", "coordination.step.pending")
-        }
-        crate::coordination::requests::StepStatus::Running => ("info", "coordination.step.started"),
-        crate::coordination::requests::StepStatus::Succeeded => {
-            ("info", "coordination.step.completed")
-        }
-        crate::coordination::requests::StepStatus::Failed => ("warn", "coordination.step.failed"),
-    };
-    let mut fields = serde_json::Map::new();
-    fields.insert(
-        "team_name".to_string(),
-        serde_json::Value::String(team_name.to_string()),
+    crate::commands::coordination::emit_progress_log_event(
+        &crate::commands::coordination::StepProgressEvent {
+            team_name: team_name.to_string(),
+            operation: "initialize_team".to_string(),
+            progress: progress.clone(),
+            canonical_stages: crate::coordination::requests::canonical_member_activation_stages(
+                "initialize",
+                &progress.step,
+            )
+            .to_vec(),
+        },
     );
-    fields.insert(
-        "operation".to_string(),
-        serde_json::Value::String("initialize_team".to_string()),
-    );
-    fields.insert(
-        "step".to_string(),
-        serde_json::Value::String(progress.step.clone()),
-    );
-    fields.insert(
-        "status".to_string(),
-        serde_json::Value::String(step_status_name(progress.status).to_string()),
-    );
-    if let Some(message) = progress.message.as_ref() {
-        fields.insert(
-            "message".to_string(),
-            serde_json::Value::String(message.clone()),
-        );
-    }
-    crate::commands::logging::emit_global(
-        level,
-        "backend",
-        event,
-        Some("Coordination step lifecycle event".to_string()),
-        fields,
-    );
-}
-
-fn step_status_name(status: crate::coordination::requests::StepStatus) -> &'static str {
-    match status {
-        crate::coordination::requests::StepStatus::Pending => "pending",
-        crate::coordination::requests::StepStatus::Running => "running",
-        crate::coordination::requests::StepStatus::Succeeded => "succeeded",
-        crate::coordination::requests::StepStatus::Failed => "failed",
-    }
 }
 
 #[cfg(test)]
@@ -768,18 +711,26 @@ mod tests {
         let mut commands = params.cli_commands;
         let mut resolved = Vec::new();
 
-        super::apply_local_account_and_base_resolutions_with(
-            &params.request,
+        let tools = [crate::session_scanner::cli_tool::CliTool::Codex];
+        crate::commands::accounts::apply_team_account_selector_dirs_with(
             &mut commands,
+            tools,
+            |tool| temp.path().join(format!("{tool}-home")),
+        );
+        crate::commands::accounts::apply_team_launch_base_resolutions_with(
+            &mut commands,
+            tools,
             |base, tool| {
                 resolved.push((base.to_string(), tool));
-                crate::session_scanner::launch_base::ResolvedBase {
-                    command: format!("resolved-{base}"),
-                    expansions: Vec::new(),
-                    opaque_head: None,
-                }
+                (
+                    crate::session_scanner::launch_base::ResolvedBase {
+                        command: format!("resolved-{base}"),
+                        expansions: Vec::new(),
+                        opaque_head: None,
+                    },
+                    true,
+                )
             },
-            |tool| temp.path().join(format!("{tool}-home")),
         );
 
         assert_eq!(resolved.len(), 2, "one tool has fresh and resume bases");

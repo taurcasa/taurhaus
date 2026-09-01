@@ -19,6 +19,9 @@ mod request_normalization;
 #[path = "coordination/state_sync.rs"]
 mod state_sync;
 
+#[allow(unused_imports)]
+pub(crate) use progress::emit_progress_log_event;
+
 pub use crate::commands::coordination_types::*;
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;

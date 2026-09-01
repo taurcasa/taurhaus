@@ -197,7 +197,7 @@ fn resume_member_stream_step_name(stage: MemberActivationStage) -> &'static str 
     stage.as_str()
 }
 
-fn emit_progress_log_event(event: &StepProgressEvent) {
+pub(crate) fn emit_progress_log_event(event: &StepProgressEvent) {
     let (level, event_name) = match event.progress.status {
         StepStatus::Pending => ("debug", "coordination.step.pending"),
         StepStatus::Running => ("info", "coordination.step.started"),

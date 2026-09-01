@@ -35,7 +35,7 @@ The round-3 move-aside/tolerant-reader machinery is **kept**, not reverted: it p
 
 ## Wire contract
 
-- `PROTOCOL_VERSION` bump (14 → 15); app and daemon move in lockstep via the existing exact-match gate and repair flow.
+- `PROTOCOL_VERSION` bumped 14 → 15 for the deadline pass and 15 → 16 for initialization; app and daemon move in lockstep via the existing exact-match gate and repair flow.
 - New namespaced methods (`coordination.*`), each carrying its expectation (CAS semantics) even in phase B1 — the daemon validates under `flock` and returns typed conflict outcomes, mirroring today's `RuntimeCommitOutcome::Skipped` shapes.
 - **B2 progress decision**: initialize uses a `run_id`-keyed in-memory registry and status polling. The app polls at roughly 500 ms and re-emits the existing Tauri progress event; the daemon retains terminal runs for a bounded TTL. Push progress remains a possible later optimization, not part of this slice.
 
