@@ -4,7 +4,7 @@ The daemon is a companion process that handles filesystem access, process scanni
 
 ![Daemon Protocol](../images/daemon-protocol.jpg)
 
-> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 31 callable methods (32 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 16; the tables below are authoritative.
+> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 37 callable methods (38 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 17; the tables below are authoritative.
 
 ## Why a daemon
 
@@ -22,7 +22,7 @@ On every platform the daemon process hosts the single session hub: the app reads
 | Transport | TCP |
 | Default address | `127.0.0.1:17233` ([authoritative source](../../src-tauri/src/daemon/server.rs)) |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 16 (current) |
+| Protocol version | 17 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication
@@ -218,6 +218,19 @@ On Windows, config dirs and transcripts live inside WSL, so the daemon owns thes
 Initialization workers and their run registry are process-local. A planned daemon reinstall or restart must not occur while initialization is running: process exit truncates the worker and discards its status record, so the next poll returns `INITIALIZE_RUN_NOT_FOUND` and any pipeline cleanup that had not yet run cannot complete.
 
 The desktop command polls status at roughly 500 ms and re-emits the unchanged `coordination-step-progress` Tauri event contract. The run continues independently if the app stops polling.
+
+### Coordination member operations (protocol 17)
+
+| Method | Params | Result | Description |
+|--------|--------|--------|-------------|
+| `coordination.add_agent` | `{ request, cli_commands, tmux_layout, operational_snapshot?, task_state_changed_at? }` | `{ run_id }` | Starts a self-contained hot-add run with daemon-local launch preparation. |
+| `coordination.add_agent_status` | `{ run_id }` | `{ run_id, steps[], outcome }` | Returns cumulative add-agent progress and terminal outcome. |
+| `coordination.resume_member` | `{ request, cli_commands, tmux_layout, operational_snapshot?, task_state_changed_at? }` | `{ run_id }` | Starts a self-contained member-resume run with daemon-local launch preparation. |
+| `coordination.resume_member_status` | `{ run_id }` | `{ run_id, steps[], outcome }` | Returns cumulative canonical resume stages and terminal outcome. |
+| `coordination.stop_member` | `{ request }` | `{ run_id }` | Starts a member-stop run. |
+| `coordination.stop_member_status` | `{ run_id }` | `{ run_id, steps[], outcome }` | Returns stop progress and terminal outcome. |
+
+Member-operation workers use the same process-local registry and 10-minute terminal retention as initialization. Add and resume re-emit the existing `coordination-step-progress` event contract; stop uses a short poll interval to retain its previous fast interaction.
 
 ### Session activity stream (app bridge)
 

@@ -608,6 +608,64 @@ pub struct ResumeMemberRequest {
     pub reasoning_effort_override: Option<String>,
 }
 
+/// Request contract for stopping and removing one managed team member.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StopMemberRequest {
+    pub team_name: String,
+    pub member_name: String,
+}
+
+/// Result contract for stopping and removing one managed team member.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StopMemberReport {
+    pub team_name: String,
+    pub member_name: String,
+    pub removed: bool,
+    pub message: String,
+    pub steps: Vec<StepProgress>,
+    pub warnings: Vec<String>,
+}
+
+impl StopMemberReport {
+    /// The one mapping from an orchestrator remove-member result to the wire
+    /// report — shared by the daemon pipeline and the integration-test shim
+    /// so the two can never drift.
+    pub fn from_remove_member_result(
+        result: crate::coordination::orchestrator::RemoveMemberResult,
+    ) -> Self {
+        let steps = result
+            .steps
+            .into_iter()
+            .map(|step| StepProgress {
+                step: step.step,
+                status: if step.success {
+                    StepStatus::Succeeded
+                } else {
+                    StepStatus::Failed
+                },
+                message: step.message,
+            })
+            .collect::<Vec<_>>();
+        let warning_count = result.warnings.len();
+        let message = if warning_count == 0 {
+            "member removed".to_string()
+        } else {
+            format!(
+                "member removed with {warning_count} warning{}",
+                if warning_count == 1 { "" } else { "s" }
+            )
+        };
+        Self {
+            team_name: result.team_name,
+            member_name: result.member_name,
+            removed: result.removed,
+            message,
+            steps,
+            warnings: result.warnings,
+        }
+    }
+}
+
 /// Request contract for resuming all members in a team.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResumeTeamRequest {

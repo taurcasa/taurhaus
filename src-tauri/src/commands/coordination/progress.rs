@@ -1,12 +1,12 @@
 #[cfg(test)]
-use crate::commands::coordination_types::InitializeReport;
+use crate::commands::coordination_types::{AddAgentReport, InitializeReport};
 use crate::commands::coordination_types::{
-    AddAgentReport, MemberActivationStage, ResumeTeamProgressEvent, StepProgress,
-    StepProgressEvent, StepStatus,
+    MemberActivationStage, ResumeTeamProgressEvent, StepProgress, StepProgressEvent, StepStatus,
 };
 use crate::coordination::requests::canonical_member_activation_stages;
 use serde_json::{Map, Value};
 
+#[cfg(test)]
 pub(super) fn emit_progress_event(
     event: StepProgressEvent,
     emit: &mut Option<&mut dyn FnMut(&StepProgressEvent)>,
@@ -17,6 +17,7 @@ pub(super) fn emit_progress_event(
     }
 }
 
+#[cfg(test)]
 pub(super) fn emit_progress_events(
     events: Vec<StepProgressEvent>,
     mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
@@ -32,11 +33,12 @@ pub(super) fn initialize_progress_events(report: &InitializeReport) -> Vec<StepP
     progress_events_for_steps_with_adapter(&adapter, &report.steps)
 }
 
-pub(super) fn add_agent_progress_events(report: &AddAgentReport) -> Vec<StepProgressEvent> {
+#[cfg(test)]
+pub(crate) fn add_agent_progress_events(report: &AddAgentReport) -> Vec<StepProgressEvent> {
     progress_events_for_steps(&report.team_name, "add_agent", &report.steps)
 }
 
-pub(super) fn resume_member_progress_event_for_stage(
+pub(crate) fn resume_member_progress_event_for_stage(
     team_name: &str,
     stage: MemberActivationStage,
     status: StepStatus,
@@ -119,7 +121,7 @@ impl<'a> InitializeBatchStageProgressAdapter<'a> {
     }
 }
 
-fn progress_events_for_steps(
+pub(crate) fn progress_events_for_steps(
     team_name: &str,
     operation: &str,
     steps: &[StepProgress],
@@ -169,7 +171,7 @@ fn progress_events_for_steps_with_adapter(
     events
 }
 
-fn canonical_stages_for_operation_step(
+pub(crate) fn canonical_stages_for_operation_step(
     operation: &str,
     legacy_step: &str,
 ) -> Vec<crate::coordination::requests::MemberActivationStage> {
@@ -180,6 +182,21 @@ fn canonical_stages_for_operation_step(
         _ => return Vec::new(),
     };
     canonical_member_activation_stages(wrapper, legacy_step).to_vec()
+}
+
+pub(crate) fn canonical_stages_for_daemon_member_step(
+    operation: &str,
+    step: &str,
+) -> Vec<MemberActivationStage> {
+    if operation == "resume_member" {
+        return MemberActivationStage::ALL
+            .iter()
+            .copied()
+            .find(|stage| stage.as_str() == step)
+            .into_iter()
+            .collect();
+    }
+    canonical_stages_for_operation_step(operation, step)
 }
 
 fn resume_member_stream_step_name(stage: MemberActivationStage) -> &'static str {

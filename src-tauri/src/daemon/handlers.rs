@@ -29,9 +29,13 @@ pub(crate) fn dispatch(
     writer: &Arc<Mutex<TcpStream>>,
     watch_runtime: &mut WatchRuntime,
     project_task_scan_cache: &ProjectTaskScanCacheState,
-    #[cfg(feature = "mesh-bridged-backend")]
-    initialize_service: &crate::daemon::initialize_runs::InitializeTeamService,
+    #[cfg(feature = "mesh-bridged-backend")] coordination_services: (
+        &crate::daemon::initialize_runs::InitializeTeamService,
+        &crate::daemon::member_runs::MemberOperationsService,
+    ),
 ) -> DaemonResponse {
+    #[cfg(feature = "mesh-bridged-backend")]
+    let (initialize_service, member_operations_service) = coordination_services;
     tracing::debug!(method = %request.method, id = %request.id, "Received request");
     match request.method.as_str() {
         protocol::method::PING => handle_ping(&request.id, start_time),
@@ -99,6 +103,42 @@ pub(crate) fn dispatch(
         protocol::method::COORDINATION_INITIALIZE_STATUS => {
             handle_coordination_initialize_status(&request.id, &request.params, initialize_service)
         }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_ADD_AGENT => {
+            handle_coordination_add_agent(&request.id, &request.params, member_operations_service)
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_ADD_AGENT_STATUS => handle_coordination_add_agent_status(
+            &request.id,
+            &request.params,
+            member_operations_service,
+        ),
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_RESUME_MEMBER => handle_coordination_resume_member(
+            &request.id,
+            &request.params,
+            member_operations_service,
+        ),
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_RESUME_MEMBER_STATUS => {
+            handle_coordination_resume_member_status(
+                &request.id,
+                &request.params,
+                member_operations_service,
+            )
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_STOP_MEMBER => {
+            handle_coordination_stop_member(&request.id, &request.params, member_operations_service)
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_STOP_MEMBER_STATUS => {
+            handle_coordination_stop_member_status(
+                &request.id,
+                &request.params,
+                member_operations_service,
+            )
+        }
         _ => DaemonResponse::err(
             &request.id,
             "UNKNOWN_METHOD",
@@ -143,6 +183,117 @@ fn handle_coordination_initialize_status(
             format!("team initialization run '{}' was not found", params.run_id),
         ),
     }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_add_agent(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::member_runs::MemberOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationAddAgentParams = match serde_json::from_value(params.clone())
+    {
+        Ok(params) => params,
+        Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+    };
+    match service.start_add_agent(params) {
+        Ok(run_id) => DaemonResponse::ok(id, protocol::CoordinationAddAgentAccepted { run_id }),
+        Err(error) => DaemonResponse::err(id, "ADD_AGENT_START_FAILED", error),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_add_agent_status(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::member_runs::MemberOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationAddAgentStatusParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.add_agent_status(&params.run_id) {
+        Some(status) => DaemonResponse::ok(id, status),
+        None => coordination_run_not_found(id, "add-agent", &params.run_id),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_resume_member(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::member_runs::MemberOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationResumeMemberParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.start_resume_member(params) {
+        Ok(run_id) => DaemonResponse::ok(id, protocol::CoordinationResumeMemberAccepted { run_id }),
+        Err(error) => DaemonResponse::err(id, "RESUME_MEMBER_START_FAILED", error),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_resume_member_status(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::member_runs::MemberOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationResumeMemberStatusParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.resume_member_status(&params.run_id) {
+        Some(status) => DaemonResponse::ok(id, status),
+        None => coordination_run_not_found(id, "resume-member", &params.run_id),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_stop_member(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::member_runs::MemberOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationStopMemberParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.start_stop_member(params) {
+        Ok(run_id) => DaemonResponse::ok(id, protocol::CoordinationStopMemberAccepted { run_id }),
+        Err(error) => DaemonResponse::err(id, "STOP_MEMBER_START_FAILED", error),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_stop_member_status(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::member_runs::MemberOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationStopMemberStatusParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.stop_member_status(&params.run_id) {
+        Some(status) => DaemonResponse::ok(id, status),
+        None => coordination_run_not_found(id, "stop-member", &params.run_id),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn coordination_run_not_found(id: &str, operation: &str, run_id: &str) -> DaemonResponse {
+    DaemonResponse::err(
+        id,
+        "COORDINATION_RUN_NOT_FOUND",
+        format!("{operation} run '{run_id}' was not found"),
+    )
 }
 
 /// Tool accounts on the daemon's host — the Windows app cannot read the WSL

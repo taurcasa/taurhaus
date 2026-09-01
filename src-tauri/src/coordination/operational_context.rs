@@ -51,11 +51,71 @@ pub(crate) fn prepare_initialize_snapshots(
         .collect()
 }
 
+/// Build the app-DB-derived snapshot carried by a daemon member-operation
+/// intent. This performs no team-store writes.
+#[cfg(test)]
+pub(crate) fn prepare_member_snapshot(
+    teams_dir: &Path,
+    conn: &Connection,
+    team_name: &str,
+    member_name: &str,
+    project_path: &str,
+) -> Result<OperationalContextSnapshot, CoordinationError> {
+    prepare_member_snapshot_with_task_timestamp(
+        teams_dir,
+        conn,
+        team_name,
+        member_name,
+        project_path,
+    )
+    .map(|(snapshot, _)| snapshot)
+}
+
+pub(crate) fn prepare_member_snapshot_with_task_timestamp(
+    teams_dir: &Path,
+    conn: &Connection,
+    team_name: &str,
+    member_name: &str,
+    project_path: &str,
+) -> Result<(OperationalContextSnapshot, Option<DateTime<Utc>>), CoordinationError> {
+    let existing = OperationalContextSnapshotStore::load(teams_dir, team_name, member_name)?;
+    let tasks = load_project_tasks(conn, project_path)?;
+    let (task, effort, task_state_changed_at) = latest_owned_task_from_tasks(&tasks, member_name);
+    Ok((
+        build_member_snapshot(
+            existing.as_ref(),
+            team_name,
+            member_name,
+            project_path,
+            task,
+            effort,
+            task_state_changed_at,
+        ),
+        task_state_changed_at,
+    ))
+}
+
 /// Publish a pre-pipeline initialize snapshot without replacing context that
 /// was refreshed while the daemon pipeline was running.
 pub(crate) fn publish_initialize_snapshot(
     teams_dir: &Path,
     snapshot: &OperationalContextSnapshot,
+) -> Result<(), CoordinationError> {
+    publish_snapshot(teams_dir, snapshot, None)
+}
+
+pub(crate) fn publish_member_operation_snapshot(
+    teams_dir: &Path,
+    snapshot: &OperationalContextSnapshot,
+    task_state_changed_at: Option<DateTime<Utc>>,
+) -> Result<(), CoordinationError> {
+    publish_snapshot(teams_dir, snapshot, task_state_changed_at)
+}
+
+fn publish_snapshot(
+    teams_dir: &Path,
+    snapshot: &OperationalContextSnapshot,
+    task_state_changed_at: Option<DateTime<Utc>>,
 ) -> Result<(), CoordinationError> {
     let guard =
         crate::coordination::stores::lock::acquire_team_lock(teams_dir, &snapshot.team_name)?;
@@ -74,7 +134,11 @@ pub(crate) fn publish_initialize_snapshot(
     let mut candidate = snapshot.clone();
     if let Some(current) = current {
         candidate.version = current.version;
-        candidate.task = preserve_task_deadline_markers(Some(&current.task), candidate.task, None);
+        candidate.task = preserve_task_deadline_markers(
+            Some(&current.task),
+            candidate.task,
+            task_state_changed_at,
+        );
         let task_effort = candidate.assignment_footer.task_effort.clone();
         let task_effort_why = candidate.assignment_footer.task_effort_why.clone();
         candidate.assignment_footer = current.assignment_footer;
@@ -106,19 +170,14 @@ pub fn sync_member_snapshot(
                 "member '{member_name}' not found in team '{team_name}'"
             ))
         })?;
-    let existing = OperationalContextSnapshotStore::load(teams_dir, team_name, member_name)?;
     let project_path = member.project_path.display().to_string();
-    let tasks = load_project_tasks(conn, &project_path)?;
-    let (task, effort, task_state_changed_at) = latest_owned_task_from_tasks(&tasks, member_name);
-    let snapshot = build_member_snapshot(
-        existing.as_ref(),
+    let (snapshot, task_state_changed_at) = prepare_member_snapshot_with_task_timestamp(
+        teams_dir,
+        conn,
         team_name,
         member_name,
         &project_path,
-        task,
-        effort,
-        task_state_changed_at,
-    );
+    )?;
 
     save_snapshot_if_changed(teams_dir, snapshot, task_state_changed_at)
 }
@@ -605,6 +664,33 @@ mod tests {
         assert_eq!(agent.task.id, "agent-task");
         assert_eq!(agent.assignment_footer.task_effort, "medium");
         assert_eq!(agent.working_set.project_path, "proj-web");
+    }
+
+    #[test]
+    fn prepare_member_snapshot_derives_context_without_writing_team_state() {
+        let teams = TempDir::new().expect("teams dir");
+        let (conn, _db) = test_db();
+        write_team(teams.path());
+
+        let snapshot = prepare_member_snapshot(
+            teams.path(),
+            &conn,
+            "architecture-final",
+            "frontend-dev",
+            "proj-web",
+        )
+        .expect("prepare snapshot");
+
+        assert_eq!(snapshot.team_name, "architecture-final");
+        assert_eq!(snapshot.member_name, "frontend-dev");
+        assert_eq!(snapshot.working_set.project_path, "proj-web");
+        assert!(OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .is_none());
     }
 
     #[test]
@@ -1122,6 +1208,58 @@ mod tests {
         assert_eq!(snapshot.task.deadline_minutes, Some(20));
         assert_eq!(snapshot.task.nudged_at, None);
         assert_eq!(snapshot.task.stale_at, None);
+    }
+
+    // Regression: 639b340e published daemon member-operation snapshots without
+    // the task transition timestamp, so a reopened task was forced back stale.
+    #[test]
+    fn daemon_member_snapshot_publish_clears_stale_markers_for_a_reopened_task() {
+        let teams = TempDir::new().expect("teams dir");
+        write_team(teams.path());
+        let stale_at = chrono::DateTime::parse_from_rfc3339("2026-03-08T12:20:00Z")
+            .expect("stale timestamp")
+            .with_timezone(&Utc);
+        let state_changed_at = stale_at + chrono::Duration::minutes(10);
+        let existing = OperationalContextSnapshot {
+            version: 1,
+            team_name: "architecture-final".to_string(),
+            member_name: "frontend-dev".to_string(),
+            updated_at: stale_at,
+            task: OperationalTaskSnapshot {
+                id: "42".to_string(),
+                subject: "Fix regression".to_string(),
+                status: "stale".to_string(),
+                deadline_minutes: Some(20),
+                assigned_at: Some(stale_at - chrono::Duration::minutes(20)),
+                nudged_at: Some(stale_at - chrono::Duration::minutes(10)),
+                stale_at: Some(stale_at),
+            },
+            assignment_footer: OperationalAssignmentFooterSnapshot::default(),
+            ownership: OperationalOwnershipSnapshot::default(),
+            working_set: OperationalWorkingSetSnapshot {
+                project_path: "proj-web".to_string(),
+                focal_files: Vec::new(),
+            },
+        };
+        OperationalContextSnapshotStore::save(teams.path(), &existing)
+            .expect("seed stale snapshot");
+        let mut reopened = existing.clone();
+        reopened.updated_at = state_changed_at;
+        reopened.task.status = "in_progress".to_string();
+
+        publish_member_operation_snapshot(teams.path(), &reopened, Some(state_changed_at))
+            .expect("publish reopened snapshot");
+
+        let stored = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+        assert_eq!(stored.task.status, "in_progress");
+        assert_eq!(stored.task.nudged_at, None);
+        assert_eq!(stored.task.stale_at, None);
     }
 
     // Regression: 04bda5ec must keep the deadline pass's stale marker while
