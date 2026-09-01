@@ -324,7 +324,11 @@ pub async fn coordination_initialize_team(
 
 const INITIALIZE_DAEMON_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const INITIALIZE_DAEMON_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
-const INITIALIZE_DAEMON_MAX_CONSECUTIVE_POLL_ERRORS: usize = 3;
+/// Transient poll failures are tolerated for longer than the daemon
+/// client's reconnect cooldown (5s), so a hiccup mid-initialize gets at
+/// least one un-throttled reconnect attempt before the app gives up on a
+/// run the daemon is still completing.
+const INITIALIZE_DAEMON_POLL_ERROR_BUDGET: std::time::Duration = std::time::Duration::from_secs(8);
 
 #[derive(Debug)]
 enum CoordinationDaemonCallError {
@@ -372,7 +376,7 @@ fn initialize_team_through_daemon_with(
     .map_err(|error| error.to_string())?;
     let adapter = InitializeBatchStageProgressAdapter::new(&params.request.team_name);
     let mut emitted_steps = 0;
-    let mut consecutive_poll_errors = 0;
+    let mut first_poll_error_at: Option<std::time::Instant> = None;
     loop {
         let status_value = match call(
             crate::daemon::protocol::method::COORDINATION_INITIALIZE_STATUS,
@@ -384,13 +388,13 @@ fn initialize_team_through_daemon_with(
             .map_err(|error| error.to_string())?,
         ) {
             Ok(value) => {
-                consecutive_poll_errors = 0;
+                first_poll_error_at = None;
                 value
             }
             Err(CoordinationDaemonCallError::Remote(message)) => return Err(message),
             Err(CoordinationDaemonCallError::Transport(message)) => {
-                consecutive_poll_errors += 1;
-                if consecutive_poll_errors >= INITIALIZE_DAEMON_MAX_CONSECUTIVE_POLL_ERRORS {
+                let since = *first_poll_error_at.get_or_insert_with(std::time::Instant::now);
+                if since.elapsed() >= INITIALIZE_DAEMON_POLL_ERROR_BUDGET {
                     return Err(message);
                 }
                 std::thread::sleep(poll_interval);

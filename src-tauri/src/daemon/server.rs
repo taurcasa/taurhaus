@@ -775,13 +775,15 @@ mod tests {
     #[test]
     fn daemon_coordination_workers_share_one_process_state() {
         let source = include_str!("server.rs");
-        assert!(source.contains("let coordination_state = Arc::new("));
-        assert!(
-            source.contains("DeadlineScheduler::start(\n            coordination_state.clone()")
+        let runtime = &source[..source.find("#[cfg(test)]").unwrap_or(source.len())];
+        assert_eq!(
+            runtime
+                .matches("CoordinationState::for_process_default()")
+                .count(),
+            1,
+            "the daemon must build exactly one process-wide coordination state \
+             so its workers share one orchestrator critical section"
         );
-        assert!(source.contains(
-            "InitializeTeamService::for_process_default(\n            coordination_state"
-        ));
     }
 
     // Regression: 34fdeead added a daemon deadline scheduler but only tested

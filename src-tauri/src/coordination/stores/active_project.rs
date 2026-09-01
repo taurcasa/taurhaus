@@ -208,6 +208,18 @@ fn save_state(teams_dir: &Path, state: &ActiveProjectTeamState) -> Result<(), Co
     Ok(())
 }
 
+/// Derive and sync the project->team mapping from the saved team config —
+/// the one place the "every member project maps to this team" rule lives.
+pub fn sync_team_from_config(teams_dir: &Path, team_name: &str) -> Result<(), CoordinationError> {
+    let config = super::TeamConfigStore::load(teams_dir, team_name)?;
+    let project_paths = config
+        .members
+        .iter()
+        .map(|member| member.project_path.display().to_string())
+        .collect::<Vec<_>>();
+    ActiveProjectTeamStore::sync_team(teams_dir, team_name, &project_paths)
+}
+
 fn active_projects_path(teams_dir: &Path) -> std::path::PathBuf {
     teams_dir.join(ACTIVE_PROJECTS_FILENAME)
 }

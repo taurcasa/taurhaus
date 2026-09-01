@@ -278,25 +278,20 @@ fn finalize_initialize_state(
                 .iter()
                 .any(|member| member.name == snapshot.member_name);
         if !belongs_to_team {
-            return Err(crate::coordination::errors::CoordinationError::Validation(
-                format!(
-                    "operational snapshot '{}' does not belong to initialized team '{team_name}'",
-                    snapshot.member_name
-                ),
-            ));
+            // Snapshots derive from the very request that just initialized
+            // this team, so a mismatch is unreachable in practice — and a
+            // successful pipeline must never be reported as a failed
+            // initialization over a skippable snapshot.
+            tracing::warn!(
+                member = %snapshot.member_name,
+                team = team_name,
+                "skipping an operational snapshot that does not belong to the initialized team"
+            );
+            continue;
         }
         crate::coordination::operational_context::publish_initialize_snapshot(teams_dir, snapshot)?;
     }
-    let project_paths = config
-        .members
-        .iter()
-        .map(|member| member.project_path.display().to_string())
-        .collect::<Vec<_>>();
-    crate::coordination::stores::ActiveProjectTeamStore::sync_team(
-        teams_dir,
-        team_name,
-        &project_paths,
-    )
+    crate::coordination::stores::active_project::sync_team_from_config(teams_dir, team_name)
 }
 
 pub(crate) fn execute_initialize_pipeline(

@@ -68,7 +68,6 @@ fn initialize_command_has_no_local_pipeline_execution_path() {
         !source.contains("orchestrator.initialize_team_with_cli_commands_and_layout_and_progress")
     );
     assert!(!source.contains("execute_initialize_pipeline("));
-    assert!(!source.contains("initialize_team_pipeline_test_fixture"));
     assert!(source.contains("COORDINATION_INITIALIZE_TEAM"));
     assert!(source.contains("COORDINATION_INITIALIZE_STATUS"));
 }

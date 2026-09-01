@@ -12,6 +12,7 @@ use crate::coordination::stores::{
 };
 use crate::coordination::task_effort::AssignmentEffort;
 
+#[cfg(test)]
 pub fn sync_team_snapshots(
     teams_dir: &Path,
     conn: &Connection,
