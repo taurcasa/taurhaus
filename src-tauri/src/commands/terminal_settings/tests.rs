@@ -2,6 +2,16 @@ use super::*;
 
 use crate::session_scanner::cli_tool::all;
 
+// Regression: 6fe0aa3 selected the current process on non-Windows hosts, so
+// app and daemon hook reconciliation rewrote the script back and forth.
+#[test]
+fn compact_hook_writers_share_the_daemon_executable_on_every_platform() {
+    assert_eq!(
+        compact_hook_executable().expect("compact hook executable"),
+        crate::provider::platform_paths::PlatformPaths::daemon_binary_path()
+    );
+}
+
 // Regression: 6fe0aa3 installed the Codex compact hook without checking the
 // installed CLI, even though the hook contract starts at Codex 0.147.
 #[test]

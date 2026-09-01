@@ -493,14 +493,7 @@ pub(crate) fn reconcile_grok_hooks_at(
 }
 
 fn compact_hook_executable() -> Result<std::path::PathBuf, CoordinationError> {
-    if cfg!(target_os = "windows") {
-        return Ok(PlatformPaths::daemon_binary_path());
-    }
-    std::env::current_exe().map_err(|error| {
-        CoordinationError::Backend(format!(
-            "failed to resolve taurhaus executable for Codex compact hook: {error}"
-        ))
-    })
+    Ok(PlatformPaths::daemon_binary_path())
 }
 
 #[cfg(test)]
