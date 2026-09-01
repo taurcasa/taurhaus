@@ -540,6 +540,13 @@ fn resume_and_stop_daemon_clients_use_their_run_status_methods() {
 }
 
 #[test]
+fn stop_member_uses_a_snappy_daemon_poll_interval() {
+    // Regression: 639b340e made the formerly inline stop interaction wait up
+    // to the shared 500 ms long-running-operation poll interval.
+    assert!(COORDINATION_STOP_DAEMON_POLL_INTERVAL <= std::time::Duration::from_millis(50));
+}
+
+#[test]
 fn codex_hook_reconcile_failure_is_degraded_for_managed_launches() {
     // Regression: 6fe0aa3 made Codex hook filesystem errors abort initialize,
     // add, and resume before the otherwise valid coordination pipeline ran.

@@ -353,6 +353,8 @@ pub async fn coordination_initialize_team(
 const COORDINATION_DAEMON_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const COORDINATION_DAEMON_POLL_INTERVAL: std::time::Duration =
     std::time::Duration::from_millis(500);
+const COORDINATION_STOP_DAEMON_POLL_INTERVAL: std::time::Duration =
+    std::time::Duration::from_millis(25);
 /// Transient poll failures are tolerated for longer than the daemon
 /// client's reconnect cooldown (5s), so a hiccup mid-initialize gets at
 /// least one un-throttled reconnect attempt before the app gives up on a
@@ -586,7 +588,7 @@ fn stop_member_through_daemon(
 ) -> Result<crate::coordination::requests::StopMemberReport, String> {
     stop_member_through_daemon_with(
         params,
-        COORDINATION_DAEMON_POLL_INTERVAL,
+        COORDINATION_STOP_DAEMON_POLL_INTERVAL,
         |method, params| call_coordination_daemon(daemon, method, params),
     )
 }
