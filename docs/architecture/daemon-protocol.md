@@ -213,7 +213,9 @@ On Windows, config dirs and transcripts live inside WSL, so the daemon owns thes
 | Method | Params | Result | Description |
 |--------|--------|--------|-------------|
 | `coordination.initialize_team` | `{ request, cli_commands, tmux_layout, operational_snapshots[] }` | `{ run_id }` | Starts one self-contained initialization run. The daemon resolves host-local launch bases and account selectors before executing the shared pipeline. |
-| `coordination.initialize_status` | `{ run_id }` | `{ run_id, steps[], outcome }` | Returns cumulative pipeline steps and a `running`, `completed`, or `failed` outcome. Terminal records remain available for a bounded TTL. |
+| `coordination.initialize_status` | `{ run_id }` | `{ run_id, steps[], outcome }` | Returns cumulative pipeline steps and a `running`, `completed`, or `failed` outcome. Terminal records remain available for 10 minutes. |
+
+Initialization workers and their run registry are process-local. A planned daemon reinstall or restart must not occur while initialization is running: process exit truncates the worker and discards its status record, so the next poll returns `INITIALIZE_RUN_NOT_FOUND` and any pipeline cleanup that had not yet run cannot complete.
 
 The desktop command polls status at roughly 500 ms and re-emits the unchanged `coordination-step-progress` Tauri event contract. The run continues independently if the app stops polling.
 
