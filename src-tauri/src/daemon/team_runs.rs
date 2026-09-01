@@ -245,11 +245,13 @@ fn prepare_resume_team_launch_inputs(
         .map(|member| member.cli_tool)
         .collect::<Vec<_>>();
     // The named authority for "team has a managed Codex member" — hook_trust
-    // only coincides with it while Codex is the sole trusted harness.
-    let has_managed_codex = config
-        .members
-        .iter()
-        .any(|member| member.cli_tool == crate::session_scanner::cli_tool::CliTool::Codex);
+    // only coincides with it while Codex is the sole trusted harness, and
+    // the identity check itself must stay inside the capability slice.
+    let has_managed_codex = crate::coordination::compact_hook::team_has_managed_codex_member(
+        teams_dir,
+        &request.team_name,
+    )
+    .unwrap_or(false);
     prepare_daemon_launch_inputs_for_tools(teams_dir, has_managed_codex, tools, commands);
     Ok(())
 }
