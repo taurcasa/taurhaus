@@ -207,6 +207,13 @@ fn serve(
     #[cfg(feature = "mesh-bridged-backend")]
     let member_operations_service = Arc::new(
         crate::daemon::member_runs::MemberOperationsService::for_process_default(
+            coordination_state.clone(),
+            coordination_run_registry.clone(),
+        ),
+    );
+    #[cfg(feature = "mesh-bridged-backend")]
+    let team_operations_service = Arc::new(
+        crate::daemon::team_runs::TeamOperationsService::for_process_default(
             coordination_state,
             coordination_run_registry,
         ),
@@ -257,6 +264,8 @@ fn serve(
                     initialize_service: initialize_service.clone(),
                     #[cfg(feature = "mesh-bridged-backend")]
                     member_operations_service: member_operations_service.clone(),
+                    #[cfg(feature = "mesh-bridged-backend")]
+                    team_operations_service: team_operations_service.clone(),
                 };
                 ACTIVE_CONNECTION_COUNT.fetch_add(1, Ordering::Relaxed);
                 mark_daemon_watch_telemetry_dirty();
@@ -457,6 +466,8 @@ struct ConnectionServices {
     initialize_service: Arc<crate::daemon::initialize_runs::InitializeTeamService>,
     #[cfg(feature = "mesh-bridged-backend")]
     member_operations_service: Arc<crate::daemon::member_runs::MemberOperationsService>,
+    #[cfg(feature = "mesh-bridged-backend")]
+    team_operations_service: Arc<crate::daemon::team_runs::TeamOperationsService>,
 }
 
 fn handle_connection(
@@ -537,6 +548,7 @@ fn handle_connection(
             (
                 services.initialize_service.as_ref(),
                 services.member_operations_service.as_ref(),
+                services.team_operations_service.as_ref(),
             ),
         );
 
@@ -1441,6 +1453,16 @@ mod tests {
             protocol::method::UNWATCH,
             protocol::method::COORDINATION_INITIALIZE_TEAM,
             protocol::method::COORDINATION_INITIALIZE_STATUS,
+            protocol::method::COORDINATION_ADD_AGENT,
+            protocol::method::COORDINATION_ADD_AGENT_STATUS,
+            protocol::method::COORDINATION_RESUME_MEMBER,
+            protocol::method::COORDINATION_RESUME_MEMBER_STATUS,
+            protocol::method::COORDINATION_STOP_MEMBER,
+            protocol::method::COORDINATION_STOP_MEMBER_STATUS,
+            protocol::method::COORDINATION_RESUME_TEAM,
+            protocol::method::COORDINATION_RESUME_TEAM_STATUS,
+            protocol::method::COORDINATION_REONBOARD,
+            protocol::method::COORDINATION_REONBOARD_STATUS,
         ];
 
         for (idx, method) in methods.into_iter().enumerate() {

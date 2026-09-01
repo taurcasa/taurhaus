@@ -534,6 +534,13 @@ mod managed_launch_sites {
         .expect("daemon/coordination_runs.rs is readable")
     }
 
+    fn daemon_team_runs_source() -> String {
+        std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/daemon/team_runs.rs"),
+        )
+        .expect("daemon/team_runs.rs is readable")
+    }
+
     /// The body of one top-level `fn <name>`, up to its closing brace in
     /// column 0.
     fn function_body<'a>(source: &'a str, name: &str) -> &'a str {
@@ -552,32 +559,13 @@ mod managed_launch_sites {
     fn every_launch_site_is_wired_to_the_roster_wide_reconciler() {
         let source = coordination_source();
 
-        let offenders: Vec<&str> = LAUNCH_SITES
-            .into_iter()
-            .filter(|site| {
-                ![
-                    "coordination_initialize_team",
-                    "coordination_add_agent",
-                    "coordination_resume_member",
-                ]
-                .contains(site)
-            })
-            .filter(|site| {
-                let body = function_body(&source, site);
-                !body.contains("reconcile_codex_before_managed_launch(state.teams_dir(),")
-                    || body.contains("terminal_settings::reconcile_codex_hook(")
-            })
-            .collect();
-        assert!(
-            offenders.is_empty(),
-            "these launch sites do not reconcile the host-global Codex hook against the whole roster: {offenders:?}"
-        );
-
-        let shared = function_body(&source, "reconcile_codex_before_managed_launch");
-        assert!(
-            shared.contains("terminal_settings::managed_codex_hook_trust_for_launch("),
-            "the shared launch helper must call the roster-wide reconciler"
-        );
+        for site in LAUNCH_SITES {
+            let body = function_body(&source, site);
+            assert!(
+                !body.contains("terminal_settings::reconcile_codex_hook("),
+                "{site} must leave host-local hook reconciliation to the daemon"
+            );
+        }
 
         let daemon_source = daemon_initialize_source();
         let daemon_prepare = function_body(&daemon_source, "prepare_daemon_launch_inputs");
@@ -594,6 +582,13 @@ mod managed_launch_sites {
             shared_daemon_prepare
                 .contains("terminal_settings::managed_codex_hook_trust_for_launch("),
             "daemon-owned launches must call the roster-wide reconciler locally"
+        );
+        let daemon_team_source = daemon_team_runs_source();
+        let daemon_team_prepare =
+            function_body(&daemon_team_source, "prepare_resume_team_launch_inputs");
+        assert!(
+            daemon_team_prepare.contains("prepare_daemon_launch_inputs_for_tools("),
+            "daemon-owned team resume must use the shared launch input preparation"
         );
         let initialize_command = function_body(&source, "coordination_initialize_team");
         assert!(

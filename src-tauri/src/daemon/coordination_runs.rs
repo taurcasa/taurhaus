@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::coordination::requests::{
-    AddAgentReport, InitializeReport, ResumeAgentReport, StepProgress, StopMemberReport,
+    AddAgentReport, DeliveryResult, InitializeReport, ResumeAgentReport, ResumeTeamProgress,
+    ResumeTeamReport, StepProgress, StopMemberReport,
 };
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
@@ -18,6 +19,8 @@ pub(crate) enum CoordinationRunKind {
     AddAgent,
     ResumeMember,
     StopMember,
+    ResumeTeam,
+    Reonboard,
 }
 
 impl CoordinationRunKind {
@@ -27,6 +30,8 @@ impl CoordinationRunKind {
             Self::AddAgent => "add",
             Self::ResumeMember => "resume",
             Self::StopMember => "stop",
+            Self::ResumeTeam => "team-resume",
+            Self::Reonboard => "reonboard",
         }
     }
 
@@ -36,6 +41,8 @@ impl CoordinationRunKind {
             Self::AddAgent => "add_agent",
             Self::ResumeMember => "resume_member",
             Self::StopMember => "stop_member",
+            Self::ResumeTeam => "resume_team",
+            Self::Reonboard => "reonboard",
         }
     }
 
@@ -46,6 +53,8 @@ impl CoordinationRunKind {
                 | (Self::AddAgent, CoordinationRunReport::AddAgent(_))
                 | (Self::ResumeMember, CoordinationRunReport::ResumeMember(_))
                 | (Self::StopMember, CoordinationRunReport::StopMember(_))
+                | (Self::ResumeTeam, CoordinationRunReport::ResumeTeam(_))
+                | (Self::Reonboard, CoordinationRunReport::Reonboard(_))
         )
     }
 }
@@ -56,6 +65,8 @@ pub(crate) enum CoordinationRunReport {
     AddAgent(AddAgentReport),
     ResumeMember(ResumeAgentReport),
     StopMember(StopMemberReport),
+    ResumeTeam(ResumeTeamReport),
+    Reonboard(DeliveryResult),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +81,7 @@ pub(crate) struct CoordinationRunStatus {
     pub(crate) run_id: String,
     pub(crate) kind: CoordinationRunKind,
     pub(crate) steps: Vec<StepProgress>,
+    pub(crate) resume_team_steps: Vec<ResumeTeamProgress>,
     pub(crate) outcome: RunOutcome,
 }
 
@@ -77,6 +89,7 @@ pub(crate) struct CoordinationRunStatus {
 struct CoordinationRunRecord {
     kind: CoordinationRunKind,
     steps: Vec<StepProgress>,
+    resume_team_steps: Vec<ResumeTeamProgress>,
     outcome: RunOutcome,
     terminal_at: Option<Instant>,
 }
@@ -117,6 +130,7 @@ impl CoordinationRunRegistry {
             CoordinationRunRecord {
                 kind,
                 steps: Vec::new(),
+                resume_team_steps: Vec::new(),
                 outcome: RunOutcome::Running,
                 terminal_at: None,
             },
@@ -136,6 +150,30 @@ impl CoordinationRunRegistry {
             return Err(format!("coordination run '{run_id}' is already terminal"));
         }
         record.steps.push(step);
+        Ok(())
+    }
+
+    pub(crate) fn record_resume_team_step(
+        &self,
+        run_id: &str,
+        step: ResumeTeamProgress,
+    ) -> Result<(), String> {
+        let mut records = self
+            .records
+            .lock()
+            .map_err(|_| "coordination run registry mutex poisoned".to_string())?;
+        let record = records
+            .get_mut(run_id)
+            .ok_or_else(|| format!("coordination run '{run_id}' was not found"))?;
+        if record.outcome != RunOutcome::Running {
+            return Err(format!("coordination run '{run_id}' is already terminal"));
+        }
+        if record.kind != CoordinationRunKind::ResumeTeam {
+            return Err(format!(
+                "coordination run '{run_id}' does not accept team-resume progress"
+            ));
+        }
+        record.resume_team_steps.push(step);
         Ok(())
     }
 
@@ -209,6 +247,7 @@ impl CoordinationRunRegistry {
             run_id: run_id.to_string(),
             kind: record.kind,
             steps: record.steps.clone(),
+            resume_team_steps: record.resume_team_steps.clone(),
             outcome: record.outcome.clone(),
         })
     }
@@ -285,6 +324,8 @@ mod tests {
             (CoordinationRunKind::AddAgent, "add_"),
             (CoordinationRunKind::ResumeMember, "resume_"),
             (CoordinationRunKind::StopMember, "stop_"),
+            (CoordinationRunKind::ResumeTeam, "team-resume_"),
+            (CoordinationRunKind::Reonboard, "reonboard_"),
         ] {
             let run_id = registry.start(kind);
             assert!(run_id.starts_with(prefix), "unexpected run id: {run_id}");

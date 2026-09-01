@@ -77,6 +77,21 @@ pub(super) fn resume_team_progress_event_for_stage(
     }
 }
 
+pub(crate) fn resume_team_progress_event(
+    team_name: &str,
+    progress: &crate::coordination::requests::ResumeTeamProgress,
+) -> ResumeTeamProgressEvent {
+    resume_team_progress_event_for_stage(
+        team_name,
+        &progress.member_name,
+        progress.member_index,
+        progress.member_count,
+        progress.stage,
+        progress.status,
+        progress.message.clone(),
+    )
+}
+
 pub(super) fn initialize_step_for_member_stage(
     stage: MemberActivationStage,
 ) -> Option<&'static str> {
@@ -239,7 +254,7 @@ pub(crate) fn emit_progress_log_event(event: &StepProgressEvent) {
     );
 }
 
-pub(super) fn emit_resume_team_progress_log_event(event: &ResumeTeamProgressEvent) {
+pub(crate) fn emit_resume_team_progress_log_event(event: &ResumeTeamProgressEvent) {
     let (level, event_name) = match event.status {
         StepStatus::Pending => ("debug", "coordination.resume_team.member.pending"),
         StepStatus::Running => ("info", "coordination.resume_team.member.started"),

@@ -36,7 +36,8 @@ use serde::{Deserialize, Serialize};
 /// v15: moved the managed-task deadline pass from the app into the daemon.
 /// v16: moved team initialization from the app into the daemon.
 /// v17: moved add-agent, resume-member, and stop-member into the daemon.
-pub const PROTOCOL_VERSION: u32 = 17;
+/// v18: moved resume-team and reonboard into the daemon.
+pub const PROTOCOL_VERSION: u32 = 18;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -121,6 +122,10 @@ pub mod method {
     pub const COORDINATION_RESUME_MEMBER_STATUS: &str = "coordination.resume_member_status";
     pub const COORDINATION_STOP_MEMBER: &str = "coordination.stop_member";
     pub const COORDINATION_STOP_MEMBER_STATUS: &str = "coordination.stop_member_status";
+    pub const COORDINATION_RESUME_TEAM: &str = "coordination.resume_team";
+    pub const COORDINATION_RESUME_TEAM_STATUS: &str = "coordination.resume_team_status";
+    pub const COORDINATION_REONBOARD: &str = "coordination.reonboard";
+    pub const COORDINATION_REONBOARD_STATUS: &str = "coordination.reonboard_status";
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";
@@ -368,6 +373,99 @@ pub struct CoordinationStopMemberStatus {
     pub run_id: String,
     pub steps: Vec<crate::coordination::requests::StepProgress>,
     pub outcome: CoordinationStopMemberOutcome,
+}
+
+/// Self-contained team-resume intent. The daemon derives host-local launch
+/// settings for every persisted member before executing the shared activation path.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationResumeTeamParams {
+    pub request: crate::coordination::requests::ResumeTeamRequest,
+    pub cli_commands: crate::models::CliCommandSettings,
+    pub tmux_layout: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationResumeTeamAccepted {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationResumeTeamStatusParams {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum CoordinationResumeTeamOutcome {
+    Running,
+    Completed {
+        report: crate::coordination::requests::ResumeTeamReport,
+    },
+    Failed {
+        error: String,
+    },
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationResumeTeamStatus {
+    pub run_id: String,
+    pub steps: Vec<crate::coordination::requests::ResumeTeamProgress>,
+    pub outcome: CoordinationResumeTeamOutcome,
+}
+
+/// Self-contained reonboard intent. Launch settings travel with every
+/// interactive coordination request even though this delivery-only pipeline
+/// does not consume them today.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationReonboardParams {
+    pub request: crate::coordination::requests::ReonboardRequest,
+    // Carried for intent-shape uniformity across the coordination methods;
+    // the reonboard worker renders from the saved member and does not read
+    // these two today.
+    pub cli_commands: crate::models::CliCommandSettings,
+    pub tmux_layout: String,
+    #[serde(default)]
+    pub operational_snapshot: Option<crate::coordination::stores::OperationalContextSnapshot>,
+    #[serde(default)]
+    pub task_state_changed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationReonboardAccepted {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationReonboardStatusParams {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum CoordinationReonboardOutcome {
+    Running,
+    Completed {
+        report: crate::coordination::requests::DeliveryResult,
+    },
+    Failed {
+        error: String,
+    },
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationReonboardStatus {
+    pub run_id: String,
+    pub outcome: CoordinationReonboardOutcome,
 }
 
 /// `list_workflow_runs` — completed and live runs under one Claude session.
@@ -1111,7 +1209,7 @@ mod tests {
         let back: crate::session_scanner::launch_base::ResolvedBase =
             serde_json::from_str(&json).unwrap();
         assert_eq!(result, back);
-        assert_eq!(PROTOCOL_VERSION, 17);
+        assert_eq!(PROTOCOL_VERSION, 18);
     }
 
     // Regression: 3c5b6cd9 invalidated only the Windows app's process-local
@@ -1260,6 +1358,44 @@ mod tests {
             "coordination.resume_member"
         );
         assert_eq!(method::COORDINATION_STOP_MEMBER, "coordination.stop_member");
+    }
+
+    #[test]
+    fn coordination_team_operation_contracts_roundtrip() {
+        let resume = CoordinationResumeTeamParams {
+            request: crate::coordination::requests::ResumeTeamRequest {
+                team_name: "arch".to_string(),
+            },
+            cli_commands: crate::models::CliCommandSettings::default(),
+            tmux_layout: "new_window".to_string(),
+        };
+        let reonboard = CoordinationReonboardParams {
+            request: crate::coordination::requests::ReonboardRequest {
+                team_name: "arch".to_string(),
+                member_name: "builder".to_string(),
+            },
+            cli_commands: crate::models::CliCommandSettings::default(),
+            tmux_layout: "new_window".to_string(),
+            operational_snapshot: None,
+            task_state_changed_at: None,
+        };
+
+        assert_eq!(
+            serde_json::from_str::<CoordinationResumeTeamParams>(
+                &serde_json::to_string(&resume).unwrap()
+            )
+            .unwrap(),
+            resume
+        );
+        assert_eq!(
+            serde_json::from_str::<CoordinationReonboardParams>(
+                &serde_json::to_string(&reonboard).unwrap()
+            )
+            .unwrap(),
+            reonboard
+        );
+        assert_eq!(method::COORDINATION_RESUME_TEAM, "coordination.resume_team");
+        assert_eq!(method::COORDINATION_REONBOARD, "coordination.reonboard");
     }
 
     #[test]
@@ -1483,6 +1619,12 @@ mod tests {
     fn protocol_version_excludes_daemons_without_member_operations() {
         let last_protocol_without_daemon_member_operations = 16;
         assert!(PROTOCOL_VERSION > last_protocol_without_daemon_member_operations);
+    }
+
+    #[test]
+    fn protocol_version_excludes_daemons_without_team_resume_operations() {
+        let last_protocol_without_daemon_team_resume_operations = 17;
+        assert!(PROTOCOL_VERSION > last_protocol_without_daemon_team_resume_operations);
     }
 
     #[test]
