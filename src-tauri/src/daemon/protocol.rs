@@ -33,7 +33,8 @@ use serde::{Deserialize, Serialize};
 /// value to Antigravity CLI. Mixed v11 pairs cannot decode each other's tool.
 /// v13: added the Grok CLI tool value to the shared wire vocabulary.
 /// v14: retired the Codex compaction mode method with the transcript pipeline.
-pub const PROTOCOL_VERSION: u32 = 14;
+/// v15: moved the managed-task deadline pass from the app into the daemon.
+pub const PROTOCOL_VERSION: u32 = 15;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -919,7 +920,7 @@ mod tests {
         let back: crate::session_scanner::launch_base::ResolvedBase =
             serde_json::from_str(&json).unwrap();
         assert_eq!(result, back);
-        assert_eq!(PROTOCOL_VERSION, 14);
+        assert_eq!(PROTOCOL_VERSION, 15);
     }
 
     // Regression: 3c5b6cd9 invalidated only the Windows app's process-local
@@ -1132,6 +1133,15 @@ mod tests {
         // vocabulary, so protocol 13 peers must be rejected.
         let last_protocol_with_codex_compaction_mode = 13;
         assert!(PROTOCOL_VERSION > last_protocol_with_codex_compaction_mode);
+    }
+
+    // Regression: 1bb8668e made the app the only deadline scheduler. Moving
+    // that ownership without rejecting protocol 14 would permit a paired app
+    // and daemon to execute the pass twice or not at all.
+    #[test]
+    fn protocol_version_excludes_daemons_without_the_deadline_scheduler() {
+        let last_protocol_without_daemon_deadlines = 14;
+        assert!(PROTOCOL_VERSION > last_protocol_without_daemon_deadlines);
     }
 
     #[test]

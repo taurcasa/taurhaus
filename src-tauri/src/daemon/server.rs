@@ -94,7 +94,7 @@ pub fn run(
 ) -> std::io::Result<()> {
     // Passed as a closure rather than called here so `run_for_test` never
     // writes into real config dirs.
-    run_with_legacy_cleanup(config, shutdown, provider, retire_legacy_bridge)
+    run_with_legacy_cleanup(config, shutdown, provider, retire_legacy_bridge, true)
 }
 
 fn retire_legacy_bridge() {
@@ -107,6 +107,7 @@ fn run_with_legacy_cleanup<F>(
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
     cleanup: F,
+    schedule_deadlines: bool,
 ) -> std::io::Result<()>
 where
     F: FnOnce() + Send + 'static,
@@ -121,7 +122,26 @@ where
     let _ = session_hub.wait_for_update(0, 0, Duration::from_millis(750));
 
     let listener = bind_listener(config)?;
-    serve(config, listener, shutdown, provider)
+    #[cfg(feature = "mesh-bridged-backend")]
+    let deadline_scheduler = schedule_deadlines.then(|| {
+        // The hub above owns and refreshes the member-activity snapshots that
+        // the shared deadline pass reads. Register only after that activity
+        // source is live so the pass keeps its existing input seam.
+        crate::daemon::deadline_scheduler::DeadlineScheduler::start(
+            crate::coordination::state::CoordinationState::for_process_default(),
+            shutdown.clone(),
+        )
+    });
+    #[cfg(not(feature = "mesh-bridged-backend"))]
+    let _ = schedule_deadlines;
+
+    let result = serve(config, listener, shutdown.clone(), provider);
+    shutdown.store(true, Ordering::Relaxed);
+    #[cfg(feature = "mesh-bridged-backend")]
+    if let Some(scheduler) = deadline_scheduler {
+        scheduler.join();
+    }
+    result
 }
 
 /// Bind and listen on the daemon's port, without serving on it yet.
@@ -292,7 +312,7 @@ pub(crate) fn run_for_test_with_legacy_cleanup<F>(
 where
     F: FnOnce() + Send + 'static,
 {
-    run_with_legacy_cleanup(config, shutdown, provider, cleanup)
+    run_with_legacy_cleanup(config, shutdown, provider, cleanup, false)
 }
 
 /// Read a newline-terminated line from a `BufReader`, respecting a max byte limit.
@@ -710,6 +730,74 @@ mod tests {
             reachable,
             "the daemon must bind before legacy cleanup completes"
         );
+    }
+
+    // Regression: 34fdeead added a daemon deadline scheduler but only tested
+    // the scheduler in isolation. Removing `run`'s production registration
+    // would therefore leave both the app and daemon with deadline work disabled.
+    #[test]
+    fn production_daemon_run_registers_and_fires_the_deadline_scheduler() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _env_guard = crate::test_support::acquire_env_test_guard();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let claude_dir = temp.path().join("claude");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(claude_dir.join("teams")).expect("teams dir");
+        std::fs::create_dir_all(&data_dir).expect("data dir");
+        let _claude_env = EnvRestore::set(
+            "TAURHAUS_CLAUDE_DIR",
+            claude_dir.to_str().expect("utf-8 claude dir"),
+        );
+        let _data_env = EnvRestore::set(
+            "TAURHAUS_DATA_DIR",
+            data_dir.to_str().expect("utf-8 data dir"),
+        );
+        let log_state =
+            crate::commands::logging::LogFileState::new(data_dir.join("taurhaus.log.jsonl"))
+                .expect("log state");
+        crate::commands::logging::install_global_sink(&log_state);
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
+        crate::commands::logging::install_test_tap(event_tx);
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("reserve port");
+        let port = listener.local_addr().expect("listener address").port();
+        drop(listener);
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let server_shutdown = shutdown.clone();
+        let handle = std::thread::spawn(move || {
+            run(
+                &DaemonConfig {
+                    port,
+                    bind_addr: "127.0.0.1".to_string(),
+                    idle_timeout_secs: None,
+                    auth_token: None,
+                },
+                server_shutdown,
+                Arc::new(LocalProvider),
+            )
+        });
+
+        // Measured ~6.3s on an idle host; generous for CI/loaded hosts.
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let pass = loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let record = event_rx
+                .recv_timeout(remaining)
+                .expect("production daemon deadline pass within eight seconds");
+            if record["event"] == "deadline.pass.completed" {
+                break record;
+            }
+        };
+        shutdown.store(true, Ordering::Relaxed);
+        handle
+            .join()
+            .expect("server thread")
+            .expect("server result");
+        crate::commands::logging::clear_test_tap();
+
+        assert_eq!(pass["component"], "coordination");
+        assert_eq!(pass["fields"]["teams_scanned"], 0);
     }
 
     fn send_request(

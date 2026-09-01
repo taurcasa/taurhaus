@@ -2146,6 +2146,12 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
     // A launch emits into the process-global sink; hold the log guard so it
     // never lands in the file another test is reading.
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    // The JoinMesh assertion re-reads process-global TAURHAUS_CLAUDE_DIR via
+    // resolve_mesh_cli_claude_dir_arg; sibling tests mutate that variable
+    // under the shared env guard, so this reader must hold it too or the
+    // value can change between the recorded call and the assertion (this
+    // race failed a lane gate as a phantom coordination failure).
+    let _env_guard = taurhaus_lib::test_support::acquire_env_test_guard();
     let tmp = TempDir::new().expect("temp teams dir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     runtime.set_pane_exists("%9", false);

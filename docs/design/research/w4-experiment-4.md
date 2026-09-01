@@ -4,6 +4,8 @@ Experiment 4 of [`../w4-managed-stages-design.md`](../w4-managed-stages-design.m
 
 The lane is `e2e/specs/managed-stage-deadline.js` (paid, named-only; #103 built it, #104 reordered it after attempt 1).
 
+These measurements predate protocol 15 and therefore joined the then-app-owned self-heal pass records. Since protocol 15 the same lane observes the daemon-owned scheduler directly through `deadline.pass.completed`; app self-heal events are no longer deadline-pass evidence.
+
 ## Commands
 
 ```bash
@@ -37,7 +39,7 @@ Every timestamp is a record's own, never the test process's stopwatch.
 | **Stale** — mesh task + snapshot + event | 11:53:28.899–.981 — the first pass after the deadline; **eventCount 1**, no further nudge | task record, snapshot, `deadline.task.staled` |
 | `stage()`-shaped poll verdict | `{"status":"timeout"}` | task-record poll |
 | Session survival | pane `%2` pid 3451804 alive, daemon 3451891, same session id at afterStart / afterNudge / afterStale | runtime record + pane probe |
-| Self-heal pass cost | 80–95 ms per pass, 2 teams scanned | pass events |
+| Deadline pass cost | 80–95 ms per pass, 2 teams scanned | pass events (app-owned in protocol 14; daemon-owned since protocol 15) |
 
 ## Measured — suppression path (attempt 1, 2026-08-31 10:43–10:48 UTC)
 

@@ -14,7 +14,7 @@ A stage is an **assignment to a managed member**, not a subprocess. The workflow
 
 **Completion signal**: the member's `RESULT <task-id>` message; the stage returns its JSON block to the script (schema-validated by the same StructuredOutput path the procedures use today). A member that reports a blocker sends `BLOCKED <task-id>` with a reason; the stage returns `{status: "blocked", reason}` and the script decides (fix-round, escalate, abandon).
 
-**Timeouts and retries**: the assignment carries a deadline (`--deadline <minutes>`, default from the script's `size`: small 20, feature 60); taurhaus's self-heal pass sends one nudge at half the deadline and marks the task `stale` at the deadline; the stage returns `{status: "timeout"}`; no automatic re-run — the script owns retries, the member keeps its session and context for a resumed attempt (`stage(task, {resume: taskId})`).
+**Timeouts and retries**: the assignment carries a deadline (`--deadline <minutes>`, default from the script's `size`: small 20, feature 60); taurhaus's daemon-owned deadline pass (since protocol 15) sends one nudge at half the deadline and marks the task `stale` at the deadline; the stage returns `{status: "timeout"}`; no automatic re-run — the script owns retries, the member keeps its session and context for a resumed attempt (`stage(task, {resume: taskId})`).
 
 **Worktree handling**: a stage names the checkout it works in (`worktree`), created by the script's own setup step exactly as the lanes do today (`git worktree add`, resource binaries, `bun install`); a member launched for a stage starts in that checkout, so two stages never share a working tree. Members are per-worktree, not per-stage: a team for a feature PR has one Codex member in the worktree, reused across implement → fix rounds.
 
@@ -22,7 +22,7 @@ A stage is an **assignment to a managed member**, not a subprocess. The workflow
 
 **What changes where**
 - mesh: `task create/assign --deadline`, the `RESULT/BLOCKED <task-id>` completion-signal convention recognised in `task get` (small).
-- taurhaus: the nudge-and-stale rule in the self-heal pass; the task card shows the deadline; a `stage` helper in the procedures' shared lib (W1) replacing the Codex wrapper: create task → assign → wait for the completion message via the inbox → return JSON; the Codex wrapper stays available behind `args.transport: "exec"` for hosts without a team.
+- taurhaus: the nudge-and-stale rule in the daemon-owned deadline pass (since protocol 15); the task card shows the deadline; a `stage` helper in the procedures' shared lib (W1) replacing the Codex wrapper: create task → assign → wait for the completion message via the inbox → return JSON; the Codex wrapper stays available behind `args.transport: "exec"` for hosts without a team.
 - procedures: `feature-pr` uses `stage` for its Codex implementer when `args.team` names a team. Adoption by `small-change`, `fix-round`, and `research-sweep` remains a later slice; all procedures retain the exec transport in the shared library.
 
 ## Experiments that gate implementation

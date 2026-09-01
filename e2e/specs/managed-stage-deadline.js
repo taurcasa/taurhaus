@@ -6,20 +6,20 @@
  * The primary stall runs first, straight after onboarding;
  * a fresh member with one assignment runs
  * `mesh task start` and then ends its turn without completing the task. The
- * production 30-second self-heal pass must nudge it once, mark the mesh task
+ * production 30-second daemon deadline pass must nudge it once, mark the mesh task
  * stale once, and leave the member session alive for a later resumed stage.
  *
  * Deadline arithmetic is intentionally small but exact. `--deadline 1` means
  * 1 minute * 60 seconds/minute = 60 seconds. Half of 60 seconds is 30 seconds,
  * so the first pass at or after assigned_at + 30 s may nudge, and the first
- * pass at or after assigned_at + 60 s must stale the task. The loop sleeps 30 s
- * after each pass (`startup/orchestration.rs`), making the observed period 30 s
- * plus the preceding pass duration. The one-minute task's nudge window is only
- * 30 s and can therefore be skipped. The lane records that cadence outcome and
- * reports that paid run as inconclusive instead of a production deadline
- * defect; failed paid attempts are re-run manually. It still requires three
- * recorded `startup.self_heal.completed` events after `assigned_at`; elapsed
- * sleeps are never proof that those passes ran.
+ * pass at or after assigned_at + 60 s must stale the task. The daemon scheduler
+ * sleeps 30 s after each pass (`daemon/deadline_scheduler.rs`), making the
+ * observed period 30 s plus the preceding pass duration. The one-minute task's
+ * nudge window is only 30 s and can therefore be skipped. The lane records that
+ * cadence outcome and reports that paid run as inconclusive instead of a
+ * production deadline defect; failed paid attempts are re-run manually. It
+ * still requires three recorded `deadline.pass.completed` events after
+ * `assigned_at`; elapsed sleeps are never proof that those passes ran.
  *
  * After that stall, a negative path gives the same member a three-minute task.
  * The lane first observes the stall case's final turn and waits a fixed settle,
@@ -108,6 +108,7 @@ const TAURHAUS_MESH_BINARY = join(homedir(), '.local', 'bin', 'mesh')
 const TMUX_SESSION = 'taurhaus'
 const LAUNCH_EFFORT = 'low'
 const DEADLINE_MINUTES = 1
+/** Production cadence owned by src-tauri/src/daemon/deadline_scheduler.rs. */
 const PASS_CADENCE_MS = 30_000
 const ACTIVE_DEADLINE_MINUTES = 3
 const ACTIVE_HEARTBEAT = activeDeadlineHeartbeatPlan({
@@ -354,9 +355,11 @@ function deadlineEvents(events, event, taskId, deadlineMinutes = DEADLINE_MINUTE
   })
 }
 
-function selfHealPassesAfter(events, assignedAt) {
+// Regression: 34fdeead moved the pass to the daemon while this paid lane still
+// treated unrelated app self-heal events as proof that deadline work had run.
+function deadlinePassesAfter(events, assignedAt) {
   const assignedAtMs = Date.parse(assignedAt)
-  return selectEvents(events, { event: 'startup.self_heal.completed' }).filter(
+  return selectEvents(events, { event: 'deadline.pass.completed' }).filter(
     (event) => Number.isFinite(assignedAtMs) && Date.parse(event.ts) >= assignedAtMs
   )
 }
@@ -905,7 +908,7 @@ describe('managed stage deadline semantics', function () {
           assignedAt: imported.task.assigned_at,
           deadlineMinutes: ACTIVE_DEADLINE_MINUTES,
           activitySnapshots: [...activityByObservedAt.values()],
-          passEvents: selfHealPassesAfter(events, imported.task.assigned_at),
+          passEvents: deadlinePassesAfter(events, imported.task.assigned_at),
         })
         if (!evidence) return false
         suppressionOutcome = { kind: 'suppressed', evidence }
@@ -914,7 +917,7 @@ describe('managed stage deadline semantics', function () {
       {
         timeout: 150_000,
         interval: 250,
-        timeoutMsg: `no eligible self-heal pass observed active work on task #${assigned.taskId}`,
+        timeoutMsg: `no eligible daemon deadline pass observed active work on task #${assigned.taskId}`,
       }
     )
 
@@ -1033,7 +1036,7 @@ describe('managed stage deadline semantics', function () {
         assignedAt: imported.task.assigned_at,
         staleAt: nudgeOutcome.event.ts,
         configuredPassSleepMs: PASS_CADENCE_MS,
-        passDurationsMs: selfHealPassesAfter(
+        passDurationsMs: deadlinePassesAfter(
           eventsSince(logOffset),
           imported.task.assigned_at
         ).map((event) => event.duration_ms),
@@ -1092,12 +1095,12 @@ describe('managed stage deadline semantics', function () {
     const passEvents = await waitForLogEvidence(
       logOffset,
       (events) => {
-        const passes = selfHealPassesAfter(events, imported.task.assigned_at)
+        const passes = deadlinePassesAfter(events, imported.task.assigned_at)
         return passes.length >= REQUIRED_PASS_COUNT ? passes : null
       },
       {
         timeout: PASS_EVIDENCE_TIMEOUT_MS,
-        timeoutMsg: `fewer than ${REQUIRED_PASS_COUNT} self-heal passes were recorded after assigned_at`,
+        timeoutMsg: `fewer than ${REQUIRED_PASS_COUNT} daemon deadline passes were recorded after assigned_at`,
       }
     )
 
@@ -1154,7 +1157,7 @@ describe('managed stage deadline semantics', function () {
           finalOperationalState: finalOperationalEvidence.state,
           eventCount: staleEvents.length,
         },
-        selfHealPasses: passEvents.slice(0, REQUIRED_PASS_COUNT).map((event) => ({
+        deadlinePasses: passEvents.slice(0, REQUIRED_PASS_COUNT).map((event) => ({
           at: event.ts,
           durationMs: event.duration_ms,
           teamsScanned: event.teams_scanned,
