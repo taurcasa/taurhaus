@@ -433,7 +433,9 @@ fn remove_member_command_uses_the_roster_daemon_intent() {
         .split("#[tauri::command")
         .next()
         .expect("remove-member body");
-    assert!(!command.contains("COORDINATION_STOP_MEMBER"));
+    assert!(command.contains("remove_member_through_daemon"));
+    assert!(!command.contains("stop_member_through_daemon"));
+    assert!(!command.contains("CoordinationStopMemberParams"));
     assert!(source.contains("COORDINATION_REMOVE_MEMBER"));
     assert!(source.contains("COORDINATION_REMOVE_MEMBER_STATUS"));
 }

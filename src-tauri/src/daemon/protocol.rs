@@ -1852,6 +1852,14 @@ mod tests {
         assert!(PROTOCOL_VERSION > last_protocol_without_daemon_team_resume_operations);
     }
 
+    // Regression: f8d08a21 added daemon-owned standalone team and roster
+    // operations without pinning exclusion of protocol-18 daemons.
+    #[test]
+    fn protocol_version_excludes_daemons_without_roster_operations() {
+        let last_protocol_without_daemon_roster_operations = 18;
+        assert!(PROTOCOL_VERSION > last_protocol_without_daemon_roster_operations);
+    }
+
     #[test]
     fn wait_session_updates_result_roundtrips_focus() {
         let result = WaitSessionUpdatesResult {

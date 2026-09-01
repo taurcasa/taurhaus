@@ -1474,6 +1474,14 @@ mod tests {
             protocol::method::COORDINATION_RESUME_TEAM_STATUS,
             protocol::method::COORDINATION_REONBOARD,
             protocol::method::COORDINATION_REONBOARD_STATUS,
+            protocol::method::COORDINATION_CREATE_TEAM,
+            protocol::method::COORDINATION_CREATE_TEAM_STATUS,
+            protocol::method::COORDINATION_DISBAND_TEAM,
+            protocol::method::COORDINATION_DISBAND_TEAM_STATUS,
+            protocol::method::COORDINATION_ADD_MEMBER,
+            protocol::method::COORDINATION_ADD_MEMBER_STATUS,
+            protocol::method::COORDINATION_REMOVE_MEMBER,
+            protocol::method::COORDINATION_REMOVE_MEMBER_STATUS,
         ];
 
         for (idx, method) in methods.into_iter().enumerate() {
