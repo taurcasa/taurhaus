@@ -533,6 +533,80 @@ mod tests {
     }
 
     #[test]
+    fn prepare_initialize_snapshots_derives_lead_and_agent_context_from_the_db() {
+        let (conn, _db) = test_db();
+        let mut lead_task = owned_task(
+            "lead-task",
+            "Coordinate rollout",
+            "in_progress",
+            Some(("high", "cross-project coordination")),
+        );
+        lead_task.project_path = "proj-lead".to_string();
+        lead_task.owner = Some("team-lead".to_string());
+        taurhaus_lib::db::task_queries::upsert_task(&conn, &lead_task).expect("upsert lead task");
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &owned_task(
+                "agent-task",
+                "Build frontend",
+                "pending",
+                Some(("medium", "bounded UI work")),
+            ),
+        )
+        .expect("upsert agent task");
+
+        let agent = |name: &str, project_id: &str| crate::coordination::requests::AgentDefinition {
+            name: name.to_string(),
+            cli_tool: "codex".to_string(),
+            model: "gpt-5.4".to_string(),
+            reasoning_effort: None,
+            project_id: project_id.to_string(),
+            description: None,
+            role_id: None,
+            role_name: None,
+            focus_area: None,
+            context_summary: None,
+            behavior_summary: None,
+            communication_style: None,
+            runtime_compact_summary: None,
+            instructions: None,
+            behavioral_contract: None,
+            quality_gates: None,
+            handoff_expectations: None,
+            definition_of_done: None,
+            phase_scope: None,
+            mode: None,
+            inherits_from: None,
+            required_artifacts: None,
+            capabilities: None,
+        };
+        let request = crate::coordination::requests::InitializeTeamRequest {
+            team_name: "architecture-final".to_string(),
+            team_description: None,
+            lead_mode: crate::coordination::requests::LeadMode::LaunchNew,
+            lead: agent("team-lead", "proj-lead"),
+            agents: vec![agent("frontend-dev", "proj-web")],
+        };
+
+        let snapshots = prepare_initialize_snapshots(&conn, &request).expect("prepare snapshots");
+        assert_eq!(snapshots.len(), 2);
+        let lead = snapshots
+            .iter()
+            .find(|snapshot| snapshot.member_name == "team-lead")
+            .expect("lead snapshot");
+        assert_eq!(lead.task.id, "lead-task");
+        assert_eq!(lead.assignment_footer.task_effort, "high");
+        assert_eq!(lead.working_set.project_path, "proj-lead");
+        let agent = snapshots
+            .iter()
+            .find(|snapshot| snapshot.member_name == "frontend-dev")
+            .expect("agent snapshot");
+        assert_eq!(agent.task.id, "agent-task");
+        assert_eq!(agent.assignment_footer.task_effort, "medium");
+        assert_eq!(agent.working_set.project_path, "proj-web");
+    }
+
+    #[test]
     fn sync_member_snapshot_uses_latest_owned_task() {
         let teams = TempDir::new().expect("teams dir");
         let (conn, _db) = test_db();
