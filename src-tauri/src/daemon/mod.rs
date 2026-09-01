@@ -16,5 +16,7 @@ pub mod protocol;
 pub mod server;
 pub mod session_activity;
 pub mod session_listener;
+#[cfg(feature = "mesh-bridged-backend")]
+pub(crate) mod team_runs;
 pub mod usage_poller;
 pub(crate) mod watch;

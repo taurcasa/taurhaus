@@ -23,7 +23,8 @@ mod state_sync;
 pub(crate) use progress::add_agent_progress_events;
 #[allow(unused_imports)]
 pub(crate) use progress::{
-    emit_progress_log_event, progress_events_for_steps, resume_member_progress_event_for_stage,
+    emit_progress_log_event, emit_resume_team_progress_log_event, progress_events_for_steps,
+    resume_member_progress_event_for_stage, resume_team_progress_event,
 };
 
 pub use crate::commands::coordination_types::*;

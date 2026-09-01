@@ -395,6 +395,39 @@ pub(crate) fn execute_resume_member_pipeline(
     })
 }
 
+pub(crate) fn execute_resume_team_pipeline(
+    state: &CoordinationState,
+    request: &crate::coordination::requests::ResumeTeamRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
+    mut emit: Option<&mut dyn FnMut(crate::coordination::requests::ResumeTeamProgress)>,
+) -> Result<
+    crate::coordination::requests::ResumeTeamReport,
+    crate::coordination::errors::CoordinationError,
+> {
+    state.with_orchestrator(|orchestrator| {
+        orchestrator.resume_team_with_cli_commands_and_layout_and_progress(
+            request,
+            cli_commands,
+            tmux_layout,
+            Some(
+                &mut |member_name, member_index, member_count, stage, status, message| {
+                    if let Some(emit) = emit.as_deref_mut() {
+                        emit(crate::coordination::requests::ResumeTeamProgress {
+                            member_name: member_name.to_string(),
+                            member_index,
+                            member_count,
+                            stage,
+                            status,
+                            message,
+                        });
+                    }
+                },
+            ),
+        )
+    })
+}
+
 pub(crate) fn execute_stop_member_pipeline(
     state: &CoordinationState,
     request: &StopMemberRequest,

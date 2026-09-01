@@ -672,6 +672,13 @@ pub struct ResumeTeamRequest {
     pub team_name: String,
 }
 
+/// Request contract for re-sending onboarding to one persisted member.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReonboardRequest {
+    pub team_name: String,
+    pub member_name: String,
+}
+
 /// Result contract for resuming an agent in a running team.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResumeAgentReport {
@@ -707,6 +714,17 @@ pub struct ResumeTeamReport {
     pub warnings: Vec<String>,
     pub started_team_daemon: bool,
     pub team_daemon_warning: Option<String>,
+}
+
+/// One canonical member-activation update inside a team-resume run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResumeTeamProgress {
+    pub member_name: String,
+    pub member_index: usize,
+    pub member_count: usize,
+    pub stage: MemberActivationStage,
+    pub status: StepStatus,
+    pub message: Option<String>,
 }
 
 pub type AgentSetupConfig = AgentDefinition;
@@ -939,6 +957,20 @@ mod tests {
         let report_decoded: ResumeTeamReport =
             serde_json::from_str(&report_json).expect("deserialize resume-team report");
         assert_eq!(report_decoded, report);
+    }
+
+    #[test]
+    fn reonboard_request_round_trips() {
+        let request = ReonboardRequest {
+            team_name: "architecture-final".to_string(),
+            member_name: "builder".to_string(),
+        };
+
+        let json = serde_json::to_string(&request).expect("serialize reonboard request");
+        assert_eq!(
+            serde_json::from_str::<ReonboardRequest>(&json).expect("deserialize reonboard request"),
+            request
+        );
     }
 
     #[test]

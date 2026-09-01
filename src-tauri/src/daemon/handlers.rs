@@ -32,10 +32,12 @@ pub(crate) fn dispatch(
     #[cfg(feature = "mesh-bridged-backend")] coordination_services: (
         &crate::daemon::initialize_runs::InitializeTeamService,
         &crate::daemon::member_runs::MemberOperationsService,
+        &crate::daemon::team_runs::TeamOperationsService,
     ),
 ) -> DaemonResponse {
     #[cfg(feature = "mesh-bridged-backend")]
-    let (initialize_service, member_operations_service) = coordination_services;
+    let (initialize_service, member_operations_service, team_operations_service) =
+        coordination_services;
     tracing::debug!(method = %request.method, id = %request.id, "Received request");
     match request.method.as_str() {
         protocol::method::PING => handle_ping(&request.id, start_time),
@@ -139,6 +141,28 @@ pub(crate) fn dispatch(
                 member_operations_service,
             )
         }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_RESUME_TEAM => {
+            handle_coordination_resume_team(&request.id, &request.params, team_operations_service)
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_RESUME_TEAM_STATUS => {
+            handle_coordination_resume_team_status(
+                &request.id,
+                &request.params,
+                team_operations_service,
+            )
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_REONBOARD => {
+            handle_coordination_reonboard(&request.id, &request.params, team_operations_service)
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_REONBOARD_STATUS => handle_coordination_reonboard_status(
+            &request.id,
+            &request.params,
+            team_operations_service,
+        ),
         _ => DaemonResponse::err(
             &request.id,
             "UNKNOWN_METHOD",
@@ -284,6 +308,74 @@ fn handle_coordination_stop_member_status(
     match service.stop_member_status(&params.run_id) {
         Some(status) => DaemonResponse::ok(id, status),
         None => coordination_run_not_found(id, "stop-member", &params.run_id),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_resume_team(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::team_runs::TeamOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationResumeTeamParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.start_resume_team(params) {
+        Ok(run_id) => DaemonResponse::ok(id, protocol::CoordinationResumeTeamAccepted { run_id }),
+        Err(error) => DaemonResponse::err(id, "RESUME_TEAM_START_FAILED", error),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_resume_team_status(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::team_runs::TeamOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationResumeTeamStatusParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.resume_team_status(&params.run_id) {
+        Some(status) => DaemonResponse::ok(id, status),
+        None => coordination_run_not_found(id, "resume-team", &params.run_id),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_reonboard(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::team_runs::TeamOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationReonboardParams = match serde_json::from_value(params.clone())
+    {
+        Ok(params) => params,
+        Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+    };
+    match service.start_reonboard(params) {
+        Ok(run_id) => DaemonResponse::ok(id, protocol::CoordinationReonboardAccepted { run_id }),
+        Err(error) => DaemonResponse::err(id, "REONBOARD_START_FAILED", error),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_reonboard_status(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::team_runs::TeamOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationReonboardStatusParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.reonboard_status(&params.run_id) {
+        Some(status) => DaemonResponse::ok(id, status),
+        None => coordination_run_not_found(id, "reonboard", &params.run_id),
     }
 }
 
