@@ -123,19 +123,29 @@ where
 
     let listener = bind_listener(config)?;
     #[cfg(feature = "mesh-bridged-backend")]
+    let coordination_state =
+        Arc::new(crate::coordination::state::CoordinationState::for_process_default());
+    #[cfg(feature = "mesh-bridged-backend")]
     let deadline_scheduler = schedule_deadlines.then(|| {
         // The hub above owns and refreshes the member-activity snapshots that
         // the shared deadline pass reads. Register only after that activity
         // source is live so the pass keeps its existing input seam.
         crate::daemon::deadline_scheduler::DeadlineScheduler::start(
-            crate::coordination::state::CoordinationState::for_process_default(),
+            coordination_state.clone(),
             shutdown.clone(),
         )
     });
     #[cfg(not(feature = "mesh-bridged-backend"))]
     let _ = schedule_deadlines;
 
-    let result = serve(config, listener, shutdown.clone(), provider);
+    let result = serve(
+        config,
+        listener,
+        shutdown.clone(),
+        provider,
+        #[cfg(feature = "mesh-bridged-backend")]
+        coordination_state,
+    );
     shutdown.store(true, Ordering::Relaxed);
     #[cfg(feature = "mesh-bridged-backend")]
     if let Some(scheduler) = deadline_scheduler {
@@ -175,6 +185,9 @@ fn serve(
     listener: TcpListener,
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
+    #[cfg(feature = "mesh-bridged-backend")] coordination_state: Arc<
+        crate::coordination::state::CoordinationState,
+    >,
 ) -> std::io::Result<()> {
     listener.set_nonblocking(true)?;
 
@@ -183,9 +196,9 @@ fn serve(
     let auth_token: Option<Arc<str>> = config.auth_token.as_deref().map(Arc::from);
     #[cfg(feature = "mesh-bridged-backend")]
     let initialize_service = Arc::new(
-        crate::daemon::initialize_runs::InitializeTeamService::for_process_default(Arc::new(
-            crate::coordination::state::CoordinationState::for_process_default(),
-        )),
+        crate::daemon::initialize_runs::InitializeTeamService::for_process_default(
+            coordination_state,
+        ),
     );
     let watch_registry =
         crate::daemon::watch::SharedDaemonWatchRegistry::new().map_err(std::io::Error::other)?;
@@ -298,7 +311,14 @@ pub(crate) fn serve_for_test(
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
 ) -> std::io::Result<()> {
-    serve(config, listener, shutdown, provider)
+    serve(
+        config,
+        listener,
+        shutdown,
+        provider,
+        #[cfg(feature = "mesh-bridged-backend")]
+        Arc::new(crate::coordination::state::CoordinationState::for_process_default()),
+    )
 }
 
 #[cfg(test)]
@@ -748,6 +768,20 @@ mod tests {
             reachable,
             "the daemon must bind before legacy cleanup completes"
         );
+    }
+
+    // Regression: c3db92f5 built separate coordination states for deadline
+    // work and initialization, leaving their orchestrator locks independent.
+    #[test]
+    fn daemon_coordination_workers_share_one_process_state() {
+        let source = include_str!("server.rs");
+        assert!(source.contains("let coordination_state = Arc::new("));
+        assert!(
+            source.contains("DeadlineScheduler::start(\n            coordination_state.clone()")
+        );
+        assert!(source.contains(
+            "InitializeTeamService::for_process_default(\n            coordination_state"
+        ));
     }
 
     // Regression: 34fdeead added a daemon deadline scheduler but only tested
