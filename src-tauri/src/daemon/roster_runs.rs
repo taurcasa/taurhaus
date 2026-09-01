@@ -240,9 +240,14 @@ impl RosterOperationsService {
         params: CoordinationRemoveMemberParams,
     ) -> Result<String, String> {
         self.start_operation(RosterRunKind::RemoveMember, "member-remove", move |state| {
-            execute_remove_member(state.as_ref(), &params.request)
-                .map(RosterRunReport::RemoveMember)
-                .map_err(|error| error.to_string())
+            let report = execute_remove_member(state.as_ref(), &params.request)
+                .map_err(|error| error.to_string())?;
+            crate::coordination::stores::active_project::sync_team_from_config(
+                state.teams_dir(),
+                &report.team_name,
+            )
+            .map_err(|error| error.to_string())?;
+            Ok(RosterRunReport::RemoveMember(report))
         })
     }
 
@@ -554,6 +559,7 @@ mod tests {
     fn create_add_and_remove_execute_through_daemon_state() {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let (service, _runtime) = service(temp.path());
+        let project = temp.path().join("project");
 
         let run_id = service
             .start_create_team(CoordinationCreateTeamParams {
@@ -574,7 +580,7 @@ mod tests {
                     team_name: "arch".to_string(),
                     member_name: "builder".to_string(),
                     backend_kind: "codex".to_string(),
-                    project_path: Some(temp.path().join("project").display().to_string()),
+                    project_path: Some(project.display().to_string()),
                 },
             })
             .expect("add-member worker starts");
@@ -590,6 +596,8 @@ mod tests {
                 .len(),
             1
         );
+        crate::coordination::stores::active_project::sync_team_from_config(temp.path(), "arch")
+            .expect("seed active project mapping");
 
         let run_id = service
             .start_remove_member(CoordinationRemoveMemberParams {
@@ -612,6 +620,16 @@ mod tests {
             .expect("team config")
             .members
             .is_empty());
+        // Regression: 03eb3a2c routed roster removal through a daemon worker
+        // that omitted the active-project sync performed by stop-member.
+        assert_eq!(
+            ActiveProjectTeamStore::load_active_team(
+                temp.path(),
+                &project.display().to_string(),
+            )
+            .expect("active project mapping"),
+            None
+        );
     }
 
     #[test]
