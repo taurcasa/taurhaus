@@ -623,11 +623,8 @@ mod tests {
         // Regression: 03eb3a2c routed roster removal through a daemon worker
         // that omitted the active-project sync performed by stop-member.
         assert_eq!(
-            ActiveProjectTeamStore::load_active_team(
-                temp.path(),
-                &project.display().to_string(),
-            )
-            .expect("active project mapping"),
+            ActiveProjectTeamStore::load_active_team(temp.path(), &project.display().to_string(),)
+                .expect("active project mapping"),
             None
         );
     }
