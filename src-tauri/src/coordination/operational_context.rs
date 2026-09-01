@@ -53,6 +53,7 @@ pub(crate) fn prepare_initialize_snapshots(
 
 /// Build the app-DB-derived snapshot carried by a daemon member-operation
 /// intent. This performs no team-store writes.
+#[cfg(test)]
 pub(crate) fn prepare_member_snapshot(
     teams_dir: &Path,
     conn: &Connection,

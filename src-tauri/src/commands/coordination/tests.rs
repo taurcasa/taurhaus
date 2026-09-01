@@ -617,7 +617,10 @@ fn daemon_owned_member_launches_do_not_reconcile_codex_in_the_app() {
             "coordination_add_agent",
             "pub async fn coordination_resume_member",
         ),
-        ("coordination_resume_member", "pub fn coordination_resume_team"),
+        (
+            "coordination_resume_member",
+            "pub fn coordination_resume_team",
+        ),
     ] {
         let body = source
             .split(&format!("pub async fn {command}"))

@@ -336,6 +336,8 @@ pub mod daemon {
             #[serde(default)]
             pub operational_snapshot:
                 Option<crate::coordination::stores::OperationalContextSnapshot>,
+            #[serde(default)]
+            pub task_state_changed_at: Option<chrono::DateTime<chrono::Utc>>,
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -370,6 +372,8 @@ pub mod daemon {
             #[serde(default)]
             pub operational_snapshot:
                 Option<crate::coordination::stores::OperationalContextSnapshot>,
+            #[serde(default)]
+            pub task_state_changed_at: Option<chrono::DateTime<chrono::Utc>>,
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
