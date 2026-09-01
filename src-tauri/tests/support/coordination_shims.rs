@@ -235,6 +235,39 @@ pub mod daemon {
             })
         }
 
+        pub(crate) fn execute_resume_team_pipeline(
+            state: &CoordinationState,
+            request: &crate::coordination::requests::ResumeTeamRequest,
+            cli_commands: &CliCommandSettings,
+            tmux_layout: &str,
+            mut emit: Option<&mut dyn FnMut(crate::coordination::requests::ResumeTeamProgress)>,
+        ) -> Result<
+            crate::coordination::requests::ResumeTeamReport,
+            crate::coordination::errors::CoordinationError,
+        > {
+            state.with_orchestrator(|orchestrator| {
+                orchestrator.resume_team_with_cli_commands_and_layout_and_progress(
+                    request,
+                    cli_commands,
+                    tmux_layout,
+                    Some(
+                        &mut |member_name, member_index, member_count, stage, status, message| {
+                            if let Some(emit) = emit.as_deref_mut() {
+                                emit(crate::coordination::requests::ResumeTeamProgress {
+                                    member_name: member_name.to_string(),
+                                    member_index,
+                                    member_count,
+                                    stage,
+                                    status,
+                                    message,
+                                });
+                            }
+                        },
+                    ),
+                )
+            })
+        }
+
         pub(crate) fn execute_stop_member_pipeline(
             state: &CoordinationState,
             request: &StopMemberRequest,
@@ -243,6 +276,84 @@ pub mod daemon {
                 orchestrator.remove_member(&request.team_name, &request.member_name, None)
             })?;
             Ok(StopMemberReport::from_remove_member_result(result))
+        }
+    }
+
+    pub mod team_runs {
+        use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
+        use crate::coordination::domain::MemberRole;
+        use crate::coordination::requests::{
+            DeliveryRequest, DeliveryResult, OperatorNoticeDelivery, ReonboardRequest,
+        };
+        use crate::coordination::state::CoordinationState;
+
+        pub(crate) fn execute_reonboard_pipeline(
+            state: &CoordinationState,
+            request: &ReonboardRequest,
+        ) -> Result<DeliveryResult, crate::coordination::errors::CoordinationError> {
+            state.with_orchestrator(|orchestrator| {
+                let team = orchestrator.get_team_status(&request.team_name)?;
+                let lead_name = team
+                    .config
+                    .members
+                    .iter()
+                    .find(|member| member.role == MemberRole::Lead)
+                    .map(|member| member.name.clone())
+                    .unwrap_or_else(|| "team-lead".to_string());
+                let member = team
+                    .config
+                    .members
+                    .iter()
+                    .find(|member| member.name == request.member_name)
+                    .ok_or_else(|| {
+                        crate::coordination::errors::CoordinationError::NotFound(format!(
+                            "member '{}' not found in team '{}'",
+                            request.member_name, request.team_name
+                        ))
+                    })?;
+                let role_context = RoleContext {
+                    role_id: member.role_id.as_deref(),
+                    communication_style: member.communication_style.as_deref(),
+                    instructions: member.instructions.as_deref(),
+                    behavioral_contract: member.behavioral_contract.as_ref(),
+                    quality_gates: member.quality_gates.as_deref(),
+                    handoff_expectations: member.handoff_expectations.as_deref(),
+                    definition_of_done: member.definition_of_done.as_deref(),
+                    capabilities: member.capabilities.as_deref(),
+                };
+                let tool_spec = crate::session_scanner::cli_tool::spec(member.cli_tool);
+                let message = if tool_spec.capabilities.native_inbox_poller {
+                    DeliveryRenderer::render_onboarding(
+                        &request.team_name,
+                        &request.member_name,
+                        &lead_name,
+                        role_context,
+                    )
+                } else {
+                    DeliveryRenderer::render_for_tool(
+                        member.cli_tool,
+                        &request.team_name,
+                        &request.member_name,
+                        &lead_name,
+                        true,
+                        role_context,
+                    )
+                    .ok_or_else(|| {
+                        crate::coordination::errors::CoordinationError::Validation(
+                            "onboarding is not required for this harness".to_string(),
+                        )
+                    })?
+                };
+                orchestrator.deliver_message(DeliveryRequest::operator_notice(
+                    OperatorNoticeDelivery {
+                        member_name: request.member_name.clone(),
+                        team_name: request.team_name.clone(),
+                        message,
+                        sender_name: Some(lead_name),
+                        operational_context: None,
+                    },
+                ))
+            })
         }
     }
 
@@ -260,6 +371,10 @@ pub mod daemon {
             pub const COORDINATION_RESUME_MEMBER_STATUS: &str = "coordination.resume_member_status";
             pub const COORDINATION_STOP_MEMBER: &str = "coordination.stop_member";
             pub const COORDINATION_STOP_MEMBER_STATUS: &str = "coordination.stop_member_status";
+            pub const COORDINATION_RESUME_TEAM: &str = "coordination.resume_team";
+            pub const COORDINATION_RESUME_TEAM_STATUS: &str = "coordination.resume_team_status";
+            pub const COORDINATION_REONBOARD: &str = "coordination.reonboard";
+            pub const COORDINATION_REONBOARD_STATUS: &str = "coordination.reonboard_status";
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -399,6 +514,72 @@ pub mod daemon {
             pub run_id: String,
             pub steps: Vec<crate::coordination::requests::StepProgress>,
             pub outcome: CoordinationStopMemberOutcome,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationResumeTeamParams {
+            pub request: crate::coordination::requests::ResumeTeamRequest,
+            pub cli_commands: crate::models::CliCommandSettings,
+            pub tmux_layout: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationResumeTeamAccepted {
+            pub run_id: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        #[serde(rename_all = "snake_case", tag = "status")]
+        pub enum CoordinationResumeTeamOutcome {
+            Running,
+            Completed {
+                report: crate::coordination::requests::ResumeTeamReport,
+            },
+            Failed {
+                error: String,
+            },
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationResumeTeamStatus {
+            pub run_id: String,
+            pub steps: Vec<crate::coordination::requests::ResumeTeamProgress>,
+            pub outcome: CoordinationResumeTeamOutcome,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationReonboardParams {
+            pub request: crate::coordination::requests::ReonboardRequest,
+            pub cli_commands: crate::models::CliCommandSettings,
+            pub tmux_layout: String,
+            #[serde(default)]
+            pub operational_snapshot:
+                Option<crate::coordination::stores::OperationalContextSnapshot>,
+            #[serde(default)]
+            pub task_state_changed_at: Option<chrono::DateTime<chrono::Utc>>,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationReonboardAccepted {
+            pub run_id: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        #[serde(rename_all = "snake_case", tag = "status")]
+        pub enum CoordinationReonboardOutcome {
+            Running,
+            Completed {
+                report: crate::coordination::requests::DeliveryResult,
+            },
+            Failed {
+                error: String,
+            },
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationReonboardStatus {
+            pub run_id: String,
+            pub outcome: CoordinationReonboardOutcome,
         }
     }
 }

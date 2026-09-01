@@ -151,6 +151,53 @@ fn stop_member_pipeline_test_fixture(
     Ok(report)
 }
 
+/// Test-only team-resume fixture. Production team resume execution is daemon-owned.
+fn coordination_resume_team_internal(
+    state: &CoordinationState,
+    request: ResumeTeamRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
+    mut emit: Option<&mut dyn FnMut(&ResumeTeamProgressEvent)>,
+) -> Result<ResumeTeamReport, String> {
+    validate_non_empty("team_name", &request.team_name)?;
+    let report = crate::daemon::member_runs::execute_resume_team_pipeline(
+        state,
+        &map_resume_team_request_to_contract(&request),
+        cli_commands,
+        tmux_layout,
+        Some(&mut |progress| {
+            if let Some(emit) = emit.as_deref_mut() {
+                emit(&resume_team_progress_event(&request.team_name, &progress));
+            }
+        }),
+    )
+    .map(map_resume_team_report_from_contract)
+    .map_err(map_coordination_error)?;
+    sync_active_team_projects_after_change(state, &report.team_name)
+        .map_err(map_coordination_error)?;
+    Ok(report)
+}
+
+/// Test-only reonboard fixture. Production reonboard execution is daemon-owned.
+fn coordination_reonboard_impl(
+    db: Option<&DbState>,
+    state: &CoordinationState,
+    request: ReonboardRequest,
+) -> Result<DeliveryResult, String> {
+    validate_non_empty("team_name", &request.team_name)?;
+    validate_non_empty("member_name", &request.member_name)?;
+    let result = crate::daemon::team_runs::execute_reonboard_pipeline(
+        state,
+        &map_reonboard_request_to_contract(&request),
+    )
+    .map_err(map_coordination_error)?;
+    if let Some(db) = db {
+        sync_member_snapshot_after_change(state, db, &request.team_name, &request.member_name)
+            .map_err(map_coordination_error)?;
+    }
+    Ok(result)
+}
+
 // Regression: 5cebfef8 installed the initialize pipeline behind the desktop
 // command's process-local orchestrator, so Windows mutated team state across
 // the WSL 9p bridge instead of in the daemon's ext4/flock domain.
@@ -198,6 +245,28 @@ fn stop_member_command_has_no_local_pipeline_execution_path() {
     assert!(!source.contains("execute_stop_member_pipeline("));
     assert!(source.contains("COORDINATION_STOP_MEMBER"));
     assert!(source.contains("COORDINATION_STOP_MEMBER_STATUS"));
+}
+
+// Regression: c6e81abc kept team resume in the desktop process, so reopening a
+// Windows project still mutated coordination state over the WSL 9p bridge.
+#[test]
+fn resume_team_command_has_no_local_pipeline_execution_path() {
+    let source = include_str!("../coordination.rs");
+    assert!(!source.contains("orchestrator.resume_team_with_cli_commands_and_layout"));
+    assert!(!source.contains("execute_resume_team_pipeline("));
+    assert!(source.contains("COORDINATION_RESUME_TEAM"));
+    assert!(source.contains("COORDINATION_RESUME_TEAM_STATUS"));
+}
+
+// Regression: 5cebfef8 installed reonboard as a desktop-process delivery, so
+// its inbox append and wake remained outside the daemon's filesystem domain.
+#[test]
+fn reonboard_command_has_no_local_pipeline_execution_path() {
+    let source = include_str!("../coordination.rs");
+    assert!(!source.contains("orchestrator.deliver_message"));
+    assert!(!source.contains("execute_reonboard_pipeline("));
+    assert!(source.contains("COORDINATION_REONBOARD"));
+    assert!(source.contains("COORDINATION_REONBOARD_STATUS"));
 }
 
 #[test]
@@ -535,6 +604,139 @@ fn resume_and_stop_daemon_clients_use_their_run_status_methods() {
         vec![
             protocol::method::COORDINATION_STOP_MEMBER,
             protocol::method::COORDINATION_STOP_MEMBER_STATUS,
+        ]
+    );
+}
+
+#[test]
+fn resume_team_daemon_poll_reemits_the_existing_canonical_progress_contract() {
+    let params = protocol::CoordinationResumeTeamParams {
+        request: crate::coordination::requests::ResumeTeamRequest {
+            team_name: "arch".to_string(),
+        },
+        cli_commands: CliCommandSettings::default(),
+        tmux_layout: "new_window".to_string(),
+    };
+    let progress = crate::coordination::requests::ResumeTeamProgress {
+        member_name: "builder".to_string(),
+        member_index: 2,
+        member_count: 3,
+        stage: MemberActivationStage::CommitRuntime,
+        status: StepStatus::Succeeded,
+        message: Some("runtime committed".to_string()),
+    };
+    let report = crate::coordination::requests::ResumeTeamReport {
+        team_name: "arch".to_string(),
+        resumed: true,
+        total_members: 3,
+        resumed_members: vec!["team-lead".to_string(), "builder".to_string()],
+        failed_members: Vec::new(),
+        warnings: Vec::new(),
+        started_team_daemon: true,
+        team_daemon_warning: None,
+    };
+    let mut responses = std::collections::VecDeque::from([
+        serde_json::to_value(protocol::CoordinationResumeTeamAccepted {
+            run_id: "team-resume-test".to_string(),
+        })
+        .expect("accepted payload"),
+        serde_json::to_value(protocol::CoordinationResumeTeamStatus {
+            run_id: "team-resume-test".to_string(),
+            steps: vec![progress.clone()],
+            outcome: protocol::CoordinationResumeTeamOutcome::Completed {
+                report: report.clone(),
+            },
+        })
+        .expect("status payload"),
+    ]);
+    let mut methods = Vec::new();
+    let mut emitted = Vec::new();
+
+    let resumed = resume_team_through_daemon_with(
+        params,
+        Some(&mut |event: &ResumeTeamProgressEvent| emitted.push(event.clone())),
+        std::time::Duration::ZERO,
+        |method, _params| {
+            methods.push(method.to_string());
+            responses.pop_front().ok_or_else(|| {
+                CoordinationDaemonCallError::Transport("unexpected extra daemon call".to_string())
+            })
+        },
+    )
+    .expect("daemon resume-team completes");
+
+    assert_eq!(resumed, report);
+    assert_eq!(
+        methods,
+        [
+            protocol::method::COORDINATION_RESUME_TEAM,
+            protocol::method::COORDINATION_RESUME_TEAM_STATUS,
+        ]
+    );
+    assert_eq!(emitted.len(), 1);
+    assert_eq!(emitted[0].operation, "resume_team");
+    assert_eq!(emitted[0].team_name, "arch");
+    assert_eq!(emitted[0].member_name, progress.member_name);
+    assert_eq!(emitted[0].member_index, progress.member_index);
+    assert_eq!(emitted[0].member_count, progress.member_count);
+    assert_eq!(
+        emitted[0].stage,
+        MemberActivationStage::CommitRuntime,
+        "the shipped polled path must preserve the canonical activation stage"
+    );
+    assert_eq!(emitted[0].status, progress.status);
+    assert_eq!(emitted[0].message, progress.message);
+}
+
+#[test]
+fn reonboard_daemon_client_uses_its_run_status_method() {
+    let params = protocol::CoordinationReonboardParams {
+        request: crate::coordination::requests::ReonboardRequest {
+            team_name: "arch".to_string(),
+            member_name: "builder".to_string(),
+        },
+        cli_commands: CliCommandSettings::default(),
+        tmux_layout: "new_window".to_string(),
+        operational_snapshot: None,
+        task_state_changed_at: None,
+    };
+    let report = crate::coordination::requests::DeliveryResult {
+        delivered: true,
+        method: crate::coordination::requests::DeliveryMethod::InboxFile,
+        durable: true,
+        wake: crate::coordination::requests::WakeDisposition::AlreadyLive,
+        post_write_warnings: Vec::new(),
+    };
+    let mut responses = std::collections::VecDeque::from([
+        serde_json::to_value(protocol::CoordinationReonboardAccepted {
+            run_id: "reonboard-test".to_string(),
+        })
+        .expect("accepted payload"),
+        serde_json::to_value(protocol::CoordinationReonboardStatus {
+            run_id: "reonboard-test".to_string(),
+            outcome: protocol::CoordinationReonboardOutcome::Completed {
+                report: report.clone(),
+            },
+        })
+        .expect("status payload"),
+    ]);
+    let mut methods = Vec::new();
+
+    let delivered =
+        reonboard_through_daemon_with(params, std::time::Duration::ZERO, |method, _params| {
+            methods.push(method.to_string());
+            responses.pop_front().ok_or_else(|| {
+                CoordinationDaemonCallError::Transport("unexpected extra daemon call".to_string())
+            })
+        })
+        .expect("daemon reonboard completes");
+
+    assert_eq!(delivered, report);
+    assert_eq!(
+        methods,
+        [
+            protocol::method::COORDINATION_REONBOARD,
+            protocol::method::COORDINATION_REONBOARD_STATUS,
         ]
     );
 }

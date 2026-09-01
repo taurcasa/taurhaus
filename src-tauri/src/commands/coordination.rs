@@ -16,6 +16,7 @@ mod mapping;
 mod progress;
 #[path = "coordination/request_normalization.rs"]
 mod request_normalization;
+#[cfg(test)]
 #[path = "coordination/state_sync.rs"]
 mod state_sync;
 
@@ -36,16 +37,18 @@ use crate::coordination::backend::bridged::{
     availability_check_with_lookup, preflight_check_with_lookup, BinaryLookup,
 };
 use crate::coordination::compact_hook::{
-    ensure_compact_hook_installed, team_has_managed_claude_member, team_has_managed_codex_member,
+    ensure_compact_hook_installed, team_has_managed_claude_member,
 };
-use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::requests::{DeliveryRequest, DeliveryResult, OperatorNoticeDelivery};
+#[cfg(test)]
+use crate::coordination::requests::DeliveryRequest;
+use crate::coordination::requests::DeliveryResult;
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{ActiveProjectTeamStore, TeamConfigStore};
 use crate::errors::{sanitize_error, CommandResultExt, IpcError, IpcResult};
 use crate::models::CliCommandSettings;
+#[cfg(test)]
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::TMUX_SESSION_NAME;
 #[cfg(not(test))]
@@ -57,6 +60,7 @@ use request_normalization::{
     hydrate_add_agent_request_role_metadata, hydrate_initialize_request_role_metadata,
     normalize_add_agent_request_path, normalize_initialize_request_paths,
 };
+#[cfg(test)]
 use state_sync::*;
 #[cfg(test)]
 use taurhaus_lib::ProviderState;
@@ -129,24 +133,6 @@ pub(crate) fn run_background_self_heal_pass(
             );
         },
     )
-}
-
-fn configured_team_launch_tools(
-    teams_dir: &std::path::Path,
-    team_name: Option<&str>,
-    member_name: Option<&str>,
-) -> Vec<CliTool> {
-    let team_names = match team_name {
-        Some(team_name) => vec![team_name.to_string()],
-        None => TeamConfigStore::list(teams_dir).unwrap_or_default(),
-    };
-    team_names
-        .into_iter()
-        .filter_map(|team_name| TeamConfigStore::load(teams_dir, &team_name).ok())
-        .flat_map(|config| config.members)
-        .filter(|member| member_name.is_none_or(|name| member.name == name))
-        .map(|member| member.cli_tool)
-        .collect()
 }
 
 /// Put a pending assignment effort into force after a project's tasks changed.
@@ -619,6 +605,123 @@ fn stop_member_through_daemon_with(
     }
 }
 
+fn resume_team_through_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    params: crate::daemon::protocol::CoordinationResumeTeamParams,
+    emit: Option<&mut dyn FnMut(&ResumeTeamProgressEvent)>,
+) -> Result<crate::coordination::requests::ResumeTeamReport, String> {
+    resume_team_through_daemon_with(
+        params,
+        emit,
+        COORDINATION_DAEMON_POLL_INTERVAL,
+        |method, params| call_coordination_daemon(daemon, method, params),
+    )
+}
+
+fn resume_team_through_daemon_with(
+    params: crate::daemon::protocol::CoordinationResumeTeamParams,
+    mut emit: Option<&mut dyn FnMut(&ResumeTeamProgressEvent)>,
+    poll_interval: std::time::Duration,
+    mut call: impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
+) -> Result<crate::coordination::requests::ResumeTeamReport, String> {
+    let accepted: crate::daemon::protocol::CoordinationResumeTeamAccepted = serde_json::from_value(
+        call(
+            crate::daemon::protocol::method::COORDINATION_RESUME_TEAM,
+            serde_json::to_value(&params).map_err(|error| error.to_string())?,
+        )
+        .map_err(CoordinationDaemonCallError::into_message)?,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut emitted_steps = 0;
+    let mut first_poll_error_at: Option<std::time::Instant> = None;
+    loop {
+        let status_value = poll_coordination_status(
+            &mut call,
+            crate::daemon::protocol::method::COORDINATION_RESUME_TEAM_STATUS,
+            &accepted.run_id,
+            poll_interval,
+            &mut first_poll_error_at,
+        )?;
+        let status: crate::daemon::protocol::CoordinationResumeTeamStatus =
+            serde_json::from_value(status_value).map_err(|error| error.to_string())?;
+        for progress in status.steps.iter().skip(emitted_steps) {
+            if let Some(emit) = emit.as_deref_mut() {
+                emit(&resume_team_progress_event(
+                    &params.request.team_name,
+                    progress,
+                ));
+            }
+        }
+        emitted_steps = status.steps.len();
+        match status.outcome {
+            crate::daemon::protocol::CoordinationResumeTeamOutcome::Running => {
+                std::thread::sleep(poll_interval);
+            }
+            crate::daemon::protocol::CoordinationResumeTeamOutcome::Completed { report } => {
+                return Ok(report);
+            }
+            crate::daemon::protocol::CoordinationResumeTeamOutcome::Failed { error } => {
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn reonboard_through_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    params: crate::daemon::protocol::CoordinationReonboardParams,
+) -> Result<DeliveryResult, String> {
+    reonboard_through_daemon_with(
+        params,
+        COORDINATION_DAEMON_POLL_INTERVAL,
+        |method, params| call_coordination_daemon(daemon, method, params),
+    )
+}
+
+fn reonboard_through_daemon_with(
+    params: crate::daemon::protocol::CoordinationReonboardParams,
+    poll_interval: std::time::Duration,
+    mut call: impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
+) -> Result<DeliveryResult, String> {
+    let accepted: crate::daemon::protocol::CoordinationReonboardAccepted = serde_json::from_value(
+        call(
+            crate::daemon::protocol::method::COORDINATION_REONBOARD,
+            serde_json::to_value(&params).map_err(|error| error.to_string())?,
+        )
+        .map_err(CoordinationDaemonCallError::into_message)?,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut first_poll_error_at: Option<std::time::Instant> = None;
+    loop {
+        let status_value = poll_coordination_status(
+            &mut call,
+            crate::daemon::protocol::method::COORDINATION_REONBOARD_STATUS,
+            &accepted.run_id,
+            poll_interval,
+            &mut first_poll_error_at,
+        )?;
+        let status: crate::daemon::protocol::CoordinationReonboardStatus =
+            serde_json::from_value(status_value).map_err(|error| error.to_string())?;
+        match status.outcome {
+            crate::daemon::protocol::CoordinationReonboardOutcome::Running => {
+                std::thread::sleep(poll_interval);
+            }
+            crate::daemon::protocol::CoordinationReonboardOutcome::Completed { report } => {
+                return Ok(report);
+            }
+            crate::daemon::protocol::CoordinationReonboardOutcome::Failed { error } => {
+                return Err(error);
+            }
+        }
+    }
+}
+
 fn poll_coordination_status(
     call: &mut impl FnMut(
         &str,
@@ -822,62 +925,107 @@ pub async fn coordination_resume_member(
     result
 }
 
-#[tauri::command(async)]
-pub fn coordination_resume_team(
+#[tauri::command]
+pub async fn coordination_resume_team(
     app: AppHandle,
-    db: State<'_, DbState>,
-    state: State<'_, CoordinationState>,
     request: ResumeTeamRequest,
 ) -> IpcResult<ResumeTeamReport> {
     let span = IpcCommandSpan::start("coordination_resume_team");
     let requested_team_name = request.team_name.clone();
-    let result = {
-        let has_codex = team_has_managed_codex_member(state.teams_dir(), &requested_team_name)
-            .map_err(|error| IpcError::internal(sanitize_error(&error.to_string())))?;
-        let codex_bypass_hook_trust =
-            reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
-        let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-        crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
-            &mut cli_commands,
-            has_codex,
-            codex_bypass_hook_trust,
-        );
-        crate::commands::accounts::apply_team_launch_base_resolutions(
-            app.state::<ProviderState>().inner(),
-            &mut cli_commands,
-            configured_team_launch_tools(state.teams_dir(), Some(&requested_team_name), None),
-        );
-        let mut emit = |event: &ResumeTeamProgressEvent| {
-            emit_resume_team_progress_log_event(event);
-            let _ = app.emit("coordination-resume-team-progress", event);
+    let app_for_task = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        validate_non_empty("team_name", &request.team_name)?;
+        let db = app_for_task.state::<DbState>();
+        let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+        let params = crate::daemon::protocol::CoordinationResumeTeamParams {
+            request: map_resume_team_request_to_contract(&request),
+            cli_commands,
+            tmux_layout,
         };
-        coordination_resume_team_internal(
-            state.inner(),
-            request,
-            &cli_commands,
-            &tmux_layout,
-            Some(&mut emit),
-        )
-        .ipc()
-    };
+        let provider = app_for_task.state::<ProviderState>();
+        let daemon = provider
+            .daemon
+            .as_ref()
+            .ok_or_else(|| "resuming a team requires the taurhaus daemon".to_string())?;
+        let mut emit = |event: &ResumeTeamProgressEvent| {
+            let _ = app_for_task.emit("coordination-resume-team-progress", event);
+        };
+        resume_team_through_daemon(daemon, params, Some(&mut emit))
+            .map(map_resume_team_report_from_contract)
+            .ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join resume-team task: {err}"
+        )))
+    });
     let result = maybe_ensure_compact_hooks_for_team(&app, &requested_team_name, result);
     if let Ok(report) = &result {
         let provider = app.state::<ProviderState>();
-        maybe_surface_terminal_after_resume_team(&db, provider.wsl_distro.clone(), report);
+        maybe_surface_terminal_after_resume_team(
+            &app.state::<DbState>(),
+            provider.wsl_distro.clone(),
+            report,
+        );
     }
     emit_resume_team_pipeline_result(&requested_team_name, &result);
     span.finish_result(&result);
     result
 }
 
-#[tauri::command(async)]
-pub fn coordination_reonboard(
-    db: State<'_, DbState>,
-    state: State<'_, CoordinationState>,
+#[tauri::command]
+pub async fn coordination_reonboard(
+    app: AppHandle,
     request: ReonboardRequest,
 ) -> IpcResult<DeliveryResult> {
     let span = IpcCommandSpan::start("coordination_reonboard");
-    let result = coordination_reonboard_impl(Some(&db), state.inner(), request).ipc();
+    let app_for_task = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        validate_non_empty("team_name", &request.team_name)?;
+        validate_non_empty("member_name", &request.member_name)?;
+        let db = app_for_task.state::<DbState>();
+        let state = app_for_task.state::<CoordinationState>();
+        let config = TeamConfigStore::load(state.teams_dir(), &request.team_name)
+            .map_err(map_coordination_error)?;
+        let project_path = config
+            .members
+            .iter()
+            .find(|member| member.name == request.member_name)
+            .map(|member| member.project_path.display().to_string())
+            .ok_or_else(|| {
+                map_coordination_error(CoordinationError::NotFound(format!(
+                    "member '{}' not found in team '{}'",
+                    request.member_name, request.team_name
+                )))
+            })?;
+        let (operational_snapshot, task_state_changed_at) = prepare_member_operation_snapshot(
+            state.inner(),
+            &db,
+            &request.team_name,
+            &request.member_name,
+            &project_path,
+        )?;
+        let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+        let params = crate::daemon::protocol::CoordinationReonboardParams {
+            request: map_reonboard_request_to_contract(&request),
+            cli_commands,
+            tmux_layout,
+            operational_snapshot: Some(operational_snapshot),
+            task_state_changed_at,
+        };
+        let provider = app_for_task.state::<ProviderState>();
+        let daemon = provider.daemon.as_ref().ok_or_else(|| {
+            "re-onboarding a team member requires the taurhaus daemon".to_string()
+        })?;
+        reonboard_through_daemon(daemon, params).ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join reonboard task: {err}"
+        )))
+    });
     span.finish_result(&result);
     result
 }
@@ -1044,150 +1192,6 @@ pub fn coordination_get_project_mesh_snapshot(
     let result = coordination_get_project_mesh_snapshot_impl(state.inner(), project_path).ipc();
     span.finish_result(&result);
     result
-}
-
-fn coordination_resume_team_internal(
-    state: &CoordinationState,
-    request: ResumeTeamRequest,
-    cli_commands: &CliCommandSettings,
-    tmux_layout: &str,
-    mut emit: Option<&mut dyn FnMut(&ResumeTeamProgressEvent)>,
-) -> Result<ResumeTeamReport, String> {
-    validate_non_empty("team_name", &request.team_name)?;
-    let contract_request = map_resume_team_request_to_contract(&request);
-    let mut emit_resume_progress = |member_name: &str,
-                                    member_index: usize,
-                                    member_count: usize,
-                                    stage: MemberActivationStage,
-                                    status: StepStatus,
-                                    message: Option<String>| {
-        if let Some(emit) = emit.as_deref_mut() {
-            emit(&resume_team_progress_event_for_stage(
-                &request.team_name,
-                member_name,
-                member_index,
-                member_count,
-                stage,
-                status,
-                message,
-            ));
-        }
-    };
-    let report = state
-        .with_orchestrator(|orchestrator| {
-            orchestrator.resume_team_with_cli_commands_and_layout_and_progress(
-                &contract_request,
-                cli_commands,
-                tmux_layout,
-                Some(&mut emit_resume_progress),
-            )
-        })
-        .map(map_resume_team_report_from_contract)
-        .map_err(map_coordination_error)?;
-    sync_active_team_projects_after_change(state, &report.team_name)
-        .map_err(map_coordination_error)?;
-    Ok(report)
-}
-
-fn coordination_reonboard_impl(
-    db: Option<&DbState>,
-    state: &CoordinationState,
-    request: ReonboardRequest,
-) -> Result<DeliveryResult, String> {
-    validate_non_empty("team_name", &request.team_name)?;
-    validate_non_empty("member_name", &request.member_name)?;
-
-    let result = state
-        .with_orchestrator(|orchestrator| {
-            let team = orchestrator.get_team_status(&request.team_name)?;
-            if !team
-                .config
-                .members
-                .iter()
-                .any(|member| member.name == request.member_name)
-            {
-                return Err(CoordinationError::NotFound(format!(
-                    "member '{}' not found in team '{}'",
-                    request.member_name, request.team_name
-                )));
-            }
-
-            let lead_name = team
-                .config
-                .members
-                .iter()
-                .find(|member| member.role == MemberRole::Lead)
-                .map(|member| member.name.clone())
-                .unwrap_or_else(|| "team-lead".to_string());
-            let member = team
-                .config
-                .members
-                .iter()
-                .find(|member| member.name == request.member_name)
-                .ok_or_else(|| {
-                    CoordinationError::NotFound(format!(
-                        "member '{}' not found in team '{}'",
-                        request.member_name, request.team_name
-                    ))
-                })?;
-            let role_context = RoleContext {
-                role_id: member.role_id.as_deref(),
-                communication_style: member.communication_style.as_deref(),
-                instructions: member.instructions.as_deref(),
-                behavioral_contract: member.behavioral_contract.as_ref(),
-                quality_gates: member.quality_gates.as_deref(),
-                handoff_expectations: member.handoff_expectations.as_deref(),
-                definition_of_done: member.definition_of_done.as_deref(),
-                capabilities: member.capabilities.as_deref(),
-            };
-            let tool_spec = crate::session_scanner::cli_tool::spec(member.cli_tool);
-            let message = if tool_spec.capabilities.native_inbox_poller {
-                DeliveryRenderer::render_onboarding(
-                    &request.team_name,
-                    &request.member_name,
-                    &lead_name,
-                    role_context,
-                )
-            } else {
-                DeliveryRenderer::render_for_tool(
-                    member.cli_tool,
-                    &request.team_name,
-                    &request.member_name,
-                    &lead_name,
-                    true,
-                    role_context,
-                )
-                .ok_or_else(|| {
-                    CoordinationError::Validation(
-                        "onboarding is not required for this harness".to_string(),
-                    )
-                })?
-            };
-
-            orchestrator.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-                member_name: request.member_name.clone(),
-                team_name: request.team_name.clone(),
-                message,
-                sender_name: Some(lead_name),
-                operational_context: None,
-            }))
-        })
-        .map_err(map_coordination_error)?;
-    if let Some(db) = db {
-        sync_member_snapshot_after_change(state, db, &request.team_name, &request.member_name)
-            .map_err(map_coordination_error)?;
-    }
-    Ok(result)
-}
-
-fn reconcile_codex_before_managed_launch(
-    teams_dir: &std::path::Path,
-    has_managed_codex: bool,
-) -> bool {
-    crate::commands::terminal_settings::managed_codex_hook_trust_for_launch(
-        teams_dir,
-        has_managed_codex,
-    )
 }
 
 fn maybe_ensure_compact_hooks_for_team<T>(

@@ -141,6 +141,15 @@ pub(super) fn map_resume_team_request_to_contract(
     }
 }
 
+pub(super) fn map_reonboard_request_to_contract(
+    request: &ReonboardRequest,
+) -> contracts::ReonboardRequest {
+    contracts::ReonboardRequest {
+        team_name: request.team_name.clone(),
+        member_name: request.member_name.clone(),
+    }
+}
+
 pub(super) fn map_initialize_report_from_contract(
     report: contracts::InitializeReport,
 ) -> InitializeReport {

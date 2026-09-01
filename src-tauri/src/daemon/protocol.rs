@@ -36,7 +36,8 @@ use serde::{Deserialize, Serialize};
 /// v15: moved the managed-task deadline pass from the app into the daemon.
 /// v16: moved team initialization from the app into the daemon.
 /// v17: moved add-agent, resume-member, and stop-member into the daemon.
-pub const PROTOCOL_VERSION: u32 = 17;
+/// v18: moved resume-team and reonboard into the daemon.
+pub const PROTOCOL_VERSION: u32 = 18;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -1205,7 +1206,7 @@ mod tests {
         let back: crate::session_scanner::launch_base::ResolvedBase =
             serde_json::from_str(&json).unwrap();
         assert_eq!(result, back);
-        assert_eq!(PROTOCOL_VERSION, 17);
+        assert_eq!(PROTOCOL_VERSION, 18);
     }
 
     // Regression: 3c5b6cd9 invalidated only the Windows app's process-local
@@ -1615,6 +1616,12 @@ mod tests {
     fn protocol_version_excludes_daemons_without_member_operations() {
         let last_protocol_without_daemon_member_operations = 16;
         assert!(PROTOCOL_VERSION > last_protocol_without_daemon_member_operations);
+    }
+
+    #[test]
+    fn protocol_version_excludes_daemons_without_team_resume_operations() {
+        let last_protocol_without_daemon_team_resume_operations = 17;
+        assert!(PROTOCOL_VERSION > last_protocol_without_daemon_team_resume_operations);
     }
 
     #[test]
