@@ -126,6 +126,14 @@ pub mod method {
     pub const COORDINATION_RESUME_TEAM_STATUS: &str = "coordination.resume_team_status";
     pub const COORDINATION_REONBOARD: &str = "coordination.reonboard";
     pub const COORDINATION_REONBOARD_STATUS: &str = "coordination.reonboard_status";
+    pub const COORDINATION_CREATE_TEAM: &str = "coordination.create_team";
+    pub const COORDINATION_CREATE_TEAM_STATUS: &str = "coordination.create_team_status";
+    pub const COORDINATION_DISBAND_TEAM: &str = "coordination.disband_team";
+    pub const COORDINATION_DISBAND_TEAM_STATUS: &str = "coordination.disband_team_status";
+    pub const COORDINATION_ADD_MEMBER: &str = "coordination.add_member";
+    pub const COORDINATION_ADD_MEMBER_STATUS: &str = "coordination.add_member_status";
+    pub const COORDINATION_REMOVE_MEMBER: &str = "coordination.remove_member";
+    pub const COORDINATION_REMOVE_MEMBER_STATUS: &str = "coordination.remove_member_status";
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";
@@ -466,6 +474,155 @@ pub enum CoordinationReonboardOutcome {
 pub struct CoordinationReonboardStatus {
     pub run_id: String,
     pub outcome: CoordinationReonboardOutcome,
+}
+
+/// Self-contained standalone team-create intent.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationCreateTeamParams {
+    pub request: crate::coordination::requests::CreateTeamRequest,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationCreateTeamAccepted {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationCreateTeamStatusParams {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum CoordinationCreateTeamOutcome {
+    Running,
+    Completed,
+    Failed { error: String },
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationCreateTeamStatus {
+    pub run_id: String,
+    pub outcome: CoordinationCreateTeamOutcome,
+}
+
+/// Self-contained team-disband intent. The daemon owns teardown, config
+/// deletion, and active-project cleanup as one retained run.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationDisbandTeamParams {
+    pub request: crate::coordination::requests::DisbandTeamRequest,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationDisbandTeamAccepted {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationDisbandTeamStatusParams {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum CoordinationDisbandTeamOutcome {
+    Running,
+    Completed {
+        report: crate::coordination::requests::DisbandTeamReport,
+    },
+    Failed {
+        error: String,
+    },
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationDisbandTeamStatus {
+    pub run_id: String,
+    pub outcome: CoordinationDisbandTeamOutcome,
+}
+
+/// Self-contained config-only roster-add intent.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationAddMemberParams {
+    pub request: crate::coordination::requests::AddMemberRequest,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationAddMemberAccepted {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationAddMemberStatusParams {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum CoordinationAddMemberOutcome {
+    Running,
+    Completed,
+    Failed { error: String },
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationAddMemberStatus {
+    pub run_id: String,
+    pub outcome: CoordinationAddMemberOutcome,
+}
+
+/// Self-contained roster-removal intent, distinct from activation-class stop.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationRemoveMemberParams {
+    pub request: crate::coordination::requests::RemoveMemberRequest,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationRemoveMemberAccepted {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationRemoveMemberStatusParams {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum CoordinationRemoveMemberOutcome {
+    Running,
+    Completed {
+        report: crate::coordination::requests::StopMemberReport,
+    },
+    Failed {
+        error: String,
+    },
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationRemoveMemberStatus {
+    pub run_id: String,
+    pub outcome: CoordinationRemoveMemberOutcome,
 }
 
 /// `list_workflow_runs` — completed and live runs under one Claude session.
@@ -1396,6 +1553,73 @@ mod tests {
         );
         assert_eq!(method::COORDINATION_RESUME_TEAM, "coordination.resume_team");
         assert_eq!(method::COORDINATION_REONBOARD, "coordination.reonboard");
+    }
+
+    #[test]
+    fn coordination_roster_operation_contracts_roundtrip() {
+        let create = CoordinationCreateTeamParams {
+            request: crate::coordination::requests::CreateTeamRequest {
+                team_name: "arch".to_string(),
+            },
+        };
+        let disband = CoordinationDisbandTeamParams {
+            request: crate::coordination::requests::DisbandTeamRequest {
+                team_name: "arch".to_string(),
+            },
+        };
+        let add = CoordinationAddMemberParams {
+            request: crate::coordination::requests::AddMemberRequest {
+                team_name: "arch".to_string(),
+                member_name: "builder".to_string(),
+                backend_kind: "codex".to_string(),
+                project_path: Some("/work/arch".to_string()),
+            },
+        };
+        let remove = CoordinationRemoveMemberParams {
+            request: crate::coordination::requests::RemoveMemberRequest {
+                team_name: "arch".to_string(),
+                member_name: "builder".to_string(),
+            },
+        };
+
+        assert_eq!(
+            serde_json::from_str::<CoordinationCreateTeamParams>(
+                &serde_json::to_string(&create).unwrap()
+            )
+            .unwrap(),
+            create
+        );
+        assert_eq!(
+            serde_json::from_str::<CoordinationDisbandTeamParams>(
+                &serde_json::to_string(&disband).unwrap()
+            )
+            .unwrap(),
+            disband
+        );
+        assert_eq!(
+            serde_json::from_str::<CoordinationAddMemberParams>(
+                &serde_json::to_string(&add).unwrap()
+            )
+            .unwrap(),
+            add
+        );
+        assert_eq!(
+            serde_json::from_str::<CoordinationRemoveMemberParams>(
+                &serde_json::to_string(&remove).unwrap()
+            )
+            .unwrap(),
+            remove
+        );
+        assert_eq!(method::COORDINATION_CREATE_TEAM, "coordination.create_team");
+        assert_eq!(
+            method::COORDINATION_DISBAND_TEAM,
+            "coordination.disband_team"
+        );
+        assert_eq!(method::COORDINATION_ADD_MEMBER, "coordination.add_member");
+        assert_eq!(
+            method::COORDINATION_REMOVE_MEMBER,
+            "coordination.remove_member"
+        );
     }
 
     #[test]
