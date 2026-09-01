@@ -864,7 +864,17 @@ fn mesh_compatible_wire(
                 extra.remove("backendType");
             }
             if is_active.is_some() {
-                extra.remove("isActive");
+                // Tripwire for the fastbreak broadcast incident: something
+                // outside taurhaus and mesh flipped a member inactive (both
+                // only write true for live non-leads). This save repairs it,
+                // but the flip must be visible with a timestamp so the
+                // external writer can be caught in the act next time.
+                if extra.remove("isActive").and_then(|value| value.as_bool()) == Some(false) {
+                    tracing::warn!(
+                        member = %member.name,
+                        "member was marked inactive by an external writer; repairing to active on save"
+                    );
+                }
             }
             MeshCompatibleMemberWire {
                 name: member.name.clone(),
