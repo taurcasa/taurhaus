@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use crate::coordination::requests::{
-    AddAgentReport, AddAgentRequest, ResumeAgentReport, ResumeMemberRequest,
-    StopMemberReport, StopMemberRequest,
+    AddAgentReport, AddAgentRequest, ResumeAgentReport, ResumeMemberRequest, StopMemberReport,
+    StopMemberRequest,
 };
 use crate::coordination::state::CoordinationState;
 use crate::daemon::coordination_runs::{
