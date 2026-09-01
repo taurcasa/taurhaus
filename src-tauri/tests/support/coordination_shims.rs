@@ -381,6 +381,14 @@ pub mod daemon {
             pub const COORDINATION_RESUME_TEAM_STATUS: &str = "coordination.resume_team_status";
             pub const COORDINATION_REONBOARD: &str = "coordination.reonboard";
             pub const COORDINATION_REONBOARD_STATUS: &str = "coordination.reonboard_status";
+            pub const COORDINATION_CREATE_TEAM: &str = "coordination.create_team";
+            pub const COORDINATION_CREATE_TEAM_STATUS: &str = "coordination.create_team_status";
+            pub const COORDINATION_DISBAND_TEAM: &str = "coordination.disband_team";
+            pub const COORDINATION_DISBAND_TEAM_STATUS: &str = "coordination.disband_team_status";
+            pub const COORDINATION_ADD_MEMBER: &str = "coordination.add_member";
+            pub const COORDINATION_ADD_MEMBER_STATUS: &str = "coordination.add_member_status";
+            pub const COORDINATION_REMOVE_MEMBER: &str = "coordination.remove_member";
+            pub const COORDINATION_REMOVE_MEMBER_STATUS: &str = "coordination.remove_member_status";
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -586,6 +594,110 @@ pub mod daemon {
         pub struct CoordinationReonboardStatus {
             pub run_id: String,
             pub outcome: CoordinationReonboardOutcome,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationCreateTeamParams {
+            pub request: crate::coordination::requests::CreateTeamRequest,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationCreateTeamAccepted {
+            pub run_id: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        #[serde(rename_all = "snake_case", tag = "status")]
+        pub enum CoordinationCreateTeamOutcome {
+            Running,
+            Completed,
+            Failed { error: String },
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationCreateTeamStatus {
+            pub run_id: String,
+            pub outcome: CoordinationCreateTeamOutcome,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationDisbandTeamParams {
+            pub request: crate::coordination::requests::DisbandTeamRequest,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationDisbandTeamAccepted {
+            pub run_id: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        #[serde(rename_all = "snake_case", tag = "status")]
+        pub enum CoordinationDisbandTeamOutcome {
+            Running,
+            Completed {
+                report: crate::coordination::requests::DisbandTeamReport,
+            },
+            Failed {
+                error: String,
+            },
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationDisbandTeamStatus {
+            pub run_id: String,
+            pub outcome: CoordinationDisbandTeamOutcome,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationAddMemberParams {
+            pub request: crate::coordination::requests::AddMemberRequest,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationAddMemberAccepted {
+            pub run_id: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        #[serde(rename_all = "snake_case", tag = "status")]
+        pub enum CoordinationAddMemberOutcome {
+            Running,
+            Completed,
+            Failed { error: String },
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationAddMemberStatus {
+            pub run_id: String,
+            pub outcome: CoordinationAddMemberOutcome,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationRemoveMemberParams {
+            pub request: crate::coordination::requests::RemoveMemberRequest,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationRemoveMemberAccepted {
+            pub run_id: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        #[serde(rename_all = "snake_case", tag = "status")]
+        pub enum CoordinationRemoveMemberOutcome {
+            Running,
+            Completed {
+                report: crate::coordination::requests::StopMemberReport,
+            },
+            Failed {
+                error: String,
+            },
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationRemoveMemberStatus {
+            pub run_id: String,
+            pub outcome: CoordinationRemoveMemberOutcome,
         }
     }
 }

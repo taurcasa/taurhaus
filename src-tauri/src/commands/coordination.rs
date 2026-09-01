@@ -39,13 +39,12 @@ use crate::coordination::backend::bridged::{
 use crate::coordination::compact_hook::{
     ensure_compact_hook_installed, team_has_managed_claude_member,
 };
-use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 #[cfg(test)]
 use crate::coordination::requests::DeliveryRequest;
 use crate::coordination::requests::DeliveryResult;
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::{ActiveProjectTeamStore, TeamConfigStore};
+use crate::coordination::stores::TeamConfigStore;
 use crate::errors::{sanitize_error, CommandResultExt, IpcError, IpcResult};
 use crate::models::CliCommandSettings;
 #[cfg(test)]
@@ -553,17 +552,7 @@ fn resume_member_through_daemon_with(
     }
 }
 
-fn stop_member_through_daemon(
-    daemon: &crate::provider::daemon_client::DaemonProvider,
-    params: crate::daemon::protocol::CoordinationStopMemberParams,
-) -> Result<crate::coordination::requests::StopMemberReport, String> {
-    stop_member_through_daemon_with(
-        params,
-        COORDINATION_STOP_DAEMON_POLL_INTERVAL,
-        |method, params| call_coordination_daemon(daemon, method, params),
-    )
-}
-
+#[cfg(test)]
 fn stop_member_through_daemon_with(
     params: crate::daemon::protocol::CoordinationStopMemberParams,
     poll_interval: std::time::Duration,
@@ -718,6 +707,212 @@ fn reonboard_through_daemon_with(
                 return Ok(report);
             }
             crate::daemon::protocol::CoordinationReonboardOutcome::Failed { error } => {
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn create_team_through_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    params: crate::daemon::protocol::CoordinationCreateTeamParams,
+) -> Result<(), String> {
+    create_team_through_daemon_with(
+        params,
+        COORDINATION_STOP_DAEMON_POLL_INTERVAL,
+        |method, params| call_coordination_daemon(daemon, method, params),
+    )
+}
+
+fn create_team_through_daemon_with(
+    params: crate::daemon::protocol::CoordinationCreateTeamParams,
+    poll_interval: std::time::Duration,
+    mut call: impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
+) -> Result<(), String> {
+    let accepted: crate::daemon::protocol::CoordinationCreateTeamAccepted = serde_json::from_value(
+        call(
+            crate::daemon::protocol::method::COORDINATION_CREATE_TEAM,
+            serde_json::to_value(&params).map_err(|error| error.to_string())?,
+        )
+        .map_err(CoordinationDaemonCallError::into_message)?,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut first_poll_error_at = None;
+    loop {
+        let status: crate::daemon::protocol::CoordinationCreateTeamStatus =
+            serde_json::from_value(poll_coordination_status(
+                &mut call,
+                crate::daemon::protocol::method::COORDINATION_CREATE_TEAM_STATUS,
+                &accepted.run_id,
+                poll_interval,
+                &mut first_poll_error_at,
+            )?)
+            .map_err(|error| error.to_string())?;
+        match status.outcome {
+            crate::daemon::protocol::CoordinationCreateTeamOutcome::Running => {
+                std::thread::sleep(poll_interval);
+            }
+            crate::daemon::protocol::CoordinationCreateTeamOutcome::Completed => return Ok(()),
+            crate::daemon::protocol::CoordinationCreateTeamOutcome::Failed { error } => {
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn disband_team_through_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    params: crate::daemon::protocol::CoordinationDisbandTeamParams,
+) -> Result<crate::coordination::requests::DisbandTeamReport, String> {
+    disband_team_through_daemon_with(
+        params,
+        COORDINATION_STOP_DAEMON_POLL_INTERVAL,
+        |method, params| call_coordination_daemon(daemon, method, params),
+    )
+}
+
+fn disband_team_through_daemon_with(
+    params: crate::daemon::protocol::CoordinationDisbandTeamParams,
+    poll_interval: std::time::Duration,
+    mut call: impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
+) -> Result<crate::coordination::requests::DisbandTeamReport, String> {
+    let accepted: crate::daemon::protocol::CoordinationDisbandTeamAccepted =
+        serde_json::from_value(
+            call(
+                crate::daemon::protocol::method::COORDINATION_DISBAND_TEAM,
+                serde_json::to_value(&params).map_err(|error| error.to_string())?,
+            )
+            .map_err(CoordinationDaemonCallError::into_message)?,
+        )
+        .map_err(|error| error.to_string())?;
+    let mut first_poll_error_at = None;
+    loop {
+        let status: crate::daemon::protocol::CoordinationDisbandTeamStatus =
+            serde_json::from_value(poll_coordination_status(
+                &mut call,
+                crate::daemon::protocol::method::COORDINATION_DISBAND_TEAM_STATUS,
+                &accepted.run_id,
+                poll_interval,
+                &mut first_poll_error_at,
+            )?)
+            .map_err(|error| error.to_string())?;
+        match status.outcome {
+            crate::daemon::protocol::CoordinationDisbandTeamOutcome::Running => {
+                std::thread::sleep(poll_interval);
+            }
+            crate::daemon::protocol::CoordinationDisbandTeamOutcome::Completed { report } => {
+                return Ok(report);
+            }
+            crate::daemon::protocol::CoordinationDisbandTeamOutcome::Failed { error } => {
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn add_member_through_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    params: crate::daemon::protocol::CoordinationAddMemberParams,
+) -> Result<(), String> {
+    add_member_through_daemon_with(
+        params,
+        COORDINATION_STOP_DAEMON_POLL_INTERVAL,
+        |method, params| call_coordination_daemon(daemon, method, params),
+    )
+}
+
+fn add_member_through_daemon_with(
+    params: crate::daemon::protocol::CoordinationAddMemberParams,
+    poll_interval: std::time::Duration,
+    mut call: impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
+) -> Result<(), String> {
+    let accepted: crate::daemon::protocol::CoordinationAddMemberAccepted = serde_json::from_value(
+        call(
+            crate::daemon::protocol::method::COORDINATION_ADD_MEMBER,
+            serde_json::to_value(&params).map_err(|error| error.to_string())?,
+        )
+        .map_err(CoordinationDaemonCallError::into_message)?,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut first_poll_error_at = None;
+    loop {
+        let status: crate::daemon::protocol::CoordinationAddMemberStatus =
+            serde_json::from_value(poll_coordination_status(
+                &mut call,
+                crate::daemon::protocol::method::COORDINATION_ADD_MEMBER_STATUS,
+                &accepted.run_id,
+                poll_interval,
+                &mut first_poll_error_at,
+            )?)
+            .map_err(|error| error.to_string())?;
+        match status.outcome {
+            crate::daemon::protocol::CoordinationAddMemberOutcome::Running => {
+                std::thread::sleep(poll_interval);
+            }
+            crate::daemon::protocol::CoordinationAddMemberOutcome::Completed => return Ok(()),
+            crate::daemon::protocol::CoordinationAddMemberOutcome::Failed { error } => {
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn remove_member_through_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    params: crate::daemon::protocol::CoordinationRemoveMemberParams,
+) -> Result<crate::coordination::requests::StopMemberReport, String> {
+    remove_member_through_daemon_with(
+        params,
+        COORDINATION_STOP_DAEMON_POLL_INTERVAL,
+        |method, params| call_coordination_daemon(daemon, method, params),
+    )
+}
+
+fn remove_member_through_daemon_with(
+    params: crate::daemon::protocol::CoordinationRemoveMemberParams,
+    poll_interval: std::time::Duration,
+    mut call: impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
+) -> Result<crate::coordination::requests::StopMemberReport, String> {
+    let accepted: crate::daemon::protocol::CoordinationRemoveMemberAccepted =
+        serde_json::from_value(
+            call(
+                crate::daemon::protocol::method::COORDINATION_REMOVE_MEMBER,
+                serde_json::to_value(&params).map_err(|error| error.to_string())?,
+            )
+            .map_err(CoordinationDaemonCallError::into_message)?,
+        )
+        .map_err(|error| error.to_string())?;
+    let mut first_poll_error_at = None;
+    loop {
+        let status: crate::daemon::protocol::CoordinationRemoveMemberStatus =
+            serde_json::from_value(poll_coordination_status(
+                &mut call,
+                crate::daemon::protocol::method::COORDINATION_REMOVE_MEMBER_STATUS,
+                &accepted.run_id,
+                poll_interval,
+                &mut first_poll_error_at,
+            )?)
+            .map_err(|error| error.to_string())?;
+        match status.outcome {
+            crate::daemon::protocol::CoordinationRemoveMemberOutcome::Running => {
+                std::thread::sleep(poll_interval);
+            }
+            crate::daemon::protocol::CoordinationRemoveMemberOutcome::Completed { report } => {
+                return Ok(report);
+            }
+            crate::daemon::protocol::CoordinationRemoveMemberOutcome::Failed { error } => {
                 return Err(error);
             }
         }
@@ -1054,25 +1249,63 @@ pub async fn coordination_get_live_team_status(
     result
 }
 
-#[tauri::command(async)]
-pub fn coordination_create_team(
-    state: State<'_, CoordinationState>,
-    team_name: String,
-) -> IpcResult<()> {
+#[tauri::command]
+pub async fn coordination_create_team(app: AppHandle, team_name: String) -> IpcResult<()> {
     let span = IpcCommandSpan::start("coordination_create_team");
-    let result = coordination_create_team_impl(state.inner(), team_name).ipc();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        validate_non_empty("team_name", &team_name)?;
+        let provider = app.state::<ProviderState>();
+        let daemon = provider
+            .daemon
+            .as_ref()
+            .ok_or_else(|| "creating a team requires the taurhaus daemon".to_string())?;
+        create_team_through_daemon(
+            daemon,
+            crate::daemon::protocol::CoordinationCreateTeamParams {
+                request: crate::coordination::requests::CreateTeamRequest { team_name },
+            },
+        )
+        .ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join create-team task: {err}"
+        )))
+    });
     span.finish_result(&result);
     result
 }
 
-#[tauri::command(async)]
-pub fn coordination_disband_team(
+#[tauri::command]
+pub async fn coordination_disband_team(
     app: AppHandle,
-    state: State<'_, CoordinationState>,
     team_name: String,
 ) -> IpcResult<DisbandTeamResponse> {
     let span = IpcCommandSpan::start("coordination_disband_team");
-    let result = coordination_disband_team_impl(state.inner(), team_name).ipc();
+    let app_for_task = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        validate_non_empty("team_name", &team_name)?;
+        let provider = app_for_task.state::<ProviderState>();
+        let daemon = provider
+            .daemon
+            .as_ref()
+            .ok_or_else(|| "disbanding a team requires the taurhaus daemon".to_string())?;
+        disband_team_through_daemon(
+            daemon,
+            crate::daemon::protocol::CoordinationDisbandTeamParams {
+                request: crate::coordination::requests::DisbandTeamRequest { team_name },
+            },
+        )
+        .map(map_disband_team_report_from_contract)
+        .ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join disband-team task: {err}"
+        )))
+    });
     if result.is_ok() {
         reconcile_global_harness_hooks(&app);
     }
@@ -1080,24 +1313,44 @@ pub fn coordination_disband_team(
     result
 }
 
-#[tauri::command(async)]
-pub fn coordination_add_member(
+#[tauri::command]
+pub async fn coordination_add_member(
     app: AppHandle,
-    state: State<'_, CoordinationState>,
     team_name: String,
     member_name: String,
     backend_kind: String,
     project_path: Option<String>,
 ) -> IpcResult<()> {
     let span = IpcCommandSpan::start("coordination_add_member");
-    let result = coordination_add_member_impl(
-        state.inner(),
-        team_name,
-        member_name,
-        backend_kind,
-        project_path,
-    )
-    .ipc();
+    let app_for_task = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        validate_non_empty("team_name", &team_name)?;
+        validate_non_empty("member_name", &member_name)?;
+        validate_non_empty("backend_kind", &backend_kind)?;
+        let provider = app_for_task.state::<ProviderState>();
+        let daemon = provider
+            .daemon
+            .as_ref()
+            .ok_or_else(|| "adding a team member requires the taurhaus daemon".to_string())?;
+        add_member_through_daemon(
+            daemon,
+            crate::daemon::protocol::CoordinationAddMemberParams {
+                request: crate::coordination::requests::AddMemberRequest {
+                    team_name,
+                    member_name,
+                    backend_kind,
+                    project_path,
+                },
+            },
+        )
+        .ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join add-member task: {err}"
+        )))
+    });
     // The member this persists can be the first grok one on the host, and
     // grok's hook lives in its home rather than in the team.
     if result.is_ok() {
@@ -1123,10 +1376,10 @@ pub async fn coordination_remove_member(
             .daemon
             .as_ref()
             .ok_or_else(|| "stopping a team member requires the taurhaus daemon".to_string())?;
-        stop_member_through_daemon(
+        remove_member_through_daemon(
             daemon,
-            crate::daemon::protocol::CoordinationStopMemberParams {
-                request: crate::coordination::requests::StopMemberRequest {
+            crate::daemon::protocol::CoordinationRemoveMemberParams {
+                request: crate::coordination::requests::RemoveMemberRequest {
                     team_name,
                     member_name,
                 },
@@ -1138,7 +1391,7 @@ pub async fn coordination_remove_member(
     .await
     .unwrap_or_else(|err| {
         Err(IpcError::internal(format!(
-            "failed to join stop-member task: {err}"
+            "failed to join remove-member task: {err}"
         )))
     });
     if result.is_ok() {
@@ -1461,88 +1714,6 @@ fn ipc_error_code_name(error: &IpcError) -> &'static str {
         crate::errors::IpcErrorCode::Unavailable => "UNAVAILABLE",
         crate::errors::IpcErrorCode::InternalError => "INTERNAL_ERROR",
     }
-}
-
-fn coordination_create_team_impl(
-    state: &CoordinationState,
-    team_name: String,
-) -> Result<(), String> {
-    validate_non_empty("team_name", &team_name)?;
-    state
-        .with_orchestrator(|orchestrator| orchestrator.create_team(&team_name, None).map(|_| ()))
-        .map_err(map_coordination_error)
-}
-
-fn coordination_disband_team_impl(
-    state: &CoordinationState,
-    team_name: String,
-) -> Result<DisbandTeamResponse, String> {
-    validate_non_empty("team_name", &team_name)?;
-    let result = state
-        .with_orchestrator(|orchestrator| orchestrator.disband_team(&team_name, None))
-        .map_err(map_coordination_error)?;
-    ActiveProjectTeamStore::clear_team(state.teams_dir(), &result.team_name)
-        .map_err(map_coordination_error)?;
-    let message = if result.already_disbanded {
-        "team already disbanded".to_string()
-    } else {
-        "team disbanded".to_string()
-    };
-    Ok(DisbandTeamResponse {
-        team_name: result.team_name,
-        disbanded: result.disbanded,
-        already_disbanded: result.already_disbanded,
-        message,
-    })
-}
-
-fn coordination_add_member_impl(
-    state: &CoordinationState,
-    team_name: String,
-    member_name: String,
-    backend_kind: String,
-    project_path: Option<String>,
-) -> Result<(), String> {
-    validate_non_empty("team_name", &team_name)?;
-    validate_non_empty("member_name", &member_name)?;
-    validate_non_empty("backend_kind", &backend_kind)?;
-    let cli_tool = cli_tool_from_backend_kind(&backend_kind).map_err(map_coordination_error)?;
-    state
-        .with_orchestrator(|orchestrator| {
-            let team_status = orchestrator.get_team_status(&team_name)?;
-            let project_path = resolve_legacy_member_project_path(
-                &team_status.config.members,
-                project_path.as_deref(),
-            )?;
-            let member = Member {
-                name: member_name,
-                role: MemberRole::Agent,
-                role_id: None,
-                role_name: None,
-                focus_area: None,
-                context_summary: None,
-                behavior_summary: None,
-                communication_style: None,
-                runtime_compact_summary: None,
-                instructions: None,
-                behavioral_contract: None,
-                quality_gates: None,
-                handoff_expectations: None,
-                definition_of_done: None,
-                phase_scope: None,
-                mode: None,
-                inherits_from: None,
-                required_artifacts: None,
-                capabilities: None,
-                model: None,
-                reasoning_effort: None,
-                project_path,
-                cli_tool,
-                extra: Default::default(),
-            };
-            orchestrator.add_member(&team_name, member)
-        })
-        .map_err(map_coordination_error)
 }
 
 fn coordination_list_teams_impl(

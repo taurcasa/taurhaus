@@ -137,6 +137,12 @@ impl DaemonRpcSpan {
                 | protocol::method::COORDINATION_ADD_AGENT_STATUS
                 | protocol::method::COORDINATION_RESUME_MEMBER_STATUS
                 | protocol::method::COORDINATION_STOP_MEMBER_STATUS
+                | protocol::method::COORDINATION_RESUME_TEAM_STATUS
+                | protocol::method::COORDINATION_REONBOARD_STATUS
+                | protocol::method::COORDINATION_CREATE_TEAM_STATUS
+                | protocol::method::COORDINATION_DISBAND_TEAM_STATUS
+                | protocol::method::COORDINATION_ADD_MEMBER_STATUS
+                | protocol::method::COORDINATION_REMOVE_MEMBER_STATUS
         ) {
             "debug"
         } else {
@@ -267,6 +273,12 @@ mod tests {
             protocol::method::COORDINATION_ADD_AGENT_STATUS,
             protocol::method::COORDINATION_RESUME_MEMBER_STATUS,
             protocol::method::COORDINATION_STOP_MEMBER_STATUS,
+            protocol::method::COORDINATION_RESUME_TEAM_STATUS,
+            protocol::method::COORDINATION_REONBOARD_STATUS,
+            protocol::method::COORDINATION_CREATE_TEAM_STATUS,
+            protocol::method::COORDINATION_DISBAND_TEAM_STATUS,
+            protocol::method::COORDINATION_ADD_MEMBER_STATUS,
+            protocol::method::COORDINATION_REMOVE_MEMBER_STATUS,
         ];
         for (index, method) in methods.iter().enumerate() {
             let request = protocol::DaemonRequest::new(

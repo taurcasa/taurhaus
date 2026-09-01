@@ -1,15 +1,11 @@
-use std::path::PathBuf;
-
 use super::request_normalization;
 use crate::commands::coordination_types::*;
 use crate::coordination::backend::bridged::{
     AvailabilityReport as BackendAvailabilityReport, PreflightAgent,
     PreflightReport as BackendPreflightReport,
 };
-use crate::coordination::domain::Member;
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{self as contracts};
-use crate::session_scanner::cli_tool::CliTool;
 
 pub(super) fn validate_and_collect_preflight_agents(
     request: InitializeTeamRequest,
@@ -225,6 +221,17 @@ pub(super) fn map_stop_member_report_from_contract(
     }
 }
 
+pub(super) fn map_disband_team_report_from_contract(
+    report: contracts::DisbandTeamReport,
+) -> DisbandTeamResponse {
+    DisbandTeamResponse {
+        team_name: report.team_name,
+        disbanded: report.disbanded,
+        already_disbanded: report.already_disbanded,
+        message: report.message,
+    }
+}
+
 pub(super) fn map_resume_team_report_from_contract(
     report: contracts::ResumeTeamReport,
 ) -> ResumeTeamReport {
@@ -273,42 +280,6 @@ pub(super) fn map_feature_availability_report(
         tmux_available: report.tmux_available,
         blocking_errors: report.blocking_errors,
     }
-}
-
-pub(super) fn cli_tool_from_backend_kind(backend_kind: &str) -> Result<CliTool, CoordinationError> {
-    CliTool::from_alias(backend_kind).map_err(|_| {
-        CoordinationError::Validation(format!(
-            "unsupported backend_kind '{}'",
-            backend_kind.trim()
-        ))
-    })
-}
-
-pub(super) fn resolve_legacy_member_project_path(
-    existing_members: &[Member],
-    project_path_override: Option<&str>,
-) -> Result<PathBuf, CoordinationError> {
-    if let Some(project_path) = project_path_override {
-        let project_path = project_path.trim();
-        if project_path.is_empty() {
-            return Err(CoordinationError::Validation(
-                "project_path must not be empty".to_string(),
-            ));
-        }
-        return Ok(PathBuf::from(project_path));
-    }
-
-    existing_members
-        .iter()
-        .find(|member| member.role == crate::coordination::domain::MemberRole::Lead)
-        .or_else(|| existing_members.first())
-        .map(|member| member.project_path.clone())
-        .ok_or_else(|| {
-            CoordinationError::Validation(
-                "project_path must be provided for legacy add-member when team has no members"
-                    .to_string(),
-            )
-        })
 }
 
 pub(super) fn map_coordination_error(err: CoordinationError) -> String {
