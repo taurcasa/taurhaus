@@ -394,6 +394,22 @@ fn disband_team_command_has_no_local_mutation_path() {
     assert!(source.contains("COORDINATION_DISBAND_TEAM_STATUS"));
 }
 
+// Regression: 03eb3a2c polled multi-step disband teardown at the 25 ms
+// stop-member interval, producing excessive daemon RPC and JSONL traffic.
+#[test]
+fn disband_team_uses_the_long_running_daemon_poll_interval() {
+    let source = include_str!("../coordination.rs");
+    let client = source
+        .split("fn disband_team_through_daemon(")
+        .nth(1)
+        .expect("disband daemon client")
+        .split("fn disband_team_through_daemon_with(")
+        .next()
+        .expect("disband daemon client body");
+    assert!(client.contains("COORDINATION_DAEMON_POLL_INTERVAL"));
+    assert!(!client.contains("COORDINATION_STOP_DAEMON_POLL_INTERVAL"));
+}
+
 // Regression: 1e1dcea5 kept the config-only roster add in the desktop
 // process, including its project-path resolution and runtime-record write.
 #[test]

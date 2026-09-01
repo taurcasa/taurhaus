@@ -769,7 +769,7 @@ fn disband_team_through_daemon(
 ) -> Result<crate::coordination::requests::DisbandTeamReport, String> {
     disband_team_through_daemon_with(
         params,
-        COORDINATION_STOP_DAEMON_POLL_INTERVAL,
+        COORDINATION_DAEMON_POLL_INTERVAL,
         |method, params| call_coordination_daemon(daemon, method, params),
     )
 }
