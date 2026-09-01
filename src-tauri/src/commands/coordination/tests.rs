@@ -58,6 +58,99 @@ fn initialize_team_pipeline_test_fixture(
     Ok(report)
 }
 
+/// Test-only hot-add fixture. Production add-agent execution is daemon-owned.
+fn add_agent_pipeline_test_fixture(
+    state: &CoordinationState,
+    db: Option<&DbState>,
+    request: AddAgentRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
+    emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
+) -> Result<AddAgentReport, String> {
+    let request = hydrate_add_agent_request_role_metadata(state, request)?;
+    validate_add_agent_request_fields(&request)?;
+    let report = crate::daemon::member_runs::execute_add_agent_pipeline(
+        state,
+        &map_add_agent_request_to_contract(&request),
+        cli_commands,
+        tmux_layout,
+    )
+    .map(map_add_agent_report_from_contract)
+    .map_err(map_coordination_error)?;
+    if report.failed_step.is_none() {
+        if let Some(db) = db {
+            sync_member_snapshot_after_change(state, db, &report.team_name, &report.member_name)
+                .map_err(map_coordination_error)?;
+        }
+        sync_active_team_projects_after_change(state, &report.team_name)
+            .map_err(map_coordination_error)?;
+    }
+    emit_progress_events(add_agent_progress_events(&report), emit);
+    Ok(report)
+}
+
+/// Test-only resume fixture. Production member resume execution is daemon-owned.
+fn resume_member_pipeline_test_fixture(
+    state: &CoordinationState,
+    db: Option<&DbState>,
+    request: ResumeMemberRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
+    mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
+) -> Result<ResumeAgentReport, String> {
+    validate_non_empty("team_name", &request.team_name)?;
+    validate_non_empty("member_name", &request.member_name)?;
+    let contract_request = map_resume_member_request_to_contract(&request);
+    let report = crate::daemon::member_runs::execute_resume_member_pipeline(
+        state,
+        &contract_request,
+        cli_commands,
+        tmux_layout,
+        Some(&mut |progress| {
+            let event = resume_member_progress_event_for_stage(
+                &request.team_name,
+                progress.stage,
+                progress.status,
+                progress.message,
+            );
+            emit_progress_event(event, &mut emit);
+        }),
+    )
+    .map(map_resume_agent_report_from_contract)
+    .map_err(map_coordination_error)?;
+    if let Some(db) = db {
+        sync_member_snapshot_after_change(state, db, &report.team_name, &report.member_name)
+            .map_err(map_coordination_error)?;
+    }
+    sync_active_team_projects_after_change(state, &report.team_name)
+        .map_err(map_coordination_error)?;
+    Ok(report)
+}
+
+/// Test-only stop fixture. Production member stop execution is daemon-owned.
+fn stop_member_pipeline_test_fixture(
+    state: &CoordinationState,
+    team_name: String,
+    member_name: String,
+) -> Result<RemoveAgentReport, String> {
+    validate_non_empty("team_name", &team_name)?;
+    validate_non_empty("member_name", &member_name)?;
+    let report = crate::daemon::member_runs::execute_stop_member_pipeline(
+        state,
+        &crate::coordination::requests::StopMemberRequest {
+            team_name,
+            member_name,
+        },
+    )
+    .map(map_stop_member_report_from_contract)
+    .map_err(map_coordination_error)?;
+    if report.removed {
+        sync_active_team_projects_after_change(state, &report.team_name)
+            .map_err(map_coordination_error)?;
+    }
+    Ok(report)
+}
+
 // Regression: 5cebfef8 installed the initialize pipeline behind the desktop
 // command's process-local orchestrator, so Windows mutated team state across
 // the WSL 9p bridge instead of in the daemon's ext4/flock domain.
@@ -70,6 +163,41 @@ fn initialize_command_has_no_local_pipeline_execution_path() {
     assert!(!source.contains("execute_initialize_pipeline("));
     assert!(source.contains("COORDINATION_INITIALIZE_TEAM"));
     assert!(source.contains("COORDINATION_INITIALIZE_STATUS"));
+}
+
+// Regression: 9cd9c2d5 left add-agent execution in the desktop process after
+// initialization moved into the daemon, preserving the Windows 9p writer.
+#[test]
+fn add_agent_command_has_no_local_pipeline_execution_path() {
+    let source = include_str!("../coordination.rs");
+    assert!(!source.contains("orchestrator.add_agent_to_team_with_cli_commands_and_layout"));
+    assert!(!source.contains("execute_add_agent_pipeline("));
+    assert!(source.contains("COORDINATION_ADD_AGENT"));
+    assert!(source.contains("COORDINATION_ADD_AGENT_STATUS"));
+}
+
+// Regression: 9cd9c2d5 left resume-member execution in the desktop process
+// after initialization moved into the daemon, preserving the Windows writer.
+#[test]
+fn resume_member_command_has_no_local_pipeline_execution_path() {
+    let source = include_str!("../coordination.rs");
+    assert!(
+        !source.contains("orchestrator.resume_member_with_cli_commands_and_layout_and_progress")
+    );
+    assert!(!source.contains("execute_resume_member_pipeline("));
+    assert!(source.contains("COORDINATION_RESUME_MEMBER"));
+    assert!(source.contains("COORDINATION_RESUME_MEMBER_STATUS"));
+}
+
+// Regression: 9cd9c2d5 left stop-member execution in the desktop process
+// after initialization moved into the daemon, preserving the Windows writer.
+#[test]
+fn stop_member_command_has_no_local_pipeline_execution_path() {
+    let source = include_str!("../coordination.rs");
+    assert!(!source.contains("orchestrator.remove_member"));
+    assert!(!source.contains("execute_stop_member_pipeline("));
+    assert!(source.contains("COORDINATION_STOP_MEMBER"));
+    assert!(source.contains("COORDINATION_STOP_MEMBER_STATUS"));
 }
 
 #[test]
@@ -198,6 +326,188 @@ fn initialize_daemon_poll_tolerates_a_transient_transport_failure() {
     );
 
     assert_eq!(result, Ok(report));
+}
+
+#[test]
+fn add_agent_daemon_poll_reemits_the_existing_progress_contract() {
+    let request = map_add_agent_request_to_contract(&sample_add_agent_request("arch", "builder"));
+    let params = protocol::CoordinationAddAgentParams {
+        request,
+        cli_commands: CliCommandSettings::default(),
+        tmux_layout: "new_window".to_string(),
+        operational_snapshot: None,
+    };
+    let progress = crate::coordination::requests::StepProgress {
+        step: "validate".to_string(),
+        status: StepStatus::Succeeded,
+        message: Some("member prepared".to_string()),
+    };
+    let report = crate::coordination::requests::AddAgentReport {
+        team_name: "arch".to_string(),
+        member_name: "builder".to_string(),
+        succeeded_steps: vec![progress.step.clone()],
+        failed_step: None,
+        retryable: false,
+        message: "member added".to_string(),
+        steps: vec![progress.clone()],
+        warnings: Vec::new(),
+    };
+    let mut responses = std::collections::VecDeque::from([
+        serde_json::to_value(protocol::CoordinationAddAgentAccepted {
+            run_id: "add-test".to_string(),
+        })
+        .expect("accepted payload"),
+        serde_json::to_value(protocol::CoordinationAddAgentStatus {
+            run_id: "add-test".to_string(),
+            steps: vec![progress.clone()],
+            outcome: protocol::CoordinationAddAgentOutcome::Completed {
+                report: report.clone(),
+            },
+        })
+        .expect("status payload"),
+    ]);
+    let mut methods = Vec::new();
+    let mut emitted = Vec::new();
+
+    let result = add_agent_through_daemon_with(
+        params,
+        Some(&mut |event: &StepProgressEvent| emitted.push(event.clone())),
+        std::time::Duration::ZERO,
+        |method, _params| {
+            methods.push(method.to_string());
+            responses.pop_front().ok_or_else(|| {
+                CoordinationDaemonCallError::Transport("unexpected extra daemon call".to_string())
+            })
+        },
+    )
+    .expect("daemon add-agent completes");
+
+    assert_eq!(result, report);
+    assert_eq!(
+        methods,
+        vec![
+            protocol::method::COORDINATION_ADD_AGENT,
+            protocol::method::COORDINATION_ADD_AGENT_STATUS,
+        ]
+    );
+    assert_eq!(emitted.len(), 1);
+    assert_eq!(emitted[0].operation, "add_agent");
+    assert_eq!(emitted[0].progress, progress);
+    assert_eq!(
+        emitted[0].canonical_stages,
+        vec![MemberActivationStage::PrepareMember]
+    );
+}
+
+#[test]
+fn resume_and_stop_daemon_clients_use_their_run_status_methods() {
+    let resume_params = protocol::CoordinationResumeMemberParams {
+        request: crate::coordination::requests::ResumeMemberRequest {
+            team_name: "arch".to_string(),
+            member_name: "builder".to_string(),
+            reasoning_effort_override: None,
+        },
+        cli_commands: CliCommandSettings::default(),
+        tmux_layout: "new_window".to_string(),
+        operational_snapshot: None,
+    };
+    let resume_report = crate::coordination::requests::ResumeAgentReport {
+        team_name: "arch".to_string(),
+        member_name: "builder".to_string(),
+        resumed: true,
+        succeeded_steps: Vec::new(),
+        failed_step: None,
+        retryable: false,
+        message: "member resumed".to_string(),
+        steps: Vec::new(),
+        warnings: Vec::new(),
+        pane_id: Some("%2".to_string()),
+        reused_pane: false,
+    };
+    let mut resume_responses = std::collections::VecDeque::from([
+        serde_json::to_value(protocol::CoordinationResumeMemberAccepted {
+            run_id: "resume-test".to_string(),
+        })
+        .expect("accepted payload"),
+        serde_json::to_value(protocol::CoordinationResumeMemberStatus {
+            run_id: "resume-test".to_string(),
+            steps: Vec::new(),
+            outcome: protocol::CoordinationResumeMemberOutcome::Completed {
+                report: resume_report.clone(),
+            },
+        })
+        .expect("status payload"),
+    ]);
+    let mut resume_methods = Vec::new();
+    let resumed = resume_member_through_daemon_with(
+        resume_params,
+        None,
+        std::time::Duration::ZERO,
+        |method, _params| {
+            resume_methods.push(method.to_string());
+            resume_responses.pop_front().ok_or_else(|| {
+                CoordinationDaemonCallError::Transport("unexpected extra daemon call".to_string())
+            })
+        },
+    )
+    .expect("daemon resume completes");
+    assert_eq!(resumed, resume_report);
+    assert_eq!(
+        resume_methods,
+        vec![
+            protocol::method::COORDINATION_RESUME_MEMBER,
+            protocol::method::COORDINATION_RESUME_MEMBER_STATUS,
+        ]
+    );
+
+    let stop_params = protocol::CoordinationStopMemberParams {
+        request: crate::coordination::requests::StopMemberRequest {
+            team_name: "arch".to_string(),
+            member_name: "builder".to_string(),
+        },
+    };
+    let stop_report = crate::coordination::requests::StopMemberReport {
+        team_name: "arch".to_string(),
+        member_name: "builder".to_string(),
+        removed: true,
+        message: "member removed".to_string(),
+        steps: Vec::new(),
+        warnings: Vec::new(),
+    };
+    let mut stop_responses = std::collections::VecDeque::from([
+        serde_json::to_value(protocol::CoordinationStopMemberAccepted {
+            run_id: "stop-test".to_string(),
+        })
+        .expect("accepted payload"),
+        serde_json::to_value(protocol::CoordinationStopMemberStatus {
+            run_id: "stop-test".to_string(),
+            steps: Vec::new(),
+            outcome: protocol::CoordinationStopMemberOutcome::Completed {
+                report: stop_report.clone(),
+            },
+        })
+        .expect("status payload"),
+    ]);
+    let mut stop_methods = Vec::new();
+    let stopped = stop_member_through_daemon_with(
+        stop_params,
+        std::time::Duration::ZERO,
+        |method, _params| {
+            stop_methods.push(method.to_string());
+            stop_responses.pop_front().ok_or_else(|| {
+                CoordinationDaemonCallError::Transport("unexpected extra daemon call".to_string())
+            })
+        },
+    )
+    .expect("daemon stop completes");
+    assert_eq!(stopped, stop_report);
+    assert_eq!(
+        stop_methods,
+        vec![
+            protocol::method::COORDINATION_STOP_MEMBER,
+            protocol::method::COORDINATION_STOP_MEMBER_STATUS,
+        ]
+    );
 }
 
 #[test]
@@ -673,11 +983,11 @@ fn member_commands_validate_all_required_fields() {
     .expect_err("empty backend should fail");
     assert!(err.contains("backend_kind"));
 
-    let err = coordination_remove_member_impl(&state, "".to_string(), "alice".to_string())
+    let err = stop_member_pipeline_test_fixture(&state, "".to_string(), "alice".to_string())
         .expect_err("empty team should fail");
     assert!(err.contains("team_name"));
 
-    let err = coordination_remove_member_impl(&state, "team".to_string(), "  ".to_string())
+    let err = stop_member_pipeline_test_fixture(&state, "team".to_string(), "  ".to_string())
         .expect_err("whitespace member should fail");
     assert!(err.contains("member_name"));
 }
@@ -904,7 +1214,7 @@ fn add_agent_ipc_returns_add_agent_report_shape() {
     let state = test_state(tmp.path().to_path_buf());
     coordination_create_team_impl(&state, "arch".to_string()).expect("create");
 
-    let report = coordination_add_agent_internal(
+    let report = add_agent_pipeline_test_fixture(
         &state,
         None,
         sample_add_agent_request("arch", "bob"),
@@ -931,7 +1241,7 @@ fn add_agent_progress_events_are_emitted_in_step_order() {
 
     let mut emitted = Vec::new();
     let mut emit = |event: &StepProgressEvent| emitted.push(event.clone());
-    let report = coordination_add_agent_internal(
+    let report = add_agent_pipeline_test_fixture(
         &state,
         None,
         sample_add_agent_request("arch", "bob"),
@@ -1033,7 +1343,7 @@ fn add_agent_and_reonboard_validate_empty_strings() {
     let state = test_state(tmp.path().to_path_buf());
     coordination_create_team_impl(&state, "arch".to_string()).expect("create");
 
-    let add_agent_err = coordination_add_agent_internal(
+    let add_agent_err = add_agent_pipeline_test_fixture(
         &state,
         None,
         AddAgentRequest {
@@ -1099,7 +1409,7 @@ fn resume_member_validates_empty_fields() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
 
-    let err = coordination_resume_member_internal(
+    let err = resume_member_pipeline_test_fixture(
         &state,
         None,
         ResumeMemberRequest {
@@ -1113,7 +1423,7 @@ fn resume_member_validates_empty_fields() {
     .expect_err("empty team_name should fail");
     assert!(err.contains("team_name"));
 
-    let err = coordination_resume_member_internal(
+    let err = resume_member_pipeline_test_fixture(
         &state,
         None,
         ResumeMemberRequest {
@@ -1157,7 +1467,7 @@ fn resume_member_ipc_returns_report_shape() {
     )
     .expect("save runtime");
 
-    let report = coordination_resume_member_internal(
+    let report = resume_member_pipeline_test_fixture(
         &state,
         None,
         ResumeMemberRequest {
@@ -1210,7 +1520,7 @@ fn resume_member_progress_events_are_emitted_from_canonical_member_stages() {
 
     let mut emitted = Vec::new();
     let mut emit = |event: &StepProgressEvent| emitted.push(event.clone());
-    let report = coordination_resume_member_internal(
+    let report = resume_member_pipeline_test_fixture(
         &state,
         None,
         ResumeMemberRequest {
@@ -1751,7 +2061,7 @@ fn remove_member_happy_path_removes_member() {
         Some("/tmp/arch".to_string()),
     )
     .expect("add");
-    let report = coordination_remove_member_impl(&state, "arch".to_string(), "alice".to_string())
+    let report = stop_member_pipeline_test_fixture(&state, "arch".to_string(), "alice".to_string())
         .expect("remove");
     assert!(report.removed);
     assert_eq!(report.team_name, "arch");
@@ -1767,7 +2077,7 @@ fn remove_member_error_mapping_not_found() {
     let state = test_state(tmp.path().to_path_buf());
 
     coordination_create_team_impl(&state, "arch".to_string()).expect("create");
-    let err = coordination_remove_member_impl(&state, "arch".to_string(), "missing".to_string())
+    let err = stop_member_pipeline_test_fixture(&state, "arch".to_string(), "missing".to_string())
         .expect_err("missing member");
     assert!(err.contains("Not found"));
 }
@@ -3463,7 +3773,7 @@ fn add_agent_pipeline_failure_does_not_mask_error_with_member_not_found() {
     coordination_create_team_impl(&state, "arch".to_string()).expect("create team");
     let (db, _db_file) = test_db_state();
 
-    let report = coordination_add_agent_internal(
+    let report = add_agent_pipeline_test_fixture(
         &state,
         Some(&db),
         sample_add_agent_request("arch", "dev2"),
@@ -3499,7 +3809,7 @@ fn add_agent_onboarding_routes_through_deliver_message_audit_trail() {
     claude_agent.agent.focus_area = Some("backend".to_string());
     claude_agent.agent.context_summary = Some("Rust backend developer".to_string());
 
-    let report = coordination_add_agent_internal(
+    let report = add_agent_pipeline_test_fixture(
         &state,
         None,
         claude_agent,

@@ -51,6 +51,49 @@ pub(crate) fn prepare_initialize_snapshots(
         .collect()
 }
 
+/// Build the app-DB-derived snapshot carried by a daemon member-operation
+/// intent. This performs no team-store writes.
+pub(crate) fn prepare_member_snapshot(
+    teams_dir: &Path,
+    conn: &Connection,
+    team_name: &str,
+    member_name: &str,
+    project_path: &str,
+) -> Result<OperationalContextSnapshot, CoordinationError> {
+    prepare_member_snapshot_with_task_timestamp(
+        teams_dir,
+        conn,
+        team_name,
+        member_name,
+        project_path,
+    )
+    .map(|(snapshot, _)| snapshot)
+}
+
+fn prepare_member_snapshot_with_task_timestamp(
+    teams_dir: &Path,
+    conn: &Connection,
+    team_name: &str,
+    member_name: &str,
+    project_path: &str,
+) -> Result<(OperationalContextSnapshot, Option<DateTime<Utc>>), CoordinationError> {
+    let existing = OperationalContextSnapshotStore::load(teams_dir, team_name, member_name)?;
+    let tasks = load_project_tasks(conn, project_path)?;
+    let (task, effort, task_state_changed_at) = latest_owned_task_from_tasks(&tasks, member_name);
+    Ok((
+        build_member_snapshot(
+            existing.as_ref(),
+            team_name,
+            member_name,
+            project_path,
+            task,
+            effort,
+            task_state_changed_at,
+        ),
+        task_state_changed_at,
+    ))
+}
+
 /// Publish a pre-pipeline initialize snapshot without replacing context that
 /// was refreshed while the daemon pipeline was running.
 pub(crate) fn publish_initialize_snapshot(
@@ -106,19 +149,14 @@ pub fn sync_member_snapshot(
                 "member '{member_name}' not found in team '{team_name}'"
             ))
         })?;
-    let existing = OperationalContextSnapshotStore::load(teams_dir, team_name, member_name)?;
     let project_path = member.project_path.display().to_string();
-    let tasks = load_project_tasks(conn, &project_path)?;
-    let (task, effort, task_state_changed_at) = latest_owned_task_from_tasks(&tasks, member_name);
-    let snapshot = build_member_snapshot(
-        existing.as_ref(),
+    let (snapshot, task_state_changed_at) = prepare_member_snapshot_with_task_timestamp(
+        teams_dir,
+        conn,
         team_name,
         member_name,
         &project_path,
-        task,
-        effort,
-        task_state_changed_at,
-    );
+    )?;
 
     save_snapshot_if_changed(teams_dir, snapshot, task_state_changed_at)
 }
@@ -605,6 +643,33 @@ mod tests {
         assert_eq!(agent.task.id, "agent-task");
         assert_eq!(agent.assignment_footer.task_effort, "medium");
         assert_eq!(agent.working_set.project_path, "proj-web");
+    }
+
+    #[test]
+    fn prepare_member_snapshot_derives_context_without_writing_team_state() {
+        let teams = TempDir::new().expect("teams dir");
+        let (conn, _db) = test_db();
+        write_team(teams.path());
+
+        let snapshot = prepare_member_snapshot(
+            teams.path(),
+            &conn,
+            "architecture-final",
+            "frontend-dev",
+            "proj-web",
+        )
+        .expect("prepare snapshot");
+
+        assert_eq!(snapshot.team_name, "architecture-final");
+        assert_eq!(snapshot.member_name, "frontend-dev");
+        assert_eq!(snapshot.working_set.project_path, "proj-web");
+        assert!(OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .is_none());
     }
 
     #[test]

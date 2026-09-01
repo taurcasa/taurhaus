@@ -1,12 +1,12 @@
 #[cfg(test)]
-use crate::commands::coordination_types::InitializeReport;
+use crate::commands::coordination_types::{AddAgentReport, InitializeReport};
 use crate::commands::coordination_types::{
-    AddAgentReport, MemberActivationStage, ResumeTeamProgressEvent, StepProgress,
-    StepProgressEvent, StepStatus,
+    MemberActivationStage, ResumeTeamProgressEvent, StepProgress, StepProgressEvent, StepStatus,
 };
 use crate::coordination::requests::canonical_member_activation_stages;
 use serde_json::{Map, Value};
 
+#[cfg(test)]
 pub(super) fn emit_progress_event(
     event: StepProgressEvent,
     emit: &mut Option<&mut dyn FnMut(&StepProgressEvent)>,
@@ -17,6 +17,7 @@ pub(super) fn emit_progress_event(
     }
 }
 
+#[cfg(test)]
 pub(super) fn emit_progress_events(
     events: Vec<StepProgressEvent>,
     mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
@@ -32,6 +33,7 @@ pub(super) fn initialize_progress_events(report: &InitializeReport) -> Vec<StepP
     progress_events_for_steps_with_adapter(&adapter, &report.steps)
 }
 
+#[cfg(test)]
 pub(crate) fn add_agent_progress_events(report: &AddAgentReport) -> Vec<StepProgressEvent> {
     progress_events_for_steps(&report.team_name, "add_agent", &report.steps)
 }

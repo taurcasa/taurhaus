@@ -19,10 +19,11 @@ mod request_normalization;
 #[path = "coordination/state_sync.rs"]
 mod state_sync;
 
+#[cfg(test)]
+pub(crate) use progress::add_agent_progress_events;
 #[allow(unused_imports)]
 pub(crate) use progress::{
-    add_agent_progress_events, emit_progress_log_event, progress_events_for_steps,
-    resume_member_progress_event_for_stage,
+    emit_progress_log_event, progress_events_for_steps, resume_member_progress_event_for_stage,
 };
 
 pub use crate::commands::coordination_types::*;
@@ -223,6 +224,24 @@ fn load_cli_commands_and_layout(db: &DbState) -> (CliCommandSettings, String) {
     }
 }
 
+fn prepare_member_operation_snapshot(
+    state: &CoordinationState,
+    db: &DbState,
+    team_name: &str,
+    member_name: &str,
+    project_path: &str,
+) -> Result<crate::coordination::stores::OperationalContextSnapshot, String> {
+    let conn = db.0.lock().map_err(|_| "db mutex poisoned".to_string())?;
+    crate::coordination::operational_context::prepare_member_snapshot(
+        state.teams_dir(),
+        &conn,
+        team_name,
+        member_name,
+        project_path,
+    )
+    .map_err(map_coordination_error)
+}
+
 #[cfg(test)]
 const DEFAULT_TMUX_LAYOUT: &str = "new_window";
 
@@ -325,13 +344,15 @@ pub async fn coordination_initialize_team(
     result
 }
 
-const INITIALIZE_DAEMON_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
-const INITIALIZE_DAEMON_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+const COORDINATION_DAEMON_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+const COORDINATION_DAEMON_POLL_INTERVAL: std::time::Duration =
+    std::time::Duration::from_millis(500);
 /// Transient poll failures are tolerated for longer than the daemon
 /// client's reconnect cooldown (5s), so a hiccup mid-initialize gets at
 /// least one un-throttled reconnect attempt before the app gives up on a
 /// run the daemon is still completing.
-const INITIALIZE_DAEMON_POLL_ERROR_BUDGET: std::time::Duration = std::time::Duration::from_secs(8);
+const COORDINATION_DAEMON_POLL_ERROR_BUDGET: std::time::Duration =
+    std::time::Duration::from_secs(8);
 
 #[derive(Debug)]
 enum CoordinationDaemonCallError {
@@ -355,7 +376,7 @@ fn initialize_team_through_daemon(
     initialize_team_through_daemon_with(
         params,
         emit,
-        INITIALIZE_DAEMON_POLL_INTERVAL,
+        COORDINATION_DAEMON_POLL_INTERVAL,
         |method, params| call_coordination_daemon(daemon, method, params),
     )
 }
@@ -397,7 +418,7 @@ fn initialize_team_through_daemon_with(
             Err(CoordinationDaemonCallError::Remote(message)) => return Err(message),
             Err(CoordinationDaemonCallError::Transport(message)) => {
                 let since = *first_poll_error_at.get_or_insert_with(std::time::Instant::now);
-                if since.elapsed() >= INITIALIZE_DAEMON_POLL_ERROR_BUDGET {
+                if since.elapsed() >= COORDINATION_DAEMON_POLL_ERROR_BUDGET {
                     return Err(message);
                 }
                 std::thread::sleep(poll_interval);
@@ -426,6 +447,243 @@ fn initialize_team_through_daemon_with(
     }
 }
 
+fn add_agent_through_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    params: crate::daemon::protocol::CoordinationAddAgentParams,
+    emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
+) -> Result<crate::coordination::requests::AddAgentReport, String> {
+    add_agent_through_daemon_with(
+        params,
+        emit,
+        COORDINATION_DAEMON_POLL_INTERVAL,
+        |method, params| call_coordination_daemon(daemon, method, params),
+    )
+}
+
+fn add_agent_through_daemon_with(
+    params: crate::daemon::protocol::CoordinationAddAgentParams,
+    mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
+    poll_interval: std::time::Duration,
+    mut call: impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
+) -> Result<crate::coordination::requests::AddAgentReport, String> {
+    let accepted: crate::daemon::protocol::CoordinationAddAgentAccepted = serde_json::from_value(
+        call(
+            crate::daemon::protocol::method::COORDINATION_ADD_AGENT,
+            serde_json::to_value(&params).map_err(|error| error.to_string())?,
+        )
+        .map_err(CoordinationDaemonCallError::into_message)?,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut emitted_steps = 0;
+    let mut first_poll_error_at: Option<std::time::Instant> = None;
+    loop {
+        let status_value = poll_coordination_status(
+            &mut call,
+            crate::daemon::protocol::method::COORDINATION_ADD_AGENT_STATUS,
+            &accepted.run_id,
+            poll_interval,
+            &mut first_poll_error_at,
+        )?;
+        let status: crate::daemon::protocol::CoordinationAddAgentStatus =
+            serde_json::from_value(status_value).map_err(|error| error.to_string())?;
+        emit_member_run_steps(
+            &params.request.team_name,
+            "add_agent",
+            &status.steps,
+            &mut emitted_steps,
+            &mut emit,
+        );
+        match status.outcome {
+            crate::daemon::protocol::CoordinationAddAgentOutcome::Running => {
+                std::thread::sleep(poll_interval);
+            }
+            crate::daemon::protocol::CoordinationAddAgentOutcome::Completed { report } => {
+                return Ok(report);
+            }
+            crate::daemon::protocol::CoordinationAddAgentOutcome::Failed { error } => {
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn resume_member_through_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    params: crate::daemon::protocol::CoordinationResumeMemberParams,
+    emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
+) -> Result<crate::coordination::requests::ResumeAgentReport, String> {
+    resume_member_through_daemon_with(
+        params,
+        emit,
+        COORDINATION_DAEMON_POLL_INTERVAL,
+        |method, params| call_coordination_daemon(daemon, method, params),
+    )
+}
+
+fn resume_member_through_daemon_with(
+    params: crate::daemon::protocol::CoordinationResumeMemberParams,
+    mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
+    poll_interval: std::time::Duration,
+    mut call: impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
+) -> Result<crate::coordination::requests::ResumeAgentReport, String> {
+    let accepted: crate::daemon::protocol::CoordinationResumeMemberAccepted =
+        serde_json::from_value(
+            call(
+                crate::daemon::protocol::method::COORDINATION_RESUME_MEMBER,
+                serde_json::to_value(&params).map_err(|error| error.to_string())?,
+            )
+            .map_err(CoordinationDaemonCallError::into_message)?,
+        )
+        .map_err(|error| error.to_string())?;
+    let mut emitted_steps = 0;
+    let mut first_poll_error_at: Option<std::time::Instant> = None;
+    loop {
+        let status_value = poll_coordination_status(
+            &mut call,
+            crate::daemon::protocol::method::COORDINATION_RESUME_MEMBER_STATUS,
+            &accepted.run_id,
+            poll_interval,
+            &mut first_poll_error_at,
+        )?;
+        let status: crate::daemon::protocol::CoordinationResumeMemberStatus =
+            serde_json::from_value(status_value).map_err(|error| error.to_string())?;
+        emit_member_run_steps(
+            &params.request.team_name,
+            "resume_member",
+            &status.steps,
+            &mut emitted_steps,
+            &mut emit,
+        );
+        match status.outcome {
+            crate::daemon::protocol::CoordinationResumeMemberOutcome::Running => {
+                std::thread::sleep(poll_interval);
+            }
+            crate::daemon::protocol::CoordinationResumeMemberOutcome::Completed { report } => {
+                return Ok(report);
+            }
+            crate::daemon::protocol::CoordinationResumeMemberOutcome::Failed { error } => {
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn stop_member_through_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    params: crate::daemon::protocol::CoordinationStopMemberParams,
+) -> Result<crate::coordination::requests::StopMemberReport, String> {
+    stop_member_through_daemon_with(
+        params,
+        COORDINATION_DAEMON_POLL_INTERVAL,
+        |method, params| call_coordination_daemon(daemon, method, params),
+    )
+}
+
+fn stop_member_through_daemon_with(
+    params: crate::daemon::protocol::CoordinationStopMemberParams,
+    poll_interval: std::time::Duration,
+    mut call: impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
+) -> Result<crate::coordination::requests::StopMemberReport, String> {
+    let accepted: crate::daemon::protocol::CoordinationStopMemberAccepted = serde_json::from_value(
+        call(
+            crate::daemon::protocol::method::COORDINATION_STOP_MEMBER,
+            serde_json::to_value(&params).map_err(|error| error.to_string())?,
+        )
+        .map_err(CoordinationDaemonCallError::into_message)?,
+    )
+    .map_err(|error| error.to_string())?;
+    let mut first_poll_error_at: Option<std::time::Instant> = None;
+    loop {
+        let status_value = poll_coordination_status(
+            &mut call,
+            crate::daemon::protocol::method::COORDINATION_STOP_MEMBER_STATUS,
+            &accepted.run_id,
+            poll_interval,
+            &mut first_poll_error_at,
+        )?;
+        let status: crate::daemon::protocol::CoordinationStopMemberStatus =
+            serde_json::from_value(status_value).map_err(|error| error.to_string())?;
+        match status.outcome {
+            crate::daemon::protocol::CoordinationStopMemberOutcome::Running => {
+                std::thread::sleep(poll_interval);
+            }
+            crate::daemon::protocol::CoordinationStopMemberOutcome::Completed { report } => {
+                return Ok(report);
+            }
+            crate::daemon::protocol::CoordinationStopMemberOutcome::Failed { error } => {
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn poll_coordination_status(
+    call: &mut impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
+    method: &str,
+    run_id: &str,
+    poll_interval: std::time::Duration,
+    first_poll_error_at: &mut Option<std::time::Instant>,
+) -> Result<serde_json::Value, String> {
+    loop {
+        match call(method, serde_json::json!({ "run_id": run_id })) {
+            Ok(value) => {
+                *first_poll_error_at = None;
+                return Ok(value);
+            }
+            Err(CoordinationDaemonCallError::Remote(message)) => return Err(message),
+            Err(CoordinationDaemonCallError::Transport(message)) => {
+                let since = *first_poll_error_at.get_or_insert_with(std::time::Instant::now);
+                if since.elapsed() >= COORDINATION_DAEMON_POLL_ERROR_BUDGET {
+                    return Err(message);
+                }
+                std::thread::sleep(poll_interval);
+            }
+        }
+    }
+}
+
+fn emit_member_run_steps(
+    team_name: &str,
+    operation: &str,
+    steps: &[StepProgress],
+    emitted_steps: &mut usize,
+    emit: &mut Option<&mut dyn FnMut(&StepProgressEvent)>,
+) {
+    let wrapper = match operation {
+        "add_agent" => "add_agent",
+        "resume_member" => "resume",
+        _ => return,
+    };
+    for progress in steps.iter().skip(*emitted_steps) {
+        if let Some(emit) = emit.as_deref_mut() {
+            emit(&StepProgressEvent {
+                team_name: team_name.to_string(),
+                operation: operation.to_string(),
+                progress: progress.clone(),
+                canonical_stages:
+                    crate::coordination::requests::canonical_member_activation_stages(
+                        wrapper,
+                        &progress.step,
+                    )
+                    .to_vec(),
+            });
+        }
+    }
+    *emitted_steps = steps.len();
+}
+
 fn call_coordination_daemon(
     daemon: &crate::provider::daemon_client::DaemonProvider,
     method: &str,
@@ -437,12 +695,12 @@ fn call_coordination_daemon(
         ));
     }
     let request = crate::daemon::protocol::DaemonRequest::new(
-        format!("coord-init-{}", uuid::Uuid::new_v4().simple()),
+        format!("coord-run-{}", uuid::Uuid::new_v4().simple()),
         method,
         params,
     );
     let response = daemon
-        .send_status_request_within(&request, INITIALIZE_DAEMON_REQUEST_TIMEOUT)
+        .send_status_request_within(&request, COORDINATION_DAEMON_REQUEST_TIMEOUT)
         .map_err(|error| CoordinationDaemonCallError::Transport(error.to_string()))?;
     if let Some(error) = response.error {
         return Err(CoordinationDaemonCallError::Remote(error.message));
@@ -452,48 +710,59 @@ fn call_coordination_daemon(
     })
 }
 
-#[tauri::command(async)]
-pub fn coordination_add_agent(
+#[tauri::command]
+pub async fn coordination_add_agent(
     app: AppHandle,
-    db: State<'_, DbState>,
-    state: State<'_, CoordinationState>,
     request: AddAgentRequest,
 ) -> IpcResult<AddAgentReport> {
     let span = IpcCommandSpan::start("coordination_add_agent");
     let requested_team_name = request.team_name.clone();
-    let result = {
+    let app_for_task = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let db = app_for_task.state::<DbState>();
+        let state = app_for_task.state::<CoordinationState>();
         let request = normalize_add_agent_request_path(&db, request)?;
+        let request = hydrate_add_agent_request_role_metadata(state.inner(), request)?;
+        validate_add_agent_request_fields(&request)?;
         let has_codex = CliTool::from_alias(&request.agent.cli_tool).is_ok_and(|tool| {
             crate::session_scanner::cli_tool::spec(tool)
                 .capabilities
                 .hook_trust
         });
-        let codex_bypass_hook_trust =
-            reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
-        let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-        crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
-            &mut cli_commands,
-            has_codex,
-            codex_bypass_hook_trust,
-        );
-        crate::commands::accounts::apply_team_launch_base_resolutions(
-            app.state::<ProviderState>().inner(),
-            &mut cli_commands,
-            CliTool::from_alias(&request.agent.cli_tool).ok(),
-        );
-        let mut emit = |event: &StepProgressEvent| {
-            let _ = app.emit("coordination-step-progress", event);
-        };
-        coordination_add_agent_internal(
+        let _ = reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
+        let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+        let contract_request = map_add_agent_request_to_contract(&request);
+        let operational_snapshot = prepare_member_operation_snapshot(
             state.inner(),
-            Some(&db),
-            request,
-            &cli_commands,
-            &tmux_layout,
-            Some(&mut emit),
-        )
-        .ipc()
-    };
+            &db,
+            &contract_request.team_name,
+            &contract_request.agent.name,
+            &contract_request.agent.project_id,
+        )?;
+        let params = crate::daemon::protocol::CoordinationAddAgentParams {
+            request: contract_request,
+            cli_commands,
+            tmux_layout,
+            operational_snapshot: Some(operational_snapshot),
+        };
+        let provider = app_for_task.state::<ProviderState>();
+        let daemon = provider
+            .daemon
+            .as_ref()
+            .ok_or_else(|| "adding a team member requires the taurhaus daemon".to_string())?;
+        let mut emit = |event: &StepProgressEvent| {
+            let _ = app_for_task.emit("coordination-step-progress", event);
+        };
+        add_agent_through_daemon(daemon, params, Some(&mut emit))
+            .map(map_add_agent_report_from_contract)
+            .ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join add-agent task: {err}"
+        )))
+    });
     let result = match &result {
         Ok(report) if report.failed_step.is_none() => {
             maybe_ensure_compact_hooks_for_team(&app, &requested_team_name, result)
@@ -505,49 +774,71 @@ pub fn coordination_add_agent(
     result
 }
 
-#[tauri::command(async)]
-pub fn coordination_resume_member(
+#[tauri::command]
+pub async fn coordination_resume_member(
     app: AppHandle,
-    db: State<'_, DbState>,
-    state: State<'_, CoordinationState>,
     request: ResumeMemberRequest,
 ) -> IpcResult<ResumeAgentReport> {
     let span = IpcCommandSpan::start("coordination_resume_member");
     let requested_team_name = request.team_name.clone();
     let requested_member_name = request.member_name.clone();
-    let result = {
-        let has_codex = team_has_managed_codex_member(state.teams_dir(), &requested_team_name)
-            .map_err(|error| IpcError::internal(sanitize_error(&error.to_string())))?;
-        let codex_bypass_hook_trust =
-            reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
-        let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-        crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
-            &mut cli_commands,
-            has_codex,
-            codex_bypass_hook_trust,
-        );
-        crate::commands::accounts::apply_team_launch_base_resolutions(
-            app.state::<ProviderState>().inner(),
-            &mut cli_commands,
-            configured_team_launch_tools(
-                state.teams_dir(),
-                Some(&requested_team_name),
-                Some(&requested_member_name),
-            ),
-        );
-        let mut emit = |event: &StepProgressEvent| {
-            let _ = app.emit("coordination-step-progress", event);
-        };
-        coordination_resume_member_internal(
+    let requested_team_name_for_task = requested_team_name.clone();
+    let app_for_task = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        validate_non_empty("team_name", &request.team_name)?;
+        validate_non_empty("member_name", &request.member_name)?;
+        let db = app_for_task.state::<DbState>();
+        let state = app_for_task.state::<CoordinationState>();
+        let has_codex =
+            team_has_managed_codex_member(state.teams_dir(), &requested_team_name_for_task)
+                .map_err(|error| IpcError::internal(sanitize_error(&error.to_string())))?;
+        let _ = reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
+        let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+        let contract_request = map_resume_member_request_to_contract(&request);
+        let config = TeamConfigStore::load(state.teams_dir(), &contract_request.team_name)
+            .map_err(map_coordination_error)?;
+        let project_path = config
+            .members
+            .iter()
+            .find(|member| member.name == contract_request.member_name)
+            .map(|member| member.project_path.display().to_string())
+            .ok_or_else(|| {
+                format!(
+                    "member '{}' not found in team '{}'",
+                    contract_request.member_name, contract_request.team_name
+                )
+            })?;
+        let operational_snapshot = prepare_member_operation_snapshot(
             state.inner(),
-            Some(&db),
-            request,
-            &cli_commands,
-            &tmux_layout,
-            Some(&mut emit),
-        )
-        .ipc()
-    };
+            &db,
+            &contract_request.team_name,
+            &contract_request.member_name,
+            &project_path,
+        )?;
+        let params = crate::daemon::protocol::CoordinationResumeMemberParams {
+            request: contract_request,
+            cli_commands,
+            tmux_layout,
+            operational_snapshot: Some(operational_snapshot),
+        };
+        let provider = app_for_task.state::<ProviderState>();
+        let daemon = provider
+            .daemon
+            .as_ref()
+            .ok_or_else(|| "resuming a team member requires the taurhaus daemon".to_string())?;
+        let mut emit = |event: &StepProgressEvent| {
+            let _ = app_for_task.emit("coordination-step-progress", event);
+        };
+        resume_member_through_daemon(daemon, params, Some(&mut emit))
+            .map(map_resume_agent_report_from_contract)
+            .ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join resume-member task: {err}"
+        )))
+    });
     let result = maybe_ensure_compact_hooks_for_team(&app, &requested_team_name, result);
     emit_resume_member_pipeline_result(&requested_team_name, &requested_member_name, &result);
     span.finish_result(&result);
@@ -689,15 +980,40 @@ pub fn coordination_add_member(
     result
 }
 
-#[tauri::command(async)]
-pub fn coordination_remove_member(
+#[tauri::command]
+pub async fn coordination_remove_member(
     app: AppHandle,
-    state: State<'_, CoordinationState>,
     team_name: String,
     member_name: String,
 ) -> IpcResult<RemoveAgentReport> {
     let span = IpcCommandSpan::start("coordination_remove_member");
-    let result = coordination_remove_member_impl(state.inner(), team_name, member_name).ipc();
+    let app_for_task = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        validate_non_empty("team_name", &team_name)?;
+        validate_non_empty("member_name", &member_name)?;
+        let provider = app_for_task.state::<ProviderState>();
+        let daemon = provider
+            .daemon
+            .as_ref()
+            .ok_or_else(|| "stopping a team member requires the taurhaus daemon".to_string())?;
+        stop_member_through_daemon(
+            daemon,
+            crate::daemon::protocol::CoordinationStopMemberParams {
+                request: crate::coordination::requests::StopMemberRequest {
+                    team_name,
+                    member_name,
+                },
+            },
+        )
+        .map(map_stop_member_report_from_contract)
+        .ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join stop-member task: {err}"
+        )))
+    });
     if result.is_ok() {
         reconcile_global_harness_hooks(&app);
     }
@@ -751,88 +1067,6 @@ pub fn coordination_get_project_mesh_snapshot(
     let result = coordination_get_project_mesh_snapshot_impl(state.inner(), project_path).ipc();
     span.finish_result(&result);
     result
-}
-
-fn coordination_add_agent_internal(
-    state: &CoordinationState,
-    db: Option<&DbState>,
-    request: AddAgentRequest,
-    cli_commands: &CliCommandSettings,
-    tmux_layout: &str,
-    emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
-) -> Result<AddAgentReport, String> {
-    let request = hydrate_add_agent_request_role_metadata(state, request)?;
-    validate_non_empty("team_name", &request.team_name)?;
-    validate_non_empty("agent.name", &request.agent.name)?;
-    validate_non_empty("agent.project_id", &request.agent.project_id)?;
-    validate_non_empty("agent.cli_tool", &request.agent.cli_tool)?;
-    let contract_request = map_add_agent_request_to_contract(&request);
-    let report = state
-        .with_orchestrator(|orchestrator| {
-            orchestrator.add_agent_to_team_with_cli_commands_and_layout(
-                &contract_request,
-                cli_commands,
-                tmux_layout,
-            )
-        })
-        .map(map_add_agent_report_from_contract)
-        .map_err(map_coordination_error)?;
-    // Only sync snapshots on success — cleanup_add_agent_failure may have
-    // removed the member, so syncing after failure throws "not found" and
-    // masks the actual pipeline error.
-    if report.failed_step.is_none() {
-        if let Some(db) = db {
-            sync_member_snapshot_after_change(state, db, &report.team_name, &report.member_name)
-                .map_err(map_coordination_error)?;
-        }
-        sync_active_team_projects_after_change(state, &report.team_name)
-            .map_err(map_coordination_error)?;
-    }
-    emit_progress_events(add_agent_progress_events(&report), emit);
-    Ok(report)
-}
-
-fn coordination_resume_member_internal(
-    state: &CoordinationState,
-    db: Option<&DbState>,
-    request: ResumeMemberRequest,
-    cli_commands: &CliCommandSettings,
-    tmux_layout: &str,
-    mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
-) -> Result<ResumeAgentReport, String> {
-    validate_non_empty("team_name", &request.team_name)?;
-    validate_non_empty("member_name", &request.member_name)?;
-    let contract_request = map_resume_member_request_to_contract(&request);
-    let mut emit_resume_progress = |_: &str,
-                                    _: usize,
-                                    _: usize,
-                                    stage: MemberActivationStage,
-                                    status: StepStatus,
-                                    message: Option<String>| {
-        let event =
-            resume_member_progress_event_for_stage(&request.team_name, stage, status, message);
-        emit_progress_event(event, &mut emit);
-    };
-    let report = state
-        .with_orchestrator(|orchestrator| {
-            orchestrator.resume_member_with_cli_commands_and_layout_and_progress(
-                &contract_request,
-                cli_commands,
-                tmux_layout,
-                1,
-                1,
-                Some(&mut emit_resume_progress),
-            )
-        })
-        .map(map_resume_agent_report_from_contract)
-        .map_err(map_coordination_error)?;
-    if let Some(db) = db {
-        sync_member_snapshot_after_change(state, db, &report.team_name, &report.member_name)
-            .map_err(map_coordination_error)?;
-    }
-    sync_active_team_projects_after_change(state, &report.team_name)
-        .map_err(map_coordination_error)?;
-    Ok(report)
 }
 
 fn coordination_resume_team_internal(
@@ -1326,57 +1560,6 @@ fn coordination_add_member_impl(
             orchestrator.add_member(&team_name, member)
         })
         .map_err(map_coordination_error)
-}
-
-fn coordination_remove_member_impl(
-    state: &CoordinationState,
-    team_name: String,
-    member_name: String,
-) -> Result<RemoveAgentReport, String> {
-    validate_non_empty("team_name", &team_name)?;
-    validate_non_empty("member_name", &member_name)?;
-    let result = state
-        .with_orchestrator(|orchestrator| {
-            orchestrator.remove_member(&team_name, &member_name, None)
-        })
-        .map_err(map_coordination_error)?;
-    if result.removed {
-        sync_active_team_projects_after_change(state, &result.team_name)
-            .map_err(map_coordination_error)?;
-    }
-
-    let steps = result
-        .steps
-        .into_iter()
-        .map(|step| StepProgress {
-            step: step.step,
-            status: if step.success {
-                StepStatus::Succeeded
-            } else {
-                StepStatus::Failed
-            },
-            message: step.message,
-        })
-        .collect::<Vec<_>>();
-
-    let warning_count = result.warnings.len();
-    let message = if warning_count == 0 {
-        "member removed".to_string()
-    } else {
-        format!(
-            "member removed with {warning_count} warning{}",
-            if warning_count == 1 { "" } else { "s" }
-        )
-    };
-
-    Ok(RemoveAgentReport {
-        team_name: result.team_name,
-        member_name: result.member_name,
-        removed: result.removed,
-        message,
-        steps,
-        warnings: result.warnings,
-    })
 }
 
 fn coordination_list_teams_impl(

@@ -39,6 +39,13 @@ pub(super) fn validate_initialize_request_fields(
     Ok(())
 }
 
+pub(super) fn validate_add_agent_request_fields(request: &AddAgentRequest) -> Result<(), String> {
+    validate_non_empty("team_name", &request.team_name)?;
+    validate_non_empty("agent.name", &request.agent.name)?;
+    validate_non_empty("agent.project_id", &request.agent.project_id)?;
+    validate_non_empty("agent.cli_tool", &request.agent.cli_tool)
+}
+
 pub(super) fn map_lead_mode_to_contract(mode: LeadMode) -> contracts::LeadMode {
     match mode {
         LeadMode::AttachExisting => contracts::LeadMode::AttachExisting,
@@ -189,6 +196,23 @@ pub(super) fn map_resume_agent_report_from_contract(
         warnings: report.warnings,
         pane_id: report.pane_id,
         reused_pane: report.reused_pane,
+    }
+}
+
+pub(super) fn map_stop_member_report_from_contract(
+    report: contracts::StopMemberReport,
+) -> RemoveAgentReport {
+    RemoveAgentReport {
+        team_name: report.team_name,
+        member_name: report.member_name,
+        removed: report.removed,
+        message: report.message,
+        steps: report
+            .steps
+            .into_iter()
+            .map(map_step_progress_from_contract)
+            .collect(),
+        warnings: report.warnings,
     }
 }
 

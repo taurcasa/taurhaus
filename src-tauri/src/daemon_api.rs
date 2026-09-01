@@ -131,7 +131,13 @@ impl DaemonRpcSpan {
     }
 
     pub fn response(&self, status: &'static str) {
-        let level = if self.method == protocol::method::COORDINATION_INITIALIZE_STATUS {
+        let level = if matches!(
+            self.method.as_str(),
+            protocol::method::COORDINATION_INITIALIZE_STATUS
+                | protocol::method::COORDINATION_ADD_AGENT_STATUS
+                | protocol::method::COORDINATION_RESUME_MEMBER_STATUS
+                | protocol::method::COORDINATION_STOP_MEMBER_STATUS
+        ) {
             "debug"
         } else {
             "info"
@@ -248,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn initialize_status_poll_responses_are_debug_level() {
+    fn coordination_status_poll_responses_are_debug_level() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let dir = tempfile::TempDir::new().expect("temp dir");
@@ -256,22 +262,32 @@ mod tests {
         let state = LogFileState::new(log_path.clone()).expect("log state");
         install_global_sink(&state);
 
-        let request = protocol::DaemonRequest::new(
-            "r-init-poll",
+        let methods = [
             protocol::method::COORDINATION_INITIALIZE_STATUS,
-            Value::Null,
-        );
-        let span = DaemonRpcSpan::start(&request, 0);
-        span.response("ok");
+            protocol::method::COORDINATION_ADD_AGENT_STATUS,
+            protocol::method::COORDINATION_RESUME_MEMBER_STATUS,
+            protocol::method::COORDINATION_STOP_MEMBER_STATUS,
+        ];
+        for (index, method) in methods.iter().enumerate() {
+            let request = protocol::DaemonRequest::new(
+                format!("r-coordination-poll-{index}"),
+                method,
+                Value::Null,
+            );
+            let span = DaemonRpcSpan::start(&request, 0);
+            span.response("ok");
+        }
 
-        let lines = wait_for_lines(&log_path, 2);
-        let response = lines
+        let lines = wait_for_lines(&log_path, methods.len() * 2);
+        let responses = lines
             .iter()
             .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("valid json"))
-            .find(|value| value["event"] == "daemon.rpc.response")
-            .expect("response event");
-        assert_eq!(response["method"], "coordination.initialize_status");
-        assert_eq!(response["level"], "DEBUG");
+            .filter(|value| value["event"] == "daemon.rpc.response")
+            .collect::<Vec<_>>();
+        assert_eq!(responses.len(), methods.len());
+        for response in responses {
+            assert_eq!(response["level"], "DEBUG", "{response}");
+        }
     }
 
     #[test]

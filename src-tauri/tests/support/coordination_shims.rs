@@ -179,6 +179,101 @@ pub mod daemon {
         }
     }
 
+    pub mod member_runs {
+        use crate::coordination::requests::{
+            AddAgentReport, AddAgentRequest, ResumeAgentReport, ResumeMemberRequest, StepProgress,
+            StopMemberReport, StopMemberRequest,
+        };
+        use crate::coordination::state::CoordinationState;
+        use crate::models::CliCommandSettings;
+
+        pub(crate) struct ResumeMemberProgress {
+            pub(crate) stage: crate::coordination::requests::MemberActivationStage,
+            pub(crate) status: crate::coordination::requests::StepStatus,
+            pub(crate) message: Option<String>,
+        }
+
+        pub(crate) fn execute_add_agent_pipeline(
+            state: &CoordinationState,
+            request: &AddAgentRequest,
+            cli_commands: &CliCommandSettings,
+            tmux_layout: &str,
+        ) -> Result<AddAgentReport, crate::coordination::errors::CoordinationError> {
+            state.with_orchestrator(|orchestrator| {
+                orchestrator.add_agent_to_team_with_cli_commands_and_layout(
+                    request,
+                    cli_commands,
+                    tmux_layout,
+                )
+            })
+        }
+
+        pub(crate) fn execute_resume_member_pipeline(
+            state: &CoordinationState,
+            request: &ResumeMemberRequest,
+            cli_commands: &CliCommandSettings,
+            tmux_layout: &str,
+            mut emit: Option<&mut dyn FnMut(ResumeMemberProgress)>,
+        ) -> Result<ResumeAgentReport, crate::coordination::errors::CoordinationError> {
+            state.with_orchestrator(|orchestrator| {
+                orchestrator.resume_member_with_cli_commands_and_layout_and_progress(
+                    request,
+                    cli_commands,
+                    tmux_layout,
+                    1,
+                    1,
+                    Some(&mut |_, _, _, stage, status, message| {
+                        if let Some(emit) = emit.as_deref_mut() {
+                            emit(ResumeMemberProgress {
+                                stage,
+                                status,
+                                message,
+                            });
+                        }
+                    }),
+                )
+            })
+        }
+
+        pub(crate) fn execute_stop_member_pipeline(
+            state: &CoordinationState,
+            request: &StopMemberRequest,
+        ) -> Result<StopMemberReport, crate::coordination::errors::CoordinationError> {
+            let result = state.with_orchestrator(|orchestrator| {
+                orchestrator.remove_member(&request.team_name, &request.member_name, None)
+            })?;
+            let steps = result
+                .steps
+                .into_iter()
+                .map(|step| StepProgress {
+                    step: step.step,
+                    status: if step.success {
+                        crate::coordination::requests::StepStatus::Succeeded
+                    } else {
+                        crate::coordination::requests::StepStatus::Failed
+                    },
+                    message: step.message,
+                })
+                .collect();
+            let warning_count = result.warnings.len();
+            Ok(StopMemberReport {
+                team_name: result.team_name,
+                member_name: result.member_name,
+                removed: result.removed,
+                message: if warning_count == 0 {
+                    "member removed".to_string()
+                } else {
+                    format!(
+                        "member removed with {warning_count} warning{}",
+                        if warning_count == 1 { "" } else { "s" }
+                    )
+                },
+                steps,
+                warnings: result.warnings,
+            })
+        }
+    }
+
     pub mod protocol {
         use serde::{Deserialize, Serialize};
 
@@ -187,6 +282,12 @@ pub mod daemon {
         pub mod method {
             pub const COORDINATION_INITIALIZE_TEAM: &str = "coordination.initialize_team";
             pub const COORDINATION_INITIALIZE_STATUS: &str = "coordination.initialize_status";
+            pub const COORDINATION_ADD_AGENT: &str = "coordination.add_agent";
+            pub const COORDINATION_ADD_AGENT_STATUS: &str = "coordination.add_agent_status";
+            pub const COORDINATION_RESUME_MEMBER: &str = "coordination.resume_member";
+            pub const COORDINATION_RESUME_MEMBER_STATUS: &str = "coordination.resume_member_status";
+            pub const COORDINATION_STOP_MEMBER: &str = "coordination.stop_member";
+            pub const COORDINATION_STOP_MEMBER_STATUS: &str = "coordination.stop_member_status";
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -225,6 +326,103 @@ pub mod daemon {
             pub run_id: String,
             pub steps: Vec<crate::coordination::requests::StepProgress>,
             pub outcome: CoordinationInitializeOutcome,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationAddAgentParams {
+            pub request: crate::coordination::requests::AddAgentRequest,
+            pub cli_commands: crate::models::CliCommandSettings,
+            pub tmux_layout: String,
+            #[serde(default)]
+            pub operational_snapshot:
+                Option<crate::coordination::stores::OperationalContextSnapshot>,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationAddAgentAccepted {
+            pub run_id: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        #[serde(rename_all = "snake_case", tag = "status")]
+        pub enum CoordinationAddAgentOutcome {
+            Running,
+            Completed {
+                report: crate::coordination::requests::AddAgentReport,
+            },
+            Failed {
+                error: String,
+            },
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationAddAgentStatus {
+            pub run_id: String,
+            pub steps: Vec<crate::coordination::requests::StepProgress>,
+            pub outcome: CoordinationAddAgentOutcome,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationResumeMemberParams {
+            pub request: crate::coordination::requests::ResumeMemberRequest,
+            pub cli_commands: crate::models::CliCommandSettings,
+            pub tmux_layout: String,
+            #[serde(default)]
+            pub operational_snapshot:
+                Option<crate::coordination::stores::OperationalContextSnapshot>,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationResumeMemberAccepted {
+            pub run_id: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        #[serde(rename_all = "snake_case", tag = "status")]
+        pub enum CoordinationResumeMemberOutcome {
+            Running,
+            Completed {
+                report: crate::coordination::requests::ResumeAgentReport,
+            },
+            Failed {
+                error: String,
+            },
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationResumeMemberStatus {
+            pub run_id: String,
+            pub steps: Vec<crate::coordination::requests::StepProgress>,
+            pub outcome: CoordinationResumeMemberOutcome,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationStopMemberParams {
+            pub request: crate::coordination::requests::StopMemberRequest,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationStopMemberAccepted {
+            pub run_id: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        #[serde(rename_all = "snake_case", tag = "status")]
+        pub enum CoordinationStopMemberOutcome {
+            Running,
+            Completed {
+                report: crate::coordination::requests::StopMemberReport,
+            },
+            Failed {
+                error: String,
+            },
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationStopMemberStatus {
+            pub run_id: String,
+            pub steps: Vec<crate::coordination::requests::StepProgress>,
+            pub outcome: CoordinationStopMemberOutcome,
         }
     }
 }
