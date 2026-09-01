@@ -2,6 +2,16 @@ use super::*;
 
 use crate::session_scanner::cli_tool::all;
 
+// Regression: 6fe0aa3 selected the current process on non-Windows hosts, so
+// app and daemon hook reconciliation rewrote the script back and forth.
+#[test]
+fn compact_hook_writers_share_the_daemon_executable_on_every_platform() {
+    assert_eq!(
+        compact_hook_executable().expect("compact hook executable"),
+        crate::provider::platform_paths::PlatformPaths::daemon_binary_path()
+    );
+}
+
 // Regression: 6fe0aa3 installed the Codex compact hook without checking the
 // installed CLI, even though the hook contract starts at Codex 0.147.
 #[test]
@@ -368,10 +378,10 @@ fn an_unknown_agy_version_leaves_an_installed_hook_alone() {
 // one global file from the operated team alone. A non-Codex team operation
 // therefore uninstalled the hook while another team's Codex member was still
 // live, and that member silently lost compaction reinjection for the rest of
-// its session. `commands/coordination.rs` has exactly four managed-launch entry
-// points and all four are affected, so this module pins both halves: each
-// site's own `has_codex` derivation run through the roster-wide reconciler
-// leaves a live member's hook alone, and each site is actually wired to it.
+// its session. Coordination has exactly four managed-launch entry points and
+// all four are affected, so this module pins both halves: each site's own
+// `has_codex` derivation run through the roster-wide reconciler leaves a live
+// member's hook alone, and each app- or daemon-owned site is wired to it.
 mod managed_launch_sites {
     use super::*;
 
@@ -509,6 +519,13 @@ mod managed_launch_sites {
         .expect("commands/coordination.rs is readable")
     }
 
+    fn daemon_initialize_source() -> String {
+        std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/daemon/initialize_runs.rs"),
+        )
+        .expect("daemon/initialize_runs.rs is readable")
+    }
+
     /// The body of one top-level `fn <name>`, up to its closing brace in
     /// column 0.
     fn function_body<'a>(source: &'a str, name: &str) -> &'a str {
@@ -529,6 +546,7 @@ mod managed_launch_sites {
 
         let offenders: Vec<&str> = LAUNCH_SITES
             .into_iter()
+            .filter(|site| *site != "coordination_initialize_team")
             .filter(|site| {
                 let body = function_body(&source, site);
                 !body.contains("reconcile_codex_before_managed_launch(state.teams_dir(),")
@@ -542,8 +560,22 @@ mod managed_launch_sites {
 
         let shared = function_body(&source, "reconcile_codex_before_managed_launch");
         assert!(
-            shared.contains("terminal_settings::reconcile_codex_hook_for_managed_launch("),
+            shared.contains("terminal_settings::managed_codex_hook_trust_for_launch("),
             "the shared launch helper must call the roster-wide reconciler"
         );
+
+        let daemon_source = daemon_initialize_source();
+        let daemon_prepare = function_body(&daemon_source, "prepare_daemon_launch_inputs");
+        assert!(
+            daemon_prepare.contains("terminal_settings::managed_codex_hook_trust_for_launch("),
+            "daemon-owned initialization must call the roster-wide reconciler locally"
+        );
+        let initialize_command = function_body(&source, "coordination_initialize_team");
+        assert!(
+            initialize_command.contains("initialize_team_through_daemon("),
+            "the app-owned initialize entry point must route to the daemon host"
+        );
+        let daemon_client = function_body(&source, "initialize_team_through_daemon_with");
+        assert!(daemon_client.contains("COORDINATION_INITIALIZE_TEAM"));
     }
 }

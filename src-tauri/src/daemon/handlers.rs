@@ -29,6 +29,8 @@ pub(crate) fn dispatch(
     writer: &Arc<Mutex<TcpStream>>,
     watch_runtime: &mut WatchRuntime,
     project_task_scan_cache: &ProjectTaskScanCacheState,
+    #[cfg(feature = "mesh-bridged-backend")]
+    initialize_service: &crate::daemon::initialize_runs::InitializeTeamService,
 ) -> DaemonResponse {
     tracing::debug!(method = %request.method, id = %request.id, "Received request");
     match request.method.as_str() {
@@ -89,10 +91,56 @@ pub(crate) fn dispatch(
             handle_list_workflow_runs(&request.id, &request.params)
         }
         protocol::method::GET_WORKFLOW_RUN => handle_get_workflow_run(&request.id, &request.params),
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_INITIALIZE_TEAM => {
+            handle_coordination_initialize_team(&request.id, &request.params, initialize_service)
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_INITIALIZE_STATUS => {
+            handle_coordination_initialize_status(&request.id, &request.params, initialize_service)
+        }
         _ => DaemonResponse::err(
             &request.id,
             "UNKNOWN_METHOD",
             format!("Unknown method: {}", request.method),
+        ),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_initialize_team(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::initialize_runs::InitializeTeamService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationInitializeParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.start(params) {
+        Ok(run_id) => DaemonResponse::ok(id, protocol::CoordinationInitializeAccepted { run_id }),
+        Err(error) => DaemonResponse::err(id, "INITIALIZE_START_FAILED", error),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_initialize_status(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::initialize_runs::InitializeTeamService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationInitializeStatusParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.status(&params.run_id) {
+        Some(status) => DaemonResponse::ok(id, status),
+        None => DaemonResponse::err(
+            id,
+            "INITIALIZE_RUN_NOT_FOUND",
+            format!("team initialization run '{}' was not found", params.run_id),
         ),
     }
 }

@@ -19,12 +19,12 @@ pub(crate) struct DeadlineScheduler {
 }
 
 impl DeadlineScheduler {
-    pub(crate) fn start(state: CoordinationState, shutdown: Arc<AtomicBool>) -> Self {
+    pub(crate) fn start(state: Arc<CoordinationState>, shutdown: Arc<AtomicBool>) -> Self {
         Self::start_with_cadence(state, shutdown, INITIAL_DELAY, CHECK_INTERVAL)
     }
 
     fn start_with_cadence(
-        state: CoordinationState,
+        state: Arc<CoordinationState>,
         shutdown: Arc<AtomicBool>,
         initial_delay: Duration,
         check_interval: Duration,
@@ -300,7 +300,7 @@ mod tests {
         );
         let shutdown = Arc::new(AtomicBool::new(false));
         let scheduler = DeadlineScheduler::start_with_cadence(
-            state,
+            Arc::new(state),
             shutdown.clone(),
             Duration::ZERO,
             Duration::from_millis(10),
@@ -351,7 +351,7 @@ mod tests {
         );
         let shutdown = Arc::new(AtomicBool::new(false));
         let scheduler = DeadlineScheduler::start_with_cadence(
-            state,
+            Arc::new(state),
             shutdown.clone(),
             Duration::ZERO,
             Duration::from_millis(10),
@@ -388,7 +388,7 @@ mod tests {
         );
         let shutdown = Arc::new(AtomicBool::new(false));
         let scheduler = DeadlineScheduler::start_with_cadence(
-            state,
+            Arc::new(state),
             shutdown.clone(),
             Duration::ZERO,
             Duration::from_millis(10),

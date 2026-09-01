@@ -12,6 +12,7 @@ use crate::coordination::stores::{
 };
 use crate::coordination::task_effort::AssignmentEffort;
 
+#[cfg(test)]
 pub fn sync_team_snapshots(
     teams_dir: &Path,
     conn: &Connection,
@@ -22,6 +23,71 @@ pub fn sync_team_snapshots(
         sync_member_snapshot(teams_dir, conn, team_name, &member.name)?;
     }
     Ok(())
+}
+
+/// Build the app-DB-derived snapshots carried by a daemon initialization
+/// intent. This performs no team-store writes; the daemon publishes the
+/// snapshots only after the pipeline succeeds.
+pub(crate) fn prepare_initialize_snapshots(
+    conn: &Connection,
+    request: &crate::coordination::requests::InitializeTeamRequest,
+) -> Result<Vec<OperationalContextSnapshot>, CoordinationError> {
+    std::iter::once(&request.lead)
+        .chain(request.agents.iter())
+        .map(|member| {
+            let tasks = load_project_tasks(conn, &member.project_id)?;
+            let (task, effort, task_state_changed_at) =
+                latest_owned_task_from_tasks(&tasks, &member.name);
+            Ok(build_member_snapshot(
+                None,
+                &request.team_name,
+                &member.name,
+                &member.project_id,
+                task,
+                effort,
+                task_state_changed_at,
+            ))
+        })
+        .collect()
+}
+
+/// Publish a pre-pipeline initialize snapshot without replacing context that
+/// was refreshed while the daemon pipeline was running.
+pub(crate) fn publish_initialize_snapshot(
+    teams_dir: &Path,
+    snapshot: &OperationalContextSnapshot,
+) -> Result<(), CoordinationError> {
+    let guard =
+        crate::coordination::stores::lock::acquire_team_lock(teams_dir, &snapshot.team_name)?;
+    let current = OperationalContextSnapshotStore::load(
+        teams_dir,
+        &snapshot.team_name,
+        &snapshot.member_name,
+    )?;
+    if current
+        .as_ref()
+        .is_some_and(|current| current.updated_at >= snapshot.updated_at)
+    {
+        return Ok(());
+    }
+
+    let mut candidate = snapshot.clone();
+    if let Some(current) = current {
+        candidate.version = current.version;
+        candidate.task = preserve_task_deadline_markers(Some(&current.task), candidate.task, None);
+        let task_effort = candidate.assignment_footer.task_effort.clone();
+        let task_effort_why = candidate.assignment_footer.task_effort_why.clone();
+        candidate.assignment_footer = current.assignment_footer;
+        candidate.assignment_footer.task_effort = task_effort;
+        candidate.assignment_footer.task_effort_why = task_effort_why;
+        candidate.ownership = current.ownership;
+        candidate.working_set = current.working_set;
+        if candidate.working_set.project_path.trim().is_empty() {
+            candidate.working_set.project_path = snapshot.working_set.project_path.clone();
+        }
+    }
+
+    OperationalContextSnapshotStore::save_locked(&guard, teams_dir, &candidate)
 }
 
 pub fn sync_member_snapshot(
@@ -465,6 +531,80 @@ mod tests {
         };
 
         TeamConfigStore::save(teams_dir, "architecture-final", &config).expect("save team");
+    }
+
+    #[test]
+    fn prepare_initialize_snapshots_derives_lead_and_agent_context_from_the_db() {
+        let (conn, _db) = test_db();
+        let mut lead_task = owned_task(
+            "lead-task",
+            "Coordinate rollout",
+            "in_progress",
+            Some(("high", "cross-project coordination")),
+        );
+        lead_task.project_path = "proj-lead".to_string();
+        lead_task.owner = Some("team-lead".to_string());
+        taurhaus_lib::db::task_queries::upsert_task(&conn, &lead_task).expect("upsert lead task");
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &owned_task(
+                "agent-task",
+                "Build frontend",
+                "pending",
+                Some(("medium", "bounded UI work")),
+            ),
+        )
+        .expect("upsert agent task");
+
+        let agent = |name: &str, project_id: &str| crate::coordination::requests::AgentDefinition {
+            name: name.to_string(),
+            cli_tool: "codex".to_string(),
+            model: "gpt-5.4".to_string(),
+            reasoning_effort: None,
+            project_id: project_id.to_string(),
+            description: None,
+            role_id: None,
+            role_name: None,
+            focus_area: None,
+            context_summary: None,
+            behavior_summary: None,
+            communication_style: None,
+            runtime_compact_summary: None,
+            instructions: None,
+            behavioral_contract: None,
+            quality_gates: None,
+            handoff_expectations: None,
+            definition_of_done: None,
+            phase_scope: None,
+            mode: None,
+            inherits_from: None,
+            required_artifacts: None,
+            capabilities: None,
+        };
+        let request = crate::coordination::requests::InitializeTeamRequest {
+            team_name: "architecture-final".to_string(),
+            team_description: None,
+            lead_mode: crate::coordination::requests::LeadMode::LaunchNew,
+            lead: agent("team-lead", "proj-lead"),
+            agents: vec![agent("frontend-dev", "proj-web")],
+        };
+
+        let snapshots = prepare_initialize_snapshots(&conn, &request).expect("prepare snapshots");
+        assert_eq!(snapshots.len(), 2);
+        let lead = snapshots
+            .iter()
+            .find(|snapshot| snapshot.member_name == "team-lead")
+            .expect("lead snapshot");
+        assert_eq!(lead.task.id, "lead-task");
+        assert_eq!(lead.assignment_footer.task_effort, "high");
+        assert_eq!(lead.working_set.project_path, "proj-lead");
+        let agent = snapshots
+            .iter()
+            .find(|snapshot| snapshot.member_name == "frontend-dev")
+            .expect("agent snapshot");
+        assert_eq!(agent.task.id, "agent-task");
+        assert_eq!(agent.assignment_footer.task_effort, "medium");
+        assert_eq!(agent.working_set.project_path, "proj-web");
     }
 
     #[test]

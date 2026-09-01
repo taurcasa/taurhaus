@@ -123,19 +123,29 @@ where
 
     let listener = bind_listener(config)?;
     #[cfg(feature = "mesh-bridged-backend")]
+    let coordination_state =
+        Arc::new(crate::coordination::state::CoordinationState::for_process_default());
+    #[cfg(feature = "mesh-bridged-backend")]
     let deadline_scheduler = schedule_deadlines.then(|| {
         // The hub above owns and refreshes the member-activity snapshots that
         // the shared deadline pass reads. Register only after that activity
         // source is live so the pass keeps its existing input seam.
         crate::daemon::deadline_scheduler::DeadlineScheduler::start(
-            crate::coordination::state::CoordinationState::for_process_default(),
+            coordination_state.clone(),
             shutdown.clone(),
         )
     });
     #[cfg(not(feature = "mesh-bridged-backend"))]
     let _ = schedule_deadlines;
 
-    let result = serve(config, listener, shutdown.clone(), provider);
+    let result = serve(
+        config,
+        listener,
+        shutdown.clone(),
+        provider,
+        #[cfg(feature = "mesh-bridged-backend")]
+        coordination_state,
+    );
     shutdown.store(true, Ordering::Relaxed);
     #[cfg(feature = "mesh-bridged-backend")]
     if let Some(scheduler) = deadline_scheduler {
@@ -175,12 +185,21 @@ fn serve(
     listener: TcpListener,
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
+    #[cfg(feature = "mesh-bridged-backend")] coordination_state: Arc<
+        crate::coordination::state::CoordinationState,
+    >,
 ) -> std::io::Result<()> {
     listener.set_nonblocking(true)?;
 
     let start_time = Instant::now();
     let last_activity = Arc::new(AtomicU64::new(epoch_secs()));
     let auth_token: Option<Arc<str>> = config.auth_token.as_deref().map(Arc::from);
+    #[cfg(feature = "mesh-bridged-backend")]
+    let initialize_service = Arc::new(
+        crate::daemon::initialize_runs::InitializeTeamService::for_process_default(
+            coordination_state,
+        ),
+    );
     let watch_registry =
         crate::daemon::watch::SharedDaemonWatchRegistry::new().map_err(std::io::Error::other)?;
 
@@ -220,8 +239,12 @@ fn serve(
                 let start = start_time;
                 let activity = last_activity.clone();
                 let token = auth_token.clone();
-                let provider = provider.clone();
-                let watch_registry = watch_registry.clone();
+                let services = ConnectionServices {
+                    provider: provider.clone(),
+                    watch_registry: watch_registry.clone(),
+                    #[cfg(feature = "mesh-bridged-backend")]
+                    initialize_service: initialize_service.clone(),
+                };
                 ACTIVE_CONNECTION_COUNT.fetch_add(1, Ordering::Relaxed);
                 mark_daemon_watch_telemetry_dirty();
                 std::thread::spawn(move || {
@@ -241,8 +264,7 @@ fn serve(
                         &shutdown_clone,
                         &activity,
                         token.as_deref(),
-                        provider,
-                        watch_registry,
+                        services,
                     ) {
                         tracing::warn!(error = %e, "connection handler error");
                     }
@@ -289,7 +311,14 @@ pub(crate) fn serve_for_test(
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
 ) -> std::io::Result<()> {
-    serve(config, listener, shutdown, provider)
+    serve(
+        config,
+        listener,
+        shutdown,
+        provider,
+        #[cfg(feature = "mesh-bridged-backend")]
+        Arc::new(crate::coordination::state::CoordinationState::for_process_default()),
+    )
 }
 
 #[cfg(test)]
@@ -408,14 +437,20 @@ fn drain_until_newline(reader: &mut BufReader<TcpStream>) {
 ///
 /// Uses a shared writer (`Arc<Mutex<TcpStream>>`) so that watch event callbacks
 /// can push events to the client on the same connection.
+struct ConnectionServices {
+    provider: Arc<dyn ProjectProvider>,
+    watch_registry: Arc<crate::daemon::watch::SharedDaemonWatchRegistry>,
+    #[cfg(feature = "mesh-bridged-backend")]
+    initialize_service: Arc<crate::daemon::initialize_runs::InitializeTeamService>,
+}
+
 fn handle_connection(
     stream: TcpStream,
     start_time: Instant,
     shutdown: &AtomicBool,
     last_activity: &AtomicU64,
     auth_token: Option<&str>,
-    provider: Arc<dyn ProjectProvider>,
-    watch_registry: Arc<crate::daemon::watch::SharedDaemonWatchRegistry>,
+    services: ConnectionServices,
 ) -> std::io::Result<()> {
     stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(Duration::from_secs(1)))?;
@@ -423,7 +458,8 @@ fn handle_connection(
     let mut reader = BufReader::new(stream.try_clone()?);
     let writer = Arc::new(Mutex::new(stream));
     let project_task_scan_cache = crate::daemon::handlers::ProjectTaskScanCacheState::default();
-    let mut watch_runtime = crate::daemon::watch::WatchRuntime::new(watch_registry);
+    let mut watch_runtime =
+        crate::daemon::watch::WatchRuntime::new(services.watch_registry.clone());
 
     loop {
         if shutdown.load(Ordering::Relaxed) {
@@ -477,11 +513,13 @@ fn handle_connection(
 
         let response = crate::daemon::handlers::dispatch(
             &request,
-            provider.as_ref(),
+            services.provider.as_ref(),
             start_time,
             &writer,
             &mut watch_runtime,
             &project_task_scan_cache,
+            #[cfg(feature = "mesh-bridged-backend")]
+            services.initialize_service.as_ref(),
         );
 
         write_locked(&writer, &response)?;
@@ -729,6 +767,22 @@ mod tests {
         assert!(
             reachable,
             "the daemon must bind before legacy cleanup completes"
+        );
+    }
+
+    // Regression: c3db92f5 built separate coordination states for deadline
+    // work and initialization, leaving their orchestrator locks independent.
+    #[test]
+    fn daemon_coordination_workers_share_one_process_state() {
+        let source = include_str!("server.rs");
+        let runtime = &source[..source.find("#[cfg(test)]").unwrap_or(source.len())];
+        assert_eq!(
+            runtime
+                .matches("CoordinationState::for_process_default()")
+                .count(),
+            1,
+            "the daemon must build exactly one process-wide coordination state \
+             so its workers share one orchestrator critical section"
         );
     }
 
@@ -1367,6 +1421,8 @@ mod tests {
             protocol::method::GIT_COMMIT_DIFF,
             protocol::method::WATCH,
             protocol::method::UNWATCH,
+            protocol::method::COORDINATION_INITIALIZE_TEAM,
+            protocol::method::COORDINATION_INITIALIZE_STATUS,
         ];
 
         for (idx, method) in methods.into_iter().enumerate() {

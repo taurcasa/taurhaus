@@ -42,7 +42,7 @@ Current implementation follows these rules:
 
 ## App and Daemon Protocol Pairing
 
-The current daemon protocol is **14** (`daemon/protocol.rs`). Protocol 11 (shipped in 0.7.0) replaced the Claude-only account methods with generic account discovery, usage refresh and tool-agnostic transcript lookup; 12 replaced the retired Google tool wire value with `agy`; 13 added `grok`; 14 retired the Codex compaction mode from the terminal-settings wire contract. Each changed the contract in both directions, so the app and daemon ship as a pair and reject a mismatched peer instead of attempting partial compatibility.
+The current daemon protocol is **16** (`daemon/protocol.rs`). Protocol 11 (shipped in 0.7.0) replaced the Claude-only account methods with generic account discovery, usage refresh and tool-agnostic transcript lookup; 12 replaced the retired Google tool wire value with `agy`; 13 added `grok`; 14 retired the Codex compaction mode from the terminal-settings wire contract; 15 moved the managed-task deadline pass into the daemon; and 16 moved team initialization into the daemon. Each incompatible contract or ownership change moves the app and daemon together, so they reject a mismatched peer instead of attempting partial compatibility.
 
 ## Storage Inventory
 

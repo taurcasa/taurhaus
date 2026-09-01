@@ -117,16 +117,6 @@ impl<'a> InitializeBatchStageProgressAdapter<'a> {
             canonical_stages: canonical_stages_for_operation_step("initialize_team", step),
         }
     }
-
-    pub(super) fn emit(
-        &self,
-        step: &str,
-        status: StepStatus,
-        message: Option<String>,
-        emit: &mut Option<&mut dyn FnMut(&StepProgressEvent)>,
-    ) {
-        emit_progress_event(self.event(step, status, message), emit);
-    }
 }
 
 fn progress_events_for_steps(
@@ -196,7 +186,7 @@ fn resume_member_stream_step_name(stage: MemberActivationStage) -> &'static str 
     stage.as_str()
 }
 
-fn emit_progress_log_event(event: &StepProgressEvent) {
+pub(crate) fn emit_progress_log_event(event: &StepProgressEvent) {
     let (level, event_name) = match event.progress.status {
         StepStatus::Pending => ("debug", "coordination.step.pending"),
         StepStatus::Running => ("info", "coordination.step.started"),

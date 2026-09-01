@@ -347,7 +347,7 @@ pub(crate) fn apply_team_resume_launch_base_resolution(
     }
 }
 
-fn apply_team_account_selector_dirs(
+pub(crate) fn apply_team_account_selector_dirs(
     commands: &mut crate::models::CliCommandSettings,
     tools: impl IntoIterator<Item = CliTool>,
 ) {
@@ -356,7 +356,7 @@ fn apply_team_account_selector_dirs(
     });
 }
 
-fn apply_team_account_selector_dirs_with(
+pub(crate) fn apply_team_account_selector_dirs_with(
     commands: &mut crate::models::CliCommandSettings,
     tools: impl IntoIterator<Item = CliTool>,
     mut tool_home: impl FnMut(CliTool) -> std::path::PathBuf,
@@ -374,7 +374,7 @@ fn apply_team_account_selector_dirs_with(
     }
 }
 
-fn apply_team_launch_base_resolutions_with(
+pub(crate) fn apply_team_launch_base_resolutions_with(
     commands: &mut crate::models::CliCommandSettings,
     tools: impl IntoIterator<Item = CliTool>,
     mut resolve: impl FnMut(&str, CliTool) -> (ResolvedBase, bool),

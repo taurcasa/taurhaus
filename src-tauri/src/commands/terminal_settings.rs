@@ -98,6 +98,41 @@ pub(crate) fn apply_managed_codex_launch_inputs(
     }
 }
 
+pub(crate) fn managed_codex_hook_trust_for_launch(
+    teams_dir: &std::path::Path,
+    has_managed_codex: bool,
+) -> bool {
+    match reconcile_codex_hook_for_managed_launch(teams_dir, has_managed_codex) {
+        Ok(_) => {
+            has_managed_codex
+                && crate::coordination::compact_hook::codex_compact_hook_is_installed()
+        }
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "Codex compact hook reconciliation degraded; continuing managed launch"
+            );
+            let mut fields = serde_json::Map::new();
+            fields.insert(
+                "tool".to_string(),
+                serde_json::Value::String("codex".to_string()),
+            );
+            fields.insert(
+                "error.message".to_string(),
+                serde_json::Value::String(crate::errors::sanitize_error(&error.to_string())),
+            );
+            crate::commands::logging::emit_global(
+                "warn",
+                "coordination",
+                "compaction.codex_hook.degraded",
+                Some("Managed launch continued without Codex hook trust bypass".to_string()),
+                fields,
+            );
+            false
+        }
+    }
+}
+
 fn apply_managed_account_selector(
     cli_commands: &mut crate::models::CliCommandSettings,
     enabled: bool,
@@ -458,14 +493,7 @@ pub(crate) fn reconcile_grok_hooks_at(
 }
 
 fn compact_hook_executable() -> Result<std::path::PathBuf, CoordinationError> {
-    if cfg!(target_os = "windows") {
-        return Ok(PlatformPaths::daemon_binary_path());
-    }
-    std::env::current_exe().map_err(|error| {
-        CoordinationError::Backend(format!(
-            "failed to resolve taurhaus executable for Codex compact hook: {error}"
-        ))
-    })
+    Ok(PlatformPaths::daemon_binary_path())
 }
 
 #[cfg(test)]
