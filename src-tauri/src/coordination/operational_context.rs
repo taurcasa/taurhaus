@@ -50,6 +50,45 @@ pub(crate) fn prepare_initialize_snapshots(
         .collect()
 }
 
+/// Publish a pre-pipeline initialize snapshot without replacing context that
+/// was refreshed while the daemon pipeline was running.
+pub(crate) fn publish_initialize_snapshot(
+    teams_dir: &Path,
+    snapshot: &OperationalContextSnapshot,
+) -> Result<(), CoordinationError> {
+    let guard =
+        crate::coordination::stores::lock::acquire_team_lock(teams_dir, &snapshot.team_name)?;
+    let current = OperationalContextSnapshotStore::load(
+        teams_dir,
+        &snapshot.team_name,
+        &snapshot.member_name,
+    )?;
+    if current
+        .as_ref()
+        .is_some_and(|current| current.updated_at >= snapshot.updated_at)
+    {
+        return Ok(());
+    }
+
+    let mut candidate = snapshot.clone();
+    if let Some(current) = current {
+        candidate.version = current.version;
+        candidate.task = preserve_task_deadline_markers(Some(&current.task), candidate.task, None);
+        let task_effort = candidate.assignment_footer.task_effort.clone();
+        let task_effort_why = candidate.assignment_footer.task_effort_why.clone();
+        candidate.assignment_footer = current.assignment_footer;
+        candidate.assignment_footer.task_effort = task_effort;
+        candidate.assignment_footer.task_effort_why = task_effort_why;
+        candidate.ownership = current.ownership;
+        candidate.working_set = current.working_set;
+        if candidate.working_set.project_path.trim().is_empty() {
+            candidate.working_set.project_path = snapshot.working_set.project_path.clone();
+        }
+    }
+
+    OperationalContextSnapshotStore::save_locked(&guard, teams_dir, &candidate)
+}
+
 pub fn sync_member_snapshot(
     teams_dir: &Path,
     conn: &Connection,

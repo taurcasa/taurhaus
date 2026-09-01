@@ -285,7 +285,7 @@ fn finalize_initialize_state(
                 ),
             ));
         }
-        crate::coordination::stores::OperationalContextSnapshotStore::save(teams_dir, snapshot)?;
+        crate::coordination::operational_context::publish_initialize_snapshot(teams_dir, snapshot)?;
     }
     let project_paths = config
         .members
@@ -696,6 +696,69 @@ mod tests {
             call,
             RuntimeCall::JoinMesh { team_name, .. } if team_name == "daemon-init"
         )));
+    }
+
+    // Regression: 3f8b44ae unconditionally published the pre-pipeline snapshot,
+    // overwriting any fresher operational context written while init ran.
+    #[test]
+    fn initialize_finalization_preserves_a_newer_operational_snapshot() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let teams_dir = temp.path().join("teams");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_mesh_join_teams_dir(&teams_dir);
+        let runtime_for_factory = runtime.clone();
+        let state = Arc::new(CoordinationState::with_components_and_runtime(
+            teams_dir.clone(),
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+            Arc::new(move || runtime_for_factory.clone() as Arc<dyn CoordinationRuntime>),
+        ));
+        let service = InitializeTeamService::with_state_and_prepare(
+            state,
+            Arc::new(|_request, _commands| {}),
+        );
+        let mut params = initialize_params(temp.path());
+        let prepared = params.operational_snapshots.remove(0);
+
+        let run_id = service.start(params).expect("daemon worker starts");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let status = service.status(&run_id).expect("run remains registered");
+            if status.outcome != InitializeRunOutcome::Running {
+                assert!(matches!(
+                    status.outcome,
+                    InitializeRunOutcome::Completed { .. }
+                ));
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "daemon initialize did not finish"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        let mut newer = prepared.clone();
+        newer.updated_at = prepared.updated_at + chrono::Duration::seconds(1);
+        newer.working_set.focal_files = vec!["src/current.rs".to_string()];
+        newer.ownership.override_allowed = true;
+        crate::coordination::stores::OperationalContextSnapshotStore::save(&teams_dir, &newer)
+            .expect("save newer snapshot");
+
+        super::finalize_initialize_state(&teams_dir, "daemon-init", &[prepared])
+            .expect("finalize initialization state");
+
+        let saved = crate::coordination::stores::OperationalContextSnapshotStore::load(
+            &teams_dir,
+            "daemon-init",
+            "builder",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+        assert_eq!(saved.working_set.focal_files, vec!["src/current.rs"]);
+        assert!(saved.ownership.override_allowed);
     }
 
     #[test]
