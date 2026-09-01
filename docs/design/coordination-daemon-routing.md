@@ -1,6 +1,6 @@
 # Coordination Through the Daemon
 
-Status: **in progress** (operator decision 2026-09-01: "design now, build immediately"). The deadline pass is daemon-owned at protocol 15, and the initialize-only B2 slice is daemon-owned at protocol 16. Add, resume, stop, self-heal, effort, and the B3 writer boundary remain future slices.
+Status: **in progress** (operator decision 2026-09-01: "design now, build immediately"). The deadline pass is daemon-owned at protocol 15, initialization at protocol 16, and add/resume/stop at protocol 17. Every interactive pipeline is now daemon-owned; self-heal, effort, and the B3 writer boundary remain future slices.
 
 ## The problem, from the field
 
