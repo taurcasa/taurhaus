@@ -117,17 +117,6 @@ impl<'a> InitializeBatchStageProgressAdapter<'a> {
             canonical_stages: canonical_stages_for_operation_step("initialize_team", step),
         }
     }
-
-    #[cfg(test)]
-    pub(super) fn emit(
-        &self,
-        step: &str,
-        status: StepStatus,
-        message: Option<String>,
-        emit: &mut Option<&mut dyn FnMut(&StepProgressEvent)>,
-    ) {
-        emit_progress_event(self.event(step, status, message), emit);
-    }
 }
 
 fn progress_events_for_steps(

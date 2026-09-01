@@ -15,11 +15,48 @@ use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBac
 use crate::coordination::domain::{HealthState, MemberRole};
 use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::{
-    ActiveProjectTeamStore, MemberRuntimeStore, OperationalContextSnapshotStore, TeamConfigStore,
-};
+use crate::coordination::stores::{ActiveProjectTeamStore, MemberRuntimeStore, TeamConfigStore};
 use crate::daemon::protocol;
 use taurhaus_lib::ProviderState;
+
+/// Test-only team setup fixture. Production initialization is daemon-owned;
+/// this directly hosts that pipeline only to prepare state for command tests.
+fn initialize_team_pipeline_test_fixture(
+    state: &CoordinationState,
+    _db: Option<&DbState>,
+    request: InitializeTeamRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
+    mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
+) -> Result<InitializeReport, String> {
+    let request = hydrate_initialize_request_role_metadata(state, request)?;
+    validate_initialize_request_fields(&request)?;
+    let contract_request = map_initialize_request_to_contract(&request);
+    let adapter = InitializeBatchStageProgressAdapter::new(&request.team_name);
+    let report = crate::daemon::initialize_runs::execute_initialize_pipeline(
+        state,
+        &contract_request,
+        cli_commands,
+        tmux_layout,
+        Some(&mut |progress| {
+            if let Some(emit) = emit.as_deref_mut() {
+                emit(&adapter.event(&progress.step, progress.status, progress.message));
+            }
+        }),
+    )
+    .map(map_initialize_report_from_contract)
+    .map_err(map_coordination_error)?;
+    if report.failed_step.is_none()
+        && report
+            .succeeded_steps
+            .iter()
+            .any(|step| step == "create_team")
+    {
+        sync_active_team_projects_after_change(state, &report.team_name)
+            .map_err(map_coordination_error)?;
+    }
+    Ok(report)
+}
 
 // Regression: 5cebfef8 installed the initialize pipeline behind the desktop
 // command's process-local orchestrator, so Windows mutated team state across
@@ -30,6 +67,8 @@ fn initialize_command_has_no_local_pipeline_execution_path() {
     assert!(
         !source.contains("orchestrator.initialize_team_with_cli_commands_and_layout_and_progress")
     );
+    assert!(!source.contains("execute_initialize_pipeline("));
+    assert!(!source.contains("initialize_team_pipeline_test_fixture"));
     assert!(source.contains("COORDINATION_INITIALIZE_TEAM"));
     assert!(source.contains("COORDINATION_INITIALIZE_STATUS"));
 }
@@ -739,13 +778,13 @@ fn feature_availability_reports_ready_when_required_tools_exist() {
 }
 
 #[test]
-fn initialize_command_test_seam_uses_the_daemon_pipeline_host() {
+fn initialize_test_fixture_uses_the_daemon_pipeline_host() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
     let (db, _db_file) = test_db_state();
     let request = sample_preflight_request();
 
-    let report = coordination_initialize_team_internal(
+    let report = initialize_team_pipeline_test_fixture(
         &state,
         Some(&db),
         request,
@@ -762,35 +801,6 @@ fn initialize_command_test_seam_uses_the_daemon_pipeline_host() {
 }
 
 #[test]
-fn initialize_writes_initial_operational_snapshots_for_members() {
-    let tmp = TempDir::new().expect("tempdir");
-    let state = test_state(tmp.path().to_path_buf());
-    let (db, _db_file) = test_db_state();
-
-    coordination_initialize_team_internal(
-        &state,
-        Some(&db),
-        sample_preflight_request(),
-        &crate::models::CliCommandSettings::default(),
-        DEFAULT_TMUX_LAYOUT,
-        None,
-    )
-    .expect("initialize should succeed");
-
-    let snapshot =
-        OperationalContextSnapshotStore::load(tmp.path(), "architecture-final", "frontend-dev")
-            .expect("load snapshot")
-            .expect("snapshot exists");
-
-    assert_eq!(snapshot.task.id, "");
-    assert_eq!(snapshot.task.subject, "");
-    assert_eq!(snapshot.task.status, "");
-    assert_eq!(snapshot.assignment_footer.execution_mode, "");
-    assert_eq!(snapshot.working_set.project_path, "proj-web");
-    assert!(snapshot.working_set.focal_files.is_empty());
-}
-
-#[test]
 fn initialize_progress_events_are_emitted_in_step_order() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
@@ -800,7 +810,7 @@ fn initialize_progress_events_are_emitted_in_step_order() {
     let mut emit = |event: &StepProgressEvent| {
         emitted.push(event.clone());
     };
-    let report = coordination_initialize_team_internal(
+    let report = initialize_team_pipeline_test_fixture(
         &state,
         None,
         request,
@@ -829,7 +839,7 @@ fn initialize_error_case_returns_structured_failed_step_report() {
     let mut request = sample_preflight_request();
     request.agents[0].name = request.lead.name.clone(); // duplicate name -> validation step failure
 
-    let report = coordination_initialize_team_internal(
+    let report = initialize_team_pipeline_test_fixture(
         &state,
         None,
         request,
@@ -868,7 +878,7 @@ fn initialize_failure_after_team_creation_does_not_get_rewritten_to_config_missi
     // Regression: when initialize failed after create_team, the command layer
     // still ran post-initialize config sync and overwrote the real failed step
     // with a raw "team config not found" error after cleanup deleted the team.
-    let report = coordination_initialize_team_internal(
+    let report = initialize_team_pipeline_test_fixture(
         &state,
         Some(&db),
         sample_preflight_request(),
@@ -957,7 +967,7 @@ fn reonboard_succeeds_for_existing_member() {
         }),
         Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
     );
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -1123,7 +1133,7 @@ fn resume_member_validates_empty_fields() {
 fn resume_member_ipc_returns_report_shape() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -1172,7 +1182,7 @@ fn resume_member_ipc_returns_report_shape() {
 fn resume_member_progress_events_are_emitted_from_canonical_member_stages() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -1253,7 +1263,7 @@ fn resume_team_validates_empty_team_name() {
 fn resume_team_ipc_returns_report_shape() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -1304,7 +1314,7 @@ fn resume_team_ipc_returns_report_shape() {
 fn resume_team_progress_events_are_emitted_per_member_stage() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -1636,7 +1646,7 @@ fn add_member_defaults_to_lead_project_path_instead_of_process_cwd() {
     let state = test_state(tmp.path().to_path_buf());
     let request = sample_preflight_request();
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         request,
@@ -1805,7 +1815,7 @@ fn list_teams_includes_lead_project_anchor() {
     let state = test_state(tmp.path().to_path_buf());
 
     let request = sample_preflight_request();
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         request,
@@ -1898,7 +1908,7 @@ fn project_mesh_snapshot_classifies_active_when_all_members_are_live() {
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -1922,7 +1932,7 @@ fn project_mesh_snapshot_classifies_degraded_when_live_and_offline_members_mix()
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -1972,7 +1982,7 @@ fn project_mesh_snapshot_classifies_cold_resume_when_all_members_are_offline() {
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -2019,7 +2029,7 @@ fn project_mesh_snapshot_uses_fast_snapshot_without_runtime_reconcile_calls() {
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -2082,7 +2092,7 @@ fn project_mesh_snapshot_returns_fast_team_snapshot_for_matching_project() {
     let state = test_state(tmp.path().to_path_buf());
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -2148,7 +2158,7 @@ fn project_mesh_snapshot_prefers_persisted_active_team_when_multiple_teams_match
 
     let mut old_request = sample_preflight_request();
     old_request.team_name = "towerhouse-product-team".to_string();
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         old_request,
@@ -2160,7 +2170,7 @@ fn project_mesh_snapshot_prefers_persisted_active_team_when_multiple_teams_match
 
     let mut active_request = sample_preflight_request();
     active_request.team_name = "taurhaus-team".to_string();
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         active_request,
@@ -2186,7 +2196,7 @@ fn project_mesh_snapshot_recovers_missing_active_team_mapping_from_runtime_signa
 
     let mut old_request = sample_preflight_request();
     old_request.team_name = "towerhouse-product-team".to_string();
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         old_request,
@@ -2198,7 +2208,7 @@ fn project_mesh_snapshot_recovers_missing_active_team_mapping_from_runtime_signa
 
     let mut active_request = sample_preflight_request();
     active_request.team_name = "taurhaus-team".to_string();
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         active_request,
@@ -2356,7 +2366,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
         ],
     };
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         request,
@@ -2568,7 +2578,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
         ],
     };
 
-    let report = coordination_initialize_team_internal(
+    let report = initialize_team_pipeline_test_fixture(
         &state,
         None,
         request,
@@ -2622,7 +2632,7 @@ fn project_mesh_snapshot_matches_windows_project_path_to_linux_team_config() {
     request.agents[0].project_id = "/mnt/c/Users/me/code/taurhaus".to_string();
     request.agents[1].project_id = "/home/user/projects/reviewer".to_string();
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         request,
@@ -2669,7 +2679,7 @@ fn project_mesh_snapshot_skips_missing_config_dirs_without_warning() {
     let state = test_state(tmp.path().to_path_buf());
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -3094,7 +3104,7 @@ fn project_mesh_snapshot_round_trip() {
 fn live_status_test_helper_invokes_live_status_impl() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -3128,7 +3138,7 @@ fn live_status_uses_lightweight_presence_reconcile_without_heavy_daemon_calls() 
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -3170,7 +3180,7 @@ fn live_status_provider_snapshot_yields_to_current_pane_loss() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -3534,7 +3544,7 @@ fn live_team_status_carries_the_member_runtime_session_id() {
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -3568,7 +3578,7 @@ fn live_team_status_carries_the_opaque_base_account_note() {
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -3613,7 +3623,7 @@ fn live_team_status_carries_the_task_effort_the_lead_asked_for() {
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -3657,7 +3667,7 @@ fn project_mesh_snapshot_carries_the_task_effort_the_lead_asked_for() {
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -3746,7 +3756,7 @@ fn project_mesh_snapshot_carries_the_member_runtime_session_id() {
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -3786,7 +3796,7 @@ fn live_team_status_carries_the_member_workflow_activity() {
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
 
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),
@@ -3873,7 +3883,7 @@ fn daemon_runtime_session(
 fn member_workflow_activity_prefers_the_daemon_hint_over_a_local_rescan() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
-    coordination_initialize_team_internal(
+    initialize_team_pipeline_test_fixture(
         &state,
         None,
         sample_preflight_request(),

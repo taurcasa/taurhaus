@@ -746,46 +746,6 @@ pub fn coordination_get_project_mesh_snapshot(
     result
 }
 
-#[cfg(test)]
-fn coordination_initialize_team_internal(
-    state: &CoordinationState,
-    db: Option<&DbState>,
-    request: InitializeTeamRequest,
-    cli_commands: &CliCommandSettings,
-    tmux_layout: &str,
-    mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
-) -> Result<InitializeReport, String> {
-    let request = hydrate_initialize_request_role_metadata(state, request)?;
-    validate_initialize_request_fields(&request)?;
-    let contract_request = map_initialize_request_to_contract(&request);
-    let report = crate::daemon::initialize_runs::execute_initialize_pipeline(
-        state,
-        &contract_request,
-        cli_commands,
-        tmux_layout,
-        Some(&mut |progress| {
-            let adapter = InitializeBatchStageProgressAdapter::new(&request.team_name);
-            adapter.emit(&progress.step, progress.status, progress.message, &mut emit);
-        }),
-    )
-    .map(map_initialize_report_from_contract)
-    .map_err(map_coordination_error)?;
-    let team_was_created = report
-        .succeeded_steps
-        .iter()
-        .any(|step| step == "create_team");
-    let initialize_succeeded = report.failed_step.is_none();
-    if team_was_created && initialize_succeeded {
-        if let Some(db) = db {
-            sync_team_snapshots_after_change(state, db, &report.team_name)
-                .map_err(map_coordination_error)?;
-        }
-        sync_active_team_projects_after_change(state, &report.team_name)
-            .map_err(map_coordination_error)?;
-    }
-    Ok(report)
-}
-
 fn coordination_add_agent_internal(
     state: &CoordinationState,
     db: Option<&DbState>,
