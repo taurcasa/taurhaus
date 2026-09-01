@@ -1,6 +1,6 @@
 # Coordination Through the Daemon
 
-Status: **approved direction** (operator decision 2026-09-01: "design now, build immediately"). This brief frames the milestone; the implementation plan and PR ledger follow once the lanes start.
+Status: **in progress** (operator decision 2026-09-01: "design now, build immediately"). The deadline pass is daemon-owned at protocol 15, and the initialize-only B2 slice is daemon-owned at protocol 16. Add, resume, stop, self-heal, effort, and the B3 writer boundary remain future slices.
 
 ## The problem, from the field
 
@@ -37,7 +37,7 @@ The round-3 move-aside/tolerant-reader machinery is **kept**, not reverted: it p
 
 - `PROTOCOL_VERSION` bump (14 → 15); app and daemon move in lockstep via the existing exact-match gate and repair flow.
 - New namespaced methods (`coordination.*`), each carrying its expectation (CAS semantics) even in phase B1 — the daemon validates under `flock` and returns typed conflict outcomes, mirroring today's `RuntimeCommitOutcome::Skipped` shapes.
-- **Open question (B2)**: step-progress delivery for interactive pipelines. Options: (a) poll a `run_id`-keyed status method (matches today's request/response daemon model; simplest), (b) push over the persistent connection alongside the session-snapshot channel (better UX, more machinery). Decide during B2 design, not before.
+- **B2 progress decision**: initialize uses a `run_id`-keyed in-memory registry and status polling. The app polls at roughly 500 ms and re-emits the existing Tauri progress event; the daemon retains terminal runs for a bounded TTL. Push progress remains a possible later optimization, not part of this slice.
 
 ## Testing strategy — closing the blind spot
 

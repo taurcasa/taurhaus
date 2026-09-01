@@ -4,7 +4,7 @@ The daemon is a companion process that handles filesystem access, process scanni
 
 ![Daemon Protocol](../images/daemon-protocol.jpg)
 
-> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 29 callable methods (30 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 15; the tables below are authoritative.
+> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 31 callable methods (32 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 16; the tables below are authoritative.
 
 ## Why a daemon
 
@@ -22,7 +22,7 @@ On every platform the daemon process hosts the single session hub: the app reads
 | Transport | TCP |
 | Default address | `127.0.0.1:17233` ([authoritative source](../../src-tauri/src/daemon/server.rs)) |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 13 (current) |
+| Protocol version | 16 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication
@@ -208,6 +208,15 @@ Both are additive methods added for the Windows split, where the journal and tra
 
 On Windows, config dirs and transcripts live inside WSL, so the daemon owns these reads. These methods replaced the Claude-only ones in protocol 11 (shipped with app 0.7.0); the older names are intentionally incompatible. `tool` is any registered harness — all four have an account provider, but only the three with an `account_selector` (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME`) can be switched; Antigravity returns one implicit account. `refresh_usage` answers `{"started": false}` for a tool with no usage provider (grok) and for a request inside the 5-second debounce (`refresh`, `daemon/usage_poller.rs:113-134`).
 
+### Coordination initialization (protocol 16)
+
+| Method | Params | Result | Description |
+|--------|--------|--------|-------------|
+| `coordination.initialize_team` | `{ request, cli_commands, tmux_layout, operational_snapshots[] }` | `{ run_id }` | Starts one self-contained initialization run. The daemon resolves host-local launch bases and account selectors before executing the shared pipeline. |
+| `coordination.initialize_status` | `{ run_id }` | `{ run_id, steps[], outcome }` | Returns cumulative pipeline steps and a `running`, `completed`, or `failed` outcome. Terminal records remain available for a bounded TTL. |
+
+The desktop command polls status at roughly 500 ms and re-emits the unchanged `coordination-step-progress` Tauri event contract. The run continues independently if the app stops polling.
+
 ### Session activity stream (app bridge)
 
 The daemon itself does not push `session_changed` TCP events. Instead, session activity uses versioned long-poll:
@@ -294,7 +303,7 @@ Managed Codex launches render the `notify` flag only when all four hold (`comman
 
 On connect, the app sends `ping` and checks `protocol_version` in the response. The gate is exact-match, not a floor: any version *different* from what the app expects (current: v15) is rejected, so a newer daemon is disconnected the same way an older one is, and the user is warned to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
 
-The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness (`daemon_lifecycle.rs`), and every reconnect confirms it before the daemon counts as connected — `DaemonProvider::reconnect_checked` is the gate the inline and manual paths use (runtime-snapshot IPC, task sync, the Start Daemon button), so reachability alone never adopts a daemon. A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use. v9 added `set_codex_compaction_mode` (retired again in v14); v10 added the scanner-blackout cursor; v11 replaced the Claude-only account methods with generic account methods (`list_accounts`, `project_transcript`, `refresh_usage`) and added `account_observations` to both session snapshot results; v12 replaced the retired Google value in the `CliTool` wire vocabulary with `agy`; v13 added `grok`; v14 removed `set_codex_compaction_mode` along with the Codex transcript compaction pipeline — the daemon no longer runs a compaction runtime and there is no owner election to switch; v15 moved the managed-task deadline pass into the daemon so app and daemon cannot pair with zero or double deadline execution. v12 and v13 are vocabulary-only changes, and they bump the version because either side decodes the other's tool value as `Unknown` — a session that silently loses its harness identity, not a method that fails loudly. The regression tests that pin this live in `daemon/protocol.rs` (`protocol_version_excludes_daemons_*`).
+The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness (`daemon_lifecycle.rs`), and every reconnect confirms it before the daemon counts as connected — `DaemonProvider::reconnect_checked` is the gate the inline and manual paths use (runtime-snapshot IPC, task sync, the Start Daemon button), so reachability alone never adopts a daemon. A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use. v9 added `set_codex_compaction_mode` (retired again in v14); v10 added the scanner-blackout cursor; v11 replaced the Claude-only account methods with generic account methods (`list_accounts`, `project_transcript`, `refresh_usage`) and added `account_observations` to both session snapshot results; v12 replaced the retired Google value in the `CliTool` wire vocabulary with `agy`; v13 added `grok`; v14 removed `set_codex_compaction_mode` along with the Codex transcript compaction pipeline — the daemon no longer runs a compaction runtime and there is no owner election to switch; v15 moved the managed-task deadline pass into the daemon so app and daemon cannot pair with zero or double deadline execution; v16 moved team initialization into the daemon and made the matching daemon methods mandatory for the app's only initialization path. v12 and v13 are vocabulary-only changes, and they bump the version because either side decodes the other's tool value as `Unknown` — a session that silently loses its harness identity, not a method that fails loudly. The regression tests that pin this live in `daemon/protocol.rs` (`protocol_version_excludes_daemons_*`).
 
 Separately, startup now validates that the connected daemon is serving from the current installed binary. A daemon still running from a replaced or deleted inode is terminated and restarted before Taurhaus keeps the connection.
 
