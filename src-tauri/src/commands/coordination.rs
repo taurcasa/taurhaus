@@ -20,7 +20,10 @@ mod request_normalization;
 mod state_sync;
 
 #[allow(unused_imports)]
-pub(crate) use progress::emit_progress_log_event;
+pub(crate) use progress::{
+    add_agent_progress_events, emit_progress_log_event, progress_events_for_steps,
+    resume_member_progress_event_for_stage,
+};
 
 pub use crate::commands::coordination_types::*;
 use crate::commands::lifecycle::IpcCommandSpan;

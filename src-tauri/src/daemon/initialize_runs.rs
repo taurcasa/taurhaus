@@ -1,12 +1,14 @@
-//! Daemon-owned lifecycle registry for asynchronous team initialization.
+//! Daemon-owned host for asynchronous team initialization.
 
-use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
 
 use crate::coordination::requests::{InitializeReport, StepProgress};
 use crate::coordination::state::CoordinationState;
+use crate::daemon::coordination_runs::{
+    prepare_daemon_launch_inputs_for_tools, CoordinationRunKind, CoordinationRunRegistry,
+    CoordinationRunReport, RunOutcome,
+};
 use crate::daemon::protocol::CoordinationInitializeParams;
 pub(crate) use crate::daemon::protocol::{
     CoordinationInitializeOutcome as InitializeRunOutcome,
@@ -15,153 +17,6 @@ pub(crate) use crate::daemon::protocol::{
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 
-pub(crate) const INITIALIZE_RUN_TTL: Duration = Duration::from_secs(10 * 60);
-
-#[derive(Debug)]
-struct InitializeRunRecord {
-    steps: Vec<StepProgress>,
-    outcome: InitializeRunOutcome,
-    terminal_at: Option<Instant>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct InitializeRunRegistry {
-    records: Arc<Mutex<HashMap<String, InitializeRunRecord>>>,
-    ttl: Duration,
-}
-
-impl Default for InitializeRunRegistry {
-    fn default() -> Self {
-        Self::with_ttl(INITIALIZE_RUN_TTL)
-    }
-}
-
-impl InitializeRunRegistry {
-    pub(crate) fn with_ttl(ttl: Duration) -> Self {
-        Self {
-            records: Arc::new(Mutex::new(HashMap::new())),
-            ttl,
-        }
-    }
-
-    pub(crate) fn start(&self) -> String {
-        self.start_at(Instant::now())
-    }
-
-    fn start_at(&self, now: Instant) -> String {
-        let run_id = format!("init_{}", uuid::Uuid::new_v4().simple());
-        let mut records = self
-            .records
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        Self::prune_locked(&mut records, self.ttl, now);
-        records.insert(
-            run_id.clone(),
-            InitializeRunRecord {
-                steps: Vec::new(),
-                outcome: InitializeRunOutcome::Running,
-                terminal_at: None,
-            },
-        );
-        run_id
-    }
-
-    pub(crate) fn record_step(&self, run_id: &str, step: StepProgress) -> Result<(), String> {
-        let mut records = self
-            .records
-            .lock()
-            .map_err(|_| "team initialization run registry mutex poisoned".to_string())?;
-        let record = records
-            .get_mut(run_id)
-            .ok_or_else(|| format!("team initialization run '{run_id}' was not found"))?;
-        if record.outcome != InitializeRunOutcome::Running {
-            return Err(format!(
-                "team initialization run '{run_id}' is already terminal"
-            ));
-        }
-        record.steps.push(step);
-        Ok(())
-    }
-
-    pub(crate) fn complete(&self, run_id: &str, report: InitializeReport) -> Result<(), String> {
-        self.complete_at(run_id, report, Instant::now())
-    }
-
-    fn complete_at(
-        &self,
-        run_id: &str,
-        report: InitializeReport,
-        now: Instant,
-    ) -> Result<(), String> {
-        self.finish_at(run_id, InitializeRunOutcome::Completed { report }, now)
-    }
-
-    pub(crate) fn fail(&self, run_id: &str, error: String) -> Result<(), String> {
-        self.finish_at(
-            run_id,
-            InitializeRunOutcome::Failed { error },
-            Instant::now(),
-        )
-    }
-
-    fn finish_at(
-        &self,
-        run_id: &str,
-        outcome: InitializeRunOutcome,
-        now: Instant,
-    ) -> Result<(), String> {
-        let mut records = self
-            .records
-            .lock()
-            .map_err(|_| "team initialization run registry mutex poisoned".to_string())?;
-        let record = records
-            .get_mut(run_id)
-            .ok_or_else(|| format!("team initialization run '{run_id}' was not found"))?;
-        if record.outcome != InitializeRunOutcome::Running {
-            return Err(format!(
-                "team initialization run '{run_id}' is already terminal"
-            ));
-        }
-        record.outcome = outcome;
-        record.terminal_at = Some(now);
-        Ok(())
-    }
-
-    pub(crate) fn status(&self, run_id: &str) -> Option<InitializeRunStatus> {
-        let mut records = self
-            .records
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        Self::prune_locked(&mut records, self.ttl, Instant::now());
-        records.get(run_id).map(|record| InitializeRunStatus {
-            run_id: run_id.to_string(),
-            steps: record.steps.clone(),
-            outcome: record.outcome.clone(),
-        })
-    }
-
-    #[cfg(test)]
-    fn prune_at(&self, now: Instant) {
-        let mut records = self
-            .records
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        Self::prune_locked(&mut records, self.ttl, now);
-    }
-
-    fn prune_locked(
-        records: &mut HashMap<String, InitializeRunRecord>,
-        ttl: Duration,
-        now: Instant,
-    ) {
-        records.retain(|_, record| {
-            record
-                .terminal_at
-                .is_none_or(|terminal_at| now.saturating_duration_since(terminal_at) <= ttl)
-        });
-    }
-}
-
 type PrepareLaunchInputs = dyn Fn(&crate::coordination::requests::InitializeTeamRequest, &mut CliCommandSettings)
     + Send
     + Sync;
@@ -169,16 +24,20 @@ type PrepareLaunchInputs = dyn Fn(&crate::coordination::requests::InitializeTeam
 /// Daemon-local host for the existing initialization pipeline.
 #[derive(Clone)]
 pub(crate) struct InitializeTeamService {
-    registry: InitializeRunRegistry,
+    registry: CoordinationRunRegistry,
     state: Arc<CoordinationState>,
     prepare_launch_inputs: Arc<PrepareLaunchInputs>,
 }
 
 impl InitializeTeamService {
-    pub(crate) fn for_process_default(state: Arc<CoordinationState>) -> Self {
+    pub(crate) fn for_process_default(
+        state: Arc<CoordinationState>,
+        registry: CoordinationRunRegistry,
+    ) -> Self {
         let teams_dir = state.teams_dir().clone();
         Self::with_state_and_prepare(
             state,
+            registry,
             Arc::new(move |request, commands| {
                 prepare_daemon_launch_inputs(&teams_dir, request, commands)
             }),
@@ -187,17 +46,18 @@ impl InitializeTeamService {
 
     fn with_state_and_prepare(
         state: Arc<CoordinationState>,
+        registry: CoordinationRunRegistry,
         prepare_launch_inputs: Arc<PrepareLaunchInputs>,
     ) -> Self {
         Self {
-            registry: InitializeRunRegistry::default(),
+            registry,
             state,
             prepare_launch_inputs,
         }
     }
 
     pub(crate) fn start(&self, params: CoordinationInitializeParams) -> Result<String, String> {
-        let run_id = self.registry.start();
+        let run_id = self.registry.start(CoordinationRunKind::InitializeTeam);
         let run_id_for_task = run_id.clone();
         let registry = self.registry.clone();
         let state = self.state.clone();
@@ -232,7 +92,10 @@ impl InitializeTeamService {
                         };
                         match finalize {
                             Ok(()) => {
-                                let _ = registry.complete(&run_id_for_task, report);
+                                let _ = registry.complete(
+                                    &run_id_for_task,
+                                    CoordinationRunReport::Initialize(report),
+                                );
                             }
                             Err(error) => {
                                 let _ = registry.fail(&run_id_for_task, error.to_string());
@@ -261,7 +124,23 @@ impl InitializeTeamService {
     }
 
     pub(crate) fn status(&self, run_id: &str) -> Option<InitializeRunStatus> {
-        self.registry.status(run_id)
+        let status = self.registry.status(run_id)?;
+        if status.kind != CoordinationRunKind::InitializeTeam {
+            return None;
+        }
+        let outcome = match status.outcome {
+            RunOutcome::Running => InitializeRunOutcome::Running,
+            RunOutcome::Completed {
+                report: CoordinationRunReport::Initialize(report),
+            } => InitializeRunOutcome::Completed { report },
+            RunOutcome::Failed { error } => InitializeRunOutcome::Failed { error },
+            RunOutcome::Completed { .. } => return None,
+        };
+        Some(InitializeRunStatus {
+            run_id: status.run_id,
+            steps: status.steps,
+            outcome,
+        })
     }
 }
 
@@ -332,34 +211,11 @@ fn prepare_daemon_launch_inputs(
                 .capabilities
                 .hook_trust
         });
-    let codex_bypass_hook_trust =
-        crate::commands::terminal_settings::managed_codex_hook_trust_for_launch(
-            teams_dir, has_codex,
-        );
-    crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
-        commands,
-        has_codex,
-        codex_bypass_hook_trust,
-    );
-
-    let probe = crate::session_scanner::launch_base::ShellAliasProbe::for_pane();
     let tools = std::iter::once(&request.lead)
         .chain(request.agents.iter())
         .filter_map(|member| CliTool::from_alias(&member.cli_tool).ok())
         .collect::<Vec<_>>();
-    crate::commands::accounts::apply_team_account_selector_dirs(commands, tools.iter().copied());
-    crate::commands::accounts::apply_team_launch_base_resolutions_with(
-        commands,
-        tools,
-        |base, tool| {
-            (
-                crate::session_scanner::launch_base::resolve_base_command_cached(
-                    base, tool, &probe,
-                ),
-                true,
-            )
-        },
-    );
+    prepare_daemon_launch_inputs_for_tools(teams_dir, has_codex, tools, commands);
 }
 
 fn emit_initialize_step_log(team_name: &str, progress: &StepProgress) {
@@ -382,38 +238,19 @@ mod tests {
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
-    use super::{InitializeRunOutcome, InitializeRunRegistry, InitializeTeamService};
+    use super::{InitializeRunOutcome, InitializeTeamService};
     use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
     use crate::coordination::requests::{
-        AgentDefinition, InitializeReport, InitializeTeamRequest, LeadMode, StepProgress,
-        StepStatus,
+        AgentDefinition, InitializeTeamRequest, LeadMode, StepStatus,
     };
     use crate::coordination::runtime::{
         CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
     };
     use crate::coordination::state::CoordinationState;
     use crate::coordination::stores::TeamConfigStore;
+    use crate::daemon::coordination_runs::CoordinationRunRegistry;
     use crate::daemon::protocol::CoordinationInitializeParams;
     use crate::models::CliCommandSettings;
-
-    fn progress(step: &str, status: StepStatus) -> StepProgress {
-        StepProgress {
-            step: step.to_string(),
-            status,
-            message: None,
-        }
-    }
-
-    fn report() -> InitializeReport {
-        InitializeReport {
-            team_name: "daemon-init".to_string(),
-            succeeded_steps: vec!["validate_configuration".to_string()],
-            failed_step: None,
-            retryable: false,
-            message: "team initialized".to_string(),
-            steps: vec![progress("validate_configuration", StepStatus::Succeeded)],
-        }
-    }
 
     fn agent(name: &str, project: &str) -> AgentDefinition {
         AgentDefinition {
@@ -472,73 +309,6 @@ mod tests {
     }
 
     #[test]
-    fn run_lifecycle_mirrors_steps_and_completed_outcome() {
-        let registry = InitializeRunRegistry::with_ttl(Duration::from_secs(600));
-        let run_id = registry.start();
-
-        registry
-            .record_step(
-                &run_id,
-                progress("validate_configuration", StepStatus::Running),
-            )
-            .expect("running step recorded");
-        registry
-            .record_step(
-                &run_id,
-                progress("validate_configuration", StepStatus::Succeeded),
-            )
-            .expect("terminal step recorded");
-
-        let running = registry.status(&run_id).expect("running status");
-        assert_eq!(running.steps.len(), 2);
-        assert_eq!(running.outcome, InitializeRunOutcome::Running);
-
-        registry.complete(&run_id, report()).expect("run completed");
-        let completed = registry.status(&run_id).expect("completed status");
-        assert_eq!(
-            completed.outcome,
-            InitializeRunOutcome::Completed { report: report() }
-        );
-    }
-
-    #[test]
-    fn failed_run_preserves_steps_and_terminal_error() {
-        let registry = InitializeRunRegistry::with_ttl(Duration::from_secs(600));
-        let run_id = registry.start();
-        registry
-            .record_step(&run_id, progress("create_team", StepStatus::Running))
-            .expect("step recorded");
-        registry
-            .fail(&run_id, "pipeline panicked".to_string())
-            .expect("run failed");
-
-        let status = registry.status(&run_id).expect("failed status");
-        assert_eq!(status.steps.len(), 1);
-        assert_eq!(
-            status.outcome,
-            InitializeRunOutcome::Failed {
-                error: "pipeline panicked".to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn terminal_runs_expire_after_ttl_but_running_runs_do_not() {
-        let registry = InitializeRunRegistry::with_ttl(Duration::from_secs(10));
-        let started_at = Instant::now();
-        let running_id = registry.start_at(started_at);
-        let completed_id = registry.start_at(started_at);
-        registry
-            .complete_at(&completed_id, report(), started_at)
-            .expect("run completed");
-
-        registry.prune_at(started_at + Duration::from_secs(11));
-
-        assert!(registry.status(&completed_id).is_none());
-        assert!(registry.status(&running_id).is_some());
-    }
-
-    #[test]
     fn initialize_request_executes_the_pipeline_through_daemon_state() {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let teams_dir = temp.path().join("teams");
@@ -555,6 +325,7 @@ mod tests {
         ));
         let service = InitializeTeamService::with_state_and_prepare(
             state,
+            CoordinationRunRegistry::default(),
             Arc::new(|_request, _commands| {}),
         );
 
@@ -655,6 +426,7 @@ mod tests {
         ));
         let service = InitializeTeamService::with_state_and_prepare(
             state,
+            CoordinationRunRegistry::default(),
             Arc::new(|_request, _commands| {}),
         );
         let mut params = initialize_params(temp.path());

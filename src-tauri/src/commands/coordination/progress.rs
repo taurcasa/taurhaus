@@ -32,11 +32,11 @@ pub(super) fn initialize_progress_events(report: &InitializeReport) -> Vec<StepP
     progress_events_for_steps_with_adapter(&adapter, &report.steps)
 }
 
-pub(super) fn add_agent_progress_events(report: &AddAgentReport) -> Vec<StepProgressEvent> {
+pub(crate) fn add_agent_progress_events(report: &AddAgentReport) -> Vec<StepProgressEvent> {
     progress_events_for_steps(&report.team_name, "add_agent", &report.steps)
 }
 
-pub(super) fn resume_member_progress_event_for_stage(
+pub(crate) fn resume_member_progress_event_for_stage(
     team_name: &str,
     stage: MemberActivationStage,
     status: StepStatus,
@@ -119,7 +119,7 @@ impl<'a> InitializeBatchStageProgressAdapter<'a> {
     }
 }
 
-fn progress_events_for_steps(
+pub(crate) fn progress_events_for_steps(
     team_name: &str,
     operation: &str,
     steps: &[StepProgress],

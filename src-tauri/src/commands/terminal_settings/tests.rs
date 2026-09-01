@@ -526,6 +526,14 @@ mod managed_launch_sites {
         .expect("daemon/initialize_runs.rs is readable")
     }
 
+    fn daemon_coordination_runs_source() -> String {
+        std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/daemon/coordination_runs.rs"),
+        )
+        .expect("daemon/coordination_runs.rs is readable")
+    }
+
     /// The body of one top-level `fn <name>`, up to its closing brace in
     /// column 0.
     fn function_body<'a>(source: &'a str, name: &str) -> &'a str {
@@ -567,8 +575,18 @@ mod managed_launch_sites {
         let daemon_source = daemon_initialize_source();
         let daemon_prepare = function_body(&daemon_source, "prepare_daemon_launch_inputs");
         assert!(
-            daemon_prepare.contains("terminal_settings::managed_codex_hook_trust_for_launch("),
-            "daemon-owned initialization must call the roster-wide reconciler locally"
+            daemon_prepare.contains("prepare_daemon_launch_inputs_for_tools("),
+            "daemon-owned initialization must use the shared launch input preparation"
+        );
+        let shared_daemon_source = daemon_coordination_runs_source();
+        let shared_daemon_prepare = function_body(
+            &shared_daemon_source,
+            "prepare_daemon_launch_inputs_for_tools",
+        );
+        assert!(
+            shared_daemon_prepare
+                .contains("terminal_settings::managed_codex_hook_trust_for_launch("),
+            "daemon-owned launches must call the roster-wide reconciler locally"
         );
         let initialize_command = function_body(&source, "coordination_initialize_team");
         assert!(

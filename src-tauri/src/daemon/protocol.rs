@@ -114,6 +114,12 @@ pub mod method {
     pub const GET_WORKFLOW_RUN: &str = "get_workflow_run";
     pub const COORDINATION_INITIALIZE_TEAM: &str = "coordination.initialize_team";
     pub const COORDINATION_INITIALIZE_STATUS: &str = "coordination.initialize_status";
+    pub const COORDINATION_ADD_AGENT: &str = "coordination.add_agent";
+    pub const COORDINATION_ADD_AGENT_STATUS: &str = "coordination.add_agent_status";
+    pub const COORDINATION_RESUME_MEMBER: &str = "coordination.resume_member";
+    pub const COORDINATION_RESUME_MEMBER_STATUS: &str = "coordination.resume_member_status";
+    pub const COORDINATION_STOP_MEMBER: &str = "coordination.stop_member";
+    pub const COORDINATION_STOP_MEMBER_STATUS: &str = "coordination.stop_member_status";
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";
@@ -225,6 +231,138 @@ pub struct CoordinationInitializeStatus {
     pub run_id: String,
     pub steps: Vec<crate::coordination::requests::StepProgress>,
     pub outcome: CoordinationInitializeOutcome,
+}
+
+/// Self-contained hot-add intent. The daemon derives host-local account
+/// selectors and launch-base resolutions before running the pipeline.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationAddAgentParams {
+    pub request: crate::coordination::requests::AddAgentRequest,
+    pub cli_commands: crate::models::CliCommandSettings,
+    pub tmux_layout: String,
+    #[serde(default)]
+    pub operational_snapshot: Option<crate::coordination::stores::OperationalContextSnapshot>,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationAddAgentAccepted {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationAddAgentStatusParams {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum CoordinationAddAgentOutcome {
+    Running,
+    Completed {
+        report: crate::coordination::requests::AddAgentReport,
+    },
+    Failed {
+        error: String,
+    },
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationAddAgentStatus {
+    pub run_id: String,
+    pub steps: Vec<crate::coordination::requests::StepProgress>,
+    pub outcome: CoordinationAddAgentOutcome,
+}
+
+/// Self-contained member-resume intent. The daemon resolves the persisted
+/// member's tool before applying host-local launch settings.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationResumeMemberParams {
+    pub request: crate::coordination::requests::ResumeMemberRequest,
+    pub cli_commands: crate::models::CliCommandSettings,
+    pub tmux_layout: String,
+    #[serde(default)]
+    pub operational_snapshot: Option<crate::coordination::stores::OperationalContextSnapshot>,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationResumeMemberAccepted {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationResumeMemberStatusParams {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum CoordinationResumeMemberOutcome {
+    Running,
+    Completed {
+        report: crate::coordination::requests::ResumeAgentReport,
+    },
+    Failed {
+        error: String,
+    },
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationResumeMemberStatus {
+    pub run_id: String,
+    pub steps: Vec<crate::coordination::requests::StepProgress>,
+    pub outcome: CoordinationResumeMemberOutcome,
+}
+
+/// Self-contained member-stop intent. Stop has no launch settings or streamed
+/// frontend progress, but uses the same retained run lifecycle as the other
+/// interactive mutations.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationStopMemberParams {
+    pub request: crate::coordination::requests::StopMemberRequest,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationStopMemberAccepted {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationStopMemberStatusParams {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum CoordinationStopMemberOutcome {
+    Running,
+    Completed {
+        report: crate::coordination::requests::StopMemberReport,
+    },
+    Failed {
+        error: String,
+    },
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationStopMemberStatus {
+    pub run_id: String,
+    pub steps: Vec<crate::coordination::requests::StepProgress>,
+    pub outcome: CoordinationStopMemberOutcome,
 }
 
 /// `list_workflow_runs` — completed and live runs under one Claude session.
@@ -1033,6 +1171,88 @@ mod tests {
             method::COORDINATION_INITIALIZE_STATUS,
             "coordination.initialize_status"
         );
+    }
+
+    #[test]
+    fn coordination_member_operation_contracts_roundtrip() {
+        let agent = crate::coordination::requests::AgentDefinition {
+            name: "builder".to_string(),
+            cli_tool: "codex".to_string(),
+            model: "gpt-5.4".to_string(),
+            reasoning_effort: Some("high".to_string()),
+            project_id: "/tmp/builder".to_string(),
+            description: None,
+            role_id: None,
+            role_name: None,
+            focus_area: None,
+            context_summary: None,
+            behavior_summary: None,
+            communication_style: None,
+            runtime_compact_summary: None,
+            instructions: None,
+            behavioral_contract: None,
+            quality_gates: None,
+            handoff_expectations: None,
+            definition_of_done: None,
+            phase_scope: None,
+            mode: None,
+            inherits_from: None,
+            required_artifacts: None,
+            capabilities: None,
+        };
+        let add = CoordinationAddAgentParams {
+            request: crate::coordination::requests::AddAgentRequest {
+                team_name: "arch".to_string(),
+                agent,
+            },
+            cli_commands: crate::models::CliCommandSettings::default(),
+            tmux_layout: "new_window".to_string(),
+            operational_snapshot: None,
+        };
+        let resume = CoordinationResumeMemberParams {
+            request: crate::coordination::requests::ResumeMemberRequest {
+                team_name: "arch".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            cli_commands: crate::models::CliCommandSettings::default(),
+            tmux_layout: "new_window".to_string(),
+            operational_snapshot: None,
+        };
+        let stop = CoordinationStopMemberParams {
+            request: crate::coordination::requests::StopMemberRequest {
+                team_name: "arch".to_string(),
+                member_name: "builder".to_string(),
+            },
+        };
+
+        assert_eq!(
+            serde_json::from_str::<CoordinationAddAgentParams>(
+                &serde_json::to_string(&add).unwrap()
+            )
+            .unwrap(),
+            add
+        );
+        assert_eq!(
+            serde_json::from_str::<CoordinationResumeMemberParams>(
+                &serde_json::to_string(&resume).unwrap()
+            )
+            .unwrap(),
+            resume
+        );
+        assert_eq!(
+            serde_json::from_str::<CoordinationStopMemberParams>(
+                &serde_json::to_string(&stop).unwrap()
+            )
+            .unwrap(),
+            stop
+        );
+        assert_eq!(method::COORDINATION_ADD_AGENT, "coordination.add_agent");
+        assert_eq!(
+            method::COORDINATION_RESUME_MEMBER,
+            "coordination.resume_member"
+        );
+        assert_eq!(method::COORDINATION_STOP_MEMBER, "coordination.stop_member");
     }
 
     #[test]

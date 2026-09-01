@@ -195,9 +195,20 @@ fn serve(
     let last_activity = Arc::new(AtomicU64::new(epoch_secs()));
     let auth_token: Option<Arc<str>> = config.auth_token.as_deref().map(Arc::from);
     #[cfg(feature = "mesh-bridged-backend")]
+    let coordination_run_registry =
+        crate::daemon::coordination_runs::CoordinationRunRegistry::default();
+    #[cfg(feature = "mesh-bridged-backend")]
     let initialize_service = Arc::new(
         crate::daemon::initialize_runs::InitializeTeamService::for_process_default(
+            coordination_state.clone(),
+            coordination_run_registry.clone(),
+        ),
+    );
+    #[cfg(feature = "mesh-bridged-backend")]
+    let member_operations_service = Arc::new(
+        crate::daemon::member_runs::MemberOperationsService::for_process_default(
             coordination_state,
+            coordination_run_registry,
         ),
     );
     let watch_registry =
@@ -244,6 +255,8 @@ fn serve(
                     watch_registry: watch_registry.clone(),
                     #[cfg(feature = "mesh-bridged-backend")]
                     initialize_service: initialize_service.clone(),
+                    #[cfg(feature = "mesh-bridged-backend")]
+                    member_operations_service: member_operations_service.clone(),
                 };
                 ACTIVE_CONNECTION_COUNT.fetch_add(1, Ordering::Relaxed);
                 mark_daemon_watch_telemetry_dirty();
@@ -442,6 +455,8 @@ struct ConnectionServices {
     watch_registry: Arc<crate::daemon::watch::SharedDaemonWatchRegistry>,
     #[cfg(feature = "mesh-bridged-backend")]
     initialize_service: Arc<crate::daemon::initialize_runs::InitializeTeamService>,
+    #[cfg(feature = "mesh-bridged-backend")]
+    member_operations_service: Arc<crate::daemon::member_runs::MemberOperationsService>,
 }
 
 fn handle_connection(
@@ -519,7 +534,10 @@ fn handle_connection(
             &mut watch_runtime,
             &project_task_scan_cache,
             #[cfg(feature = "mesh-bridged-backend")]
-            services.initialize_service.as_ref(),
+            (
+                services.initialize_service.as_ref(),
+                services.member_operations_service.as_ref(),
+            ),
         );
 
         write_locked(&writer, &response)?;
