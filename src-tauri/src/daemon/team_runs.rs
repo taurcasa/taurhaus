@@ -69,7 +69,14 @@ impl TeamOperationsService {
         let state = self.state.clone();
         let prepare_launch_inputs = self.prepare_resume_team_launch_inputs.clone();
         let spawn_result = std::thread::Builder::new()
-            .name(format!("coordination-team-resume-{}", &run_id[12..20]))
+            .name(format!(
+                "coordination-team-resume-{}",
+                run_id
+                    .rsplit('_')
+                    .next()
+                    .and_then(|tail| tail.get(..8))
+                    .unwrap_or(run_id.as_str())
+            ))
             .spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let mut cli_commands = params.cli_commands;
@@ -124,7 +131,14 @@ impl TeamOperationsService {
         let registry = self.registry.clone();
         let state = self.state.clone();
         let spawn_result = std::thread::Builder::new()
-            .name(format!("coordination-reonboard-{}", &run_id[10..18]))
+            .name(format!(
+                "coordination-reonboard-{}",
+                run_id
+                    .rsplit('_')
+                    .next()
+                    .and_then(|tail| tail.get(..8))
+                    .unwrap_or(run_id.as_str())
+            ))
             .spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let CoordinationReonboardParams {
@@ -230,11 +244,12 @@ fn prepare_resume_team_launch_inputs(
         .iter()
         .map(|member| member.cli_tool)
         .collect::<Vec<_>>();
-    let has_managed_codex = tools.iter().any(|tool| {
-        crate::session_scanner::cli_tool::spec(*tool)
-            .capabilities
-            .hook_trust
-    });
+    // The named authority for "team has a managed Codex member" — hook_trust
+    // only coincides with it while Codex is the sole trusted harness.
+    let has_managed_codex = config
+        .members
+        .iter()
+        .any(|member| member.cli_tool == crate::session_scanner::cli_tool::CliTool::Codex);
     prepare_daemon_launch_inputs_for_tools(teams_dir, has_managed_codex, tools, commands);
     Ok(())
 }

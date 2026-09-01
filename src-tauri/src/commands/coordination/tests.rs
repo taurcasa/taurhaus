@@ -821,7 +821,7 @@ fn daemon_owned_member_launches_do_not_reconcile_codex_in_the_app() {
         ),
         (
             "coordination_resume_member",
-            "pub fn coordination_resume_team",
+            "pub async fn coordination_resume_team",
         ),
     ] {
         let body = source

@@ -425,6 +425,9 @@ pub struct CoordinationResumeTeamStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CoordinationReonboardParams {
     pub request: crate::coordination::requests::ReonboardRequest,
+    // Carried for intent-shape uniformity across the coordination methods;
+    // the reonboard worker renders from the saved member and does not read
+    // these two today.
     pub cli_commands: crate::models::CliCommandSettings,
     pub tmux_layout: String,
     #[serde(default)]

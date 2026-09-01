@@ -676,7 +676,9 @@ fn reonboard_through_daemon(
 ) -> Result<DeliveryResult, String> {
     reonboard_through_daemon_with(
         params,
-        COORDINATION_DAEMON_POLL_INTERVAL,
+        // Delivery-only interaction: keep the stop-class snappy interval so
+        // a UI affordance wired to it keeps its inline feel.
+        COORDINATION_STOP_DAEMON_POLL_INTERVAL,
         |method, params| call_coordination_daemon(daemon, method, params),
     )
 }

@@ -280,6 +280,12 @@ pub mod daemon {
     }
 
     pub mod team_runs {
+        // Deliberate copy of daemon::team_runs::execute_reonboard_pipeline:
+        // this crate recompiles the sources, so its CoordinationState is a
+        // nominally different type from taurhaus_lib's and the shipped fn
+        // cannot be forwarded to across the crate boundary. The lib-crate
+        // run of the same tests covers the shipped rule; keep the two
+        // bodies in sync when the rendering rule changes.
         use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
         use crate::coordination::domain::MemberRole;
         use crate::coordination::requests::{

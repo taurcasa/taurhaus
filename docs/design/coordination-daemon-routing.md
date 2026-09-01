@@ -1,6 +1,6 @@
 # Coordination Through the Daemon
 
-Status: **in progress** (operator decision 2026-09-01: "design now, build immediately"). The deadline pass is daemon-owned at protocol 15, initialization at protocol 16, add-agent/resume-member/stop-member at protocol 17, and resume-team/reonboard at protocol 18. Every interactive pipeline is daemon-owned; self-heal, effort, and the B3 writer boundary remain future slices.
+Status: **in progress** (operator decision 2026-09-01: "design now, build immediately"). The deadline pass is daemon-owned at protocol 15, initialization at protocol 16, add-agent/resume-member/stop-member at protocol 17, and resume-team/reonboard at protocol 18. Every interactive *activation* pipeline is daemon-owned; team create/disband and the roster-edit commands still execute in the app (next slice), then self-heal, effort, and the B3 writer boundary.
 
 ## The problem, from the field
 
