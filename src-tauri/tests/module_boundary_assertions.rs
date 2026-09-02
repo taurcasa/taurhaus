@@ -749,6 +749,8 @@ fn mutable_scan_caches_are_not_global_statics() {
 }
 
 #[test]
+// Regression: d593f81b introduced the protocol-22 boundary assertion with an
+// incomplete writer-surface inventory, allowing app-side updates to evade it.
 fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
     // Each exception is a WSL-side owner or shared implementation reached only
     // from one. Keeping this list explicit makes every new caller a reviewable
@@ -771,6 +773,10 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "shared newer-wins publisher is invoked by daemon services",
         ),
         (
+            "src/coordination/orchestrator/delivery.rs",
+            "daemon-hosted delivery records last-seen and daemon pid after send",
+        ),
+        (
             "src/coordination/orchestrator/lifecycle.rs",
             "daemon-hosted roster lifecycle owns config/runtime commits",
         ),
@@ -781,6 +787,10 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         (
             "src/coordination/pipelines/initialize.rs",
             "daemon-hosted initialize pipeline creates team state",
+        ),
+        (
+            "src/coordination/pipelines/effort.rs",
+            "daemon-hosted effort pipeline records applied effort transitions",
         ),
         (
             "src/coordination/pipelines/lifecycle.rs",
@@ -858,14 +868,21 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "src/daemon/state_writes.rs",
             "daemon service hosts the final synchronous writer intents",
         ),
+        (
+            "src/commands/coordination/state_sync.rs",
+            "cfg(test)-only command fixture exercises daemon-owned active-project sync",
+        ),
     ];
     let markers = [
+        "active_project::sync_team_from_config(",
         "ActiveProjectTeamStore::sync_team(",
         "ActiveProjectTeamStore::clear_team(",
         "ActiveProjectTeamStore::clear_project(",
         "ActiveProjectTeamStore::set_active_team(",
         "MemberCompactionStore::save(",
         "MemberCompactionStore::delete(",
+        "MemberCompactionStore::delete_without_lock(",
+        "record_delivery_at(",
         "TeamConfigStore::save(",
         "TeamConfigStore::clear_member_pane_binding(",
         "TeamConfigStore::delete(",
@@ -874,13 +891,15 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         "OperationalContextSnapshotStore::save(",
         "OperationalContextSnapshotStore::save_locked(",
         "OperationalContextSnapshotStore::commit_if_unchanged(",
+        "write_snapshot(",
         "MemberRuntimeStore::save(",
         "MemberRuntimeStore::save_locked(",
         "MemberRuntimeStore::save_preserving_applied_effort(",
         "MemberRuntimeStore::save_preserving_applied_effort_locked(",
         "MemberRuntimeStore::commit_if_unchanged(",
         "MemberRuntimeStore::delete(",
-        "sync_project_task_snapshots(",
+        "MemberRuntimeStore::update(",
+        "MemberRuntimeStore::cleanup_stale(",
         "reconcile_team_presence_for_live_status(",
         "reconcile_team_presence_for_live_status_with_runtime_sessions(",
     ];
