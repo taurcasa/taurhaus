@@ -33,11 +33,16 @@ pub(crate) fn dispatch(
         &crate::daemon::initialize_runs::InitializeTeamService,
         &crate::daemon::member_runs::MemberOperationsService,
         &crate::daemon::team_runs::TeamOperationsService,
+        &crate::daemon::roster_runs::RosterOperationsService,
     ),
 ) -> DaemonResponse {
     #[cfg(feature = "mesh-bridged-backend")]
-    let (initialize_service, member_operations_service, team_operations_service) =
-        coordination_services;
+    let (
+        initialize_service,
+        member_operations_service,
+        team_operations_service,
+        roster_operations_service,
+    ) = coordination_services;
     tracing::debug!(method = %request.method, id = %request.id, "Received request");
     match request.method.as_str() {
         protocol::method::PING => handle_ping(&request.id, start_time),
@@ -163,6 +168,56 @@ pub(crate) fn dispatch(
             &request.params,
             team_operations_service,
         ),
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_CREATE_TEAM => {
+            handle_coordination_create_team(&request.id, &request.params, roster_operations_service)
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_CREATE_TEAM_STATUS => {
+            handle_coordination_create_team_status(
+                &request.id,
+                &request.params,
+                roster_operations_service,
+            )
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_DISBAND_TEAM => handle_coordination_disband_team(
+            &request.id,
+            &request.params,
+            roster_operations_service,
+        ),
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_DISBAND_TEAM_STATUS => {
+            handle_coordination_disband_team_status(
+                &request.id,
+                &request.params,
+                roster_operations_service,
+            )
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_ADD_MEMBER => {
+            handle_coordination_add_member(&request.id, &request.params, roster_operations_service)
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_ADD_MEMBER_STATUS => handle_coordination_add_member_status(
+            &request.id,
+            &request.params,
+            roster_operations_service,
+        ),
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_REMOVE_MEMBER => handle_coordination_remove_member(
+            &request.id,
+            &request.params,
+            roster_operations_service,
+        ),
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_REMOVE_MEMBER_STATUS => {
+            handle_coordination_remove_member_status(
+                &request.id,
+                &request.params,
+                roster_operations_service,
+            )
+        }
         _ => DaemonResponse::err(
             &request.id,
             "UNKNOWN_METHOD",
@@ -376,6 +431,142 @@ fn handle_coordination_reonboard_status(
     match service.reonboard_status(&params.run_id) {
         Some(status) => DaemonResponse::ok(id, status),
         None => coordination_run_not_found(id, "reonboard", &params.run_id),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_create_team(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::roster_runs::RosterOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationCreateTeamParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.start_create_team(params) {
+        Ok(run_id) => DaemonResponse::ok(id, protocol::CoordinationCreateTeamAccepted { run_id }),
+        Err(error) => DaemonResponse::err(id, "CREATE_TEAM_START_FAILED", error),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_create_team_status(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::roster_runs::RosterOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationCreateTeamStatusParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.create_team_status(&params.run_id) {
+        Some(status) => DaemonResponse::ok(id, status),
+        None => coordination_run_not_found(id, "create-team", &params.run_id),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_disband_team(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::roster_runs::RosterOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationDisbandTeamParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.start_disband_team(params) {
+        Ok(run_id) => DaemonResponse::ok(id, protocol::CoordinationDisbandTeamAccepted { run_id }),
+        Err(error) => DaemonResponse::err(id, "DISBAND_TEAM_START_FAILED", error),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_disband_team_status(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::roster_runs::RosterOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationDisbandTeamStatusParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.disband_team_status(&params.run_id) {
+        Some(status) => DaemonResponse::ok(id, status),
+        None => coordination_run_not_found(id, "disband-team", &params.run_id),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_add_member(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::roster_runs::RosterOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationAddMemberParams = match serde_json::from_value(params.clone())
+    {
+        Ok(params) => params,
+        Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+    };
+    match service.start_add_member(params) {
+        Ok(run_id) => DaemonResponse::ok(id, protocol::CoordinationAddMemberAccepted { run_id }),
+        Err(error) => DaemonResponse::err(id, "ADD_MEMBER_START_FAILED", error),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_add_member_status(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::roster_runs::RosterOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationAddMemberStatusParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.add_member_status(&params.run_id) {
+        Some(status) => DaemonResponse::ok(id, status),
+        None => coordination_run_not_found(id, "add-member", &params.run_id),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_remove_member(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::roster_runs::RosterOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationRemoveMemberParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.start_remove_member(params) {
+        Ok(run_id) => DaemonResponse::ok(id, protocol::CoordinationRemoveMemberAccepted { run_id }),
+        Err(error) => DaemonResponse::err(id, "REMOVE_MEMBER_START_FAILED", error),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_remove_member_status(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::roster_runs::RosterOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationRemoveMemberStatusParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.remove_member_status(&params.run_id) {
+        Some(status) => DaemonResponse::ok(id, status),
+        None => coordination_run_not_found(id, "remove-member", &params.run_id),
     }
 }
 

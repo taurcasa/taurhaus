@@ -13,6 +13,8 @@ pub mod launcher;
 #[cfg(feature = "mesh-bridged-backend")]
 pub(crate) mod member_runs;
 pub mod protocol;
+#[cfg(feature = "mesh-bridged-backend")]
+pub(crate) mod roster_runs;
 pub mod server;
 pub mod session_activity;
 pub mod session_listener;

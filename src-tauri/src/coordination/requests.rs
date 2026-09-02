@@ -626,6 +626,43 @@ pub struct StopMemberReport {
     pub warnings: Vec<String>,
 }
 
+/// Request contract for creating an empty standalone team.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreateTeamRequest {
+    pub team_name: String,
+}
+
+/// Request contract for disbanding a persisted team.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisbandTeamRequest {
+    pub team_name: String,
+}
+
+/// Result contract for idempotent team disband.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisbandTeamReport {
+    pub team_name: String,
+    pub disbanded: bool,
+    pub already_disbanded: bool,
+    pub message: String,
+}
+
+/// Request contract for the legacy config-only roster add operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AddMemberRequest {
+    pub team_name: String,
+    pub member_name: String,
+    pub backend_kind: String,
+    pub project_path: Option<String>,
+}
+
+/// Request contract for removing one persisted roster member.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoveMemberRequest {
+    pub team_name: String,
+    pub member_name: String,
+}
+
 impl StopMemberReport {
     /// The one mapping from an orchestrator remove-member result to the wire
     /// report — shared by the daemon pipeline and the integration-test shim

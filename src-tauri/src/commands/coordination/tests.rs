@@ -198,6 +198,110 @@ fn coordination_reonboard_impl(
     Ok(result)
 }
 
+/// Test-only standalone create fixture. Production creation is daemon-owned.
+fn coordination_create_team_impl(
+    state: &CoordinationState,
+    team_name: String,
+) -> Result<(), String> {
+    validate_non_empty("team_name", &team_name)?;
+    state
+        .with_orchestrator(|orchestrator| orchestrator.create_team(&team_name, None).map(|_| ()))
+        .map_err(map_coordination_error)
+}
+
+/// Test-only disband fixture. Production teardown and cleanup are daemon-owned.
+fn coordination_disband_team_impl(
+    state: &CoordinationState,
+    team_name: String,
+) -> Result<DisbandTeamResponse, String> {
+    validate_non_empty("team_name", &team_name)?;
+    let result = state
+        .with_orchestrator(|orchestrator| orchestrator.disband_team(&team_name, None))
+        .map_err(map_coordination_error)?;
+    ActiveProjectTeamStore::clear_team(state.teams_dir(), &result.team_name)
+        .map_err(map_coordination_error)?;
+    Ok(DisbandTeamResponse {
+        message: if result.already_disbanded {
+            "team already disbanded".to_string()
+        } else {
+            "team disbanded".to_string()
+        },
+        team_name: result.team_name,
+        disbanded: result.disbanded,
+        already_disbanded: result.already_disbanded,
+    })
+}
+
+/// Test-only config roster fixture. Production roster edits are daemon-owned.
+fn coordination_add_member_impl(
+    state: &CoordinationState,
+    team_name: String,
+    member_name: String,
+    backend_kind: String,
+    project_path: Option<String>,
+) -> Result<(), String> {
+    validate_non_empty("team_name", &team_name)?;
+    validate_non_empty("member_name", &member_name)?;
+    validate_non_empty("backend_kind", &backend_kind)?;
+    let cli_tool = crate::session_scanner::cli_tool::CliTool::from_alias(&backend_kind)
+        .map_err(|_| format!("Validation error: unsupported backend_kind '{backend_kind}'"))?;
+    state
+        .with_orchestrator(|orchestrator| {
+            let status = orchestrator.get_team_status(&team_name)?;
+            let project_path = match project_path.as_deref() {
+                Some(path) if path.trim().is_empty() => {
+                    return Err(CoordinationError::Validation(
+                        "project_path must not be empty".to_string(),
+                    ));
+                }
+                Some(path) => std::path::PathBuf::from(path.trim()),
+                None => status
+                    .config
+                    .members
+                    .iter()
+                    .find(|member| member.role == MemberRole::Lead)
+                    .or_else(|| status.config.members.first())
+                    .map(|member| member.project_path.clone())
+                    .ok_or_else(|| {
+                        CoordinationError::Validation(
+                            "project_path must be provided for legacy add-member when team has no members"
+                                .to_string(),
+                        )
+                    })?,
+            };
+            orchestrator.add_member(
+                &team_name,
+                crate::coordination::domain::Member {
+                    name: member_name,
+                    role: MemberRole::Agent,
+                    role_id: None,
+                    role_name: None,
+                    focus_area: None,
+                    context_summary: None,
+                    behavior_summary: None,
+                    communication_style: None,
+                    runtime_compact_summary: None,
+                    instructions: None,
+                    behavioral_contract: None,
+                    quality_gates: None,
+                    handoff_expectations: None,
+                    definition_of_done: None,
+                    phase_scope: None,
+                    mode: None,
+                    inherits_from: None,
+                    required_artifacts: None,
+                    capabilities: None,
+                    model: None,
+                    reasoning_effort: None,
+                    project_path,
+                    cli_tool,
+                    extra: Default::default(),
+                },
+            )
+        })
+        .map_err(map_coordination_error)
+}
+
 // Regression: 5cebfef8 installed the initialize pipeline behind the desktop
 // command's process-local orchestrator, so Windows mutated team state across
 // the WSL 9p bridge instead of in the daemon's ext4/flock domain.
@@ -267,6 +371,73 @@ fn reonboard_command_has_no_local_pipeline_execution_path() {
     assert!(!source.contains("execute_reonboard_pipeline("));
     assert!(source.contains("COORDINATION_REONBOARD"));
     assert!(source.contains("COORDINATION_REONBOARD_STATUS"));
+}
+
+// Regression: 5cebfef8 installed standalone team creation in the desktop
+// process, so Windows persisted config over the WSL 9p bridge.
+#[test]
+fn create_team_command_has_no_local_mutation_path() {
+    let source = include_str!("../coordination.rs");
+    assert!(!source.contains("orchestrator.create_team"));
+    assert!(source.contains("COORDINATION_CREATE_TEAM"));
+    assert!(source.contains("COORDINATION_CREATE_TEAM_STATUS"));
+}
+
+// Regression: 439d04b1 left disband teardown and its active-project cleanup
+// in the desktop process, splitting one operation across the 9p boundary.
+#[test]
+fn disband_team_command_has_no_local_mutation_path() {
+    let source = include_str!("../coordination.rs");
+    assert!(!source.contains("orchestrator.disband_team"));
+    assert!(!source.contains("ActiveProjectTeamStore::clear_team"));
+    assert!(source.contains("COORDINATION_DISBAND_TEAM"));
+    assert!(source.contains("COORDINATION_DISBAND_TEAM_STATUS"));
+}
+
+// Regression: 03eb3a2c polled multi-step disband teardown at the 25 ms
+// stop-member interval, producing excessive daemon RPC and JSONL traffic.
+#[test]
+fn disband_team_uses_the_long_running_daemon_poll_interval() {
+    let source = include_str!("../coordination.rs");
+    let client = source
+        .split("fn disband_team_through_daemon(")
+        .nth(1)
+        .expect("disband daemon client")
+        .split("fn disband_team_through_daemon_with(")
+        .next()
+        .expect("disband daemon client body");
+    assert!(client.contains("COORDINATION_DAEMON_POLL_INTERVAL"));
+    assert!(!client.contains("COORDINATION_STOP_DAEMON_POLL_INTERVAL"));
+}
+
+// Regression: 1e1dcea5 kept the config-only roster add in the desktop
+// process, including its project-path resolution and runtime-record write.
+#[test]
+fn add_member_command_has_no_local_mutation_path() {
+    let source = include_str!("../coordination.rs");
+    assert!(!source.contains("orchestrator.add_member"));
+    assert!(!source.contains("resolve_legacy_member_project_path"));
+    assert!(source.contains("COORDINATION_ADD_MEMBER"));
+    assert!(source.contains("COORDINATION_ADD_MEMBER_STATUS"));
+}
+
+// Regression: 639b340e routed roster removal through activation-class stop,
+// leaving no distinct daemon intent to pin the interactive roster contract.
+#[test]
+fn remove_member_command_uses_the_roster_daemon_intent() {
+    let source = include_str!("../coordination.rs");
+    let command = source
+        .split("pub async fn coordination_remove_member")
+        .nth(1)
+        .expect("remove-member command")
+        .split("#[tauri::command")
+        .next()
+        .expect("remove-member body");
+    assert!(command.contains("remove_member_through_daemon"));
+    assert!(!command.contains("stop_member_through_daemon"));
+    assert!(!command.contains("CoordinationStopMemberParams"));
+    assert!(source.contains("COORDINATION_REMOVE_MEMBER"));
+    assert!(source.contains("COORDINATION_REMOVE_MEMBER_STATUS"));
 }
 
 #[test]
@@ -737,6 +908,174 @@ fn reonboard_daemon_client_uses_its_run_status_method() {
         [
             protocol::method::COORDINATION_REONBOARD,
             protocol::method::COORDINATION_REONBOARD_STATUS,
+        ]
+    );
+}
+
+#[test]
+fn roster_daemon_clients_use_their_distinct_run_status_methods() {
+    let create_params = protocol::CoordinationCreateTeamParams {
+        request: crate::coordination::requests::CreateTeamRequest {
+            team_name: "arch".to_string(),
+        },
+    };
+    let mut create_responses = std::collections::VecDeque::from([
+        serde_json::to_value(protocol::CoordinationCreateTeamAccepted {
+            run_id: "create-test".to_string(),
+        })
+        .expect("accepted payload"),
+        serde_json::to_value(protocol::CoordinationCreateTeamStatus {
+            run_id: "create-test".to_string(),
+            outcome: protocol::CoordinationCreateTeamOutcome::Completed,
+        })
+        .expect("status payload"),
+    ]);
+    let mut create_methods = Vec::new();
+    create_team_through_daemon_with(
+        create_params,
+        std::time::Duration::ZERO,
+        |method, _params| {
+            create_methods.push(method.to_string());
+            create_responses.pop_front().ok_or_else(|| {
+                CoordinationDaemonCallError::Transport("unexpected daemon call".to_string())
+            })
+        },
+    )
+    .expect("daemon create completes");
+    assert_eq!(
+        create_methods,
+        [
+            protocol::method::COORDINATION_CREATE_TEAM,
+            protocol::method::COORDINATION_CREATE_TEAM_STATUS,
+        ]
+    );
+
+    let disband_report = crate::coordination::requests::DisbandTeamReport {
+        team_name: "arch".to_string(),
+        disbanded: true,
+        already_disbanded: false,
+        message: "team disbanded".to_string(),
+    };
+    let mut disband_responses = std::collections::VecDeque::from([
+        serde_json::to_value(protocol::CoordinationDisbandTeamAccepted {
+            run_id: "disband-test".to_string(),
+        })
+        .expect("accepted payload"),
+        serde_json::to_value(protocol::CoordinationDisbandTeamStatus {
+            run_id: "disband-test".to_string(),
+            outcome: protocol::CoordinationDisbandTeamOutcome::Completed {
+                report: disband_report.clone(),
+            },
+        })
+        .expect("status payload"),
+    ]);
+    let mut disband_methods = Vec::new();
+    let disbanded = disband_team_through_daemon_with(
+        protocol::CoordinationDisbandTeamParams {
+            request: crate::coordination::requests::DisbandTeamRequest {
+                team_name: "arch".to_string(),
+            },
+        },
+        std::time::Duration::ZERO,
+        |method, _params| {
+            disband_methods.push(method.to_string());
+            disband_responses.pop_front().ok_or_else(|| {
+                CoordinationDaemonCallError::Transport("unexpected daemon call".to_string())
+            })
+        },
+    )
+    .expect("daemon disband completes");
+    assert_eq!(disbanded, disband_report);
+    assert_eq!(
+        disband_methods,
+        [
+            protocol::method::COORDINATION_DISBAND_TEAM,
+            protocol::method::COORDINATION_DISBAND_TEAM_STATUS,
+        ]
+    );
+
+    let mut add_responses = std::collections::VecDeque::from([
+        serde_json::to_value(protocol::CoordinationAddMemberAccepted {
+            run_id: "member-add-test".to_string(),
+        })
+        .expect("accepted payload"),
+        serde_json::to_value(protocol::CoordinationAddMemberStatus {
+            run_id: "member-add-test".to_string(),
+            outcome: protocol::CoordinationAddMemberOutcome::Completed,
+        })
+        .expect("status payload"),
+    ]);
+    let mut add_methods = Vec::new();
+    add_member_through_daemon_with(
+        protocol::CoordinationAddMemberParams {
+            request: crate::coordination::requests::AddMemberRequest {
+                team_name: "arch".to_string(),
+                member_name: "builder".to_string(),
+                backend_kind: "codex".to_string(),
+                project_path: Some("/work/arch".to_string()),
+            },
+        },
+        std::time::Duration::ZERO,
+        |method, _params| {
+            add_methods.push(method.to_string());
+            add_responses.pop_front().ok_or_else(|| {
+                CoordinationDaemonCallError::Transport("unexpected daemon call".to_string())
+            })
+        },
+    )
+    .expect("daemon roster add completes");
+    assert_eq!(
+        add_methods,
+        [
+            protocol::method::COORDINATION_ADD_MEMBER,
+            protocol::method::COORDINATION_ADD_MEMBER_STATUS,
+        ]
+    );
+
+    let remove_report = crate::coordination::requests::StopMemberReport {
+        team_name: "arch".to_string(),
+        member_name: "builder".to_string(),
+        removed: true,
+        message: "member removed".to_string(),
+        steps: Vec::new(),
+        warnings: Vec::new(),
+    };
+    let mut remove_responses = std::collections::VecDeque::from([
+        serde_json::to_value(protocol::CoordinationRemoveMemberAccepted {
+            run_id: "member-remove-test".to_string(),
+        })
+        .expect("accepted payload"),
+        serde_json::to_value(protocol::CoordinationRemoveMemberStatus {
+            run_id: "member-remove-test".to_string(),
+            outcome: protocol::CoordinationRemoveMemberOutcome::Completed {
+                report: remove_report.clone(),
+            },
+        })
+        .expect("status payload"),
+    ]);
+    let mut remove_methods = Vec::new();
+    let removed = remove_member_through_daemon_with(
+        protocol::CoordinationRemoveMemberParams {
+            request: crate::coordination::requests::RemoveMemberRequest {
+                team_name: "arch".to_string(),
+                member_name: "builder".to_string(),
+            },
+        },
+        std::time::Duration::ZERO,
+        |method, _params| {
+            remove_methods.push(method.to_string());
+            remove_responses.pop_front().ok_or_else(|| {
+                CoordinationDaemonCallError::Transport("unexpected daemon call".to_string())
+            })
+        },
+    )
+    .expect("daemon roster removal completes");
+    assert_eq!(removed, remove_report);
+    assert_eq!(
+        remove_methods,
+        [
+            protocol::method::COORDINATION_REMOVE_MEMBER,
+            protocol::method::COORDINATION_REMOVE_MEMBER_STATUS,
         ]
     );
 }

@@ -331,13 +331,13 @@ The app uses the same authenticated JSON-line protocol on both platforms; only t
 - `git_changed` — .git directory modified (triggers commit list refresh)
 - `session_file_created` — new session handoff file detected
 
-**Pairing rule:** `PROTOCOL_VERSION = 18`. App and daemon must match **exactly** — startup (`startup/setup.rs`, `ensure_expected_daemon_runtime` in `startup/daemon.rs`) and every reconnect path reject a mismatch.
+**Pairing rule:** `PROTOCOL_VERSION = 19`. App and daemon must match **exactly** — startup (`startup/setup.rs`, `ensure_expected_daemon_runtime` in `startup/daemon.rs`) and every reconnect path reject a mismatch.
 
-**Bump rule:** bump the constant when a wire change requires the app to be rebuilt against the new daemon; a change to the `CliTool` wire vocabulary counts, because either side decodes the other's tool value as `Unknown`. Purely additive methods are the documented exception — they ship without a bump and degrade to `UNKNOWN_METHOD` on older daemons. The regression tests in `protocol.rs` do not pin the current value; each asserts only that the version is above the last incompatible one: 7 for hub-owned focus, 9 for the degradation cursor, 10 for the Claude-only account methods, 11 for the retired Google tool value, 12 for the missing `grok` value, 13 for the retired Codex compaction mode, 14 for daemons without the deadline scheduler, 15 for daemons without team initialization, 16 for daemons without member operations, 17 for daemons without team-resume/reonboard operations. After changing the contract, run `just install-daemon`.
+**Bump rule:** bump the constant when a wire change requires the app to be rebuilt against the new daemon; a change to the `CliTool` wire vocabulary counts, because either side decodes the other's tool value as `Unknown`. Purely additive methods are the documented exception — they ship without a bump and degrade to `UNKNOWN_METHOD` on older daemons. The regression tests in `protocol.rs` do not pin the current value; each asserts only that the version is above the last incompatible one: 7 for hub-owned focus, 9 for the degradation cursor, 10 for the Claude-only account methods, 11 for the retired Google tool value, 12 for the missing `grok` value, 13 for the retired Codex compaction mode, 14 for daemons without the deadline scheduler, 15 for daemons without team initialization, 16 for daemons without member operations, 17 for daemons without team-resume/reonboard operations, 18 for daemons without standalone team and roster operations. After changing the contract, run `just install-daemon`.
 
-**Version history:** v11 replaced the Claude-only account methods with generic `list_accounts` / `project_transcript` and added `refresh_usage`; v12 replaced the retired Google tool value with `agy`; v13 added `grok`; v14 retired the Codex compaction mode method; v15 moved the managed-task deadline pass into the daemon; v16 moved team initialization into the daemon; v17 moved add/resume/stop into the daemon; v18 moved resume-team/reonboard into the daemon.
+**Version history:** v11 replaced the Claude-only account methods with generic `list_accounts` / `project_transcript` and added `refresh_usage`; v12 replaced the retired Google tool value with `agy`; v13 added `grok`; v14 retired the Codex compaction mode method; v15 moved the managed-task deadline pass into the daemon; v16 moved team initialization into the daemon; v17 moved add/resume/stop into the daemon; v18 moved resume-team/reonboard into the daemon; v19 moved standalone team create/disband and roster edits into the daemon.
 
-**Commands (app → daemon, 41 callable methods — 42 constants, one of them unhandled):**
+**Commands (app → daemon, 49 callable methods — 50 constants, one of them unhandled):**
 - `ping`, `shutdown`, `watch`, `unwatch`, `scan_sessions`
 - `git_status`, `git_log`, `git_latest_commit_time`, `git_commits_in_range`, `git_commit_files`, `git_commit_diff`
 - `file_tree`, `read_file`, `read_readme`, `read_asset`, `list_directory` (a method constant with no handler — not callable)
@@ -348,6 +348,7 @@ The app uses the same authenticated JSON-line protocol on both platforms; only t
 - `coordination.initialize_team`, `coordination.initialize_status` (daemon-owned initialization since v16)
 - `coordination.add_agent`, `coordination.add_agent_status`, `coordination.resume_member`, `coordination.resume_member_status`, `coordination.stop_member`, `coordination.stop_member_status` (daemon-owned member operations since v17)
 - `coordination.resume_team`, `coordination.resume_team_status`, `coordination.reonboard`, `coordination.reonboard_status` (daemon-owned team operations since v18)
+- `coordination.create_team`, `coordination.create_team_status`, `coordination.disband_team`, `coordination.disband_team_status`, `coordination.add_member`, `coordination.add_member_status`, `coordination.remove_member`, `coordination.remove_member_status` (daemon-owned standalone team and roster mutations since v19)
 
 ## Startup Sequence
 
