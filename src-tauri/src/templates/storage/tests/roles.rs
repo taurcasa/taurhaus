@@ -505,7 +505,7 @@ fn previous_release_builtins_reconcile_before_catalog_reads_and_export() {
         .iter()
         .find(|record| record.template.role_id == "quick-dev-codex")
         .expect("quick dev");
-    assert_eq!(quick_dev.template.version, "2.0.0");
+    assert_eq!(quick_dev.template.version, "3.0.0");
     assert_eq!(quick_dev.template.defaults.model, "gpt-5.6-sol");
     assert!(quick_dev
         .template
@@ -717,6 +717,83 @@ fn known_shipped_hashes_cover_pre_0_8_4_catalog_deltas() {
         assert!(
             PREVIOUS_BUNDLED_TEMPLATE_HASHES.contains(&expected),
             "missing known shipped fingerprint for {}",
+            expected.0
+        );
+    }
+}
+
+#[test]
+fn work_kind_catalog_upgrade_recognizes_every_superseded_role() {
+    assert_eq!(BUILTIN_CATALOG_REVISION, 2);
+    for expected in [
+        (
+            "roles/adversarial-reviewer-claude.yaml",
+            "2310c346d6153fe5c3676e7cd3955c233c2737c8c5c00aeb6c547f19b3a12c54",
+        ),
+        (
+            "roles/antigravity-orchestrator.yaml",
+            "f31535fb94dcb09ab95e33991d8c75b19a8e4f7864273f6af1b610ee23648665",
+        ),
+        (
+            "roles/claude-design-lead.yaml",
+            "041e8308981059ceac04fa28c11c56e20c890195bc33e0baf3a877530ae63b3a",
+        ),
+        (
+            "roles/claude-product-checker.yaml",
+            "6511e2667ffd9f312670fc9e484f840ed7c2a2206d39572b180ab255651bf01d",
+        ),
+        (
+            "roles/claude-researcher.yaml",
+            "bb91b8e7a343806e2442351a0b8adcc001db156b5bdd2685cd67ab932be19634",
+        ),
+        (
+            "roles/codex-orchestrator.yaml",
+            "c1bceca521e650cb950c8ec96aa32074c796885529922ba506d3f14f88ac352b",
+        ),
+        (
+            "roles/codex-qa.yaml",
+            "61acf9b5a6840cbf0aeb6c0a1119cc9984bee20ca561cb37fd96899f9eeadffd",
+        ),
+        (
+            "roles/docs-verifier-codex.yaml",
+            "48d337dd5789990145c9099915908b0e33a72bf4b0ef3ad2b24f7fa85ec3e7c9",
+        ),
+        (
+            "roles/frontend-design-skill-developer.yaml",
+            "d94b175e41be45e0f3ada122fbf203797bc0becb706ebb5e6e37600b8ecbc024",
+        ),
+        (
+            "roles/quick-dev-codex.yaml",
+            "11ac612adea02bb15ff5d4e8eed89e5e02a1fafa9e3ab45280928c4e4440edd8",
+        ),
+        (
+            "roles/v3-architect-codex.yaml",
+            "6c88bebf37e6f0b92243b8d0bb89863a329a698d4ca8af4d1411dd059c3e2f59",
+        ),
+        (
+            "roles/v3-lead-claude.yaml",
+            "8623afce3d973d3d3d3a24ba8645f8b625ca3584478647e7639be4c88beda264",
+        ),
+        (
+            "roles/v4-developer-agy.yaml",
+            "4fb9543656526636f9b042649b6cea53c38b745abca5115351b5fdb4291f4d76",
+        ),
+        (
+            "roles/v4-developer-claude.yaml",
+            "7ee89cbccd43353d623f734bd52dc22941e455a9836e4f34df2f632ee48d0c19",
+        ),
+        (
+            "roles/v4-developer-codex.yaml",
+            "b0a6927bbc6649a8c11301b286655ec0e1f8de690fefdf2b512f33462adf8ed8",
+        ),
+        (
+            "roles/v4-developer-grok.yaml",
+            "77fc1ab71ac69b8d5fef1cd0efa442d9929e1cf3afa54e810b0647fb39a33693",
+        ),
+    ] {
+        assert!(
+            PREVIOUS_BUNDLED_TEMPLATE_HASHES.contains(&expected),
+            "missing work-kind upgrade fingerprint for {}",
             expected.0
         );
     }
