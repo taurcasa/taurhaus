@@ -1,9 +1,7 @@
 //! Daemon-owned host for standalone team and roster mutations.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
 
 use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
@@ -12,6 +10,9 @@ use crate::coordination::requests::{
 };
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::ActiveProjectTeamStore;
+use crate::daemon::coordination_runs::{
+    CoordinationRunKind, CoordinationRunRegistry, CoordinationRunReport, RunOutcome,
+};
 use crate::daemon::protocol::{
     CoordinationAddMemberOutcome, CoordinationAddMemberParams, CoordinationAddMemberStatus,
     CoordinationCreateTeamOutcome, CoordinationCreateTeamParams, CoordinationCreateTeamStatus,
@@ -21,187 +22,26 @@ use crate::daemon::protocol::{
 };
 use crate::session_scanner::cli_tool::CliTool;
 
-const ROSTER_RUN_TTL: Duration = Duration::from_secs(10 * 60);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RosterRunKind {
-    CreateTeam,
-    DisbandTeam,
-    AddMember,
-    RemoveMember,
-}
-
-impl RosterRunKind {
-    fn id_prefix(self) -> &'static str {
-        match self {
-            Self::CreateTeam => "create",
-            Self::DisbandTeam => "disband",
-            Self::AddMember => "member-add",
-            Self::RemoveMember => "member-remove",
-        }
-    }
-
-    fn accepts(self, report: &RosterRunReport) -> bool {
-        matches!(
-            (self, report),
-            (Self::CreateTeam, RosterRunReport::CreateTeam)
-                | (Self::DisbandTeam, RosterRunReport::DisbandTeam(_))
-                | (Self::AddMember, RosterRunReport::AddMember)
-                | (Self::RemoveMember, RosterRunReport::RemoveMember(_))
-        )
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum RosterRunReport {
-    CreateTeam,
-    DisbandTeam(DisbandTeamReport),
-    AddMember,
-    RemoveMember(StopMemberReport),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum RosterRunOutcome {
-    Running,
-    Completed { report: RosterRunReport },
-    Failed { error: String },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct RosterRunStatus {
-    run_id: String,
-    kind: RosterRunKind,
-    outcome: RosterRunOutcome,
-}
-
-#[derive(Debug)]
-struct RosterRunRecord {
-    kind: RosterRunKind,
-    outcome: RosterRunOutcome,
-    terminal_at: Option<Instant>,
-}
-
-#[derive(Debug, Clone)]
-struct RosterRunRegistry {
-    records: Arc<Mutex<HashMap<String, RosterRunRecord>>>,
-    ttl: Duration,
-}
-
-impl Default for RosterRunRegistry {
-    fn default() -> Self {
-        Self::with_ttl(ROSTER_RUN_TTL)
-    }
-}
-
-impl RosterRunRegistry {
-    fn with_ttl(ttl: Duration) -> Self {
-        Self {
-            records: Arc::new(Mutex::new(HashMap::new())),
-            ttl,
-        }
-    }
-
-    fn start(&self, kind: RosterRunKind) -> String {
-        let run_id = format!("{}_{}", kind.id_prefix(), uuid::Uuid::new_v4().simple());
-        let mut records = self
-            .records
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        Self::prune_locked(&mut records, self.ttl, Instant::now());
-        records.insert(
-            run_id.clone(),
-            RosterRunRecord {
-                kind,
-                outcome: RosterRunOutcome::Running,
-                terminal_at: None,
-            },
-        );
-        run_id
-    }
-
-    fn complete(&self, run_id: &str, report: RosterRunReport) -> Result<(), String> {
-        let mut records = self
-            .records
-            .lock()
-            .map_err(|_| "roster run registry mutex poisoned".to_string())?;
-        let record = records
-            .get_mut(run_id)
-            .ok_or_else(|| format!("roster run '{run_id}' was not found"))?;
-        if record.outcome != RosterRunOutcome::Running {
-            return Err(format!("roster run '{run_id}' is already terminal"));
-        }
-        if !record.kind.accepts(&report) {
-            let error =
-                format!("roster run '{run_id}' cannot complete with a different report kind");
-            record.outcome = RosterRunOutcome::Failed {
-                error: error.clone(),
-            };
-            record.terminal_at = Some(Instant::now());
-            return Err(error);
-        }
-        record.outcome = RosterRunOutcome::Completed { report };
-        record.terminal_at = Some(Instant::now());
-        Ok(())
-    }
-
-    fn fail(&self, run_id: &str, error: String) -> Result<(), String> {
-        let mut records = self
-            .records
-            .lock()
-            .map_err(|_| "roster run registry mutex poisoned".to_string())?;
-        let record = records
-            .get_mut(run_id)
-            .ok_or_else(|| format!("roster run '{run_id}' was not found"))?;
-        if record.outcome != RosterRunOutcome::Running {
-            return Err(format!("roster run '{run_id}' is already terminal"));
-        }
-        record.outcome = RosterRunOutcome::Failed { error };
-        record.terminal_at = Some(Instant::now());
-        Ok(())
-    }
-
-    fn status(&self, run_id: &str) -> Option<RosterRunStatus> {
-        let mut records = self
-            .records
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        Self::prune_locked(&mut records, self.ttl, Instant::now());
-        records.get(run_id).map(|record| RosterRunStatus {
-            run_id: run_id.to_string(),
-            kind: record.kind,
-            outcome: record.outcome.clone(),
-        })
-    }
-
-    fn prune_locked(records: &mut HashMap<String, RosterRunRecord>, ttl: Duration, now: Instant) {
-        records.retain(|_, record| {
-            record
-                .terminal_at
-                .is_none_or(|terminal_at| now.saturating_duration_since(terminal_at) <= ttl)
-        });
-    }
-}
-
 /// Daemon-local host for standalone create/disband and roster edits.
 #[derive(Clone)]
 pub(crate) struct RosterOperationsService {
-    registry: RosterRunRegistry,
+    registry: CoordinationRunRegistry,
     state: Arc<CoordinationState>,
 }
 
 impl RosterOperationsService {
-    pub(crate) fn for_process_default(state: Arc<CoordinationState>) -> Self {
-        Self {
-            registry: RosterRunRegistry::default(),
-            state,
-        }
+    pub(crate) fn for_process_default(
+        state: Arc<CoordinationState>,
+        registry: CoordinationRunRegistry,
+    ) -> Self {
+        Self { registry, state }
     }
 
     pub(crate) fn start_create_team(
         &self,
         params: CoordinationCreateTeamParams,
     ) -> Result<String, String> {
-        self.start_operation(RosterRunKind::CreateTeam, "create", move |state| {
+        self.start_operation(CoordinationRunKind::CreateTeam, "create", move |state| {
             state
                 .with_orchestrator(|orchestrator| {
                     orchestrator
@@ -209,7 +49,7 @@ impl RosterOperationsService {
                         .map(|_| ())
                 })
                 .map_err(|error| error.to_string())?;
-            Ok(RosterRunReport::CreateTeam)
+            Ok(CoordinationRunReport::CreateTeam)
         })
     }
 
@@ -217,9 +57,9 @@ impl RosterOperationsService {
         &self,
         params: CoordinationDisbandTeamParams,
     ) -> Result<String, String> {
-        self.start_operation(RosterRunKind::DisbandTeam, "disband", move |state| {
+        self.start_operation(CoordinationRunKind::DisbandTeam, "disband", move |state| {
             execute_disband_team(state.as_ref(), &params.request)
-                .map(RosterRunReport::DisbandTeam)
+                .map(CoordinationRunReport::DisbandTeam)
                 .map_err(|error| error.to_string())
         })
     }
@@ -228,9 +68,9 @@ impl RosterOperationsService {
         &self,
         params: CoordinationAddMemberParams,
     ) -> Result<String, String> {
-        self.start_operation(RosterRunKind::AddMember, "member-add", move |state| {
+        self.start_operation(CoordinationRunKind::AddMember, "member-add", move |state| {
             execute_add_member(state.as_ref(), &params.request)
-                .map(|()| RosterRunReport::AddMember)
+                .map(|()| CoordinationRunReport::AddMember)
                 .map_err(|error| error.to_string())
         })
     }
@@ -239,26 +79,30 @@ impl RosterOperationsService {
         &self,
         params: CoordinationRemoveMemberParams,
     ) -> Result<String, String> {
-        self.start_operation(RosterRunKind::RemoveMember, "member-remove", move |state| {
-            let report = execute_remove_member(state.as_ref(), &params.request)
+        self.start_operation(
+            CoordinationRunKind::RemoveMember,
+            "member-remove",
+            move |state| {
+                let report = execute_remove_member(state.as_ref(), &params.request)
+                    .map_err(|error| error.to_string())?;
+                crate::coordination::stores::active_project::sync_team_from_config(
+                    state.teams_dir(),
+                    &report.team_name,
+                )
                 .map_err(|error| error.to_string())?;
-            crate::coordination::stores::active_project::sync_team_from_config(
-                state.teams_dir(),
-                &report.team_name,
-            )
-            .map_err(|error| error.to_string())?;
-            Ok(RosterRunReport::RemoveMember(report))
-        })
+                Ok(CoordinationRunReport::RemoveMember(report))
+            },
+        )
     }
 
     fn start_operation<F>(
         &self,
-        kind: RosterRunKind,
+        kind: CoordinationRunKind,
         worker_name: &'static str,
         operation: F,
     ) -> Result<String, String>
     where
-        F: FnOnce(Arc<CoordinationState>) -> Result<RosterRunReport, String> + Send + 'static,
+        F: FnOnce(Arc<CoordinationState>) -> Result<CoordinationRunReport, String> + Send + 'static,
     {
         let run_id = self.registry.start(kind);
         let run_id_for_task = run_id.clone();
@@ -301,16 +145,16 @@ impl RosterOperationsService {
 
     pub(crate) fn create_team_status(&self, run_id: &str) -> Option<CoordinationCreateTeamStatus> {
         let status = self.registry.status(run_id)?;
-        if status.kind != RosterRunKind::CreateTeam {
+        if status.kind != CoordinationRunKind::CreateTeam {
             return None;
         }
         let outcome = match status.outcome {
-            RosterRunOutcome::Running => CoordinationCreateTeamOutcome::Running,
-            RosterRunOutcome::Completed {
-                report: RosterRunReport::CreateTeam,
+            RunOutcome::Running => CoordinationCreateTeamOutcome::Running,
+            RunOutcome::Completed {
+                report: CoordinationRunReport::CreateTeam,
             } => CoordinationCreateTeamOutcome::Completed,
-            RosterRunOutcome::Failed { error } => CoordinationCreateTeamOutcome::Failed { error },
-            RosterRunOutcome::Completed { .. } => return None,
+            RunOutcome::Failed { error } => CoordinationCreateTeamOutcome::Failed { error },
+            RunOutcome::Completed { .. } => return None,
         };
         Some(CoordinationCreateTeamStatus {
             run_id: status.run_id,
@@ -323,16 +167,16 @@ impl RosterOperationsService {
         run_id: &str,
     ) -> Option<CoordinationDisbandTeamStatus> {
         let status = self.registry.status(run_id)?;
-        if status.kind != RosterRunKind::DisbandTeam {
+        if status.kind != CoordinationRunKind::DisbandTeam {
             return None;
         }
         let outcome = match status.outcome {
-            RosterRunOutcome::Running => CoordinationDisbandTeamOutcome::Running,
-            RosterRunOutcome::Completed {
-                report: RosterRunReport::DisbandTeam(report),
+            RunOutcome::Running => CoordinationDisbandTeamOutcome::Running,
+            RunOutcome::Completed {
+                report: CoordinationRunReport::DisbandTeam(report),
             } => CoordinationDisbandTeamOutcome::Completed { report },
-            RosterRunOutcome::Failed { error } => CoordinationDisbandTeamOutcome::Failed { error },
-            RosterRunOutcome::Completed { .. } => return None,
+            RunOutcome::Failed { error } => CoordinationDisbandTeamOutcome::Failed { error },
+            RunOutcome::Completed { .. } => return None,
         };
         Some(CoordinationDisbandTeamStatus {
             run_id: status.run_id,
@@ -342,16 +186,16 @@ impl RosterOperationsService {
 
     pub(crate) fn add_member_status(&self, run_id: &str) -> Option<CoordinationAddMemberStatus> {
         let status = self.registry.status(run_id)?;
-        if status.kind != RosterRunKind::AddMember {
+        if status.kind != CoordinationRunKind::AddMember {
             return None;
         }
         let outcome = match status.outcome {
-            RosterRunOutcome::Running => CoordinationAddMemberOutcome::Running,
-            RosterRunOutcome::Completed {
-                report: RosterRunReport::AddMember,
+            RunOutcome::Running => CoordinationAddMemberOutcome::Running,
+            RunOutcome::Completed {
+                report: CoordinationRunReport::AddMember,
             } => CoordinationAddMemberOutcome::Completed,
-            RosterRunOutcome::Failed { error } => CoordinationAddMemberOutcome::Failed { error },
-            RosterRunOutcome::Completed { .. } => return None,
+            RunOutcome::Failed { error } => CoordinationAddMemberOutcome::Failed { error },
+            RunOutcome::Completed { .. } => return None,
         };
         Some(CoordinationAddMemberStatus {
             run_id: status.run_id,
@@ -364,16 +208,16 @@ impl RosterOperationsService {
         run_id: &str,
     ) -> Option<CoordinationRemoveMemberStatus> {
         let status = self.registry.status(run_id)?;
-        if status.kind != RosterRunKind::RemoveMember {
+        if status.kind != CoordinationRunKind::RemoveMember {
             return None;
         }
         let outcome = match status.outcome {
-            RosterRunOutcome::Running => CoordinationRemoveMemberOutcome::Running,
-            RosterRunOutcome::Completed {
-                report: RosterRunReport::RemoveMember(report),
+            RunOutcome::Running => CoordinationRemoveMemberOutcome::Running,
+            RunOutcome::Completed {
+                report: CoordinationRunReport::RemoveMember(report),
             } => CoordinationRemoveMemberOutcome::Completed { report },
-            RosterRunOutcome::Failed { error } => CoordinationRemoveMemberOutcome::Failed { error },
-            RosterRunOutcome::Completed { .. } => return None,
+            RunOutcome::Failed { error } => CoordinationRemoveMemberOutcome::Failed { error },
+            RunOutcome::Completed { .. } => return None,
         };
         Some(CoordinationRemoveMemberStatus {
             run_id: status.run_id,
@@ -493,7 +337,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
-    use super::{RosterOperationsService, RosterRunKind, RosterRunOutcome, RosterRunRegistry};
+    use super::RosterOperationsService;
     use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
     use crate::coordination::requests::{
         AddMemberRequest, CreateTeamRequest, DisbandTeamRequest, RemoveMemberRequest,
@@ -503,6 +347,7 @@ mod tests {
     };
     use crate::coordination::state::CoordinationState;
     use crate::coordination::stores::{ActiveProjectTeamStore, TeamConfigStore};
+    use crate::daemon::coordination_runs::{CoordinationRunKind, CoordinationRunRegistry};
     use crate::daemon::protocol::{
         CoordinationAddMemberOutcome, CoordinationAddMemberParams, CoordinationCreateTeamOutcome,
         CoordinationCreateTeamParams, CoordinationDisbandTeamOutcome,
@@ -523,7 +368,10 @@ mod tests {
             }),
             Arc::new(move || runtime_for_factory.clone() as Arc<dyn CoordinationRuntime>),
         ));
-        (RosterOperationsService::for_process_default(state), runtime)
+        (
+            RosterOperationsService::for_process_default(state, CoordinationRunRegistry::default()),
+            runtime,
+        )
     }
 
     fn wait_until<T>(mut status: impl FnMut() -> Option<T>, running: impl Fn(&T) -> bool) -> T {
@@ -538,21 +386,25 @@ mod tests {
         }
     }
 
+    // Regression: f8d08a21 gave roster operations a private run registry. The
+    // server.rs source pin counts clone sites; this is the behavioural half —
+    // a run started on the shared registry resolves through BOTH services, so
+    // a service that builds its own registry internally fails here.
     #[test]
-    fn registry_accepts_every_roster_operation_kind() {
-        let registry = RosterRunRegistry::with_ttl(Duration::from_secs(600));
-        for (kind, prefix) in [
-            (RosterRunKind::CreateTeam, "create_"),
-            (RosterRunKind::DisbandTeam, "disband_"),
-            (RosterRunKind::AddMember, "member-add_"),
-            (RosterRunKind::RemoveMember, "member-remove_"),
-        ] {
-            let run_id = registry.start(kind);
-            assert!(run_id.starts_with(prefix));
-            let status = registry.status(&run_id).expect("run registered");
-            assert_eq!(status.kind, kind);
-            assert_eq!(status.outcome, RosterRunOutcome::Running);
-        }
+    fn member_and_roster_services_resolve_runs_through_one_shared_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = CoordinationRunRegistry::with_ttl(Duration::from_secs(600));
+        let (roster, _runtime) = service(dir.path());
+        let roster =
+            RosterOperationsService::for_process_default(roster.state.clone(), registry.clone());
+        let member = crate::daemon::member_runs::MemberOperationsService::for_process_default(
+            roster.state.clone(),
+            registry.clone(),
+        );
+        let add_run = registry.start(CoordinationRunKind::AddAgent);
+        assert!(member.add_agent_status(&add_run).is_some());
+        let remove_run = registry.start(CoordinationRunKind::RemoveMember);
+        assert!(roster.remove_member_status(&remove_run).is_some());
     }
 
     #[test]

@@ -222,6 +222,7 @@ fn serve(
     let roster_operations_service = Arc::new(
         crate::daemon::roster_runs::RosterOperationsService::for_process_default(
             coordination_state,
+            coordination_run_registry.clone(),
         ),
     );
     let watch_registry =
@@ -827,6 +828,19 @@ mod tests {
         );
     }
 
+    // Regression: f8d08a21 gave roster operations a private run registry,
+    // unlike every earlier daemon-owned coordination service.
+    #[test]
+    fn daemon_coordination_workers_share_one_process_run_registry() {
+        let source = include_str!("server.rs");
+        let runtime = &source[..source.find("#[cfg(test)]").unwrap_or(source.len())];
+        assert_eq!(
+            runtime.matches("coordination_run_registry.clone()").count(),
+            4,
+            "all four coordination services must receive the process-wide run registry"
+        );
+    }
+
     // Regression: 34fdeead added a daemon deadline scheduler but only tested
     // the scheduler in isolation. Removing `run`'s production registration
     // would therefore leave both the app and daemon with deadline work disabled.
@@ -1114,6 +1128,36 @@ mod tests {
 
         assert!(!resp.is_ok());
         assert_eq!(resp.error.unwrap().code, "UNKNOWN_METHOD");
+
+        server.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn retired_stop_member_methods_return_unknown_method() {
+        // Regression: 03eb3a2c made remove-member the app's roster-removal path
+        // but left both superseded stop-member methods callable in the daemon.
+        let server = start_test_server();
+        let port = server.port;
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+
+        for (index, method) in [
+            "coordination.stop_member",
+            "coordination.stop_member_status",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let request = DaemonRequest::new(format!("retired-stop-{index}"), method, Value::Null);
+            let response = send_request(&mut stream, &mut reader, &request);
+            assert_eq!(
+                response.error.expect("retired method error").code,
+                "UNKNOWN_METHOD"
+            );
+        }
 
         server.shutdown.store(true, Ordering::Relaxed);
     }
@@ -1468,8 +1512,6 @@ mod tests {
             protocol::method::COORDINATION_ADD_AGENT_STATUS,
             protocol::method::COORDINATION_RESUME_MEMBER,
             protocol::method::COORDINATION_RESUME_MEMBER_STATUS,
-            protocol::method::COORDINATION_STOP_MEMBER,
-            protocol::method::COORDINATION_STOP_MEMBER_STATUS,
             protocol::method::COORDINATION_RESUME_TEAM,
             protocol::method::COORDINATION_RESUME_TEAM_STATUS,
             protocol::method::COORDINATION_REONBOARD,

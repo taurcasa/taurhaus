@@ -127,30 +127,6 @@ fn resume_member_pipeline_test_fixture(
     Ok(report)
 }
 
-/// Test-only stop fixture. Production member stop execution is daemon-owned.
-fn stop_member_pipeline_test_fixture(
-    state: &CoordinationState,
-    team_name: String,
-    member_name: String,
-) -> Result<RemoveAgentReport, String> {
-    validate_non_empty("team_name", &team_name)?;
-    validate_non_empty("member_name", &member_name)?;
-    let report = crate::daemon::member_runs::execute_stop_member_pipeline(
-        state,
-        &crate::coordination::requests::StopMemberRequest {
-            team_name,
-            member_name,
-        },
-    )
-    .map(map_stop_member_report_from_contract)
-    .map_err(map_coordination_error)?;
-    if report.removed {
-        sync_active_team_projects_after_change(state, &report.team_name)
-            .map_err(map_coordination_error)?;
-    }
-    Ok(report)
-}
-
 /// Test-only team-resume fixture. Production team resume execution is daemon-owned.
 fn coordination_resume_team_internal(
     state: &CoordinationState,
@@ -340,15 +316,14 @@ fn resume_member_command_has_no_local_pipeline_execution_path() {
     assert!(source.contains("COORDINATION_RESUME_MEMBER_STATUS"));
 }
 
-// Regression: 9cd9c2d5 left stop-member execution in the desktop process
-// after initialization moved into the daemon, preserving the Windows writer.
+// Regression: 03eb3a2c made remove-member the app's roster-removal path but
+// left a cfg(test) client for the superseded stop-member wire methods.
 #[test]
-fn stop_member_command_has_no_local_pipeline_execution_path() {
+fn stop_member_wire_client_is_removed() {
     let source = include_str!("../coordination.rs");
-    assert!(!source.contains("orchestrator.remove_member"));
-    assert!(!source.contains("execute_stop_member_pipeline("));
-    assert!(source.contains("COORDINATION_STOP_MEMBER"));
-    assert!(source.contains("COORDINATION_STOP_MEMBER_STATUS"));
+    assert!(!source.contains("stop_member_through_daemon_with"));
+    assert!(!source.contains("CoordinationStopMemberParams"));
+    assert!(!source.contains("COORDINATION_STOP_MEMBER"));
 }
 
 // Regression: c6e81abc kept team resume in the desktop process, so reopening a
@@ -407,7 +382,7 @@ fn disband_team_uses_the_long_running_daemon_poll_interval() {
         .next()
         .expect("disband daemon client body");
     assert!(client.contains("COORDINATION_DAEMON_POLL_INTERVAL"));
-    assert!(!client.contains("COORDINATION_STOP_DAEMON_POLL_INTERVAL"));
+    assert!(!client.contains("COORDINATION_ROSTER_DAEMON_POLL_INTERVAL"));
 }
 
 // Regression: 1e1dcea5 kept the config-only roster add in the desktop
@@ -641,7 +616,7 @@ fn add_agent_daemon_poll_reemits_the_existing_progress_contract() {
 }
 
 #[test]
-fn resume_and_stop_daemon_clients_use_their_run_status_methods() {
+fn resume_daemon_client_uses_its_run_status_method() {
     let resume_params = protocol::CoordinationResumeMemberParams {
         request: crate::coordination::requests::ResumeMemberRequest {
             team_name: "arch".to_string(),
@@ -726,55 +701,6 @@ fn resume_and_stop_daemon_clients_use_their_run_status_methods() {
         vec![
             protocol::method::COORDINATION_RESUME_MEMBER,
             protocol::method::COORDINATION_RESUME_MEMBER_STATUS,
-        ]
-    );
-
-    let stop_params = protocol::CoordinationStopMemberParams {
-        request: crate::coordination::requests::StopMemberRequest {
-            team_name: "arch".to_string(),
-            member_name: "builder".to_string(),
-        },
-    };
-    let stop_report = crate::coordination::requests::StopMemberReport {
-        team_name: "arch".to_string(),
-        member_name: "builder".to_string(),
-        removed: true,
-        message: "member removed".to_string(),
-        steps: Vec::new(),
-        warnings: Vec::new(),
-    };
-    let mut stop_responses = std::collections::VecDeque::from([
-        serde_json::to_value(protocol::CoordinationStopMemberAccepted {
-            run_id: "stop-test".to_string(),
-        })
-        .expect("accepted payload"),
-        serde_json::to_value(protocol::CoordinationStopMemberStatus {
-            run_id: "stop-test".to_string(),
-            steps: Vec::new(),
-            outcome: protocol::CoordinationStopMemberOutcome::Completed {
-                report: stop_report.clone(),
-            },
-        })
-        .expect("status payload"),
-    ]);
-    let mut stop_methods = Vec::new();
-    let stopped = stop_member_through_daemon_with(
-        stop_params,
-        std::time::Duration::ZERO,
-        |method, _params| {
-            stop_methods.push(method.to_string());
-            stop_responses.pop_front().ok_or_else(|| {
-                CoordinationDaemonCallError::Transport("unexpected extra daemon call".to_string())
-            })
-        },
-    )
-    .expect("daemon stop completes");
-    assert_eq!(stopped, stop_report);
-    assert_eq!(
-        stop_methods,
-        vec![
-            protocol::method::COORDINATION_STOP_MEMBER,
-            protocol::method::COORDINATION_STOP_MEMBER_STATUS,
         ]
     );
 }
@@ -1081,10 +1007,10 @@ fn roster_daemon_clients_use_their_distinct_run_status_methods() {
 }
 
 #[test]
-fn stop_member_uses_a_snappy_daemon_poll_interval() {
-    // Regression: 639b340e made the formerly inline stop interaction wait up
-    // to the shared 500 ms long-running-operation poll interval.
-    assert!(COORDINATION_STOP_DAEMON_POLL_INTERVAL <= std::time::Duration::from_millis(50));
+fn roster_mutations_use_a_snappy_daemon_poll_interval() {
+    // Regression: 639b340e made the formerly inline roster interaction wait
+    // up to the shared 500 ms long-running-operation poll interval.
+    assert!(COORDINATION_ROSTER_DAEMON_POLL_INTERVAL <= std::time::Duration::from_millis(50));
 }
 
 #[test]
@@ -1588,14 +1514,6 @@ fn member_commands_validate_all_required_fields() {
     )
     .expect_err("empty backend should fail");
     assert!(err.contains("backend_kind"));
-
-    let err = stop_member_pipeline_test_fixture(&state, "".to_string(), "alice".to_string())
-        .expect_err("empty team should fail");
-    assert!(err.contains("team_name"));
-
-    let err = stop_member_pipeline_test_fixture(&state, "team".to_string(), "  ".to_string())
-        .expect_err("whitespace member should fail");
-    assert!(err.contains("member_name"));
 }
 
 #[test]
@@ -2651,41 +2569,6 @@ fn derive_cross_project_status_matches_wsl_unc_and_linux_forms() {
 
     assert!(!status.is_cross_project);
     assert_eq!(status.project_label, "");
-}
-
-#[test]
-fn remove_member_happy_path_removes_member() {
-    let tmp = TempDir::new().expect("tempdir");
-    let state = test_state(tmp.path().to_path_buf());
-
-    coordination_create_team_impl(&state, "arch".to_string()).expect("create");
-    coordination_add_member_impl(
-        &state,
-        "arch".to_string(),
-        "alice".to_string(),
-        "mesh".to_string(),
-        Some("/tmp/arch".to_string()),
-    )
-    .expect("add");
-    let report = stop_member_pipeline_test_fixture(&state, "arch".to_string(), "alice".to_string())
-        .expect("remove");
-    assert!(report.removed);
-    assert_eq!(report.team_name, "arch");
-    assert_eq!(report.member_name, "alice");
-    assert!(!report.steps.is_empty());
-    let status = coordination_get_team_status_impl(&state, "arch".to_string()).expect("status");
-    assert!(status.members.is_empty());
-}
-
-#[test]
-fn remove_member_error_mapping_not_found() {
-    let tmp = TempDir::new().expect("tempdir");
-    let state = test_state(tmp.path().to_path_buf());
-
-    coordination_create_team_impl(&state, "arch".to_string()).expect("create");
-    let err = stop_member_pipeline_test_fixture(&state, "arch".to_string(), "missing".to_string())
-        .expect_err("missing member");
-    assert!(err.contains("Not found"));
 }
 
 #[test]

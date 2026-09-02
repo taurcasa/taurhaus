@@ -135,18 +135,6 @@ pub(crate) fn dispatch(
             )
         }
         #[cfg(feature = "mesh-bridged-backend")]
-        protocol::method::COORDINATION_STOP_MEMBER => {
-            handle_coordination_stop_member(&request.id, &request.params, member_operations_service)
-        }
-        #[cfg(feature = "mesh-bridged-backend")]
-        protocol::method::COORDINATION_STOP_MEMBER_STATUS => {
-            handle_coordination_stop_member_status(
-                &request.id,
-                &request.params,
-                member_operations_service,
-            )
-        }
-        #[cfg(feature = "mesh-bridged-backend")]
         protocol::method::COORDINATION_RESUME_TEAM => {
             handle_coordination_resume_team(&request.id, &request.params, team_operations_service)
         }
@@ -329,40 +317,6 @@ fn handle_coordination_resume_member_status(
     match service.resume_member_status(&params.run_id) {
         Some(status) => DaemonResponse::ok(id, status),
         None => coordination_run_not_found(id, "resume-member", &params.run_id),
-    }
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-fn handle_coordination_stop_member(
-    id: &str,
-    params: &serde_json::Value,
-    service: &crate::daemon::member_runs::MemberOperationsService,
-) -> DaemonResponse {
-    let params: protocol::CoordinationStopMemberParams =
-        match serde_json::from_value(params.clone()) {
-            Ok(params) => params,
-            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
-        };
-    match service.start_stop_member(params) {
-        Ok(run_id) => DaemonResponse::ok(id, protocol::CoordinationStopMemberAccepted { run_id }),
-        Err(error) => DaemonResponse::err(id, "STOP_MEMBER_START_FAILED", error),
-    }
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-fn handle_coordination_stop_member_status(
-    id: &str,
-    params: &serde_json::Value,
-    service: &crate::daemon::member_runs::MemberOperationsService,
-) -> DaemonResponse {
-    let params: protocol::CoordinationStopMemberStatusParams =
-        match serde_json::from_value(params.clone()) {
-            Ok(params) => params,
-            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
-        };
-    match service.stop_member_status(&params.run_id) {
-        Some(status) => DaemonResponse::ok(id, status),
-        None => coordination_run_not_found(id, "stop-member", &params.run_id),
     }
 }
 

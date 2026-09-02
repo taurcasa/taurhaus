@@ -1,6 +1,6 @@
 # Coordination Through the Daemon
 
-Status: **in progress** (operator decision 2026-09-01: "design now, build immediately"). The deadline pass is daemon-owned at protocol 15, initialization at protocol 16, add-agent/resume-member/stop-member at protocol 17, resume-team/reonboard at protocol 18, and standalone create/disband plus roster add/remove at protocol 19. Every interactive team mutation is daemon-owned. Cleanup note for the next slice: `coordination.stop_member`/`_status` have no app caller after v19 (roster removal goes through `coordination.remove_member`) — retire the methods, handler arms, service functions and the cfg(test) client together. Self-heal, effort, and the B3 writer boundary remain; the B1b design for the first two is [`self-heal-effort-daemon-routing.md`](self-heal-effort-daemon-routing.md) (builds after the stop_member retirement slice, as protocol 21).
+Status: **in progress** (operator decision 2026-09-01: "design now, build immediately"). The deadline pass is daemon-owned at protocol 15, initialization at protocol 16, add-agent/resume-member/stop-member at protocol 17, resume-team/reonboard at protocol 18, and standalone create/disband plus roster add/remove at protocol 19. Protocol 20 completed the cleanup by retiring the redundant `coordination.stop_member`/`_status` wire pair; roster removal remains on `coordination.remove_member`. Every interactive team mutation is daemon-owned. Self-heal/effort routing and the B3 writer boundary remain; the B1b design for the first two is [`self-heal-effort-daemon-routing.md`](self-heal-effort-daemon-routing.md) (protocol 21).
 
 ## The problem, from the field
 
@@ -35,7 +35,7 @@ The round-3 move-aside/tolerant-reader machinery is **kept**, not reverted: it p
 
 ## Wire contract
 
-- `PROTOCOL_VERSION` bumped 14 → 15 for the deadline pass, 15 → 16 for initialization, 16 → 17 for add/resume/stop, 17 → 18 for resume-team/reonboard, and 18 → 19 for standalone create/disband and roster edits; app and daemon move in lockstep via the existing exact-match gate and repair flow.
+- `PROTOCOL_VERSION` bumped 14 → 15 for the deadline pass, 15 → 16 for initialization, 16 → 17 for add/resume/stop, 17 → 18 for resume-team/reonboard, 18 → 19 for standalone create/disband and roster edits, and 19 → 20 to retire the redundant stop-member wire pair; app and daemon move in lockstep via the existing exact-match gate and repair flow.
 - New namespaced methods (`coordination.*`), each carrying its expectation (CAS semantics) even in phase B1 — the daemon validates under `flock` and returns typed conflict outcomes, mirroring today's `RuntimeCommitOutcome::Skipped` shapes.
 - **B2 progress decision**: initialize uses a `run_id`-keyed in-memory registry and status polling. The app polls at roughly 500 ms and re-emits the existing Tauri progress event; the daemon retains terminal runs for a bounded TTL. Push progress remains a possible later optimization, not part of this slice.
 
