@@ -198,6 +198,7 @@ const USAGE_SYNC_INITIAL_RETRY_MS = 250
 const USAGE_SYNC_MAX_RETRY_MS = 16_000
 const USAGE_SYNC_DEADLINE_MS = 30_000
 const usageSyncTimers = new Map()
+const usageRefreshes = new Map()
 
 /**
  * Forget what the backend said this tool's launch commands mean.
@@ -318,15 +319,19 @@ function scheduleUsageSync(tool, pending, deadline, retryMs = USAGE_SYNC_INITIAL
   usageSyncTimers.set(tool, timer)
 }
 
-export function refreshUsage(tool = providerTool()) {
+export function refreshUsage(tool = providerTool(), { maxAgeMs = 0 } = {}) {
   const id = toolId(tool)
+  const current = usageRefreshes.get(id)
+  if (maxAgeMs > 0 && current && Date.now() - current.startedAt < maxAgeMs) {
+    return current.promise
+  }
   const state = mutableAccountState(id)
   const pending = new Map(
     state.accounts
       .filter((account) => account.logged_in && account.usage_capable !== false)
       .map((account) => [account.id, usageObservation(account)])
   )
-  return Promise.resolve(refreshAccountsUsage(id))
+  const promise = Promise.resolve(refreshAccountsUsage(id))
     .then((scheduled) => listAccounts(id).then((report) => ({ report, scheduled })))
     .then(({ report, scheduled }) => {
       const remaining = mergeUsageReport(state, report, pending)
@@ -335,8 +340,11 @@ export function refreshUsage(tool = providerTool()) {
       }
     })
     .catch((error) => {
+      if (usageRefreshes.get(id)?.promise === promise) usageRefreshes.delete(id)
       console.warn('Failed to refresh account usage:', error)
     })
+  usageRefreshes.set(id, { startedAt: Date.now(), promise })
+  return promise
 }
 
 function keepKnownUsage(state, detected) {
@@ -577,6 +585,7 @@ export function pendingAccountChoice() {
 export function resetAccountsForTest() {
   for (const timer of usageSyncTimers.values()) clearTimeout(timer)
   usageSyncTimers.clear()
+  usageRefreshes.clear()
   for (const state of Object.values(accounts.byTool)) {
     state.accounts = []
     state.resolvedBases = []

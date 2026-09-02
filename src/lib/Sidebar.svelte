@@ -81,6 +81,7 @@
   let accountsBoard = $state(null)
   let accountsBoardLeaveTimeout = null
   let accountsBoardRefreshTimeout = null
+  const ACCOUNTS_BOARD_REFRESH_TTL_MS = 60_000
 
   const accountSignal = $derived(
     ambientAccountSignal(
@@ -343,7 +344,9 @@
       for (const tool of tools()) {
         void refreshAccounts(tool.id)
         void refreshAccountRelationships(tool.id)
-        if (tool.capabilities.usage) void refreshUsage(tool.id)
+        if (tool.capabilities.usage) {
+          void refreshUsage(tool.id, { maxAgeMs: ACCOUNTS_BOARD_REFRESH_TTL_MS })
+        }
       }
     }, 300)
   }

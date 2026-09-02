@@ -431,6 +431,21 @@ describe('claudeAccounts store', () => {
     ])
   })
 
+  // Regression: 0745ebe refreshed provider usage on every hover-board entry,
+  // even when the last request was only moments old.
+  it('reuses a recent usage refresh when a passive caller supplies a max age', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+    listAccounts.mockClear()
+    refreshAccountsUsage.mockClear()
+
+    await refreshUsage('claude', { maxAgeMs: 60_000 })
+    await refreshUsage('claude', { maxAgeMs: 60_000 })
+
+    expect(refreshAccountsUsage).toHaveBeenCalledTimes(1)
+    expect(listAccounts).toHaveBeenCalledTimes(1)
+  })
+
   it('re-reads usage after an asynchronous refresh is acknowledged', async () => {
     // Regression: 2f8246c made the refresh RPC wait for network completion.
     // Returning promptly avoids daemon disconnects, so the frontend must keep
