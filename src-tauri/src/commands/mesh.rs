@@ -893,25 +893,12 @@ fn format_mesh_install_success_message(
 
 #[cfg(feature = "mesh-bridged-backend")]
 fn run_mesh_install_self_heal(
-    app: &tauri::AppHandle,
+    _app: &tauri::AppHandle,
 ) -> Result<MeshInstallSelfHealSummary, String> {
-    let state = app.state::<crate::coordination::state::CoordinationState>();
-    let db = app.state::<crate::commands::projects::DbState>();
-    let provider = app.state::<crate::ProviderState>();
-    let summary =
-        crate::commands::coordination::run_background_self_heal_pass(&db, provider.inner(), &state)
-            .map_err(|e| format!("Mesh installed but daemon self-heal failed: {e}"))?;
-    if summary.team_errors > 0 {
-        return Err(format!(
-            "Mesh installed but daemon self-heal reported {} team error{}",
-            summary.team_errors,
-            if summary.team_errors == 1 { "" } else { "s" }
-        ));
-    }
-    Ok(MeshInstallSelfHealSummary {
-        teams_reconciled: summary.teams_reconciled,
-        team_daemons_ensured: summary.team_daemons_ensured,
-    })
+    // Protocol 21 moved the pass into the daemon scheduler. The newly
+    // installed mesh is observed on its next bounded cycle; the app must not
+    // write team state across the Windows/WSL boundary here.
+    Ok(MeshInstallSelfHealSummary::default())
 }
 
 #[cfg(not(feature = "mesh-bridged-backend"))]

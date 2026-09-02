@@ -126,12 +126,22 @@ where
     let coordination_state =
         Arc::new(crate::coordination::state::CoordinationState::for_process_default());
     #[cfg(feature = "mesh-bridged-backend")]
+    let launch_settings = crate::daemon::background_scheduler::LaunchSettingsStore::default();
+    #[cfg(feature = "mesh-bridged-backend")]
     let deadline_scheduler = schedule_deadlines.then(|| {
         // The hub above owns and refreshes the member-activity snapshots that
         // the shared deadline pass reads. Register only after that activity
         // source is live so the pass keeps its existing input seam.
         crate::daemon::deadline_scheduler::DeadlineScheduler::start(
             coordination_state.clone(),
+            shutdown.clone(),
+        )
+    });
+    #[cfg(feature = "mesh-bridged-backend")]
+    let background_scheduler = schedule_deadlines.then(|| {
+        crate::daemon::background_scheduler::BackgroundScheduler::start(
+            coordination_state.clone(),
+            launch_settings.clone(),
             shutdown.clone(),
         )
     });
@@ -145,10 +155,16 @@ where
         provider,
         #[cfg(feature = "mesh-bridged-backend")]
         coordination_state,
+        #[cfg(feature = "mesh-bridged-backend")]
+        launch_settings,
     );
     shutdown.store(true, Ordering::Relaxed);
     #[cfg(feature = "mesh-bridged-backend")]
     if let Some(scheduler) = deadline_scheduler {
+        scheduler.join();
+    }
+    #[cfg(feature = "mesh-bridged-backend")]
+    if let Some(scheduler) = background_scheduler {
         scheduler.join();
     }
     result
@@ -188,6 +204,7 @@ fn serve(
     #[cfg(feature = "mesh-bridged-backend")] coordination_state: Arc<
         crate::coordination::state::CoordinationState,
     >,
+    #[cfg(feature = "mesh-bridged-backend")] _launch_settings: crate::daemon::background_scheduler::LaunchSettingsStore,
 ) -> std::io::Result<()> {
     listener.set_nonblocking(true)?;
 
@@ -349,6 +366,8 @@ pub(crate) fn serve_for_test(
         provider,
         #[cfg(feature = "mesh-bridged-backend")]
         Arc::new(crate::coordination::state::CoordinationState::for_process_default()),
+        #[cfg(feature = "mesh-bridged-backend")]
+        crate::daemon::background_scheduler::LaunchSettingsStore::default(),
     )
 }
 
@@ -838,6 +857,19 @@ mod tests {
             runtime.matches("coordination_run_registry.clone()").count(),
             4,
             "all four coordination services must receive the process-wide run registry"
+        );
+    }
+
+    // Regression: 34fdeead proved an isolated scheduler test does not pin its
+    // production registration. Protocol 21 must start the self-heal/effort arm
+    // from the real daemon entry point.
+    #[test]
+    fn production_daemon_run_registers_the_background_scheduler() {
+        let source = include_str!("server.rs");
+        let runtime = &source[..source.find("#[cfg(test)]").unwrap_or(source.len())];
+        assert!(
+            runtime.contains("BackgroundScheduler::start"),
+            "the production daemon must register the protocol-21 scheduler arm"
         );
     }
 

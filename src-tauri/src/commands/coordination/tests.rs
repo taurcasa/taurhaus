@@ -1042,23 +1042,6 @@ fn task_effort_launch_settings_returns_usable_settings_and_discovery_failure() {
         .contains("failed to parse"));
 }
 
-// Regression: 135c6f54 made one unreadable team config abort the shared
-// background settings helper, so the 30-second self-heal and mesh-install
-// passes never reached their existing per-team error handling.
-#[test]
-fn background_launch_settings_degrades_managed_codex_discovery_failure() {
-    let teams = TempDir::new().expect("teams dir");
-    let broken_team = teams.path().join("broken-team");
-    std::fs::create_dir_all(&broken_team).expect("create broken team");
-    std::fs::write(broken_team.join("config.json"), b"{not valid json")
-        .expect("write broken config");
-    let (db, _db_file) = test_db_state();
-
-    // Infallible by contract: a discovery failure is logged and degraded,
-    // never surfaced, so the background passes keep their per-team handling.
-    let (_cli_commands, _tmux_layout) = background_launch_settings(&db, teams.path());
-}
-
 #[test]
 fn successful_team_commands_do_not_reconcile_the_codex_hook_twice() {
     // Regression: 6fe0aa3 reconciled Codex both before launch and again after a
@@ -1101,56 +1084,6 @@ fn daemon_owned_member_launches_do_not_reconcile_codex_in_the_app() {
             "{command} must leave Codex hook reconciliation to the daemon"
         );
     }
-}
-
-// Regression: 06575d68 resolved both launch modes for every configured team
-// tool while merely assembling settings for the 30-second self-heal pass, so
-// an idle team paid shell/tmux probe cost despite launching nothing.
-#[test]
-fn idle_background_launch_settings_do_not_probe_team_bases() {
-    let tmp = TempDir::new().expect("temp teams dir");
-    let state = test_state(tmp.path().to_path_buf());
-    state
-        .with_orchestrator(|orchestrator| {
-            orchestrator.create_team("idle-team", None)?;
-            orchestrator.add_member(
-                "idle-team",
-                crate::coordination::domain::Member {
-                    name: "team-lead".to_string(),
-                    role: MemberRole::Lead,
-                    role_id: None,
-                    role_name: None,
-                    focus_area: None,
-                    context_summary: None,
-                    behavior_summary: None,
-                    communication_style: None,
-                    runtime_compact_summary: None,
-                    instructions: None,
-                    behavioral_contract: None,
-                    quality_gates: None,
-                    handoff_expectations: None,
-                    definition_of_done: None,
-                    phase_scope: None,
-                    mode: None,
-                    inherits_from: None,
-                    required_artifacts: None,
-                    capabilities: None,
-                    model: None,
-                    reasoning_effort: None,
-                    project_path: PathBuf::from("/tmp/idle"),
-                    cli_tool: CliTool::Claude,
-                    extra: Default::default(),
-                },
-            )?;
-            Ok(())
-        })
-        .expect("seed idle team");
-    let (db, _db_file) = test_db_state();
-    let probe = crate::commands::accounts::install_test_resolution_probe(std::time::Duration::ZERO);
-
-    let _ = background_launch_settings(&db, tmp.path());
-
-    assert_eq!(probe.calls(), 0, "idle settings assembly must not probe");
 }
 
 #[test]

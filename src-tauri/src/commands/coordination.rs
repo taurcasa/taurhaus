@@ -64,26 +64,6 @@ use state_sync::*;
 #[cfg(test)]
 use taurhaus_lib::ProviderState;
 
-/// The launch settings a background pass relaunches a member with.
-///
-/// The same resolution an operator-driven resume performs, minus the hook
-/// write: a pass that runs on a timer reads whether the managed Codex hook is
-/// installed rather than reconciling it. Without this the effort relaunch used
-/// stock defaults and moved the member off the account it was launched on.
-pub(crate) fn background_launch_settings(
-    db: &DbState,
-    teams_dir: &std::path::Path,
-) -> (CliCommandSettings, String) {
-    let (settings, discovery_error) = task_effort_launch_settings(db, teams_dir);
-    if let Some(err) = discovery_error {
-        tracing::warn!(
-            error = %err,
-            "managed-Codex discovery failed; background pass proceeds with managed inputs"
-        );
-    }
-    settings
-}
-
 /// Strict launch settings for the task-arrival effort pass.
 ///
 /// Unlike the shared background helper, this boundary reports a roster scan
@@ -115,23 +95,6 @@ fn launch_settings_for_managed_codex(
         has_managed_codex && crate::coordination::compact_hook::codex_compact_hook_is_installed(),
     );
     (cli_commands, tmux_layout)
-}
-
-pub(crate) fn run_background_self_heal_pass(
-    db: &DbState,
-    provider: &ProviderState,
-    state: &CoordinationState,
-) -> Result<crate::coordination::state::BackgroundSelfHealPassResult, CoordinationError> {
-    let (mut cli_commands, tmux_layout) = background_launch_settings(db, state.teams_dir());
-    state.run_background_self_heal_pass_with_launch_resolution(
-        &mut cli_commands,
-        &tmux_layout,
-        &mut |tool, commands| {
-            crate::commands::accounts::apply_team_resume_launch_base_resolution(
-                provider, commands, tool,
-            );
-        },
-    )
 }
 
 /// Put a pending assignment effort into force after a project's tasks changed.
