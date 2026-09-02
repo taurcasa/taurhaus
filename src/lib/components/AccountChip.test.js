@@ -45,6 +45,24 @@ describe('AccountChip', () => {
     expect(screen.getByTestId('account-chip')).toHaveTextContent('last used')
   })
 
+  // Regression: 716f5a0 applied the backend origin vocabulary to the
+  // frontend-local effective account and dropped its global-default label.
+  it('keeps the frontend default provenance visible', () => {
+    render(AccountChip, {
+      props: {
+        tool: 'claude',
+        accounts: ACCOUNTS,
+        selectedAccountId: 'account-2',
+        origin: 'default',
+        onSelect: vi.fn(),
+      },
+    })
+
+    const chip = screen.getByTestId('account-chip')
+    expect(chip).toHaveTextContent('default')
+    expect(chip).toHaveAttribute('title', expect.stringContaining('(default)'))
+  })
+
   it('stays hidden when only one account exists', () => {
     render(AccountChip, {
       props: { accounts: [ACCOUNTS[0]], selectedAccountId: null, onSelect: vi.fn() },

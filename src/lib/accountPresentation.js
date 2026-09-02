@@ -111,12 +111,28 @@ const ACCOUNT_ORIGIN_COPY = {
   default_config_dir: { sentence: "the tool's default directory", hint: 'default directory' },
 }
 
+// `effectiveAccount` predates the backend wire vocabulary and still supplies
+// these local names to AccountChip. Keep that translation explicit instead of
+// treating the two provenance contracts as interchangeable.
+const EFFECTIVE_ACCOUNT_ORIGIN_HINT = {
+  explicit: '',
+  session: '',
+  pinned: '',
+  last_used: 'last used',
+  default: 'default',
+  base_command: 'from launch command',
+  default_config_dir: 'default',
+}
+
 /** Product copy for the backend's settled launch-account provenance. */
 export function accountOriginSentence(origin) {
   return ACCOUNT_ORIGIN_COPY[origin]?.sentence ?? 'selected for this project'
 }
 
-/** Compact form of the same backend-owned provenance vocabulary. */
+/** Compact copy for AccountChip's frontend-local effective-account origin. */
 export function accountOriginHint(origin) {
+  if (Object.hasOwn(EFFECTIVE_ACCOUNT_ORIGIN_HINT, origin)) {
+    return EFFECTIVE_ACCOUNT_ORIGIN_HINT[origin]
+  }
   return ACCOUNT_ORIGIN_COPY[origin]?.hint ?? ''
 }
