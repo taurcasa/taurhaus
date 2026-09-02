@@ -1474,7 +1474,7 @@ mod tests {
         for role in load_role_templates() {
             let runtime = role.runtime_compact_summary.as_ref();
             let runtime_surfaces = format!(
-                "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+                "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
                 role.behavioral_contract.communication.join("\n"),
                 role.behavioral_contract.execution.join("\n"),
                 role.behavioral_contract.escalation.join("\n"),
@@ -1489,6 +1489,9 @@ mod tests {
                     .unwrap_or_default(),
                 runtime
                     .map(|summary| summary.avoid.join("\n"))
+                    .unwrap_or_default(),
+                runtime
+                    .map(|summary| summary.escalate_when.join("\n"))
                     .unwrap_or_default(),
             );
             for retired in ["labeled shape", "CHANGED, VERIFIED", "within ten minutes"] {
