@@ -4644,43 +4644,16 @@ fn add_agent_onboarding_entry_uses_immediate_policy() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn effort_pass_scope_table_pins_retry_and_budget_contract() {
+fn effort_attempt_budget_is_shared_by_every_pass_scope() {
     let cases = [
-        (
-            "task change starts a switch",
-            EffortPassScope::TaskChanged,
-            0,
-            true,
-        ),
-        (
-            "self-heal starts an owed switch",
-            EffortPassScope::RetryPending,
-            0,
-            true,
-        ),
-        (
-            "self-heal retries a failed switch",
-            EffortPassScope::RetryPending,
-            1,
-            true,
-        ),
-        (
-            "the third failure spends the budget",
-            EffortPassScope::TaskChanged,
-            3,
-            false,
-        ),
-        (
-            "self-heal also honors the spent budget",
-            EffortPassScope::RetryPending,
-            3,
-            false,
-        ),
+        ("a new switch is allowed", 0, true),
+        ("a failed switch is retried", 1, true),
+        ("the third failure spends the budget", 3, false),
     ];
 
-    for (name, scope, failed_attempts, expected) in cases {
+    for (name, failed_attempts, expected) in cases {
         assert_eq!(
-            super::effort::attempt_is_allowed(scope, failed_attempts),
+            super::effort::attempt_is_allowed(failed_attempts),
             expected,
             "{name}"
         );
@@ -5346,7 +5319,7 @@ fn adopting_a_foreign_session_clears_applied_effort_and_the_sweep_refires() {
             "effort-team",
             &CliCommandSettings::default(),
             "new_window",
-            EffortPassScope::RetryPending,
+            EffortPassScope::BackgroundSweep,
         )
         .expect("daemon-style sweep");
 
@@ -5410,7 +5383,7 @@ fn capturing_the_session_id_after_our_launch_preserves_applied_effort() {
             "effort-team",
             &CliCommandSettings::default(),
             "new_window",
-            EffortPassScope::RetryPending,
+            EffortPassScope::BackgroundSweep,
         )
         .expect("daemon-style sweep");
 

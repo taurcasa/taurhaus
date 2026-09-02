@@ -56,10 +56,7 @@ struct AssignmentTarget {
     blocked: bool,
 }
 
-pub(super) fn attempt_is_allowed(
-    _scope: task_effort::EffortPassScope,
-    failed_attempts: u32,
-) -> bool {
+pub(super) fn attempt_is_allowed(failed_attempts: u32) -> bool {
     failed_attempts < MAX_EFFORT_RESUME_ATTEMPTS
 }
 
@@ -289,8 +286,8 @@ impl CoordinationOrchestrator {
     /// the effort flag. Returns the members whose level it put into force.
     ///
     /// Both task events and background sweeps may start any switch the member
-    /// owes. The scope remains part of failure handling, while the shared
-    /// attempt budget bounds either caller.
+    /// owes. Scope only makes an unreadable runtime record a background skip;
+    /// the shared attempt budget bounds either caller.
     ///
     /// **Notice-gated by bundled mesh 0.2.28.** mesh owns both the assignment
     /// record and the inbox, so it holds a Codex notice while `appliedEffort`
@@ -608,7 +605,7 @@ fn pending_member_effort_outcome(
     let runtime = match MemberRuntimeStore::load(&orchestrator.teams_dir, team_name, &member.name) {
         Ok(runtime) => runtime,
         Err(CoordinationError::NotFound(_)) => return Ok(None),
-        Err(_) if scope == task_effort::EffortPassScope::RetryPending => return Ok(None),
+        Err(_) if scope == task_effort::EffortPassScope::BackgroundSweep => return Ok(None),
         Err(err) => return Err(format!("could not load member runtime: {err}")),
     };
     // Only a live member is switched. A member that is down is either one the
@@ -640,7 +637,7 @@ fn pending_member_effort_outcome(
     let failed_attempts = matching_failure.map_or(0, |failure| failure.attempts);
     let budget_already_exhausted =
         matching_failure.and_then(|failure| failure.reason.as_deref()) == Some("budget_exhausted");
-    if !attempt_is_allowed(scope, failed_attempts) {
+    if !attempt_is_allowed(failed_attempts) {
         if failed_attempts >= MAX_EFFORT_RESUME_ATTEMPTS
             && !budget_already_exhausted
             && orchestrator.record_effort_budget_exhaustion(

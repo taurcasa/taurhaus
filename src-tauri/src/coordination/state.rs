@@ -321,7 +321,7 @@ impl CoordinationState {
                 &team_name,
                 cli_commands,
                 tmux_layout,
-                crate::coordination::task_effort::EffortPassScope::RetryPending,
+                crate::coordination::task_effort::EffortPassScope::BackgroundSweep,
                 resolve_launch_base,
             ) {
                 Ok(outcome) => {

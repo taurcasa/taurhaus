@@ -594,7 +594,7 @@ pub struct CoordinationRemoveMemberStatus {
     pub outcome: CoordinationRemoveMemberOutcome,
 }
 
-/// Latest app-committed launch settings used only by the daemon retry sweep.
+/// Latest app-committed launch settings used by the daemon effort sweep.
 #[cfg(feature = "mesh-bridged-backend")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CoordinationPutLaunchSettingsParams {

@@ -53,7 +53,7 @@ pub enum EffortPassScope {
     /// A task event: start any switch the member owes.
     TaskChanged,
     /// A background sweep: start an owed switch or retry a recorded failure.
-    RetryPending,
+    BackgroundSweep,
 }
 
 /// Whether this harness changes effort by being relaunched.
@@ -72,7 +72,14 @@ pub fn relaunches_for_effort(tool: CliTool) -> bool {
 /// relaunch that has to put an assignment's level into force rewrites the
 /// pinned value rather than appending beside it.
 pub fn base_pins_effort(tool: CliTool, base: &str) -> bool {
-    effort_key(tool).is_some_and(|key| command_contains_flag(base, key))
+    let capabilities = spec(tool).capabilities;
+    match capabilities.effort_flag {
+        Some(EffortFlag::Config { key, .. }) => command_contains_flag(base, key),
+        Some(EffortFlag::Argument { flag }) => std::iter::once(flag)
+            .chain(capabilities.effort_flag_aliases.iter().copied())
+            .any(|flag| command_contains_flag(base, flag)),
+        None => false,
+    }
 }
 
 /// The same base command with the effort it pins replaced by `level`.
@@ -186,33 +193,30 @@ fn read_config_value(rest: &str) -> Option<(usize, String)> {
 /// The relaunch checks its own rewrite with this before it stops anything: a
 /// member is only taken down for a command that demonstrably carries the level.
 pub fn pinned_base_effort(tool: CliTool, base: &str) -> Option<String> {
-    match spec(tool).capabilities.effort_flag? {
+    let capabilities = spec(tool).capabilities;
+    match capabilities.effort_flag? {
         EffortFlag::Config { key, .. } => config_assignment_spans(base, key)
             .into_iter()
             .find_map(|(_, value)| trimmed(Some(value.trim_matches(['\'', '"'])))),
         EffortFlag::Argument { flag } => {
             let tokens: Vec<&str> = base.split_whitespace().collect();
-            for (index, token) in tokens.iter().enumerate() {
-                let bare = token.trim_matches(['\'', '"']);
-                if let Some(value) = bare.strip_prefix(&format!("{flag}=")) {
-                    return trimmed(Some(value.trim_matches(['\'', '"'])));
-                }
-                if bare == flag {
-                    return tokens
-                        .get(index + 1)
-                        .and_then(|value| trimmed(Some(value.trim_matches(['\'', '"']))));
+            for flag in
+                std::iter::once(flag).chain(capabilities.effort_flag_aliases.iter().copied())
+            {
+                for (index, token) in tokens.iter().enumerate() {
+                    let bare = token.trim_matches(['\'', '"']);
+                    if let Some(value) = bare.strip_prefix(&format!("{flag}=")) {
+                        return trimmed(Some(value.trim_matches(['\'', '"'])));
+                    }
+                    if bare == flag {
+                        return tokens
+                            .get(index + 1)
+                            .and_then(|value| trimmed(Some(value.trim_matches(['\'', '"']))));
+                    }
                 }
             }
             None
         }
-    }
-}
-
-/// The token a harness's base command pins its effort with.
-fn effort_key(tool: CliTool) -> Option<&'static str> {
-    match spec(tool).capabilities.effort_flag? {
-        EffortFlag::Argument { flag } => Some(flag),
-        EffortFlag::Config { key, .. } => Some(key),
     }
 }
 
@@ -588,6 +592,20 @@ mod tests {
         assert_eq!(
             base_with_effort(tool, "claude --effort=low", "high").as_deref(),
             Some("claude --effort=high")
+        );
+    }
+
+    // Regression: f9716c83 derived the applied level with an alias-blind base
+    // check, so a rendered launch could drop the request while the runtime
+    // record still claimed that requested level.
+    #[test]
+    fn an_effort_flag_alias_is_recognized_as_a_pinned_base() {
+        let base = "grok --reasoning-effort high --always-approve";
+
+        assert!(base_pins_effort(CliTool::Grok, base));
+        assert_eq!(
+            pinned_base_effort(CliTool::Grok, base).as_deref(),
+            Some("high")
         );
     }
 
