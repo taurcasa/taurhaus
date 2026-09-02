@@ -25,6 +25,8 @@ The five work kinds are measure, diagnose, implement, review, and spec-delta;
 assignments name objective, deliverable, first action, completion signal, and
 review route. If the file is unavailable in the working repository, the lead
 must link or provide the standard before anyone assumes defaults.
+Before claiming readiness, read the repository's own instructions (AGENTS.md,
+CLAUDE.md, or GEMINI.md) for its named per-task gate.
 
 Use one active assignment per member until uptake verification exists.
 Deadlines and effort are optional overrides, never default fields. Verify
