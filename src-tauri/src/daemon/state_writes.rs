@@ -8,8 +8,9 @@ use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{ActiveProjectTeamStore, TeamConfig, TeamConfigStore};
 use crate::daemon::protocol::{
     CoordinationPublishOperationalSnapshotsParams, CoordinationPublishOperationalSnapshotsResult,
-    CoordinationReconcileLivePresenceParams, CoordinationReconcileLivePresenceResult,
-    CoordinationSetActiveProjectTeamParams, CoordinationSetActiveProjectTeamResult,
+    CoordinationReconcileLivePresenceOutcome, CoordinationReconcileLivePresenceParams,
+    CoordinationReconcileLivePresenceResult, CoordinationSetActiveProjectTeamParams,
+    CoordinationSetActiveProjectTeamResult,
 };
 
 pub(crate) fn publish_operational_snapshots(
@@ -68,15 +69,22 @@ pub(crate) fn reconcile_live_presence(
     state: &CoordinationState,
     params: CoordinationReconcileLivePresenceParams,
 ) -> Result<CoordinationReconcileLivePresenceResult, CoordinationError> {
-    let mut reconciled_offline_members = state.with_orchestrator(|orchestrator| {
+    let Some(mut reconciled_offline_members) = state.try_with_orchestrator(|orchestrator| {
         orchestrator.reconcile_team_presence_for_live_status_with_runtime_sessions(
             &params.team_name,
             &params.runtime_sessions,
         )
-    })?;
+    })?
+    else {
+        return Ok(CoordinationReconcileLivePresenceResult {
+            outcome: CoordinationReconcileLivePresenceOutcome::Skipped,
+            reconciled_offline_members: Vec::new(),
+        });
+    };
     let mut reconciled_offline_members = reconciled_offline_members.drain().collect::<Vec<_>>();
     reconciled_offline_members.sort();
     Ok(CoordinationReconcileLivePresenceResult {
+        outcome: CoordinationReconcileLivePresenceOutcome::Reconciled,
         reconciled_offline_members,
     })
 }
@@ -96,10 +104,14 @@ pub(crate) fn set_active_project_team(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{mpsc, Arc};
+    use std::time::Duration;
+
     use chrono::{DateTime, Utc};
     use tempfile::TempDir;
 
     use super::*;
+    use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
     use crate::coordination::domain::{Member, MemberRole};
     use crate::coordination::stores::{
         OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,
@@ -285,5 +297,61 @@ mod tests {
                 .expect("load cleared mapping"),
             None
         );
+    }
+
+    // Regression: d593f81b routed the two-second live-status poll through the
+    // process-wide orchestrator mutex with a blocking lock, so a long team
+    // mutation made the reconcile RPC time out and disconnect the daemon pool.
+    #[test]
+    fn live_presence_reconcile_skips_without_waiting_for_a_busy_orchestrator() {
+        let teams = TempDir::new().expect("teams");
+        let state = Arc::new(CoordinationState::with_components(
+            teams.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+        ));
+        let (locked_tx, locked_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let holder_state = state.clone();
+        let holder = std::thread::spawn(move || {
+            holder_state.with_orchestrator(|_| {
+                locked_tx.send(()).expect("announce held lock");
+                release_rx.recv().expect("release held lock");
+                Ok(())
+            })
+        });
+        locked_rx.recv().expect("orchestrator lock held");
+
+        let (result_tx, result_rx) = mpsc::channel();
+        let reconcile_state = state.clone();
+        let reconcile = std::thread::spawn(move || {
+            let result = reconcile_live_presence(
+                &reconcile_state,
+                CoordinationReconcileLivePresenceParams {
+                    team_name: "architecture-final".to_string(),
+                    runtime_sessions: Vec::new(),
+                },
+            );
+            result_tx.send(result).expect("send reconcile result");
+        });
+
+        let prompt_result = result_rx.recv_timeout(Duration::from_millis(100));
+        release_tx.send(()).expect("release orchestrator lock");
+        holder
+            .join()
+            .expect("lock holder thread")
+            .expect("lock holder operation");
+        reconcile.join().expect("reconcile thread");
+
+        let result = prompt_result
+            .expect("busy live-presence reconciliation must return without waiting")
+            .expect("busy reconciliation is a successful skip");
+        assert_eq!(
+            result.outcome,
+            CoordinationReconcileLivePresenceOutcome::Skipped
+        );
+        assert!(result.reconciled_offline_members.is_empty());
     }
 }

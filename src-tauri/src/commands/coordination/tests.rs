@@ -406,14 +406,15 @@ fn protocol_22_state_write_clients_use_the_coordination_timeout_and_reconnect() 
 }
 
 // Regression: d593f81b emitted one WARN for every two-second live-status poll
-// during an outage and reported shared-connection contention as an outage.
+// during an outage and let orchestrator contention become a transport timeout.
 #[test]
-fn protocol_22_live_presence_degrade_warning_is_bounded_and_busy_is_debug_only() {
+fn protocol_22_live_presence_degrade_warning_is_bounded_and_skips_are_debug_only() {
     let source = include_str!("live_status.rs");
 
     assert!(source.contains("WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE.swap"));
     assert!(source.contains("WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE.store(false"));
-    assert!(source.contains("is_busy_transport_error(&error)"));
+    assert!(source.contains("CoordinationReconcileLivePresenceOutcome::Skipped"));
+    assert!(!source.contains("is_busy_transport_error(&error)"));
     assert!(source.contains("tracing::debug!"));
 }
 

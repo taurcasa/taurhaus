@@ -698,7 +698,16 @@ pub struct CoordinationReconcileLivePresenceParams {
 
 #[cfg(feature = "mesh-bridged-backend")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CoordinationReconcileLivePresenceOutcome {
+    Reconciled,
+    Skipped,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CoordinationReconcileLivePresenceResult {
+    pub outcome: CoordinationReconcileLivePresenceOutcome,
     pub reconciled_offline_members: Vec<String>,
 }
 

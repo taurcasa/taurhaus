@@ -423,15 +423,18 @@ fn reconcile_live_presence_through_daemon(
     match result {
         Ok(result) => {
             WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE.store(false, AtomicOrdering::Relaxed);
-            result.reconciled_offline_members.into_iter().collect()
-        }
-        Err(error) if taurhaus_lib::daemon_api::is_busy_transport_error(&error) => {
-            tracing::debug!(
-                team = team_name,
-                error = %error,
-                "live presence reconciliation skipped because the shared daemon connection is busy"
-            );
-            std::collections::HashSet::new()
+            match result.outcome {
+                crate::daemon::protocol::CoordinationReconcileLivePresenceOutcome::Reconciled => {
+                    result.reconciled_offline_members.into_iter().collect()
+                }
+                crate::daemon::protocol::CoordinationReconcileLivePresenceOutcome::Skipped => {
+                    tracing::debug!(
+                        team = team_name,
+                        "live presence reconciliation skipped because the daemon orchestrator is busy"
+                    );
+                    std::collections::HashSet::new()
+                }
+            }
         }
         Err(error) => {
             if !WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE.swap(true, AtomicOrdering::Relaxed) {

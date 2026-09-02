@@ -1,7 +1,7 @@
 //! Shared coordination app state with lazy orchestrator bootstrap.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
 
 use chrono::{DateTime, Utc};
 
@@ -168,6 +168,32 @@ impl CoordinationState {
             )
         })?;
         op(orchestrator)
+    }
+
+    /// Run an operation only when the process-wide orchestrator is immediately
+    /// available. `None` means another operation currently owns the mutex.
+    pub fn try_with_orchestrator<R, F>(&self, op: F) -> Result<Option<R>, CoordinationError>
+    where
+        F: FnOnce(&mut CoordinationOrchestrator) -> Result<R, CoordinationError>,
+    {
+        let mut guard = match self.orchestrator.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => return Ok(None),
+            Err(TryLockError::Poisoned(_)) => {
+                return Err(CoordinationError::StoreError(
+                    "coordination state mutex poisoned".to_string(),
+                ));
+            }
+        };
+        if guard.is_none() {
+            *guard = Some(self.build_orchestrator()?);
+        }
+        let orchestrator = guard.as_mut().ok_or_else(|| {
+            CoordinationError::StoreError(
+                "coordination orchestrator missing after initialization".to_string(),
+            )
+        })?;
+        op(orchestrator).map(Some)
     }
 
     pub fn trigger_team_self_heal(
