@@ -89,9 +89,12 @@ pub fn base_pins_effort(tool: CliTool, base: &str) -> bool {
 /// could take over, which is the one shape a relaunch cannot make carry the
 /// level.
 pub fn base_with_effort(tool: CliTool, base: &str, level: &str) -> Option<String> {
-    match spec(tool).capabilities.effort_flag? {
+    let capabilities = spec(tool).capabilities;
+    match capabilities.effort_flag? {
         EffortFlag::Config { key, .. } => config_base_with_effort(base, key, level),
-        EffortFlag::Argument { flag } => argument_base_with_effort(base, flag, level),
+        EffortFlag::Argument { flag } => {
+            argument_base_with_effort(base, flag, capabilities.effort_flag_aliases, level)
+        }
     }
 }
 
@@ -114,15 +117,21 @@ fn config_base_with_effort(base: &str, key: &str, level: &str) -> Option<String>
 }
 
 /// Rewrite a plain `--flag value` / `--flag=value` effort argument.
-fn argument_base_with_effort(base: &str, flag: &str, level: &str) -> Option<String> {
+fn argument_base_with_effort(
+    base: &str,
+    primary_flag: &str,
+    aliases: &[&str],
+    level: &str,
+) -> Option<String> {
     let mut tokens: Vec<String> = base.split_whitespace().map(ToString::to_string).collect();
     let mut rewrote = false;
     for index in 0..tokens.len() {
         let bare = tokens[index].trim_start_matches(['\'', '"']).to_string();
-        if bare.starts_with(&format!("{flag}=")) {
+        let accepted_flags = || std::iter::once(primary_flag).chain(aliases.iter().copied());
+        if let Some(flag) = accepted_flags().find(|flag| bare.starts_with(&format!("{flag}="))) {
             tokens[index] = format!("{flag}={level}");
             rewrote = true;
-        } else if bare == flag {
+        } else if accepted_flags().any(|flag| bare == flag) {
             // `--effort high`: the level is the token after the flag.
             if index + 1 >= tokens.len() {
                 return None;
@@ -606,6 +615,11 @@ mod tests {
         assert_eq!(
             pinned_base_effort(CliTool::Grok, base).as_deref(),
             Some("high")
+        );
+        assert_eq!(
+            base_with_effort(CliTool::Grok, base, "low").as_deref(),
+            Some("grok --reasoning-effort low --always-approve"),
+            "an accepted alias must be rewritable wherever it is recognized as a pin"
         );
     }
 
