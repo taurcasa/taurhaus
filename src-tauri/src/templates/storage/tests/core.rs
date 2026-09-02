@@ -155,6 +155,35 @@ fn tauri_bundle_resources_include_template_directories() {
 }
 
 #[test]
+fn packaged_template_manifest_matches_bundled_yaml() {
+    let templates_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("templates");
+    let manifest_path = templates_dir.join("manifest.txt");
+    let manifest = fs::read_to_string(&manifest_path).expect("read packaged template manifest");
+    let manifested = manifest
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(PathBuf::from)
+        .collect::<BTreeSet<_>>();
+
+    let mut bundled = BTreeSet::new();
+    for dirname in [ROLES_DIRNAME, PRESETS_DIRNAME] {
+        for entry in fs::read_dir(templates_dir.join(dirname)).expect("read template directory") {
+            let path = entry.expect("read template entry").path();
+            if path.is_file() && is_yaml_file(&path) {
+                bundled.insert(
+                    PathBuf::from(dirname)
+                        .join(path.file_name().expect("template file should have a name")),
+                );
+            }
+        }
+    }
+
+    assert_eq!(manifested, bundled);
+}
+
+#[test]
 fn write_template_file_is_atomic_and_writes_content() {
     let (_root, app_data, builtins) = setup_dirs();
     let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);

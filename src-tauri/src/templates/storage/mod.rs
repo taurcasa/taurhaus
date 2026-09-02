@@ -3,6 +3,8 @@ use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -38,6 +40,7 @@ const FALLBACK_LOCK_RETRY_DELAY_MS: u64 = 20;
 const FALLBACK_LOCK_RETRY_ATTEMPTS: usize = 250;
 const TEMP_FILE_RANDOM_RETRY_ATTEMPTS: usize = 16;
 const BUILTIN_CATALOG_REVISION: u32 = 3;
+const PACKAGED_TEMPLATE_MANIFEST: &str = include_str!("../../../resources/templates/manifest.txt");
 
 const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n.lock.fallback\n";
 
@@ -1141,6 +1144,8 @@ impl DebounceState {
 pub struct TemplateStore {
     templates_dir: PathBuf,
     builtins_dir: PathBuf,
+    builtin_manifest: Option<BTreeSet<PathBuf>>,
+    ignored_builtins_noted: Arc<AtomicBool>,
     debounce_window_secs: i64,
 }
 
@@ -1149,14 +1154,18 @@ impl TemplateStore {
         Self {
             templates_dir: app_data_dir.join(TEMPLATES_DIRNAME),
             builtins_dir: default_builtins_dir(),
+            builtin_manifest: Some(packaged_template_manifest()),
+            ignored_builtins_noted: Arc::new(AtomicBool::new(false)),
             debounce_window_secs: DEFAULT_DEBOUNCE_WINDOW_SECS,
         }
     }
 
+    #[cfg(test)]
     pub fn with_builtins_dir(app_data_dir: PathBuf, builtins_dir: PathBuf) -> Self {
         Self::with_builtins_and_debounce(app_data_dir, builtins_dir, DEFAULT_DEBOUNCE_WINDOW_SECS)
     }
 
+    #[cfg(test)]
     pub fn with_builtins_and_debounce(
         app_data_dir: PathBuf,
         builtins_dir: PathBuf,
@@ -1165,7 +1174,20 @@ impl TemplateStore {
         Self {
             templates_dir: app_data_dir.join(TEMPLATES_DIRNAME),
             builtins_dir,
+            builtin_manifest: None,
+            ignored_builtins_noted: Arc::new(AtomicBool::new(false)),
             debounce_window_secs,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_packaged_builtins_dir(app_data_dir: PathBuf, builtins_dir: PathBuf) -> Self {
+        Self {
+            templates_dir: app_data_dir.join(TEMPLATES_DIRNAME),
+            builtins_dir,
+            builtin_manifest: Some(packaged_template_manifest()),
+            ignored_builtins_noted: Arc::new(AtomicBool::new(false)),
+            debounce_window_secs: DEFAULT_DEBOUNCE_WINDOW_SECS,
         }
     }
 
@@ -1333,7 +1355,7 @@ impl TemplateStore {
             }
 
             let bundled = self.builtins_dir.join(&relative);
-            if !bundled.is_file() {
+            if !self.is_manifested_builtin_path(&bundled) || !bundled.is_file() {
                 let raw = String::from_utf8(existing).map_err(|err| {
                     TemplateStoreError::Parse(format!(
                         "failed to read role {} as UTF-8: {err}",
@@ -1460,19 +1482,7 @@ impl TemplateStore {
 
         fs::create_dir_all(target_dir)?;
 
-        let mut entries = fs::read_dir(source_dir)?
-            .map(|entry| entry.map(|e| e.path()))
-            .collect::<Result<Vec<_>, std::io::Error>>()?;
-        entries.sort();
-
-        for source_path in entries {
-            if !source_path.is_file() {
-                continue;
-            }
-            if !is_yaml_file(&source_path) {
-                continue;
-            }
-
+        for source_path in self.template_files_from_dir(source_dir)? {
             let Some(file_name) = source_path.file_name() else {
                 continue;
             };
@@ -1535,16 +1545,8 @@ impl TemplateStore {
             return Ok(Vec::new());
         }
 
-        let mut files = fs::read_dir(dir)?
-            .map(|entry| entry.map(|e| e.path()))
-            .collect::<Result<Vec<_>, std::io::Error>>()?;
-        files.sort();
-
         let mut roles = Vec::new();
-        for path in files {
-            if !path.is_file() || !is_yaml_file(&path) {
-                continue;
-            }
+        for path in self.template_files_from_dir(dir)? {
             let raw = fs::read_to_string(&path)?;
             let mut parsed = match serde_norway::from_str::<RoleTemplate>(&raw) {
                 Ok(parsed) => parsed,
@@ -1576,7 +1578,8 @@ impl TemplateStore {
         role_id: &str,
     ) -> Result<Option<RoleTemplateFile>, TemplateStoreError> {
         let path = dir.join(format!("{role_id}.yaml"));
-        if !path.exists() {
+        self.note_ignored_packaged_templates()?;
+        if !self.is_manifested_builtin_path(&path) || !path.exists() {
             return Ok(None);
         }
         let raw = fs::read_to_string(&path)?;
@@ -1611,16 +1614,8 @@ impl TemplateStore {
             return Ok(Vec::new());
         }
 
-        let mut files = fs::read_dir(dir)?
-            .map(|entry| entry.map(|e| e.path()))
-            .collect::<Result<Vec<_>, std::io::Error>>()?;
-        files.sort();
-
         let mut presets = Vec::new();
-        for path in files {
-            if !path.is_file() || !is_yaml_file(&path) {
-                continue;
-            }
+        for path in self.template_files_from_dir(dir)? {
             let raw = fs::read_to_string(&path)?;
             let mut parsed = match serde_norway::from_str::<TeamPreset>(&raw) {
                 Ok(parsed) => parsed,
@@ -1652,7 +1647,8 @@ impl TemplateStore {
         preset_id: &str,
     ) -> Result<Option<TeamPresetFile>, TemplateStoreError> {
         let path = dir.join(format!("{preset_id}.yaml"));
-        if !path.exists() {
+        self.note_ignored_packaged_templates()?;
+        if !self.is_manifested_builtin_path(&path) || !path.exists() {
             return Ok(None);
         }
         let raw = fs::read_to_string(&path)?;
@@ -1662,7 +1658,77 @@ impl TemplateStore {
         parsed.normalize_model_fields();
         Ok(Some(TeamPresetFile { template: parsed }))
     }
+
+    fn template_files_from_dir(&self, dir: &Path) -> Result<Vec<PathBuf>, TemplateStoreError> {
+        if !dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        self.note_ignored_packaged_templates()?;
+        let mut files = fs::read_dir(dir)?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<Result<Vec<_>, std::io::Error>>()?;
+        files.retain(|path| {
+            path.is_file() && is_yaml_file(path) && self.is_manifested_builtin_path(path)
+        });
+        files.sort();
+        Ok(files)
+    }
+
+    fn is_manifested_builtin_path(&self, path: &Path) -> bool {
+        let Ok(relative) = path.strip_prefix(&self.builtins_dir) else {
+            return true;
+        };
+        self.builtin_manifest
+            .as_ref()
+            .is_none_or(|manifest| manifest.contains(relative))
+    }
+
+    fn note_ignored_packaged_templates(&self) -> Result<(), TemplateStoreError> {
+        let Some(manifest) = self.builtin_manifest.as_ref() else {
+            return Ok(());
+        };
+        if self.ignored_builtins_noted.swap(true, Ordering::Relaxed) {
+            return Ok(());
+        }
+
+        let mut ignored_count = 0usize;
+        for dirname in [ROLES_DIRNAME, PRESETS_DIRNAME] {
+            let dir = self.builtins_dir.join(dirname);
+            if !dir.exists() {
+                continue;
+            }
+            for entry in fs::read_dir(dir)? {
+                let path = entry?.path();
+                if path.is_file() && is_yaml_file(&path) {
+                    let relative = path
+                        .strip_prefix(&self.builtins_dir)
+                        .expect("path read beneath built-ins directory");
+                    ignored_count += usize::from(!manifest.contains(relative));
+                }
+            }
+        }
+
+        if ignored_count > 0 {
+            tracing::debug!(
+                builtins_dir = %self.builtins_dir.display(),
+                ignored_count,
+                "ignoring packaged template files absent from the embedded manifest"
+            );
+        }
+        Ok(())
+    }
 }
+
+fn packaged_template_manifest() -> BTreeSet<PathBuf> {
+    PACKAGED_TEMPLATE_MANIFEST
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(PathBuf::from)
+        .collect()
+}
+
 fn resolve_signature(repo: &Repository) -> Result<Signature<'_>, TemplateStoreError> {
     match repo.signature() {
         Ok(sig) => Ok(sig),
