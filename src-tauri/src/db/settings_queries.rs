@@ -54,6 +54,14 @@ const KEY_DEFAULT_ACCOUNT_IDS: &str = "terminal.default_account_ids";
 const KEY_CLAUDE_DEFAULT_ACCOUNT: &str = "terminal.claude_default_account_id";
 const KEY_DARK_MODE: &str = "dark_mode";
 const KEY_PROJECT_DIALOG_LAST_PATH: &str = "project_dialog.last_path";
+const KEY_SETTINGS_SAVE_VERSION: &str = "settings.save_version";
+
+/// Monotonic version of the last whole settings document committed by the app.
+pub fn get_settings_save_version(conn: &Connection) -> Result<u64, rusqlite::Error> {
+    Ok(get_setting(conn, KEY_SETTINGS_SAVE_VERSION)?
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0))
+}
 
 /// Load all settings from the database, falling back to defaults for missing keys.
 pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> {
@@ -194,6 +202,8 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
 pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusqlite::Error> {
     let tx = conn.unchecked_transaction()?;
     write_settings(&tx, settings)?;
+    let next_version = get_settings_save_version(&tx)?.saturating_add(1);
+    set_setting(&tx, KEY_SETTINGS_SAVE_VERSION, &next_version.to_string())?;
     tx.commit()
 }
 
@@ -281,6 +291,18 @@ mod tests {
         let tmp = NamedTempFile::new().unwrap();
         let conn = init_db(tmp.path()).unwrap();
         (conn, tmp)
+    }
+
+    #[test]
+    fn settings_save_version_increments_with_each_committed_document() {
+        let (conn, _file) = test_db();
+        assert_eq!(get_settings_save_version(&conn).expect("initial version"), 0);
+
+        save_settings(&conn, &Settings::default()).expect("first save");
+        assert_eq!(get_settings_save_version(&conn).expect("first version"), 1);
+
+        save_settings(&conn, &Settings::default()).expect("second save");
+        assert_eq!(get_settings_save_version(&conn).expect("second version"), 2);
     }
 
     #[test]
