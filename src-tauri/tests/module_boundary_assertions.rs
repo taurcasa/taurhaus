@@ -749,8 +749,9 @@ fn mutable_scan_caches_are_not_global_statics() {
 }
 
 #[test]
-// Regression: d593f81b introduced the protocol-22 boundary assertion with an
-// incomplete writer-surface inventory, allowing app-side updates to evade it.
+// Regression: d593f81b declared the protocol-22 writer boundary closed while
+// the app-side Command Center still entered the resume pipeline through an
+// allowlisted wrapper and committed team runtime/config state in-process.
 fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
     // Each exception is a WSL-side owner or shared implementation reached only
     // from one. Keeping this list explicit makes every new caller a reviewable
@@ -886,6 +887,9 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         "MemberRuntimeStore::update(",
         "MemberRuntimeStore::cleanup_stale(",
         "reconcile_team_presence_for_live_status_with_runtime_sessions(",
+        "resume_member_with_cli_commands_and_layout(",
+        "commit_member_runtime(",
+        "publish_member_operation_snapshot(",
     ];
 
     let mut files = Vec::new();

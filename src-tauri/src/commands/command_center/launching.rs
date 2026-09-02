@@ -15,6 +15,7 @@ use std::sync::{Mutex, OnceLock};
 
 use super::*;
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn launch_cli_session_impl(
     db: &DbState,
@@ -25,6 +26,71 @@ pub(super) fn launch_cli_session_impl(
     mode: LaunchMode,
     cli_tool: Option<CliTool>,
     account_id: Option<String>,
+) -> Result<protocol::LaunchSessionResult, String> {
+    let mut delegate_resume = |target: &TeamMemberMatch, tool| {
+        delegate_launch_to_coordination_resume_in_process_for_test(
+            db,
+            provider,
+            coordination_state.expect("test coordination state for delegated resume"),
+            target,
+            tool,
+        )
+    };
+    launch_cli_session_with_delegate_impl(
+        db,
+        provider,
+        log_file,
+        coordination_state,
+        project_id,
+        mode,
+        cli_tool,
+        account_id,
+        &mut delegate_resume,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn launch_cli_session_through_daemon_impl(
+    app: &tauri::AppHandle,
+    db: &DbState,
+    provider: &ProviderState,
+    log_file: &LogFileState,
+    coordination_state: Option<&CoordinationState>,
+    project_id: String,
+    mode: LaunchMode,
+    cli_tool: Option<CliTool>,
+    account_id: Option<String>,
+) -> Result<protocol::LaunchSessionResult, String> {
+    let mut delegate_resume = |target: &TeamMemberMatch, tool| {
+        delegate_launch_to_coordination_resume(app, db, provider, target, tool)
+    };
+    launch_cli_session_with_delegate_impl(
+        db,
+        provider,
+        log_file,
+        coordination_state,
+        project_id,
+        mode,
+        cli_tool,
+        account_id,
+        &mut delegate_resume,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn launch_cli_session_with_delegate_impl(
+    db: &DbState,
+    provider: &ProviderState,
+    log_file: &LogFileState,
+    coordination_state: Option<&CoordinationState>,
+    project_id: String,
+    mode: LaunchMode,
+    cli_tool: Option<CliTool>,
+    account_id: Option<String>,
+    delegate_resume: &mut dyn FnMut(
+        &TeamMemberMatch,
+        CliTool,
+    ) -> Result<protocol::LaunchSessionResult, String>,
 ) -> Result<protocol::LaunchSessionResult, String> {
     let tool = cli_tool.unwrap_or_default();
 
@@ -81,13 +147,7 @@ pub(super) fn launch_cli_session_impl(
                         Some("Delegating team-member resume to coordination pipeline".to_string()),
                         delegated_fields,
                     );
-                    let mut result = delegate_launch_to_coordination_resume(
-                        db,
-                        provider,
-                        coordination_state,
-                        &target,
-                        tool,
-                    )?;
+                    let mut result = delegate_resume(&target, tool)?;
                     // The team's own config dir is what a member resumes in, so
                     // an account the user picked for this launch has nowhere to
                     // go. Per-team accounts are a follow-up; until then the

@@ -27,10 +27,12 @@ use self::activity_tracking::promote_activity_from_sessions_impl;
 use self::activity_tracking::{
     get_project_activity_impl, promote_activity_from_sessions, record_session_activity_impl,
 };
-#[cfg(test)]
-use self::launching::decode_daemon_launch_result;
 pub use self::launching::LaunchAccountPreview;
-use self::launching::{launch_cli_session_impl, resolve_launch_account_preview_impl};
+#[cfg(test)]
+use self::launching::{decode_daemon_launch_result, launch_cli_session_impl};
+use self::launching::{
+    launch_cli_session_through_daemon_impl, resolve_launch_account_preview_impl,
+};
 use self::navigation::{navigate_to_session_impl, stop_cli_session_impl};
 use self::session_listing::list_cli_sessions_impl;
 pub use self::session_listing::CliSessionSnapshot;
@@ -75,6 +77,7 @@ pub fn list_cli_session_snapshot(
 #[tauri::command(async)]
 #[allow(clippy::too_many_arguments)]
 pub fn launch_cli_session(
+    app: tauri::AppHandle,
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
     log_file: State<'_, crate::commands::logging::LogFileState>,
@@ -85,7 +88,8 @@ pub fn launch_cli_session(
     account_id: Option<String>,
 ) -> IpcResult<protocol::LaunchSessionResult> {
     let span = IpcCommandSpan::start("launch_cli_session");
-    let result = launch_cli_session_impl(
+    let result = launch_cli_session_through_daemon_impl(
+        &app,
         db.inner(),
         provider.inner(),
         log_file.inner(),
@@ -397,11 +401,48 @@ fn tmux_launch_result_for_pane(pane_id: &str) -> protocol::LaunchSessionResult {
 }
 
 fn delegate_launch_to_coordination_resume(
+    app: &tauri::AppHandle,
     db: &DbState,
     provider: &ProviderState,
-    coordination_state: &CoordinationState,
     target: &TeamMemberMatch,
     tool: CliTool,
+) -> Result<protocol::LaunchSessionResult, String> {
+    delegate_launch_to_coordination_resume_with(
+        db,
+        provider,
+        target,
+        tool,
+        |request, cli_commands, tmux_layout| {
+            let daemon = provider
+                .daemon
+                .as_ref()
+                .ok_or_else(|| "resuming a team member requires the taurhaus daemon".to_string())?;
+            crate::commands::coordination::resume_member_through_daemon(
+                app,
+                daemon,
+                crate::daemon::protocol::CoordinationResumeMemberParams {
+                    request,
+                    cli_commands,
+                    tmux_layout,
+                    operational_snapshot: None,
+                    task_state_changed_at: None,
+                },
+                None,
+            )
+        },
+    )
+}
+
+fn delegate_launch_to_coordination_resume_with(
+    db: &DbState,
+    provider: &ProviderState,
+    target: &TeamMemberMatch,
+    tool: CliTool,
+    resume: impl FnOnce(
+        ResumeMemberRequest,
+        crate::models::CliCommandSettings,
+        String,
+    ) -> Result<crate::coordination::requests::ResumeAgentReport, String>,
 ) -> Result<protocol::LaunchSessionResult, String> {
     let mut terminal_settings = crate::commands::terminal_settings::load_terminal_settings(db);
     crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
@@ -429,15 +470,11 @@ fn delegate_launch_to_coordination_resume(
         reasoning_effort_override: None,
     };
 
-    let report = coordination_state
-        .with_orchestrator(|orchestrator| {
-            orchestrator.resume_member_with_cli_commands_and_layout(
-                &request,
-                &terminal_settings.cli_commands,
-                &terminal_settings.tmux_layout,
-            )
-        })
-        .map_err(|error| error.to_string())?;
+    let report = resume(
+        request,
+        terminal_settings.cli_commands,
+        terminal_settings.tmux_layout,
+    )?;
 
     if !report.resumed {
         return Err(format!(
@@ -457,6 +494,33 @@ fn delegate_launch_to_coordination_resume(
         tmux_launch_result_for_pane(&pane_id),
         opaque_head.as_deref(),
     ))
+}
+
+#[cfg(test)]
+fn delegate_launch_to_coordination_resume_in_process_for_test(
+    db: &DbState,
+    provider: &ProviderState,
+    coordination_state: &CoordinationState,
+    target: &TeamMemberMatch,
+    tool: CliTool,
+) -> Result<protocol::LaunchSessionResult, String> {
+    delegate_launch_to_coordination_resume_with(
+        db,
+        provider,
+        target,
+        tool,
+        |request, cli_commands, tmux_layout| {
+            coordination_state
+                .with_orchestrator(|orchestrator| {
+                    orchestrator.resume_member_with_cli_commands_and_layout(
+                        &request,
+                        &cli_commands,
+                        &tmux_layout,
+                    )
+                })
+                .map_err(|error| error.to_string())
+        },
+    )
 }
 
 fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str) {

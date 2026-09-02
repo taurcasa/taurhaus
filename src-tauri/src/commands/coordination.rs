@@ -414,7 +414,7 @@ fn add_agent_through_daemon_with(
     }
 }
 
-fn resume_member_through_daemon(
+pub(crate) fn resume_member_through_daemon(
     app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationResumeMemberParams,
