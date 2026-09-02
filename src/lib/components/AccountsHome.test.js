@@ -168,6 +168,20 @@ describe('AccountsHome', () => {
     expect(onOpenProject).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }))
   })
 
+  // Regression: 971d964 rendered every team as a link, including one whose
+  // project this app does not know, so the row offered a button that could
+  // only do nothing.
+  it('shows a team with no project behind it as a name, not a link', () => {
+    const accountStates = states()
+    accountStates.claude.relationships.work.teams = [{ name: 'orphan-team' }]
+
+    render(AccountsHome, { props: { states: accountStates, projects: [] } })
+
+    const work = screen.getByTestId('account-row-work')
+    expect(within(work).getByText('orphan-team')).toBeInTheDocument()
+    expect(within(work).queryByRole('button', { name: 'orphan-team' })).toBeNull()
+  })
+
   // Regression: faffe345 treated an already-reset 100% snapshot as unhealthy,
   // auto-expanding a row whose meter correctly had no live exhausted window.
   it('keeps a just-reset account healthy and collapsed', () => {

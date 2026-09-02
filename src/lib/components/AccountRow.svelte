@@ -127,7 +127,13 @@
               <h4 class="mb-1.5 text-[9px] font-semibold uppercase tracking-wider {t.textTertiary}">Teams</h4>
               <div class="space-y-1">
                 {#each teams as team (team.name)}
-                  <button class="block text-[10px] {actionTone}" onclick={() => onOpenTeam(team)}>{team.name}</button>
+                  {#if team.projectId ?? team.project_id}
+                    <button class="block text-[10px] {actionTone}" onclick={() => onOpenTeam(team)}>{team.name}</button>
+                  {:else}
+                    <!-- A team whose project this app does not know has nowhere
+                         to open: its name is a fact, not an offer. -->
+                    <span class="block text-[10px] {t.textTertiary}">{team.name}</span>
+                  {/if}
                 {/each}
               </div>
             </section>
