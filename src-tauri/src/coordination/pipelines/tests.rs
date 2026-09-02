@@ -4808,6 +4808,21 @@ fn write_mesh_task(root: &TempDir, task_id: &str, status: &str, level: &str, why
     .expect("write mesh task");
 }
 
+fn block_mesh_task(root: &TempDir, task_id: &str, blocker_id: &str) {
+    let path = root
+        .path()
+        .join("tasks/effort-team")
+        .join(format!("{task_id}.json"));
+    let mut task: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).expect("read mesh task")).expect("parse mesh task");
+    task["blockedBy"] = serde_json::json!([blocker_id]);
+    fs::write(
+        path,
+        serde_json::to_vec_pretty(&task).expect("serialize blocked mesh task"),
+    )
+    .expect("write blocked mesh task");
+}
+
 fn hold_mesh_assignment(root: &TempDir, task_id: &str) {
     let attention_dir = root
         .path()
@@ -5156,6 +5171,72 @@ fn without_a_held_projection_the_highest_open_requested_effort_wins() {
         "the active task is mechanical",
     );
     write_mesh_task(&root, "42", "pending", "high", "the queued task is risky");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("effort pass");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+}
+
+// Regression: 9e288c56 ranked every open assignment by effort without
+// accounting for dependency blocking, so dev-1's blocked high task anchored
+// the target while the member actively worked lower-effort work.
+#[test]
+fn a_blocked_high_assignment_does_not_anchor_over_in_progress_low_work() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("medium".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("41", "Active mechanical work")),
+        "low",
+        "the active task is mechanical",
+    );
+    write_mesh_task(&root, "41", "in_progress", "low", "mechanical work");
+    write_mesh_task(&root, "62", "pending", "high", "risky when unblocked");
+    block_mesh_task(&root, "62", "61");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("effort pass");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("low"));
+}
+
+#[test]
+fn a_blocked_assignment_can_anchor_when_it_is_the_only_open_work() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("low".to_string());
+    })
+    .expect("seed applied effort");
+    write_mesh_task(&root, "62", "blocked", "high", "risky when unblocked");
 
     let resumed = orchestrator
         .apply_pending_task_effort(
