@@ -67,4 +67,19 @@ describe('AccountPicker', () => {
     expect(onAddAccount).toHaveBeenCalledWith('claude')
     expect(onManageAccounts).toHaveBeenCalledWith('claude')
   })
+
+  // Regression: 41db180 handled every bubbled Enter as picker confirmation,
+  // so keyboard activation of a footer action launched the default account.
+  it('does not confirm a launch when Enter comes from a footer button', async () => {
+    const onConfirm = vi.fn()
+    const onManageAccounts = vi.fn()
+    render(AccountPicker, {
+      props: { tool: 'claude', accounts: ACCOUNTS, onConfirm, onManageAccounts },
+    })
+
+    const manage = screen.getByText('Manage accounts →')
+    await fireEvent.keyDown(manage, { key: 'Enter' })
+
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
 })

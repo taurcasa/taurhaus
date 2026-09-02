@@ -100,7 +100,7 @@
       onCancel()
       return
     }
-    if (event.key === 'Enter' && enterAccount) {
+    if (event.key === 'Enter' && event.target === panel && enterAccount) {
       event.preventDefault()
       choose(enterAccount)
     }
