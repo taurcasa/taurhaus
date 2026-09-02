@@ -142,6 +142,8 @@
     "tools": [
       {
         "accent": "sky",
+        "accountDirName": ".codex",
+        "accountLoginCommand": "codex login",
         "aliases": [
           "codex",
           "fixture-codex"

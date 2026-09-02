@@ -106,13 +106,8 @@ fn account_relationships_reverse_index_pins_last_use_and_default_root_teams() {
     )
     .expect("write team");
 
-    let index = account_relationships_impl(
-        &db,
-        teams.path(),
-        CliTool::Claude,
-        Some("account-1"),
-    )
-    .expect("relationships");
+    let index = account_relationships_impl(&db, teams.path(), CliTool::Claude, Some("account-1"))
+        .expect("relationships");
 
     let remembered = index.by_account.get("account-2").expect("account-2");
     assert_eq!(remembered.pinned_projects.len(), 1);
@@ -126,8 +121,7 @@ fn account_relationships_reverse_index_pins_last_use_and_default_root_teams() {
 fn setting_global_default_updates_only_the_requested_tool() {
     let (db, _tmp) = db_with_project("p1");
 
-    set_global_default_account_impl(&db, CliTool::Claude, Some("account-2"))
-        .expect("set default");
+    set_global_default_account_impl(&db, CliTool::Claude, Some("account-2")).expect("set default");
     set_global_default_account_impl(&db, CliTool::Codex, Some("codex-work"))
         .expect("set codex default");
     set_global_default_account_impl(&db, CliTool::Claude, None).expect("clear default");
@@ -160,11 +154,8 @@ fn account_directory_plan_is_a_safe_sibling_of_the_registry_home() {
 #[test]
 fn login_command_comes_from_the_registry_and_quotes_the_selector_dir() {
     assert_eq!(
-        account_login_command(
-            CliTool::Codex,
-            Path::new("/home/user/.codex-work account")
-        )
-        .expect("login command"),
+        account_login_command(CliTool::Codex, Path::new("/home/user/.codex-work account"))
+            .expect("login command"),
         "CODEX_HOME='/home/user/.codex-work account' codex login"
     );
     assert!(account_login_command(CliTool::Agy, Path::new("/home/user/.gemini")).is_err());

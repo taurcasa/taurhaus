@@ -402,13 +402,16 @@ fn scan_default_root_teams(
                 .and_then(serde_json::Value::as_str)
                 .is_some_and(|value| value == tool.to_string())
         });
-        let project_path = matching.filter_map(|member| {
-            member
-                .get("project_path")
-                .or_else(|| member.get("projectPath"))
-                .or_else(|| member.get("cwd"))
-                .and_then(serde_json::Value::as_str)
-        }).next().map(str::to_string);
+        let project_path = matching
+            .filter_map(|member| {
+                member
+                    .get("project_path")
+                    .or_else(|| member.get("projectPath"))
+                    .or_else(|| member.get("cwd"))
+                    .and_then(serde_json::Value::as_str)
+            })
+            .next()
+            .map(str::to_string);
         if project_path.is_none() {
             continue;
         }
@@ -485,7 +488,9 @@ pub(crate) fn account_directory_plan(default_dir: &Path, label: &str) -> Result<
         })
         .collect::<String>();
     if slug.contains('\0') {
-        return Err("Account names may contain only letters, numbers, spaces, and underscores".to_string());
+        return Err(
+            "Account names may contain only letters, numbers, spaces, and underscores".to_string(),
+        );
     }
     let slug = slug.trim_matches('-');
     if slug.is_empty() {
@@ -503,13 +508,18 @@ pub(crate) fn account_directory_plan(default_dir: &Path, label: &str) -> Result<
 
 pub(crate) fn account_login_command(tool: CliTool, config_dir: &Path) -> Result<String, String> {
     let tool_spec = spec(tool);
-    let selector = tool_spec
-        .capabilities
-        .account_selector
-        .ok_or_else(|| format!("{} does not support selectable account directories", tool_spec.label))?;
-    let login = tool_spec
-        .account_login_command
-        .ok_or_else(|| format!("{} does not declare an account login command", tool_spec.label))?;
+    let selector = tool_spec.capabilities.account_selector.ok_or_else(|| {
+        format!(
+            "{} does not support selectable account directories",
+            tool_spec.label
+        )
+    })?;
+    let login = tool_spec.account_login_command.ok_or_else(|| {
+        format!(
+            "{} does not declare an account login command",
+            tool_spec.label
+        )
+    })?;
     Ok(format!(
         "{selector}={} {login}",
         crate::session_scanner::launch::shell_escape(&config_dir.to_string_lossy())
@@ -589,11 +599,12 @@ fn launch_account_login_impl(
             .ok_or_else(|| "Project not found".to_string())?
     };
     let project_path = crate::provider::path::to_linux(&project_path).unwrap_or(project_path);
-    let (session, window, pane) = crate::session_scanner::control::launch_command_in_tmux_with_layout(
-        &project_path,
-        &terminal_settings.tmux_layout,
-        &command,
-    )?;
+    let (session, window, pane) =
+        crate::session_scanner::control::launch_command_in_tmux_with_layout(
+            &project_path,
+            &terminal_settings.tmux_layout,
+            &command,
+        )?;
     let _ = crate::terminal::handle_terminal(crate::terminal::TerminalIntent::EnsureOpen {
         distro: provider.wsl_distro.clone(),
         tmux_session: session.clone(),
@@ -630,8 +641,10 @@ fn validate_account_login_dir(tool: CliTool, config_dir: &Path) -> Result<(), St
     if actual_parent != expected_parent
         || (actual_name != expected_name && !actual_name.starts_with(&format!("{expected_name}-")))
     {
-        return Err("The account directory must be the registry home or one of its named siblings"
-            .to_string());
+        return Err(
+            "The account directory must be the registry home or one of its named siblings"
+                .to_string(),
+        );
     }
     Ok(())
 }
