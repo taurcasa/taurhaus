@@ -1,4 +1,5 @@
 import AccountHost from './hosts/AccountHost.svelte'
+import AccountsWaveAHost from './hosts/AccountsWaveAHost.svelte'
 import HoverCardHost from './hosts/HoverCardHost.svelte'
 import MeshCanvasHost from './hosts/MeshCanvasHost.svelte'
 import MeshNodeDetailHost from './hosts/MeshNodeDetailHost.svelte'
@@ -13,6 +14,7 @@ import WorkflowRunsHost from './hosts/WorkflowRunsHost.svelte'
 import { configureVisualHostState } from './mockState.js'
 
 import { accountScenarios } from '../test/visual/fixtures/account.fixtures.js'
+import { accountsWaveAScenarios } from '../test/visual/fixtures/accountsWaveA.fixtures.js'
 import { hoverCardScenarios } from '../test/visual/fixtures/hoverCard.fixtures.js'
 import { meshCanvasScenarios } from '../test/visual/fixtures/meshCanvas.fixtures.js'
 import { meshNodeDetailScenarios } from '../test/visual/fixtures/meshNodeDetail.fixtures.js'
@@ -104,6 +106,13 @@ export const visualRegistry = [
     label: 'Account',
     component: AccountHost,
     scenarios: accountScenarios,
+    applyMocks: applyNoopMocks,
+  },
+  {
+    id: 'accounts-wave-a',
+    label: 'Accounts Wave A',
+    component: AccountsWaveAHost,
+    scenarios: accountsWaveAScenarios,
     applyMocks: applyNoopMocks,
   },
   {
