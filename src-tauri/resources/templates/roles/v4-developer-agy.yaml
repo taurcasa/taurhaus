@@ -19,6 +19,12 @@ instructions: |
   behavior and regression risk, and use the evidence and review depth declared
   for the assigned surface.
 
+  PORTABLE DELIVERY CONTRACT
+  The five work kinds are measure, diagnose, implement, review, and spec-delta;
+  assignments name objective, deliverable, first action, completion signal, and
+  review route. If the file is unavailable in the working repository, the lead
+  must link or provide the standard before anyone assumes defaults.
+
   Your task line and product brief arrive through the team inbox; read them
   and GEMINI.md, AGENTS.md or CLAUDE.md for the repository's conventions, then
   apply these instructions to that task.

@@ -1332,6 +1332,16 @@ mod tests {
                     role.role_id
                 );
             } else {
+                let contract = format!(
+                    "{}\n{}",
+                    role.instructions,
+                    role.behavioral_contract.communication.join("\n")
+                );
+                assert!(
+                    contract.contains("RESULT <id>") && contract.contains("BLOCKED <id> <reason>"),
+                    "lead role '{}' should recognize the managed-stage completion signals",
+                    role.role_id
+                );
                 assert!(
                     role.instructions
                         .contains("one active assignment per member")
@@ -1365,6 +1375,97 @@ mod tests {
                 "canonical role '{}' still mandates retired assignment ceremony",
                 role.role_id
             );
+        }
+    }
+
+    // Regression: d662df09 moved the assignment and messaging contract out of
+    // every role, but the new standard omitted the live message-prefix rules.
+    #[test]
+    fn delivery_standard_owns_shared_assignment_message_and_gate_conventions() {
+        let standard = include_str!("../../../docs/team-delivery-standard.md");
+
+        for marker in [
+            "Objective:",
+            "Deliverable:",
+            "First action:",
+            "Completion signal:",
+            "Review route:",
+            "response expectation",
+            "ACTION REQUIRED:",
+            "INFO ONLY:",
+            "no response needed",
+            "per-task gate",
+            "full serialized gate",
+        ] {
+            assert!(
+                standard.contains(marker),
+                "team delivery standard should own the shared convention '{marker}'"
+            );
+        }
+    }
+
+    // Regression: d662df09 made a taurhaus-relative documentation path the
+    // only source of the delivery contract for roles exported to other repos.
+    #[test]
+    fn canonical_role_delivery_contract_survives_repo_boundaries() {
+        for role in load_role_templates() {
+            for marker in [
+                "measure",
+                "diagnose",
+                "implement",
+                "review",
+                "spec-delta",
+                "objective",
+                "deliverable",
+                "first action",
+                "completion signal",
+                "review route",
+            ] {
+                assert!(
+                    role.instructions.contains(marker),
+                    "canonical role '{}' should carry portable delivery marker '{marker}'",
+                    role.role_id
+                );
+            }
+            assert!(
+                role.instructions.contains("If the file is unavailable"),
+                "canonical role '{}' should say how to recover an unavailable standard",
+                role.role_id
+            );
+        }
+    }
+
+    // Regression: d662df09 removed the report-format definitions while four
+    // behavioral/compaction fields kept requiring those retired formats.
+    #[test]
+    fn canonical_role_runtime_surfaces_do_not_require_retired_ceremony() {
+        for role in load_role_templates() {
+            let runtime = role.runtime_compact_summary.as_ref();
+            let runtime_surfaces = format!(
+                "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+                role.behavioral_contract.communication.join("\n"),
+                role.behavioral_contract.execution.join("\n"),
+                role.behavioral_contract.escalation.join("\n"),
+                runtime
+                    .map(|summary| summary.role_purpose.as_str())
+                    .unwrap_or_default(),
+                runtime
+                    .map(|summary| summary.keep_doing.join("\n"))
+                    .unwrap_or_default(),
+                runtime
+                    .map(|summary| summary.workflow_sequence.join("\n"))
+                    .unwrap_or_default(),
+                runtime
+                    .map(|summary| summary.avoid.join("\n"))
+                    .unwrap_or_default(),
+            );
+            for retired in ["labeled shape", "CHANGED, VERIFIED", "within ten minutes"] {
+                assert!(
+                    !runtime_surfaces.contains(retired),
+                    "canonical role '{}' still requires retired ceremony '{retired}'",
+                    role.role_id
+                );
+            }
         }
     }
 

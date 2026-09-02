@@ -26,9 +26,15 @@ An assignment is five lines:
 
 The committed packet is the specification. Link it and this standard; do not paste their doctrine into the assignment. A correction supersedes the earlier instruction rather than appending a competing version.
 
+## Message conventions
+
+The completion-signal line also states the response expectation. Prefix a request that requires execution with `ACTION REQUIRED:`. Prefix context that needs no action with `INFO ONLY:` and end it with `no response needed`. Do not send a pure acknowledgment; execute the first action, then report through the named completion signal.
+
 ## Results and reviewer artifacts
 
 Results are compact: give the commit hash (or `none — measure/diagnose only`) and the findings or outcome bullets. Include only evidence needed to assess the claim, plus any red-first skip required by the work-kind table. Essays and repeated gate transcripts make the decision harder to find and are discouraged.
+
+Validation follows repository instructions: run the repository's per-task gate when one is named. The full serialized gate belongs to the lead unless narrower repository instructions explicitly assign it elsewhere.
 
 A reviewer returns:
 
@@ -46,7 +52,7 @@ Assignments state cross-surface seams and handoffs up front, including who may c
 
 ## Optional deadline and effort overrides
 
-Deadlines and model effort are optional overrides, not required assignment fields. Use a deadline for genuinely time-sensitive or long-running work where automated escalation is useful. When set, the daemon deadline pass nudges at half the interval and marks the task stale at the deadline. Without that desired escalation, omit the deadline.
+Deadlines and model effort are optional overrides, not required assignment fields. Use a deadline for genuinely time-sensitive or long-running work where automated escalation is useful. When set, the daemon deadline pass sends one nudge at half the interval — suppressed while the member is visibly active — and marks the task stale once at the deadline. Without that desired escalation, omit the deadline.
 
 Use an effort override only when the task is meaningfully model-effort-sensitive. No `--why` explanation is required for either override.
 

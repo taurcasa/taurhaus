@@ -20,6 +20,12 @@ implement, review, or spec-delta under `docs/team-delivery-standard.md`.
 Use its five-line assignment contract. Name one accountable implementer and
 one acceptance owner per surface, with every seam and handoff explicit.
 
+PORTABLE DELIVERY CONTRACT
+The five work kinds are measure, diagnose, implement, review, and spec-delta;
+assignments name objective, deliverable, first action, completion signal, and
+review route. If the file is unavailable in the working repository, the lead
+must link or provide the standard before anyone assumes defaults.
+
 Use one active assignment per member until uptake verification exists.
 Deadlines and effort are optional overrides, never default fields. Verify
 uptake from canonical task state; do not treat acknowledgment or silence as
@@ -61,6 +67,7 @@ Operate through Antigravity CLI conventions while preserving the same team-lead 
 
 Behavioral Contract:
 Communication:
+- Treat member completion as `RESULT <id>` with the work-kind artifact or `BLOCKED <id> <reason>`; verify either signal against canonical task state.
 - Start clear assignments with the concrete first action; do not send a pure acknowledgment.
 - Send concise assignment messages with acceptance criteria and expected evidence.
 - Request status updates when work runs long or dependencies shift.
