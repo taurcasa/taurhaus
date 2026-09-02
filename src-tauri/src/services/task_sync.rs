@@ -1,6 +1,5 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use crate::session_scanner::RuntimeSession;
@@ -16,10 +15,26 @@ struct ScanGenerationKey {
 #[derive(Default)]
 pub struct TaskScanGenerationState {
     applied_generations: Mutex<HashMap<ScanGenerationKey, u64>>,
+    snapshot_publish_degraded_projects: Mutex<HashSet<String>>,
 }
 
 const SCAN_GENERATION_RETENTION_WINDOW: u64 = 100;
-static WARNED_SNAPSHOT_DAEMON_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
+
+fn mark_snapshot_publication_degraded(state: &TaskScanGenerationState, project_path: &str) -> bool {
+    state
+        .snapshot_publish_degraded_projects
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .insert(project_path.to_string())
+}
+
+fn mark_snapshot_publication_recovered(state: &TaskScanGenerationState, project_path: &str) {
+    state
+        .snapshot_publish_degraded_projects
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .remove(project_path);
+}
 
 fn should_apply_scan_generation(
     state: &TaskScanGenerationState,
@@ -213,15 +228,21 @@ fn persist_task_scan_with_generation_and_publisher<P>(
             .collect(),
     };
     if let Err(err) = publish(params) {
-        if !WARNED_SNAPSHOT_DAEMON_UNAVAILABLE.swap(true, Ordering::Relaxed) {
+        if taurhaus_lib::daemon_api::is_busy_transport_error(&err) {
+            tracing::debug!(
+                project_path = %normalized_path,
+                error = %err,
+                "operational snapshot publication skipped because the shared daemon connection is busy"
+            );
+        } else if mark_snapshot_publication_degraded(generation_state, normalized_path) {
             tracing::warn!(
                 project_path = %normalized_path,
                 error = %err,
-                "operational snapshot publication skipped because the daemon is unavailable"
+                "operational snapshot publication failed; snapshots remain derivable from task state"
             );
         }
     } else {
-        WARNED_SNAPSHOT_DAEMON_UNAVAILABLE.store(false, Ordering::Relaxed);
+        mark_snapshot_publication_recovered(generation_state, normalized_path);
     }
 }
 
@@ -239,7 +260,10 @@ fn publish_operational_snapshots_through_daemon(
         params,
     );
     let response = daemon
-        .send_status_request_within(&request, std::time::Duration::from_secs(2))
+        .send_status_request_within(
+            &request,
+            crate::commands::coordination::COORDINATION_DAEMON_REQUEST_TIMEOUT,
+        )
         .map_err(|error| error.to_string())?;
     if let Some(error) = response.error {
         return Err(error.message);
@@ -562,6 +586,21 @@ mod tests {
         assert!(source.contains("COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS"));
         assert!(!persistence.contains("sync_project_task_snapshots"));
         assert!(!persistence.contains("OperationalContextSnapshotStore::save"));
+    }
+
+    // Regression: d593f81b used a process-global warning latch for snapshot
+    // publication, so one project's recovery changed another project's warning state.
+    #[test]
+    fn snapshot_publication_degrade_state_is_owned_per_project() {
+        let state = TaskScanGenerationState::default();
+
+        assert!(mark_snapshot_publication_degraded(&state, "/projects/a"));
+        assert!(!mark_snapshot_publication_degraded(&state, "/projects/a"));
+        assert!(mark_snapshot_publication_degraded(&state, "/projects/b"));
+
+        mark_snapshot_publication_recovered(&state, "/projects/a");
+        assert!(mark_snapshot_publication_degraded(&state, "/projects/a"));
+        assert!(!mark_snapshot_publication_degraded(&state, "/projects/b"));
     }
 
     #[test]

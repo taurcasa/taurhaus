@@ -259,7 +259,8 @@ pub async fn coordination_initialize_team(
     result
 }
 
-const COORDINATION_DAEMON_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+pub(crate) const COORDINATION_DAEMON_REQUEST_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(10);
 const COORDINATION_DAEMON_POLL_INTERVAL: std::time::Duration =
     std::time::Duration::from_millis(500);
 const COORDINATION_ROSTER_DAEMON_POLL_INTERVAL: std::time::Duration =

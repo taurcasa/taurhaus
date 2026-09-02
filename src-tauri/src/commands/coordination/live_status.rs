@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::time::SystemTime;
 
 use crate::commands::coordination_types::{
@@ -28,6 +29,8 @@ use crate::coordination::stores::{
 use crate::ProviderState;
 #[cfg(test)]
 use taurhaus_lib::ProviderState;
+
+static WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
 
 pub(super) fn coordination_get_live_team_status_impl(
     state: &CoordinationState,
@@ -375,7 +378,7 @@ fn call_state_write<T: serde::de::DeserializeOwned, P: serde::Serialize>(
         .daemon
         .as_ref()
         .ok_or_else(|| "daemon is unavailable".to_string())?;
-    if !daemon.is_connected() {
+    if !daemon.is_connected() && !daemon.try_reconnect() {
         return Err("daemon is not connected".to_string());
     }
     let request = crate::daemon::protocol::DaemonRequest::new(
@@ -384,7 +387,7 @@ fn call_state_write<T: serde::de::DeserializeOwned, P: serde::Serialize>(
         params,
     );
     let response = daemon
-        .send_status_request_within(&request, std::time::Duration::from_secs(2))
+        .send_status_request_within(&request, super::COORDINATION_DAEMON_REQUEST_TIMEOUT)
         .map_err(|error| error.to_string())?;
     if let Some(error) = response.error {
         return Err(error.message);
@@ -410,9 +413,22 @@ fn reconcile_live_presence_through_daemon(
             },
         );
     match result {
-        Ok(result) => result.reconciled_offline_members.into_iter().collect(),
+        Ok(result) => {
+            WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE.store(false, AtomicOrdering::Relaxed);
+            result.reconciled_offline_members.into_iter().collect()
+        }
+        Err(error) if taurhaus_lib::daemon_api::is_busy_transport_error(&error) => {
+            tracing::debug!(
+                team = team_name,
+                error = %error,
+                "live presence reconciliation skipped because the shared daemon connection is busy"
+            );
+            std::collections::HashSet::new()
+        }
         Err(error) => {
-            tracing::warn!(team = team_name, error = %error, "live presence reconciliation skipped because the daemon is unavailable");
+            if !WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE.swap(true, AtomicOrdering::Relaxed) {
+                tracing::warn!(team = team_name, error = %error, "live presence reconciliation skipped because the daemon is unavailable");
+            }
             std::collections::HashSet::new()
         }
     }

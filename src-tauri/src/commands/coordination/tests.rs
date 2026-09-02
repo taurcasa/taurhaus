@@ -390,6 +390,32 @@ fn project_discovery_has_no_local_active_team_mutation_path() {
     assert!(source.contains("COORDINATION_SET_ACTIVE_PROJECT_TEAM"));
 }
 
+// Regression: d593f81b gave the final protocol-22 state-write clients a two-second
+// transport timeout, so ordinary orchestrator mutex contention disconnected the pool.
+#[test]
+fn protocol_22_state_write_clients_use_the_coordination_timeout_and_reconnect() {
+    let live_status = include_str!("live_status.rs");
+    let task_sync = include_str!("../../services/task_sync.rs");
+
+    assert!(live_status.contains("super::COORDINATION_DAEMON_REQUEST_TIMEOUT"));
+    assert!(task_sync.contains("COORDINATION_DAEMON_REQUEST_TIMEOUT"));
+    assert!(!live_status.contains("Duration::from_secs(2)"));
+    assert!(!task_sync.contains("Duration::from_secs(2)"));
+    assert!(live_status.contains("!daemon.is_connected() && !daemon.try_reconnect()"));
+}
+
+// Regression: d593f81b emitted one WARN for every two-second live-status poll
+// during an outage and reported shared-connection contention as an outage.
+#[test]
+fn protocol_22_live_presence_degrade_warning_is_bounded_and_busy_is_debug_only() {
+    let source = include_str!("live_status.rs");
+
+    assert!(source.contains("WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE.swap"));
+    assert!(source.contains("WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE.store(false"));
+    assert!(source.contains("is_busy_transport_error(&error)"));
+    assert!(source.contains("tracing::debug!"));
+}
+
 // Regression: 03eb3a2c polled multi-step disband teardown at the 25 ms
 // stop-member interval, producing excessive daemon RPC and JSONL traffic.
 #[test]
