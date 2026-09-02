@@ -585,6 +585,69 @@ mod tests {
         assert_eq!(resolutions, 0, "idle teams must not probe launch bases");
     }
 
+    // Regression: d19ce6a8 limited daemon sweeps to recorded launch failures,
+    // so an assignment first seen while the app was not scanning tasks never
+    // started its owed effort switch.
+    #[test]
+    fn effort_sweep_starts_a_new_assignment_without_an_app_trigger() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let state = state_with_runtime(temp.path().to_path_buf(), runtime.clone());
+        state
+            .with_orchestrator(|orchestrator| {
+                orchestrator.create_team("effort-team", None)?;
+                orchestrator.add_member(
+                    "effort-team",
+                    member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
+                let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                builder.reasoning_effort = Some("low".to_string());
+                orchestrator.add_member("effort-team", builder)
+            })
+            .expect("seed team");
+        write_lead_credential(temp.path(), "effort-team");
+        runtime.set_pane_exists("%21", true);
+        runtime.set_pane_dead("%21", false);
+        runtime.set_pane_shell("%21", false);
+        runtime.set_pane_current_command("%21", Some("codex"));
+        runtime.set_pane_current_path("%21", Some("/tmp/app"));
+        runtime.set_pane_identity("%21", Some(2021), Some(1_755_000_021));
+        runtime.set_detected_runtime_session(
+            "%21",
+            CliTool::Codex,
+            Some("session-effort"),
+            Some("/tmp/effort.jsonl"),
+        );
+        MemberRuntimeStore::update(temp.path(), "effort-team", "builder", |record| {
+            record.pane_id = Some("%21".to_string());
+            record.pane_pid = Some(2021);
+            record.pane_start_time = Some(1_755_000_021);
+            record.health = HealthState::Healthy;
+            record.session_id = Some("session-effort".to_string());
+            record.applied_effort = Some("low".to_string());
+            record.effort_resume_failure = None;
+        })
+        .expect("seed running member");
+        assign_task(temp.path());
+
+        let (summary, awaiting) = run_pass_with_launch_resolution(
+            &state,
+            Some(settings(1, "claude --resume")),
+            &mut |_, _| {},
+        )
+        .expect("daemon sweep");
+
+        assert!(!awaiting);
+        assert_eq!(summary.members_effort_resumed, 1);
+        assert_eq!(
+            MemberRuntimeStore::load(temp.path(), "effort-team", "builder")
+                .expect("runtime record")
+                .applied_effort
+                .as_deref(),
+            Some("high")
+        );
+    }
+
     // Regression: 25293092 let the background effort path render from stock
     // defaults, moving members launched through account-pinning aliases such
     // as `claude2` onto another account. No pushed snapshot means no render;

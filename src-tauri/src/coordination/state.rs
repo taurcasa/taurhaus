@@ -298,7 +298,7 @@ impl CoordinationState {
         Ok(summary)
     }
 
-    /// Retry only assignment-effort relaunches that already failed.
+    /// Start owed assignment-effort relaunches and retry recorded failures.
     ///
     /// The daemon caller supplies the app's pushed settings and resolves a
     /// pane-shell base only when the unchanged effort state machine has found a
@@ -315,11 +315,8 @@ impl CoordinationState {
 
         for team_name in team_names {
             summary.teams_scanned += 1;
-            // Retries only. A Codex effort switch is started by the task event
-            // that made the assignment visible (`apply_task_effort_for_project`);
-            // this sweep exists so one that failed there — a pane that would
-            // not come down, a launch that did not land — is picked up again
-            // rather than left pending until the next assignment.
+            // The task event remains the earliest trigger, while this bounded
+            // sweep also starts a switch whose edge the app never observed.
             match orchestrator.apply_pending_task_effort_outcome(
                 &team_name,
                 cli_commands,

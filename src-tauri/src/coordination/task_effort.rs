@@ -45,16 +45,14 @@ pub fn active_task_effort(snapshot: &OperationalContextSnapshot) -> Option<Assig
 
 /// What a run of the effort pass is allowed to start.
 ///
-/// A relaunch takes a session down, so the pass that starts one has to be the
-/// event that made the assignment visible — not a timer, which would let a
-/// member work at the wrong level for a whole interval and then stop it
-/// mid-turn. The timer's job is only to pick up a switch that already tried and
-/// failed.
+/// A relaunch takes a session down, so both task changes and the bounded daemon
+/// sweep share the same attempt budget. The sweep closes task-scan starvation
+/// when the app is not present to emit the edge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffortPassScope {
     /// A task event: start any switch the member owes.
     TaskChanged,
-    /// A background sweep: retry only a switch already recorded as failed.
+    /// A background sweep: start an owed switch or retry a recorded failure.
     RetryPending,
 }
 

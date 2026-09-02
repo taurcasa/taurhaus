@@ -4653,10 +4653,10 @@ fn effort_pass_scope_table_pins_retry_and_budget_contract() {
             true,
         ),
         (
-            "self-heal does not start a switch",
+            "self-heal starts an owed switch",
             EffortPassScope::RetryPending,
             0,
-            false,
+            true,
         ),
         (
             "self-heal retries a failed switch",

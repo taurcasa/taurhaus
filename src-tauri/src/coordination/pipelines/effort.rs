@@ -56,11 +56,10 @@ struct AssignmentTarget {
 }
 
 pub(super) fn attempt_is_allowed(
-    scope: task_effort::EffortPassScope,
+    _scope: task_effort::EffortPassScope,
     failed_attempts: u32,
 ) -> bool {
     failed_attempts < MAX_EFFORT_RESUME_ATTEMPTS
-        && (scope == task_effort::EffortPassScope::TaskChanged || failed_attempts > 0)
 }
 
 /// The launch settings an effort relaunch renders from, or `None` when no
@@ -275,9 +274,9 @@ impl CoordinationOrchestrator {
     /// grammar — by stopping the member and resuming its own conversation with
     /// the effort flag. Returns the members whose level it put into force.
     ///
-    /// `scope` decides what may be started here: a task event starts any switch
-    /// the member owes, a background sweep only retries one already recorded as
-    /// failed.
+    /// Both task events and background sweeps may start any switch the member
+    /// owes. The scope remains part of failure handling, while the shared
+    /// attempt budget bounds either caller.
     ///
     /// **Best-effort by design, and behind the notice.** mesh owns both the
     /// assignment record and the inbox, and nothing on taurhaus's side gates
@@ -606,13 +605,6 @@ fn pending_member_effort_outcome(
     // this pass itself stopped for a switch that failed, which the failure
     // record names and which stays retryable.
     if runtime.health == HealthState::SessionDead && runtime.effort_resume_failure.is_none() {
-        return Ok(None);
-    }
-    // A background pass only retries a switch already recorded as failed. Do
-    // not scan mesh task and attention directories when there is no retry.
-    if scope == task_effort::EffortPassScope::RetryPending
-        && runtime.effort_resume_failure.is_none()
-    {
         return Ok(None);
     }
     let Some(assigned) = assignment_target(
