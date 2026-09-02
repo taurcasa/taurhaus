@@ -1,6 +1,6 @@
 # Coordination Through the Daemon
 
-Status: **in progress** (operator decision 2026-09-01: "design now, build immediately"). The deadline pass is daemon-owned at protocol 15, initialization at protocol 16, add-agent/resume-member/stop-member at protocol 17, resume-team/reonboard at protocol 18, and standalone create/disband plus roster add/remove at protocol 19. Protocol 20 completed the cleanup by retiring the redundant `coordination.stop_member`/`_status` wire pair; roster removal remains on `coordination.remove_member`. Every interactive team mutation is daemon-owned. Self-heal/effort routing (B1b) and the B3 writer boundary remain.
+Status: **in progress** (operator decision 2026-09-01: "design now, build immediately"). The deadline pass is daemon-owned at protocol 15, initialization at protocol 16, add-agent/resume-member/stop-member at protocol 17, resume-team/reonboard at protocol 18, and standalone create/disband plus roster add/remove at protocol 19. Protocol 20 completed the cleanup by retiring the redundant `coordination.stop_member`/`_status` wire pair; roster removal remains on `coordination.remove_member`. Every interactive team mutation is daemon-owned. Self-heal/effort routing and the B3 writer boundary remain; the B1b design for the first two is [`self-heal-effort-daemon-routing.md`](self-heal-effort-daemon-routing.md) (protocol 21).
 
 ## The problem, from the field
 
