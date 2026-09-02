@@ -13,6 +13,12 @@
     preselectedAccountId = null,
     dark = false,
     skin = 'modal',
+    /**
+     * Whether the choice has a scope to keep it for. A surface whose only
+     * scope is the project it is already sitting on — the Overview chip —
+     * turns this off rather than offering a launch scope it cannot honour.
+     */
+    showRemember = true,
     testId = 'account-picker',
     onConfirm = () => {},
     onCancel = () => {},
@@ -93,7 +99,7 @@
 
   function choose(account) {
     if (!account?.logged_in) return
-    onConfirm(account.id, rememberChoice)
+    onConfirm(account.id, showRemember ? rememberChoice : true)
   }
 
   function handleKeydown(event) {
@@ -173,13 +179,15 @@
     {/each}
   </div>
 
-  <label class="mt-3 flex items-center gap-2 text-[12px] {metaTone}">
-    <input type="checkbox" class="h-3.5 w-3.5 accent-brand-500 {focusRing}" bind:checked={rememberChoice} data-testid="account-remember" />
-    Use for this project
-  </label>
-  <p class="mt-1 pl-5.5 text-[10px] {metaTone}">
-    {rememberChoice ? 'Otherwise, this launch only.' : 'This launch only.'}
-  </p>
+  {#if showRemember}
+    <label class="mt-3 flex items-center gap-2 text-[12px] {metaTone}">
+      <input type="checkbox" class="h-3.5 w-3.5 accent-brand-500 {focusRing}" bind:checked={rememberChoice} data-testid="account-remember" />
+      Use for this project
+    </label>
+    <p class="mt-1 pl-5.5 text-[10px] {metaTone}">
+      {rememberChoice ? 'Otherwise, this launch only.' : 'This launch only.'}
+    </p>
+  {/if}
 
   <footer class="mt-3 flex items-center justify-between border-t pt-2 {footerBorder}" data-testid="account-picker-footer">
     <button class="text-[11px] font-medium {footerAction} {focusRing}" onclick={() => onAddAccount(tool)}>Add account…</button>

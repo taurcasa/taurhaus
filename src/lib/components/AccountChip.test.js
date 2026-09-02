@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 import AccountChip from './AccountChip.svelte'
@@ -90,7 +90,11 @@ describe('AccountChip', () => {
     expect(screen.getByTestId('account-chip')).toHaveTextContent('Matthias')
 
     await fireEvent.click(screen.getByTestId('account-chip'))
-    await fireEvent.click(screen.getByTestId('account-menu-item-account-1'))
+    expect(screen.getByTestId('account-option-account-2')).toHaveAttribute(
+      'data-preselected',
+      'true'
+    )
+    await fireEvent.click(screen.getByTestId('account-option-account-1'))
 
     expect(onSelect).toHaveBeenCalledWith('account-1')
   })
@@ -126,16 +130,54 @@ describe('AccountChip', () => {
     expect(screen.getByTestId('account-chip')).toHaveTextContent('Who')
   })
 
-  it('offers clearing the project choice back to the default', async () => {
-    const onSelect = vi.fn()
+  // Regression: the Wave A picker core was extracted from AccountChooser while
+  // the Overview chip kept a hand-built menu of its own, so the one gesture a
+  // project's account is chosen with had neither the shared presentation nor a
+  // way into account management. Management itself stays in the hub: the
+  // footer's two actions are the whole affordance a launch surface offers.
+  it('opens the shared picker, with the hub the only management it offers', async () => {
+    const onAddAccount = vi.fn()
+    const onManageAccounts = vi.fn()
     render(AccountChip, {
-      props: { accounts: ACCOUNTS, selectedAccountId: 'account-2', onSelect },
+      props: {
+        tool: 'claude',
+        accounts: ACCOUNTS,
+        selectedAccountId: 'account-2',
+        onSelect: vi.fn(),
+        onAddAccount,
+        onManageAccounts,
+      },
     })
 
     await fireEvent.click(screen.getByTestId('account-chip'))
-    await fireEvent.click(screen.getByTestId('account-menu-clear'))
 
-    expect(onSelect).toHaveBeenCalledWith(null)
+    const picker = screen.getByTestId('account-picker')
+    expect(picker).toHaveAttribute('data-skin', 'popover')
+    expect(screen.queryByTestId('account-menu-clear')).not.toBeInTheDocument()
+
+    const footer = within(picker).getByTestId('account-picker-footer')
+    expect(within(footer).getAllByRole('button')).toHaveLength(2)
+
+    // Each action leaves for the hub, so the popover closes behind it.
+    await fireEvent.click(within(footer).getByText('Add account…'))
+    expect(onAddAccount).toHaveBeenCalledWith('claude')
+    expect(screen.queryByTestId('account-picker')).not.toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('account-chip'))
+    await fireEvent.click(screen.getByText('Manage accounts →'))
+    expect(onManageAccounts).toHaveBeenCalledWith('claude')
+  })
+
+  // The chip's own scope is the project: there is no launch here to keep a
+  // choice for, so the picker's launch-scope checkbox has nothing to say.
+  it('states no launch scope the chip cannot honour', async () => {
+    render(AccountChip, {
+      props: { accounts: ACCOUNTS, selectedAccountId: 'account-2', onSelect: vi.fn() },
+    })
+
+    await fireEvent.click(screen.getByTestId('account-chip'))
+
+    expect(screen.queryByTestId('account-remember')).not.toBeInTheDocument()
   })
 
   // Regression: 518aace read a daemon failure as an empty account list, so the
@@ -174,8 +216,8 @@ describe('AccountChip', () => {
     expect(chip).toHaveTextContent('5h 81%')
 
     await fireEvent.click(chip)
-    expect(screen.getByTestId('account-menu-item-account-1')).toHaveTextContent('5h 26%')
-    expect(screen.getByTestId('account-menu-item-account-2')).toHaveTextContent('7d 44%')
+    expect(screen.getByTestId('account-option-account-1')).toHaveTextContent('5h 26%')
+    expect(screen.getByTestId('account-option-account-2')).toHaveTextContent('7d 44%')
   })
 
   // Regression: 79be608 only ever read usage during account *detection*, which
@@ -292,12 +334,13 @@ describe('AccountChip', () => {
 
     const menu = screen.getByTestId('account-menu')
     let menuHeight = 60
+    // The popover skin's own width, which is what the first paint assumes too.
     vi.spyOn(menu, 'getBoundingClientRect').mockImplementation(() => ({
-      left: 0, top: 0, right: 224, bottom: menuHeight,
-      width: 224, height: menuHeight, x: 0, y: 0, toJSON() {},
+      left: 0, top: 0, right: 352, bottom: menuHeight,
+      width: 352, height: menuHeight, x: 0, y: 0, toJSON() {},
     }))
     await waitFor(() => expect(menu.style.top).toBe('326px'))
-    expect(menu.style.left).toBe('196px')
+    expect(menu.style.left).toBe('68px')
 
     // The numbers landed: two meters in the menu, one on the chip.
     await rerender({
@@ -309,7 +352,7 @@ describe('AccountChip', () => {
 
     // No room below any more: above the chip, and right-aligned to its new edge.
     await waitFor(() => expect(menu.style.top).toBe('96px'))
-    expect(menu.style.left).toBe('276px')
+    expect(menu.style.left).toBe('148px')
     expect(observers.at(-1).targets).toEqual(expect.arrayContaining([chip, menu]))
 
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: previousHeight })
@@ -334,14 +377,14 @@ describe('AccountChip', () => {
 
     const menu = screen.getByTestId('account-menu')
     vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue({
-      left: 0, top: 0, right: 224, bottom: 200, width: 224, height: 200, x: 0, y: 0,
+      left: 0, top: 0, right: 352, bottom: 200, width: 352, height: 200, x: 0, y: 0,
       toJSON() {},
     })
     await fireEvent(window, new Event('resize'))
 
     const left = Number.parseInt(menu.style.left, 10)
     expect(left).toBeGreaterThanOrEqual(8)
-    expect(left + 224).toBeLessThanOrEqual(400 - 8)
+    expect(left + 352).toBeLessThanOrEqual(400 - 8)
 
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth })
   })

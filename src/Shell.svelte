@@ -260,6 +260,12 @@
       settingsOpen = false
       accountsOpen = true
     },
+    // The picker footer's `Add account…`, from wherever a picker is open.
+    openAddAccount: (tool) => {
+      settingsOpen = false
+      accountsOpen = true
+      requestedAddTool = tool
+    },
     retryProjects: () => {
       projectController.loadProjects()
     },

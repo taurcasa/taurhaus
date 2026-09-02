@@ -203,9 +203,12 @@
         defaultAccountId={state.defaultAccountId}
         degraded={state.degraded}
         origin={effective.origin}
+        projectName={selectedProject?.name ?? ''}
         {dark}
         onSelect={(accountId) => handleAccountSelect(tool.id, accountId)}
         onRequestUsage={() => void refreshUsage(tool.id)}
+        onAddAccount={(toolId) => sessionContext?.openAddAccount?.(toolId)}
+        onManageAccounts={() => sessionContext?.openAccounts?.()}
       />
     {/each}
     <!-- Quick actions — compact icon buttons -->
