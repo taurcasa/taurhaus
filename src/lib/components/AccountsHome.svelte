@@ -46,6 +46,7 @@
       ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
       : 'border-zinc-200 text-zinc-600 hover:bg-white'
   )
+  const listTone = $derived(dark ? 'border-white/[0.07]' : 'border-zinc-200')
 
   let expandedIds = $state(new Set())
   let addTool = $state(null)
@@ -212,7 +213,7 @@
           {/if}
         </div>
 
-        <div class="space-y-2">
+        <div class="overflow-hidden rounded-lg border {listTone}">
           {#each state.accounts ?? [] as account (account.id)}
             <AccountRow
               tool={descriptor.id}

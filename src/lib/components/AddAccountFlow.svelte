@@ -80,6 +80,7 @@
       waiting = true
     } catch (failure) {
       error = failure?.message ?? String(failure)
+      await refreshAccounts(tool, { force: true })
     }
   }
 

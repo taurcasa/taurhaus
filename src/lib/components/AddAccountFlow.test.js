@@ -15,6 +15,7 @@ vi.mock('../accounts.svelte.js', () => ({
 
 import AddAccountFlow from './AddAccountFlow.svelte'
 import { launchAccountLogin, prepareAccountDirectory } from '../ipc.js'
+import { refreshAccounts } from '../accounts.svelte.js'
 
 describe('AddAccountFlow', () => {
   beforeEach(() => {
@@ -53,5 +54,20 @@ describe('AddAccountFlow', () => {
 
     expect(prepareAccountDirectory).not.toHaveBeenCalled()
     expect(launchAccountLogin).toHaveBeenCalledWith('p1', 'claude', '/home/user/.claude-work')
+  })
+
+  it('refreshes detection after a terminal error so the created directory stays resumable', async () => {
+    prepareAccountDirectory.mockResolvedValue('/home/user/.codex-work')
+    launchAccountLogin.mockRejectedValue(new Error('terminal unavailable'))
+    render(AddAccountFlow, { props: { open: true, tool: 'codex', projectId: 'p1' } })
+
+    await fireEvent.input(screen.getByLabelText('Account name'), { target: { value: 'work' } })
+    await fireEvent.click(screen.getByText('Open sign-in terminal'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('terminal unavailable')
+      expect(refreshAccounts).toHaveBeenCalledWith('codex', { force: true })
+    })
+    expect(screen.getByText('Open sign-in terminal')).toBeEnabled()
   })
 })

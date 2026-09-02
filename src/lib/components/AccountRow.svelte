@@ -27,7 +27,7 @@
   const isDefault = $derived(defaultAccountId === account?.id)
   const relationshipCount = $derived(pins.length + teams.length)
   const rowTone = $derived(
-    dark ? 'border-white/[0.07] bg-zinc-900/45' : 'border-zinc-200 bg-white'
+    dark ? 'border-white/[0.07] bg-zinc-900/30' : 'border-zinc-200 bg-white'
   )
   const detailTone = $derived(dark ? 'border-zinc-800' : 'border-zinc-100')
   const chipTone = $derived(
@@ -51,7 +51,7 @@
 </script>
 
 <article
-  class="overflow-hidden rounded-xl border shadow-sm {rowTone}"
+  class="overflow-hidden border-b last:border-b-0 {rowTone}"
   data-testid="account-row-{account.id}"
 >
   <button
