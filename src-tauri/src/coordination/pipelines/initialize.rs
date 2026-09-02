@@ -423,6 +423,7 @@ impl CoordinationOrchestrator {
         )?;
         let account = launch.account_result();
         runtime_state.launch_account = (!account.is_empty()).then_some(account);
+        runtime_state.applied_effort = launch.applied_effort.clone();
         runtime_state.pane_id = Some(pane_id.clone());
         capture_member_pane_identity(self.runtime.as_ref(), &pane_id, runtime_state)?;
         runtime_state.session_id = None;
@@ -442,6 +443,7 @@ impl CoordinationOrchestrator {
                 attached_at: Some(runtime_state.attached_at),
                 health: Some(HealthState::Healthy),
                 launch_account: Some(runtime_state.launch_account.clone()),
+                applied_effort: Some(runtime_state.applied_effort.clone()),
             },
         )?;
         Ok(pane_id)

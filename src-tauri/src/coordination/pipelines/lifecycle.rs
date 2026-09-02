@@ -274,13 +274,6 @@ impl CoordinationOrchestrator {
         patch: RuntimeCommitPatch,
         expected: &MemberRuntimeSnapshot,
     ) -> Result<RuntimeCommitOutcome, CoordinationError> {
-        let applied_effort = context
-            .member
-            .reasoning_effort
-            .as_deref()
-            .map(str::trim)
-            .filter(|level| !level.is_empty())
-            .map(str::to_ascii_lowercase);
         let guard = acquire_team_lock(&self.teams_dir, &context.team_name)?;
 
         let outcome = MemberRuntimeStore::commit_if_unchanged(
@@ -321,9 +314,11 @@ impl CoordinationOrchestrator {
                 if let Some(launch_account) = patch.launch_account.as_ref() {
                     runtime.launch_account = launch_account.clone().unwrap_or_default();
                 }
-                // A launch puts the member at the effort its command carried,
-                // including the CLI's own default when no override is set.
-                runtime.applied_effort = applied_effort;
+                if let Some(applied_effort) = patch.applied_effort {
+                    // The launch renderer is the authority on what survived
+                    // base-command overrides and validation.
+                    runtime.applied_effort = applied_effort;
+                }
                 // A committed launch reached a level, so an earlier failed
                 // effort-switch budget no longer applies.
                 runtime.effort_resume_failure = None;

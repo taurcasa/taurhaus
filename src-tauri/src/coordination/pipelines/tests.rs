@@ -5433,7 +5433,7 @@ fn a_launch_records_the_effort_the_session_actually_runs_at() {
     // level the launch put into effect rather than from nothing.
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let mut orchestrator = effort_team(&tmp, runtime, CliTool::Codex, Some("Low"));
+    let mut orchestrator = effort_team(&tmp, runtime, CliTool::Codex, Some("low"));
     mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
 
     let report = orchestrator
@@ -5450,6 +5450,83 @@ fn a_launch_records_the_effort_the_session_actually_runs_at() {
 
     let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
     assert_eq!(record.applied_effort.as_deref(), Some("low"));
+}
+
+#[test]
+fn an_invalid_requested_effort_is_not_recorded_as_applied() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime, CliTool::Codex, Some("not-an-effort-level"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+
+    let report = orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("resume report");
+    assert!(report.resumed, "resume should succeed: {report:?}");
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(record.applied_effort, None);
+}
+
+// Regression: 25293092 committed a requested effort even when the launch
+// renderer dropped it in favor of the operator's effort-pinning base command,
+// making the runtime record disagree with the session it described.
+#[test]
+fn a_pinning_resume_base_does_not_claim_the_ignored_requested_effort() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut cli_commands = CliCommandSettings::default();
+    cli_commands.codex.resume =
+        "codex resume --last -c model_reasoning_effort=\"low\" --yolo".to_string();
+    let mut orchestrator =
+        seed_running_codex_member(&tmp, runtime.clone(), &CliCommandSettings::default());
+    MemberRuntimeStore::update(tmp.path(), "effort-team", "builder", |record| {
+        record.health = HealthState::SessionDead;
+    })
+    .expect("stop member before operator resume");
+
+    let report = orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: Some("high".to_string()),
+            },
+            &cli_commands,
+        )
+        .expect("resume report");
+    assert!(report.resumed, "resume should succeed: {report:?}");
+
+    let launch = runtime
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys),
+            _ => None,
+        })
+        .rfind(|keys| keys.contains("codex resume"))
+        .expect("resume command");
+    assert!(
+        launch.contains("model_reasoning_effort=\\\"low\\\"")
+            || launch.contains("model_reasoning_effort=\"low\"")
+    );
+    assert!(
+        !launch.contains("model_reasoning_effort=\\\"high\\\"")
+            && !launch.contains("model_reasoning_effort=\"high\"")
+    );
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("low"),
+        "applied effort comes from the rendered command, not the request"
+    );
 }
 
 #[test]

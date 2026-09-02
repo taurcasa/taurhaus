@@ -23,8 +23,8 @@ use crate::session_scanner::accounts::{configured_default_dir, to_launch_namespa
 use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::session_scanner::control::validate_command_override;
 use crate::session_scanner::launch::{
-    base_command, redact_command_for_logging, shell_escape, LaunchNote, LaunchSpec, ModelSpec,
-    TeamContext,
+    base_command, redact_command_for_logging, shell_escape, EffortIgnoreReason, LaunchCapability,
+    LaunchNote, LaunchSpec, ModelSpec, TeamContext,
 };
 use taurhaus_lib::session_scanner::launch_base::LaunchAccountResult;
 
@@ -48,6 +48,7 @@ pub(super) struct MemberActivationRuntimeState {
     pub(super) mesh_joined: bool,
     pub(super) member_added: bool,
     pub(super) launch_account: Option<LaunchAccountResult>,
+    pub(super) applied_effort: Option<String>,
 }
 
 pub(super) type PendingRuntimeState = MemberActivationRuntimeState;
@@ -67,6 +68,7 @@ pub(super) struct RuntimeCommitPatch {
     pub(super) attached_at: Option<Option<chrono::DateTime<Utc>>>,
     pub(super) health: Option<HealthState>,
     pub(super) launch_account: Option<Option<LaunchAccountResult>>,
+    pub(super) applied_effort: Option<Option<String>>,
 }
 
 impl RuntimeCommitPatch {
@@ -81,6 +83,7 @@ impl RuntimeCommitPatch {
             attached_at: Some(state.attached_at),
             health: state.health,
             launch_account: Some(state.launch_account.clone()),
+            applied_effort: Some(state.applied_effort.clone()),
         }
     }
 
@@ -99,6 +102,7 @@ impl RuntimeCommitPatch {
             attached_at: Some(Some(attached_at)),
             health: Some(health),
             launch_account: Some(state.launch_account.clone()),
+            applied_effort: Some(state.applied_effort.clone()),
         }
     }
 }
@@ -283,6 +287,7 @@ pub(super) fn run_member_session_phase(
             send_launch_command_with_retry(runtime, pane_id, launch.command.as_str())?;
             let account = launch.account_result();
             runtime_state.launch_account = (!account.is_empty()).then_some(account);
+            runtime_state.applied_effort = launch.applied_effort.clone();
             Ok(DetectedRuntimeSession::default())
         }
         MemberSessionPhase::CaptureOnly => {
@@ -631,6 +636,7 @@ pub fn render_team_launch_command(
 pub(super) struct TeamLaunchResult {
     pub(super) command: String,
     pub(super) account: LaunchAccountResult,
+    pub(super) applied_effort: Option<String>,
 }
 
 impl TeamLaunchResult {
@@ -742,6 +748,33 @@ pub(super) fn render_team_launch(
     }
     .render();
     validate_command_override(&rendered.command).map_err(CoordinationError::Validation)?;
+    let requested_effort = model
+        .reasoning_effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|level| !level.is_empty())
+        .map(str::to_ascii_lowercase);
+    let effort_rejected = rendered.notes.iter().any(|note| {
+        matches!(
+            note,
+            LaunchNote::EffortIgnored {
+                reason: EffortIgnoreReason::Invalid,
+                ..
+            } | LaunchNote::CapabilityMissing {
+                capability: LaunchCapability::Effort,
+                ..
+            }
+        )
+    });
+    let applied_effort =
+        if crate::coordination::task_effort::base_pins_effort(cli_tool, base.as_ref()) {
+            crate::coordination::task_effort::pinned_base_effort(cli_tool, base.as_ref())
+                .map(|level| level.to_ascii_lowercase())
+        } else if effort_rejected {
+            None
+        } else {
+            requested_effort
+        };
 
     let account = LaunchAccountResult::for_opaque_head(
         resolved_base.and_then(|resolved| resolved.opaque_head.as_deref()),
@@ -856,6 +889,7 @@ pub(super) fn render_team_launch(
     Ok(TeamLaunchResult {
         command: rendered.command,
         account,
+        applied_effort,
     })
 }
 
