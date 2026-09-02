@@ -148,6 +148,53 @@ pub mod session_scanner {
 }
 
 pub mod daemon {
+    pub mod state_writes {
+        pub(crate) fn reconcile_live_presence(
+            state: &crate::coordination::state::CoordinationState,
+            params: crate::daemon::protocol::CoordinationReconcileLivePresenceParams,
+        ) -> Result<
+            crate::daemon::protocol::CoordinationReconcileLivePresenceResult,
+            crate::coordination::errors::CoordinationError,
+        > {
+            let reconciled = state.with_orchestrator(|orchestrator| {
+                orchestrator.reconcile_team_presence_for_live_status_with_runtime_sessions(
+                    &params.team_name,
+                    &params.runtime_sessions,
+                )
+            })?;
+            let mut reconciled_offline_members = reconciled.into_iter().collect::<Vec<_>>();
+            reconciled_offline_members.sort();
+            Ok(
+                crate::daemon::protocol::CoordinationReconcileLivePresenceResult {
+                    reconciled_offline_members,
+                },
+            )
+        }
+
+        pub(crate) fn set_active_project_team(
+            teams_dir: &std::path::Path,
+            params: crate::daemon::protocol::CoordinationSetActiveProjectTeamParams,
+        ) -> Result<
+            crate::daemon::protocol::CoordinationSetActiveProjectTeamResult,
+            crate::coordination::errors::CoordinationError,
+        > {
+            match params.team_name {
+                Some(team_name) => {
+                    crate::coordination::stores::ActiveProjectTeamStore::set_active_team(
+                        teams_dir,
+                        &params.project_path,
+                        &team_name,
+                    )?
+                }
+                None => crate::coordination::stores::ActiveProjectTeamStore::clear_project(
+                    teams_dir,
+                    &params.project_path,
+                )?,
+            }
+            Ok(crate::daemon::protocol::CoordinationSetActiveProjectTeamResult { updated: true })
+        }
+    }
+
     pub mod initialize_runs {
         use crate::coordination::requests::{InitializeReport, StepProgress};
         use crate::coordination::state::CoordinationState;
@@ -360,6 +407,7 @@ pub mod daemon {
         pub mod method {
             pub use taurhaus_lib::daemon_api::protocol::method::{
                 COORDINATION_APPLY_TASK_EFFORT, COORDINATION_APPLY_TASK_EFFORT_STATUS,
+                COORDINATION_RECONCILE_LIVE_PRESENCE, COORDINATION_SET_ACTIVE_PROJECT_TEAM,
             };
 
             pub const COORDINATION_INITIALIZE_TEAM: &str = "coordination.initialize_team";
@@ -386,6 +434,8 @@ pub mod daemon {
             CoordinationApplyTaskEffortAccepted, CoordinationApplyTaskEffortOutcome,
             CoordinationApplyTaskEffortParams, CoordinationApplyTaskEffortReport,
             CoordinationApplyTaskEffortStatus, CoordinationApplyTaskEffortStatusParams,
+            CoordinationReconcileLivePresenceParams, CoordinationReconcileLivePresenceResult,
+            CoordinationSetActiveProjectTeamParams, CoordinationSetActiveProjectTeamResult,
         };
 
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
