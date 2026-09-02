@@ -19,7 +19,6 @@ function isRelevant(account, state) {
 
 function liveWindows(usage, now) {
   return (Array.isArray(usage?.windows) ? usage.windows : []).filter((window) => {
-    if (window?.is_active === false || window?.isActive === false) return false
     const used = Number(window?.used_percentage ?? window?.usedPercentage)
     if (!Number.isFinite(used)) return false
     const reset = Number(window?.resets_at ?? window?.resetsAt)

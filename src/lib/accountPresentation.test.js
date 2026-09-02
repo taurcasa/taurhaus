@@ -63,6 +63,55 @@ describe('ambientAccountSignal', () => {
     ).toMatchObject({ visible: true, tone: 'warning', magnitude: '87%', account: warning })
   })
 
+  // Regression: 462c18f treated the provider's `is_active` binding-limit flag
+  // as window liveness, hiding ordinary Claude and Codex usage before exhaustion.
+  it('uses the worst Claude window even when only another limit is binding', () => {
+    const claude = account({
+      usage: {
+        status: 'ok',
+        windows: [
+          { key: 'session', title: 'Current session', used_percentage: 3, is_active: false },
+          { key: 'weekly_all', title: 'Current week', used_percentage: 92, is_active: false },
+          { key: 'weekly_scoped', title: 'Current week (Opus)', used_percentage: 29, is_active: true },
+        ],
+      },
+    })
+
+    expect(
+      ambientAccountSignal([
+        {
+          tool: 'claude',
+          defaultAccountId: 'personal',
+          accounts: [claude],
+          relationships: {},
+        },
+      ])
+    ).toMatchObject({ visible: true, tone: 'warning', magnitude: '92%' })
+  })
+
+  it('uses Codex windows whose binding-limit flags are all false', () => {
+    const codex = account({
+      usage: {
+        status: 'ok',
+        windows: [
+          { key: 'five_hour', title: '5h limit', used_percentage: 96, is_active: false },
+          { key: 'weekly', title: 'Weekly limit', used_percentage: 88, is_active: false },
+        ],
+      },
+    })
+
+    expect(
+      ambientAccountSignal([
+        {
+          tool: 'codex',
+          defaultAccountId: 'personal',
+          accounts: [codex],
+          relationships: {},
+        },
+      ])
+    ).toMatchObject({ visible: true, tone: 'warning', magnitude: '96%' })
+  })
+
   it('uses red for a relevant signed-out or unauthorized account', () => {
     const signedOut = account({ id: 'work', logged_in: false, usage: null })
     const result = ambientAccountSignal([
