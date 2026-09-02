@@ -103,14 +103,14 @@ pub(crate) fn publish_initialize_snapshot(
     teams_dir: &Path,
     snapshot: &OperationalContextSnapshot,
 ) -> Result<(), CoordinationError> {
-    publish_snapshot(teams_dir, snapshot, None)
+    publish_snapshot(teams_dir, snapshot, None).map(|_| ())
 }
 
 pub(crate) fn publish_member_operation_snapshot(
     teams_dir: &Path,
     snapshot: &OperationalContextSnapshot,
     task_state_changed_at: Option<DateTime<Utc>>,
-) -> Result<(), CoordinationError> {
+) -> Result<bool, CoordinationError> {
     publish_snapshot(teams_dir, snapshot, task_state_changed_at)
 }
 
@@ -118,7 +118,7 @@ fn publish_snapshot(
     teams_dir: &Path,
     snapshot: &OperationalContextSnapshot,
     task_state_changed_at: Option<DateTime<Utc>>,
-) -> Result<(), CoordinationError> {
+) -> Result<bool, CoordinationError> {
     let guard =
         crate::coordination::stores::lock::acquire_team_lock(teams_dir, &snapshot.team_name)?;
     let current = OperationalContextSnapshotStore::load(
@@ -130,7 +130,7 @@ fn publish_snapshot(
         .as_ref()
         .is_some_and(|current| current.updated_at >= snapshot.updated_at)
     {
-        return Ok(());
+        return Ok(false);
     }
 
     let mut candidate = snapshot.clone();
@@ -153,7 +153,8 @@ fn publish_snapshot(
         }
     }
 
-    OperationalContextSnapshotStore::save_locked(&guard, teams_dir, &candidate)
+    OperationalContextSnapshotStore::save_locked(&guard, teams_dir, &candidate)?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -227,12 +228,7 @@ pub(crate) fn prepare_project_task_snapshots(
                 effort,
                 task_state_changed_at,
             );
-            let unchanged = existing.as_ref().is_some_and(|existing| {
-                let mut candidate = snapshot.clone();
-                candidate.updated_at = existing.updated_at;
-                candidate == *existing
-            });
-            if !unchanged {
+            if !snapshot_is_unchanged(existing.as_ref(), &snapshot) {
                 prepared.push((snapshot, task_state_changed_at));
             }
         }
@@ -520,15 +516,22 @@ fn save_snapshot_if_changed(
         task_state_changed_at,
     );
 
-    if let Some(existing_snapshot) = current.as_ref() {
-        let mut candidate = snapshot.clone();
-        candidate.updated_at = existing_snapshot.updated_at;
-        if candidate == *existing_snapshot {
-            return Ok(());
-        }
+    if snapshot_is_unchanged(current.as_ref(), &snapshot) {
+        return Ok(());
     }
 
     OperationalContextSnapshotStore::save_locked(&guard, teams_dir, &snapshot)
+}
+
+fn snapshot_is_unchanged(
+    existing: Option<&OperationalContextSnapshot>,
+    candidate: &OperationalContextSnapshot,
+) -> bool {
+    existing.is_some_and(|existing| {
+        let mut candidate = candidate.clone();
+        candidate.updated_at = existing.updated_at;
+        candidate == *existing
+    })
 }
 
 /// The task statuses an assignment is still open in. This is the one place

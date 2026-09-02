@@ -54,12 +54,16 @@ pub(crate) fn publish_operational_snapshots(
             continue;
         }
 
-        crate::coordination::operational_context::publish_member_operation_snapshot(
+        let wrote = crate::coordination::operational_context::publish_member_operation_snapshot(
             teams_dir,
             &publication.snapshot,
             publication.task_state_changed_at,
         )?;
-        published += 1;
+        if wrote {
+            published += 1;
+        } else {
+            skipped += 1;
+        }
     }
 
     Ok(CoordinationPublishOperationalSnapshotsResult { published, skipped })
@@ -162,6 +166,8 @@ mod tests {
         .expect("save team");
     }
 
+    // Regression: d593f81b counted a snapshot dropped by the newer-wins guard
+    // as published, so the protocol result reported attempts instead of writes.
     #[test]
     fn snapshot_intent_reuses_the_newer_wins_publication_guard() {
         let teams = TempDir::new().expect("teams");
@@ -204,7 +210,8 @@ mod tests {
         )
         .expect("publish intent");
 
-        assert_eq!(result.published, 1);
+        assert_eq!(result.published, 0);
+        assert_eq!(result.skipped, 1);
         let stored =
             OperationalContextSnapshotStore::load(teams.path(), "architecture-final", "builder")
                 .expect("load")
