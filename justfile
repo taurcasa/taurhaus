@@ -349,10 +349,11 @@ test-rust-fast: ensure-tauri-resources
 test-rust-unit: ensure-tauri-resources
     cd src-tauri && heavy_test_filters="{{heavy_rust_test_filters}}"; skip_args=""; for test_filter in $heavy_test_filters; do skip_args="$skip_args --skip $test_filter"; done; cargo test --lib --bins -- --test-threads=1 $skip_args
 
-# Rust integration/system lane (serialized, includes heavy suites).
+# Rust integration/system lane. Test binaries and genuinely shared heavy suites
+# stay serialized; listener-owning daemon server/client fixtures run in parallel.
 test-rust-integration: ensure-tauri-resources
     cd src-tauri && cargo test {{integration_test_args}} -- --test-threads=1
-    cd src-tauri && for test_filter in {{heavy_rust_test_filters}}; do echo "▸ $test_filter"; cargo test --lib "$test_filter" -- --test-threads=1 || exit; done
+    cd src-tauri && for test_filter in {{heavy_rust_test_filters}}; do echo "▸ $test_filter"; case "$test_filter" in daemon::server::tests::|provider::daemon_client::tests::) cargo test --lib "$test_filter" || exit ;; *) cargo test --lib "$test_filter" -- --test-threads=1 || exit ;; esac; done
 
 # Bisect default Rust unit-test lane by module groups with checkpoints
 test-rust-bisect-unit:

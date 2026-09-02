@@ -18,7 +18,7 @@ Implement the safe `just check` speedups identified in task `#937` without reint
   - `coordination_onboarding_linux_e2e`
   - `module_boundary_assertions`
   - `session_pipeline`
-- Kept the heavy daemon, watcher, and launcher suites as explicit serialized lib-test commands.
+- Kept the heavy daemon, watcher, and launcher suites as explicit lib-test commands. The daemon server/client fixture suites now use default parallelism after the listener handoff class fix; watcher, launcher, and event-listener subsets remain serialized.
 
 2. Split `lint` into Rust and frontend lanes
 
@@ -66,14 +66,15 @@ Measured effect:
 ## Why the speedup is safe
 
 - The Rust lane remains fully serialized at the top level.
-- The heavy daemon/watcher suites still run one at a time with `--test-threads=1`.
+- Heavy watcher, launcher, and event-listener subsets still run one at a time with `--test-threads=1`.
+- Daemon server/client fixtures retain their bound ephemeral listeners through thread handoff and therefore run with Cargo's default parallelism; their named heavy guard still protects genuinely shared process state.
 - The only top-level overlap is one cargo-driven lane against one Bun/frontend lane.
 - No cargo package-cache or build-directory lock contention occurred in the clean final rerun.
 
 ## Residual bottlenecks
 
 - The Rust unit lane is still the dominant cost center.
-- The heavy daemon server and daemon client suites remain the longest serialized tail.
+- The heavy daemon server and daemon client suites remain the longest tail, but no longer carry a suite-wide thread pin.
 - Frontend work is no longer on the critical path in successful runs.
 
 ## Follow-up work
