@@ -82,10 +82,8 @@ their instructions.
 Review depth follows the surface, not the role name. A declared hero surface
 gets two independent reviews; other surfaces get one, and a spec-delta needs no
 review beyond its acceptance owner. Deadlines and model effort remain optional
-overrides for genuinely time-sensitive, long-running, or effort-sensitive work.
-Setting a deadline asks the daemon to send one nudge at half the interval —
-suppressed while the member is visibly active — and mark the task stale once
-at the deadline; it is not a required assignment field.
+overrides; see [Optional deadline and effort overrides](team-delivery-standard.md#optional-deadline-and-effort-overrides)
+for what setting a deadline actually buys.
 
 Each surface also names one accountable implementer and one acceptance owner.
 State cross-surface seams and commit authority in the review route so handoffs

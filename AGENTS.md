@@ -309,6 +309,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/templates/storage/` | Template git/storage domain split (`roles`, `presets`, `git`, `state`). |
 | `docs/coordination-architecture.md` | Coordination subsystem decisions, milestones, and status |
 | `ARCHITECTURE.md` | System architecture overview and module map |
+| `docs/team-delivery-standard.md` | Shared work-kind defaults, five-line assignment contract, message conventions, and result artifacts |
 | `docs/team-templates.md` | User guide for template authoring/composition/history workflows |
 | `docs/testing-guide.md` | Visual testing lane boundaries, usage, and screenshot conventions. |
 | `docs/images/system-architecture.jpg` | System architecture infographic |

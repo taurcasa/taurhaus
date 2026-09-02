@@ -51,6 +51,9 @@ const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n
 // keep already-migrated stores clean. Every future bundled-template edit must
 // bump `BUILTIN_CATALOG_REVISION` and append the superseded bytes'
 // fingerprints here.
+// Revision 2 was an in-branch iteration of the v2 catalog that never shipped,
+// so no fingerprint block exists for it; the recorded supersession below moves
+// stores directly from revision 1 bytes to the current revision.
 const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
     // Role catalog v2 superseded bytes. These exact fingerprints let an
     // unmodified seeded catalog advance while preserving local role edits.
