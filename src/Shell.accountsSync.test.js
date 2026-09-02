@@ -108,7 +108,8 @@ const { refreshAccounts, refreshUsage } = await import('./lib/accounts.svelte.js
 
 import Shell from './Shell.svelte'
 
-const toolsAsked = (mock) => new Set(mock.mock.calls.map(([tool]) => tool))
+const toolsIn = (calls) => new Set(calls.map(([tool]) => tool))
+const toolsAsked = (mock) => toolsIn(mock.mock.calls)
 
 describe('Shell ambient account synchronisation', () => {
   beforeEach(() => {
@@ -132,14 +133,19 @@ describe('Shell ambient account synchronisation', () => {
     expect(toolsAsked(refreshUsage)).toEqual(new Set(['claude', 'codex', 'agy']))
   })
 
-  it('keeps reading usage at the backend poller cadence', async () => {
+  it('re-reads what the backend poller has observed since, without forcing it', async () => {
     render(Shell)
     await vi.advanceTimersByTimeAsync(10)
-    const startup = refreshUsage.mock.calls.length
+    const opening = refreshAccounts.mock.calls.length
+    const openingProviderReads = refreshUsage.mock.calls.length
 
     await vi.advanceTimersByTimeAsync(60_000)
 
-    expect(refreshUsage.mock.calls.length).toBeGreaterThan(startup)
-    expect(toolsAsked(refreshUsage)).toEqual(new Set(['claude', 'codex', 'agy']))
+    const tick = refreshAccounts.mock.calls.slice(opening)
+    expect(toolsIn(tick)).toEqual(new Set(['claude', 'codex', 'agy', 'grok']))
+    expect(tick.every(([, options]) => options?.force === true)).toBe(true)
+    // The poller decides how often a subscription is worth asking again; the
+    // chrome only reads what it has already observed.
+    expect(refreshUsage.mock.calls.length).toBe(openingProviderReads)
   })
 })

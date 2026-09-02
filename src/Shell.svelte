@@ -346,16 +346,18 @@
    *
    * Every registry tool is asked, not only the ones that can switch accounts:
    * a tool with a single implicit account still has usage the footer speaks
-   * for, and a tool nothing has detected yet has no row to speak with. Usage
-   * follows its own detection, because a reading can only be attached to an
-   * account that is already known. The relationship index is re-read only when
-   * something outside this app may have moved it — a fresh start, or a daemon
-   * that just reconnected.
+   * for, and a tool nothing has detected yet has no row to speak with.
+   *
+   * Only the opening pass asks a provider for a fresh reading, because that is
+   * the one moment taurhaus may hold none. From then on a listing carries
+   * whatever the backend poller last observed, and the poller — not this
+   * timer — decides how often a subscription is worth asking again.
    */
-  function syncAccountChrome({ force = false, relationships = false } = {}) {
+  function syncAccountChrome({ force = false, provider = false } = {}) {
     for (const tool of registryTools()) {
       const detected = Promise.resolve(refreshAccounts(tool.id, { force }))
-      if (relationships) void refreshAccountRelationships(tool.id, { force })
+      if (!provider) continue
+      void refreshAccountRelationships(tool.id, { force })
       if (tool.capabilities.usage) {
         void detected.then(() =>
           refreshUsage(tool.id, { maxAgeMs: ACCOUNTS_SYNC_INTERVAL_MS })
@@ -373,14 +375,18 @@
     if (status === lastAccountDetectionDaemonStatus) return
     const reconnected = status === 'connected' && lastAccountDetectionDaemonStatus !== null
     lastAccountDetectionDaemonStatus = status
-    syncAccountChrome({ force: reconnected, relationships: true })
+    syncAccountChrome({ force: reconnected, provider: true })
   })
 
   // Nobody hovers the footer to find out whether their week is spent: the
-  // startup pass fills the chrome in, and the interval keeps it honest.
+  // opening pass fills the chrome in, and the interval keeps it level with what
+  // the poller has observed since.
   $effect(() => {
-    syncAccountChrome({ relationships: true })
-    const timer = setInterval(() => syncAccountChrome(), ACCOUNTS_SYNC_INTERVAL_MS)
+    syncAccountChrome({ provider: true })
+    const timer = setInterval(
+      () => syncAccountChrome({ force: true }),
+      ACCOUNTS_SYNC_INTERVAL_MS
+    )
     return () => clearInterval(timer)
   })
 
