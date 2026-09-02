@@ -23,9 +23,10 @@ use crate::session_scanner::accounts::{configured_default_dir, to_launch_namespa
 use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::session_scanner::control::validate_command_override;
 use crate::session_scanner::launch::{
-    base_command, redact_command_for_logging, shell_escape, EffortIgnoreReason, LaunchCapability,
-    LaunchNote, LaunchSpec, ModelSpec, TeamContext,
+    base_command, redact_command_for_logging, shell_escape, LaunchNote, LaunchSpec, ModelSpec,
+    TeamContext,
 };
+use taurhaus_lib::session_scanner::launch::{EffortIgnoreReason, LaunchCapability};
 use taurhaus_lib::session_scanner::launch_base::LaunchAccountResult;
 
 const TMUX_SEND_RETRY_DELAYS: [Duration; 2] =
