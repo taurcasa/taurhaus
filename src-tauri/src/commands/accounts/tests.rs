@@ -1,8 +1,6 @@
 use super::*;
 use crate::db::queries;
-use crate::session_scanner::accounts::{
-    install_detection_override, AccountIdentity, AccountScan,
-};
+use crate::session_scanner::accounts::{install_detection_override, AccountIdentity, AccountScan};
 use std::path::Path;
 use std::sync::Mutex;
 use tempfile::{NamedTempFile, TempDir};
@@ -152,6 +150,27 @@ fn registry_home_owns_default_root_teams_when_process_home_differs() {
     assert_eq!(
         registry_home_account_id(&accounts, Path::new("/home/user/.claude-work")).as_deref(),
         Some("registry")
+    );
+}
+
+#[test]
+fn account_directory_host_path_uses_the_shared_path_authority() {
+    // Regression: f60cb250 duplicated Linux-to-Windows conversion in the
+    // frontend instead of routing account paths through provider::path.
+    assert_eq!(
+        account_directory_host_path_impl("/mnt/d/work/accounts", Some("Ubuntu"))
+            .expect("mounted drive"),
+        r"D:\work\accounts"
+    );
+    assert_eq!(
+        account_directory_host_path_impl("/home/user/.claude-work", Some("Ubuntu"))
+            .expect("WSL home"),
+        r"\\wsl.localhost\Ubuntu\home\user\.claude-work"
+    );
+    assert_eq!(
+        account_directory_host_path_impl("/home/user/.claude-work", Some("native"))
+            .expect("native path"),
+        "/home/user/.claude-work"
     );
 }
 

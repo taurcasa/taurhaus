@@ -225,6 +225,7 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             commands::accounts::list_account_relationships,
             commands::accounts::set_global_default_account,
             commands::accounts::prepare_account_directory,
+            commands::accounts::account_directory_host_path,
             commands::accounts::launch_account_login,
             commands::command_center::list_cli_sessions,
             commands::command_center::list_cli_session_snapshot,

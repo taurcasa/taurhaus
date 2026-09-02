@@ -863,20 +863,22 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
-    // Regression: 971d964 passed daemon-owned Linux account paths directly to
-    // Explorer, which cannot reveal them without conversion to the host namespace.
-    it('converts a daemon Linux account directory before revealing it on Windows', async () => {
+    // Regression: f60cb250 duplicated the Rust path authority in JavaScript,
+    // allowing host-path conversion rules to drift between the two languages.
+    it('asks the app path authority before revealing an account directory', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockImplementation((command) => {
-        if (command === 'get_platform') return Promise.resolve('windows')
-        if (command === 'get_daemon_status') {
-          return Promise.resolve({ status: 'connected', wsl_distro: 'Ubuntu' })
+        if (command === 'account_directory_host_path') {
+          return Promise.resolve('\\\\wsl.localhost\\Ubuntu\\home\\user\\.claude-work')
         }
         return Promise.resolve(undefined)
       })
 
       await ipc.revealDirectory('/home/user/.claude-work')
 
+      expect(tauriCore.invoke).toHaveBeenCalledWith('account_directory_host_path', {
+        path: '/home/user/.claude-work',
+      })
       expect(tauriCore.invoke).toHaveBeenLastCalledWith('plugin:opener|reveal_item_in_dir', {
         path: '\\\\wsl.localhost\\Ubuntu\\home\\user\\.claude-work',
       })

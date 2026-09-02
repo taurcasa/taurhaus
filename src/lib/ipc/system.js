@@ -686,19 +686,7 @@ export function launchAccountLogin(projectId, tool, configDir) {
 }
 
 export function revealDirectory(path) {
-  return getPlatform().then(async (platform) => {
-    let revealPath = path
-    if (platform === 'windows' && path.startsWith('/')) {
-      const mountedDrive = path.match(/^\/mnt\/([a-z])(?:\/(.*))?$/i)
-      if (mountedDrive) {
-        const suffix = mountedDrive[2] ? `\\${mountedDrive[2].replaceAll('/', '\\')}` : ''
-        revealPath = `${mountedDrive[1].toUpperCase()}:${suffix}`
-      } else {
-        const { wsl_distro: distro } = await getDaemonStatus()
-        if (!distro) throw new Error('Cannot reveal a WSL account directory without a distro')
-        revealPath = `\\\\wsl.localhost\\${distro}${path.replaceAll('/', '\\')}`
-      }
-    }
+  return invokeOrMock('account_directory_host_path', { path }, () => path).then((revealPath) => {
     return invokeOrMock('plugin:opener|reveal_item_in_dir', { path: revealPath }, () => undefined)
   })
 }

@@ -501,9 +501,37 @@ pub(crate) fn account_directory_plan(default_dir: &Path, label: &str) -> Result<
         .ok_or_else(|| "The registry account directory has no parent".to_string())?;
     let parent = parent.to_string_lossy().replace('\\', "/");
     let separator = if parent.ends_with('/') { "" } else { "/" };
-    Ok(PathBuf::from(format!(
-        "{parent}{separator}{base}-{slug}"
-    )))
+    Ok(PathBuf::from(format!("{parent}{separator}{base}-{slug}")))
+}
+
+#[tauri::command]
+pub fn account_directory_host_path(
+    provider: State<'_, ProviderState>,
+    path: String,
+) -> IpcResult<String> {
+    let span = IpcCommandSpan::start("account_directory_host_path");
+    let distro = if cfg!(target_os = "windows") {
+        provider.wsl_distro.as_deref()
+    } else {
+        Some("native")
+    };
+    let result =
+        account_directory_host_path_impl(&path, distro).ipc_cmd("account_directory_host_path");
+    span.finish_result(&result);
+    result
+}
+
+fn account_directory_host_path_impl(
+    path: &str,
+    wsl_distro: Option<&str>,
+) -> Result<String, String> {
+    if !path.starts_with('/') || wsl_distro == Some("native") {
+        return Ok(path.to_string());
+    }
+    let distro = wsl_distro
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Cannot reveal a WSL account directory without a distro".to_string())?;
+    Ok(crate::provider::path::to_windows(path, distro))
 }
 
 pub(crate) fn account_login_command(tool: CliTool, config_dir: &Path) -> Result<String, String> {
