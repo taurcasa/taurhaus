@@ -21,8 +21,13 @@ Grounded by the account-selection research pass (managed-launch pin trace, break
 
 **FR5 — Managed teams get account truth and account choice.**
 - *Codex/Grok members*: per-member account selection (builder roster row beside the existing `ModelSelect`; stored on the member record like `model` is; rendered through the existing selector machinery).
-- *Claude teams*: per-**team** account — the whole team on one chosen root — as the stretch slice, with the per-team teams-dir authority threaded through mesh `--claude-dir`, the daemon, the compact-hook installer, and the task scanner; until that slice lands, the UI tells the truth: which account the team runs on (identity + usage of the default root), replacing today's one-line disclaimer. Per-member mixed-account Claude teams are out of scope (CC constraint, documented).
+- *Claude teams*: per-**team** account — the whole team on one chosen root, with the per-team teams-dir authority threaded through mesh `--claude-dir`, the daemon, the compact-hook installer, and the task scanner. Core scope, not stretch: it is the mechanism FR5b rides on. Per-member mixed-account Claude teams stay out of scope (CC constraint, documented). Until the slice lands, the UI tells the truth about which account a team runs on, replacing today's one-line disclaimer.
 - *Mesh view*: positive account display on member nodes/detail (label + usage state + applied/not-guaranteed), not just the opaque-wrapper warning.
+
+**FR5b — Switch a team to a different account (the mid-wave usage-out journey).** Field reality (operator, 2026-09-02): usage runs out while a team is working; today the operator kills the team, rebuilds it by hand hoping the roles match, and tells the new lead "we are on a different account now" with no continuity guarantees. This becomes a first-class operation:
+- *The operation*: stop team → migrate/re-point its state for the new account (Claude: team config, inboxes, runtime, mesh task records move with the per-team root; Codex/Grok: only the member selector env changes — team state never lived in the account dir) → resume team under the new account, through the existing daemon resume pipeline.
+- *Continuity story, stated honestly*: transcripts do not cross accounts — every member comes back as a fresh conversation. What DOES survive, because it is account-independent team state, is everything the task ledger holds: task records with rulings, artifacts, and restart cursors, the inboxes, and the operational snapshots. The resume onboarding says so explicitly: which account the team now runs on, which account the previous run used, where that run's transcripts live (path pointer for the lead), and the standing instruction to rebuild working context from `mesh task get` — the switch journey is precisely what the W-B cursor and compaction-card machinery were built to serve.
+- *Offered where the pain hits*: when a team member's account is exhausted/unauthorized, the team surface proposes the switch (same interrupt contract as FR4 — proposed, never forced).
 
 **FR6 — Choices are keyed by account id, resolved to a dir at render.** Ids survive dir renames; resolution goes through detection with the existing degraded-detection and `fallback_from` semantics (a vanished or signed-out account falls back loudly, never silently).
 
@@ -30,7 +35,7 @@ Grounded by the account-selection research pass (managed-launch pin trace, break
 
 ## Non-goals
 
-- Mid-team account switching (launch-time only; transcripts do not cross accounts and a moved member cannot resume its old conversation).
+- Mid-task *silent* account switching of a single live member (FR5b switches at the team resume boundary, with fresh conversations and explicit onboarding — a live conversation never hops accounts).
 - Shared history across accounts.
 - Any storage of credentials or refresh flows.
 - Role templates carrying machine-local account ids as hard requirements (portable templates may carry a *soft* account preference at most).
