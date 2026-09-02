@@ -197,6 +197,24 @@ describe('AccountsHome', () => {
     expect(rememberChoice).not.toHaveBeenCalledWith('p-settled', 'claude', 'work')
   })
 
+  // Regression: faffe345 compared the reported selector value verbatim with
+  // absolute account directories, so a `~/`-spelled alias lost its conversion strip.
+  it('explains a tilde-spelled base-command selector', () => {
+    const accountStates = states()
+    accountStates.claude.defaultAccountId = null
+    accountStates.claude.resolvedBases[0].selectorValue = '~/.claude-work'
+
+    render(AccountsHome, {
+      props: {
+        states: accountStates,
+        projects: [{ id: 'p-free', name: 'free', accountMemory: {} }],
+      },
+    })
+
+    expect(screen.getByTestId('account-alias-claude')).toHaveTextContent('claude2')
+    expect(screen.getByText('Convert to pins')).toBeInTheDocument()
+  })
+
   // Regression: faffe345 offered to pin every memory-free project to the base
   // command account even when the configured global default already outranked it.
   it('does not offer alias conversion when a global default settles the projects', () => {

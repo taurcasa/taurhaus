@@ -12,6 +12,7 @@
     setGlobalDefault,
   } from '../accounts.svelte.js'
   import { revealDirectory } from '../ipc.js'
+  import { accountForSelectorValue } from '../accountPresentation.js'
   import { tools } from '../toolRegistry.js'
   import { themeTokens } from '../themeTokens.js'
 
@@ -155,10 +156,9 @@
   function selectedAlias(state) {
     if (state.defaultAccountId) return null
     for (const base of state.resolvedBases ?? []) {
-      if (!base?.selectorValue) continue
-      const account = (state.accounts ?? []).find(
-        (candidate) => (candidate.dir ?? candidate.config_dir) === base.selectorValue
-      )
+      const selectorValue = base?.selectorValue ?? base?.selector_value
+      if (!selectorValue) continue
+      const account = accountForSelectorValue(selectorValue, state.accounts ?? [])
       const expansion = base.expansions?.[0]
       if (account && expansion) return { account, expansion }
     }

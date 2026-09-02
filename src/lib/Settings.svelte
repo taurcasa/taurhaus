@@ -19,6 +19,7 @@
   import UsageMeter from './components/UsageMeter.svelte'
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
   import { formatUserFacingError } from './format.js'
+  import { accountForSelectorValue } from './accountPresentation.js'
   import { themeTokens } from './themeTokens.js'
   import { tools, toolAccent } from './toolRegistry.js'
   import { getToolIcon } from './toolLogos.js'
@@ -211,16 +212,6 @@
   /** The launch commands and selector values as the backend resolved them. */
   function launchBases(tool) {
     return accountState(tool.id).resolvedBases ?? []
-  }
-
-  function accountForSelectorValue(value, accounts) {
-    const dir = String(value ?? '')
-    if (!dir) return null
-    if (dir.startsWith('~/')) {
-      const tail = dir.slice(1)
-      return accounts.find((account) => String(account.dir).endsWith(tail)) ?? null
-    }
-    return accounts.find((account) => account.dir === dir) ?? null
   }
 
   /**

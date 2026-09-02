@@ -1,5 +1,21 @@
 const LAST_KNOWN_AFTER_MS = 15 * 60 * 1000
 
+/** Match a backend-reported selector value to its detected account directory. */
+export function accountForSelectorValue(value, accounts = []) {
+  const dir = String(value ?? '')
+  if (!dir) return null
+  if (dir.startsWith('~/')) {
+    const tail = dir.slice(1)
+    return (
+      accounts.find((account) => String(account?.dir ?? account?.config_dir ?? '').endsWith(tail)) ??
+      null
+    )
+  }
+  return (
+    accounts.find((account) => (account?.dir ?? account?.config_dir) === dir) ?? null
+  )
+}
+
 function relationshipList(relationships, camel, snake) {
   const value = relationships?.[camel] ?? relationships?.[snake]
   return Array.isArray(value) ? value : []
