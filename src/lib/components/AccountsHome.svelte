@@ -4,6 +4,7 @@
   import AddAccountFlow from './AddAccountFlow.svelte'
   import {
     accountState,
+    opaqueBaseNotice,
     refreshAccounts,
     refreshAccountRelationships,
     refreshResolvedBases,
@@ -12,7 +13,7 @@
     setGlobalDefault,
   } from '../accounts.svelte.js'
   import { revealDirectory } from '../ipc.js'
-  import { accountForSelectorValue } from '../accountPresentation.js'
+  import { baseCommandSelection } from '../accountPresentation.js'
   import { tools } from '../toolRegistry.js'
   import { themeTokens } from '../themeTokens.js'
   import { exhaustedUsage } from '../usageWindows.js'
@@ -154,16 +155,16 @@
     signInAccount = null
   }
 
-  function selectedAlias(state) {
+  /**
+   * What the base command does to this tool's accounts, in the same order
+   * Settings reads it: an opaque head first — it outranks the chosen global
+   * default — then a selector, whether an alias or the typed command carries it.
+   */
+  function baseSelection(state) {
+    const selection = baseCommandSelection(state.resolvedBases, state.accounts ?? [])
+    if (selection.opaqueHead) return selection
     if (state.defaultAccountId) return null
-    for (const base of state.resolvedBases ?? []) {
-      const selectorValue = base?.selectorValue ?? base?.selector_value
-      if (!selectorValue) continue
-      const account = accountForSelectorValue(selectorValue, state.accounts ?? [])
-      const expansion = base.expansions?.[0]
-      if (account && expansion) return { account, expansion }
-    }
-    return null
+    return selection.account ? selection : null
   }
 
   function projectMemory(project, tool) {
@@ -202,7 +203,7 @@
 
     {#each registry as descriptor (descriptor.id)}
       {@const state = stateFor(descriptor.id)}
-      {@const alias = selectedAlias(state)}
+      {@const selection = baseSelection(state)}
       <section class="space-y-2.5" data-testid="accounts-tool-{descriptor.id}" data-tool={descriptor.id}>
         <div class="flex items-end justify-between gap-4">
           <div>
@@ -241,13 +242,19 @@
           {/each}
         </div>
 
-        {#if alias}
+        {#if selection?.opaqueHead}
+          <aside class="rounded-lg border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2.5" data-testid="account-base-opaque-{descriptor.id}">
+            <p class="text-[10px] leading-relaxed {t.textSecondary}">
+              {opaqueBaseNotice(selection.opaqueHead, descriptor.id)}
+            </p>
+          </aside>
+        {:else if selection}
           <aside class="rounded-lg border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2.5" data-testid="account-alias-{descriptor.id}">
             <div class="flex items-center justify-between gap-4">
               <p class="text-[10px] leading-relaxed {t.textSecondary}">
-                Base command <strong>{alias.expansion.name}</strong> selects {alias.account.display_name ?? alias.account.label} for projects without a settled account.
+                Base command <strong>{selection.alias?.name ?? selection.command}</strong> selects {selection.account.display_name ?? selection.account.label} for projects without a settled account.
               </p>
-              <button class="shrink-0 text-[10px] font-semibold text-amber-500" onclick={() => convertAlias(descriptor.id, alias.account)}>Convert to pins</button>
+              <button class="shrink-0 text-[10px] font-semibold text-amber-500" onclick={() => convertAlias(descriptor.id, selection.account)}>Convert to pins</button>
             </div>
           </aside>
         {/if}

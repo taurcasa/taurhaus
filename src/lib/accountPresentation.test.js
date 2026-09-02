@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   accountOriginSentence,
   ambientAccountSignal,
+  baseCommandSelection,
   usageIsLastKnown,
 } from './accountPresentation.js'
 
@@ -197,5 +198,68 @@ describe('accountOriginSentence', () => {
     ['default_config_dir', "the tool's default directory"],
   ])('renders %s provenance as settled product copy', (origin, sentence) => {
     expect(accountOriginSentence(origin)).toBe(sentence)
+  })
+})
+
+describe('baseCommandSelection', () => {
+  const accounts = [
+    { id: 'work', display_name: 'work', dir: '/home/user/.claude-work' },
+    { id: 'personal', display_name: 'personal', dir: '/home/user/.claude' },
+  ]
+
+  // Regression: 186f19a2 keyed the accounts-home explainer on the alias
+  // expansion, so a selector typed straight into Settings selected an account
+  // that no surface explained.
+  it('matches a selector whether an alias or the typed command carries it', () => {
+    const typed = baseCommandSelection(
+      [
+        {
+          command: 'CLAUDE_CONFIG_DIR=/home/user/.claude-work claude',
+          selectorValue: '/home/user/.claude-work',
+          expansions: [],
+        },
+      ],
+      accounts
+    )
+    expect(typed.account?.id).toBe('work')
+    expect(typed.alias).toBeNull()
+    expect(typed.command).toBe('CLAUDE_CONFIG_DIR=/home/user/.claude-work claude')
+
+    const aliased = baseCommandSelection(
+      [
+        {
+          command: 'CLAUDE_CONFIG_DIR=/home/user/.claude-work claude',
+          selectorValue: '/home/user/.claude-work',
+          expansions: [{ name: 'claude2', body: 'CLAUDE_CONFIG_DIR=…' }],
+        },
+      ],
+      accounts
+    )
+    expect(aliased.alias?.name).toBe('claude2')
+  })
+
+  it('reports an opaque head from any base, matched or not', () => {
+    const selection = baseCommandSelection(
+      [
+        { command: 'claude-wrapper', expansions: [], opaqueHead: 'claude-wrapper' },
+        {
+          command: 'CLAUDE_CONFIG_DIR=/home/user/.claude-work claude',
+          selectorValue: '/home/user/.claude-work',
+          expansions: [],
+        },
+      ],
+      accounts
+    )
+    expect(selection.opaqueHead).toBe('claude-wrapper')
+    expect(selection.account?.id).toBe('work')
+  })
+
+  it('answers with nothing selected when no base carries a known selector', () => {
+    expect(baseCommandSelection(undefined, accounts)).toEqual({
+      opaqueHead: null,
+      account: null,
+      alias: null,
+      command: null,
+    })
   })
 })

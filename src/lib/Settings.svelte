@@ -19,7 +19,7 @@
   import UsageMeter from './components/UsageMeter.svelte'
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
   import { formatUserFacingError } from './format.js'
-  import { accountForSelectorValue } from './accountPresentation.js'
+  import { baseCommandSelection } from './accountPresentation.js'
   import { themeTokens } from './themeTokens.js'
   import { tools, toolAccent } from './toolRegistry.js'
   import { getToolIcon } from './toolLogos.js'
@@ -228,28 +228,23 @@
     const configured = state.accounts.find(
       (account) => account.is_process_default || account.is_default
     )
-    const bases = launchBases(tool)
     // A launch command taurhaus cannot see through decides the account itself,
     // whatever was chosen here — so the warning outranks every precedence rule
     // below, the chosen global default included.
-    const opaqueHead = bases.map((base) => base.opaqueHead ?? base.opaque_head).find(Boolean)
-    if (opaqueHead) return { account: configured, origin: opaqueBaseNotice(opaqueHead, tool.id) }
+    const selection = baseCommandSelection(launchBases(tool), state.accounts)
+    if (selection.opaqueHead) {
+      return { account: configured, origin: opaqueBaseNotice(selection.opaqueHead, tool.id) }
+    }
     const chosen = state.accounts.find(
       (account) => account.id === persistedDefaultAccountId(tool.id)
     )
     if (chosen) return { account: chosen, origin: 'default' }
-    for (const base of bases) {
-      const account = accountForSelectorValue(
-        base.selectorValue ?? base.selector_value,
-        state.accounts,
-      )
-      if (!account) continue
-      const alias = base.expansions?.[0]
+    if (selection.account) {
       return {
-        account,
-        origin: alias
-          ? `from your launch command \"${alias.name}\" (alias for ${alias.body})`
-          : `from your launch command \"${base.command}\"`,
+        account: selection.account,
+        origin: selection.alias
+          ? `from your launch command \"${selection.alias.name}\" (alias for ${selection.alias.body})`
+          : `from your launch command \"${selection.command}\"`,
       }
     }
     return { account: configured, origin: 'default config directory' }

@@ -4,6 +4,8 @@ import '@testing-library/jest-dom/vitest'
 
 vi.mock('../accounts.svelte.js', () => ({
   accountState: vi.fn(() => ({ accounts: [], relationships: {}, resolvedBases: [] })),
+  opaqueBaseNotice: (head) =>
+    `taurhaus could not select an account: your launch command runs "${head}", which is not the Claude CLI`,
   refreshAccounts: vi.fn(() => Promise.resolve()),
   refreshAccountRelationships: vi.fn(() => Promise.resolve()),
   refreshResolvedBases: vi.fn(() => Promise.resolve()),
@@ -244,6 +246,61 @@ describe('AccountsHome', () => {
 
     expect(screen.getByTestId('account-alias-claude')).toHaveTextContent('claude2')
     expect(screen.getByText('Convert to pins')).toBeInTheDocument()
+  })
+
+  // Regression: 186f19a2 rendered the FR7 strip only when the backend reported
+  // an alias expansion, so a base command that spells the selector out in
+  // Settings got no explainer and no Convert to pins.
+  it('explains a literally spelled base-command selector and converts affected projects', async () => {
+    const accountStates = states()
+    accountStates.claude.defaultAccountId = null
+    accountStates.claude.resolvedBases = [
+      {
+        command: 'CLAUDE_CONFIG_DIR=/home/user/.claude-work claude',
+        selectorValue: '/home/user/.claude-work',
+        expansions: [],
+      },
+    ]
+
+    render(AccountsHome, {
+      props: {
+        states: accountStates,
+        projects: [{ id: 'p-free', name: 'free', accountMemory: {} }],
+      },
+    })
+
+    expect(screen.getByTestId('account-alias-claude')).toHaveTextContent(
+      'CLAUDE_CONFIG_DIR=/home/user/.claude-work claude'
+    )
+    await fireEvent.click(screen.getByText('Convert to pins'))
+    expect(rememberChoice).toHaveBeenCalledWith('p-free', 'claude', 'work')
+  })
+
+  // Regression: 186f19a2 dropped the opaque-head case the Settings authority
+  // warns about first, so a launch command taurhaus cannot see through was
+  // presented as if nothing decided the account.
+  it('warns about an opaque base-command head instead of offering pins', () => {
+    const accountStates = states()
+    accountStates.claude.defaultAccountId = null
+    accountStates.claude.resolvedBases = [
+      {
+        command: 'claude-wrapper',
+        selectorValue: '/home/user/.claude-work',
+        expansions: [],
+        opaqueHead: 'claude-wrapper',
+      },
+    ]
+
+    render(AccountsHome, {
+      props: {
+        states: accountStates,
+        projects: [{ id: 'p-free', name: 'free', accountMemory: {} }],
+      },
+    })
+
+    expect(screen.getByTestId('account-base-opaque-claude')).toHaveTextContent('claude-wrapper')
+    expect(screen.queryByTestId('account-alias-claude')).not.toBeInTheDocument()
+    expect(screen.queryByText('Convert to pins')).not.toBeInTheDocument()
   })
 
   // Regression: faffe345 offered to pin every memory-free project to the base

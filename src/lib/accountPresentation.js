@@ -18,6 +18,32 @@ export function accountForSelectorValue(value, accounts = []) {
   )
 }
 
+/**
+ * What a tool's configured launch commands select, and by which spelling.
+ *
+ * The selector and the alias are independent facts: a base command may spell
+ * `CLAUDE_CONFIG_DIR=…` out in Settings with no alias behind it, so an
+ * explainer keyed on the expansion misses half the cases. An opaque head
+ * outranks both — a command taurhaus cannot see through decides the account
+ * itself — and is reported across every base rather than only the matched one,
+ * exactly as the Settings authority reads it.
+ */
+export function baseCommandSelection(bases, accounts = []) {
+  const list = Array.isArray(bases) ? bases : []
+  const opaqueHead = list.map((base) => base?.opaqueHead ?? base?.opaque_head).find(Boolean) ?? null
+  for (const base of list) {
+    const account = accountForSelectorValue(base?.selectorValue ?? base?.selector_value, accounts)
+    if (!account) continue
+    return {
+      opaqueHead,
+      account,
+      alias: base.expansions?.[0] ?? null,
+      command: base.command ?? '',
+    }
+  }
+  return { opaqueHead, account: null, alias: null, command: null }
+}
+
 function relationshipList(relationships, camel, snake) {
   const value = relationships?.[camel] ?? relationships?.[snake]
   return Array.isArray(value) ? value : []
