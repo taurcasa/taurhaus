@@ -1429,7 +1429,8 @@ mod tests {
     }
 
     // Regression: d662df09 made a taurhaus-relative documentation path the
-    // only source of the delivery contract for roles exported to other repos.
+    // only source of the delivery contract for roles exported to other repos
+    // and removed discoverability of the repository's named per-task gate.
     #[test]
     fn canonical_role_delivery_contract_survives_repo_boundaries() {
         for role in load_role_templates() {
@@ -1454,6 +1455,13 @@ mod tests {
             assert!(
                 role.instructions.contains("If the file is unavailable"),
                 "canonical role '{}' should say how to recover an unavailable standard",
+                role.role_id
+            );
+            assert!(
+                role.instructions
+                    .contains("repository's own instructions")
+                    && role.instructions.contains("named per-task gate"),
+                "canonical role '{}' should direct members to the repository's named per-task gate",
                 role.role_id
             );
         }
