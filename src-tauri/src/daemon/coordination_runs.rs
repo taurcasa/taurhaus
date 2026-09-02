@@ -24,6 +24,7 @@ pub(crate) enum CoordinationRunKind {
     DisbandTeam,
     AddMember,
     RemoveMember,
+    ApplyTaskEffort,
 }
 
 impl CoordinationRunKind {
@@ -38,6 +39,7 @@ impl CoordinationRunKind {
             Self::DisbandTeam => "disband",
             Self::AddMember => "member-add",
             Self::RemoveMember => "member-remove",
+            Self::ApplyTaskEffort => "effort",
         }
     }
 
@@ -52,6 +54,7 @@ impl CoordinationRunKind {
             Self::DisbandTeam => "disband_team",
             Self::AddMember => "add_member",
             Self::RemoveMember => "remove_member",
+            Self::ApplyTaskEffort => "apply_task_effort",
         }
     }
 
@@ -67,6 +70,10 @@ impl CoordinationRunKind {
                 | (Self::DisbandTeam, CoordinationRunReport::DisbandTeam(_))
                 | (Self::AddMember, CoordinationRunReport::AddMember)
                 | (Self::RemoveMember, CoordinationRunReport::RemoveMember(_))
+                | (
+                    Self::ApplyTaskEffort,
+                    CoordinationRunReport::ApplyTaskEffort(_)
+                )
         )
     }
 }
@@ -82,6 +89,7 @@ pub(crate) enum CoordinationRunReport {
     DisbandTeam(DisbandTeamReport),
     AddMember,
     RemoveMember(StopMemberReport),
+    ApplyTaskEffort(crate::daemon::protocol::CoordinationApplyTaskEffortReport),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -344,6 +352,7 @@ mod tests {
             (CoordinationRunKind::DisbandTeam, "disband_"),
             (CoordinationRunKind::AddMember, "member-add_"),
             (CoordinationRunKind::RemoveMember, "member-remove_"),
+            (CoordinationRunKind::ApplyTaskEffort, "effort_"),
         ] {
             let run_id = registry.start(kind);
             assert!(run_id.starts_with(prefix), "unexpected run id: {run_id}");

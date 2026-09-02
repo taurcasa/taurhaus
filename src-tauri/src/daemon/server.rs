@@ -204,7 +204,7 @@ fn serve(
     #[cfg(feature = "mesh-bridged-backend")] coordination_state: Arc<
         crate::coordination::state::CoordinationState,
     >,
-    #[cfg(feature = "mesh-bridged-backend")] _launch_settings: crate::daemon::background_scheduler::LaunchSettingsStore,
+    #[cfg(feature = "mesh-bridged-backend")] launch_settings: crate::daemon::background_scheduler::LaunchSettingsStore,
 ) -> std::io::Result<()> {
     listener.set_nonblocking(true)?;
 
@@ -238,6 +238,13 @@ fn serve(
     #[cfg(feature = "mesh-bridged-backend")]
     let roster_operations_service = Arc::new(
         crate::daemon::roster_runs::RosterOperationsService::for_process_default(
+            coordination_state.clone(),
+            coordination_run_registry.clone(),
+        ),
+    );
+    #[cfg(feature = "mesh-bridged-backend")]
+    let effort_operations_service = Arc::new(
+        crate::daemon::effort_runs::EffortOperationsService::for_process_default(
             coordination_state,
             coordination_run_registry.clone(),
         ),
@@ -292,6 +299,10 @@ fn serve(
                     team_operations_service: team_operations_service.clone(),
                     #[cfg(feature = "mesh-bridged-backend")]
                     roster_operations_service: roster_operations_service.clone(),
+                    #[cfg(feature = "mesh-bridged-backend")]
+                    effort_operations_service: effort_operations_service.clone(),
+                    #[cfg(feature = "mesh-bridged-backend")]
+                    launch_settings: launch_settings.clone(),
                 };
                 ACTIVE_CONNECTION_COUNT.fetch_add(1, Ordering::Relaxed);
                 mark_daemon_watch_telemetry_dirty();
@@ -498,6 +509,10 @@ struct ConnectionServices {
     team_operations_service: Arc<crate::daemon::team_runs::TeamOperationsService>,
     #[cfg(feature = "mesh-bridged-backend")]
     roster_operations_service: Arc<crate::daemon::roster_runs::RosterOperationsService>,
+    #[cfg(feature = "mesh-bridged-backend")]
+    effort_operations_service: Arc<crate::daemon::effort_runs::EffortOperationsService>,
+    #[cfg(feature = "mesh-bridged-backend")]
+    launch_settings: crate::daemon::background_scheduler::LaunchSettingsStore,
 }
 
 fn handle_connection(
@@ -580,6 +595,8 @@ fn handle_connection(
                 services.member_operations_service.as_ref(),
                 services.team_operations_service.as_ref(),
                 services.roster_operations_service.as_ref(),
+                services.effort_operations_service.as_ref(),
+                &services.launch_settings,
             ),
         );
 
@@ -855,8 +872,8 @@ mod tests {
         let runtime = &source[..source.find("#[cfg(test)]").unwrap_or(source.len())];
         assert_eq!(
             runtime.matches("coordination_run_registry.clone()").count(),
-            4,
-            "all four coordination services must receive the process-wide run registry"
+            5,
+            "all five coordination services must receive the process-wide run registry"
         );
     }
 
