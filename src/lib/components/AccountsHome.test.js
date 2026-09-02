@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
@@ -97,6 +97,10 @@ function states() {
 }
 
 describe('AccountsHome', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('renders registry-order sections, full meters, freshness, and degraded state', () => {
     render(AccountsHome, { props: { states: states(), projects: [] } })
 
@@ -153,6 +157,8 @@ describe('AccountsHome', () => {
   })
 
   it('explains base-command selectors and converts affected projects into pins', async () => {
+    const accountStates = states()
+    accountStates.claude.defaultAccountId = null
     const projects = [
       { id: 'p-free', name: 'free', accountMemory: {} },
       {
@@ -161,13 +167,27 @@ describe('AccountsHome', () => {
         accountMemory: { claude: { accountId: 'personal', origin: 'last_used' } },
       },
     ]
-    render(AccountsHome, { props: { states: states(), projects } })
+    render(AccountsHome, { props: { states: accountStates, projects } })
 
     expect(screen.getByTestId('account-alias-claude')).toHaveTextContent('claude2')
     await fireEvent.click(screen.getByText('Convert to pins'))
 
     expect(rememberChoice).toHaveBeenCalledWith('p-free', 'claude', 'work')
     expect(rememberChoice).not.toHaveBeenCalledWith('p-settled', 'claude', 'work')
+  })
+
+  // Regression: faffe345 offered to pin every memory-free project to the base
+  // command account even when the configured global default already outranked it.
+  it('does not offer alias conversion when a global default settles the projects', () => {
+    render(AccountsHome, {
+      props: {
+        states: states(),
+        projects: [{ id: 'p-free', name: 'free', accountMemory: {} }],
+      },
+    })
+
+    expect(screen.queryByTestId('account-alias-claude')).not.toBeInTheDocument()
+    expect(rememberChoice).not.toHaveBeenCalled()
   })
 
   it('refreshes every registry tool from the header', async () => {

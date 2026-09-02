@@ -151,6 +151,7 @@
   }
 
   function selectedAlias(state) {
+    if (state.defaultAccountId) return null
     for (const base of state.resolvedBases ?? []) {
       if (!base?.selectorValue) continue
       const account = (state.accounts ?? []).find(
