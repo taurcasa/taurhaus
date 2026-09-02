@@ -506,7 +506,11 @@ pub(crate) fn account_directory_plan(default_dir: &Path, label: &str) -> Result<
     let parent = default_dir
         .parent()
         .ok_or_else(|| "The registry account directory has no parent".to_string())?;
-    Ok(parent.join(format!("{base}-{slug}")))
+    let parent = parent.to_string_lossy().replace('\\', "/");
+    let separator = if parent.ends_with('/') { "" } else { "/" };
+    Ok(PathBuf::from(format!(
+        "{parent}{separator}{base}-{slug}"
+    )))
 }
 
 pub(crate) fn account_login_command(tool: CliTool, config_dir: &Path) -> Result<String, String> {

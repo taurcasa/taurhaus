@@ -143,9 +143,19 @@ fn setting_global_default_updates_only_the_requested_tool() {
 fn account_directory_plan_is_a_safe_sibling_of_the_registry_home() {
     let default_dir = Path::new("/home/user/.claude");
 
+    let planned = account_directory_plan(default_dir, "Work Two").expect("plan");
+    assert_eq!(planned, Path::new("/home/user/.claude-work-two"));
+    assert!(
+        !planned.to_string_lossy().contains('\\'),
+        "the Linux launch path must not contain a host separator: {}",
+        planned.display()
+    );
+    // Regression: 971d964 joined a Linux launch-namespace parent with the
+    // host separator, producing `/home/user\\.claude-work` on Windows.
+    let windows_parent = Path::new(r"\home\user/.claude");
     assert_eq!(
-        account_directory_plan(default_dir, "Work Two").expect("plan"),
-        Path::new("/home/user/.claude-work-two")
+        account_directory_plan(windows_parent, "Work").expect("Windows-host plan"),
+        Path::new("/home/user/.claude-work")
     );
     // Regression: 971d964 rejected the hyphenated account labels used by the
     // approved add-account journey even though output directories use hyphens.
