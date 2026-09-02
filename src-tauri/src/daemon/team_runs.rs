@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::MemberRole;
+use crate::coordination::reinjection::CompactionReinjectionService;
 use crate::coordination::requests::{
     DeliveryRequest, DeliveryResult, OperatorNoticeDelivery, ReonboardRequest,
 };
@@ -291,7 +292,7 @@ pub(crate) fn execute_reonboard_pipeline(
             capabilities: member.capabilities.as_deref(),
         };
         let tool_spec = crate::session_scanner::cli_tool::spec(member.cli_tool);
-        let message = if tool_spec.capabilities.native_inbox_poller {
+        let mut message = if tool_spec.capabilities.native_inbox_poller {
             DeliveryRenderer::render_onboarding(
                 &request.team_name,
                 &request.member_name,
@@ -313,6 +314,12 @@ pub(crate) fn execute_reonboard_pipeline(
                 )
             })?
         };
+        CompactionReinjectionService::append_member_lease_context(
+            &mut message,
+            &orchestrator.teams_dir,
+            &request.team_name,
+            &request.member_name,
+        );
 
         orchestrator.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
             member_name: request.member_name.clone(),
@@ -507,6 +514,13 @@ mod tests {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let (state, backend, _runtime) = state(temp.path());
         initialize_team(state.as_ref(), temp.path());
+        let leases_dir = temp.path().join("arch").join("state").join("leases");
+        std::fs::create_dir_all(&leases_dir).expect("create leases dir");
+        std::fs::write(
+            leases_dir.join("delivery-renderer.json"),
+            r#"{"name":"delivery-renderer","state":"held","holder":"builder","waiters":[]}"#,
+        )
+        .expect("write held lease");
         let service = service(state);
         let snapshot = crate::coordination::stores::OperationalContextSnapshot {
             version: 1,
@@ -556,6 +570,7 @@ mod tests {
         };
         assert!(delivery.message.starts_with("[taurhaus] onboarding"));
         assert!(delivery.message.contains("mesh read --unread --mark-read"));
+        assert!(delivery.message.contains("Leases: held delivery-renderer."));
         assert_eq!(
             OperationalContextSnapshotStore::load(temp.path(), "arch", "builder")
                 .expect("load snapshot")

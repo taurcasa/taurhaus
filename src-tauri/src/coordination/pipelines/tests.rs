@@ -3661,6 +3661,18 @@ fn resume_onboarding_entry_uses_immediate_policy() {
         )
         .expect("add member");
 
+    let leases_dir = tmp
+        .path()
+        .join("architecture-final")
+        .join("state")
+        .join("leases");
+    fs::create_dir_all(&leases_dir).expect("create leases dir");
+    fs::write(
+        leases_dir.join("delivery-renderer.json"),
+        r#"{"name":"delivery-renderer","state":"held","holder":"researcher","waiters":[]}"#,
+    )
+    .expect("write held lease");
+
     let request = ResumeMemberRequest {
         team_name: "architecture-final".to_string(),
         member_name: "researcher".to_string(),
@@ -3675,6 +3687,7 @@ fn resume_onboarding_entry_uses_immediate_policy() {
         .expect("resume onboarding entry");
 
     assert_eq!(entry.policy, MemberActivationDeliveryPolicy::Immediate);
+    assert!(entry.message.contains("Leases: held delivery-renderer."));
 }
 
 // Regression: commit 3b17397 fixed the resume race by delivering onboarding as

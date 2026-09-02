@@ -1,5 +1,6 @@
 //! Post-compaction reinjection payload composition and rendering.
 
+use std::fs;
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
@@ -10,6 +11,8 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::operational::OperationalContextSnapshot;
 use crate::coordination::stores::{MeshInboxMessage, MeshInboxStore};
 use crate::templates::types::RuntimeCompactSummary;
+
+const MAX_LEASE_RECORD_BYTES: u64 = 1_048_576;
 
 pub const OPERATIONAL_REINJECTION_CARD_VERSION: u32 = 1;
 pub const POST_COMPACTION_REASON: &str = "post_compaction";
@@ -26,6 +29,11 @@ pub struct OperationalReinjectionCard {
     pub member_name: String,
     pub role: OperationalReinjectionRole,
     pub task: OperationalReinjectionTask,
+    #[serde(
+        default,
+        skip_serializing_if = "OperationalReinjectionLeases::is_empty"
+    )]
+    pub leases: OperationalReinjectionLeases,
     pub boundaries: OperationalReinjectionBoundaries,
     pub working_set: OperationalReinjectionWorkingSet,
 }
@@ -68,6 +76,40 @@ pub struct OperationalReinjectionTask {
     pub effort_why: String,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct OperationalReinjectionLeases {
+    pub held: Vec<String>,
+    pub waiting: Vec<OperationalReinjectionLeaseWait>,
+}
+
+impl OperationalReinjectionLeases {
+    fn is_empty(&self) -> bool {
+        self.held.is_empty() && self.waiting.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct OperationalReinjectionLeaseWait {
+    pub name: String,
+    pub position: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MeshLeaseRecord {
+    state: String,
+    holder: Option<String>,
+    #[serde(default)]
+    waiters: Vec<MeshLeaseWaiter>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MeshLeaseWaiter {
+    name: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct OperationalReinjectionBoundaries {
@@ -97,10 +139,11 @@ impl CompactionReinjectionService {
     }
 
     pub fn compose(
+        teams_dir: &Path,
         member: &Member,
         snapshot: &OperationalContextSnapshot,
     ) -> OperationalReinjectionCard {
-        Self::compose_at(member, snapshot, Utc::now())
+        Self::compose_at_with_leases(teams_dir, member, snapshot, Utc::now())
     }
 
     /// Queue the card in the member's mesh inbox.
@@ -185,6 +228,7 @@ impl CompactionReinjectionService {
                     .trim()
                     .to_string(),
             },
+            leases: OperationalReinjectionLeases::default(),
             boundaries: OperationalReinjectionBoundaries {
                 file_ownership_boundary: normalize_list(
                     &snapshot.assignment_footer.file_ownership_boundary,
@@ -203,6 +247,30 @@ impl CompactionReinjectionService {
                 project_path: snapshot.working_set.project_path.trim().to_string(),
                 focal_files: normalize_list(&snapshot.working_set.focal_files),
             },
+        }
+    }
+
+    fn compose_at_with_leases(
+        teams_dir: &Path,
+        member: &Member,
+        snapshot: &OperationalContextSnapshot,
+        generated_at: DateTime<Utc>,
+    ) -> OperationalReinjectionCard {
+        let mut card = Self::compose_at(member, snapshot, generated_at);
+        card.leases = load_member_leases(teams_dir, &snapshot.team_name, &snapshot.member_name);
+        card
+    }
+
+    pub fn append_member_lease_context(
+        rendered: &mut String,
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+    ) {
+        let leases = load_member_leases(teams_dir, team_name, member_name);
+        if let Some(lease_line) = render_lease_context_line(&leases) {
+            rendered.push_str("\n\n");
+            rendered.push_str(&lease_line);
         }
     }
 
@@ -225,6 +293,15 @@ impl CompactionReinjectionService {
             } else {
                 format!("Effort: {} — {}", card.task.effort, card.task.effort_why)
             });
+        }
+        if !card.task.id.is_empty() {
+            lines.push(format!(
+                "Run: mesh task get {} --team {} --name {} for your assignment token, rulings, artifacts, and restart cursor.",
+                card.task.id, card.team_name, card.member_name
+            ));
+        }
+        if let Some(lease_line) = render_lease_context_line(&card.leases) {
+            lines.push(lease_line);
         }
         if !card.task.execution_mode.is_empty() {
             lines.push(format!("Execution mode: {}", card.task.execution_mode));
@@ -368,6 +445,142 @@ impl CompactionReinjectionService {
 
         Ok(lines.join("\n"))
     }
+}
+
+fn render_lease_context_line(leases: &OperationalReinjectionLeases) -> Option<String> {
+    let held = (!leases.held.is_empty()).then(|| format!("held {}", leases.held.join(", ")));
+    let waiting = (!leases.waiting.is_empty()).then(|| {
+        format!(
+            "waiting {}",
+            leases
+                .waiting
+                .iter()
+                .map(|wait| format!("#{} for {}", wait.position, wait.name))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    });
+
+    match (held, waiting) {
+        (Some(held), Some(waiting)) => Some(format!("Leases: {held}; {waiting}.")),
+        (Some(held), None) => Some(format!("Leases: {held}.")),
+        (None, Some(waiting)) => Some(format!("Leases: {waiting}.")),
+        (None, None) => None,
+    }
+}
+
+fn load_member_leases(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+) -> OperationalReinjectionLeases {
+    let leases_dir = teams_dir.join(team_name).join("state").join("leases");
+    let entries = match fs::read_dir(&leases_dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return OperationalReinjectionLeases::default();
+        }
+        Err(error) => {
+            tracing::warn!(
+                path = %leases_dir.display(),
+                error = %error,
+                "skipping unavailable mesh leases directory while composing member context"
+            );
+            return OperationalReinjectionLeases::default();
+        }
+    };
+
+    let mut leases = OperationalReinjectionLeases::default();
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                tracing::warn!(
+                    path = %leases_dir.display(),
+                    error = %error,
+                    "skipping unreadable mesh lease directory entry while composing member context"
+                );
+                continue;
+            }
+        };
+        let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+            continue;
+        }
+        match fs::metadata(&path) {
+            Ok(metadata) if metadata.len() > MAX_LEASE_RECORD_BYTES => {
+                tracing::warn!(
+                    path = %path.display(),
+                    bytes = metadata.len(),
+                    max_bytes = MAX_LEASE_RECORD_BYTES,
+                    "skipping oversized mesh lease record while composing member context"
+                );
+                continue;
+            }
+            // A zero-byte file is mesh's own first-acquire transient
+            // (acquire_or_create touches the file before the first atomic
+            // write); mesh's reader skips it silently and so do we.
+            Ok(metadata) if metadata.len() == 0 => continue,
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %error,
+                    "skipping unreadable mesh lease record while composing member context"
+                );
+                continue;
+            }
+        }
+        let record = match fs::read(&path)
+            .map_err(|error| error.to_string())
+            .and_then(|raw| {
+                serde_json::from_slice::<MeshLeaseRecord>(&raw).map_err(|error| error.to_string())
+            }) {
+            Ok(record) => record,
+            Err(error) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %error,
+                    "skipping unreadable mesh lease record while composing member context"
+                );
+                continue;
+            }
+        };
+
+        let Some(lease_name) = path
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+        else {
+            tracing::warn!(
+                path = %path.display(),
+                "skipping mesh lease record with an empty name while composing member context"
+            );
+            continue;
+        };
+        if record.state == "held" && record.holder.as_deref() == Some(member_name) {
+            leases.held.push(lease_name.to_string());
+        }
+        if let Some(position) = record
+            .waiters
+            .iter()
+            .position(|waiter| waiter.name == member_name)
+        {
+            leases.waiting.push(OperationalReinjectionLeaseWait {
+                name: lease_name.to_string(),
+                position: position + 1,
+            });
+        }
+    }
+
+    leases.held.sort();
+    leases.waiting.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then(left.position.cmp(&right.position))
+    });
+    leases
 }
 
 fn format_role_line(role: &OperationalReinjectionRole) -> Option<String> {
@@ -633,6 +846,7 @@ mod tests {
                     effort: String::new(),
                     effort_why: String::new(),
                 },
+                leases: OperationalReinjectionLeases::default(),
                 boundaries: OperationalReinjectionBoundaries {
                     file_ownership_boundary: vec![
                         "docs/architecture/post-compaction-reinjection.md".to_string(),
@@ -739,6 +953,8 @@ mod tests {
 
     #[test]
     fn render_additional_context_text_is_imperative_resume_card() {
+        // Regression: commit 4c08860d rendered a bare `mesh task get`, but mesh
+        // requires the managed member's explicit team and name on this verb.
         let card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -756,6 +972,9 @@ mod tests {
         );
         assert!(rendered.contains("Do not stop to summarize or acknowledge this card."));
         assert!(rendered.contains("Current task: #673"));
+        assert!(rendered.contains(
+            "Run: mesh task get 673 --team taurhaus-team --name architect for your assignment token, rulings, artifacts, and restart cursor."
+        ));
         assert!(rendered.contains("Execution mode: recommend"));
         assert!(rendered.contains("Validation expectation: report-only"));
         assert!(rendered.contains("Response expectation: report-on-completion"));
@@ -791,6 +1010,141 @@ mod tests {
         assert!(rendered.contains(
             "Next action: continue the current task immediately with this restored context."
         ));
+    }
+
+    #[test]
+    fn compose_card_lists_held_leases_and_waiting_positions() {
+        // Regression: commit 4c08860d trusted the JSON body's name instead of
+        // the filename key and read arbitrarily large mesh lease records.
+        let tmp = tempfile::tempdir().expect("temp teams dir");
+        let leases_dir = tmp
+            .path()
+            .join("taurhaus-team")
+            .join("state")
+            .join("leases");
+        fs::create_dir_all(&leases_dir).expect("create leases dir");
+        fs::write(
+            leases_dir.join("delivery-renderer.json"),
+            r#"{
+                "name": "delivery-renderer",
+                "state": "held",
+                "holder": "architect",
+                "waiters": [],
+                "taskId": "673",
+                "scope": "onboarding",
+                "futureField": true
+            }"#,
+        )
+        .expect("write held lease");
+        fs::write(
+            leases_dir.join("shared-card.json"),
+            r#"{
+                "name": "shared-card",
+                "state": "held",
+                "holder": "another-member",
+                "waiters": [
+                    {"name": "first-waiter", "since": "2026-09-02T10:00:00Z"},
+                    {"name": "architect", "since": "2026-09-02T10:01:00Z"}
+                ]
+            }"#,
+        )
+        .expect("write waiting lease");
+        fs::write(
+            leases_dir.join("canonical-seam.json"),
+            r#"{
+                "name": "misleading-body-name",
+                "state": "held",
+                "holder": "architect",
+                "waiters": []
+            }"#,
+        )
+        .expect("write filename-keyed lease");
+        let oversized_record = format!(
+            r#"{{
+                "name": "oversized",
+                "state": "held",
+                "holder": "architect",
+                "waiters": [],
+                "padding": "{}"
+            }}"#,
+            "x".repeat(1_048_576)
+        );
+        fs::write(leases_dir.join("oversized.json"), oversized_record)
+            .expect("write oversized lease");
+        fs::write(leases_dir.join("unreadable.json"), "not json").expect("write malformed lease");
+
+        let card = CompactionReinjectionService::compose_at_with_leases(
+            tmp.path(),
+            &sample_member(),
+            &sample_snapshot(),
+            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+        );
+
+        assert_eq!(
+            card.leases.held,
+            vec!["canonical-seam", "delivery-renderer"]
+        );
+        assert_eq!(
+            card.leases.waiting,
+            vec![OperationalReinjectionLeaseWait {
+                name: "shared-card".to_string(),
+                position: 2,
+            }]
+        );
+        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
+            .expect("render card");
+        assert!(rendered.contains(
+            "Leases: held canonical-seam, delivery-renderer; waiting #2 for shared-card."
+        ));
+    }
+
+    #[test]
+    fn absent_or_unreadable_leases_dir_leaves_card_unchanged() {
+        let tmp = tempfile::tempdir().expect("temp teams dir");
+        let generated_at = DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
+            .expect("timestamp")
+            .with_timezone(&Utc);
+        let baseline = CompactionReinjectionService::compose_at(
+            &sample_member(),
+            &sample_snapshot(),
+            generated_at,
+        );
+        let baseline_rendered =
+            CompactionReinjectionService::render_additional_context_text(&baseline)
+                .expect("render baseline");
+
+        let missing = CompactionReinjectionService::compose_at_with_leases(
+            tmp.path(),
+            &sample_member(),
+            &sample_snapshot(),
+            generated_at,
+        );
+        assert_eq!(
+            CompactionReinjectionService::render_additional_context_text(&missing)
+                .expect("render missing-dir card"),
+            baseline_rendered
+        );
+
+        let leases_path = tmp
+            .path()
+            .join("taurhaus-team")
+            .join("state")
+            .join("leases");
+        fs::create_dir_all(leases_path.parent().expect("leases parent")).expect("create state dir");
+        fs::write(&leases_path, "not a directory").expect("write unreadable leases path");
+        let unreadable = CompactionReinjectionService::compose_at_with_leases(
+            tmp.path(),
+            &sample_member(),
+            &sample_snapshot(),
+            generated_at,
+        );
+        assert_eq!(
+            CompactionReinjectionService::render_additional_context_text(&unreadable)
+                .expect("render unreadable-dir card"),
+            baseline_rendered
+        );
     }
 
     #[test]
@@ -866,6 +1220,8 @@ mod tests {
         card.role.context_summary = None;
         card.role.behavior_summary = None;
         card.role.runtime_compact_summary = None;
+        card.task.id.clear();
+        card.task.subject.clear();
         card.task.execution_mode.clear();
         card.task.validation_expectation.clear();
         card.task.response_expectation.clear();
@@ -881,6 +1237,7 @@ mod tests {
         assert!(!rendered.contains("Execution mode:"));
         assert!(!rendered.contains("Validation expectation:"));
         assert!(!rendered.contains("Response expectation:"));
+        assert!(!rendered.contains("Run: mesh task get"));
         assert!(rendered.contains("Focal files: Use the current task context if these are empty."));
         assert!(rendered.contains("File ownership boundary: No explicit file boundary recorded."));
         assert!(rendered.contains("Override allowed: yes"));
