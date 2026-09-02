@@ -5188,8 +5188,8 @@ fn without_a_held_projection_the_highest_open_requested_effort_wins() {
 }
 
 // Regression: 9e288c56 ranked every open assignment by effort without
-// accounting for dependency blocking, so dev-1's blocked high task anchored
-// the target while the member actively worked lower-effort work.
+// accounting for blocked status, so dev-1's blocked high task anchored the
+// target while the member actively worked lower-effort work.
 #[test]
 fn a_blocked_high_assignment_does_not_anchor_over_in_progress_low_work() {
     let root = TempDir::new().expect("tempdir");
@@ -5208,8 +5208,7 @@ fn a_blocked_high_assignment_does_not_anchor_over_in_progress_low_work() {
         "the active task is mechanical",
     );
     write_mesh_task(&root, "41", "in_progress", "low", "mechanical work");
-    write_mesh_task(&root, "62", "pending", "high", "risky when unblocked");
-    block_mesh_task(&root, "62", "61");
+    write_mesh_task(&root, "62", "blocked", "high", "risky when unblocked");
 
     let resumed = orchestrator
         .apply_pending_task_effort(
@@ -5224,6 +5223,46 @@ fn a_blocked_high_assignment_does_not_anchor_over_in_progress_low_work() {
     let record =
         MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
     assert_eq!(record.applied_effort.as_deref(), Some("low"));
+}
+
+// Regression: 2e2b52f0 treated mesh's append-only `blockedBy` history as live
+// blocking even after the blocker completed, so active high-effort work could
+// be silently run at a lower pending task's level.
+#[test]
+fn completed_blocker_history_does_not_disqualify_in_progress_high_work() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("medium".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("62", "Risky active work")),
+        "high",
+        "the migration is irreversible",
+    );
+    write_mesh_task(&root, "41", "pending", "low", "mechanical follow-up");
+    write_mesh_task(&root, "61", "completed", "low", "finished prerequisite");
+    write_mesh_task(&root, "62", "in_progress", "high", "risky active work");
+    block_mesh_task(&root, "62", "61");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("effort pass");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
 }
 
 #[test]

@@ -195,21 +195,18 @@ fn read_assignment_task(path: &Path, member_name: &str) -> Option<AssignmentTarg
         return None;
     }
     let status = task.get("status").and_then(serde_json::Value::as_str)?;
-    let status_blocked = match status.trim() {
-        "pending" | "in_progress" => false,
-        "blocked" => true,
-        _ => return None,
-    };
-    let dependency_blocked = task
-        .get("blockedBy")
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|blockers| !blockers.is_empty());
+    let status_blocked = crate::coordination::operational_context::is_blocked_task_status(status);
+    if !status_blocked
+        && !crate::coordination::operational_context::is_resumable_task_status(status)
+    {
+        return None;
+    }
     let task_id = non_empty_json_string(task.get("id"))?;
     let level = non_empty_json_string(task.get("metadata")?.get("effort"))?.to_ascii_lowercase();
     (effort_rank(&level) > 0).then_some(AssignmentTarget {
         task_id,
         level,
-        blocked: status_blocked || dependency_blocked,
+        blocked: status_blocked,
     })
 }
 
