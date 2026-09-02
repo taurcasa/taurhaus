@@ -26,26 +26,6 @@ pub(crate) const DAEMON_TOKEN_FILENAME: &str = "daemon.token";
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PlatformPaths;
 
-#[derive(Debug)]
-pub struct OneShotSinkPaths {
-    root: PathBuf,
-}
-
-impl OneShotSinkPaths {
-    pub fn log_path(&self) -> PathBuf {
-        self.root.join(JSONL_LOG_FILE_NAME)
-    }
-
-    pub fn codex_notify_path(&self) -> PathBuf {
-        self.root
-            .join(crate::daemon::codex_notify::CODEX_NOTIFY_FILENAME)
-    }
-
-    pub fn agy_hooks_path(&self) -> PathBuf {
-        self.root.join(crate::daemon::agy_hooks::AGY_HOOKS_FILENAME)
-    }
-}
-
 impl PlatformPaths {
     /// Active app data directory for the current run.
     pub fn app_data_root() -> PathBuf {
@@ -77,16 +57,21 @@ impl PlatformPaths {
         Self::app_data_root().join(crate::daemon::agy_hooks::AGY_HOOKS_FILENAME)
     }
 
-    /// Writable sink paths for short-lived WSL hook processes.
+    /// Validate the data root for short-lived WSL hook processes.
     ///
     /// These modes inherit the Windows app's environment. Refuse an override
     /// whose drive is not mounted instead of letting Linux interpret the raw
     /// Windows value as a relative directory under the hook's working tree.
-    pub fn one_shot_sink_paths() -> Result<OneShotSinkPaths, String> {
-        validate_linux_data_dir_override()?;
-        Ok(OneShotSinkPaths {
-            root: Self::app_data_root(),
-        })
+    /// The sink paths themselves stay on the ordinary accessors (`log_path`,
+    /// `codex_notify_path`, `agy_hooks_path`) — one join authority.
+    pub fn validate_one_shot_sink_root() -> Result<(), String> {
+        validate_linux_data_dir_override()
+    }
+
+    /// The converting data-dir override, exposed so startup resolution shares
+    /// the one conversion authority instead of re-reading the raw env.
+    pub(crate) fn data_dir_override() -> Option<PathBuf> {
+        env_path_override(DATA_DIR_OVERRIDE_ENV)
     }
 
     /// Claude home directory (`~/.claude`).
@@ -314,9 +299,9 @@ fn validate_linux_data_dir_override() -> Result<(), String> {
                     mount_root.display()
                 ));
             }
-        } else if (raw.starts_with(r"\\") || raw.starts_with("//"))
-            && crate::provider::path::to_linux(&raw).is_none()
-        {
+        } else if raw.starts_with(r"\\") && crate::provider::path::to_linux(&raw).is_none() {
+            // Backslash UNC only: a doubled leading slash is a legal POSIX
+            // absolute-path prefix and must fall through untouched.
             return Err("Windows UNC data directory is not accessible from WSL".to_string());
         }
     }
@@ -395,40 +380,48 @@ mod tests {
     #[test]
     fn windows_data_dir_override_resolves_to_wsl_before_sink_paths_are_joined() {
         let _guard = acquire_env_test_guard();
-        let cwd = TempDir::new().expect("cwd");
         let windows_root = Path::new(r"C:\Users\field-incident\AppData\Local\taurhaus");
         let _env = EnvRestore::apply(&[(DATA_DIR_OVERRIDE_ENV, Some(windows_root))]);
 
         let resolved = PlatformPaths::app_data_root();
         let notify_path = PlatformPaths::codex_notify_path();
 
+        // The converted /mnt/c form IS the guard: joining the raw value is
+        // what produced the field incident's literal C-drive directory.
         assert_eq!(
             resolved,
             Path::new("/mnt/c/Users/field-incident/AppData/Local/taurhaus")
         );
         assert_eq!(notify_path, resolved.join("codex-notify.jsonl"));
-        assert!(
-            !cwd.path().join(windows_root).exists(),
-            "resolution must never create a literal C-drive directory"
-        );
     }
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn one_shot_sink_paths_reject_an_unavailable_windows_drive_mount() {
+    fn one_shot_sink_root_rejects_an_unavailable_windows_drive_mount() {
         let _guard = acquire_env_test_guard();
-        let cwd = TempDir::new().expect("cwd");
+        if Path::new("/mnt/z").is_dir() {
+            eprintln!("skipping: this host has a Z: drive mounted");
+            return;
+        }
         let windows_root = Path::new(r"Z:\taurhaus-missing-mount\data");
         let _env = EnvRestore::apply(&[(DATA_DIR_OVERRIDE_ENV, Some(windows_root))]);
 
-        let error = PlatformPaths::one_shot_sink_paths()
+        let error = PlatformPaths::validate_one_shot_sink_root()
             .expect_err("an unavailable Windows drive mount must fail soft");
 
         assert!(error.contains("/mnt/z"), "unexpected error: {error}");
-        assert!(
-            !cwd.path().join(windows_root).exists(),
-            "validation must not create a literal Windows drive directory"
-        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn one_shot_sink_root_accepts_a_double_slash_posix_path() {
+        // A doubled leading slash is legal POSIX, not UNC; rejecting it
+        // silently disabled both hook sinks.
+        let _guard = acquire_env_test_guard();
+        let _env = EnvRestore::apply(&[(DATA_DIR_OVERRIDE_ENV, Some(Path::new("//tmp/taurhaus")))]);
+
+        PlatformPaths::validate_one_shot_sink_root()
+            .expect("a POSIX path with a doubled leading slash is valid");
     }
 
     #[test]

@@ -119,14 +119,11 @@ fn maybe_run_codex_notify_mode() -> bool {
         .with_env_filter(tracing_subscriber::EnvFilter::new("info"))
         .with_writer(std::io::stderr)
         .init();
-    let sink_paths = match PlatformPaths::one_shot_sink_paths() {
-        Ok(paths) => paths,
-        Err(error) => {
-            tracing::warn!(error, "Codex notify data sink unavailable");
-            return true;
-        }
-    };
-    let _log_state = LogFileState::new(sink_paths.log_path())
+    if let Err(error) = PlatformPaths::validate_one_shot_sink_root() {
+        tracing::warn!(error, "Codex notify data sink unavailable");
+        return true;
+    }
+    let _log_state = LogFileState::new(PlatformPaths::log_path())
         .inspect(|state| {
             install_global_sink(state);
         })
@@ -146,7 +143,7 @@ fn maybe_run_codex_notify_mode() -> bool {
             std::process::exit(1);
         }
     };
-    let path = sink_paths.codex_notify_path();
+    let path = PlatformPaths::codex_notify_path();
     let outcome = match taurhaus_lib::daemon::codex_notify::append_event_at(
         &path,
         &raw_event,
@@ -209,15 +206,12 @@ fn maybe_run_agy_hook_mode() -> bool {
         .with_env_filter(tracing_subscriber::EnvFilter::new("info"))
         .with_writer(std::io::stderr)
         .init();
-    let sink_paths = match PlatformPaths::one_shot_sink_paths() {
-        Ok(paths) => paths,
-        Err(error) => {
-            tracing::warn!(error, "Antigravity hook data sink unavailable");
-            println!("{{}}");
-            return true;
-        }
-    };
-    let _log_state = LogFileState::new(sink_paths.log_path())
+    if let Err(error) = PlatformPaths::validate_one_shot_sink_root() {
+        tracing::warn!(error, "Antigravity hook data sink unavailable");
+        println!("{{}}");
+        return true;
+    }
+    let _log_state = LogFileState::new(PlatformPaths::log_path())
         .inspect(install_global_sink)
         .map_err(|error| tracing::warn!(error = %error, "Antigravity hook log sink unavailable"))
         .ok();
@@ -238,7 +232,7 @@ fn maybe_run_agy_hook_mode() -> bool {
         println!("{{}}");
         return true;
     }
-    let path = sink_paths.agy_hooks_path();
+    let path = PlatformPaths::agy_hooks_path();
     let outcome = match taurhaus_lib::daemon::agy_hooks::append_event_at(
         &path,
         event,
@@ -299,8 +293,8 @@ fn maybe_run_compact_hook_mode() -> bool {
         .with_env_filter(tracing_subscriber::EnvFilter::new("info"))
         .with_writer(std::io::stderr)
         .init();
-    let _log_state = match PlatformPaths::one_shot_sink_paths() {
-        Ok(paths) => LogFileState::new(paths.log_path())
+    let _log_state = match PlatformPaths::validate_one_shot_sink_root() {
+        Ok(()) => LogFileState::new(PlatformPaths::log_path())
             .inspect(|state| {
                 install_global_sink(state);
             })
