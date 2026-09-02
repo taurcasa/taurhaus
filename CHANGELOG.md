@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.8.10] - 2026-09-02
+
+### Changed
+
+- **Every interactive team operation now executes in the WSL daemon** — the coordination-through-the-daemon migration (protocols 15 through 19): the managed-task deadline pass (15), team initialization (16), add-agent/resume-member/stop-member (17), resume-team/reonboard (18), and standalone create, disband and the roster-edit commands including their trailing state syncs (19). The Windows app sends self-contained intents, polls the daemon's run registry, and re-emits the existing progress events unchanged; its local execution paths are deleted and pinned. Team-state mutations happen on ext4 under real `flock`, sharing one lock domain with mesh and the tool hooks — the `\\wsl.localhost` 9p bridge, source of the 0.8.9 fallback saga, carries no interactive coordination writes anymore. The 0.8.9 move-aside/tolerant-reader machinery remains as the safety net for the WSL-side multi-writer set. Design record: `docs/design/coordination-daemon-routing.md`; background self-heal/effort passes and the writer-boundary assertion are the named remainder.
+
+### Fixed
+
+- **Bundled mesh 0.2.25: team broadcasts can no longer silently skip members** — the fan-out excluded members whose `isActive` flag was false, so a lane could miss a standing-rule broadcast with no signal (field incident; root cause live-watched end to end: the app's stop-member path invokes `mesh leave`, and a session revived outside the app then runs live wearing a false flag). Broadcasts now deliver durably to every member regardless of the flag and name any inactive-marked members to the sender; the config store additionally logs whenever it repairs an externally-flipped flag.
+- **Dev and test builds read the repo's bundled template catalog** — a stale `target/debug/resources` copy left by an earlier `tauri dev` could shadow the current catalog, resurrecting removed roles; debug builds now prefer the source resources.
+
 ## [0.8.9] - 2026-08-31
 
 ### Fixed
