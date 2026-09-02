@@ -111,6 +111,45 @@ function homeStates({ degraded = false, signedOut = false } = {}) {
   }
 }
 
+/** A reading whose provider severity and its percentage disagree. */
+function splitUsage(used, severity) {
+  const base = usage(used)
+  return {
+    ...base,
+    windows: [{ ...base.windows[0], used_percentage: used, severity }, base.windows[1]],
+  }
+}
+
+/** Severity, not percentage, decides both rows: amber at 50%, rose at 95%. */
+function severitySplitStates() {
+  const states = homeStates()
+  states.claude = {
+    ...states.claude,
+    accounts: [
+      { ...personal, usage: splitUsage(50, 'warning') },
+      { ...work, usage: splitUsage(95, 'critical') },
+    ],
+  }
+  return states
+}
+
+/** A base command that spells the selector out, with no alias behind it. */
+function baseCommandStates() {
+  const states = homeStates()
+  states.claude = {
+    ...states.claude,
+    defaultAccountId: null,
+    resolvedBases: [
+      {
+        command: 'CLAUDE_CONFIG_DIR=/home/user/.claude-work claude',
+        selectorValue: '/home/user/.claude-work',
+        expansions: [],
+      },
+    ],
+  }
+  return states
+}
+
 function paired(surface, name, extra = {}) {
   return ['light', 'dark'].map((theme) => ({
     name: `${name}-${theme}`,
@@ -134,6 +173,14 @@ export const accountsWaveAScenarios = [
   ...paired('home', 'home-signed-out', {
     states: homeStates({ signedOut: true }),
     expectedTestId: 'account-row-details',
+  }),
+  ...paired('home', 'home-severity-split', {
+    states: severitySplitStates(),
+    expectedTestId: 'account-row-details',
+  }),
+  ...paired('home', 'home-base-command', {
+    states: baseCommandStates(),
+    expectedTestId: 'account-alias-claude',
   }),
   ...paired('board', 'usage-board', {
     states: homeStates(),
