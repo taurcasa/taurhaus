@@ -70,4 +70,27 @@ describe('AddAccountFlow', () => {
     })
     expect(screen.getByText('Open sign-in terminal')).toBeEnabled()
   })
+
+  // Regression: faffe345 polled forced daemon detection every two seconds for
+  // as long as an unfinished sign-in panel stayed mounted.
+  it('stops polling an unfinished sign-in after a bounded backoff window', async () => {
+    vi.useFakeTimers()
+    try {
+      prepareAccountDirectory.mockResolvedValue('/home/user/.codex-work')
+      launchAccountLogin.mockResolvedValue({ tmux_pane: '%4' })
+      const { unmount } = render(AddAccountFlow, {
+        props: { open: true, tool: 'codex', projectId: 'p1' },
+      })
+
+      await fireEvent.input(screen.getByLabelText('Account name'), { target: { value: 'work' } })
+      await fireEvent.click(screen.getByText('Open sign-in terminal'))
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1)
+
+      expect(refreshAccounts.mock.calls.length).toBeLessThan(20)
+      expect(screen.getByText('Open sign-in terminal')).toBeEnabled()
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

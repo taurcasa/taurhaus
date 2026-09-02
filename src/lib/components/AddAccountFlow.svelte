@@ -37,6 +37,9 @@
   let waiting = $state(false)
   let detected = $state(null)
   let error = $state(null)
+  const DETECTION_POLL_INITIAL_MS = 2_000
+  const DETECTION_POLL_MAX_MS = 30_000
+  const DETECTION_POLL_DEADLINE_MS = 5 * 60 * 1000
 
   $effect(() => {
     if (!open) return
@@ -49,8 +52,13 @@
 
   $effect(() => {
     if (!waiting) return
+    const deadline = Date.now() + DETECTION_POLL_DEADLINE_MS
+    let delay = DETECTION_POLL_INITIAL_MS
+    let timer = null
+    let cancelled = false
     const poll = async () => {
       await refreshAccounts(tool, { force: true })
+      if (cancelled) return
       const found = accountState(tool).accounts.find((account) => {
         const dir = account?.dir ?? account?.config_dir
         return dir === configDir && account.logged_in
@@ -58,11 +66,20 @@
       if (found) {
         detected = found
         waiting = false
+        return
       }
+      if (Date.now() >= deadline) {
+        waiting = false
+        return
+      }
+      timer = setTimeout(() => void poll(), Math.min(delay, deadline - Date.now()))
+      delay = Math.min(delay * 2, DETECTION_POLL_MAX_MS)
     }
-    const timer = setInterval(() => void poll(), 2_000)
     void poll()
-    return () => clearInterval(timer)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
   })
 
   async function openTerminal() {
