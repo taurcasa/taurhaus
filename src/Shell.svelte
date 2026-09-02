@@ -638,6 +638,11 @@
           accountsOpen = false
           requestedAddTool = null
         }}
+        onOpenAccounts={() => {
+          settingsOpen = false
+          accountsOpen = true
+          requestedAddTool = null
+        }}
         onRequestedAddConsumed={() => {
           requestedAddTool = null
         }}

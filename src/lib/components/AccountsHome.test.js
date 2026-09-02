@@ -413,6 +413,18 @@ describe('AccountsHome', () => {
     )
   })
 
+  // Regression: commit c1005ec left grok without an account provider, and a
+  // harness with no usage endpoint must explain the missing meter rather than
+  // leave an empty gap where every other tool shows one. Settings carried that
+  // sentence while it painted meters; the home carries it now.
+  it('says where usage lives for a tool with no usage provider', () => {
+    render(AccountsHome, { props: { states: states(), projects: [] } })
+
+    expect(screen.getByTestId('account-row-grok')).toHaveTextContent(
+      'Grok shows credits in its own /usage'
+    )
+  })
+
   // Regression: faffe345 exposed Sign in on every row even when the registry
   // declares no selector or login command, guaranteeing a dead-end action.
   it('hides sign-in actions for tools without a registry login command', async () => {

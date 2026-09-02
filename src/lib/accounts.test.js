@@ -172,6 +172,23 @@ describe('claudeAccounts store', () => {
     expect(setGlobalDefaultAccount).toHaveBeenCalledWith('claude', 'account-2')
   })
 
+  // Regression: c982822 pushed a newly chosen default into the shared account
+  // store before the write landed and restored nothing when it failed, so every
+  // launch read a default the backend had never persisted. The Settings radios
+  // that carried that bug are retired; this setter is the one writer now.
+  it('restores the shared default when the global-default write fails', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+    setGlobalDefaultAccount.mockRejectedValueOnce(new Error('disk full'))
+
+    await expect(setGlobalDefault('claude', 'account-2')).rejects.toThrow('disk full')
+
+    expect(accountState('claude').defaultAccountId).toBeNull()
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+    expect(launchCliSession).not.toHaveBeenCalled()
+    expect(accountState('claude').pending).toMatchObject({ projectId: 'p1' })
+  })
+
   // Regression: b1856a33 cached a successful fail-soft launch-base response
   // forever. If the daemon was down for that call, Settings pinned the literal
   // command for the rest of the app run instead of asking again after a minute.

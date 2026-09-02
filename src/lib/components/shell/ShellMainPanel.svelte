@@ -47,6 +47,7 @@
     taskPosition = $bindable(null),
     onCloseSettings = () => {},
     onCloseAccounts = () => {},
+    onOpenAccounts = () => {},
     onOpenProject = () => {},
     onOpenTeam = () => {},
     onRequestedAddConsumed = () => {},
@@ -172,6 +173,7 @@
   {:else if settingsOpen}
     <Settings
       {dark}
+      {onOpenAccounts}
       onClose={onCloseSettings}
       onSettingsChanged={onSettingsChanged}
       {codeThemeLight}
