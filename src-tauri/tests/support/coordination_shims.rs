@@ -358,6 +358,10 @@ pub mod daemon {
         pub use taurhaus_lib::daemon_api::protocol::{DaemonRequest, LaunchMode};
 
         pub mod method {
+            pub use taurhaus_lib::daemon_api::protocol::method::{
+                COORDINATION_APPLY_TASK_EFFORT, COORDINATION_APPLY_TASK_EFFORT_STATUS,
+            };
+
             pub const COORDINATION_INITIALIZE_TEAM: &str = "coordination.initialize_team";
             pub const COORDINATION_INITIALIZE_STATUS: &str = "coordination.initialize_status";
             pub const COORDINATION_ADD_AGENT: &str = "coordination.add_agent";
@@ -377,6 +381,12 @@ pub mod daemon {
             pub const COORDINATION_REMOVE_MEMBER: &str = "coordination.remove_member";
             pub const COORDINATION_REMOVE_MEMBER_STATUS: &str = "coordination.remove_member_status";
         }
+
+        pub use taurhaus_lib::daemon_api::protocol::{
+            CoordinationApplyTaskEffortAccepted, CoordinationApplyTaskEffortOutcome,
+            CoordinationApplyTaskEffortParams, CoordinationApplyTaskEffortReport,
+            CoordinationApplyTaskEffortStatus, CoordinationApplyTaskEffortStatusParams,
+        };
 
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
         pub struct CoordinationInitializeParams {
