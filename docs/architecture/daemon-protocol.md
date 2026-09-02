@@ -256,7 +256,7 @@ Team-resume and reonboard workers share the same daemon-local `CoordinationState
 | `coordination.remove_member` | `{ request }` | `{ run_id }` | Starts the roster-removal intent, distinct from activation-class stop-member. |
 | `coordination.remove_member_status` | `{ run_id }` | `{ run_id, outcome }` | Returns the existing structured member-removal report or terminal error. |
 
-These workers share one daemon-process `CoordinationState` and a service-local registry with 10-minute terminal retention. The desktop polls at the existing short interaction interval and emits no new progress events, preserving the commands' prior result/progress contracts.
+These workers share one daemon-process `CoordinationState` and a service-local registry with 10-minute terminal retention. The desktop polls create and the roster edits at the short interaction interval, while disband polls at the ~500 ms long-running interval used by initialize/add-agent/resume; none emit new progress events, preserving the commands' prior result/progress contracts.
 
 ### Session activity stream (app bridge)
 

@@ -556,6 +556,78 @@ mod tests {
     }
 
     #[test]
+    fn add_member_without_project_path_inherits_the_first_members() {
+        // The legacy add-member project-path rule moved into the daemon with
+        // this slice: an omitted path inherits the lead's (or first
+        // member's), and an empty team refuses.
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let (service, _runtime) = service(temp.path());
+        let project = temp.path().join("project");
+
+        let run_id = service
+            .start_create_team(CoordinationCreateTeamParams {
+                request: CreateTeamRequest {
+                    team_name: "paths".to_string(),
+                },
+            })
+            .expect("create worker starts");
+        let created = wait_until(
+            || service.create_team_status(&run_id),
+            |status| status.outcome == CoordinationCreateTeamOutcome::Running,
+        );
+        assert_eq!(created.outcome, CoordinationCreateTeamOutcome::Completed);
+
+        let empty_team = service.start_add_member(CoordinationAddMemberParams {
+            request: AddMemberRequest {
+                team_name: "paths".to_string(),
+                member_name: "orphan".to_string(),
+                backend_kind: "codex".to_string(),
+                project_path: None,
+            },
+        });
+        let run_id = empty_team.expect("worker starts; the refusal is the run outcome");
+        let refused = wait_until(
+            || service.add_member_status(&run_id),
+            |status| status.outcome == CoordinationAddMemberOutcome::Running,
+        );
+        assert!(
+            matches!(refused.outcome, CoordinationAddMemberOutcome::Failed { .. }),
+            "an omitted path on an empty team must refuse"
+        );
+
+        for (name, path) in [
+            ("first", Some(project.display().to_string())),
+            ("inheritor", None),
+        ] {
+            let run_id = service
+                .start_add_member(CoordinationAddMemberParams {
+                    request: AddMemberRequest {
+                        team_name: "paths".to_string(),
+                        member_name: name.to_string(),
+                        backend_kind: "codex".to_string(),
+                        project_path: path,
+                    },
+                })
+                .expect("add-member worker starts");
+            let added = wait_until(
+                || service.add_member_status(&run_id),
+                |status| status.outcome == CoordinationAddMemberOutcome::Running,
+            );
+            assert_eq!(added.outcome, CoordinationAddMemberOutcome::Completed);
+        }
+        let config = TeamConfigStore::load(temp.path(), "paths").expect("team config");
+        let inheritor = config
+            .members
+            .iter()
+            .find(|member| member.name == "inheritor")
+            .expect("inherited member present");
+        assert_eq!(
+            inheritor.project_path, project,
+            "an omitted project_path inherits the first member's path"
+        );
+    }
+
+    #[test]
     fn create_add_and_remove_execute_through_daemon_state() {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let (service, _runtime) = service(temp.path());

@@ -1375,7 +1375,7 @@ pub async fn coordination_remove_member(
         let daemon = provider
             .daemon
             .as_ref()
-            .ok_or_else(|| "stopping a team member requires the taurhaus daemon".to_string())?;
+            .ok_or_else(|| "removing a team member requires the taurhaus daemon".to_string())?;
         remove_member_through_daemon(
             daemon,
             crate::daemon::protocol::CoordinationRemoveMemberParams {
