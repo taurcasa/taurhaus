@@ -332,6 +332,28 @@ pub(crate) fn prepare_daemon_launch_inputs_for_tools(
     );
 }
 
+pub(crate) type PrepareLaunchInputs = dyn Fn(CliTool, &mut CliCommandSettings) + Send + Sync;
+
+/// Build the daemon-host resolver shared by interactive and scheduled effort runs.
+pub(crate) fn daemon_launch_resolver_for(
+    teams_dir: std::path::PathBuf,
+) -> std::sync::Arc<PrepareLaunchInputs> {
+    std::sync::Arc::new(move |tool, commands| {
+        let has_managed_codex =
+            match crate::coordination::compact_hook::any_managed_codex_member(&teams_dir) {
+                Ok(has_managed_codex) => has_managed_codex,
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "managed-Codex discovery failed; daemon uses conservative launch inputs"
+                    );
+                    true
+                }
+            };
+        prepare_daemon_launch_inputs_for_tools(&teams_dir, has_managed_codex, vec![tool], commands);
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::{Duration, Instant};

@@ -4,16 +4,13 @@ use std::sync::Arc;
 
 use crate::coordination::state::CoordinationState;
 use crate::daemon::coordination_runs::{
-    CoordinationRunKind, CoordinationRunRegistry, CoordinationRunReport, RunOutcome,
+    daemon_launch_resolver_for, CoordinationRunKind, CoordinationRunRegistry,
+    CoordinationRunReport, PrepareLaunchInputs, RunOutcome,
 };
 use crate::daemon::protocol::{
     CoordinationApplyTaskEffortOutcome, CoordinationApplyTaskEffortParams,
     CoordinationApplyTaskEffortReport, CoordinationApplyTaskEffortStatus,
 };
-use crate::models::CliCommandSettings;
-use crate::session_scanner::cli_tool::CliTool;
-
-type PrepareLaunchInputs = dyn Fn(CliTool, &mut CliCommandSettings) + Send + Sync;
 
 #[derive(Clone)]
 pub(crate) struct EffortOperationsService {
@@ -27,30 +24,8 @@ impl EffortOperationsService {
         state: Arc<CoordinationState>,
         registry: CoordinationRunRegistry,
     ) -> Self {
-        let teams_dir = state.teams_dir().clone();
-        Self::with_state_and_prepare(
-            state,
-            registry,
-            Arc::new(move |tool, commands| {
-                let has_managed_codex =
-                    match crate::coordination::compact_hook::any_managed_codex_member(&teams_dir) {
-                        Ok(has_managed_codex) => has_managed_codex,
-                        Err(error) => {
-                            tracing::warn!(
-                                error = %error,
-                                "managed-Codex discovery failed; task-effort intent uses conservative launch inputs"
-                            );
-                            true
-                        }
-                    };
-                crate::daemon::coordination_runs::prepare_daemon_launch_inputs_for_tools(
-                    &teams_dir,
-                    has_managed_codex,
-                    vec![tool],
-                    commands,
-                );
-            }),
-        )
+        let prepare_launch_inputs = daemon_launch_resolver_for(state.teams_dir().clone());
+        Self::with_state_and_prepare(state, registry, prepare_launch_inputs)
     }
 
     fn with_state_and_prepare(

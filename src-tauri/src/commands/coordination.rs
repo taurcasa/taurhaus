@@ -816,7 +816,7 @@ fn apply_task_effort_through_daemon(
 ) -> Result<crate::daemon::protocol::CoordinationApplyTaskEffortReport, String> {
     apply_task_effort_through_daemon_with(
         params,
-        COORDINATION_ROSTER_DAEMON_POLL_INTERVAL,
+        COORDINATION_DAEMON_POLL_INTERVAL,
         |method, params| call_coordination_daemon(app, daemon, method, params),
     )
 }

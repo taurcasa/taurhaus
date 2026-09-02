@@ -151,25 +151,10 @@ fn run_pass(
     state: &CoordinationState,
     launch_settings: Option<CoordinationPutLaunchSettingsParams>,
 ) -> Result<(BackgroundSelfHealPassResult, bool), crate::coordination::errors::CoordinationError> {
+    let prepare_launch_inputs =
+        crate::daemon::coordination_runs::daemon_launch_resolver_for(state.teams_dir().clone());
     run_pass_with_launch_resolution(state, launch_settings, &mut |tool, commands| {
-        let has_managed_codex = match crate::coordination::compact_hook::any_managed_codex_member(
-            state.teams_dir(),
-        ) {
-            Ok(has_managed_codex) => has_managed_codex,
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    "managed-Codex discovery failed; effort sweep uses conservative launch inputs"
-                );
-                true
-            }
-        };
-        crate::daemon::coordination_runs::prepare_daemon_launch_inputs_for_tools(
-            state.teams_dir(),
-            has_managed_codex,
-            vec![tool],
-            commands,
-        );
+        prepare_launch_inputs(tool, commands)
     })
 }
 
@@ -238,8 +223,16 @@ fn emit_pass_completed(summary: &BackgroundSelfHealPassResult, duration: Duratio
         "duration_ms".to_string(),
         Value::from(duration_millis(duration)),
     );
+    let level =
+        if summary.teams_reconciled + summary.team_daemons_ensured + summary.members_effort_resumed
+            > 0
+        {
+            "info"
+        } else {
+            "debug"
+        };
     taurhaus_lib::logging::emit_global(
-        "debug",
+        level,
         "coordination",
         "self_heal.pass.completed",
         Some("Daemon coordination self-heal pass completed".to_string()),
@@ -286,7 +279,10 @@ mod tests {
 
     use chrono::Utc;
 
-    use super::{run_pass_with_launch_resolution, BackgroundScheduler, LaunchSettingsStore};
+    use super::{
+        emit_pass_completed, run_pass_with_launch_resolution, BackgroundScheduler,
+        LaunchSettingsStore,
+    };
     use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
     use crate::coordination::domain::{HealthState, Member, MemberRole};
     use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
@@ -510,6 +506,60 @@ mod tests {
         assert_eq!(failed["component"], "coordination");
         assert!(failed["fields"]["duration_ms"].is_number());
         assert!(failed["fields"]["error"].is_string());
+    }
+
+    // Regression: 50251e68 emitted every successful protocol-21 self-heal pass
+    // at debug, so a pass that actually repaired a team or relaunched a member
+    // left no operator-visible INFO completion record.
+    #[test]
+    fn actionable_self_heal_completion_is_emitted_at_info() {
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let event_rx = install_log_tap(temp.path());
+        let summary = crate::coordination::state::BackgroundSelfHealPassResult {
+            teams_scanned: 1,
+            teams_reconciled: 1,
+            ..Default::default()
+        };
+
+        emit_pass_completed(&summary, Duration::from_millis(7));
+        let completed = receive_event(&event_rx, "self_heal.pass.completed");
+        crate::commands::logging::clear_test_tap();
+
+        assert_eq!(completed["level"], "INFO");
+        assert_eq!(completed["fields"]["teams_reconciled"], 1);
+    }
+
+    // Regression: 06575d68 resolved launch bases for every configured team
+    // tool while assembling an idle background pass. Resolution must remain
+    // deferred until the unchanged effort state machine selects a relaunch.
+    #[test]
+    fn idle_effort_sweep_does_not_resolve_launch_bases() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let state = state(temp.path().to_path_buf());
+        state
+            .with_orchestrator(|orchestrator| {
+                orchestrator.create_team("idle-team", None)?;
+                orchestrator.add_member(
+                    "idle-team",
+                    member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
+                orchestrator.add_member(
+                    "idle-team",
+                    member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app"),
+                )
+            })
+            .expect("seed idle team");
+        let mut resolutions = 0;
+
+        run_pass_with_launch_resolution(
+            &state,
+            Some(settings(1, "claude --resume")),
+            &mut |_, _| resolutions += 1,
+        )
+        .expect("idle pass");
+
+        assert_eq!(resolutions, 0, "idle teams must not probe launch bases");
     }
 
     // Regression: 25293092 let the background effort path render from stock

@@ -1082,6 +1082,24 @@ fn task_effort_client_carries_fresh_settings_and_polls_the_shared_registry() {
     );
 }
 
+// Regression: 8bb45dab routed task-effort relaunches through the multi-second
+// daemon run registry but polled them at the 25 ms roster-interaction cadence,
+// creating unnecessary status traffic while no progress is rendered.
+#[test]
+fn task_effort_uses_the_long_running_daemon_poll_interval() {
+    let source = include_str!("../coordination.rs");
+    let client = source
+        .split("fn apply_task_effort_through_daemon(")
+        .nth(1)
+        .expect("task-effort daemon client")
+        .split("fn apply_task_effort_through_daemon_with(")
+        .next()
+        .expect("task-effort daemon client body");
+
+    assert!(client.contains("COORDINATION_DAEMON_POLL_INTERVAL"));
+    assert!(!client.contains("COORDINATION_ROSTER_DAEMON_POLL_INTERVAL"));
+}
+
 #[test]
 fn app_process_background_pass_owners_are_removed() {
     let coordination = include_str!("../coordination.rs");

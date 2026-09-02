@@ -1609,10 +1609,7 @@ exit 0
         )
         .expect("install should succeed");
 
-        assert_eq!(
-            result.message,
-            "Mesh installed successfully: mesh 9.9.9"
-        );
+        assert_eq!(result.message, "Mesh installed successfully: mesh 9.9.9");
         assert_eq!(daemons_were_running, Some(true));
         assert_eq!(
             std::fs::read(&installed_mesh).expect("installed mesh"),
@@ -1852,10 +1849,7 @@ exit 0
             })
             .expect("install should succeed");
 
-        assert_eq!(
-            result.message,
-            "Mesh installed successfully: mesh 9.9.9"
-        );
+        assert_eq!(result.message, "Mesh installed successfully: mesh 9.9.9");
         // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident. The
         // guarded installer must still install the bundle it verified, and must not
         // leave its temp copy behind.

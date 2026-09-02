@@ -107,7 +107,7 @@ fn run_with_legacy_cleanup<F>(
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
     cleanup: F,
-    schedule_deadlines: bool,
+    schedule_background_passes: bool,
 ) -> std::io::Result<()>
 where
     F: FnOnce() + Send + 'static,
@@ -128,7 +128,7 @@ where
     #[cfg(feature = "mesh-bridged-backend")]
     let launch_settings = crate::daemon::background_scheduler::LaunchSettingsStore::default();
     #[cfg(feature = "mesh-bridged-backend")]
-    let deadline_scheduler = schedule_deadlines.then(|| {
+    let deadline_scheduler = schedule_background_passes.then(|| {
         // The hub above owns and refreshes the member-activity snapshots that
         // the shared deadline pass reads. Register only after that activity
         // source is live so the pass keeps its existing input seam.
@@ -138,7 +138,7 @@ where
         )
     });
     #[cfg(feature = "mesh-bridged-backend")]
-    let background_scheduler = schedule_deadlines.then(|| {
+    let background_scheduler = schedule_background_passes.then(|| {
         crate::daemon::background_scheduler::BackgroundScheduler::start(
             coordination_state.clone(),
             launch_settings.clone(),
@@ -146,7 +146,7 @@ where
         )
     });
     #[cfg(not(feature = "mesh-bridged-backend"))]
-    let _ = schedule_deadlines;
+    let _ = schedule_background_passes;
 
     let result = serve(
         config,
@@ -895,7 +895,7 @@ mod tests {
     // the scheduler in isolation. Removing `run`'s production registration
     // would therefore leave both the app and daemon with deadline work disabled.
     #[test]
-    fn production_daemon_run_registers_and_fires_the_deadline_scheduler() {
+    fn production_daemon_run_registers_and_fires_background_schedulers() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let _env_guard = crate::test_support::acquire_env_test_guard();
         let _log_guard = crate::test_support::acquire_global_log_test_guard();
@@ -939,15 +939,19 @@ mod tests {
 
         // Measured ~6.3s on an idle host; generous for CI/loaded hosts.
         let deadline = Instant::now() + Duration::from_secs(30);
-        let pass = loop {
+        let mut deadline_pass = None;
+        let mut self_heal_pass = None;
+        while deadline_pass.is_none() || self_heal_pass.is_none() {
             let remaining = deadline.saturating_duration_since(Instant::now());
             let record = event_rx
                 .recv_timeout(remaining)
-                .expect("production daemon deadline pass within eight seconds");
-            if record["event"] == "deadline.pass.completed" {
-                break record;
+                .expect("production daemon background passes within thirty seconds");
+            match record["event"].as_str() {
+                Some("deadline.pass.completed") => deadline_pass = Some(record),
+                Some("self_heal.pass.completed") => self_heal_pass = Some(record),
+                _ => {}
             }
-        };
+        }
         shutdown.store(true, Ordering::Relaxed);
         handle
             .join()
@@ -955,8 +959,12 @@ mod tests {
             .expect("server result");
         crate::commands::logging::clear_test_tap();
 
-        assert_eq!(pass["component"], "coordination");
-        assert_eq!(pass["fields"]["teams_scanned"], 0);
+        let deadline_pass = deadline_pass.expect("deadline pass");
+        let self_heal_pass = self_heal_pass.expect("self-heal pass");
+        assert_eq!(deadline_pass["component"], "coordination");
+        assert_eq!(deadline_pass["fields"]["teams_scanned"], 0);
+        assert_eq!(self_heal_pass["component"], "coordination");
+        assert_eq!(self_heal_pass["fields"]["teams_scanned"], 0);
     }
 
     fn send_request(

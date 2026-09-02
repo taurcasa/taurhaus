@@ -207,7 +207,7 @@ pub(crate) fn push_launch_settings_to_daemon(app: &tauri::AppHandle) -> Result<(
         )
         .map_err(|error| error.to_string())?;
     if !result.accepted {
-        tracing::debug!(
+        tracing::warn!(
             daemon_settings_version = result.version,
             "Daemon retained a newer launch-settings snapshot"
         );

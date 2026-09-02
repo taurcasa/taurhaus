@@ -342,9 +342,7 @@ pub(crate) fn scan_tasks_from_files(
     if let Some((daemon, reconnected)) = daemon_for_task_scan(provider, project_path) {
         #[cfg(feature = "mesh-bridged-backend")]
         if reconnected {
-            if let Err(error) =
-                crate::commands::settings::push_launch_settings_to_daemon(app)
-            {
+            if let Err(error) = crate::commands::settings::push_launch_settings_to_daemon(app) {
                 tracing::warn!(
                     error = %error,
                     "Failed to repush launch settings after task-scan reconnect"

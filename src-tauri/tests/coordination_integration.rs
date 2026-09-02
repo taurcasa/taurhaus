@@ -189,13 +189,6 @@ mod commands {
             _tools: impl IntoIterator<Item = crate::session_scanner::cli_tool::CliTool>,
         ) {
         }
-
-        pub fn apply_team_resume_launch_base_resolution(
-            _provider: &taurhaus_lib::ProviderState,
-            _commands: &mut crate::models::CliCommandSettings,
-            _tool: crate::session_scanner::cli_tool::CliTool,
-        ) {
-        }
     }
 
     pub mod terminal_settings {
