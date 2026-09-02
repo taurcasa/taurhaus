@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::coordination::requests::{
-    AddAgentReport, DeliveryResult, InitializeReport, ResumeAgentReport, ResumeTeamProgress,
-    ResumeTeamReport, StepProgress,
+    AddAgentReport, DeliveryResult, DisbandTeamReport, InitializeReport, ResumeAgentReport,
+    ResumeTeamProgress, ResumeTeamReport, StepProgress, StopMemberReport,
 };
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
@@ -20,6 +20,10 @@ pub(crate) enum CoordinationRunKind {
     ResumeMember,
     ResumeTeam,
     Reonboard,
+    CreateTeam,
+    DisbandTeam,
+    AddMember,
+    RemoveMember,
 }
 
 impl CoordinationRunKind {
@@ -30,6 +34,10 @@ impl CoordinationRunKind {
             Self::ResumeMember => "resume",
             Self::ResumeTeam => "team-resume",
             Self::Reonboard => "reonboard",
+            Self::CreateTeam => "create",
+            Self::DisbandTeam => "disband",
+            Self::AddMember => "member-add",
+            Self::RemoveMember => "member-remove",
         }
     }
 
@@ -40,6 +48,10 @@ impl CoordinationRunKind {
             Self::ResumeMember => "resume_member",
             Self::ResumeTeam => "resume_team",
             Self::Reonboard => "reonboard",
+            Self::CreateTeam => "create_team",
+            Self::DisbandTeam => "disband_team",
+            Self::AddMember => "add_member",
+            Self::RemoveMember => "remove_member",
         }
     }
 
@@ -51,6 +63,10 @@ impl CoordinationRunKind {
                 | (Self::ResumeMember, CoordinationRunReport::ResumeMember(_))
                 | (Self::ResumeTeam, CoordinationRunReport::ResumeTeam(_))
                 | (Self::Reonboard, CoordinationRunReport::Reonboard(_))
+                | (Self::CreateTeam, CoordinationRunReport::CreateTeam)
+                | (Self::DisbandTeam, CoordinationRunReport::DisbandTeam(_))
+                | (Self::AddMember, CoordinationRunReport::AddMember)
+                | (Self::RemoveMember, CoordinationRunReport::RemoveMember(_))
         )
     }
 }
@@ -62,6 +78,10 @@ pub(crate) enum CoordinationRunReport {
     ResumeMember(ResumeAgentReport),
     ResumeTeam(ResumeTeamReport),
     Reonboard(DeliveryResult),
+    CreateTeam,
+    DisbandTeam(DisbandTeamReport),
+    AddMember,
+    RemoveMember(StopMemberReport),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

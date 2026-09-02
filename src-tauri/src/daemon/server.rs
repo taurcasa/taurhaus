@@ -222,6 +222,7 @@ fn serve(
     let roster_operations_service = Arc::new(
         crate::daemon::roster_runs::RosterOperationsService::for_process_default(
             coordination_state,
+            coordination_run_registry.clone(),
         ),
     );
     let watch_registry =
@@ -824,6 +825,19 @@ mod tests {
             1,
             "the daemon must build exactly one process-wide coordination state \
              so its workers share one orchestrator critical section"
+        );
+    }
+
+    // Regression: f8d08a21 gave roster operations a private run registry,
+    // unlike every earlier daemon-owned coordination service.
+    #[test]
+    fn daemon_coordination_workers_share_one_process_run_registry() {
+        let source = include_str!("server.rs");
+        let runtime = &source[..source.find("#[cfg(test)]").unwrap_or(source.len())];
+        assert_eq!(
+            runtime.matches("coordination_run_registry.clone()").count(),
+            4,
+            "all four coordination services must receive the process-wide run registry"
         );
     }
 
