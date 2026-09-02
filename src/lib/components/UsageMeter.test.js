@@ -64,6 +64,28 @@ describe('UsageMeter', () => {
     expect(screen.getByTestId('usage-meter')).toHaveTextContent('5h 26%')
   })
 
+  it('renders an age-based dashed last-known state for provider windows', () => {
+    const providerUsage = {
+      status: 'ok',
+      observed_at: new Date(NOW.getTime() - 16 * 60_000).toISOString(),
+      windows: [
+        {
+          key: 'weekly',
+          title: 'Week',
+          used_percentage: 42,
+          resets_at: Math.floor(NOW.getTime() / 1000) + 40 * 3600,
+          severity: 'normal',
+        },
+      ],
+    }
+
+    render(UsageMeter, { props: { usage: providerUsage } })
+
+    expect(screen.getByTestId('usage-meter')).toHaveAttribute('data-last-known', 'true')
+    expect(screen.getByTestId('usage-last-known')).toHaveTextContent('Last known · 16m ago')
+    expect(screen.getByTestId('usage-track-weekly')).toHaveClass('border-dashed')
+  })
+
   it('shows the window it has when the payload carried only one', () => {
     render(UsageMeter, { props: { usage: usage({ sevenDay: null }) } })
 

@@ -1,5 +1,6 @@
 <script>
   import { compactSelection, resetLabel } from '../usageWindows.js'
+  import { usageIsLastKnown } from '../accountPresentation.js'
 
   let {
     tool,
@@ -49,6 +50,7 @@
   const observedAt = $derived(usage?.observed_at ? Date.parse(usage.observed_at) : Number.NaN)
   const ageMs = $derived(Number.isFinite(observedAt) ? Math.max(0, now - observedAt) : Number.NaN)
   const legacyStale = $derived(legacy && Number.isFinite(ageMs) && ageMs > 60 * 60 * 1000)
+  const lastKnown = $derived(!legacy && usageIsLastKnown(usage, now))
   const nextResetMs = $derived(
     windows
       .map((window) => Number(window.resets_at) * 1000 - now)
@@ -60,6 +62,13 @@
   const labelTone = $derived(dark ? 'text-zinc-400' : 'text-zinc-600')
   const valueTone = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
   const mutedTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
+  const lastKnownTrackTone = $derived(
+    lastKnown
+      ? dark
+        ? 'border border-dashed border-zinc-600'
+        : 'border border-dashed border-zinc-400'
+      : ''
+  )
 
   function percent(window) {
     return Math.round(Number(window.used_percentage))
@@ -103,33 +112,37 @@
 </script>
 
 {#if shown.length && compact}
-  <span class="text-[10px] leading-none tabular-nums {valueTone}" data-tool={tool} data-testid="usage-meter">
+  <span class="text-[10px] leading-none tabular-nums {valueTone}" data-tool={tool} data-testid="usage-meter" data-last-known={lastKnown ? 'true' : 'false'}>
     {shown.map((window) => `${compactTitle(window)} ${percent(window)}%`).join(' · ')}
     {#if statusSuffix()}<span class="{mutedTone}"> · {statusSuffix()}</span>{/if}
   </span>
 {:else if shown.length}
-  <span class="flex flex-col gap-1.5" data-tool={tool} data-testid="usage-meter">
+  <span class="flex flex-col gap-1.5" data-tool={tool} data-testid="usage-meter" data-last-known={lastKnown ? 'true' : 'false'}>
     {#each shown as window, index (`${window.key}:${index}`)}
       <span class="flex flex-col gap-0.5">
         <span class="flex items-center justify-between gap-2 text-[10px] leading-none">
           <span class="truncate {labelTone}">{window.title}</span>
           <span class="shrink-0 tabular-nums {valueTone}">{percent(window)}% used</span>
         </span>
-        <span class="h-1 overflow-hidden rounded-full {trackTone}">
+        <span class="h-1 overflow-hidden rounded-full {trackTone} {lastKnownTrackTone}" data-testid="usage-track-{window.key}">
           <span
             class="block h-full rounded-full {barTone(window)}"
             style="width: {barWidth(window)}"
             data-testid={barTestId(window, index)}
           ></span>
         </span>
-        {#if !legacy && resetLabel(window.resets_at, now)}
+        {#if !legacy && !lastKnown && resetLabel(window.resets_at, now)}
           <span class="text-[10px] leading-none {mutedTone}" data-testid="usage-reset">
             Resets {resetLabel(window.resets_at, now)}
           </span>
         {/if}
       </span>
     {/each}
-    {#if legacyStale}
+    {#if lastKnown}
+      <span class="text-[10px] leading-none {mutedTone}" data-testid="usage-last-known">
+        Last known · {duration(ageMs)} ago
+      </span>
+    {:else if legacyStale}
       <span class="text-[10px] leading-none {mutedTone}" data-testid="usage-stale">
         last seen {duration(ageMs)} ago
       </span>
