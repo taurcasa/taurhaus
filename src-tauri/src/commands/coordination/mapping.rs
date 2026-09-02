@@ -285,3 +285,35 @@ pub(super) fn map_feature_availability_report(
 pub(super) fn map_coordination_error(err: CoordinationError) -> String {
     err.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression: protocol 20 retired the stop_member wire pair, deleting the
+    // pipeline fixture that was this mapper's only coverage; remove-member is
+    // its one live IPC caller.
+    #[test]
+    fn stop_member_report_contract_mapping_preserves_every_field() {
+        let mapped = map_stop_member_report_from_contract(contracts::StopMemberReport {
+            team_name: "team".into(),
+            member_name: "dev".into(),
+            removed: true,
+            message: "removed".into(),
+            steps: vec![contracts::StepProgress {
+                step: "teardown".into(),
+                status: contracts::StepStatus::Succeeded,
+                message: Some("ok".into()),
+            }],
+            warnings: vec!["pane already gone".into()],
+        });
+        assert_eq!(mapped.team_name, "team");
+        assert_eq!(mapped.member_name, "dev");
+        assert!(mapped.removed);
+        assert_eq!(mapped.message, "removed");
+        assert_eq!(mapped.steps.len(), 1);
+        assert_eq!(mapped.steps[0].step, "teardown");
+        assert_eq!(mapped.steps[0].message.as_deref(), Some("ok"));
+        assert_eq!(mapped.warnings, vec!["pane already gone".to_string()]);
+    }
+}

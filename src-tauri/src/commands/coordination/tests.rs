@@ -382,7 +382,7 @@ fn disband_team_uses_the_long_running_daemon_poll_interval() {
         .next()
         .expect("disband daemon client body");
     assert!(client.contains("COORDINATION_DAEMON_POLL_INTERVAL"));
-    assert!(!client.contains("COORDINATION_STOP_DAEMON_POLL_INTERVAL"));
+    assert!(!client.contains("COORDINATION_ROSTER_DAEMON_POLL_INTERVAL"));
 }
 
 // Regression: 1e1dcea5 kept the config-only roster add in the desktop
@@ -1010,7 +1010,7 @@ fn roster_daemon_clients_use_their_distinct_run_status_methods() {
 fn roster_mutations_use_a_snappy_daemon_poll_interval() {
     // Regression: 639b340e made the formerly inline roster interaction wait
     // up to the shared 500 ms long-running-operation poll interval.
-    assert!(COORDINATION_STOP_DAEMON_POLL_INTERVAL <= std::time::Duration::from_millis(50));
+    assert!(COORDINATION_ROSTER_DAEMON_POLL_INTERVAL <= std::time::Duration::from_millis(50));
 }
 
 #[test]

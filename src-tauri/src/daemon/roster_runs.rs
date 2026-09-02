@@ -347,9 +347,7 @@ mod tests {
     };
     use crate::coordination::state::CoordinationState;
     use crate::coordination::stores::{ActiveProjectTeamStore, TeamConfigStore};
-    use crate::daemon::coordination_runs::{
-        CoordinationRunKind, CoordinationRunRegistry, RunOutcome,
-    };
+    use crate::daemon::coordination_runs::{CoordinationRunKind, CoordinationRunRegistry};
     use crate::daemon::protocol::{
         CoordinationAddMemberOutcome, CoordinationAddMemberParams, CoordinationCreateTeamOutcome,
         CoordinationCreateTeamParams, CoordinationDisbandTeamOutcome,
@@ -388,21 +386,25 @@ mod tests {
         }
     }
 
+    // Regression: f8d08a21 gave roster operations a private run registry. The
+    // server.rs source pin counts clone sites; this is the behavioural half —
+    // a run started on the shared registry resolves through BOTH services, so
+    // a service that builds its own registry internally fails here.
     #[test]
-    fn registry_accepts_every_roster_operation_kind() {
+    fn member_and_roster_services_resolve_runs_through_one_shared_registry() {
+        let dir = tempfile::tempdir().unwrap();
         let registry = CoordinationRunRegistry::with_ttl(Duration::from_secs(600));
-        for (kind, prefix) in [
-            (CoordinationRunKind::CreateTeam, "create_"),
-            (CoordinationRunKind::DisbandTeam, "disband_"),
-            (CoordinationRunKind::AddMember, "member-add_"),
-            (CoordinationRunKind::RemoveMember, "member-remove_"),
-        ] {
-            let run_id = registry.start(kind);
-            assert!(run_id.starts_with(prefix));
-            let status = registry.status(&run_id).expect("run registered");
-            assert_eq!(status.kind, kind);
-            assert_eq!(status.outcome, RunOutcome::Running);
-        }
+        let (roster, _runtime) = service(dir.path());
+        let roster =
+            RosterOperationsService::for_process_default(roster.state.clone(), registry.clone());
+        let member = crate::daemon::member_runs::MemberOperationsService::for_process_default(
+            roster.state.clone(),
+            registry.clone(),
+        );
+        let add_run = registry.start(CoordinationRunKind::AddAgent);
+        assert!(member.add_agent_status(&add_run).is_some());
+        let remove_run = registry.start(CoordinationRunKind::RemoveMember);
+        assert!(roster.remove_member_status(&remove_run).is_some());
     }
 
     #[test]

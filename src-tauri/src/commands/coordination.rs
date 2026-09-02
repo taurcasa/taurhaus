@@ -339,7 +339,7 @@ pub async fn coordination_initialize_team(
 const COORDINATION_DAEMON_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const COORDINATION_DAEMON_POLL_INTERVAL: std::time::Duration =
     std::time::Duration::from_millis(500);
-const COORDINATION_STOP_DAEMON_POLL_INTERVAL: std::time::Duration =
+const COORDINATION_ROSTER_DAEMON_POLL_INTERVAL: std::time::Duration =
     std::time::Duration::from_millis(25);
 /// Transient poll failures are tolerated for longer than the daemon
 /// client's reconnect cooldown (5s), so a hiccup mid-initialize gets at
@@ -625,7 +625,7 @@ fn reonboard_through_daemon(
         params,
         // Delivery-only interaction: keep the stop-class snappy interval so
         // a UI affordance wired to it keeps its inline feel.
-        COORDINATION_STOP_DAEMON_POLL_INTERVAL,
+        COORDINATION_ROSTER_DAEMON_POLL_INTERVAL,
         |method, params| call_coordination_daemon(daemon, method, params),
     )
 }
@@ -677,7 +677,7 @@ fn create_team_through_daemon(
 ) -> Result<(), String> {
     create_team_through_daemon_with(
         params,
-        COORDINATION_STOP_DAEMON_POLL_INTERVAL,
+        COORDINATION_ROSTER_DAEMON_POLL_INTERVAL,
         |method, params| call_coordination_daemon(daemon, method, params),
     )
 }
@@ -780,7 +780,7 @@ fn add_member_through_daemon(
 ) -> Result<(), String> {
     add_member_through_daemon_with(
         params,
-        COORDINATION_STOP_DAEMON_POLL_INTERVAL,
+        COORDINATION_ROSTER_DAEMON_POLL_INTERVAL,
         |method, params| call_coordination_daemon(daemon, method, params),
     )
 }
@@ -830,7 +830,7 @@ fn remove_member_through_daemon(
 ) -> Result<crate::coordination::requests::StopMemberReport, String> {
     remove_member_through_daemon_with(
         params,
-        COORDINATION_STOP_DAEMON_POLL_INTERVAL,
+        COORDINATION_ROSTER_DAEMON_POLL_INTERVAL,
         |method, params| call_coordination_daemon(daemon, method, params),
     )
 }

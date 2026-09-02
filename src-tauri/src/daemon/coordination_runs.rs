@@ -340,6 +340,10 @@ mod tests {
             (CoordinationRunKind::ResumeMember, "resume_"),
             (CoordinationRunKind::ResumeTeam, "team-resume_"),
             (CoordinationRunKind::Reonboard, "reonboard_"),
+            (CoordinationRunKind::CreateTeam, "create_"),
+            (CoordinationRunKind::DisbandTeam, "disband_"),
+            (CoordinationRunKind::AddMember, "member-add_"),
+            (CoordinationRunKind::RemoveMember, "member-remove_"),
         ] {
             let run_id = registry.start(kind);
             assert!(run_id.starts_with(prefix), "unexpected run id: {run_id}");

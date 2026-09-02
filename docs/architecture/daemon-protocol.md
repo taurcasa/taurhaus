@@ -251,7 +251,7 @@ Team-resume and reonboard workers share the same daemon-local `CoordinationState
 | `coordination.disband_team_status` | `{ run_id }` | `{ run_id, outcome }` | Returns the existing structured disband report or terminal error. |
 | `coordination.add_member` | `{ request }` | `{ run_id }` | Starts the config/runtime roster-add mutation, including project-path and tool resolution. |
 | `coordination.add_member_status` | `{ run_id }` | `{ run_id, outcome }` | Returns completion or the terminal roster-add error. |
-| `coordination.remove_member` | `{ request }` | `{ run_id }` | Starts the roster-removal intent, distinct from activation-class stop-member. |
+| `coordination.remove_member` | `{ request }` | `{ run_id }` | Starts the roster-removal intent; member session teardown happens inside the run (no separate stop wire call exists since v20). |
 | `coordination.remove_member_status` | `{ run_id }` | `{ run_id, outcome }` | Returns the existing structured member-removal report or terminal error. |
 
 These workers share one daemon-process `CoordinationState` and the process-wide coordination run registry with 10-minute terminal retention. The desktop polls create and the roster edits at the short interaction interval, while disband polls at the ~500 ms long-running interval used by initialize/add-agent/resume; none emit new progress events, preserving the commands' prior result/progress contracts.

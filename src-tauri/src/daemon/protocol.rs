@@ -1324,6 +1324,12 @@ mod tests {
         let back: crate::session_scanner::launch_base::ResolvedBase =
             serde_json::from_str(&json).unwrap();
         assert_eq!(result, back);
+    }
+
+    // The one equality pin: bumping the wire contract must be a deliberate
+    // edit here, in ARCHITECTURE.md, and in docs/architecture/daemon-protocol.md.
+    #[test]
+    fn protocol_version_is_pinned() {
         assert_eq!(PROTOCOL_VERSION, 20);
     }
 
