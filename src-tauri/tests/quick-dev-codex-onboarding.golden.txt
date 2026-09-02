@@ -11,8 +11,9 @@ mesh send {recipient} "{msg}" --team taureval-golden --name agent-under-test --s
 Tasks:
 mesh tasks --team taureval-golden --name agent-under-test
 mesh task get <id> --team taureval-golden --name agent-under-test
-mesh task accept <id> --team taureval-golden --name agent-under-test
-mesh task start <id> --team taureval-golden --name agent-under-test --active-form "<working>"
+Assignment token: use the token from your assignment notice or mesh task get <id>.
+mesh task accept <id> --assignment <token> --team taureval-golden --name agent-under-test
+mesh task start <id> --assignment <token> --team taureval-golden --name agent-under-test --active-form "<working>"
 mesh task progress <id> --summary "<update>" --team taureval-golden --name agent-under-test
 mesh task block <id> --reason "<blocked>" --team taureval-golden --name agent-under-test
 mesh task review <id> --summary "<handoff>" --team taureval-golden --name agent-under-test

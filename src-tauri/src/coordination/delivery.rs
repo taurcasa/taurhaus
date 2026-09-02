@@ -89,8 +89,9 @@ impl DeliveryRenderer {
                 "Tasks:\n",
                 "mesh tasks --team {team_name} --name {member_name}\n",
                 "mesh task get <id> --team {team_name} --name {member_name}\n",
-                "mesh task accept <id> --team {team_name} --name {member_name}\n",
-                "mesh task start <id> --team {team_name} --name {member_name} --active-form \"<working>\"\n",
+                "Assignment token: use the token from your assignment notice or mesh task get <id>.\n",
+                "mesh task accept <id> --assignment <token> --team {team_name} --name {member_name}\n",
+                "mesh task start <id> --assignment <token> --team {team_name} --name {member_name} --active-form \"<working>\"\n",
                 "mesh task progress <id> --summary \"<update>\" --team {team_name} --name {member_name}\n",
                 "mesh task block <id> --reason \"<blocked>\" --team {team_name} --name {member_name}\n",
                 "mesh task review <id> --summary \"<handoff>\" --team {team_name} --name {member_name}\n",
@@ -378,10 +379,14 @@ mod tests {
         assert!(
             rendered.contains("mesh task get <id> --team architecture-final --name codex-reviewer")
         );
-        assert!(rendered
-            .contains("mesh task accept <id> --team architecture-final --name codex-reviewer"));
         assert!(rendered.contains(
-            "mesh task start <id> --team architecture-final --name codex-reviewer --active-form \"<working>\""
+            "Assignment token: use the token from your assignment notice or mesh task get <id>."
+        ));
+        assert!(rendered.contains(
+            "mesh task accept <id> --assignment <token> --team architecture-final --name codex-reviewer"
+        ));
+        assert!(rendered.contains(
+            "mesh task start <id> --assignment <token> --team architecture-final --name codex-reviewer --active-form \"<working>\""
         ));
         assert!(rendered.contains(
             "mesh task progress <id> --summary \"<update>\" --team architecture-final --name codex-reviewer"
@@ -479,8 +484,9 @@ mod tests {
             "Tasks:\n",
             "mesh tasks --team architecture-final --name codex-reviewer\n",
             "mesh task get <id> --team architecture-final --name codex-reviewer\n",
-            "mesh task accept <id> --team architecture-final --name codex-reviewer\n",
-            "mesh task start <id> --team architecture-final --name codex-reviewer --active-form \"<working>\"\n",
+            "Assignment token: use the token from your assignment notice or mesh task get <id>.\n",
+            "mesh task accept <id> --assignment <token> --team architecture-final --name codex-reviewer\n",
+            "mesh task start <id> --assignment <token> --team architecture-final --name codex-reviewer --active-form \"<working>\"\n",
             "mesh task progress <id> --summary \"<update>\" --team architecture-final --name codex-reviewer\n",
             "mesh task block <id> --reason \"<blocked>\" --team architecture-final --name codex-reviewer\n",
             "mesh task review <id> --summary \"<handoff>\" --team architecture-final --name codex-reviewer\n",
