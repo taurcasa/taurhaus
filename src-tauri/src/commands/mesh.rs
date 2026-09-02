@@ -521,15 +521,13 @@ fn check_mesh_install_wsl(
 }
 
 fn install_mesh_native(
-    app: &tauri::AppHandle,
+    _app: &tauri::AppHandle,
     bundled_binary: &Path,
     bundled_contract: &MeshCompatibilityContract,
 ) -> Result<OperationResult, String> {
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
     let target_dir = home.join(".local/bin");
-    install_mesh_native_at(&target_dir, bundled_binary, bundled_contract, || {
-        run_mesh_install_self_heal(app).map(Some)
-    })
+    install_mesh_native_at(&target_dir, bundled_binary, bundled_contract, || Ok(None))
 }
 
 fn install_mesh_native_at<F>(
@@ -689,7 +687,7 @@ fn describe_mesh_contract(contract: &MeshCompatibilityContract) -> String {
 }
 
 fn install_mesh_wsl(
-    app: &tauri::AppHandle,
+    _app: &tauri::AppHandle,
     bundled_binary: &Path,
     bundled_contract: &MeshCompatibilityContract,
 ) -> Result<OperationResult, String> {
@@ -712,13 +710,7 @@ fn install_mesh_wsl(
         &plan,
         bundled_contract,
         |script, args| run_wsl_install_phase(&distro, script, args),
-        |any_daemons_were_running| {
-            if any_daemons_were_running {
-                run_mesh_install_self_heal(app).map(Some)
-            } else {
-                Ok(None)
-            }
-        },
+        |_any_daemons_were_running| Ok(None),
     )
 }
 
@@ -889,24 +881,6 @@ fn format_mesh_install_success_message(
         }
         None => format!("Mesh installed successfully: mesh {version}"),
     }
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-fn run_mesh_install_self_heal(
-    _app: &tauri::AppHandle,
-) -> Result<MeshInstallSelfHealSummary, String> {
-    // Protocol 21 moved the pass into the daemon scheduler. The newly
-    // installed mesh is observed on its next bounded cycle; the app must not
-    // write team state across the Windows/WSL boundary here.
-    Ok(MeshInstallSelfHealSummary::default())
-}
-
-#[cfg(not(feature = "mesh-bridged-backend"))]
-fn run_mesh_install_self_heal(
-    app: &tauri::AppHandle,
-) -> Result<MeshInstallSelfHealSummary, String> {
-    let _ = app;
-    Ok(MeshInstallSelfHealSummary::default())
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -1572,6 +1546,22 @@ exit 0
         assert_eq!(contract.version, "0.2.17");
     }
 
+    // Regression: 50251e68 moved install self-heal into the protocol-21 daemon
+    // scheduler but replaced the retired app pass with a zero summary. The two
+    // production callers wrapped that uncomputed value in `Some`, making every
+    // successful install claim it had cycled and repaired zero teams.
+    #[test]
+    fn daemon_owned_mesh_install_does_not_report_an_uncomputed_self_heal_summary() {
+        let source = include_str!("mesh.rs");
+        let runtime = &source[..source.find("#[cfg(test)]").unwrap_or(source.len())];
+
+        assert!(!runtime.contains("run_mesh_install_self_heal"));
+        assert_eq!(
+            format_mesh_install_success_message("9.9.9", None),
+            "Mesh installed successfully: mesh 9.9.9"
+        );
+    }
+
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn install_mesh_wsl_replaces_the_installed_binary_and_cycles_matching_daemons() {
@@ -1614,17 +1604,14 @@ exit 0
             |script, args| run_local_install_phase(temp_home.path(), script, args),
             |any_daemons_were_running| {
                 daemons_were_running = Some(any_daemons_were_running);
-                Ok(Some(MeshInstallSelfHealSummary {
-                    teams_reconciled: 2,
-                    team_daemons_ensured: 1,
-                }))
+                Ok(None)
             },
         )
         .expect("install should succeed");
 
         assert_eq!(
             result.message,
-            "Mesh installed successfully: mesh 9.9.9 (cycled 1 team daemon, repaired 2 teams)"
+            "Mesh installed successfully: mesh 9.9.9"
         );
         assert_eq!(daemons_were_running, Some(true));
         assert_eq!(
@@ -1853,32 +1840,21 @@ exit 0
 
     #[cfg(not(target_os = "windows"))]
     #[test]
-    fn install_mesh_native_triggers_self_heal_after_successful_install() {
-        use std::cell::Cell;
-
+    fn install_mesh_native_reports_success_without_a_retired_self_heal_summary() {
         let temp_home = tempfile::TempDir::new().expect("tempdir");
         let source_mesh = temp_home.path().join("mesh-new");
         write_executable(&source_mesh, &mesh_version_script("9.9.9"));
 
         let target_dir = temp_home.path().join(".local").join("bin");
-        let self_heal_called = Cell::new(false);
         let result =
             install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
-                self_heal_called.set(true);
-                Ok(Some(MeshInstallSelfHealSummary {
-                    teams_reconciled: 2,
-                    team_daemons_ensured: 1,
-                }))
+                Ok(None)
             })
             .expect("install should succeed");
 
-        assert!(
-            self_heal_called.get(),
-            "native install should trigger self-heal"
-        );
         assert_eq!(
             result.message,
-            "Mesh installed successfully: mesh 9.9.9 (cycled 1 team daemon, repaired 2 teams)"
+            "Mesh installed successfully: mesh 9.9.9"
         );
         // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident. The
         // guarded installer must still install the bundle it verified, and must not
