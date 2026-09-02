@@ -11,6 +11,7 @@ use crate::coordination::member_activation::{
     MemberActivationRuntimeCommitPolicy,
 };
 use crate::coordination::orchestrator::CoordinationOrchestrator;
+use crate::coordination::reinjection::CompactionReinjectionService;
 use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryRequest, DeliveryResult, InitializeTeamRequest,
     OperatorNoticeDelivery, ResumeMemberRequest, TeardownMode, TeardownRequest,
@@ -535,7 +536,14 @@ impl CoordinationOrchestrator {
     ) -> Option<PreparedOnboardingDelivery> {
         let context =
             MemberActivationContext::for_resume_member(&request.team_name, lead_name, member);
-        prepare_member_onboarding_delivery(context, member)
+        let mut entry = prepare_member_onboarding_delivery(context, member)?;
+        CompactionReinjectionService::append_member_lease_context(
+            &mut entry.message,
+            &self.teams_dir,
+            &request.team_name,
+            &member.name,
+        );
+        Some(entry)
     }
 
     pub(super) fn prepare_add_agent_onboarding_entry(

@@ -9,6 +9,7 @@ use crate::coordination::member_activation::{
     hydrate_member_model_fields, load_role_for_member_hydration, MemberActivationContext,
 };
 use crate::coordination::orchestrator::CoordinationOrchestrator;
+use crate::coordination::reinjection::CompactionReinjectionService;
 use crate::coordination::requests::{
     AddAgentReport, AddAgentRequest, DeliveryRequest, DeliveryResult, InitializeTeamRequest,
     MemberActivationStage, OperatorNoticeDelivery, ResumeAgentReport, ResumeMemberRequest,
@@ -1381,7 +1382,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             return Ok(Vec::new());
         }
 
-        let message = DeliveryRenderer::render_onboarding(
+        let mut message = DeliveryRenderer::render_onboarding(
             &request.team_name,
             &prepared.member.name,
             &prepared.lead_name,
@@ -1395,6 +1396,12 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 definition_of_done: prepared.member.definition_of_done.as_deref(),
                 capabilities: prepared.member.capabilities.as_deref(),
             },
+        );
+        CompactionReinjectionService::append_member_lease_context(
+            &mut message,
+            &self.orchestrator.teams_dir,
+            &request.team_name,
+            &prepared.member.name,
         );
         self.orchestrator
             .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {

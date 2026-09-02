@@ -260,6 +260,19 @@ impl CompactionReinjectionService {
         card
     }
 
+    pub fn append_member_lease_context(
+        rendered: &mut String,
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+    ) {
+        let leases = load_member_leases(teams_dir, team_name, member_name);
+        if let Some(lease_line) = render_lease_context_line(&leases) {
+            rendered.push_str("\n\n");
+            rendered.push_str(&lease_line);
+        }
+    }
+
     pub fn render_additional_context_text(
         card: &OperationalReinjectionCard,
     ) -> Result<String, serde_json::Error> {
