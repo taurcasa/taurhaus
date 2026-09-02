@@ -43,8 +43,9 @@ route; this file adds no competing assignment fields.
 
 ### Message Prefix Convention
 
-- `ACTION REQUIRED:` for messages that require immediate execution.
-- `INFO ONLY:` for context that does not need a response; end with "no response needed".
+Use the [message conventions in the team delivery
+standard](docs/team-delivery-standard.md#message-conventions). This repository
+adds no alternate prefixes or response-expectation rules.
 
 ### Anti-Pattern Rules
 
