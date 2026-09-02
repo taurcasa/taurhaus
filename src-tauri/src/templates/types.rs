@@ -1380,6 +1380,8 @@ mod tests {
 
     // Regression: d662df09 moved the assignment and messaging contract out of
     // every role, but the new standard omitted the live message-prefix rules.
+    // Regression: d143dfd2 made CLAUDE.md defer those shared conventions but
+    // left AGENTS.md's competing checklist and prefixes intact.
     #[test]
     fn delivery_standard_owns_shared_assignment_message_and_gate_conventions() {
         let standard = include_str!("../../../docs/team-delivery-standard.md");
@@ -1401,6 +1403,28 @@ mod tests {
                 standard.contains(marker),
                 "team delivery standard should own the shared convention '{marker}'"
             );
+        }
+
+        for (name, repository_instructions) in [
+            ("CLAUDE.md", include_str!("../../../CLAUDE.md")),
+            ("AGENTS.md", include_str!("../../../AGENTS.md")),
+        ] {
+            assert!(
+                repository_instructions.contains("### Assignment Contract"),
+                "{name} should point to the standard under an assignment-contract heading"
+            );
+            for competing in [
+                "Assignment Checklist (Mandatory)",
+                "Objective in one sentence",
+                "Explicit response expectation",
+                "- `ACTION REQUIRED:`",
+                "- `INFO ONLY:`",
+            ] {
+                assert!(
+                    !repository_instructions.contains(competing),
+                    "{name} should not restate shared convention '{competing}'"
+                );
+            }
         }
     }
 

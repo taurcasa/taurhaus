@@ -34,7 +34,7 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 
 Use these conventions for day-to-day team messaging. This section is operational guidance, not a protocol schema.
 
-### Assignment Checklist (Mandatory)
+### Assignment Contract
 
 Use the five-line assignment contract in
 [`docs/team-delivery-standard.md`](docs/team-delivery-standard.md). That standard
