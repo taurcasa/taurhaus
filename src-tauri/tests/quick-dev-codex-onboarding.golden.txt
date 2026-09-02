@@ -8,7 +8,7 @@ mesh read --unread --mark-read --team taureval-golden --name agent-under-test
 Reply:
 mesh send {recipient} "{msg}" --team taureval-golden --name agent-under-test --summary "brief"
 
-Assignment token: use the token from your assignment notice or mesh task get <id> --team taureval-golden --name agent-under-test.
+Assignment token: it is in your assignment notice, or shown by the mesh task get line below
 
 Tasks:
 mesh tasks --team taureval-golden --name agent-under-test

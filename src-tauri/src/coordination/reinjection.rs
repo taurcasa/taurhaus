@@ -517,6 +517,10 @@ fn load_member_leases(
                 );
                 continue;
             }
+            // A zero-byte file is mesh's own first-acquire transient
+            // (acquire_or_create touches the file before the first atomic
+            // write); mesh's reader skips it silently and so do we.
+            Ok(metadata) if metadata.len() == 0 => continue,
             Ok(_) => {}
             Err(error) => {
                 tracing::warn!(

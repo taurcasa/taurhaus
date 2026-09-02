@@ -86,7 +86,7 @@ impl DeliveryRenderer {
                 "Reply:\n",
                 "mesh send {{recipient}} \"{{msg}}\" --team {team_name} --name {member_name} --summary \"brief\"\n",
                 "\n",
-                "Assignment token: use the token from your assignment notice or mesh task get <id> --team {team_name} --name {member_name}.\n",
+                "Assignment token: it is in your assignment notice, or shown by the mesh task get line below\n",
                 "\n",
                 "Tasks:\n",
                 "mesh tasks --team {team_name} --name {member_name}\n",
@@ -383,7 +383,7 @@ mod tests {
             rendered.contains("mesh task get <id> --team architecture-final --name codex-reviewer")
         );
         assert!(rendered.contains(
-            "Assignment token: use the token from your assignment notice or mesh task get <id> --team architecture-final --name codex-reviewer."
+            "Assignment token: it is in your assignment notice, or shown by the mesh task get line below"
         ));
         assert!(
             rendered.find("Assignment token:").expect("token guidance")
@@ -488,7 +488,7 @@ mod tests {
             "Reply:\n",
             "mesh send {recipient} \"{msg}\" --team architecture-final --name codex-reviewer --summary \"brief\"\n",
             "\n",
-            "Assignment token: use the token from your assignment notice or mesh task get <id> --team architecture-final --name codex-reviewer.\n",
+            "Assignment token: it is in your assignment notice, or shown by the mesh task get line below\n",
             "\n",
             "Tasks:\n",
             "mesh tasks --team architecture-final --name codex-reviewer\n",
