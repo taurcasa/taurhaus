@@ -47,6 +47,7 @@ const UNKNOWN_METHOD: &str = "UNKNOWN_METHOD";
 /// resolution exists to fix.
 const RESOLVE_LAUNCH_BASE_TIMEOUT: Duration =
     Duration::from_secs(launch_base::RESOLUTION_BUDGET.as_secs() + 4);
+const ACCOUNT_DIRECTORY_CREATE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Detected accounts for one registry tool.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -527,7 +528,7 @@ pub(crate) fn account_login_command(tool: CliTool, config_dir: &Path) -> Result<
     ))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn prepare_account_directory(tool: CliTool, label: String) -> IpcResult<String> {
     let span = IpcCommandSpan::start("prepare_account_directory");
     let result = prepare_account_directory_impl(tool, &label).ipc_cmd("prepare_account_directory");
@@ -544,12 +545,15 @@ fn prepare_account_directory_impl(tool: CliTool, label: &str) -> Result<String, 
 
     #[cfg(target_os = "windows")]
     {
-        let status = crate::daemon::launcher::wsl_command()
-            .args(["-e", "mkdir", "-p", "--"])
-            .arg(&target)
-            .status()
-            .map_err(|error| format!("Failed to create the account directory: {error}"))?;
-        if !status.success() {
+        let mut command = crate::daemon::launcher::wsl_command();
+        command.args(["-e", "mkdir", "-p", "--"]).arg(&target);
+        let output = crate::process_utils::run_command_with_timeout(
+            &mut command,
+            ACCOUNT_DIRECTORY_CREATE_TIMEOUT,
+            "create WSL account directory",
+        )
+        .map_err(|error| format!("Failed to create the account directory: {error}"))?;
+        if !output.status.success() {
             return Err("Failed to create the account directory in WSL".to_string());
         }
     }
