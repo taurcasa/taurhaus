@@ -10,6 +10,7 @@
     expanded = false,
     dark = false,
     usageNote = null,
+    canSignIn = true,
     onToggle = () => {},
     onRemovePin = () => {},
     onOpenProject = () => {},
@@ -147,7 +148,9 @@
         {#if !isDefault}
           <button class="text-[10px] font-medium {actionTone}" onclick={onSetDefault}>Set as global default</button>
         {/if}
-        <button class="text-[10px] font-medium {actionTone}" onclick={onSignIn}>Sign in…</button>
+        {#if canSignIn}
+          <button class="text-[10px] font-medium {actionTone}" onclick={onSignIn}>Sign in…</button>
+        {/if}
         <button class="text-[10px] font-medium {actionTone}" onclick={reveal}>Reveal directory</button>
       </div>
       {#if revealError}

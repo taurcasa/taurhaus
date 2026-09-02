@@ -204,6 +204,17 @@ describe('AccountsHome', () => {
     )
   })
 
+  // Regression: faffe345 exposed Sign in on every row even when the registry
+  // declares no selector or login command, guaranteeing a dead-end action.
+  it('hides sign-in actions for tools without a registry login command', async () => {
+    render(AccountsHome, { props: { states: states(), projects: [] } })
+
+    const agy = screen.getByTestId('account-row-agy')
+    await fireEvent.click(within(agy).getByRole('button', { name: 'Expand agy' }))
+
+    expect(within(agy).queryByText('Sign in…')).not.toBeInTheDocument()
+  })
+
   it('refreshes every registry tool from the header', async () => {
     render(AccountsHome, { props: { states: states(), projects: [] } })
 

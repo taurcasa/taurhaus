@@ -227,6 +227,7 @@
               expanded={expandedIds.has(`${descriptor.id}:${account.id}`)}
               {dark}
               usageNote={descriptor.capabilities.usageNote}
+              canSignIn={Boolean(descriptor.capabilities.accountSelection && descriptor.accountLoginCommand)}
               onToggle={() => toggle(descriptor.id, account.id)}
               onRemovePin={(project) => removePin(descriptor.id, project)}
               {onOpenProject}
