@@ -12,6 +12,8 @@ use crate::coordination::stores::{
 };
 use crate::coordination::task_effort::AssignmentEffort;
 
+type PreparedSnapshot = (OperationalContextSnapshot, Option<DateTime<Utc>>);
+
 #[cfg(test)]
 pub fn sync_team_snapshots(
     teams_dir: &Path,
@@ -191,7 +193,7 @@ pub(crate) fn prepare_project_task_snapshots(
     teams_dir: &Path,
     conn: &Connection,
     project_path: &str,
-) -> Result<Vec<(OperationalContextSnapshot, Option<DateTime<Utc>>)>, CoordinationError> {
+) -> Result<Vec<PreparedSnapshot>, CoordinationError> {
     let tasks = load_project_tasks(conn, project_path)?;
     let mut prepared = Vec::new();
     for team_name in TeamConfigStore::list(teams_dir)? {
