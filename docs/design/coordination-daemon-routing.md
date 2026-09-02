@@ -1,6 +1,6 @@
 # Coordination Through the Daemon
 
-Status: **complete**. Protocol 22 closes B3: the Windows app never mutates team state directly; the daemon and WSL-native hook processes are the only writers, and the module-boundary suite enumerates those exceptions. Protocols 15-21 remain the worked daemon-routing slices.
+Status: **complete**. Protocol 22 closes B3: the Windows app never mutates team state directly; the daemon and the hook processes (WSL-side, plus the compact hook's native-Windows wrapper runtime) are the only writers, and the module-boundary suite enumerates those exceptions. Protocols 15-21 remain the worked daemon-routing slices.
 
 ## The problem, from the field
 

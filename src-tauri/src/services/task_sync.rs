@@ -577,17 +577,14 @@ mod tests {
     #[test]
     fn task_scan_team_state_writes_are_daemon_routed() {
         let source = include_str!("task_sync.rs");
-        let persistence = source
-            .split("pub(crate) fn persist_task_scan_with_generation(")
-            .nth(1)
-            .expect("task persistence implementation")
-            .split("fn persist_task_scan_with_generation_and_publisher")
-            .next()
-            .expect("task persistence body");
+        // Anchor on the WHOLE runtime source, not just the thin delegating
+        // wrapper: the publisher body is where a local write would actually
+        // reappear. cfg(test) code below the module marker is excluded.
+        let runtime = source.split("#[cfg(test)]").next().expect("runtime source");
 
-        assert!(source.contains("COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS"));
-        assert!(!persistence.contains("sync_project_task_snapshots"));
-        assert!(!persistence.contains("OperationalContextSnapshotStore::save"));
+        assert!(runtime.contains("COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS"));
+        assert!(!runtime.contains("sync_project_task_snapshots"));
+        assert!(!runtime.contains("OperationalContextSnapshotStore::save"));
     }
 
     // Regression: d9c3f354 kept a special degrade branch for a daemon-busy

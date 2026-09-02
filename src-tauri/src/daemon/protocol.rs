@@ -721,9 +721,7 @@ pub struct CoordinationSetActiveProjectTeamParams {
 
 #[cfg(feature = "mesh-bridged-backend")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CoordinationSetActiveProjectTeamResult {
-    pub updated: bool,
-}
+pub struct CoordinationSetActiveProjectTeamResult {}
 
 /// `list_workflow_runs` — completed and live runs under one Claude session.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

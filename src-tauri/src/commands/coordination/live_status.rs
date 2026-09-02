@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
 use crate::commands::coordination_types::{
@@ -30,25 +29,6 @@ use crate::ProviderState;
 #[cfg(test)]
 use taurhaus_lib::ProviderState;
 
-fn warned_live_presence_teams() -> &'static Mutex<HashSet<String>> {
-    static WARNED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    WARNED.get_or_init(|| Mutex::new(HashSet::new()))
-}
-
-pub(super) fn mark_live_presence_reconcile_degraded(team_name: &str) -> bool {
-    warned_live_presence_teams()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .insert(team_name.to_string())
-}
-
-pub(super) fn mark_live_presence_reconcile_recovered(team_name: &str) {
-    warned_live_presence_teams()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .remove(team_name);
-}
-
 pub(super) fn coordination_get_live_team_status_impl(
     state: &CoordinationState,
     provider: Option<&ProviderState>,
@@ -58,6 +38,7 @@ pub(super) fn coordination_get_live_team_status_impl(
         let snapshot_outcome = daemon_runtime_session_snapshot(provider)?;
         if let Some(snapshot) = snapshot_outcome.snapshot {
             let reconciled_offline_members = reconcile_live_presence_through_daemon(
+                state,
                 provider,
                 &team_name,
                 snapshot.runtime_sessions.clone(),
@@ -105,7 +86,7 @@ pub(super) fn coordination_get_live_team_status_impl(
     }
 
     if let Some(provider) = provider {
-        let _ = reconcile_live_presence_through_daemon(provider, &team_name, Vec::new());
+        let _ = reconcile_live_presence_through_daemon(state, provider, &team_name, Vec::new());
     }
     let roster = get_team_roster_with_attachments(state.teams_dir(), &team_name)
         .map_err(super::map_coordination_error)?;
@@ -424,6 +405,7 @@ fn call_state_write<T: serde::de::DeserializeOwned, P: serde::Serialize>(
 }
 
 fn reconcile_live_presence_through_daemon(
+    state: &CoordinationState,
     provider: &ProviderState,
     team_name: &str,
     runtime_sessions: Vec<crate::session_scanner::RuntimeSession>,
@@ -439,7 +421,7 @@ fn reconcile_live_presence_through_daemon(
         );
     match result {
         Ok(result) => {
-            mark_live_presence_reconcile_recovered(team_name);
+            state.mark_live_presence_recovered(team_name);
             match result.outcome {
                 crate::daemon::protocol::CoordinationReconcileLivePresenceOutcome::Reconciled => {
                     result.reconciled_offline_members.into_iter().collect()
@@ -454,7 +436,7 @@ fn reconcile_live_presence_through_daemon(
             }
         }
         Err(error) => {
-            if mark_live_presence_reconcile_degraded(team_name) {
+            if state.mark_live_presence_degraded(team_name) {
                 tracing::warn!(team = team_name, error = %error, "live presence reconciliation skipped because the daemon is unavailable");
             }
             std::collections::HashSet::new()

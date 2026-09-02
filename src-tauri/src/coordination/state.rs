@@ -63,6 +63,10 @@ pub struct CoordinationState {
     backend_factory: Arc<BackendFactory>,
     runtime_factory: Arc<RuntimeFactory>,
     orchestrator: Mutex<Option<CoordinationOrchestrator>>,
+    /// Per-team once-latched warn state for the live-presence degrade path —
+    /// app-managed (not a global static) so it shares one ownership story
+    /// with the task-sync snapshot latch and tests need no pre-clearing.
+    live_presence_degraded_teams: Mutex<std::collections::HashSet<String>>,
 }
 
 impl std::fmt::Debug for CoordinationState {
@@ -140,7 +144,25 @@ impl CoordinationState {
             backend_factory,
             runtime_factory,
             orchestrator: Mutex::new(None),
+            live_presence_degraded_teams: Mutex::new(std::collections::HashSet::new()),
         }
+    }
+
+    /// Latch the live-presence degrade warn for a team; true when this is the
+    /// first degradation since the last recovery.
+    pub fn mark_live_presence_degraded(&self, team_name: &str) -> bool {
+        self.live_presence_degraded_teams
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .insert(team_name.to_string())
+    }
+
+    /// Clear the live-presence degrade latch on a successful reconcile.
+    pub fn mark_live_presence_recovered(&self, team_name: &str) {
+        self.live_presence_degraded_teams
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(team_name);
     }
 
     pub fn teams_dir(&self) -> &PathBuf {

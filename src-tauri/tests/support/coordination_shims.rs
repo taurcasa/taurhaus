@@ -193,7 +193,7 @@ pub mod daemon {
                     &params.project_path,
                 )?,
             }
-            Ok(crate::daemon::protocol::CoordinationSetActiveProjectTeamResult { updated: true })
+            Ok(crate::daemon::protocol::CoordinationSetActiveProjectTeamResult {})
         }
     }
 

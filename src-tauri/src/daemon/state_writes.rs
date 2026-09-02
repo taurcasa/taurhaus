@@ -103,7 +103,7 @@ pub(crate) fn set_active_project_team(
         }
         None => ActiveProjectTeamStore::clear_project(teams_dir, &params.project_path)?,
     }
-    Ok(CoordinationSetActiveProjectTeamResult { updated: true })
+    Ok(CoordinationSetActiveProjectTeamResult {})
 }
 
 #[cfg(test)]

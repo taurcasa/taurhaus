@@ -815,7 +815,7 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         ),
         (
             "src/coordination/stores/compaction.rs",
-            "compaction store implements the WSL-native hook write surface",
+            "compaction store implements the hook-process write surface (WSL-side, plus the native-Windows compact-hook wrapper)",
         ),
         (
             "src/coordination/stores/mesh_task.rs",
@@ -854,11 +854,35 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "daemon service hosts the final synchronous writer intents",
         ),
         (
+            "src/daemon/session_activity.rs",
+            "daemon hub exports per-member activity snapshots each scan cycle",
+        ),
+        (
+            "src/coordination/activity_export.rs",
+            "daemon-hosted store module that defines and applies the activity-export writers",
+        ),
+        (
+            "src/coordination/orchestrator/teardown.rs",
+            "daemon-hosted teardown quarantines foreign panes during member teardown",
+        ),
+        (
             "src/commands/coordination/state_sync.rs",
-            "cfg(test)-only command fixture exercises daemon-owned active-project sync",
+            "cfg(test)-only command fixture (the cfg gate lives on its `mod` declaration in coordination.rs, not in this file) exercises daemon-owned active-project sync",
         ),
     ];
+    // KNOWN LIMIT: this is an enumerative scan over write-API spellings, so it
+    // cannot be complete against wrapper creation — an allowlisted file that
+    // exports a new pub wrapper around a store write mints a spelling this
+    // list does not know (the B3 review demonstrated the class twice). The
+    // structural closure is the TeamStateWriter capability-token follow-up
+    // (a witness type constructible only in daemon/hook entry points, taken
+    // by every store write signature); until it lands, every new wrapper
+    // around a teams-dir write MUST be added here.
     let markers = [
+        "quarantine_foreign_member(",
+        "export_activity_snapshots_for_sessions(",
+        "publish_initialize_snapshot(",
+        "apply_delivery_context(",
         "active_project::sync_team_from_config(",
         "ActiveProjectTeamStore::sync_team(",
         "ActiveProjectTeamStore::clear_team(",

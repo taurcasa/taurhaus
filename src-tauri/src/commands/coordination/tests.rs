@@ -413,20 +413,17 @@ fn protocol_22_state_write_clients_use_the_coordination_timeout_and_reconnect() 
 fn protocol_22_live_presence_degrade_warning_is_bounded_and_skips_are_debug_only() {
     let source = include_str!("live_status.rs");
 
-    live_status::mark_live_presence_reconcile_recovered("team-a");
-    live_status::mark_live_presence_reconcile_recovered("team-b");
-    assert!(live_status::mark_live_presence_reconcile_degraded("team-a"));
-    assert!(!live_status::mark_live_presence_reconcile_degraded(
-        "team-a"
-    ));
-    assert!(live_status::mark_live_presence_reconcile_degraded("team-b"));
-    live_status::mark_live_presence_reconcile_recovered("team-a");
-    assert!(live_status::mark_live_presence_reconcile_degraded("team-a"));
-    assert!(!live_status::mark_live_presence_reconcile_degraded(
-        "team-b"
-    ));
+    // The latch is app-managed on CoordinationState (not a global static), so
+    // a fresh state starts clean and one team's recovery never touches another.
+    let state = test_state(tempfile::tempdir().expect("tempdir").keep());
+    assert!(state.mark_live_presence_degraded("team-a"));
+    assert!(!state.mark_live_presence_degraded("team-a"));
+    assert!(state.mark_live_presence_degraded("team-b"));
+    state.mark_live_presence_recovered("team-a");
+    assert!(state.mark_live_presence_degraded("team-a"));
+    assert!(!state.mark_live_presence_degraded("team-b"));
 
-    assert!(source.contains("warned_live_presence_teams"));
+    assert!(source.contains("state.mark_live_presence_degraded"));
     assert!(!source.contains("AtomicBool"));
     assert!(source.contains("CoordinationReconcileLivePresenceOutcome::Skipped"));
     assert!(!source.contains("is_busy_transport_error(&error)"));
