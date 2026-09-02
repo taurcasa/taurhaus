@@ -48,6 +48,16 @@
     if (worst >= 80) return 'bg-amber-500'
     return 'bg-emerald-500'
   })
+  let revealError = $state(null)
+
+  async function reveal() {
+    revealError = null
+    try {
+      await onReveal()
+    } catch (error) {
+      revealError = error?.message ?? String(error)
+    }
+  }
 </script>
 
 <article
@@ -138,8 +148,11 @@
           <button class="text-[10px] font-medium {actionTone}" onclick={onSetDefault}>Set as global default</button>
         {/if}
         <button class="text-[10px] font-medium {actionTone}" onclick={onSignIn}>Sign in…</button>
-        <button class="text-[10px] font-medium {actionTone}" onclick={onReveal}>Reveal directory</button>
+        <button class="text-[10px] font-medium {actionTone}" onclick={reveal}>Reveal directory</button>
       </div>
+      {#if revealError}
+        <p class="mt-2 text-[10px] text-rose-500" role="status">{revealError}</p>
+      {/if}
     </div>
   {/if}
 </article>

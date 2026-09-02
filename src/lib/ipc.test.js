@@ -5,6 +5,7 @@ import {
   workflowLedgerRow,
 } from './ipc/workflows.js'
 import { persistDarkModePreference } from './shell/themePreferences.js'
+import defaultCapabilities from '../../src-tauri/capabilities/default.json'
 
 // Mock @tauri-apps/api/core — must be before importing ipc module
 vi.mock('@tauri-apps/api/core', () => ({
@@ -778,6 +779,12 @@ describe('ipc module', () => {
   })
 
   describe('generic account commands', () => {
+    // Regression: 971d964 invoked the opener reveal command without granting
+    // its distinct ACL permission, so production rejected every reveal request.
+    it('grants the opener permission used by account directory reveal', () => {
+      expect(defaultCapabilities.permissions).toContain('opener:allow-reveal-item-in-dir')
+    })
+
     it('refreshes usage for one tool', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValue(true)
@@ -852,6 +859,26 @@ describe('ipc module', () => {
       await ipc.revealDirectory('/home/user/.claude-work')
       expect(tauriCore.invoke).toHaveBeenLastCalledWith('plugin:opener|reveal_item_in_dir', {
         path: '/home/user/.claude-work',
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    // Regression: 971d964 passed daemon-owned Linux account paths directly to
+    // Explorer, which cannot reveal them without conversion to the host namespace.
+    it('converts a daemon Linux account directory before revealing it on Windows', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockImplementation((command) => {
+        if (command === 'get_platform') return Promise.resolve('windows')
+        if (command === 'get_daemon_status') {
+          return Promise.resolve({ status: 'connected', wsl_distro: 'Ubuntu' })
+        }
+        return Promise.resolve(undefined)
+      })
+
+      await ipc.revealDirectory('/home/user/.claude-work')
+
+      expect(tauriCore.invoke).toHaveBeenLastCalledWith('plugin:opener|reveal_item_in_dir', {
+        path: '\\\\wsl.localhost\\Ubuntu\\home\\user\\.claude-work',
       })
       delete window.__TAURI_INTERNALS__
     })

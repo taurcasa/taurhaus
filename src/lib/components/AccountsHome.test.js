@@ -190,6 +190,20 @@ describe('AccountsHome', () => {
     expect(rememberChoice).not.toHaveBeenCalled()
   })
 
+  // Regression: 971d964 left opener rejections unhandled, so Reveal directory
+  // failed without telling the user what happened.
+  it('shows a row-level error when revealing the account directory fails', async () => {
+    revealDirectory.mockRejectedValueOnce(new Error('Explorer could not reveal this directory'))
+    render(AccountsHome, { props: { states: states(), projects: [] } })
+
+    const work = screen.getByTestId('account-row-work')
+    await fireEvent.click(within(work).getByText('Reveal directory'))
+
+    expect(await within(work).findByRole('status')).toHaveTextContent(
+      'Explorer could not reveal this directory'
+    )
+  })
+
   it('refreshes every registry tool from the header', async () => {
     render(AccountsHome, { props: { states: states(), projects: [] } })
 
