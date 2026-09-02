@@ -678,6 +678,14 @@ fn propagate_env_to_tmux() {
                     sync_tmux_path_environment(&val);
                     continue;
                 }
+                // The tmux server lives in WSL; a Windows-form data dir must
+                // cross in its /mnt form, exactly as the daemon launcher
+                // converts it (daemon_data_dir_env_value_for_launch).
+                let val = if *var == "TAURHAUS_DATA_DIR" {
+                    crate::provider::path::to_linux(&val).unwrap_or(val)
+                } else {
+                    val
+                };
                 let _ = tmux_command()
                     .args(["set-environment", "-t", TMUX_SESSION_NAME, var, &val])
                     .output();

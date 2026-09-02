@@ -33,6 +33,8 @@ Rationale:
 
 ### Built-in template tracking decision
 - Built-ins remain bundled in `src-tauri/resources/templates/` and are treated as read-only defaults.
+- Built-in reads converge in `TemplateStore`: catalog/list operations scan the bundled role and preset directories, direct lookups probe `<id>.yaml`, reconciliation reads bundled presets, and lazy git initialization copies missing bundled YAML into app data. Before the packaged manifest was introduced, each of those paths trusted every YAML present in the installed resource directories, so an upgrade-leftover file could be listed and seeded again.
+- `resources/templates/manifest.txt` is embedded in the binary as the authoritative closed set for all of those built-in paths. A conformance test keeps that set equal to the checked-in role and preset YAML; extra installed YAML is ignored.
 - The git-backed app-data repository tracks only user-authored templates and user overrides.
 - Editing a built-in creates/updates a user override file in `app_data_dir()/templates/...` and commits that override.
 - Rationale: app upgrades can change bundled defaults; committing bundled files into user history would create noisy, version-coupled churn.
@@ -48,7 +50,11 @@ Rationale:
 
 ### Primary data (plain YAML)
 - Runtime source of truth is a merged catalog:
-  - built-ins from `src-tauri/resources/templates/{roles,presets}`
+  - built-ins from `src-tauri/resources/templates/{roles,presets}`, gated by the
+    embedded closed manifest (`resources/templates/manifest.txt`): a packaged file
+    absent from the manifest is invisible to listing and seeding, so stale files a
+    Windows upgrade leaves behind cannot resurrect. Any add/remove under those
+    directories must mirror into the manifest (a conformance test enforces it).
   - user files from `app_data_dir()/templates/{roles,presets}`
 - Resolution rule: user template with matching ID overrides bundled template.
 - Storage layer git history only includes files under `app_data_dir()/templates`.

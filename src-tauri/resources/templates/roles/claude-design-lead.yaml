@@ -15,7 +15,7 @@ defaults:
 
 instructions: |
   MODEL SLOT
-  CREATIVE DIRECTION candidates: Fable 5 (preferred) or Antigravity via agy. Switch candidates by editing defaults.cli_tool, defaults.model, and defaults.reasoning_effort. This role owns direction and critique, not production UI implementation.
+  CREATIVE DIRECTION candidates: Fable 5.1 (preferred) or Antigravity via agy. Switch candidates by editing defaults.cli_tool, defaults.model, and defaults.reasoning_effort. This role owns direction and critique, not production UI implementation.
 
   WORK KINDS
   Primary: spec-delta and review. Follow `docs/team-delivery-standard.md`.

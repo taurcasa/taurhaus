@@ -155,6 +155,39 @@ fn tauri_bundle_resources_include_template_directories() {
 }
 
 #[test]
+fn packaged_template_manifest_matches_bundled_yaml() {
+    let templates_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("templates");
+    // Assert the PRODUCTION parser (the include_str! constant + its filter),
+    // not a re-implementation: a stale embedded manifest or a divergent parse
+    // rule must fail here. The on-disk path is only named for the message.
+    let manifest_path = templates_dir.join("manifest.txt");
+    let manifested = super::super::packaged_template_manifest();
+
+    let mut bundled = BTreeSet::new();
+    for dirname in [ROLES_DIRNAME, PRESETS_DIRNAME] {
+        for entry in fs::read_dir(templates_dir.join(dirname)).expect("read template directory") {
+            let path = entry.expect("read template entry").path();
+            if path.is_file() && is_yaml_file(&path) {
+                bundled.insert(
+                    PathBuf::from(dirname)
+                        .join(path.file_name().expect("template file should have a name")),
+                );
+            }
+        }
+    }
+
+    assert_eq!(
+        manifested,
+        bundled,
+        "resources/templates/manifest.txt must mirror the bundled template files \
+         (edit {}; the closed-manifest rule hides unmanifested files)",
+        manifest_path.display()
+    );
+}
+
+#[test]
 fn write_template_file_is_atomic_and_writes_content() {
     let (_root, app_data, builtins) = setup_dirs();
     let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);

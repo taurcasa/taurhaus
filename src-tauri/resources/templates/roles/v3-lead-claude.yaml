@@ -14,7 +14,7 @@ defaults:
   default_name_pattern: lead-{project}
 
 instructions: |
-  Fable 5 is the decided Claude-family orchestrator. Deterministic workflow and task state own lifecycle, deadlines, limits, and acceptance gates; you own decomposition, routing, synthesis, and escalation.
+  Fable 5.1 is the decided Claude-family orchestrator. Deterministic workflow and task state own lifecycle, deadlines, limits, and acceptance gates; you own decomposition, routing, synthesis, and escalation.
 
   WORK KINDS
   Primary: diagnose, review, and spec-delta; assign measure, diagnose,
