@@ -94,7 +94,7 @@ pub(crate) fn apply_task_effort_after_task_change(app: &tauri::AppHandle, projec
         tmux_layout,
     };
 
-    match apply_task_effort_through_daemon(daemon, params) {
+    match apply_task_effort_through_daemon(app, daemon, params) {
         Ok(report) if !report.failed.is_empty() || !report.skipped_teams.is_empty() => {
             tracing::warn!(
                 project_path = %project_path,
@@ -227,7 +227,8 @@ pub async fn coordination_initialize_team(
         let mut emit = |event: &StepProgressEvent| {
             let _ = app_for_task.emit("coordination-step-progress", event);
         };
-        let report = initialize_team_through_daemon(daemon, params, Some(&mut emit))?;
+        let report =
+            initialize_team_through_daemon(&app_for_task, daemon, params, Some(&mut emit))?;
         Ok::<_, String>(map_initialize_report_from_contract(report)).ipc()
     })
     .await
@@ -285,6 +286,7 @@ impl CoordinationDaemonCallError {
 }
 
 fn initialize_team_through_daemon(
+    app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationInitializeParams,
     emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
@@ -293,7 +295,7 @@ fn initialize_team_through_daemon(
         params,
         emit,
         COORDINATION_DAEMON_POLL_INTERVAL,
-        |method, params| call_coordination_daemon(daemon, method, params),
+        |method, params| call_coordination_daemon(app, daemon, method, params),
     )
 }
 
@@ -348,6 +350,7 @@ fn initialize_team_through_daemon_with(
 }
 
 fn add_agent_through_daemon(
+    app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationAddAgentParams,
     emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
@@ -356,7 +359,7 @@ fn add_agent_through_daemon(
         params,
         emit,
         COORDINATION_DAEMON_POLL_INTERVAL,
-        |method, params| call_coordination_daemon(daemon, method, params),
+        |method, params| call_coordination_daemon(app, daemon, method, params),
     )
 }
 
@@ -411,6 +414,7 @@ fn add_agent_through_daemon_with(
 }
 
 fn resume_member_through_daemon(
+    app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationResumeMemberParams,
     emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
@@ -419,7 +423,7 @@ fn resume_member_through_daemon(
         params,
         emit,
         COORDINATION_DAEMON_POLL_INTERVAL,
-        |method, params| call_coordination_daemon(daemon, method, params),
+        |method, params| call_coordination_daemon(app, daemon, method, params),
     )
 }
 
@@ -475,6 +479,7 @@ fn resume_member_through_daemon_with(
 }
 
 fn resume_team_through_daemon(
+    app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationResumeTeamParams,
     emit: Option<&mut dyn FnMut(&ResumeTeamProgressEvent)>,
@@ -483,7 +488,7 @@ fn resume_team_through_daemon(
         params,
         emit,
         COORDINATION_DAEMON_POLL_INTERVAL,
-        |method, params| call_coordination_daemon(daemon, method, params),
+        |method, params| call_coordination_daemon(app, daemon, method, params),
     )
 }
 
@@ -540,6 +545,7 @@ fn resume_team_through_daemon_with(
 }
 
 fn reonboard_through_daemon(
+    app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationReonboardParams,
 ) -> Result<DeliveryResult, String> {
@@ -548,7 +554,7 @@ fn reonboard_through_daemon(
         // Delivery-only interaction: keep the stop-class snappy interval so
         // a UI affordance wired to it keeps its inline feel.
         COORDINATION_ROSTER_DAEMON_POLL_INTERVAL,
-        |method, params| call_coordination_daemon(daemon, method, params),
+        |method, params| call_coordination_daemon(app, daemon, method, params),
     )
 }
 
@@ -594,13 +600,14 @@ fn reonboard_through_daemon_with(
 }
 
 fn create_team_through_daemon(
+    app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationCreateTeamParams,
 ) -> Result<(), String> {
     create_team_through_daemon_with(
         params,
         COORDINATION_ROSTER_DAEMON_POLL_INTERVAL,
-        |method, params| call_coordination_daemon(daemon, method, params),
+        |method, params| call_coordination_daemon(app, daemon, method, params),
     )
 }
 
@@ -644,13 +651,14 @@ fn create_team_through_daemon_with(
 }
 
 fn disband_team_through_daemon(
+    app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationDisbandTeamParams,
 ) -> Result<crate::coordination::requests::DisbandTeamReport, String> {
     disband_team_through_daemon_with(
         params,
         COORDINATION_DAEMON_POLL_INTERVAL,
-        |method, params| call_coordination_daemon(daemon, method, params),
+        |method, params| call_coordination_daemon(app, daemon, method, params),
     )
 }
 
@@ -697,13 +705,14 @@ fn disband_team_through_daemon_with(
 }
 
 fn add_member_through_daemon(
+    app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationAddMemberParams,
 ) -> Result<(), String> {
     add_member_through_daemon_with(
         params,
         COORDINATION_ROSTER_DAEMON_POLL_INTERVAL,
-        |method, params| call_coordination_daemon(daemon, method, params),
+        |method, params| call_coordination_daemon(app, daemon, method, params),
     )
 }
 
@@ -747,13 +756,14 @@ fn add_member_through_daemon_with(
 }
 
 fn remove_member_through_daemon(
+    app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationRemoveMemberParams,
 ) -> Result<crate::coordination::requests::StopMemberReport, String> {
     remove_member_through_daemon_with(
         params,
         COORDINATION_ROSTER_DAEMON_POLL_INTERVAL,
-        |method, params| call_coordination_daemon(daemon, method, params),
+        |method, params| call_coordination_daemon(app, daemon, method, params),
     )
 }
 
@@ -800,13 +810,14 @@ fn remove_member_through_daemon_with(
 }
 
 fn apply_task_effort_through_daemon(
+    app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationApplyTaskEffortParams,
 ) -> Result<crate::daemon::protocol::CoordinationApplyTaskEffortReport, String> {
     apply_task_effort_through_daemon_with(
         params,
         COORDINATION_ROSTER_DAEMON_POLL_INTERVAL,
-        |method, params| call_coordination_daemon(daemon, method, params),
+        |method, params| call_coordination_daemon(app, daemon, method, params),
     )
 }
 
@@ -904,14 +915,20 @@ fn emit_member_run_steps(
 }
 
 fn call_coordination_daemon(
+    app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     method: &str,
     params: serde_json::Value,
 ) -> Result<serde_json::Value, CoordinationDaemonCallError> {
-    if !daemon.is_connected() && !daemon.try_reconnect() {
-        return Err(CoordinationDaemonCallError::Transport(
-            "daemon is not connected".to_string(),
-        ));
+    if !daemon.is_connected() {
+        if !daemon.try_reconnect() {
+            return Err(CoordinationDaemonCallError::Transport(
+                "daemon is not connected".to_string(),
+            ));
+        }
+        if let Err(error) = crate::commands::settings::push_launch_settings_to_daemon(app) {
+            tracing::warn!(error = %error, "Failed to repush launch settings after inline reconnect");
+        }
     }
     let request = crate::daemon::protocol::DaemonRequest::new(
         format!("coord-run-{}", uuid::Uuid::new_v4().simple()),
@@ -967,7 +984,7 @@ pub async fn coordination_add_agent(
         let mut emit = |event: &StepProgressEvent| {
             let _ = app_for_task.emit("coordination-step-progress", event);
         };
-        add_agent_through_daemon(daemon, params, Some(&mut emit))
+        add_agent_through_daemon(&app_for_task, daemon, params, Some(&mut emit))
             .map(map_add_agent_report_from_contract)
             .ipc()
     })
@@ -1039,7 +1056,7 @@ pub async fn coordination_resume_member(
         let mut emit = |event: &StepProgressEvent| {
             let _ = app_for_task.emit("coordination-step-progress", event);
         };
-        resume_member_through_daemon(daemon, params, Some(&mut emit))
+        resume_member_through_daemon(&app_for_task, daemon, params, Some(&mut emit))
             .map(map_resume_agent_report_from_contract)
             .ipc()
     })
@@ -1080,7 +1097,7 @@ pub async fn coordination_resume_team(
         let mut emit = |event: &ResumeTeamProgressEvent| {
             let _ = app_for_task.emit("coordination-resume-team-progress", event);
         };
-        resume_team_through_daemon(daemon, params, Some(&mut emit))
+        resume_team_through_daemon(&app_for_task, daemon, params, Some(&mut emit))
             .map(map_resume_team_report_from_contract)
             .ipc()
     })
@@ -1148,7 +1165,7 @@ pub async fn coordination_reonboard(
         let daemon = provider.daemon.as_ref().ok_or_else(|| {
             "re-onboarding a team member requires the taurhaus daemon".to_string()
         })?;
-        reonboard_through_daemon(daemon, params).ipc()
+        reonboard_through_daemon(&app_for_task, daemon, params).ipc()
     })
     .await
     .unwrap_or_else(|err| {
@@ -1193,6 +1210,7 @@ pub async fn coordination_create_team(app: AppHandle, team_name: String) -> IpcR
             .as_ref()
             .ok_or_else(|| "creating a team requires the taurhaus daemon".to_string())?;
         create_team_through_daemon(
+            &app,
             daemon,
             crate::daemon::protocol::CoordinationCreateTeamParams {
                 request: crate::coordination::requests::CreateTeamRequest { team_name },
@@ -1225,6 +1243,7 @@ pub async fn coordination_disband_team(
             .as_ref()
             .ok_or_else(|| "disbanding a team requires the taurhaus daemon".to_string())?;
         disband_team_through_daemon(
+            &app_for_task,
             daemon,
             crate::daemon::protocol::CoordinationDisbandTeamParams {
                 request: crate::coordination::requests::DisbandTeamRequest { team_name },
@@ -1266,6 +1285,7 @@ pub async fn coordination_add_member(
             .as_ref()
             .ok_or_else(|| "adding a team member requires the taurhaus daemon".to_string())?;
         add_member_through_daemon(
+            &app_for_task,
             daemon,
             crate::daemon::protocol::CoordinationAddMemberParams {
                 request: crate::coordination::requests::AddMemberRequest {
@@ -1310,6 +1330,7 @@ pub async fn coordination_remove_member(
             .as_ref()
             .ok_or_else(|| "removing a team member requires the taurhaus daemon".to_string())?;
         remove_member_through_daemon(
+            &app_for_task,
             daemon,
             crate::daemon::protocol::CoordinationRemoveMemberParams {
                 request: crate::coordination::requests::RemoveMemberRequest {

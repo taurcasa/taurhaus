@@ -385,6 +385,26 @@ fn disband_team_uses_the_long_running_daemon_poll_interval() {
     assert!(!client.contains("COORDINATION_ROSTER_DAEMON_POLL_INTERVAL"));
 }
 
+// Regression: 8bb45dab made daemon launch settings process-local but relied on
+// the health monitor to repush them. An inline reconnect from a coordination
+// call or task scan can restore the cached connection without entering that
+// recovery hook, leaving the daemon effort sweep disabled for its lifetime.
+#[test]
+fn inline_daemon_reconnect_paths_repush_launch_settings() {
+    let coordination = include_str!("../coordination.rs");
+    let coordination_call = coordination
+        .split("fn call_coordination_daemon(")
+        .nth(1)
+        .expect("coordination daemon call")
+        .split("#[tauri::command]")
+        .next()
+        .expect("coordination daemon call body");
+    let task_sync = include_str!("../../services/task_sync.rs");
+
+    assert!(coordination_call.contains("push_launch_settings_to_daemon"));
+    assert!(task_sync.contains("push_launch_settings_to_daemon"));
+}
+
 // Regression: 1e1dcea5 kept the config-only roster add in the desktop
 // process, including its project-path resolution and runtime-record write.
 #[test]
