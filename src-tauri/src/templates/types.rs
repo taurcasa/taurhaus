@@ -1276,32 +1276,16 @@ mod tests {
             );
 
             let communication = role.communication_style.as_deref().unwrap_or_default();
-            for mark in [
-                "objective",
-                "exact deliverable",
-                "concrete first action",
-                "completion signal",
-                "explicit response expectation",
-                "ACTION REQUIRED:",
-                "INFO ONLY:",
-                "no response needed",
-            ] {
-                assert!(
-                    communication.contains(mark),
-                    "role '{}' communication_style is missing '{mark}'",
-                    role.role_id
-                );
-            }
+            assert!(
+                !communication.trim().is_empty(),
+                "role '{}' should preserve its communication identity",
+                role.role_id
+            );
 
             let gates = role.quality_gates.as_deref().unwrap_or_default().join("\n");
             assert!(
-                gates.contains("`just check-quick`"),
-                "role '{}' should carry the per-task gate",
-                role.role_id
-            );
-            assert!(
-                gates.contains("Never run full `just check` as an agent"),
-                "role '{}' should carry the serialized full-gate boundary",
+                gates.contains("`docs/team-delivery-standard.md`"),
+                "role '{}' should defer shared ceremony to the delivery standard",
                 role.role_id
             );
 
@@ -1311,8 +1295,8 @@ mod tests {
                 .unwrap_or_default()
                 .join("\n");
             assert!(
-                done.contains("review-ready handoff"),
-                "role '{}' should require a review-ready handoff",
+                !done.trim().is_empty(),
+                "role '{}' should define its role-specific completion condition",
                 role.role_id
             );
 
@@ -1352,11 +1336,35 @@ mod tests {
                     role.instructions
                         .contains("one active assignment per member")
                         && role.instructions.contains("uptake")
-                        && role.instructions.contains("deadline"),
+                        && role.instructions.contains("optional overrides"),
                     "lead role '{}' should carry the bounded stage contract",
                     role.role_id
                 );
             }
+        }
+    }
+
+    #[test]
+    fn every_canonical_role_references_the_team_delivery_standard() {
+        for role in load_role_templates() {
+            assert!(
+                role.instructions.contains("docs/team-delivery-standard.md"),
+                "canonical role '{}' must link the shared delivery standard from its instructions",
+                role.role_id
+            );
+            assert!(
+                role.instructions.contains("Primary:"),
+                "canonical role '{}' must name its primary work kinds",
+                role.role_id
+            );
+            assert!(
+                !role
+                    .instructions
+                    .contains("Every assignment sets a deadline")
+                    && !role.instructions.contains("--why"),
+                "canonical role '{}' still mandates retired assignment ceremony",
+                role.role_id
+            );
         }
     }
 
