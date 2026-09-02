@@ -832,6 +832,7 @@ describe('ipc module', () => {
         .mockResolvedValueOnce(undefined)
         .mockResolvedValueOnce('/home/user/.claude-work')
         .mockResolvedValueOnce({ tmux_pane: '%4' })
+        .mockResolvedValueOnce('/home/user/.claude-work')
         .mockResolvedValueOnce(undefined)
 
       const relationships = await ipc.listAccountRelationships('claude')
