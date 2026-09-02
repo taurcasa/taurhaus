@@ -223,14 +223,16 @@ fn emit_pass_completed(summary: &BackgroundSelfHealPassResult, duration: Duratio
         "duration_ms".to_string(),
         Value::from(duration_millis(duration)),
     );
-    let level =
-        if summary.teams_reconciled + summary.team_daemons_ensured + summary.members_effort_resumed
-            > 0
-        {
-            "info"
-        } else {
-            "debug"
-        };
+    let level = if summary.teams_reconciled
+        + summary.team_daemons_ensured
+        + summary.team_errors
+        + summary.members_effort_resumed
+        > 0
+    {
+        "info"
+    } else {
+        "debug"
+    };
     taurhaus_lib::logging::emit_global(
         level,
         "coordination",
@@ -528,6 +530,27 @@ mod tests {
 
         assert_eq!(completed["level"], "INFO");
         assert_eq!(completed["fields"]["teams_reconciled"], 1);
+    }
+
+    // Regression: 50251e68 omitted per-team errors from the protocol-21
+    // completion level decision, hiding an errors-only pass from INFO JSONL.
+    #[test]
+    fn self_heal_completion_with_team_errors_is_emitted_at_info() {
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let event_rx = install_log_tap(temp.path());
+        let summary = crate::coordination::state::BackgroundSelfHealPassResult {
+            teams_scanned: 1,
+            team_errors: 1,
+            ..Default::default()
+        };
+
+        emit_pass_completed(&summary, Duration::from_millis(7));
+        let completed = receive_event(&event_rx, "self_heal.pass.completed");
+        crate::commands::logging::clear_test_tap();
+
+        assert_eq!(completed["level"], "INFO");
+        assert_eq!(completed["fields"]["team_errors"], 1);
     }
 
     // Regression: 06575d68 resolved launch bases for every configured team
