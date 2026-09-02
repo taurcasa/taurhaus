@@ -805,16 +805,8 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "WSL-native compact-hook delivery may append mesh inbox state",
         ),
         (
-            "src/coordination/roster.rs",
-            "daemon-hosted roster join backfills authoritative runtime state",
-        ),
-        (
             "src/coordination/runtime/mod.rs",
             "shared daemon runtime quarantine helper clears foreign bindings",
-        ),
-        (
-            "src/coordination/state.rs",
-            "daemon services and schedulers host state-level mutation passes",
         ),
         (
             "src/coordination/stores/active_project.rs",
@@ -823,14 +815,6 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         (
             "src/coordination/stores/compaction.rs",
             "compaction store implements the WSL-native hook write surface",
-        ),
-        (
-            "src/coordination/stores/config.rs",
-            "team-config store implements its own locked write surface",
-        ),
-        (
-            "src/coordination/stores/inbox.rs",
-            "inbox store implements its own append surface",
         ),
         (
             "src/coordination/stores/mesh_task.rs",
@@ -842,7 +826,7 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         ),
         (
             "src/coordination/stores/runtime.rs",
-            "runtime store implements its own locked write surface",
+            "runtime store prunes stale WSL-native compaction state during locked saves",
         ),
         (
             "src/coordination/task_deadline_pass.rs",
@@ -882,6 +866,7 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         "MemberCompactionStore::save(",
         "MemberCompactionStore::delete(",
         "MemberCompactionStore::delete_without_lock(",
+        "prune_state_if_session_mismatch(",
         "record_delivery_at(",
         "TeamConfigStore::save(",
         "TeamConfigStore::clear_member_pane_binding(",
@@ -906,6 +891,7 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src"), &mut files);
     let mut violations = Vec::new();
+    let mut used_allowlist_entries = BTreeSet::new();
     for path in files {
         if path.file_name().and_then(|name| name.to_str()) == Some("tests.rs") {
             continue;
@@ -934,13 +920,26 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         });
         if !allowed {
             violations.push(format!("{relative}: {used:?}"));
+        } else {
+            used_allowlist_entries.insert(relative);
         }
     }
+
+    let unused_allowlist_entries = ALLOWED_WRITERS
+        .iter()
+        .map(|(path, _)| *path)
+        .filter(|path| !used_allowlist_entries.contains(*path))
+        .collect::<Vec<_>>();
 
     assert!(
         violations.is_empty(),
         "team-state writer escaped the daemon/native-hook boundary:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        unused_allowlist_entries.is_empty(),
+        "team-state writer allowlist contains stale exceptions:\n{}",
+        unused_allowlist_entries.join("\n")
     );
 }
 
