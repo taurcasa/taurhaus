@@ -550,7 +550,7 @@ pub fn handle_compact_hook(
         return Ok(CompactHookResponse::default());
     }
 
-    let card = CompactionReinjectionService::compose(&matched.member, &snapshot);
+    let card = CompactionReinjectionService::compose(teams_dir, &matched.member, &snapshot);
     let additional_context = CompactionReinjectionService::render_additional_context_text(&card)
         .map_err(|err| {
             emit_compact_hook_failed(
