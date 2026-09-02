@@ -77,7 +77,9 @@
     for (const descriptor of registry) {
       for (const account of stateFor(descriptor.id).accounts ?? []) {
         const key = `${descriptor.id}:${account.id}`
-        if (unhealthy(account) && !autoExpandedIds.has(key)) {
+        if (!unhealthy(account)) {
+          autoExpandedIds.delete(key)
+        } else if (!autoExpandedIds.has(key)) {
           autoExpandedIds.add(key)
           next.add(key)
           changed = true

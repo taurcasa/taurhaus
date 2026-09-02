@@ -156,6 +156,27 @@ describe('AccountsHome', () => {
     expect(within(work).queryByTestId('account-row-details')).not.toBeInTheDocument()
   })
 
+  // Regression: 31521eb remembered every account ever auto-expanded, so a
+  // recovered row would not expand when a later unhealthy episode began.
+  it('auto-expands an account again after it recovers and becomes unhealthy later', async () => {
+    const { rerender } = render(AccountsHome, { props: { states: states(), projects: [] } })
+
+    let work = screen.getByTestId('account-row-work')
+    await fireEvent.click(within(work).getByRole('button', { name: 'Collapse work' }))
+
+    const healthy = states()
+    healthy.claude.accounts = healthy.claude.accounts.map((entry) =>
+      entry.id === 'work' ? { ...entry, usage: usage(20) } : entry
+    )
+    await rerender({ states: healthy, projects: [] })
+    work = screen.getByTestId('account-row-work')
+    expect(within(work).queryByTestId('account-row-details')).not.toBeInTheDocument()
+
+    await rerender({ states: states(), projects: [] })
+    work = screen.getByTestId('account-row-work')
+    expect(within(work).getByTestId('account-row-details')).toBeInTheDocument()
+  })
+
   it('explains base-command selectors and converts affected projects into pins', async () => {
     const accountStates = states()
     accountStates.claude.defaultAccountId = null
