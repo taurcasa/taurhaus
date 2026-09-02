@@ -23,6 +23,10 @@
     y = 0,
     dark = false,
     onClose = () => {},
+    autoFocus = true,
+    keyboardNavigation = true,
+    onMouseEnter = () => {},
+    onMouseLeave = () => {},
     /** Label of a parent whose flyout opens on mount. Fixtures and tests only. */
     openChildOf = null,
   } = $props()
@@ -221,7 +225,7 @@
 
   // Keyboard navigation
   $effect(() => {
-    if (!menuEl) return
+    if (!menuEl || !autoFocus) return
     queueMicrotask(() => {
       menuEl?.focus()
     })
@@ -301,6 +305,7 @@
   }
 
   $effect(() => {
+    if (!keyboardNavigation) return
     function handleKeydown(e) {
       // An open flyout owns the keyboard: it is the level the user is on.
       if (openIndex >= 0) {
@@ -442,6 +447,8 @@
   role="menu"
   tabindex="-1"
   data-testid="context-menu"
+  onmouseenter={onMouseEnter}
+  onmouseleave={onMouseLeave}
 >
   {#each items as item, i}
     {#if item.separator}

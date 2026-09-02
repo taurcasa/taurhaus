@@ -43,4 +43,25 @@ describe('AccountUsageBoard', () => {
     await fireEvent.mouseDown(screen.getByText('Manage accounts →'))
     expect(onManage).toHaveBeenCalledTimes(1)
   })
+
+  // Regression: e28881d reused a keyboard-owning ContextMenu for a hover-only
+  // board, so merely crossing the Accounts button stole focus and arrow keys.
+  it('does not take focus or keyboard ownership when opened by hover', async () => {
+    const input = document.createElement('input')
+    document.body.append(input)
+    input.focus()
+
+    render(AccountUsageBoard, { props: { states: {}, x: 220, y: 700 } })
+    await Promise.resolve()
+
+    expect(input).toHaveFocus()
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowDown',
+      bubbles: true,
+      cancelable: true,
+    })
+    input.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    input.remove()
+  })
 })

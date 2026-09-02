@@ -79,6 +79,8 @@
   let sidebarNotice = $state(null)
   let sidebarNoticeTimeout = $state(null)
   let accountsBoard = $state(null)
+  let accountsBoardLeaveTimeout = null
+  let accountsBoardRefreshTimeout = null
 
   const accountSignal = $derived(
     ambientAccountSignal(
@@ -152,6 +154,8 @@
         clearTimeout(sidebarNoticeTimeout)
         sidebarNoticeTimeout = null
       }
+      clearTimeout(accountsBoardLeaveTimeout)
+      clearTimeout(accountsBoardRefreshTimeout)
     }
   })
 
@@ -313,13 +317,13 @@
   }
 
   function handleToggleAccounts() {
-    accountsBoard = null
+    closeAccountsBoard()
     actions?.onToggleAccounts?.()
     sessionContext?.toggleAccounts?.()
   }
 
   function handleOpenAccounts() {
-    accountsBoard = null
+    closeAccountsBoard()
     if (actions?.onOpenAccounts) {
       actions.onOpenAccounts()
     } else if (sessionContext?.openAccounts) {
@@ -330,13 +334,36 @@
   }
 
   function showAccountsBoard(event) {
+    clearTimeout(accountsBoardLeaveTimeout)
+    clearTimeout(accountsBoardRefreshTimeout)
     const rect = event.currentTarget.getBoundingClientRect()
     accountsBoard = { x: rect.right + 6, y: rect.bottom }
-    for (const tool of tools()) {
-      void refreshAccounts(tool.id)
-      void refreshAccountRelationships(tool.id)
-      if (tool.capabilities.usage) void refreshUsage(tool.id)
-    }
+    accountsBoardRefreshTimeout = setTimeout(() => {
+      accountsBoardRefreshTimeout = null
+      for (const tool of tools()) {
+        void refreshAccounts(tool.id)
+        void refreshAccountRelationships(tool.id)
+        if (tool.capabilities.usage) void refreshUsage(tool.id)
+      }
+    }, 300)
+  }
+
+  function keepAccountsBoardOpen() {
+    clearTimeout(accountsBoardLeaveTimeout)
+    accountsBoardLeaveTimeout = null
+  }
+
+  function scheduleAccountsBoardClose() {
+    clearTimeout(accountsBoardLeaveTimeout)
+    accountsBoardLeaveTimeout = setTimeout(closeAccountsBoard, 200)
+  }
+
+  function closeAccountsBoard() {
+    clearTimeout(accountsBoardLeaveTimeout)
+    clearTimeout(accountsBoardRefreshTimeout)
+    accountsBoardLeaveTimeout = null
+    accountsBoardRefreshTimeout = null
+    accountsBoard = null
   }
 
   function handleRetry() {
@@ -838,6 +865,7 @@
         title="Accounts (Ctrl+Shift+A)"
         onclick={handleToggleAccounts}
         onmouseenter={showAccountsBoard}
+        onmouseleave={scheduleAccountsBoardClose}
         data-testid="accounts-toggle"
       >
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM6.75 9a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5ZM15 21a6 6 0 0 0-12 0m18 0a6 6 0 0 0-9.5-4.888"/></svg>
@@ -879,6 +907,8 @@
     y={accountsBoard.y}
     dark={true}
     onManage={handleOpenAccounts}
-    onClose={() => { accountsBoard = null }}
+    onClose={closeAccountsBoard}
+    onMouseEnter={keepAccountsBoardOpen}
+    onMouseLeave={scheduleAccountsBoardClose}
   />
 {/if}

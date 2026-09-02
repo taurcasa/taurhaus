@@ -11,6 +11,8 @@
     dark = true,
     onManage = () => {},
     onClose = () => {},
+    onMouseEnter = () => {},
+    onMouseLeave = () => {},
   } = $props()
 
   function stateFor(tool) {
@@ -24,7 +26,7 @@
       if (!accounts.length) continue
       if (rows.length) rows.push({ separator: true })
       rows.push({ label: descriptor.label, disabled: true })
-      rows.push(...buildAccountMenuChildren({ accounts }))
+      rows.push(...buildAccountMenuChildren({ accounts }).map((row) => ({ ...row, disabled: true })))
     }
     if (rows.length) rows.push({ separator: true })
     rows.push({ label: 'Manage accounts →', action: onManage })
@@ -32,4 +34,14 @@
   })
 </script>
 
-<ContextMenu {items} {x} {y} {dark} {onClose} />
+<ContextMenu
+  {items}
+  {x}
+  {y}
+  {dark}
+  {onClose}
+  {onMouseEnter}
+  {onMouseLeave}
+  autoFocus={false}
+  keyboardNavigation={false}
+/>
