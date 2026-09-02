@@ -402,12 +402,15 @@ pub mod daemon {
     pub mod protocol {
         use serde::{Deserialize, Serialize};
 
-        pub use taurhaus_lib::daemon_api::protocol::{DaemonRequest, LaunchMode};
+        pub use taurhaus_lib::daemon_api::protocol::{
+            DaemonRequest, DaemonResponse, LaunchMode,
+        };
 
         pub mod method {
             pub use taurhaus_lib::daemon_api::protocol::method::{
                 COORDINATION_APPLY_TASK_EFFORT, COORDINATION_APPLY_TASK_EFFORT_STATUS,
                 COORDINATION_RECONCILE_LIVE_PRESENCE, COORDINATION_SET_ACTIVE_PROJECT_TEAM,
+                GET_RUNTIME_SESSION_SNAPSHOT,
             };
 
             pub const COORDINATION_INITIALIZE_TEAM: &str = "coordination.initialize_team";
