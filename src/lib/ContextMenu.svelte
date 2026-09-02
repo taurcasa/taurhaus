@@ -305,11 +305,19 @@
   }
 
   $effect(() => {
-    if (!keyboardNavigation) return
     function handleKeydown(e) {
+      // Escape dismisses the menu whether or not it navigates: a hover-only
+      // board still has to close on the key every other menu closes on.
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        if (openIndex >= 0) closeSubmenu()
+        else onClose()
+        return
+      }
+      if (!keyboardNavigation) return
       // An open flyout owns the keyboard: it is the level the user is on.
       if (openIndex >= 0) {
-        if (e.key === 'Escape' || e.key === 'ArrowLeft') {
+        if (e.key === 'ArrowLeft') {
           e.preventDefault()
           closeSubmenu()
           return
@@ -338,12 +346,6 @@
         if (e.key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey && /\S/.test(e.key)) {
           runTypeahead(e, openChildren, childFocusIndex, (index) => { childFocusIndex = index })
         }
-        return
-      }
-
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
         return
       }
 

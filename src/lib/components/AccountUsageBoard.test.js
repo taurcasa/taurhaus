@@ -64,4 +64,16 @@ describe('AccountUsageBoard', () => {
     expect(event.defaultPrevented).toBe(false)
     input.remove()
   })
+
+  // Regression: e28881d disabled ContextMenu keyboard handling wholesale for the
+  // hover board, and Escape-to-close lives in that same handler, so the board
+  // was the one menu in the app that Escape could not dismiss.
+  it('closes on Escape even though it owns no other keys', async () => {
+    const onClose = vi.fn()
+    render(AccountUsageBoard, { props: { states: {}, x: 220, y: 700, onClose } })
+
+    await fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
 })
