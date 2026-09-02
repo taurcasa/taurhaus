@@ -5238,8 +5238,11 @@ fn completed_blocker_history_does_not_disqualify_in_progress_high_work() {
     assert_eq!(record.applied_effort.as_deref(), Some("high"));
 }
 
+// Regression: 2e2b52f0 admitted blocked-status records as effort targets, so
+// the widened daemon sweep relaunched a live member whose only open task was
+// explicitly stood down.
 #[test]
-fn a_blocked_assignment_can_anchor_when_it_is_the_only_open_work() {
+fn a_background_sweep_does_not_relaunch_blocked_only_work() {
     let root = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
@@ -5255,14 +5258,14 @@ fn a_blocked_assignment_can_anchor_when_it_is_the_only_open_work() {
             "effort-team",
             &CliCommandSettings::default(),
             "new_window",
-            EffortPassScope::TaskChanged,
+            EffortPassScope::BackgroundSweep,
         )
         .expect("effort pass");
 
-    assert_eq!(resumed, vec!["builder".to_string()]);
+    assert!(resumed.is_empty(), "blocked work must not start a switch");
     let record =
         MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
-    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+    assert_eq!(record.applied_effort.as_deref(), Some("low"));
 }
 
 // Regression: 4344edb4 let liveness adopt a hand-restarted session id while

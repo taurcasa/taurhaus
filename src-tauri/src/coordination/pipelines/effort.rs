@@ -53,7 +53,6 @@ const MAX_ASSIGNMENT_RECORD_BYTES: u64 = 1_048_576;
 struct AssignmentTarget {
     task_id: String,
     level: String,
-    blocked: bool,
 }
 
 pub(super) fn attempt_is_allowed(failed_attempts: u32) -> bool {
@@ -110,11 +109,6 @@ fn assignment_target(
     applied_effort: Option<&str>,
 ) -> Option<AssignmentTarget> {
     let assignments = open_mesh_assignments(&orchestrator.teams_dir, team_name, member_name);
-    let has_non_blocked = assignments.iter().any(|assignment| !assignment.blocked);
-    let assignments: Vec<_> = assignments
-        .into_iter()
-        .filter(|assignment| !has_non_blocked || !assignment.blocked)
-        .collect();
     if let Some(held_task_id) = held_task_id(&orchestrator.teams_dir, team_name, member_name) {
         if let Some(held) = assignments
             .iter()
@@ -153,7 +147,6 @@ fn assignment_target(
     task_effort::active_task_effort(&snapshot).map(|effort| AssignmentTarget {
         task_id,
         level: effort.level,
-        blocked: false,
     })
 }
 
@@ -192,19 +185,14 @@ fn read_assignment_task(path: &Path, member_name: &str) -> Option<AssignmentTarg
         return None;
     }
     let status = task.get("status").and_then(serde_json::Value::as_str)?;
-    let status_blocked = crate::coordination::operational_context::is_blocked_task_status(status);
-    if !status_blocked
-        && !crate::coordination::operational_context::is_resumable_task_status(status)
+    if crate::coordination::operational_context::is_blocked_task_status(status)
+        || !crate::coordination::operational_context::is_resumable_task_status(status)
     {
         return None;
     }
     let task_id = non_empty_json_string(task.get("id"))?;
     let level = non_empty_json_string(task.get("metadata")?.get("effort"))?.to_ascii_lowercase();
-    (effort_rank(&level) > 0).then_some(AssignmentTarget {
-        task_id,
-        level,
-        blocked: status_blocked,
-    })
+    (effort_rank(&level) > 0).then_some(AssignmentTarget { task_id, level })
 }
 
 fn held_task_id(teams_dir: &Path, team_name: &str, member_name: &str) -> Option<String> {
