@@ -5529,6 +5529,32 @@ fn a_launch_records_the_effort_the_session_actually_runs_at() {
 }
 
 #[test]
+fn a_case_mismatched_configured_effort_rejected_by_the_renderer_is_not_recorded() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime, CliTool::Codex, Some("Low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+
+    let report = orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("resume report");
+    assert!(report.resumed, "resume should succeed: {report:?}");
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort, None,
+        "the renderer dropped the invalid case spelling, so the applied level is unknown"
+    );
+}
+
+#[test]
 fn an_invalid_requested_effort_is_not_recorded_as_applied() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
