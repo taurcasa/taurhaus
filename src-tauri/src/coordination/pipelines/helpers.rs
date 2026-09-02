@@ -24,9 +24,8 @@ use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::session_scanner::control::validate_command_override;
 use crate::session_scanner::launch::{
     base_command, redact_command_for_logging, shell_escape, LaunchNote, LaunchSpec, ModelSpec,
-    TeamContext,
+    RenderedLaunch, TeamContext,
 };
-use taurhaus_lib::session_scanner::launch::{EffortIgnoreReason, LaunchCapability};
 use taurhaus_lib::session_scanner::launch_base::LaunchAccountResult;
 
 const TMUX_SEND_RETRY_DELAYS: [Duration; 2] =
@@ -633,6 +632,27 @@ pub fn render_team_launch_command(
     .map(|result| result.command)
 }
 
+/// The reasoning effort a rendered launch command actually carries.
+///
+/// `LaunchSpec::render` is the authority on whether a requested level reached
+/// the command, and it reports that verdict itself. A level the operator's own
+/// base pins is not the render's doing, so it is read back from the base — the
+/// module that owns that parsing. The runtime record and the effort pass's
+/// pre-check both read this one function, so neither can disagree with the
+/// command that was launched.
+pub(super) fn launched_effort(
+    rendered: &RenderedLaunch,
+    cli_tool: CliTool,
+    base: &str,
+) -> Option<String> {
+    rendered
+        .applied_effort
+        .clone()
+        .or_else(|| crate::coordination::task_effort::pinned_base_effort(cli_tool, base))
+        .map(|level| level.trim().to_ascii_lowercase())
+        .filter(|level| !level.is_empty())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct TeamLaunchResult {
     pub(super) command: String,
@@ -749,33 +769,7 @@ pub(super) fn render_team_launch(
     }
     .render();
     validate_command_override(&rendered.command).map_err(CoordinationError::Validation)?;
-    let requested_effort = model
-        .reasoning_effort
-        .as_deref()
-        .map(str::trim)
-        .filter(|level| !level.is_empty())
-        .map(str::to_ascii_lowercase);
-    let effort_rejected = rendered.notes.iter().any(|note| {
-        matches!(
-            note,
-            LaunchNote::EffortIgnored {
-                reason: EffortIgnoreReason::Invalid,
-                ..
-            } | LaunchNote::CapabilityMissing {
-                capability: LaunchCapability::Effort,
-                ..
-            }
-        )
-    });
-    let applied_effort =
-        if crate::coordination::task_effort::base_pins_effort(cli_tool, base.as_ref()) {
-            crate::coordination::task_effort::pinned_base_effort(cli_tool, base.as_ref())
-                .map(|level| level.to_ascii_lowercase())
-        } else if effort_rejected {
-            None
-        } else {
-            requested_effort
-        };
+    let applied_effort = launched_effort(&rendered, cli_tool, base.as_ref());
 
     let account = LaunchAccountResult::for_opaque_head(
         resolved_base.and_then(|resolved| resolved.opaque_head.as_deref()),
