@@ -296,7 +296,10 @@ mod tests {
     #[test]
     fn settings_save_version_increments_with_each_committed_document() {
         let (conn, _file) = test_db();
-        assert_eq!(get_settings_save_version(&conn).expect("initial version"), 0);
+        assert_eq!(
+            get_settings_save_version(&conn).expect("initial version"),
+            0
+        );
 
         save_settings(&conn, &Settings::default()).expect("first save");
         assert_eq!(get_settings_save_version(&conn).expect("first version"), 1);

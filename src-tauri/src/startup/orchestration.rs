@@ -22,8 +22,7 @@ pub(super) fn run_startup_orchestration(
     );
     #[cfg(feature = "mesh-bridged-backend")]
     if context.daemon_connected_at_startup {
-        if let Err(error) =
-            crate::commands::settings::push_launch_settings_to_daemon(app.handle())
+        if let Err(error) = crate::commands::settings::push_launch_settings_to_daemon(app.handle())
         {
             tracing::warn!(error = %error, "Failed to seed daemon launch settings at startup");
         }

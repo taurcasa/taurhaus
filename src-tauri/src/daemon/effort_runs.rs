@@ -13,8 +13,7 @@ use crate::daemon::protocol::{
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 
-type PrepareLaunchInputs =
-    dyn Fn(CliTool, &mut CliCommandSettings) + Send + Sync;
+type PrepareLaunchInputs = dyn Fn(CliTool, &mut CliCommandSettings) + Send + Sync;
 
 #[derive(Clone)]
 pub(crate) struct EffortOperationsService {
@@ -105,10 +104,8 @@ impl EffortOperationsService {
                         let _ = registry.fail(&run_id_for_task, error);
                     }
                     Err(_) => {
-                        let _ = registry.fail(
-                            &run_id_for_task,
-                            "task-effort worker panicked".to_string(),
-                        );
+                        let _ = registry
+                            .fail(&run_id_for_task, "task-effort worker panicked".to_string());
                     }
                 }
             });
@@ -168,11 +165,8 @@ mod tests {
             Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
         ));
         let registry = CoordinationRunRegistry::with_ttl(Duration::from_secs(60));
-        let service = EffortOperationsService::with_state_and_prepare(
-            state,
-            registry,
-            Arc::new(|_, _| {}),
-        );
+        let service =
+            EffortOperationsService::with_state_and_prepare(state, registry, Arc::new(|_, _| {}));
 
         let run_id = service
             .start(CoordinationApplyTaskEffortParams {

@@ -152,17 +152,18 @@ fn run_pass(
     launch_settings: Option<CoordinationPutLaunchSettingsParams>,
 ) -> Result<(BackgroundSelfHealPassResult, bool), crate::coordination::errors::CoordinationError> {
     run_pass_with_launch_resolution(state, launch_settings, &mut |tool, commands| {
-        let has_managed_codex =
-            match crate::coordination::compact_hook::any_managed_codex_member(state.teams_dir()) {
-                Ok(has_managed_codex) => has_managed_codex,
-                Err(error) => {
-                    tracing::warn!(
-                        error = %error,
-                        "managed-Codex discovery failed; effort sweep uses conservative launch inputs"
-                    );
-                    true
-                }
-            };
+        let has_managed_codex = match crate::coordination::compact_hook::any_managed_codex_member(
+            state.teams_dir(),
+        ) {
+            Ok(has_managed_codex) => has_managed_codex,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "managed-Codex discovery failed; effort sweep uses conservative launch inputs"
+                );
+                true
+            }
+        };
         crate::daemon::coordination_runs::prepare_daemon_launch_inputs_for_tools(
             state.teams_dir(),
             has_managed_codex,
@@ -212,8 +213,14 @@ fn duration_millis(duration: Duration) -> u64 {
 
 fn emit_pass_completed(summary: &BackgroundSelfHealPassResult, duration: Duration) {
     let mut fields = Map::new();
-    fields.insert("teams_scanned".to_string(), Value::from(summary.teams_scanned));
-    fields.insert("teams_skipped".to_string(), Value::from(summary.teams_skipped));
+    fields.insert(
+        "teams_scanned".to_string(),
+        Value::from(summary.teams_scanned),
+    );
+    fields.insert(
+        "teams_skipped".to_string(),
+        Value::from(summary.teams_skipped),
+    );
     fields.insert(
         "teams_reconciled".to_string(),
         Value::from(summary.teams_reconciled),
@@ -279,9 +286,7 @@ mod tests {
 
     use chrono::Utc;
 
-    use super::{
-        run_pass_with_launch_resolution, BackgroundScheduler, LaunchSettingsStore,
-    };
+    use super::{run_pass_with_launch_resolution, BackgroundScheduler, LaunchSettingsStore};
     use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
     use crate::coordination::domain::{HealthState, Member, MemberRole};
     use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
@@ -346,10 +351,7 @@ mod tests {
     }
 
     fn state(teams_dir: std::path::PathBuf) -> CoordinationState {
-        state_with_runtime(
-            teams_dir,
-            Arc::new(RecordingCoordinationRuntime::default()),
-        )
+        state_with_runtime(teams_dir, Arc::new(RecordingCoordinationRuntime::default()))
     }
 
     fn state_with_runtime(
@@ -524,19 +526,9 @@ mod tests {
                 orchestrator.create_team("effort-team", None)?;
                 orchestrator.add_member(
                     "effort-team",
-                    member(
-                        "team-lead",
-                        MemberRole::Lead,
-                        CliTool::Claude,
-                        "/tmp/lead",
-                    ),
+                    member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
                 )?;
-                let mut builder = member(
-                    "builder",
-                    MemberRole::Agent,
-                    CliTool::Codex,
-                    "/tmp/app",
-                );
+                let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
                 builder.reasoning_effort = Some("low".to_string());
                 orchestrator.add_member("effort-team", builder)
             })
@@ -561,9 +553,8 @@ mod tests {
             .iter()
             .filter(|call| matches!(call, RuntimeCall::SendKeys { .. }))
             .count();
-        let (_summary, awaiting) =
-            run_pass_with_launch_resolution(&state, None, &mut |_, _| {})
-                .expect("config-free self-heal pass");
+        let (_summary, awaiting) = run_pass_with_launch_resolution(&state, None, &mut |_, _| {})
+            .expect("config-free self-heal pass");
         assert!(awaiting);
         assert_eq!(
             runtime

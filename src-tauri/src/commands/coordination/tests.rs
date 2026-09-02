@@ -1030,11 +1030,11 @@ fn task_effort_client_carries_fresh_settings_and_polls_the_shared_registry() {
         |method, params| {
             calls.push((method.to_string(), params.clone()));
             match method {
-                crate::daemon::protocol::method::COORDINATION_APPLY_TASK_EFFORT => Ok(
-                    serde_json::json!({ "run_id": "effort_test" }),
-                ),
-                crate::daemon::protocol::method::COORDINATION_APPLY_TASK_EFFORT_STATUS => Ok(
-                    serde_json::json!({
+                crate::daemon::protocol::method::COORDINATION_APPLY_TASK_EFFORT => {
+                    Ok(serde_json::json!({ "run_id": "effort_test" }))
+                }
+                crate::daemon::protocol::method::COORDINATION_APPLY_TASK_EFFORT_STATUS => {
+                    Ok(serde_json::json!({
                         "run_id": "effort_test",
                         "outcome": {
                             "status": "completed",
@@ -1044,8 +1044,8 @@ fn task_effort_client_carries_fresh_settings_and_polls_the_shared_registry() {
                                 "skipped_teams": []
                             }
                         }
-                    }),
-                ),
+                    }))
+                }
                 _ => panic!("unexpected method: {method}"),
             }
         },

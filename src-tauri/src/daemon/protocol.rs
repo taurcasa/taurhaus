@@ -138,8 +138,7 @@ pub mod method {
     pub const COORDINATION_REMOVE_MEMBER_STATUS: &str = "coordination.remove_member_status";
     pub const COORDINATION_PUT_LAUNCH_SETTINGS: &str = "coordination.put_launch_settings";
     pub const COORDINATION_APPLY_TASK_EFFORT: &str = "coordination.apply_task_effort";
-    pub const COORDINATION_APPLY_TASK_EFFORT_STATUS: &str =
-        "coordination.apply_task_effort_status";
+    pub const COORDINATION_APPLY_TASK_EFFORT_STATUS: &str = "coordination.apply_task_effort_status";
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";

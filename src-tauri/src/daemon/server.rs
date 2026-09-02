@@ -204,7 +204,8 @@ fn serve(
     #[cfg(feature = "mesh-bridged-backend")] coordination_state: Arc<
         crate::coordination::state::CoordinationState,
     >,
-    #[cfg(feature = "mesh-bridged-backend")] launch_settings: crate::daemon::background_scheduler::LaunchSettingsStore,
+    #[cfg(feature = "mesh-bridged-backend")]
+    launch_settings: crate::daemon::background_scheduler::LaunchSettingsStore,
 ) -> std::io::Result<()> {
     listener.set_nonblocking(true)?;
 
