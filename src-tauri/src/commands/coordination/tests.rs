@@ -1357,7 +1357,10 @@ impl Drop for StubDaemon {
     }
 }
 
-fn start_stub_daemon(response: serde_json::Value) -> StubDaemon {
+fn start_live_status_stub_daemon(
+    snapshot_response: serde_json::Value,
+    state: Arc<CoordinationState>,
+) -> StubDaemon {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub daemon");
     let addr = listener.local_addr().expect("stub daemon addr");
     let addr_string = format!("127.0.0.1:{}", addr.port());
@@ -1365,24 +1368,50 @@ fn start_stub_daemon(response: serde_json::Value) -> StubDaemon {
     let handle = thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept daemon client");
         let mut reader = BufReader::new(stream.try_clone().expect("clone stream"));
-        let mut line = String::new();
-        reader.read_line(&mut line).expect("read request");
-
-        let request: protocol::DaemonRequest =
-            serde_json::from_str(&line).expect("parse daemon request");
-        let mut response = response;
-        if let Some(map) = response.as_object_mut() {
-            map.insert("id".to_string(), serde_json::Value::String(request.id));
-        }
-        let response_line = format!(
-            "{}\n",
-            serde_json::to_string(&response).expect("serialize daemon response")
-        );
         let mut writer = stream;
-        writer
-            .write_all(response_line.as_bytes())
-            .expect("write daemon response");
-        writer.flush().expect("flush daemon response");
+
+        for _ in 0..2 {
+            let mut line = String::new();
+            reader.read_line(&mut line).expect("read request");
+            let request: protocol::DaemonRequest =
+                serde_json::from_str(&line).expect("parse daemon request");
+            let response = match request.method.as_str() {
+                protocol::method::GET_RUNTIME_SESSION_SNAPSHOT => snapshot_response.clone(),
+                protocol::method::COORDINATION_RECONCILE_LIVE_PRESENCE => {
+                    let params = serde_json::from_value(request.params)
+                        .expect("parse live presence reconciliation params");
+                    let response = match crate::daemon::state_writes::reconcile_live_presence(
+                        &state, params,
+                    ) {
+                        Ok(result) => protocol::DaemonResponse::ok(&request.id, result),
+                        Err(error) => protocol::DaemonResponse::err(
+                            &request.id,
+                            "LIVE_PRESENCE_RECONCILE_FAILED",
+                            error.to_string(),
+                        ),
+                    };
+                    serde_json::to_value(response).expect("serialize live presence response")
+                }
+                method => serde_json::to_value(protocol::DaemonResponse::err(
+                    &request.id,
+                    "UNKNOWN_METHOD",
+                    format!("Unknown method: {method}"),
+                ))
+                .expect("serialize unknown method response"),
+            };
+            let mut response = response;
+            if let Some(map) = response.as_object_mut() {
+                map.insert("id".to_string(), serde_json::Value::String(request.id));
+            }
+            let response_line = format!(
+                "{}\n",
+                serde_json::to_string(&response).expect("serialize daemon response")
+            );
+            writer
+                .write_all(response_line.as_bytes())
+                .expect("write daemon response");
+            writer.flush().expect("flush daemon response");
+        }
     });
 
     StubDaemon {
@@ -4074,7 +4103,10 @@ fn live_status_uses_lightweight_presence_reconcile_without_heavy_daemon_calls() 
 fn live_status_provider_snapshot_yields_to_current_pane_loss() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
+    let state = Arc::new(test_state_with_runtime(
+        tmp.path().to_path_buf(),
+        runtime.clone(),
+    ));
     initialize_team_pipeline_test_fixture(
         &state,
         None,
@@ -4180,10 +4212,13 @@ fn live_status_provider_snapshot_yields_to_current_pane_loss() {
         .expect("decode runtime snapshot payload");
     assert_eq!(decoded_snapshot.runtime_sessions.len(), 3);
 
-    let daemon = start_stub_daemon(serde_json::json!({
-        "result": snapshot_payload,
-        "error": null
-    }));
+    let daemon = start_live_status_stub_daemon(
+        serde_json::json!({
+            "result": snapshot_payload,
+            "error": null
+        }),
+        state.clone(),
+    );
     let provider = ProviderState {
         local: taurhaus_lib::provider::local::LocalProvider,
         daemon: Some(
@@ -4193,9 +4228,9 @@ fn live_status_provider_snapshot_yields_to_current_pane_loss() {
         wsl_distro: None,
     };
 
-    // Regression: provider-backed live status trusted a stale daemon runtime
-    // snapshot and kept pane-loss members active, so the runtime bar stayed on
-    // "Team running normally" and exposed Add Agent instead of degraded actions.
+    // Regression: d593f81b moved presence writes behind the daemon without
+    // teaching this provider-backed path to observe the daemon's reconciliation
+    // result, so pane-loss members stayed active in the returned roster.
     let status = coordination_get_live_team_status_impl(
         &state,
         Some(&provider),
