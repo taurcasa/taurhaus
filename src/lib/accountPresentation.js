@@ -3,7 +3,7 @@ import { liveUsageWindows, windowPressure } from './usageWindows.js'
 const LAST_KNOWN_AFTER_MS = 15 * 60 * 1000
 
 /** Match a backend-reported selector value to its detected account directory. */
-export function accountForSelectorValue(value, accounts = []) {
+function accountForSelectorValue(value, accounts = []) {
   const dir = String(value ?? '')
   if (!dir) return null
   if (dir.startsWith('~/')) {
