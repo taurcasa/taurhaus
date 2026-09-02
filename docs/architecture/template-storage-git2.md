@@ -33,6 +33,7 @@ Rationale:
 
 ### Built-in template tracking decision
 - Built-ins remain bundled in `src-tauri/resources/templates/` and are treated as read-only defaults.
+- Built-in reads converge in `TemplateStore`: catalog/list operations scan the bundled role and preset directories, direct lookups probe `<id>.yaml`, reconciliation reads bundled presets, and lazy git initialization copies missing bundled YAML into app data. Before the packaged manifest was introduced, each of those paths trusted every YAML present in the installed resource directories, so an upgrade-leftover file could be listed and seeded again.
 - The git-backed app-data repository tracks only user-authored templates and user overrides.
 - Editing a built-in creates/updates a user override file in `app_data_dir()/templates/...` and commits that override.
 - Rationale: app upgrades can change bundled defaults; committing bundled files into user history would create noisy, version-coupled churn.
