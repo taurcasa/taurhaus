@@ -5,11 +5,13 @@
 import {
   getSettings,
   launchCliSession,
+  listAccountRelationships,
   listAccounts,
   refreshAccountsUsage,
   resolveLaunchAccount,
   resolveLaunchBases,
   setProjectAccount,
+  setGlobalDefaultAccount,
 } from './ipc.js'
 import { toolDescriptor, tools } from './toolRegistry.js'
 import { exhaustedUsage } from './usageWindows.js'
@@ -22,6 +24,8 @@ const EMPTY_STATE = Object.freeze({
   degraded: false,
   defaultAccountId: null,
   projectChoices: Object.freeze({}),
+  relationships: Object.freeze({}),
+  generation: 0,
   pending: null,
 })
 
@@ -48,6 +52,8 @@ function mutableAccountState(tool = providerTool()) {
       degraded: false,
       defaultAccountId: null,
       projectChoices: {},
+      relationships: {},
+      generation: 0,
       pending: null,
     }
   }
@@ -75,6 +81,17 @@ function usableAccount(tool, accountId) {
 
 export function setDefaultAccount(tool, accountId) {
   mutableAccountState(tool).defaultAccountId = accountId || null
+}
+
+export function setGlobalDefault(tool, accountId) {
+  const state = mutableAccountState(tool)
+  const previous = state.defaultAccountId
+  state.defaultAccountId = accountId || null
+  return Promise.resolve(setGlobalDefaultAccount(toolId(tool), accountId || null)).catch((error) => {
+    state.defaultAccountId = previous
+    console.warn('Failed to set the global account default:', error)
+    throw error
+  })
 }
 
 function memoryFor(project, tool) {
@@ -174,6 +191,8 @@ export function rememberChoice(projectOrId, tool, accountId) {
 
 const detections = new Map()
 const launchBaseResolutions = new Map()
+const relationshipReads = new Map()
+const previewCache = new Map()
 const DETECTION_TTL_MS = 60_000
 const USAGE_SYNC_INITIAL_RETRY_MS = 250
 const USAGE_SYNC_MAX_RETRY_MS = 16_000
@@ -232,6 +251,24 @@ export function refreshAccounts(tool = providerTool(), { force = false } = {}) {
   }
   const promise = detectAccounts(id)
   detections.set(id, { startedAt: Date.now(), promise })
+  return promise
+}
+
+export function refreshAccountRelationships(tool = providerTool(), { force = false } = {}) {
+  const id = toolId(tool)
+  const current = relationshipReads.get(id)
+  if (!force && current && Date.now() - current.startedAt < DETECTION_TTL_MS) {
+    return current.promise
+  }
+  const promise = Promise.resolve(listAccountRelationships(id))
+    .then((result) => {
+      mutableAccountState(id).relationships = result?.byAccount ?? {}
+    })
+    .catch((error) => {
+      relationshipReads.delete(id)
+      console.warn('Failed to load account relationships:', error)
+    })
+  relationshipReads.set(id, { startedAt: Date.now(), promise })
   return promise
 }
 
@@ -331,6 +368,7 @@ function detectAccounts(tool) {
       return
     }
     state.accounts = keepKnownUsage(state, addressableAccounts(report?.accounts ?? []))
+    state.generation += 1
     state.degraded = false
   })
   const settings = Promise.resolve(getSettings())
@@ -347,6 +385,43 @@ function detectAccounts(tool) {
     state.degraded = true
     detections.delete(tool)
   })
+}
+
+/**
+ * Cached passive account truth for hover/visible surfaces.
+ *
+ * Hidden surfaces never issue IPC. Once visible, the backend answer is held
+ * only for this account generation; a successful detection invalidates it by
+ * changing the key without a global cache sweep.
+ */
+export async function previewAccount(project, tool = providerTool(), {
+  visible = false,
+  mode = 'fresh',
+} = {}) {
+  if (!project?.id) return null
+  const id = toolId(tool)
+  const state = mutableAccountState(id)
+  const key = `${project.id}:${id}:${mode}:${state.generation}`
+  if (previewCache.has(key)) return previewCache.get(key)
+  if (!visible) return null
+
+  const pending = Promise.resolve(resolveLaunchAccount(project.id, id, mode))
+    .then((placed) => {
+      const accountId = placed?.accountId ?? placed?.account_id ?? null
+      return {
+        accountId,
+        account: state.accounts.find((account) => account.id === accountId) ?? null,
+        origin: placed?.source ?? placed?.origin ?? 'default_config_dir',
+        needsChoice: placed?.needsChoice ?? placed?.needs_choice ?? false,
+      }
+    })
+    .catch((error) => {
+      previewCache.delete(key)
+      console.warn('Failed to preview the launch account:', error)
+      return null
+    })
+  previewCache.set(key, pending)
+  return pending
 }
 
 const HISTORY_MODES = new Set(['resume', 'continue'])
@@ -508,8 +583,12 @@ export function resetAccountsForTest() {
     state.degraded = false
     state.defaultAccountId = null
     state.projectChoices = {}
+    state.relationships = {}
+    state.generation = 0
     state.pending = null
   }
   detections.clear()
   launchBaseResolutions.clear()
+  relationshipReads.clear()
+  previewCache.clear()
 }
