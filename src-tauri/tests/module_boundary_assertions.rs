@@ -900,7 +900,6 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         "MemberRuntimeStore::delete(",
         "MemberRuntimeStore::update(",
         "MemberRuntimeStore::cleanup_stale(",
-        "reconcile_team_presence_for_live_status(",
         "reconcile_team_presence_for_live_status_with_runtime_sessions(",
     ];
 

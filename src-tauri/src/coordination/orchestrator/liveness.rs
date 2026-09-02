@@ -18,19 +18,6 @@ use super::helpers::{team_is_self_heal_candidate, team_should_ensure_daemon};
 use super::{CoordinationOrchestrator, TeamSelfHealResult};
 
 impl CoordinationOrchestrator {
-    /// Reconcile only pane-backed presence drift for live-status reads.
-    ///
-    /// This keeps UI polling on a cheap path: it updates members that have
-    /// clearly gone offline (missing/dead/shell pane) without performing the
-    /// heavier daemon discovery/restart work from full liveness reconciliation.
-    pub fn reconcile_team_presence_for_live_status(
-        &mut self,
-        team_name: &str,
-    ) -> Result<(), CoordinationError> {
-        self.reconcile_team_presence_for_live_status_with_runtime_sessions(team_name, &[])?;
-        Ok(())
-    }
-
     /// Reconcile pane-backed presence drift for live-status reads, including
     /// daemon runtime snapshots that may still advertise stale members.
     pub fn reconcile_team_presence_for_live_status_with_runtime_sessions(
