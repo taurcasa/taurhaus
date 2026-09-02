@@ -1,7 +1,7 @@
 <script>
   import UsageMeter from './UsageMeter.svelte'
   import { themeTokens } from '../themeTokens.js'
-  import { exhaustedUsage, liveUsageWindows } from '../usageWindows.js'
+  import { exhaustedUsage, liveUsageWindows, windowPressure } from '../usageWindows.js'
 
   let {
     tool,
@@ -40,15 +40,13 @@
   const actionTone = $derived(
     dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700'
   )
+  // The dot reads the same pressure the meter bars paint, so one account cannot
+  // be emerald here and amber one column across.
   const healthTone = $derived.by(() => {
     if (!account?.logged_in || exhaustedUsage(account?.usage)) return 'bg-rose-500'
-    const worst = Math.max(
-      0,
-      ...liveUsageWindows(account?.usage?.windows).map(
-        (window) => Number(window.used_percentage ?? window.usedPercentage) || 0
-      )
-    )
-    if (worst >= 80) return 'bg-amber-500'
+    const pressures = liveUsageWindows(account?.usage?.windows).map(windowPressure)
+    if (pressures.includes('critical')) return 'bg-rose-500'
+    if (pressures.includes('warning')) return 'bg-amber-500'
     return 'bg-emerald-500'
   })
   let revealError = $state(null)
@@ -75,7 +73,7 @@
   >
     <span class="min-w-0">
       <span class="flex items-center gap-2">
-        <span class="h-2 w-2 shrink-0 rounded-full {healthTone}"></span>
+        <span class="h-2 w-2 shrink-0 rounded-full {healthTone}" data-testid="account-health-dot"></span>
         <span class="truncate text-[12px] font-semibold {t.textPrimary}">{label}</span>
         {#if isDefault}
           <span class="rounded-full bg-brand-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-brand-500">Default</span>

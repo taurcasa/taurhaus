@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { compactSelection, exhaustedUsage, resetLabel } from './usageWindows.js'
+import {
+  compactSelection,
+  exhaustedUsage,
+  resetLabel,
+  windowPressure,
+} from './usageWindows.js'
 
 /** A fixed clock: a window is only spent while it is still the live one. */
 const NOW = Date.parse('2026-08-30T09:00:00Z')
@@ -137,5 +142,19 @@ describe('resetLabel', () => {
   it('always carries the clock time', () => {
     expect(resetLabel(inSeconds(3 * 3600), NOW)).toMatch(/\d{1,2}:\d{2}/)
     expect(resetLabel(inSeconds(40 * 3600), NOW)).toMatch(/\d{1,2}:\d{2}/)
+  })
+})
+
+describe('windowPressure', () => {
+  // Regression: 186f19a2 let the meter bar read provider severity while the
+  // account row read percentage, so one window could be amber in one surface
+  // and emerald in the other.
+  it('is one reading of severity and percentage together', () => {
+    expect(windowPressure({ used_percentage: 50, severity: 'warning' })).toBe('warning')
+    expect(windowPressure({ used_percentage: 95, severity: 'critical' })).toBe('critical')
+    expect(windowPressure({ used_percentage: 85, severity: 'normal' })).toBe('warning')
+    expect(windowPressure({ used_percentage: 100 })).toBe('critical')
+    expect(windowPressure({ usedPercentage: 12 })).toBe('normal')
+    expect(windowPressure(null)).toBe('normal')
   })
 })

@@ -21,6 +21,23 @@ export function compactSelection(windows) {
   return windows.slice(0, 2)
 }
 
+/**
+ * How hard one window presses, as every surface must read it.
+ *
+ * A provider's `severity` and its percentage are independent claims: Claude
+ * passes an API severity through whatever the reading says, and other providers
+ * send no severity at all. Neither alone answers "is this account under
+ * pressure", so the bar, the account row's health dot and the ambient badge
+ * take the worse of the two rather than each picking one.
+ */
+export function windowPressure(window) {
+  const used = Number(window?.used_percentage ?? window?.usedPercentage)
+  const severity = String(window?.severity ?? '')
+  if (severity === 'critical' || used >= 100) return 'critical'
+  if (severity === 'warning' || used >= 80) return 'warning'
+  return 'normal'
+}
+
 /** The rule the meters draw by: a window past its own reset is no longer live. */
 function hasReset(window, now) {
   const resetsAt = window?.resets_at ?? window?.resetsAt

@@ -176,6 +176,32 @@ describe('AccountsHome', () => {
     expect(work.querySelector('.bg-rose-500')).not.toBeInTheDocument()
   })
 
+  // Regression: 186f19a2 narrowed the row dot and the auto-expand to
+  // percentage and exhaustion, so a provider severity that disagreed with the
+  // percentage painted the meter bar and lit the ambient badge while the row
+  // stayed emerald and collapsed.
+  it('reads provider severity for the row health dot and auto-expansion', () => {
+    const accountStates = states()
+    const window = (used, severity) => ({
+      ...usage(used),
+      windows: [{ ...usage(used).windows[0], used_percentage: used, severity }],
+    })
+    accountStates.claude.accounts = [
+      account('personal', { usage: window(50, 'warning') }),
+      account('work', { usage: window(95, 'critical') }),
+    ]
+
+    render(AccountsHome, { props: { states: accountStates, projects: [] } })
+
+    const personal = screen.getByTestId('account-row-personal')
+    expect(within(personal).getByTestId('account-health-dot')).toHaveClass('bg-amber-500')
+    expect(within(personal).queryByTestId('account-row-details')).not.toBeInTheDocument()
+
+    const work = screen.getByTestId('account-row-work')
+    expect(within(work).getByTestId('account-health-dot')).toHaveClass('bg-rose-500')
+    expect(within(work).getByTestId('account-row-details')).toBeInTheDocument()
+  })
+
   // Regression: faffe345 auto-expanded unhealthy rows from the same reactive
   // set the disclosure changed, so collapsing one immediately expanded it again.
   it('lets the user collapse an unhealthy row after its initial auto-expand', async () => {

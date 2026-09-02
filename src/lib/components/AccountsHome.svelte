@@ -16,7 +16,7 @@
   import { baseCommandSelection } from '../accountPresentation.js'
   import { tools } from '../toolRegistry.js'
   import { themeTokens } from '../themeTokens.js'
-  import { exhaustedUsage } from '../usageWindows.js'
+  import { exhaustedUsage, liveUsageWindows, windowPressure } from '../usageWindows.js'
 
   let {
     dark = false,
@@ -67,8 +67,13 @@
     return states?.[tool] ?? accountState(tool)
   }
 
+  // Auto-expansion follows the row's own health dot: a window the provider
+  // called critical opens the row even before the percentage reaches its limit.
   function unhealthy(account) {
-    return !account?.logged_in || exhaustedUsage(account?.usage) !== null
+    if (!account?.logged_in || exhaustedUsage(account?.usage) !== null) return true
+    return liveUsageWindows(account?.usage?.windows).some(
+      (window) => windowPressure(window) === 'critical'
+    )
   }
 
   $effect(() => {

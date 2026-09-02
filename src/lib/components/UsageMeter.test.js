@@ -336,6 +336,32 @@ describe('UsageMeter', () => {
     expect(screen.getByText('82% used')).toBeInTheDocument()
   })
 
+  // Regression: 186f19a2 painted the bar from provider severity alone while the
+  // account row read percentage, so a window past 80% that the provider left
+  // `normal` drew a calm bar beside an amber health dot.
+  it('paints pressure the account row agrees with when severity says nothing', () => {
+    render(UsageMeter, {
+      props: {
+        tool: 'claude',
+        usage: {
+          status: 'ok',
+          observed_at: new Date(NOW - 60_000).toISOString(),
+          windows: [
+            {
+              key: 'weekly',
+              title: 'Current week',
+              used_percentage: 85,
+              resets_at: Math.floor((NOW + 3 * 86400_000) / 1000),
+              severity: 'normal',
+            },
+          ],
+        },
+      },
+    })
+
+    expect(screen.getByTestId('usage-bar-weekly')).toHaveClass('bg-amber-500')
+  })
+
   it('renders two scoped weekly windows even when a provider repeats its raw kind', () => {
     // Regression: c11770e passed `weekly_scoped` through as every scoped
     // window's key, so Svelte raised each_key_duplicate and removed the meter.

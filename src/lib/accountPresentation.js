@@ -1,4 +1,4 @@
-import { liveUsageWindows } from './usageWindows.js'
+import { liveUsageWindows, windowPressure } from './usageWindows.js'
 
 const LAST_KNOWN_AFTER_MS = 15 * 60 * 1000
 
@@ -71,10 +71,7 @@ function accountDanger(account) {
 
 function warningWindow(account, now) {
   return liveWindows(account?.usage, now)
-    .filter((window) => {
-      const used = Number(window?.used_percentage ?? window?.usedPercentage)
-      return used >= 80 || window?.severity === 'warning' || window?.severity === 'critical'
-    })
+    .filter((window) => windowPressure(window) !== 'normal')
     .sort(
       (left, right) =>
         Number(right?.used_percentage ?? right?.usedPercentage) -

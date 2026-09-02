@@ -1,5 +1,5 @@
 <script>
-  import { compactSelection, liveUsageWindows, resetLabel } from '../usageWindows.js'
+  import { compactSelection, liveUsageWindows, resetLabel, windowPressure } from '../usageWindows.js'
   import { usageIsLastKnown } from '../accountPresentation.js'
 
   let {
@@ -76,8 +76,9 @@
   }
 
   function barTone(window) {
-    if (window.severity === 'critical') return dark ? 'bg-rose-400/80' : 'bg-rose-500'
-    if (window.severity === 'warning') return dark ? 'bg-amber-400/80' : 'bg-amber-500'
+    const pressure = windowPressure(window)
+    if (pressure === 'critical') return dark ? 'bg-rose-400/80' : 'bg-rose-500'
+    if (pressure === 'warning') return dark ? 'bg-amber-400/80' : 'bg-amber-500'
     return dark ? 'bg-brand-400/80' : 'bg-brand-500'
   }
 
