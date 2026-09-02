@@ -62,6 +62,33 @@ Once those three are clear, add the workflow fields that tell the role how to op
 - `inherits_from`: the parent role when this role is a specialization or variant
 - `required_artifacts`: what outputs the role is expected to produce
 
+## Work Kinds Scale The Ceremony
+
+Every role names the work kinds it primarily performs and links the shared
+[team delivery standard](team-delivery-standard.md). The five work kinds are:
+
+- `measure`: the measurement is the artifact; no commit, screenshot, or quoted-copy ceremony by default
+- `diagnose`: produce a reproducible cause statement and focused evidence; do not change production behavior without authority
+- `implement`: commit the behavior and its focused proof; use red-first for behavior and regression risk
+- `review`: return numbered, standalone findings followed by the assigned score table
+- `spec-delta`: make a small committed packet or specification correction, accepted by the named acceptance owner
+
+Assignments select the work kind and use the standard's five-line contract:
+objective, deliverable, first action, completion signal, and review route. The
+committed packet remains the specification, so role templates should keep their
+focus and behavioral identity without copying shared per-task ceremony into
+their instructions.
+
+Review depth follows the surface, not the role name. A declared hero surface
+gets two independent reviews; other surfaces get one, and a spec-delta needs no
+review beyond its acceptance owner. Deadlines and model effort remain optional
+overrides; see [Optional deadline and effort overrides](team-delivery-standard.md#optional-deadline-and-effort-overrides)
+for what setting a deadline actually buys.
+
+Each surface also names one accountable implementer and one acceptance owner.
+State cross-surface seams and commit authority in the review route so handoffs
+are decided before work starts rather than discovered in the shared tree.
+
 ## What A Good Role Definition Looks Like
 
 A strong role definition is concise and lane-specific:

@@ -1276,32 +1276,16 @@ mod tests {
             );
 
             let communication = role.communication_style.as_deref().unwrap_or_default();
-            for mark in [
-                "objective",
-                "exact deliverable",
-                "concrete first action",
-                "completion signal",
-                "explicit response expectation",
-                "ACTION REQUIRED:",
-                "INFO ONLY:",
-                "no response needed",
-            ] {
-                assert!(
-                    communication.contains(mark),
-                    "role '{}' communication_style is missing '{mark}'",
-                    role.role_id
-                );
-            }
+            assert!(
+                !communication.trim().is_empty(),
+                "role '{}' should preserve its communication identity",
+                role.role_id
+            );
 
             let gates = role.quality_gates.as_deref().unwrap_or_default().join("\n");
             assert!(
-                gates.contains("`just check-quick`"),
-                "role '{}' should carry the per-task gate",
-                role.role_id
-            );
-            assert!(
-                gates.contains("Never run full `just check` as an agent"),
-                "role '{}' should carry the serialized full-gate boundary",
+                gates.contains("`docs/team-delivery-standard.md`"),
+                "role '{}' should defer shared ceremony to the delivery standard",
                 role.role_id
             );
 
@@ -1311,8 +1295,8 @@ mod tests {
                 .unwrap_or_default()
                 .join("\n");
             assert!(
-                done.contains("review-ready handoff"),
-                "role '{}' should require a review-ready handoff",
+                !done.trim().is_empty(),
+                "role '{}' should define its role-specific completion condition",
                 role.role_id
             );
 
@@ -1348,15 +1332,193 @@ mod tests {
                     role.role_id
                 );
             } else {
+                let contract = format!(
+                    "{}\n{}",
+                    role.instructions,
+                    role.behavioral_contract.communication.join("\n")
+                );
+                assert!(
+                    contract.contains("RESULT <id>") && contract.contains("BLOCKED <id> <reason>"),
+                    "lead role '{}' should recognize the managed-stage completion signals",
+                    role.role_id
+                );
                 assert!(
                     role.instructions
                         .contains("one active assignment per member")
                         && role.instructions.contains("uptake")
-                        && role.instructions.contains("deadline"),
+                        && role.instructions.contains("optional overrides"),
                     "lead role '{}' should carry the bounded stage contract",
                     role.role_id
                 );
             }
+        }
+    }
+
+    #[test]
+    fn every_canonical_role_references_the_team_delivery_standard() {
+        for role in load_role_templates() {
+            assert!(
+                role.instructions.contains("docs/team-delivery-standard.md"),
+                "canonical role '{}' must link the shared delivery standard from its instructions",
+                role.role_id
+            );
+            assert!(
+                role.instructions.contains("Primary:"),
+                "canonical role '{}' must name its primary work kinds",
+                role.role_id
+            );
+            assert!(
+                !role
+                    .instructions
+                    .contains("Every assignment sets a deadline")
+                    && !role.instructions.contains("--why"),
+                "canonical role '{}' still mandates retired assignment ceremony",
+                role.role_id
+            );
+        }
+    }
+
+    // Regression: d662df09 moved the assignment and messaging contract out of
+    // every role, but the new standard omitted the live message-prefix rules.
+    // Regression: d143dfd2 made CLAUDE.md defer those shared conventions but
+    // left AGENTS.md's competing checklist and prefixes intact.
+    #[test]
+    fn delivery_standard_owns_shared_assignment_message_and_gate_conventions() {
+        let standard = include_str!("../../../docs/team-delivery-standard.md");
+
+        for marker in [
+            "Objective:",
+            "Deliverable:",
+            "First action:",
+            "Completion signal:",
+            "Review route:",
+            "response expectation",
+            "ACTION REQUIRED:",
+            "INFO ONLY:",
+            "no response needed",
+            "per-task gate",
+            "full serialized gate",
+        ] {
+            assert!(
+                standard.contains(marker),
+                "team delivery standard should own the shared convention '{marker}'"
+            );
+        }
+
+        for (name, repository_instructions) in [
+            ("CLAUDE.md", include_str!("../../../CLAUDE.md")),
+            ("AGENTS.md", include_str!("../../../AGENTS.md")),
+        ] {
+            assert!(
+                repository_instructions.contains("### Assignment Contract"),
+                "{name} should point to the standard under an assignment-contract heading"
+            );
+            for competing in [
+                "Assignment Checklist (Mandatory)",
+                "Objective in one sentence",
+                "Explicit response expectation",
+                "- `ACTION REQUIRED:`",
+                "- `INFO ONLY:`",
+            ] {
+                assert!(
+                    !repository_instructions.contains(competing),
+                    "{name} should not restate shared convention '{competing}'"
+                );
+            }
+        }
+    }
+
+    // Regression: d662df09 made a taurhaus-relative documentation path the
+    // only source of the delivery contract for roles exported to other repos
+    // and removed discoverability of the repository's named per-task gate.
+    #[test]
+    fn canonical_role_delivery_contract_survives_repo_boundaries() {
+        for role in load_role_templates() {
+            for marker in [
+                "measure",
+                "diagnose",
+                "implement",
+                "review",
+                "spec-delta",
+                "objective",
+                "deliverable",
+                "first action",
+                "completion signal",
+                "review route",
+            ] {
+                assert!(
+                    role.instructions.contains(marker),
+                    "canonical role '{}' should carry portable delivery marker '{marker}'",
+                    role.role_id
+                );
+            }
+            assert!(
+                role.instructions.contains("If the file is unavailable"),
+                "canonical role '{}' should say how to recover an unavailable standard",
+                role.role_id
+            );
+            assert!(
+                role.instructions.contains("repository's own instructions")
+                    && role.instructions.contains("named per-task gate"),
+                "canonical role '{}' should direct members to the repository's named per-task gate",
+                role.role_id
+            );
+        }
+    }
+
+    // Regression: d662df09 removed the report-format definitions while four
+    // behavioral/compaction fields kept requiring those retired formats.
+    #[test]
+    fn canonical_role_runtime_surfaces_do_not_require_retired_ceremony() {
+        for role in load_role_templates() {
+            let runtime = role.runtime_compact_summary.as_ref();
+            let runtime_surfaces = format!(
+                "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+                role.behavioral_contract.communication.join("\n"),
+                role.behavioral_contract.execution.join("\n"),
+                role.behavioral_contract.escalation.join("\n"),
+                runtime
+                    .map(|summary| summary.role_purpose.as_str())
+                    .unwrap_or_default(),
+                runtime
+                    .map(|summary| summary.keep_doing.join("\n"))
+                    .unwrap_or_default(),
+                runtime
+                    .map(|summary| summary.workflow_sequence.join("\n"))
+                    .unwrap_or_default(),
+                runtime
+                    .map(|summary| summary.avoid.join("\n"))
+                    .unwrap_or_default(),
+                runtime
+                    .map(|summary| summary.escalate_when.join("\n"))
+                    .unwrap_or_default(),
+            );
+            for retired in ["labeled shape", "CHANGED, VERIFIED", "within ten minutes"] {
+                assert!(
+                    !runtime_surfaces.contains(retired),
+                    "canonical role '{}' still requires retired ceremony '{retired}'",
+                    role.role_id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn canonical_leads_remain_pure_coordination_lanes() {
+        for role in load_role_templates()
+            .into_iter()
+            .filter(|role| role.kind == RoleKind::Lead)
+        {
+            assert!(
+                !role
+                    .instructions
+                    .contains("unless all team members are occupied")
+                    && !role
+                        .instructions
+                        .contains("unless a task is trivially small"),
+                "lead role '{}' still permits implementation drift",
+                role.role_id
+            );
         }
     }
 

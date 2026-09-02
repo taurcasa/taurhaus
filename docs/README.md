@@ -83,6 +83,7 @@ Documentation for the multi-agent team orchestration feature.
 |----------|-------------|
 | [Coordination architecture](coordination-architecture.md) | Backend design, domain model, design decisions |
 | [Mesh feature guide](features/mesh.md) | User-facing setup, runtime, recovery, and team actions |
+| [Team delivery standard](team-delivery-standard.md) | Work-kind defaults, assignment contract, message conventions, and result artifacts |
 | [Team templates guide](team-templates.md) | Role/preset templates, composition flow, history, diff, and revert |
 
 ## Security

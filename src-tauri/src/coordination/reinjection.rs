@@ -945,7 +945,7 @@ mod tests {
         assert_ne!(architect_rendered, lead_rendered);
 
         assert!(developer_rendered.contains(
-            "Role purpose: Build one user-visible behavior with real data; report in the labeled shape."
+            "Role purpose: Build one user-visible behavior with real data and a compact evidence-backed result."
         ));
         assert!(architect_rendered.contains(
             "Role purpose: Architecture review — structural coherence, functional honesty, and complexity justification."

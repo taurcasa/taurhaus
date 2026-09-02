@@ -37,21 +37,90 @@ const DEFAULT_DEBOUNCE_WINDOW_SECS: i64 = 30;
 const FALLBACK_LOCK_RETRY_DELAY_MS: u64 = 20;
 const FALLBACK_LOCK_RETRY_ATTEMPTS: usize = 250;
 const TEMP_FILE_RANDOM_RETRY_ATTEMPTS: usize = 16;
-const BUILTIN_CATALOG_REVISION: u32 = 1;
+const BUILTIN_CATALOG_REVISION: u32 = 3;
 
 const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n.lock.fallback\n";
 
-// Exact SHA-256 fingerprints of template bytes shipped from 0.4.5 (the first
-// bundled catalog) through 0.8.5. A file must match both an old path and known
-// shipped bytes before the catalog migration may remove it; locally edited
-// copies remain user-owned.
+// Exact SHA-256 fingerprints of superseded template bytes shipped since 0.4.5
+// (the first bundled catalog). A file must match both an old path and known
+// shipped bytes before the catalog migration may replace or remove it; locally
+// edited copies remain user-owned.
 //
 // Forward contract: `seed_builtins_if_missing` re-copies the current bundle
 // into the user store on every mutation path, so reconciliation alone does NOT
 // keep already-migrated stores clean. Every future bundled-template edit must
 // bump `BUILTIN_CATALOG_REVISION` and append the superseded bytes'
 // fingerprints here.
+// Revision 2 was an in-branch iteration of the v2 catalog that never shipped,
+// so no fingerprint block exists for it; the recorded supersession below moves
+// stores directly from revision 1 bytes to the current revision.
 const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
+    // Role catalog v2 superseded bytes. These exact fingerprints let an
+    // unmodified seeded catalog advance while preserving local role edits.
+    (
+        "roles/adversarial-reviewer-claude.yaml",
+        "2310c346d6153fe5c3676e7cd3955c233c2737c8c5c00aeb6c547f19b3a12c54",
+    ),
+    (
+        "roles/antigravity-orchestrator.yaml",
+        "f31535fb94dcb09ab95e33991d8c75b19a8e4f7864273f6af1b610ee23648665",
+    ),
+    (
+        "roles/claude-design-lead.yaml",
+        "041e8308981059ceac04fa28c11c56e20c890195bc33e0baf3a877530ae63b3a",
+    ),
+    (
+        "roles/claude-product-checker.yaml",
+        "6511e2667ffd9f312670fc9e484f840ed7c2a2206d39572b180ab255651bf01d",
+    ),
+    (
+        "roles/claude-researcher.yaml",
+        "bb91b8e7a343806e2442351a0b8adcc001db156b5bdd2685cd67ab932be19634",
+    ),
+    (
+        "roles/codex-orchestrator.yaml",
+        "c1bceca521e650cb950c8ec96aa32074c796885529922ba506d3f14f88ac352b",
+    ),
+    (
+        "roles/codex-qa.yaml",
+        "61acf9b5a6840cbf0aeb6c0a1119cc9984bee20ca561cb37fd96899f9eeadffd",
+    ),
+    (
+        "roles/docs-verifier-codex.yaml",
+        "48d337dd5789990145c9099915908b0e33a72bf4b0ef3ad2b24f7fa85ec3e7c9",
+    ),
+    (
+        "roles/frontend-design-skill-developer.yaml",
+        "d94b175e41be45e0f3ada122fbf203797bc0becb706ebb5e6e37600b8ecbc024",
+    ),
+    (
+        "roles/quick-dev-codex.yaml",
+        "11ac612adea02bb15ff5d4e8eed89e5e02a1fafa9e3ab45280928c4e4440edd8",
+    ),
+    (
+        "roles/v3-architect-codex.yaml",
+        "6c88bebf37e6f0b92243b8d0bb89863a329a698d4ca8af4d1411dd059c3e2f59",
+    ),
+    (
+        "roles/v3-lead-claude.yaml",
+        "8623afce3d973d3d3d3a24ba8645f8b625ca3584478647e7639be4c88beda264",
+    ),
+    (
+        "roles/v4-developer-agy.yaml",
+        "4fb9543656526636f9b042649b6cea53c38b745abca5115351b5fdb4291f4d76",
+    ),
+    (
+        "roles/v4-developer-claude.yaml",
+        "7ee89cbccd43353d623f734bd52dc22941e455a9836e4f34df2f632ee48d0c19",
+    ),
+    (
+        "roles/v4-developer-codex.yaml",
+        "b0a6927bbc6649a8c11301b286655ec0e1f8de690fefdf2b512f33462adf8ed8",
+    ),
+    (
+        "roles/v4-developer-grok.yaml",
+        "77fc1ab71ac69b8d5fef1cd0efa442d9929e1cf3afa54e810b0647fb39a33693",
+    ),
     (
         "presets/dev-team.yaml",
         "0b21738499d30483be03427845cca63da1bd399caf4431d634790876749f28ed",

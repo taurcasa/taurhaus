@@ -34,18 +34,18 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 
 Use these conventions for day-to-day team messaging. This section is operational guidance, not a protocol schema.
 
-### Assignment Checklist (Mandatory)
+### Assignment Contract
 
-- Objective in one sentence.
-- Exact deliverable path or output contract.
-- Concrete first action (imperative verb + specific file/path).
-- Completion signal: "mark task complete and report".
-- Explicit response expectation (`no_response_needed` where applicable).
+Use the five-line assignment contract in
+[`docs/team-delivery-standard.md`](docs/team-delivery-standard.md). That standard
+owns the objective, deliverable, first action, completion signal, and review
+route; this file adds no competing assignment fields.
 
 ### Message Prefix Convention
 
-- `ACTION REQUIRED:` for messages that require immediate execution.
-- `INFO ONLY:` for context that does not need a response; end with "no response needed".
+Use the [message conventions in the team delivery
+standard](docs/team-delivery-standard.md#message-conventions). This repository
+adds no alternate prefixes or response-expectation rules.
 
 ### Anti-Pattern Rules
 
@@ -309,6 +309,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/templates/storage/` | Template git/storage domain split (`roles`, `presets`, `git`, `state`). |
 | `docs/coordination-architecture.md` | Coordination subsystem decisions, milestones, and status |
 | `ARCHITECTURE.md` | System architecture overview and module map |
+| `docs/team-delivery-standard.md` | Shared work-kind defaults, five-line assignment contract, message conventions, and result artifacts |
 | `docs/team-templates.md` | User guide for template authoring/composition/history workflows |
 | `docs/testing-guide.md` | Visual testing lane boundaries, usage, and screenshot conventions. |
 | `docs/images/system-architecture.jpg` | System architecture infographic |
