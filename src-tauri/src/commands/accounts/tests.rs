@@ -1,6 +1,8 @@
 use super::*;
 use crate::db::queries;
-use crate::session_scanner::accounts::{install_detection_override, AccountScan};
+use crate::session_scanner::accounts::{
+    install_detection_override, AccountIdentity, AccountScan,
+};
 use std::path::Path;
 use std::sync::Mutex;
 use tempfile::{NamedTempFile, TempDir};
@@ -96,9 +98,10 @@ fn account_relationships_reverse_index_pins_last_use_and_default_root_teams() {
         config_dir.join("config.json"),
         serde_json::to_vec(&serde_json::json!({
             "name": "wave-a",
+            "createdAt": 1_772_399_806_546_i64,
             "members": [{
                 "name": "lead",
-                "cli_tool": "claude",
+                "model": "claude-sonnet-4-5",
                 "project_path": "/home/user/projects/test-project"
             }]
         }))
@@ -112,9 +115,44 @@ fn account_relationships_reverse_index_pins_last_use_and_default_root_teams() {
     let remembered = index.by_account.get("account-2").expect("account-2");
     assert_eq!(remembered.pinned_projects.len(), 1);
     assert_eq!(remembered.last_used_projects.len(), 1);
+    // Regression: 971d964 bypassed TeamConfigStore and therefore ignored the
+    // store's legacy tool inference for otherwise valid team configs.
     let default = index.by_account.get("account-1").expect("default account");
     assert_eq!(default.teams.len(), 1);
     assert_eq!(default.teams[0].name, "wave-a");
+}
+
+#[test]
+fn registry_home_owns_default_root_teams_when_process_home_differs() {
+    let account = |id: &str, dir: &str, is_default, is_process_default| Account {
+        tool: CliTool::Claude,
+        id: id.to_string(),
+        dir: PathBuf::from(dir),
+        identity: AccountIdentity {
+            id: id.to_string(),
+            label: id.to_string(),
+            display_name: None,
+            organization: None,
+            plan: None,
+            logged_in: true,
+            usage_capable: true,
+            credential_expires_at: None,
+        },
+        is_default,
+        is_process_default,
+        usage: None,
+    };
+    let accounts = vec![
+        account("process", "/home/user/.claude", false, true),
+        account("registry", "/home/user/.claude-work", true, false),
+    ];
+
+    // Regression: 971d964 attributed teams to the process default even though
+    // managed launches pin the registry tool home.
+    assert_eq!(
+        registry_home_account_id(&accounts, Path::new("/home/user/.claude-work")).as_deref(),
+        Some("registry")
+    );
 }
 
 #[test]

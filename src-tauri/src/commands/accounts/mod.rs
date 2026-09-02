@@ -298,16 +298,14 @@ pub fn list_account_relationships(
     tool: CliTool,
 ) -> IpcResult<AccountRelationshipIndex> {
     let span = IpcCommandSpan::start("list_account_relationships");
-    let process_default = accounts_report(provider.inner(), tool)
-        .accounts
-        .into_iter()
-        .find(|account| account.is_process_default)
-        .map(|account| account.id);
+    let registry_home = crate::provider::platform_paths::PlatformPaths::tool_home(tool);
+    let report = accounts_report(provider.inner(), tool);
+    let registry_home_account = registry_home_account_id(&report.accounts, &registry_home);
     let result = account_relationships_impl(
         db.inner(),
         &crate::provider::platform_paths::PlatformPaths::teams_dir(),
         tool,
-        process_default.as_deref(),
+        registry_home_account.as_deref(),
     )
     .ipc_cmd("list_account_relationships");
     span.finish_result(&result);
@@ -318,7 +316,7 @@ pub(crate) fn account_relationships_impl(
     db: &DbState,
     teams_dir: &Path,
     tool: CliTool,
-    process_default_account_id: Option<&str>,
+    registry_home_account_id: Option<&str>,
 ) -> Result<AccountRelationshipIndex, String> {
     let conn = db.0.lock().map_err(|error| error.to_string())?;
     let mut statement = conn
@@ -362,7 +360,7 @@ pub(crate) fn account_relationships_impl(
         }
     }
 
-    if let Some(account_id) = process_default_account_id {
+    if let Some(account_id) = registry_home_account_id {
         let teams = scan_default_root_teams(teams_dir, tool, &projects_by_path);
         if !teams.is_empty() {
             index
@@ -375,66 +373,61 @@ pub(crate) fn account_relationships_impl(
     Ok(index)
 }
 
+fn registry_home_account_id(accounts: &[Account], registry_home: &Path) -> Option<String> {
+    let registry_home =
+        crate::provider::path::normalize_project_path(&registry_home.to_string_lossy());
+    accounts
+        .iter()
+        .find(|account| {
+            crate::provider::path::normalize_project_path(&account.dir.to_string_lossy())
+                == registry_home
+        })
+        .map(|account| account.id.clone())
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
 fn scan_default_root_teams(
     teams_dir: &Path,
     tool: CliTool,
     projects_by_path: &HashMap<String, (String, String)>,
 ) -> Vec<AccountTeamRelationship> {
-    let Ok(entries) = std::fs::read_dir(teams_dir) else {
+    use crate::coordination::stores::TeamConfigStore;
+
+    let Ok(team_names) = TeamConfigStore::list(teams_dir) else {
         return Vec::new();
     };
     let mut teams = Vec::new();
-    for entry in entries.flatten() {
-        let config_path = entry.path().join("config.json");
-        let Ok(raw) = std::fs::read(&config_path) else {
+    for team_name in team_names {
+        let Ok(config) = TeamConfigStore::load(teams_dir, &team_name) else {
             continue;
         };
-        let Ok(config) = serde_json::from_slice::<serde_json::Value>(&raw) else {
+        let Some(project_path) = config
+            .members
+            .iter()
+            .find(|member| member.cli_tool == tool)
+            .map(|member| member.project_path.to_string_lossy().into_owned())
+        else {
             continue;
         };
-        let members = config
-            .get("members")
-            .and_then(serde_json::Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        let matching = members.iter().filter(|member| {
-            member
-                .get("cli_tool")
-                .or_else(|| member.get("cliTool"))
-                .and_then(serde_json::Value::as_str)
-                .is_some_and(|value| value == tool.to_string())
-        });
-        let project_path = matching
-            .filter_map(|member| {
-                member
-                    .get("project_path")
-                    .or_else(|| member.get("projectPath"))
-                    .or_else(|| member.get("cwd"))
-                    .and_then(serde_json::Value::as_str)
-            })
-            .next()
-            .map(str::to_string);
-        if project_path.is_none() {
-            continue;
-        }
-        let name = config
-            .get("name")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string)
-            .or_else(|| entry.file_name().to_str().map(str::to_string))
-            .unwrap_or_else(|| "Team".to_string());
-        let project = project_path
-            .as_ref()
-            .and_then(|path| projects_by_path.get(path));
+        let project = projects_by_path.get(&project_path);
         teams.push(AccountTeamRelationship {
-            name,
+            name: config.name,
             project_id: project.map(|(id, _)| id.clone()),
             project_name: project.map(|(_, name)| name.clone()),
-            project_path,
+            project_path: Some(project_path),
         });
     }
     teams.sort_by(|left, right| left.name.cmp(&right.name));
     teams
+}
+
+#[cfg(not(feature = "mesh-bridged-backend"))]
+fn scan_default_root_teams(
+    _teams_dir: &Path,
+    _tool: CliTool,
+    _projects_by_path: &HashMap<String, (String, String)>,
+) -> Vec<AccountTeamRelationship> {
+    Vec::new()
 }
 
 #[tauri::command]
