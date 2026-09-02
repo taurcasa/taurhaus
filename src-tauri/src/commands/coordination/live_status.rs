@@ -378,8 +378,16 @@ fn call_state_write<T: serde::de::DeserializeOwned, P: serde::Serialize>(
         .daemon
         .as_ref()
         .ok_or_else(|| "daemon is unavailable".to_string())?;
-    if !daemon.is_connected() && !daemon.try_reconnect() {
-        return Err("daemon is not connected".to_string());
+    if !daemon.is_connected() {
+        if !daemon.try_reconnect() {
+            return Err("daemon is not connected".to_string());
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        if let Err(error) =
+            crate::commands::settings::repush_cached_launch_settings_to_daemon(daemon)
+        {
+            tracing::warn!(error = %error, "Failed to repush launch settings after live state-write reconnect");
+        }
     }
     let request = crate::daemon::protocol::DaemonRequest::new(
         format!("live-state-{}", uuid::Uuid::new_v4().simple()),

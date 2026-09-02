@@ -401,7 +401,8 @@ fn protocol_22_state_write_clients_use_the_coordination_timeout_and_reconnect() 
     assert!(task_sync.contains("COORDINATION_DAEMON_REQUEST_TIMEOUT"));
     assert!(!live_status.contains("Duration::from_secs(2)"));
     assert!(!task_sync.contains("Duration::from_secs(2)"));
-    assert!(live_status.contains("!daemon.is_connected() && !daemon.try_reconnect()"));
+    assert!(live_status.contains("if !daemon.is_connected()"));
+    assert!(live_status.contains("if !daemon.try_reconnect()"));
 }
 
 // Regression: d593f81b emitted one WARN for every two-second live-status poll
@@ -433,9 +434,10 @@ fn disband_team_uses_the_long_running_daemon_poll_interval() {
 }
 
 // Regression: 8bb45dab made daemon launch settings process-local but relied on
-// the health monitor to repush them. Any inline reconnect can restore the
-// cached connection without entering that recovery hook, leaving the daemon
-// effort sweep disabled for its lifetime.
+// the health monitor to repush them, and d593f81b added two protocol-22 inline
+// reconnects without that repush. Any inline reconnect can restore the cached
+// connection without entering the recovery hook, leaving the daemon effort
+// sweep disabled for its lifetime.
 #[test]
 fn inline_daemon_reconnect_paths_repush_launch_settings() {
     let coordination = include_str!("../coordination.rs");
@@ -454,6 +456,21 @@ fn inline_daemon_reconnect_paths_repush_launch_settings() {
         .split("fn tasks_from_daemon_result(")
         .next()
         .expect("task scan body");
+    let snapshot_publish = task_sync
+        .split("fn publish_operational_snapshots_through_daemon(")
+        .nth(1)
+        .expect("snapshot publication client")
+        .split("#[cfg(test)]")
+        .next()
+        .expect("snapshot publication client body");
+    let live_status = include_str!("live_status.rs");
+    let live_state_write = live_status
+        .split("fn call_state_write<")
+        .nth(1)
+        .expect("live state-write client")
+        .split("fn reconcile_live_presence_through_daemon(")
+        .next()
+        .expect("live state-write client body");
     let runtime_snapshot = include_str!("../runtime_snapshot.rs");
     let runtime_snapshot_call = runtime_snapshot
         .split("pub(crate) fn daemon_runtime_session_snapshot(")
@@ -503,6 +520,8 @@ fn inline_daemon_reconnect_paths_repush_launch_settings() {
 
     assert!(coordination_call.contains("push_launch_settings_to_daemon"));
     assert!(task_scan.contains("push_launch_settings_to_daemon"));
+    assert!(snapshot_publish.contains("repush_cached_launch_settings_to_daemon"));
+    assert!(live_state_write.contains("repush_cached_launch_settings_to_daemon"));
     assert_eq!(
         runtime_snapshot_call
             .matches("repush_cached_launch_settings_to_daemon")
