@@ -8,6 +8,7 @@ use super::*;
 
 mod core;
 mod git;
+mod manifest;
 mod presets;
 mod roles;
 

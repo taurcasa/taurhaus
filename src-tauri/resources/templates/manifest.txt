@@ -1,0 +1,22 @@
+# Closed catalog of templates shipped with this build. Paths are relative to this file.
+presets/dev-team.yaml
+presets/full-team.yaml
+presets/grok-pair.yaml
+presets/pair.yaml
+presets/research-team.yaml
+roles/adversarial-reviewer-claude.yaml
+roles/antigravity-orchestrator.yaml
+roles/claude-design-lead.yaml
+roles/claude-product-checker.yaml
+roles/claude-researcher.yaml
+roles/codex-orchestrator.yaml
+roles/codex-qa.yaml
+roles/docs-verifier-codex.yaml
+roles/frontend-design-skill-developer.yaml
+roles/quick-dev-codex.yaml
+roles/v3-architect-codex.yaml
+roles/v3-lead-claude.yaml
+roles/v4-developer-agy.yaml
+roles/v4-developer-claude.yaml
+roles/v4-developer-codex.yaml
+roles/v4-developer-grok.yaml

@@ -1537,7 +1537,7 @@ mod tests {
         assert_eq!(architect.defaults.model, "fable");
         assert!(architect
             .instructions
-            .contains("Candidates: Fable 5 (preferred) or GPT-5.6 Sol (fallback)"));
+            .contains("Candidates: Fable 5.1 (preferred) or GPT-5.6 Sol (fallback)"));
 
         let researcher = find("claude-researcher");
         assert_eq!(researcher.defaults.cli_tool, CliTool::Codex);
@@ -1557,9 +1557,9 @@ mod tests {
         let creative = find("claude-design-lead");
         assert_eq!(creative.defaults.cli_tool, CliTool::Claude);
         assert_eq!(creative.defaults.model, "fable");
-        assert!(creative
-            .instructions
-            .contains("CREATIVE DIRECTION candidates: Fable 5 (preferred) or Antigravity via agy"));
+        assert!(creative.instructions.contains(
+            "CREATIVE DIRECTION candidates: Fable 5.1 (preferred) or Antigravity via agy"
+        ));
         assert!(creative.instructions.contains("human validation required"));
 
         let implementation = find("frontend-design-skill-developer");
