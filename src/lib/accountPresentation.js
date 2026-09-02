@@ -1,3 +1,5 @@
+import { liveUsageWindows } from './usageWindows.js'
+
 const LAST_KNOWN_AFTER_MS = 15 * 60 * 1000
 
 /** Match a backend-reported selector value to its detected account directory. */
@@ -34,12 +36,7 @@ function isRelevant(account, state) {
 }
 
 function liveWindows(usage, now) {
-  return (Array.isArray(usage?.windows) ? usage.windows : []).filter((window) => {
-    const used = Number(window?.used_percentage ?? window?.usedPercentage)
-    if (!Number.isFinite(used)) return false
-    const reset = Number(window?.resets_at ?? window?.resetsAt)
-    return !Number.isFinite(reset) || reset * 1000 > now
-  })
+  return liveUsageWindows(usage?.windows, now)
 }
 
 function accountDanger(account) {

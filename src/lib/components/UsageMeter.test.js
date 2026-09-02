@@ -84,6 +84,9 @@ describe('UsageMeter', () => {
     expect(screen.getByTestId('usage-meter')).toHaveAttribute('data-last-known', 'true')
     expect(screen.getByTestId('usage-last-known')).toHaveTextContent('Last known · 16m ago')
     expect(screen.getByTestId('usage-track-weekly')).toHaveClass('border-dashed')
+    // Regression: 67fea5f hid the still-valid absolute reset time whenever the
+    // observed percentage crossed the last-known age threshold.
+    expect(screen.getByTestId('usage-reset')).toHaveTextContent('Resets')
   })
 
   it('shows the window it has when the payload carried only one', () => {

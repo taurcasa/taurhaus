@@ -15,6 +15,7 @@
   import { accountForSelectorValue } from '../accountPresentation.js'
   import { tools } from '../toolRegistry.js'
   import { themeTokens } from '../themeTokens.js'
+  import { exhaustedUsage } from '../usageWindows.js'
 
   let {
     dark = false,
@@ -66,10 +67,7 @@
   }
 
   function unhealthy(account) {
-    if (!account?.logged_in || account?.usage?.status === 'unauthorized') return true
-    return (account?.usage?.windows ?? []).some(
-      (window) => Number(window.used_percentage) >= 100 || window.severity === 'critical'
-    )
+    return !account?.logged_in || exhaustedUsage(account?.usage) !== null
   }
 
   $effect(() => {
@@ -120,12 +118,15 @@
 
   async function refreshAll() {
     await Promise.all(
-      registry.flatMap((descriptor) => [
-        refreshAccounts(descriptor.id, { force: true }),
-        refreshAccountRelationships(descriptor.id, { force: true }),
-        refreshResolvedBases(descriptor.id, { force: true }),
-        refreshUsage(descriptor.id),
-      ])
+      registry.flatMap((descriptor) => {
+        const refreshes = [
+          refreshAccounts(descriptor.id, { force: true }),
+          refreshAccountRelationships(descriptor.id, { force: true }),
+          refreshResolvedBases(descriptor.id, { force: true }),
+        ]
+        if (descriptor.capabilities.usage) refreshes.push(refreshUsage(descriptor.id))
+        return refreshes
+      })
     )
   }
 

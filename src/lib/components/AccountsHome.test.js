@@ -21,6 +21,7 @@ vi.mock('../ipc.js', () => ({
 import AccountsHome from './AccountsHome.svelte'
 import {
   refreshAccounts,
+  refreshUsage,
   rememberChoice,
   setGlobalDefault,
 } from '../accounts.svelte.js'
@@ -143,6 +144,36 @@ describe('AccountsHome', () => {
     expect(revealDirectory).toHaveBeenCalledWith('/home/user/.claude-work')
   })
 
+  // Regression: faffe345 treated an already-reset 100% snapshot as unhealthy,
+  // auto-expanding a row whose meter correctly had no live exhausted window.
+  it('keeps a just-reset account healthy and collapsed', () => {
+    const accountStates = states()
+    accountStates.claude.accounts = accountStates.claude.accounts.map((entry) =>
+      entry.id === 'work'
+        ? {
+            ...entry,
+            usage: {
+              ...usage(100),
+              windows: [
+                {
+                  ...usage(100).windows[0],
+                  resets_at: Math.floor(now / 1000) - 60,
+                },
+              ],
+            },
+          }
+        : entry
+    )
+
+    render(AccountsHome, { props: { states: accountStates, projects: [] } })
+
+    const work = screen.getByTestId('account-row-work')
+    expect(within(work).queryByTestId('account-row-details')).not.toBeInTheDocument()
+    expect(within(work).getByRole('button', { name: 'Expand work' })).toBeInTheDocument()
+    expect(work.querySelector('.bg-emerald-500')).toBeInTheDocument()
+    expect(work.querySelector('.bg-rose-500')).not.toBeInTheDocument()
+  })
+
   // Regression: faffe345 auto-expanded unhealthy rows from the same reactive
   // set the disclosure changed, so collapsing one immediately expanded it again.
   it('lets the user collapse an unhealthy row after its initial auto-expand', async () => {
@@ -254,12 +285,16 @@ describe('AccountsHome', () => {
     expect(within(agy).queryByText('Sign in…')).not.toBeInTheDocument()
   })
 
-  it('refreshes every registry tool from the header', async () => {
+  // Regression: faffe345 refreshed usage for every registry tool, including
+  // Grok even though its descriptor declares no usage provider.
+  it('refreshes accounts for every tool but usage only for supported tools', async () => {
     render(AccountsHome, { props: { states: states(), projects: [] } })
 
     await fireEvent.click(screen.getByRole('button', { name: 'Refresh account usage' }))
 
     expect(refreshAccounts).toHaveBeenCalledWith('claude', { force: true })
     expect(refreshAccounts).toHaveBeenCalledWith('grok', { force: true })
+    expect(refreshUsage).toHaveBeenCalledWith('claude')
+    expect(refreshUsage).not.toHaveBeenCalledWith('grok')
   })
 })

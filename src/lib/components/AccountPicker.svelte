@@ -52,6 +52,8 @@
       ? 'border-white/[0.08] bg-zinc-950/95 text-zinc-100 shadow-2xl shadow-black/50'
       : 'border-brand-200/60 bg-white text-zinc-900 shadow-xl shadow-brand-900/10'
   )
+  // Wave A exercises all three shared-core skins in visual fixtures; popover
+  // and select production callers intentionally arrive with the Wave B surfaces.
   const skinTone = $derived.by(() => {
     if (skin === 'select') return 'w-full max-w-[26rem] rounded-lg'
     if (skin === 'popover') return 'w-[22rem] max-w-full rounded-lg'

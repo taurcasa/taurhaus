@@ -23,9 +23,18 @@ export function compactSelection(windows) {
 
 /** The rule the meters draw by: a window past its own reset is no longer live. */
 function hasReset(window, now) {
-  if (window?.resets_at == null) return false
-  const reset = Number(window.resets_at)
+  const resetsAt = window?.resets_at ?? window?.resetsAt
+  if (resetsAt == null) return false
+  const reset = Number(resetsAt)
   return Number.isFinite(reset) && reset * 1000 <= now
+}
+
+/** Windows with a numeric reading whose reset has not passed. */
+export function liveUsageWindows(windows, now = Date.now()) {
+  return (Array.isArray(windows) ? windows : []).filter((window) => {
+    const used = Number(window?.used_percentage ?? window?.usedPercentage)
+    return Number.isFinite(used) && !hasReset(window, now)
+  })
 }
 
 /**
@@ -50,9 +59,8 @@ export function exhaustedUsage(usage, now = Date.now()) {
   const status = String(usage.status ?? 'ok')
   if (status === 'unsupported') return null
   if (status === 'unauthorized') return { kind: 'unauthorized' }
-  const windows = Array.isArray(usage.windows) ? usage.windows : []
-  const spent = windows.find(
-    (window) => Number(window?.used_percentage) >= 100 && !hasReset(window, now)
+  const spent = liveUsageWindows(usage.windows, now).find(
+    (window) => Number(window?.used_percentage ?? window?.usedPercentage) >= 100
   )
   return spent ? { kind: 'exhausted', window: spent } : null
 }

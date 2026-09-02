@@ -1,6 +1,7 @@
 <script>
   import UsageMeter from './UsageMeter.svelte'
   import { themeTokens } from '../themeTokens.js'
+  import { exhaustedUsage, liveUsageWindows } from '../usageWindows.js'
 
   let {
     tool,
@@ -40,12 +41,13 @@
     dark ? 'text-brand-400 hover:text-brand-300' : 'text-brand-600 hover:text-brand-700'
   )
   const healthTone = $derived.by(() => {
-    if (!account?.logged_in || account?.usage?.status === 'unauthorized') return 'bg-rose-500'
+    if (!account?.logged_in || exhaustedUsage(account?.usage)) return 'bg-rose-500'
     const worst = Math.max(
       0,
-      ...(account?.usage?.windows ?? []).map((window) => Number(window.used_percentage) || 0)
+      ...liveUsageWindows(account?.usage?.windows).map(
+        (window) => Number(window.used_percentage ?? window.usedPercentage) || 0
+      )
     )
-    if (worst >= 100) return 'bg-rose-500'
     if (worst >= 80) return 'bg-amber-500'
     return 'bg-emerald-500'
   })

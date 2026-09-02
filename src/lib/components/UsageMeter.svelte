@@ -1,5 +1,5 @@
 <script>
-  import { compactSelection, resetLabel } from '../usageWindows.js'
+  import { compactSelection, liveUsageWindows, resetLabel } from '../usageWindows.js'
   import { usageIsLastKnown } from '../accountPresentation.js'
 
   let {
@@ -18,13 +18,6 @@
     return () => clearInterval(timer)
   })
 
-  function live(window) {
-    if (!Number.isFinite(Number(window?.used_percentage))) return null
-    if (window.resets_at == null) return window
-    const reset = Number(window.resets_at)
-    return Number.isFinite(reset) && reset * 1000 <= now ? null : window
-  }
-
   // The two-field 0.6.8 shape remains readable during the in-memory upgrade;
   // every new response uses the ordered provider windows.
   const providerWindows = $derived(
@@ -40,7 +33,7 @@
         ].filter(Boolean)
   )
   const legacy = $derived(!Array.isArray(usage?.windows))
-  const windows = $derived(providerWindows.map(live).filter(Boolean))
+  const windows = $derived(liveUsageWindows(providerWindows, now))
   // Compact surfaces compare account headroom, so session-only noise is
   // omitted when provider windows include longer-lived limits. The flag narrows
   // the list rather than gating it: a provider that flags nothing still has
@@ -131,7 +124,7 @@
             data-testid={barTestId(window, index)}
           ></span>
         </span>
-        {#if !legacy && !lastKnown && resetLabel(window.resets_at, now)}
+        {#if !legacy && resetLabel(window.resets_at, now)}
           <span class="text-[10px] leading-none {mutedTone}" data-testid="usage-reset">
             Resets {resetLabel(window.resets_at, now)}
           </span>
