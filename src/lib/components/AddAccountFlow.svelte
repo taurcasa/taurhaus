@@ -82,18 +82,17 @@
     }
   })
 
+  // Account management is app-global: a fresh install with no project yet is
+  // exactly when someone signs in. The backend runs the login where this tool's
+  // account directories live when no project names a working directory.
   async function openTerminal() {
-    if (!projectId) {
-      error = 'Select a project before opening the sign-in terminal.'
-      return
-    }
     error = null
     try {
       const directory = existingAccount
         ? configDir
         : await prepareAccountDirectory(tool, name)
       configDir = directory
-      await launchAccountLogin(projectId, tool, directory)
+      await launchAccountLogin(projectId ?? null, tool, directory)
       waiting = true
     } catch (failure) {
       error = failure?.message ?? String(failure)
@@ -145,7 +144,7 @@
       >Open sign-in terminal</button>
       {#if waiting}
         <p class="mt-3 text-[11px] text-amber-500" data-testid="account-login-waiting">
-          Waiting for {toolLabel} to finish sign-in… You can close this panel; re-open Add account with the same name to resume — the directory is already prepared.
+          Waiting for {toolLabel} to finish sign-in… You can close this panel: the prepared directory is a signed-out row in Accounts, and its Sign in… resumes this exact account.
         </p>
       {/if}
       {#if error}

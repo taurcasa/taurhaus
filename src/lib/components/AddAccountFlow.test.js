@@ -39,9 +39,10 @@ describe('AddAccountFlow', () => {
     )
   })
 
-  // Regression: 186f19a2 promised a resumable signed-out row for an abandoned
-  // run, but a prepared directory with no credentials in it is invisible to
-  // detection, so no such row exists — only re-opening the flow resumes it.
+  // Regression: 186f19a2 promised a resumable signed-out row an abandoned run
+  // never had, and d24186bb softened the copy instead of building the row.
+  // Detection now reports the prepared directory as the signed-out account it
+  // is, so the panel names that recovery — and must keep naming one that exists.
   it('names the recovery an abandoned run actually has', async () => {
     prepareAccountDirectory.mockResolvedValue('/home/user/.codex-work')
     launchAccountLogin.mockResolvedValue({ tmux_pane: '%3' })
@@ -51,10 +52,25 @@ describe('AddAccountFlow', () => {
     await fireEvent.click(screen.getByText('Open sign-in terminal'))
 
     const waiting = await screen.findByTestId('account-login-waiting')
-    expect(waiting).toHaveTextContent(
-      'You can close this panel; re-open Add account with the same name to resume'
-    )
-    expect(waiting).not.toHaveTextContent('a signed-out row remains resumable')
+    expect(waiting).toHaveTextContent('You can close this panel')
+    expect(waiting).toHaveTextContent('signed-out row in Accounts')
+  })
+
+  // Regression: 971d9643 required a project for every sign-in, so the app-global
+  // Accounts home offered Add account to a user with no registered project and
+  // then refused to open the terminal.
+  it('opens the sign-in terminal with no project to run it in', async () => {
+    prepareAccountDirectory.mockResolvedValue('/home/user/.codex-work')
+    launchAccountLogin.mockResolvedValue({ tmux_pane: '%6' })
+    render(AddAccountFlow, { props: { open: true, tool: 'codex', projectId: null } })
+
+    await fireEvent.input(screen.getByLabelText('Account name'), { target: { value: 'work' } })
+    await fireEvent.click(screen.getByText('Open sign-in terminal'))
+
+    await waitFor(() => {
+      expect(launchAccountLogin).toHaveBeenCalledWith(null, 'codex', '/home/user/.codex-work')
+    })
+    expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('resumes sign-in for an existing signed-out row without recreating its directory', async () => {

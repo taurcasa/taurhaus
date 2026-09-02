@@ -273,6 +273,44 @@ fn login_command_comes_from_the_registry_and_quotes_the_selector_dir() {
     assert!(account_login_command(CliTool::Agy, Path::new("/home/user/.gemini")).is_err());
 }
 
+// Regression: 971d9643 prepared the sibling directory and nothing else, so an
+// abandoned sign-in left detection nothing to report and the promised
+// signed-out row never appeared.
+#[cfg(not(target_os = "windows"))]
+#[test]
+fn a_prepared_directory_records_the_account_detection_will_report() {
+    let home = TempDir::new().expect("temp home");
+    let target = home.path().join(".claude-work");
+
+    create_account_directory(&target, "work").expect("prepared directory");
+
+    let marker = std::fs::read_to_string(
+        target.join(crate::session_scanner::accounts::PENDING_ACCOUNT_FILENAME),
+    )
+    .expect("marker");
+    assert_eq!(
+        marker,
+        crate::session_scanner::accounts::pending_account_marker("work")
+    );
+    assert!(marker.contains("\"label\":\"work\""), "marker: {marker}");
+}
+
+// Regression: 971d9643 required a project id for every sign-in, so the
+// app-global Accounts home offered Add account to a user with no projects and
+// then refused to perform it.
+#[test]
+fn a_sign_in_without_a_project_runs_where_the_account_directories_live() {
+    assert_eq!(
+        account_login_working_dir(Path::new("/home/user/.claude-work")).expect("working dir"),
+        "/home/user"
+    );
+    assert_eq!(
+        account_login_working_dir(Path::new(r"\home\user/.codex-work")).expect("Windows-host dir"),
+        "/home/user"
+    );
+    assert!(account_login_working_dir(Path::new(".claude")).is_err());
+}
+
 #[test]
 fn account_login_directory_stays_at_the_registry_home_or_a_named_sibling() {
     let default_dir = Path::new("/home/user/.claude");

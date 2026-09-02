@@ -584,8 +584,17 @@ fn prepare_account_directory_impl(tool: CliTool, label: &str) -> Result<String, 
 
     #[cfg(target_os = "windows")]
     {
+        let dir = crate::session_scanner::launch::shell_escape(&target.to_string_lossy());
+        let marker =
+            crate::session_scanner::launch::shell_escape(&accounts::pending_account_marker(label));
+        let file = accounts::PENDING_ACCOUNT_FILENAME;
         let mut command = crate::daemon::launcher::wsl_command();
-        command.args(["-e", "mkdir", "-p", "--"]).arg(&target);
+        command.args([
+            "-e",
+            "sh",
+            "-c",
+            &format!("mkdir -p -- {dir} && printf %s {marker} > {dir}/{file}"),
+        ]);
         let output = crate::process_utils::run_command_with_timeout(
             &mut command,
             ACCOUNT_DIRECTORY_CREATE_TIMEOUT,
@@ -598,17 +607,32 @@ fn prepare_account_directory_impl(tool: CliTool, label: &str) -> Result<String, 
     }
 
     #[cfg(not(target_os = "windows"))]
-    std::fs::create_dir_all(&target)
-        .map_err(|error| format!("Failed to create the account directory: {error}"))?;
+    create_account_directory(&target, label)?;
 
     Ok(target.to_string_lossy().into_owned())
+}
+
+/// Create the directory a sign-in will run in, and say who asked for it.
+///
+/// The marker is what makes an abandoned sign-in recoverable: detection has no
+/// identity to read until the tool writes one, so without it the prepared
+/// directory is invisible and the promised signed-out row never appears.
+#[cfg(not(target_os = "windows"))]
+fn create_account_directory(target: &Path, label: &str) -> Result<(), String> {
+    std::fs::create_dir_all(target)
+        .map_err(|error| format!("Failed to create the account directory: {error}"))?;
+    std::fs::write(
+        target.join(accounts::PENDING_ACCOUNT_FILENAME),
+        accounts::pending_account_marker(label),
+    )
+    .map_err(|error| format!("Failed to record the prepared account: {error}"))
 }
 
 #[tauri::command(async)]
 pub fn launch_account_login(
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
-    project_id: String,
+    project_id: Option<String>,
     tool: CliTool,
     config_dir: String,
 ) -> IpcResult<protocol::LaunchSessionResult> {
@@ -616,7 +640,7 @@ pub fn launch_account_login(
     let result = launch_account_login_impl(
         db.inner(),
         provider.inner(),
-        &project_id,
+        project_id.as_deref(),
         tool,
         Path::new(&config_dir),
     )
@@ -628,21 +652,26 @@ pub fn launch_account_login(
 fn launch_account_login_impl(
     db: &DbState,
     provider: &ProviderState,
-    project_id: &str,
+    project_id: Option<&str>,
     tool: CliTool,
     config_dir: &Path,
 ) -> Result<protocol::LaunchSessionResult, String> {
     validate_account_login_dir(tool, config_dir)?;
     let command = account_login_command(tool, config_dir)?;
     let terminal_settings = crate::commands::terminal_settings::load_terminal_settings(db);
-    let project_path = {
-        let conn = db.0.lock().map_err(|error| error.to_string())?;
-        queries::get_project(&conn, project_id)
-            .sanitize_err()?
-            .map(|project| project.path)
-            .ok_or_else(|| "Project not found".to_string())?
+    let project_path = match project_id.map(str::trim).filter(|id| !id.is_empty()) {
+        Some(project_id) => {
+            let path = {
+                let conn = db.0.lock().map_err(|error| error.to_string())?;
+                queries::get_project(&conn, project_id)
+                    .sanitize_err()?
+                    .map(|project| project.path)
+                    .ok_or_else(|| "Project not found".to_string())?
+            };
+            crate::provider::path::to_linux(&path).unwrap_or(path)
+        }
+        None => account_login_working_dir(config_dir)?,
     };
-    let project_path = crate::provider::path::to_linux(&project_path).unwrap_or(project_path);
     let (session, window, pane) =
         crate::session_scanner::control::launch_command_in_tmux_with_layout(
             &project_path,
@@ -661,6 +690,20 @@ fn launch_account_login_impl(
         tmux_pane: pane,
         ..Default::default()
     })
+}
+
+/// Where a sign-in runs when no project names a working directory.
+///
+/// Account management is app-global — a user with an empty project list still
+/// has accounts to add — so the login falls back to the directory that holds
+/// this tool's account directories. It is the one place the sign-in is
+/// guaranteed to be able to enter, on every platform the launch can reach.
+fn account_login_working_dir(config_dir: &Path) -> Result<String, String> {
+    config_dir
+        .parent()
+        .map(|parent| parent.to_string_lossy().replace('\\', "/"))
+        .filter(|parent| !parent.is_empty())
+        .ok_or_else(|| "The account directory has no parent to sign in from".to_string())
 }
 
 fn validate_account_login_dir(tool: CliTool, config_dir: &Path) -> Result<(), String> {

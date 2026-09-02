@@ -327,6 +327,49 @@ pub fn configured_default_dir(tool: CliTool) -> Option<PathBuf> {
     (path_key(&configured) != path_key(&process_default)).then_some(configured)
 }
 
+/// What taurhaus leaves in a directory it prepared for a sign-in.
+pub const PENDING_ACCOUNT_FILENAME: &str = ".taurhaus-account.json";
+
+#[derive(Debug, Deserialize)]
+struct PendingAccountMarker {
+    label: String,
+}
+
+/// The marker body written into a directory prepared for a sign-in.
+///
+/// It holds the name the user typed and nothing else: no credential, no token,
+/// nothing the tool itself owns. The tool writes its own identity here when the
+/// sign-in finishes, and that identity outranks this note from then on.
+pub fn pending_account_marker(label: &str) -> String {
+    serde_json::json!({ "label": label, "preparedBy": "taurhaus" }).to_string()
+}
+
+/// The account a prepared-but-unfinished sign-in leaves behind.
+///
+/// Detection authorities need an identity, and a directory waiting for its
+/// first sign-in has none — which used to make an abandoned run invisible, with
+/// no row to resume it from. A directory taurhaus prepared is different from
+/// any other unidentified sibling: it exists because someone asked for this
+/// account, so it is reported as the signed-out account it is.
+fn pending_identity(dir: &Path) -> Option<AccountIdentity> {
+    let raw = std::fs::read_to_string(dir.join(PENDING_ACCOUNT_FILENAME)).ok()?;
+    let marker = serde_json::from_str::<PendingAccountMarker>(&raw).ok()?;
+    let label = match non_empty(Some(marker.label.as_str())) {
+        Some(label) => label.to_string(),
+        None => dir.file_name()?.to_string_lossy().into_owned(),
+    };
+    Some(AccountIdentity {
+        id: dir.display().to_string(),
+        label,
+        display_name: None,
+        organization: None,
+        plan: None,
+        logged_in: false,
+        usage_capable: false,
+        credential_expires_at: None,
+    })
+}
+
 /// Convert an account dir into the namespace used by the launch shell.
 pub fn to_launch_namespace(dir: &Path) -> PathBuf {
     let raw = dir.to_string_lossy().into_owned();
@@ -547,7 +590,7 @@ fn scan_candidates(
         if dir.is_dir() {
             config_dirs.push(dir.clone());
         }
-        let Some(mut identity) = provider.identify(&dir) else {
+        let Some(mut identity) = provider.identify(&dir).or_else(|| pending_identity(&dir)) else {
             continue;
         };
         let id = unique_account_id(&identity.id, &dir, &mut emitted_ids);
@@ -1365,6 +1408,69 @@ mod tests {
             account("last", "/accounts/last", false),
             account("explicit", "/accounts/explicit", false),
         ]
+    }
+
+    #[test]
+    fn a_directory_prepared_for_sign_in_is_an_addressable_signed_out_account() {
+        // Regression: 971d9643 prepared the sibling directory and nothing else,
+        // so an abandoned sign-in left no row to resume from — every detection
+        // authority needs an identity, and a prepared directory has none yet.
+        let home = tempfile::TempDir::new().unwrap();
+        let default = home.path().join(".claude");
+        let prepared = home.path().join(".claude-work");
+        let unmarked = home.path().join(".claude-squad");
+        for dir in [&default, &prepared, &unmarked] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        std::fs::write(
+            prepared.join(PENDING_ACCOUNT_FILENAME),
+            pending_account_marker("work"),
+        )
+        .unwrap();
+
+        let scan = scan_candidates(
+            CliTool::Claude,
+            &FakeProvider,
+            vec![default.clone(), prepared.clone(), unmarked],
+            &default,
+            &default,
+        );
+
+        // A directory taurhaus never prepared stays what it is: not an account.
+        assert_eq!(scan.accounts.len(), 1);
+        let pending = &scan.accounts[0];
+        assert_eq!(pending.dir, prepared);
+        assert_eq!(pending.identity.label, "work");
+        assert!(!pending.identity.logged_in);
+        assert!(!pending.identity.usage_capable);
+        assert!(!pending.is_default);
+    }
+
+    #[test]
+    fn a_signed_in_directory_keeps_its_own_identity_over_a_prepared_marker() {
+        let home = tempfile::TempDir::new().unwrap();
+        let default = home.path().join(".codex");
+        std::fs::create_dir_all(&default).unwrap();
+        std::fs::write(
+            default.join(PENDING_ACCOUNT_FILENAME),
+            pending_account_marker("work"),
+        )
+        .unwrap();
+        let provider = DuplicateIdentityProvider {
+            candidates: vec![default.clone()],
+        };
+
+        let scan = scan_candidates(
+            CliTool::Codex,
+            &provider,
+            provider.candidate_dirs(home.path(), &[]),
+            &default,
+            &default,
+        );
+
+        assert_eq!(scan.accounts.len(), 1);
+        assert_eq!(scan.accounts[0].identity.label, "codex@example.com");
+        assert!(scan.accounts[0].identity.logged_in);
     }
 
     #[test]
