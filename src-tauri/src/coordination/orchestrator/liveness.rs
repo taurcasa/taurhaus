@@ -460,6 +460,7 @@ impl CoordinationOrchestrator {
                 }
             }
 
+            let mut adopted_runtime_session = false;
             if spec(member.cli_tool).capabilities.runtime_session_capture {
                 if let Some(pane_id) = runtime.pane_id.as_deref() {
                     match self
@@ -485,6 +486,10 @@ impl CoordinationOrchestrator {
                             if session_id_changed || next_jsonl_path != runtime.jsonl_path {
                                 runtime.session_id = next_session_id;
                                 runtime.jsonl_path = next_jsonl_path;
+                                if session_id_changed {
+                                    runtime.applied_effort = None;
+                                    adopted_runtime_session = true;
+                                }
                                 runtime_changed = true;
                             }
                         }
@@ -523,6 +528,9 @@ impl CoordinationOrchestrator {
                     }
                     current.session_id = runtime.session_id.clone();
                     current.jsonl_path = runtime.jsonl_path.clone();
+                    if adopted_runtime_session {
+                        current.applied_effort = None;
+                    }
                     current.daemon_pid = runtime.daemon_pid;
                     current.health = runtime.health;
                     current.last_seen_at = runtime.last_seen_at;

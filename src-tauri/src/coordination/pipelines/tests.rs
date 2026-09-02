@@ -5253,6 +5253,70 @@ fn a_blocked_assignment_can_anchor_when_it_is_the_only_open_work() {
     assert_eq!(record.applied_effort.as_deref(), Some("high"));
 }
 
+// Regression: 4344edb4 let liveness adopt a hand-restarted session id while
+// retaining the previous session's applied effort, suppressing every later
+// sweep even though the foreign session could be running another level.
+#[test]
+fn adopting_a_foreign_session_clears_applied_effort_and_the_sweep_refires() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime.clone());
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("high".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("42", "Risky active work")),
+        "high",
+        "the migration is irreversible",
+    );
+    write_mesh_task(
+        &root,
+        "42",
+        "in_progress",
+        "high",
+        "the migration is irreversible",
+    );
+    runtime.set_detected_runtime_session(
+        "%21",
+        CliTool::Codex,
+        Some("hand-restarted-session"),
+        Some("/tmp/hand-restarted-session.jsonl"),
+    );
+
+    orchestrator
+        .reconcile_team_liveness("effort-team")
+        .expect("liveness reconcile");
+
+    let adopted =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(
+        adopted.session_id.as_deref(),
+        Some("hand-restarted-session")
+    );
+    assert_eq!(
+        adopted.applied_effort, None,
+        "a session taurhaus did not launch has unknown applied effort"
+    );
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::RetryPending,
+        )
+        .expect("daemon-style sweep");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+}
+
 #[test]
 fn pending_effort_carries_the_held_task_requested_and_applied_identity() {
     let root = TempDir::new().expect("tempdir");
