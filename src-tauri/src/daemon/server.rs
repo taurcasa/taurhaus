@@ -1590,6 +1590,9 @@ mod tests {
             protocol::method::COORDINATION_PUT_LAUNCH_SETTINGS,
             protocol::method::COORDINATION_APPLY_TASK_EFFORT,
             protocol::method::COORDINATION_APPLY_TASK_EFFORT_STATUS,
+            protocol::method::COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS,
+            protocol::method::COORDINATION_RECONCILE_LIVE_PRESENCE,
+            protocol::method::COORDINATION_SET_ACTIVE_PROJECT_TEAM,
         ];
 
         for (idx, method) in methods.into_iter().enumerate() {

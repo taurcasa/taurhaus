@@ -25,7 +25,18 @@ pub(crate) fn publish_operational_snapshots(
         let config = match configs.entry(team_name.clone()) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
-                entry.insert(TeamConfigStore::load(teams_dir, team_name)?)
+                match TeamConfigStore::load(teams_dir, team_name) {
+                    Ok(config) => entry.insert(config),
+                    Err(error) => {
+                        tracing::warn!(
+                            team = %team_name,
+                            error = %error,
+                            "skipping operational snapshot for unreadable team config"
+                        );
+                        skipped += 1;
+                        continue;
+                    }
+                }
             }
         };
         if !config
@@ -188,6 +199,59 @@ mod tests {
                 .expect("snapshot");
         assert_eq!(stored.updated_at, newer_at);
         assert_eq!(stored.task.id, "newer");
+    }
+
+    // Regression: d593f81b made one unreadable team config abort the entire
+    // protocol-22 publication batch instead of preserving the tolerant scan path.
+    #[test]
+    fn snapshot_intent_skips_unreadable_team_config_and_continues_batch() {
+        let teams = TempDir::new().expect("teams");
+        save_team(teams.path());
+        let snapshot = OperationalContextSnapshot {
+            version: 1,
+            team_name: "architecture-final".to_string(),
+            member_name: "builder".to_string(),
+            updated_at: Utc::now(),
+            task: OperationalTaskSnapshot {
+                id: "publish-me".to_string(),
+                ..Default::default()
+            },
+            assignment_footer: OperationalAssignmentFooterSnapshot::default(),
+            ownership: OperationalOwnershipSnapshot::default(),
+            working_set: OperationalWorkingSetSnapshot {
+                project_path: "/work/taurhaus".to_string(),
+                focal_files: Vec::new(),
+            },
+        };
+        let mut missing_team_snapshot = snapshot.clone();
+        missing_team_snapshot.team_name = "missing-team".to_string();
+
+        let result = publish_operational_snapshots(
+            teams.path(),
+            CoordinationPublishOperationalSnapshotsParams {
+                publications: vec![
+                    CoordinationOperationalSnapshotPublication {
+                        snapshot: missing_team_snapshot,
+                        task_state_changed_at: None,
+                    },
+                    CoordinationOperationalSnapshotPublication {
+                        snapshot,
+                        task_state_changed_at: None,
+                    },
+                ],
+            },
+        )
+        .expect("publish valid entries despite unreadable team config");
+
+        assert_eq!(result.published, 1);
+        assert_eq!(result.skipped, 1);
+        assert!(OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "builder"
+        )
+        .expect("load published snapshot")
+        .is_some());
     }
 
     #[test]
