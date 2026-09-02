@@ -623,15 +623,16 @@ _install-daemon-from-build:
         PRESERVED_ARGS=(--data-dir "$RESTART_DATA_DIR" --port "$RESTART_PORT" "${EXTRA_ARGS[@]}")
         PRESERVED_ENV+=("TAURHAUS_DATA_DIR=$RESTART_DATA_DIR")
         echo "▸ Stopping running $DAEMON_BIN (PID $OLD_PID)…"
-        pkill -x "$DAEMON_BIN" || true
-        # Wait for it to actually exit (up to 5s)
+        # Kill ONLY the captured PID: pkill -x would also take out unrelated
+        # daemons (E2E workers on private ports, another data dir).
+        kill "$OLD_PID" 2>/dev/null || true
         for i in $(seq 1 10); do
-            if ! pgrep -x "$DAEMON_BIN" >/dev/null 2>&1; then break; fi
+            if ! kill -0 "$OLD_PID" 2>/dev/null; then break; fi
             sleep 0.5
         done
-        if pgrep -x "$DAEMON_BIN" >/dev/null 2>&1; then
-            echo "✗ Could not stop $DAEMON_BIN — force killing"
-            pkill -9 -x "$DAEMON_BIN" || true
+        if kill -0 "$OLD_PID" 2>/dev/null; then
+            echo "✗ PID $OLD_PID did not exit — force killing"
+            kill -9 "$OLD_PID" 2>/dev/null || true
             sleep 0.5
         fi
         echo "✓ Daemon stopped"
@@ -657,26 +658,45 @@ _install-daemon-from-build:
             echo "  env: (none preserved — previous daemon had no TAURHAUS_* env)"
         fi
         [ "${#PRESERVED_ARGS[@]}" -gt 0 ] && echo "  args: ${PRESERVED_ARGS[*]}"
+        # The daemon's own stderr is the diagnosis when a start fails — never
+        # send it to /dev/null (the old recipe guessed "port in use" blind).
+        RESTART_LOG="$(mktemp /tmp/taurhaus-daemon-restart.XXXXXX.log)"
+        echo "  log: $RESTART_LOG"
         STARTED=false
         for attempt in $(seq 1 15); do
             if [ "${#PRESERVED_ENV[@]}" -gt 0 ]; then
-                env "${PRESERVED_ENV[@]}" setsid nohup "$INSTALL_DIR/$DAEMON_BIN" "${PRESERVED_ARGS[@]}" >/dev/null 2>&1 </dev/null &
+                env "${PRESERVED_ENV[@]}" setsid nohup "$INSTALL_DIR/$DAEMON_BIN" "${PRESERVED_ARGS[@]}" >>"$RESTART_LOG" 2>&1 </dev/null &
             else
-                setsid nohup "$INSTALL_DIR/$DAEMON_BIN" "${PRESERVED_ARGS[@]}" >/dev/null 2>&1 </dev/null &
+                setsid nohup "$INSTALL_DIR/$DAEMON_BIN" "${PRESERVED_ARGS[@]}" >>"$RESTART_LOG" 2>&1 </dev/null &
             fi
+            NEW_PID=$!
             disown || true
-            sleep 2
-            if pgrep -x "$DAEMON_BIN" >/dev/null 2>&1; then
+            # Listening on the port is the liveness bar — a PID existing for a
+            # moment is not (a bind failure exits after pgrep would see it).
+            UP=false
+            for probe in $(seq 1 10); do
+                sleep 1
+                if (exec 3<>"/dev/tcp/127.0.0.1/$RESTART_PORT") 2>/dev/null; then
+                    exec 3>&- 3<&- || true
+                    UP=true
+                    break
+                fi
+                if ! kill -0 "$NEW_PID" 2>/dev/null; then break; fi
+            done
+            if [ "$UP" = true ]; then
                 STARTED=true
                 break
             fi
-            echo "  · attempt $attempt: not up yet (port likely still in use) — retrying"
+            echo "  · attempt $attempt: daemon not listening on $RESTART_PORT — last log lines:"
+            tail -3 "$RESTART_LOG" 2>/dev/null | sed 's/^/      /'
             sleep 3
         done
         if [ "$STARTED" = true ]; then
-            echo "✓ Daemon restarted (PID $(pgrep -x $DAEMON_BIN | head -1))"
+            echo "✓ Daemon restarted and listening on $RESTART_PORT (PID $NEW_PID, $("$INSTALL_DIR/$DAEMON_BIN" --version 2>/dev/null | head -1))"
         else
-            echo "⚠ Daemon did not restart after 15 attempts — start it manually:"
+            echo "⚠ Daemon did not come up after 15 attempts. Daemon log tail:"
+            tail -15 "$RESTART_LOG" 2>/dev/null | sed 's/^/    /'
+            echo "  Start it manually:"
             echo "    ${PRESERVED_ENV[*]:-} $INSTALL_DIR/$DAEMON_BIN ${PRESERVED_ARGS[*]:-}"
             exit 1
         fi
@@ -840,8 +860,10 @@ install-windows:
         exit 1
     fi
     sh -c 'exec powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$1" -InstallerPath "$2" -BuiltExePath "$3" < /dev/null' sh "$PS_SCRIPT" "$WIN_INSTALLER" "$WIN_BUILT_EXE"
-    # The app is installed; now the WSL daemon it bundles, restarted with the
-    # captured env/args, so app and daemon match PROTOCOL_VERSION from here on.
+    # The app is installed; now the WSL daemon, rebuilt fresh and restarted
+    # with the captured env/args, so app and daemon match PROTOCOL_VERSION
+    # from here on (a stale target/release daemon must never be installed).
+    just build-daemon
     just _install-daemon-from-build
 
 # ── macOS Build (via SSH to remote Mac mini) ─────────────────────────────────
