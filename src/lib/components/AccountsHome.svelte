@@ -177,8 +177,37 @@
     return project?.accountMemory?.[tool] ?? project?.account_memory?.[tool] ?? null
   }
 
+  /**
+   * Which projects this tool has already settled somewhere else.
+   *
+   * The `projects` prop is the list as it was last read; an account chosen from
+   * Overview or the sidebar since then lives in the live account state instead.
+   * Conversion reads both authorities — the relationship index, refreshed at
+   * the click, and the choices this run made optimistically, where a cleared
+   * pin is the absence of a row rather than one more row to preserve.
+   */
+  function settledProjectIds(state) {
+    const settled = new Set()
+    for (const relationships of Object.values(state.relationships ?? {})) {
+      const rows = [
+        ...(relationships.pinnedProjects ?? relationships.pinned_projects ?? []),
+        ...(relationships.lastUsedProjects ?? relationships.last_used_projects ?? []),
+      ]
+      for (const project of rows) settled.add(project.id)
+    }
+    for (const [projectId, accountId] of Object.entries(state.projectChoices ?? {})) {
+      if (accountId) settled.add(projectId)
+      else settled.delete(projectId)
+    }
+    return settled
+  }
+
   async function convertAlias(tool, account) {
-    const affected = projects.filter((project) => !projectMemory(project, tool))
+    await refreshAccountRelationships(tool, { force: true })
+    const settled = settledProjectIds(stateFor(tool))
+    const affected = projects.filter(
+      (project) => project?.id && !settled.has(project.id) && !projectMemory(project, tool)
+    )
     await Promise.all(affected.map((project) => rememberChoice(project.id, tool, account.id)))
     await refreshAccountRelationships(tool, { force: true })
   }

@@ -278,6 +278,40 @@ describe('AccountsHome', () => {
     expect(rememberChoice).not.toHaveBeenCalledWith('p-settled', 'claude', 'work')
   })
 
+  // Regression: 971d964 decided which projects Convert to pins touches from the
+  // `projects` prop's account memory alone. A pin made from Overview or the
+  // sidebar during this run lives in the live account state, not in that
+  // snapshot, so conversion classified the project as unset and overwrote the
+  // explicit pin with the base command's account.
+  it('leaves projects settled during this run out of the conversion', async () => {
+    const accountStates = states()
+    accountStates.claude.defaultAccountId = null
+    accountStates.claude.projectChoices = { 'p-pinned': 'personal', 'p-cleared': null }
+    accountStates.claude.relationships = {
+      ...accountStates.claude.relationships,
+      personal: {
+        pinnedProjects: [{ id: 'p-remembered', name: 'remembered' }],
+        lastUsedProjects: [{ id: 'p-cleared', name: 'cleared' }],
+        teams: [],
+      },
+    }
+    const projects = [
+      { id: 'p-free', name: 'free', accountMemory: {} },
+      { id: 'p-pinned', name: 'pinned', accountMemory: {} },
+      { id: 'p-remembered', name: 'remembered', accountMemory: {} },
+      { id: 'p-cleared', name: 'cleared', accountMemory: {} },
+    ]
+
+    render(AccountsHome, { props: { states: accountStates, projects } })
+    await fireEvent.click(screen.getByText('Convert to pins'))
+
+    expect(rememberChoice).toHaveBeenCalledWith('p-free', 'claude', 'work')
+    expect(rememberChoice).not.toHaveBeenCalledWith('p-pinned', 'claude', 'work')
+    expect(rememberChoice).not.toHaveBeenCalledWith('p-remembered', 'claude', 'work')
+    // A pin cleared during this run really has no row left to preserve.
+    expect(rememberChoice).toHaveBeenCalledWith('p-cleared', 'claude', 'work')
+  })
+
   // Regression: faffe345 compared the reported selector value verbatim with
   // absolute account directories, so a `~/`-spelled alias lost its conversion strip.
   it('explains a tilde-spelled base-command selector', () => {
