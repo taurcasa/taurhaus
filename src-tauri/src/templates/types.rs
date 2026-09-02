@@ -1458,8 +1458,7 @@ mod tests {
                 role.role_id
             );
             assert!(
-                role.instructions
-                    .contains("repository's own instructions")
+                role.instructions.contains("repository's own instructions")
                     && role.instructions.contains("named per-task gate"),
                 "canonical role '{}' should direct members to the repository's named per-task gate",
                 role.role_id
