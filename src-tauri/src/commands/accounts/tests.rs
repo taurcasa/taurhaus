@@ -167,6 +167,25 @@ fn login_command_comes_from_the_registry_and_quotes_the_selector_dir() {
     assert!(account_login_command(CliTool::Agy, Path::new("/home/user/.gemini")).is_err());
 }
 
+#[test]
+fn account_login_directory_stays_at_the_registry_home_or_a_named_sibling() {
+    let default_dir = Path::new("/home/user/.claude");
+
+    assert!(validate_account_login_dir_against(default_dir, default_dir).is_ok());
+    assert!(
+        validate_account_login_dir_against(default_dir, Path::new("/home/user/.claude-work"))
+            .is_ok()
+    );
+    assert!(validate_account_login_dir_against(
+        default_dir,
+        Path::new("/home/user/.claude-work/../../etc")
+    )
+    .is_err());
+    assert!(
+        validate_account_login_dir_against(default_dir, Path::new("/home/other/.claude")).is_err()
+    );
+}
+
 /// Without a daemon there is nothing to ask on Windows. The call still
 /// succeeds — but the empty list is silence, not an answer, and it says so.
 #[test]

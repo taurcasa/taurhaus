@@ -625,6 +625,10 @@ fn validate_account_login_dir(tool: CliTool, config_dir: &Path) -> Result<(), St
     let default_dir = crate::provider::path::to_linux(&default_dir.to_string_lossy())
         .map(PathBuf::from)
         .unwrap_or(default_dir);
+    validate_account_login_dir_against(&default_dir, config_dir)
+}
+
+fn validate_account_login_dir_against(default_dir: &Path, config_dir: &Path) -> Result<(), String> {
     let expected_parent = default_dir
         .parent()
         .ok_or_else(|| "The registry account directory has no parent".to_string())?;
