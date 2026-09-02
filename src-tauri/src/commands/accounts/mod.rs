@@ -47,6 +47,7 @@ const UNKNOWN_METHOD: &str = "UNKNOWN_METHOD";
 /// resolution exists to fix.
 const RESOLVE_LAUNCH_BASE_TIMEOUT: Duration =
     Duration::from_secs(launch_base::RESOLUTION_BUDGET.as_secs() + 4);
+#[cfg(target_os = "windows")]
 const ACCOUNT_DIRECTORY_CREATE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Detected accounts for one registry tool.
