@@ -228,13 +228,7 @@ fn persist_task_scan_with_generation_and_publisher<P>(
             .collect(),
     };
     if let Err(err) = publish(params) {
-        if taurhaus_lib::daemon_api::is_busy_transport_error(&err) {
-            tracing::debug!(
-                project_path = %normalized_path,
-                error = %err,
-                "operational snapshot publication skipped because the shared daemon connection is busy"
-            );
-        } else if mark_snapshot_publication_degraded(generation_state, normalized_path) {
+        if mark_snapshot_publication_degraded(generation_state, normalized_path) {
             tracing::warn!(
                 project_path = %normalized_path,
                 error = %err,
@@ -594,6 +588,23 @@ mod tests {
         assert!(source.contains("COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS"));
         assert!(!persistence.contains("sync_project_task_snapshots"));
         assert!(!persistence.contains("OperationalContextSnapshotStore::save"));
+    }
+
+    // Regression: d9c3f354 kept a special degrade branch for a daemon-busy
+    // transport error after the pooled client stopped producing that error.
+    #[test]
+    fn snapshot_publication_failures_use_the_bounded_warning_path() {
+        let source = include_str!("task_sync.rs");
+        let persistence = source
+            .split("fn persist_task_scan_with_generation_and_publisher")
+            .nth(1)
+            .expect("task persistence implementation")
+            .split("fn publish_operational_snapshots_through_daemon")
+            .next()
+            .expect("task persistence body");
+
+        assert!(!persistence.contains("is_busy_transport_error(&err)"));
+        assert!(!persistence.contains("shared daemon connection is busy"));
     }
 
     // Regression: d593f81b used a process-global warning latch for snapshot

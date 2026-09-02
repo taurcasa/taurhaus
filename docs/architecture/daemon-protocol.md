@@ -271,8 +271,12 @@ The daemon starts one background scheduler per process after the session-activit
 | Method | Params | Result | Description |
 |--------|--------|--------|-------------|
 | `coordination.publish_operational_snapshots` | `{ publications: [{ snapshot, task_state_changed_at }] }` | `{ published, skipped }` | Publishes app-DB-derived snapshots in the daemon with the existing newer-wins and deadline-marker guard. Unreachable daemons cause the app scan to skip with one bounded warning; nothing is queued because the data is re-derived on every scan. |
-| `coordination.reconcile_live_presence` | `{ team_name, runtime_sessions }` | `{ reconciled_offline_members }` | Runs pane ownership probes and presence-demotion commits against the daemon's process-wide coordination state. |
+| `coordination.reconcile_live_presence` | `{ team_name, runtime_sessions }` | `{ outcome, reconciled_offline_members }` | Runs pane ownership probes and presence-demotion commits against the daemon's process-wide coordination state. |
 | `coordination.set_active_project_team` | `{ project_path, team_name? }` | `{ updated }` | Sets the discovered active-team mapping, or clears it when `team_name` is absent. |
+
+When the daemon orchestrator is contended, live-presence reconciliation returns
+`outcome: "skipped"` with an empty member list instead of blocking. The app
+treats that response as a no-op poll and tries again on its normal cadence.
 
 These synchronous intents close the B3 boundary without moving reads: the app still discovers teams and prepares SQLite-derived snapshot data, while every mutation executes WSL-side. The module-boundary suite permits store writes only in daemon-hosted implementation modules and the named WSL-native hook-process modules.
 
