@@ -86,10 +86,11 @@ impl DeliveryRenderer {
                 "Reply:\n",
                 "mesh send {{recipient}} \"{{msg}}\" --team {team_name} --name {member_name} --summary \"brief\"\n",
                 "\n",
+                "Assignment token: use the token from your assignment notice or mesh task get <id> --team {team_name} --name {member_name}.\n",
+                "\n",
                 "Tasks:\n",
                 "mesh tasks --team {team_name} --name {member_name}\n",
                 "mesh task get <id> --team {team_name} --name {member_name}\n",
-                "Assignment token: use the token from your assignment notice or mesh task get <id>.\n",
                 "mesh task accept <id> --assignment <token> --team {team_name} --name {member_name}\n",
                 "mesh task start <id> --assignment <token> --team {team_name} --name {member_name} --active-form \"<working>\"\n",
                 "mesh task progress <id> --summary \"<update>\" --team {team_name} --name {member_name}\n",
@@ -361,6 +362,8 @@ mod tests {
 
     #[test]
     fn render_onboarding_includes_required_commands_with_substitution() {
+        // Regression: commit 513031c1 put prose inside the runnable command
+        // block and repeated a `mesh task get` form that mesh rejects.
         let rendered = DeliveryRenderer::render_onboarding(
             "architecture-final",
             "codex-reviewer",
@@ -380,8 +383,12 @@ mod tests {
             rendered.contains("mesh task get <id> --team architecture-final --name codex-reviewer")
         );
         assert!(rendered.contains(
-            "Assignment token: use the token from your assignment notice or mesh task get <id>."
+            "Assignment token: use the token from your assignment notice or mesh task get <id> --team architecture-final --name codex-reviewer."
         ));
+        assert!(
+            rendered.find("Assignment token:").expect("token guidance")
+                < rendered.find("Tasks:\n").expect("tasks heading")
+        );
         assert!(rendered.contains(
             "mesh task accept <id> --assignment <token> --team architecture-final --name codex-reviewer"
         ));
@@ -481,10 +488,11 @@ mod tests {
             "Reply:\n",
             "mesh send {recipient} \"{msg}\" --team architecture-final --name codex-reviewer --summary \"brief\"\n",
             "\n",
+            "Assignment token: use the token from your assignment notice or mesh task get <id> --team architecture-final --name codex-reviewer.\n",
+            "\n",
             "Tasks:\n",
             "mesh tasks --team architecture-final --name codex-reviewer\n",
             "mesh task get <id> --team architecture-final --name codex-reviewer\n",
-            "Assignment token: use the token from your assignment notice or mesh task get <id>.\n",
             "mesh task accept <id> --assignment <token> --team architecture-final --name codex-reviewer\n",
             "mesh task start <id> --assignment <token> --team architecture-final --name codex-reviewer --active-form \"<working>\"\n",
             "mesh task progress <id> --summary \"<update>\" --team architecture-final --name codex-reviewer\n",

@@ -12,6 +12,8 @@ use crate::coordination::stores::operational::OperationalContextSnapshot;
 use crate::coordination::stores::{MeshInboxMessage, MeshInboxStore};
 use crate::templates::types::RuntimeCompactSummary;
 
+const MAX_LEASE_RECORD_BYTES: u64 = 1_048_576;
+
 pub const OPERATIONAL_REINJECTION_CARD_VERSION: u32 = 1;
 pub const POST_COMPACTION_REASON: &str = "post_compaction";
 /// Inbox summary the mesh member sees for a queued post-compaction card.
@@ -97,7 +99,6 @@ pub struct OperationalReinjectionLeaseWait {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MeshLeaseRecord {
-    name: String,
     state: String,
     holder: Option<String>,
     #[serde(default)]
@@ -249,7 +250,7 @@ impl CompactionReinjectionService {
         }
     }
 
-    pub fn compose_at_with_leases(
+    fn compose_at_with_leases(
         teams_dir: &Path,
         member: &Member,
         snapshot: &OperationalContextSnapshot,
@@ -295,8 +296,8 @@ impl CompactionReinjectionService {
         }
         if !card.task.id.is_empty() {
             lines.push(format!(
-                "Run: mesh task get {} for your assignment token, rulings, artifacts, and restart cursor.",
-                card.task.id
+                "Run: mesh task get {} --team {} --name {} for your assignment token, rulings, artifacts, and restart cursor.",
+                card.task.id, card.team_name, card.member_name
             ));
         }
         if let Some(lease_line) = render_lease_context_line(&card.leases) {
@@ -446,7 +447,7 @@ impl CompactionReinjectionService {
     }
 }
 
-pub fn render_lease_context_line(leases: &OperationalReinjectionLeases) -> Option<String> {
+fn render_lease_context_line(leases: &OperationalReinjectionLeases) -> Option<String> {
     let held = (!leases.held.is_empty()).then(|| format!("held {}", leases.held.join(", ")));
     let waiting = (!leases.waiting.is_empty()).then(|| {
         format!(
@@ -506,6 +507,26 @@ fn load_member_leases(
         if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
             continue;
         }
+        match fs::metadata(&path) {
+            Ok(metadata) if metadata.len() > MAX_LEASE_RECORD_BYTES => {
+                tracing::warn!(
+                    path = %path.display(),
+                    bytes = metadata.len(),
+                    max_bytes = MAX_LEASE_RECORD_BYTES,
+                    "skipping oversized mesh lease record while composing member context"
+                );
+                continue;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %error,
+                    "skipping unreadable mesh lease record while composing member context"
+                );
+                continue;
+            }
+        }
         let record = match fs::read(&path)
             .map_err(|error| error.to_string())
             .and_then(|raw| {
@@ -522,14 +543,18 @@ fn load_member_leases(
             }
         };
 
-        let lease_name = record.name.trim();
-        if lease_name.is_empty() {
+        let Some(lease_name) = path
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+        else {
             tracing::warn!(
                 path = %path.display(),
                 "skipping mesh lease record with an empty name while composing member context"
             );
             continue;
-        }
+        };
         if record.state == "held" && record.holder.as_deref() == Some(member_name) {
             leases.held.push(lease_name.to_string());
         }
@@ -924,6 +949,8 @@ mod tests {
 
     #[test]
     fn render_additional_context_text_is_imperative_resume_card() {
+        // Regression: commit 4c08860d rendered a bare `mesh task get`, but mesh
+        // requires the managed member's explicit team and name on this verb.
         let card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -942,7 +969,7 @@ mod tests {
         assert!(rendered.contains("Do not stop to summarize or acknowledge this card."));
         assert!(rendered.contains("Current task: #673"));
         assert!(rendered.contains(
-            "Run: mesh task get 673 for your assignment token, rulings, artifacts, and restart cursor."
+            "Run: mesh task get 673 --team taurhaus-team --name architect for your assignment token, rulings, artifacts, and restart cursor."
         ));
         assert!(rendered.contains("Execution mode: recommend"));
         assert!(rendered.contains("Validation expectation: report-only"));
@@ -983,6 +1010,8 @@ mod tests {
 
     #[test]
     fn compose_card_lists_held_leases_and_waiting_positions() {
+        // Regression: commit 4c08860d trusted the JSON body's name instead of
+        // the filename key and read arbitrarily large mesh lease records.
         let tmp = tempfile::tempdir().expect("temp teams dir");
         let leases_dir = tmp
             .path()
@@ -1016,6 +1045,28 @@ mod tests {
             }"#,
         )
         .expect("write waiting lease");
+        fs::write(
+            leases_dir.join("canonical-seam.json"),
+            r#"{
+                "name": "misleading-body-name",
+                "state": "held",
+                "holder": "architect",
+                "waiters": []
+            }"#,
+        )
+        .expect("write filename-keyed lease");
+        let oversized_record = format!(
+            r#"{{
+                "name": "oversized",
+                "state": "held",
+                "holder": "architect",
+                "waiters": [],
+                "padding": "{}"
+            }}"#,
+            "x".repeat(1_048_576)
+        );
+        fs::write(leases_dir.join("oversized.json"), oversized_record)
+            .expect("write oversized lease");
         fs::write(leases_dir.join("unreadable.json"), "not json").expect("write malformed lease");
 
         let card = CompactionReinjectionService::compose_at_with_leases(
@@ -1027,7 +1078,10 @@ mod tests {
                 .with_timezone(&Utc),
         );
 
-        assert_eq!(card.leases.held, vec!["delivery-renderer"]);
+        assert_eq!(
+            card.leases.held,
+            vec!["canonical-seam", "delivery-renderer"]
+        );
         assert_eq!(
             card.leases.waiting,
             vec![OperationalReinjectionLeaseWait {
@@ -1037,7 +1091,9 @@ mod tests {
         );
         let rendered = CompactionReinjectionService::render_additional_context_text(&card)
             .expect("render card");
-        assert!(rendered.contains("Leases: held delivery-renderer; waiting #2 for shared-card."));
+        assert!(rendered.contains(
+            "Leases: held canonical-seam, delivery-renderer; waiting #2 for shared-card."
+        ));
     }
 
     #[test]
