@@ -539,11 +539,13 @@ pub struct ModelCatalog {
 
 static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
     // Team decision 2026-08-28 (docs/design/model-steering-v4-plan.md): Claude
-    // roles run Fable 5 or Opus 5 only. The retired ids stay so persisted roles
-    // still resolve; they carry a hint at the model that replaces them.
+    // roles run Fable or Opus only. The `fable`/`opus` values are CLI aliases
+    // that track each family's newest model (Fable 5.1 as of 2026-09-02) — the
+    // labels name the current resolution. The retired ids stay so persisted
+    // roles still resolve; they carry a hint at the model that replaces them.
     claude: vec![
         model_catalog_entry("opus", "Opus 5", CLAUDE_EFFORTS, None, false, None),
-        model_catalog_entry("fable", "Fable 5", CLAUDE_EFFORTS, None, false, None),
+        model_catalog_entry("fable", "Fable 5.1", CLAUDE_EFFORTS, None, false, None),
         model_catalog_entry("sonnet", "Sonnet", CLAUDE_EFFORTS, None, true, Some("opus")),
         model_catalog_entry("haiku", "Haiku", CLAUDE_EFFORTS, None, true, Some("opus")),
         model_catalog_entry(
@@ -1870,7 +1872,7 @@ mod tests {
         );
 
         let fable = ModelCatalog::entry_for(CliTool::Claude, "fable").expect("fable");
-        assert_eq!(fable.label, "Fable 5");
+        assert_eq!(fable.label, "Fable 5.1");
         assert_eq!(fable.efforts, ["low", "medium", "high", "xhigh", "max"]);
         assert_eq!(fable.default_effort, None);
         assert!(!fable.deprecated);

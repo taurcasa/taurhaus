@@ -406,7 +406,7 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 Current built-ins ship from `src-tauri/resources/templates/`:
 
 - **Roles (16)**:
-  - orchestration: `v3-lead-claude` (Fable 5), `codex-orchestrator` (GPT-5.6 Sol), and `antigravity-orchestrator` (the Antigravity/agy alternative)
+  - orchestration: `v3-lead-claude` (Fable 5.1), `codex-orchestrator` (GPT-5.6 Sol), and `antigravity-orchestrator` (the Antigravity/agy alternative)
   - implementation: `v4-developer-claude`, `v4-developer-codex`, `v4-developer-agy`, `v4-developer-grok`, `quick-dev-codex`, and `frontend-design-skill-developer`
   - review and decision support: `v3-architect-codex`, `adversarial-reviewer-claude`, `claude-product-checker`, `claude-design-lead`, `claude-researcher`, `docs-verifier-codex`, and `codex-qa`
 - **Presets (5)**:
@@ -422,7 +422,7 @@ historical `v3-lead-claude` and `v3-architect-codex` ids remain because presets
 already reference them; their bodies and versions carry the current playbook.
 Those frozen compatibility ids no longer indicate which harness runs the role.
 
-The architect and researcher are open model slots. Architect defaults to Fable 5
+The architect and researcher are open model slots. Architect defaults to Fable 5.1
 with GPT-5.6 Sol named as the fallback; researcher defaults to session-proven Sol
 with Opus 5 High named as the alternative. The adversarial reviewer defaults to
 Opus 5 and documents the candidate Sol-recall-then-Opus-verification variant.
@@ -430,7 +430,7 @@ Switching one of these experiments is a field edit to the role's `defaults`, not
 a new role file.
 
 Design is deliberately split: `claude-design-lead` owns creative direction
-(Fable 5 preferred, Gemini via Antigravity as the alternative), while
+(Fable 5.1 preferred, Gemini via Antigravity as the alternative), while
 `frontend-design-skill-developer` owns UI implementation (Sol preferred, Opus 5
 as the alternative). Both roles treat automated evidence as a pre-filter and
 state that UX conclusions require human validation.
