@@ -172,6 +172,12 @@ mod commands {
         pub fn push_launch_settings_to_daemon(_app: &tauri::AppHandle) -> Result<(), String> {
             Ok(())
         }
+
+        pub fn repush_cached_launch_settings_to_daemon(
+            _daemon: &taurhaus_lib::provider::daemon_client::DaemonProvider,
+        ) -> Result<(), String> {
+            Ok(())
+        }
     }
 
     pub mod accounts {

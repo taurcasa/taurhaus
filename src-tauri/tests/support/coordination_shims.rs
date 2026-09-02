@@ -166,6 +166,8 @@ pub mod daemon {
             reconciled_offline_members.sort();
             Ok(
                 crate::daemon::protocol::CoordinationReconcileLivePresenceResult {
+                    outcome:
+                        crate::daemon::protocol::CoordinationReconcileLivePresenceOutcome::Reconciled,
                     reconciled_offline_members,
                 },
             )
@@ -435,8 +437,9 @@ pub mod daemon {
             CoordinationApplyTaskEffortAccepted, CoordinationApplyTaskEffortOutcome,
             CoordinationApplyTaskEffortParams, CoordinationApplyTaskEffortReport,
             CoordinationApplyTaskEffortStatus, CoordinationApplyTaskEffortStatusParams,
-            CoordinationReconcileLivePresenceParams, CoordinationReconcileLivePresenceResult,
-            CoordinationSetActiveProjectTeamParams, CoordinationSetActiveProjectTeamResult,
+            CoordinationReconcileLivePresenceOutcome, CoordinationReconcileLivePresenceParams,
+            CoordinationReconcileLivePresenceResult, CoordinationSetActiveProjectTeamParams,
+            CoordinationSetActiveProjectTeamResult,
         };
 
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
