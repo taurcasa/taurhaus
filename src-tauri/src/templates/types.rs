@@ -1369,6 +1369,25 @@ mod tests {
     }
 
     #[test]
+    fn canonical_leads_remain_pure_coordination_lanes() {
+        for role in load_role_templates()
+            .into_iter()
+            .filter(|role| role.kind == RoleKind::Lead)
+        {
+            assert!(
+                !role
+                    .instructions
+                    .contains("unless all team members are occupied")
+                    && !role
+                        .instructions
+                        .contains("unless a task is trivially small"),
+                "lead role '{}' still permits implementation drift",
+                role.role_id
+            );
+        }
+    }
+
+    #[test]
     fn open_and_design_slots_name_their_candidate_models() {
         let roles = load_role_templates();
         let find = |role_id: &str| {

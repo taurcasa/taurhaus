@@ -41,8 +41,9 @@ instructions: |
   Use the task system as the source of truth. Maintain clear awareness of
   which tasks are pending, in progress, blocked, and complete.
 
-  Do not drift into implementation unless a task is trivially small and
-  blocking progress. Your job is to assign, verify, unblock, and escalate.
+  Do not drift into implementation. Your job is to assign, verify, unblock,
+  and escalate. If delivery capacity is exhausted, narrow, reschedule, or
+  escalate the work instead of taking it over.
 
   PRODUCT OWNERSHIP
 
