@@ -222,6 +222,95 @@ describe('ambientAccountSignal', () => {
       ])
     ).toMatchObject({ visible: true, tone: 'danger', magnitude: 'Sign in' })
   })
+
+  // Regression: 6556676e read supersession off the saved global default alone,
+  // while the resolver reaches the default directory only after a usable
+  // base-command selector has failed too. A signed-out directory under a
+  // `CLAUDE_CONFIG_DIR` alias that launches every session on a signed-in
+  // account therefore lit a permanent red the launches never touch.
+  it('ignores a default directory the launch command selector supersedes', () => {
+    const signedOutDirectory = account({
+      id: 'legacy',
+      logged_in: false,
+      usage: null,
+      dir: '/home/user/.claude',
+      is_default: true,
+      is_process_default: true,
+    })
+    const selected = account({ id: 'work', dir: '/home/user/.claude-work' })
+
+    expect(
+      ambientAccountSignal([
+        {
+          tool: 'claude',
+          defaultAccountId: null,
+          accounts: [signedOutDirectory, selected],
+          relationships: {},
+          resolvedBases: [
+            {
+              command: 'CLAUDE_CONFIG_DIR=~/.claude-work claude',
+              selectorValue: '~/.claude-work',
+              expansions: [{ name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-work claude' }],
+            },
+          ],
+        },
+      ])
+    ).toMatchObject({ visible: false, tone: 'calm' })
+  })
+
+  it('keeps the default directory relevant when the selector names a signed-out account', () => {
+    const signedOutDirectory = account({
+      id: 'legacy',
+      logged_in: false,
+      usage: null,
+      dir: '/home/user/.claude',
+      is_default: true,
+    })
+    const selected = account({
+      id: 'work',
+      logged_in: false,
+      usage: null,
+      dir: '/home/user/.claude-work',
+    })
+
+    expect(
+      ambientAccountSignal([
+        {
+          tool: 'claude',
+          defaultAccountId: null,
+          accounts: [signedOutDirectory, selected],
+          relationships: {},
+          resolvedBases: [
+            { command: 'CLAUDE_CONFIG_DIR=~/.claude-work claude', selectorValue: '~/.claude-work' },
+          ],
+        },
+      ])
+    ).toMatchObject({ visible: true, tone: 'danger', magnitude: 'Sign in' })
+  })
+
+  it('ignores a default directory a selector nothing detected keeps launches away from', () => {
+    const signedOutDirectory = account({
+      id: 'legacy',
+      logged_in: false,
+      usage: null,
+      dir: '/home/user/.claude',
+      is_default: true,
+    })
+
+    expect(
+      ambientAccountSignal([
+        {
+          tool: 'claude',
+          defaultAccountId: null,
+          accounts: [signedOutDirectory],
+          relationships: {},
+          resolvedBases: [
+            { command: 'CLAUDE_CONFIG_DIR=~/.claude-gone claude', selectorValue: '~/.claude-gone' },
+          ],
+        },
+      ])
+    ).toMatchObject({ visible: false, tone: 'calm' })
+  })
 })
 
 describe('usageIsLastKnown', () => {

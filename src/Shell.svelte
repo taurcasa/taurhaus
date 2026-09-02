@@ -14,6 +14,7 @@
     pendingAccountChoice,
     refreshAccounts,
     refreshAccountRelationships,
+    refreshResolvedBases,
     refreshUsage,
     requestLaunch,
     resolveChooserAccounts,
@@ -352,12 +353,20 @@
    * the one moment taurhaus may hold none. From then on a listing carries
    * whatever the backend poller last observed, and the poller — not this
    * timer — decides how often a subscription is worth asking again.
+   *
+   * The relationship index is not a provider read, and the footer's relevance
+   * rule is only true while it keeps step with the pins in force — so every
+   * pass re-reads it. What the launch commands select is asked for on the
+   * opening and reconnect passes alone: resolving a base probes an interactive
+   * shell, and nothing but a Settings edit — which invalidates it itself — can
+   * change the answer between them.
    */
   function syncAccountChrome({ force = false, provider = false } = {}) {
     for (const tool of registryTools()) {
       const detected = Promise.resolve(refreshAccounts(tool.id, { force }))
-      if (!provider) continue
       void refreshAccountRelationships(tool.id, { force })
+      if (!provider) continue
+      if (tool.capabilities.accountSelection) void refreshResolvedBases(tool.id, { force })
       if (tool.capabilities.usage) {
         void detected.then(() =>
           refreshUsage(tool.id, { maxAgeMs: ACCOUNTS_SYNC_INTERVAL_MS })

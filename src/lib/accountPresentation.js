@@ -59,19 +59,50 @@ function isDefaultDirectory(account) {
 }
 
 /**
+ * What this tool's launch commands select, as the resolver reads them.
+ *
+ * `null` when no base carries a selector at all. Otherwise the account the
+ * selector names, which is `null` in its own right when the directory it names
+ * is one nothing detected — the resolver stops there with no account rather
+ * than falling on to the default directory.
+ */
+function baseCommandSelector(state) {
+  const bases = Array.isArray(state?.resolvedBases) ? state.resolvedBases : []
+  for (const base of bases) {
+    const value = String(base?.selectorValue ?? base?.selector_value ?? '')
+    if (!value) continue
+    return { account: accountForSelectorValue(value, state?.accounts ?? []) }
+  }
+  return null
+}
+
+/**
  * Whether a usable choice the backend ranks higher owns this tool's launches.
  *
  * The default directory is the last thing the resolver reaches for: a saved
  * global default that is signed in answers every launch before the directory is
- * consulted. A saved default nothing can use is no supersession at all — the
- * resolver falls past it, and the directory is what launches land on again.
+ * consulted, and so does a selector the launch command carries. A saved default
+ * nothing can use is no supersession at all — the resolver falls past it — and
+ * neither is a selector naming an account that cannot run. A selector naming a
+ * directory nothing detected does supersede: that launch resolves to no account
+ * whatever, so the directory is not what it lands on.
  */
 function defaultDirectorySuperseded(account, state) {
   const savedDefaultId = state?.defaultAccountId
-  if (!savedDefaultId || savedDefaultId === account?.id) return false
-  return (state?.accounts ?? []).some(
-    (candidate) => candidate?.id === savedDefaultId && candidate?.logged_in
-  )
+  if (
+    savedDefaultId &&
+    savedDefaultId !== account?.id &&
+    (state?.accounts ?? []).some(
+      (candidate) => candidate?.id === savedDefaultId && candidate?.logged_in
+    )
+  ) {
+    return true
+  }
+
+  const selector = baseCommandSelector(state)
+  if (!selector) return false
+  if (!selector.account) return true
+  return Boolean(selector.account.logged_in) && selector.account.id !== account?.id
 }
 
 function isRelevant(account, state) {

@@ -104,7 +104,8 @@ vi.mock('./lib/AddProjectModal.svelte', () => ({ default: createMockComponent('a
 vi.mock('./lib/FirstRunWizard.svelte', () => ({ default: createMockComponent('first-run') }))
 vi.mock('./lib/components/MeshTab.svelte', () => ({ default: createMockComponent('mesh-tab') }))
 
-const { refreshAccounts, refreshUsage } = await import('./lib/accounts.svelte.js')
+const { refreshAccountRelationships, refreshAccounts, refreshResolvedBases, refreshUsage } =
+  await import('./lib/accounts.svelte.js')
 
 import Shell from './Shell.svelte'
 
@@ -147,5 +148,30 @@ describe('Shell ambient account synchronisation', () => {
     // The poller decides how often a subscription is worth asking again; the
     // chrome only reads what it has already observed.
     expect(refreshUsage.mock.calls.length).toBe(openingProviderReads)
+  })
+
+  // Regression: 6556676e brought the ambient chrome level with detection but
+  // never with what the launch commands select, so the footer judged the
+  // default directory relevant while an alias sent every launch elsewhere.
+  it('reads what the launch commands select for the tools that can switch', async () => {
+    render(Shell)
+    await vi.advanceTimersByTimeAsync(10)
+
+    expect(toolsAsked(refreshResolvedBases)).toEqual(new Set(['claude', 'codex', 'grok']))
+  })
+
+  // Regression: 6556676e refreshed the relationship index only on the opening
+  // pass, so a pin made from Overview or the sidebar left the footer's calm or
+  // warning state as it was until somebody opened Accounts.
+  it('keeps the relationship index level on the recurring pass', async () => {
+    render(Shell)
+    await vi.advanceTimersByTimeAsync(10)
+    const opening = refreshAccountRelationships.mock.calls.length
+    expect(opening).toBeGreaterThan(0)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    const tick = refreshAccountRelationships.mock.calls.slice(opening)
+    expect(toolsIn(tick)).toEqual(new Set(['claude', 'codex', 'agy', 'grok']))
   })
 })
