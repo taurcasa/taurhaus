@@ -89,6 +89,29 @@ describe('ambientAccountSignal', () => {
       ])
     ).toMatchObject({ visible: false, tone: 'calm' })
   })
+
+  // Regression: 462c18f ignored the detected default-directory account, so a
+  // fresh single-account install never surfaced that account's usage pressure.
+  it('treats the tool default-directory account as relevant without a saved default', () => {
+    const defaultDirectory = account({
+      is_default: true,
+      usage: {
+        status: 'ok',
+        windows: [{ key: 'weekly', title: 'Week', used_percentage: 86 }],
+      },
+    })
+
+    expect(
+      ambientAccountSignal([
+        {
+          tool: 'claude',
+          defaultAccountId: null,
+          accounts: [defaultDirectory],
+          relationships: {},
+        },
+      ])
+    ).toMatchObject({ visible: true, tone: 'warning', magnitude: '86%' })
+  })
 })
 
 describe('usageIsLastKnown', () => {

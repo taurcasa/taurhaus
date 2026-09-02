@@ -7,6 +7,9 @@ function relationshipList(relationships, camel, snake) {
 
 function isRelevant(account, state) {
   if (account?.id === state?.defaultAccountId) return true
+  if (account?.is_default || account?.isDefault || account?.is_process_default || account?.isProcessDefault) {
+    return true
+  }
   const relationships = state?.relationships?.[account?.id]
   return (
     relationshipList(relationships, 'pinnedProjects', 'pinned_projects').length > 0 ||
