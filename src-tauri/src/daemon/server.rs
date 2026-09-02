@@ -756,57 +756,78 @@ mod tests {
         config: DaemonConfig,
         heavy_guard: crate::test_support::HeavyTestGuard,
     ) -> TestServer {
+        start_server_with_heavy_guard_and_probe(config, heavy_guard, |_| {})
+    }
+
+    // Regression: commit 831571dac released the selected ephemeral port before
+    // the serving thread rebound it. Keep the listener owned across the handoff
+    // so parallel daemon tests cannot take the same kernel resource.
+    fn start_server_with_heavy_guard_and_probe(
+        mut config: DaemonConfig,
+        heavy_guard: crate::test_support::HeavyTestGuard,
+        probe: impl FnOnce(u16),
+    ) -> TestServer {
+        let listener = bind_listener_for_test(&config).expect("bind test daemon listener");
+        let port = listener.local_addr().expect("test daemon address").port();
+        config.port = port;
+        probe(port);
+
         let shutdown = Arc::new(AtomicBool::new(false));
-        let port = config.port;
         let shutdown_clone = shutdown.clone();
         let handle = std::thread::spawn(move || {
-            run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
+            serve_for_test(&config, listener, shutdown_clone, Arc::new(LocalProvider))
         });
-        let server = TestServer {
+        TestServer {
             port,
             shutdown,
             _heavy_guard: heavy_guard,
             handle: Some(handle),
-        };
-
-        // Poll until the server is accepting connections (up to 2s).
-        // A fixed sleep was flaky under parallel test load.
-        if wait_for_server_accepting(port, std::time::Duration::from_secs(2)) {
-            return server;
         }
-        panic!("test server on port {port} did not start within 2s");
     }
 
     fn start_test_server() -> TestServer {
-        // Find a free port
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
+        start_test_server_with_port_probe(|_| {})
+    }
 
-        start_server(DaemonConfig {
-            port,
-            bind_addr: "127.0.0.1".to_string(),
-            idle_timeout_secs: None,
-            auth_token: None,
-        })
+    fn start_test_server_with_port_probe(probe: impl FnOnce(u16)) -> TestServer {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        start_server_with_heavy_guard_and_probe(
+            DaemonConfig {
+                port: 0,
+                bind_addr: "127.0.0.1".to_string(),
+                idle_timeout_secs: None,
+                auth_token: None,
+            },
+            heavy_guard,
+            probe,
+        )
     }
 
     fn start_test_server_with_heavy_guard(
         heavy_guard: crate::test_support::HeavyTestGuard,
     ) -> TestServer {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-
         start_server_with_heavy_guard(
             DaemonConfig {
-                port,
+                port: 0,
                 bind_addr: "127.0.0.1".to_string(),
                 idle_timeout_secs: None,
                 auth_token: None,
             },
             heavy_guard,
         )
+    }
+
+    // Regression: commit 831571dac made the fixture release its ephemeral port
+    // during handoff, letting a parallel listener steal it.
+    #[test]
+    fn test_server_fixture_keeps_ephemeral_port_owned_during_handoff() {
+        let server = start_test_server_with_port_probe(|port| {
+            let error = TcpListener::bind(("127.0.0.1", port))
+                .expect_err("the test fixture must retain ownership of its selected port");
+            assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+        });
+
+        assert_ne!(server.port, 0);
     }
 
     // Regression: 79be608 installed the Claude status-line bridge from `run`,
@@ -1461,12 +1482,8 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn start_authed_server(token: &str) -> TestServer {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-
         start_server(DaemonConfig {
-            port,
+            port: 0,
             bind_addr: "127.0.0.1".to_string(),
             idle_timeout_secs: None,
             auth_token: Some(token.to_string()),

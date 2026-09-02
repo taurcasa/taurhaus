@@ -878,18 +878,39 @@ mod tests {
         port: u16,
         heavy_guard: crate::test_support::HeavyTestGuard,
     ) -> TestDaemon {
+        start_daemon_on_port_with_guard_and_probe(port, heavy_guard, |_| {})
+    }
+
+    // Regression: commit 831571dac released the selected ephemeral port before
+    // the serving thread rebound it. Keep the listener owned across the handoff
+    // so parallel daemon-provider tests cannot take the same kernel resource.
+    fn start_daemon_on_port_with_guard_and_probe(
+        port: u16,
+        heavy_guard: crate::test_support::HeavyTestGuard,
+        probe: impl FnOnce(u16),
+    ) -> TestDaemon {
         let shutdown = Arc::new(AtomicBool::new(false));
-        let config = DaemonConfig {
+        let mut config = DaemonConfig {
             port,
             bind_addr: "127.0.0.1".to_string(),
             idle_timeout_secs: None,
             auth_token: None,
         };
+        let listener = crate::daemon::server::bind_listener_for_test(&config)
+            .expect("bind test daemon listener");
+        let port = listener.local_addr().expect("test daemon address").port();
+        config.port = port;
+        probe(port);
+
         let shutdown_clone = shutdown.clone();
         let handle = std::thread::spawn(move || {
-            crate::daemon::server::run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
+            crate::daemon::server::serve_for_test(
+                &config,
+                listener,
+                shutdown_clone,
+                Arc::new(LocalProvider),
+            )
         });
-        wait_for_port(port, Duration::from_secs(3));
         TestDaemon {
             port,
             shutdown,
@@ -905,21 +926,12 @@ mod tests {
 
     /// Start a test daemon server with an ephemeral port.
     fn start_daemon() -> TestDaemon {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-        start_daemon_on_port(port)
+        start_daemon_with_port_probe(|_| {})
     }
 
-    fn wait_for_port(port: u16, timeout: Duration) {
-        let deadline = Instant::now() + timeout;
-        while Instant::now() < deadline {
-            if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
-        panic!("daemon did not accept connections on port {port} before timeout");
+    fn start_daemon_with_port_probe(probe: impl FnOnce(u16)) -> TestDaemon {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        start_daemon_on_port_with_guard_and_probe(0, heavy_guard, probe)
     }
 
     fn read_lines(path: &Path) -> Vec<String> {
@@ -953,6 +965,19 @@ mod tests {
         let tree = repo.find_tree(tree_id).unwrap();
         repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
             .unwrap();
+    }
+
+    // Regression: commit 831571dac made the fixture release its ephemeral port
+    // during handoff, letting a parallel listener steal it.
+    #[test]
+    fn daemon_provider_fixture_keeps_ephemeral_port_owned_during_handoff() {
+        let daemon = start_daemon_with_port_probe(|port| {
+            let error = std::net::TcpListener::bind(("127.0.0.1", port))
+                .expect_err("the test fixture must retain ownership of its selected port");
+            assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+        });
+
+        assert_ne!(daemon.port, 0);
     }
 
     #[test]
@@ -1415,12 +1440,7 @@ mod tests {
         let state = LogFileState::new(log_path.clone()).expect("log state");
         install_global_sink(&state);
 
-        let daemon = {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            let port = listener.local_addr().unwrap().port();
-            drop(listener);
-            start_daemon_on_port_with_guard(port, heavy_guard)
-        };
+        let daemon = start_daemon_on_port_with_guard(0, heavy_guard);
         let provider = DaemonProvider::connect(&format!("127.0.0.1:{}", daemon.port)).unwrap();
         assert!(provider.reconnect().is_ok());
         provider.mark_disconnected("test_disconnect");
