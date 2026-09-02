@@ -54,6 +54,16 @@ provision-worktree LANE_PATH BRANCH BASE="origin/main":
         printf '%s\n' '[build]'
         printf 'target-dir = "%s"\n' "$shared_target"
     } > "$lane_path/.cargo/config.toml"
+    # Gitignored build resources a fresh worktree lacks but tests and bundling
+    # expect (bundled mesh dir, daemon payload). Seed from this checkout when
+    # present; a lane never rebuilds them.
+    for resource in mesh taurhaus-daemon; do
+        src="src-tauri/resources/$resource"
+        dst="$lane_path/src-tauri/resources/$resource"
+        if [ -e "$src" ] && [ ! -e "$dst" ]; then
+            cp -r -- "$src" "$dst"
+        fi
+    done
     (
         cd -- "$lane_path"
         bun install --frozen-lockfile
