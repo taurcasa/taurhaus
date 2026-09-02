@@ -168,6 +168,12 @@ mod commands {
         pub struct DbState(pub Arc<Mutex<rusqlite::Connection>>);
     }
 
+    pub mod settings {
+        pub fn push_launch_settings_to_daemon(_app: &tauri::AppHandle) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
     pub mod accounts {
         pub struct TestResolutionProbeGuard;
 
