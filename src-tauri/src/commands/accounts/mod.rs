@@ -480,7 +480,7 @@ pub(crate) fn account_directory_plan(default_dir: &Path, label: &str) -> Result<
         .map(|character| {
             if character.is_ascii_alphanumeric() {
                 character
-            } else if character == ' ' || character == '_' {
+            } else if character == ' ' || character == '_' || character == '-' {
                 '-'
             } else {
                 '\0'
@@ -489,7 +489,8 @@ pub(crate) fn account_directory_plan(default_dir: &Path, label: &str) -> Result<
         .collect::<String>();
     if slug.contains('\0') {
         return Err(
-            "Account names may contain only letters, numbers, spaces, and underscores".to_string(),
+            "Account names may contain only letters, numbers, spaces, hyphens, and underscores"
+                .to_string(),
         );
     }
     let slug = slug.trim_matches('-');

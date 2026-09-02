@@ -147,6 +147,12 @@ fn account_directory_plan_is_a_safe_sibling_of_the_registry_home() {
         account_directory_plan(default_dir, "Work Two").expect("plan"),
         Path::new("/home/user/.claude-work-two")
     );
+    // Regression: 971d964 rejected the hyphenated account labels used by the
+    // approved add-account journey even though output directories use hyphens.
+    assert_eq!(
+        account_directory_plan(default_dir, "work-2").expect("hyphenated plan"),
+        Path::new("/home/user/.claude-work-2")
+    );
     assert!(account_directory_plan(default_dir, "../../tokens").is_err());
     assert!(account_directory_plan(default_dir, "---").is_err());
 }
