@@ -368,6 +368,7 @@ function detectAccounts(tool) {
       return
     }
     state.accounts = keepKnownUsage(state, addressableAccounts(report?.accounts ?? []))
+    previewCache.clear()
     state.generation += 1
     state.degraded = false
   })
@@ -391,8 +392,8 @@ function detectAccounts(tool) {
  * Cached passive account truth for hover/visible surfaces.
  *
  * Hidden surfaces never issue IPC. Once visible, the backend answer is held
- * only for this account generation; a successful detection invalidates it by
- * changing the key without a global cache sweep.
+ * only for this account generation; a successful detection invalidates and
+ * drops the prior generation before advancing the cache key.
  */
 export async function previewAccount(project, tool = providerTool(), {
   visible = false,

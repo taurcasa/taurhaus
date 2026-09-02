@@ -135,6 +135,28 @@ describe('claudeAccounts store', () => {
     expect(resolveLaunchAccount).toHaveBeenCalledTimes(2)
   })
 
+  // Regression: 4a1abae orphaned every prior generation's preview entries,
+  // growing the module cache for the lifetime of the desktop process.
+  it('drops previews from earlier account generations', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    resolveLaunchAccount.mockResolvedValue({
+      accountId: 'account-2',
+      source: 'project',
+      needsChoice: false,
+    })
+
+    await refreshAccounts('claude')
+    await previewAccount({ id: 'p1' }, 'claude', { visible: true })
+    const firstGeneration = accountState('claude').generation
+
+    await refreshAccounts('claude', { force: true })
+    await previewAccount({ id: 'p1' }, 'claude', { visible: true })
+
+    accountState('claude').generation = firstGeneration
+    await previewAccount({ id: 'p1' }, 'claude', { visible: true })
+    expect(resolveLaunchAccount).toHaveBeenCalledTimes(3)
+  })
+
   it('loads reverse relationships and persists the global default optimistically', async () => {
     listAccountRelationships.mockResolvedValue({
       byAccount: {
