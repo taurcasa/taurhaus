@@ -1467,12 +1467,10 @@ mod tests {
         assert!(outcome.skipped_teams[0].1.contains("failed to parse"));
     }
 
-    // Regression: 2529309 started every effort switch from the 30 s self-heal
-    // pass, so a Codex member could read a whole assignment at its previous
-    // level before the timer came round. The switch belongs on the task event
-    // that made the assignment visible; the timer only retries one that failed.
+    // Regression: d19ce6a8 limited the background pass to recorded failures,
+    // so a missed app task edge left mesh's notice gate waiting indefinitely.
     #[test]
-    fn the_background_pass_starts_no_switch_of_its_own() {
+    fn the_background_pass_starts_a_switch_without_a_recorded_failure() {
         let tmp = TempDir::new().expect("tempdir");
         let runtime = Arc::new(RecordingCoordinationRuntime::default());
         runtime.set_detected_runtime_session(
@@ -1537,8 +1535,8 @@ mod tests {
             .expect("background pass succeeds");
 
         assert_eq!(
-            summary.members_effort_resumed, 0,
-            "a switch nothing has attempted yet is the task event's to start"
+            summary.members_effort_resumed, 1,
+            "the daemon sweep closes a gate whose app task edge was missed"
         );
         let record = crate::coordination::stores::MemberRuntimeStore::load(
             tmp.path(),
@@ -1546,7 +1544,7 @@ mod tests {
             "builder",
         )
         .expect("runtime record");
-        assert_eq!(record.applied_effort.as_deref(), Some("low"));
+        assert_eq!(record.applied_effort.as_deref(), Some("high"));
     }
 
     // Regression: bb32cbb8 used the tempdir itself as the teams root, so

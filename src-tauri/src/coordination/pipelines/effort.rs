@@ -295,14 +295,11 @@ impl CoordinationOrchestrator {
     /// owes. The scope remains part of failure handling, while the shared
     /// attempt budget bounds either caller.
     ///
-    /// **Best-effort by design, and behind the notice.** mesh owns both the
-    /// assignment record and the inbox, and nothing on taurhaus's side gates
-    /// either, so a Codex member can read its assignment at its previous effort
-    /// for the seconds between the notice landing and this resume completing.
-    /// Closing that window means gating the notice on `appliedEffort` in mesh,
-    /// which owns both ends; it is the W5a follow-up. Until then a member that
-    /// cannot be switched keeps running at its previous level and still has the
-    /// notice, which carries the line.
+    /// **Notice-gated by bundled mesh 0.2.28.** mesh owns both the assignment
+    /// record and the inbox, so it holds a Codex notice while `appliedEffort`
+    /// differs from the assignment. This pass closes that gate by committing
+    /// the level the rendered resume actually carries; mesh's bounded wait is
+    /// the fail-open path when a member cannot be switched.
     pub fn apply_pending_task_effort(
         &mut self,
         team_name: &str,
