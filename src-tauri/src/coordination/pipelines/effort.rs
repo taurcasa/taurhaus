@@ -144,6 +144,14 @@ fn assignment_target(
         OperationalContextSnapshotStore::load(&orchestrator.teams_dir, team_name, member_name)
             .ok()??;
     let task_id = snapshot.task.id.clone();
+    if let Some(status) = mesh_task_status(&orchestrator.teams_dir, team_name, task_id.as_str()) {
+        if crate::coordination::operational_context::is_blocked_task_status(&status) {
+            return None;
+        }
+        if !crate::coordination::operational_context::is_resumable_task_status(&status) {
+            return None;
+        }
+    }
     task_effort::active_task_effort(&snapshot).map(|effort| AssignmentTarget {
         task_id,
         level: effort.level,
@@ -175,24 +183,36 @@ pub(crate) fn mesh_tasks_dir(teams_dir: &Path, team_name: &str) -> Option<PathBu
 }
 
 fn read_assignment_task(path: &Path, member_name: &str) -> Option<AssignmentTarget> {
-    if path.extension().and_then(|extension| extension.to_str()) != Some("json")
-        || fs::metadata(path).ok()?.len() > MAX_ASSIGNMENT_RECORD_BYTES
-    {
-        return None;
-    }
-    let task: serde_json::Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+    let task = read_mesh_task(path)?;
     if task.get("owner").and_then(serde_json::Value::as_str) != Some(member_name) {
         return None;
     }
     let status = task.get("status").and_then(serde_json::Value::as_str)?;
-    if crate::coordination::operational_context::is_blocked_task_status(status)
-        || !crate::coordination::operational_context::is_resumable_task_status(status)
-    {
+    if !crate::coordination::operational_context::is_resumable_task_status(status) {
         return None;
     }
     let task_id = non_empty_json_string(task.get("id"))?;
     let level = non_empty_json_string(task.get("metadata")?.get("effort"))?.to_ascii_lowercase();
     (effort_rank(&level) > 0).then_some(AssignmentTarget { task_id, level })
+}
+
+fn mesh_task_status(teams_dir: &Path, team_name: &str, task_id: &str) -> Option<String> {
+    let entries = fs::read_dir(mesh_tasks_dir(teams_dir, team_name)?).ok()?;
+    entries.filter_map(Result::ok).find_map(|entry| {
+        let task = read_mesh_task(&entry.path())?;
+        (non_empty_json_string(task.get("id")).as_deref() == Some(task_id))
+            .then(|| non_empty_json_string(task.get("status")))
+            .flatten()
+    })
+}
+
+fn read_mesh_task(path: &Path) -> Option<serde_json::Value> {
+    if path.extension().and_then(|extension| extension.to_str()) != Some("json")
+        || fs::metadata(path).ok()?.len() > MAX_ASSIGNMENT_RECORD_BYTES
+    {
+        return None;
+    }
+    serde_json::from_slice(&fs::read(path).ok()?).ok()
 }
 
 fn held_task_id(teams_dir: &Path, team_name: &str, member_name: &str) -> Option<String> {

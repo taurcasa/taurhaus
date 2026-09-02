@@ -5160,9 +5160,8 @@ fn without_a_held_projection_the_highest_open_requested_effort_wins() {
     assert_eq!(record.applied_effort.as_deref(), Some("high"));
 }
 
-// Regression: 9e288c56 ranked every open assignment by effort without
-// accounting for blocked status, so dev-1's blocked high task anchored the
-// target while the member actively worked lower-effort work.
+// Policy pin: blocked mesh task records are outside the open candidate set, so
+// they cannot outrank lower-effort work that is actually in progress.
 #[test]
 fn a_blocked_high_assignment_does_not_anchor_over_in_progress_low_work() {
     let root = TempDir::new().expect("tempdir");
@@ -5221,6 +5220,8 @@ fn completed_blocker_history_does_not_disqualify_in_progress_high_work() {
     write_mesh_task(&root, "41", "pending", "low", "mechanical follow-up");
     write_mesh_task(&root, "61", "completed", "low", "finished prerequisite");
     write_mesh_task(&root, "62", "in_progress", "high", "risky active work");
+    // Effort policy intentionally ignores append-only `blockedBy` history;
+    // the task's current status is the eligibility authority.
     block_mesh_task(&root, "62", "61");
 
     let resumed = orchestrator
@@ -5238,9 +5239,9 @@ fn completed_blocker_history_does_not_disqualify_in_progress_high_work() {
     assert_eq!(record.applied_effort.as_deref(), Some("high"));
 }
 
-// Regression: 2e2b52f0 admitted blocked-status records as effort targets, so
-// the widened daemon sweep relaunched a live member whose only open task was
-// explicitly stood down.
+// Regression: 9e288c56 let the operational-snapshot compatibility fallback
+// override a blocked mesh task's authoritative status, so the widened daemon
+// sweep could relaunch a live member whose only work was explicitly stood down.
 #[test]
 fn a_background_sweep_does_not_relaunch_blocked_only_work() {
     let root = TempDir::new().expect("tempdir");
@@ -5252,6 +5253,13 @@ fn a_background_sweep_does_not_relaunch_blocked_only_work() {
     })
     .expect("seed applied effort");
     write_mesh_task(&root, "62", "blocked", "high", "risky when unblocked");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("62", "Risky blocked work")),
+        "high",
+        "risky when unblocked",
+    );
 
     let resumed = orchestrator
         .apply_pending_task_effort(
