@@ -592,6 +592,11 @@ pub struct CoordinationRemoveMemberStatus {
 #[cfg(feature = "mesh-bridged-backend")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CoordinationPutLaunchSettingsParams {
+    /// The app's settings-save counter; the daemon keeps the highest version
+    /// it has seen. Monotonicity is global by design: this architecture runs
+    /// one daemon per data dir and port (E2E workers get private ports), so a
+    /// second app instance with an older counter is not a supported topology
+    /// — documented rather than defended with per-client state.
     pub version: u64,
     pub cli_commands: crate::models::CliCommandSettings,
     pub tmux_layout: String,

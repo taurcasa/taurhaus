@@ -13,6 +13,13 @@ use crate::models::Settings;
 static SETTINGS_RECONCILE_QUEUED: AtomicBool = AtomicBool::new(false);
 
 #[cfg(feature = "mesh-bridged-backend")]
+/// The snapshot version the daemon last ACKED. Cleared before every push
+/// attempt so a failed push (or a daemon restarted mid-flight) reads as
+/// out-of-sync and the health monitor's top-up retries it.
+#[cfg(feature = "mesh-bridged-backend")]
+static LAST_ACKED_LAUNCH_SETTINGS_VERSION: std::sync::Mutex<Option<u64>> =
+    std::sync::Mutex::new(None);
+
 static LAST_LAUNCH_SETTINGS_SNAPSHOT: LazyLock<
     Mutex<Option<crate::daemon::protocol::CoordinationPutLaunchSettingsParams>>,
 > = LazyLock::new(|| Mutex::new(None));
@@ -199,7 +206,39 @@ pub(crate) fn push_launch_settings_to_daemon(app: &tauri::AppHandle) -> Result<(
     if !daemon.is_connected() {
         return Err("daemon is not connected".to_string());
     }
+    clear_acked_launch_settings_version();
     send_launch_settings_to_daemon(daemon, snapshot)
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn clear_acked_launch_settings_version() {
+    if let Ok(mut acked) = LAST_ACKED_LAUNCH_SETTINGS_VERSION.lock() {
+        *acked = None;
+    }
+}
+
+/// Reconcile the daemon's launch-settings snapshot from the health monitor's
+/// Healthy branch: a no-op RPC-free check while the last push was acked at the
+/// current version, a fresh push otherwise. This is the one periodic mechanism
+/// that heals a failed push (or any reconnect path that forgot to repush)
+/// without every call site having to remember it.
+#[cfg(feature = "mesh-bridged-backend")]
+pub(crate) fn ensure_daemon_holds_current_launch_settings(
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    let cached_version = LAST_LAUNCH_SETTINGS_SNAPSHOT
+        .lock()
+        .map_err(|_| "launch-settings snapshot mutex poisoned".to_string())?
+        .as_ref()
+        .map(|snapshot| snapshot.version);
+    let acked = LAST_ACKED_LAUNCH_SETTINGS_VERSION
+        .lock()
+        .map_err(|_| "launch-settings ack mutex poisoned".to_string())?
+        .to_owned();
+    if cached_version.is_some() && cached_version == acked {
+        return Ok(());
+    }
+    push_launch_settings_to_daemon(app)
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
@@ -211,6 +250,7 @@ pub(crate) fn repush_cached_launch_settings_to_daemon(
         .map_err(|_| "launch-settings snapshot mutex poisoned".to_string())?
         .clone()
         .ok_or_else(|| "launch-settings snapshot is not cached".to_string())?;
+    clear_acked_launch_settings_version();
     send_launch_settings_to_daemon(daemon, snapshot)
 }
 
@@ -219,6 +259,7 @@ fn send_launch_settings_to_daemon(
     daemon: &crate::provider::daemon_client::DaemonProvider,
     snapshot: crate::daemon::protocol::CoordinationPutLaunchSettingsParams,
 ) -> Result<(), String> {
+    let snapshot_version = snapshot.version;
     let request = crate::daemon::protocol::DaemonRequest::new(
         format!("launch-settings-{}", uuid::Uuid::new_v4().simple()),
         crate::daemon::protocol::method::COORDINATION_PUT_LAUNCH_SETTINGS,
@@ -242,6 +283,9 @@ fn send_launch_settings_to_daemon(
             daemon_settings_version = result.version,
             "Daemon retained a newer launch-settings snapshot"
         );
+    }
+    if let Ok(mut acked) = LAST_ACKED_LAUNCH_SETTINGS_VERSION.lock() {
+        *acked = Some(snapshot_version);
     }
     Ok(())
 }
