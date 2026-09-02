@@ -44,4 +44,4 @@ Grounded by the account-selection research pass (managed-launch pin trace, break
 
 1. This brief (approved scope: 0.9.0, operator-confirmed).
 2. **Design panel**: independent design concepts for the Accounts surface + picker + team/mesh integration, judged, synthesized; the winning direction goes to the operator for approval before any implementation.
-3. Implementation: backend slices (member account field, per-team root authority as the stretch slice) via the standard lanes; frontend via the design-led loop with the visual dual review.
+3. Implementation: backend slices (member account field; per-team root authority + the FR5b switch operation, core scope) via the standard lanes; frontend via the design-led loop with the visual dual review.
