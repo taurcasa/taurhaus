@@ -182,7 +182,6 @@ pub mod daemon {
     pub mod member_runs {
         use crate::coordination::requests::{
             AddAgentReport, AddAgentRequest, ResumeAgentReport, ResumeMemberRequest,
-            StopMemberReport, StopMemberRequest,
         };
         use crate::coordination::state::CoordinationState;
         use crate::models::CliCommandSettings;
@@ -266,16 +265,6 @@ pub mod daemon {
                     ),
                 )
             })
-        }
-
-        pub(crate) fn execute_stop_member_pipeline(
-            state: &CoordinationState,
-            request: &StopMemberRequest,
-        ) -> Result<StopMemberReport, crate::coordination::errors::CoordinationError> {
-            let result = state.with_orchestrator(|orchestrator| {
-                orchestrator.remove_member(&request.team_name, &request.member_name, None)
-            })?;
-            Ok(StopMemberReport::from_remove_member_result(result))
         }
     }
 
@@ -375,8 +364,6 @@ pub mod daemon {
             pub const COORDINATION_ADD_AGENT_STATUS: &str = "coordination.add_agent_status";
             pub const COORDINATION_RESUME_MEMBER: &str = "coordination.resume_member";
             pub const COORDINATION_RESUME_MEMBER_STATUS: &str = "coordination.resume_member_status";
-            pub const COORDINATION_STOP_MEMBER: &str = "coordination.stop_member";
-            pub const COORDINATION_STOP_MEMBER_STATUS: &str = "coordination.stop_member_status";
             pub const COORDINATION_RESUME_TEAM: &str = "coordination.resume_team";
             pub const COORDINATION_RESUME_TEAM_STATUS: &str = "coordination.resume_team_status";
             pub const COORDINATION_REONBOARD: &str = "coordination.reonboard";
@@ -499,35 +486,6 @@ pub mod daemon {
             pub run_id: String,
             pub steps: Vec<crate::coordination::requests::StepProgress>,
             pub outcome: CoordinationResumeMemberOutcome,
-        }
-
-        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-        pub struct CoordinationStopMemberParams {
-            pub request: crate::coordination::requests::StopMemberRequest,
-        }
-
-        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-        pub struct CoordinationStopMemberAccepted {
-            pub run_id: String,
-        }
-
-        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-        #[serde(rename_all = "snake_case", tag = "status")]
-        pub enum CoordinationStopMemberOutcome {
-            Running,
-            Completed {
-                report: crate::coordination::requests::StopMemberReport,
-            },
-            Failed {
-                error: String,
-            },
-        }
-
-        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-        pub struct CoordinationStopMemberStatus {
-            pub run_id: String,
-            pub steps: Vec<crate::coordination::requests::StepProgress>,
-            pub outcome: CoordinationStopMemberOutcome,
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
