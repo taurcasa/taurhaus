@@ -112,6 +112,29 @@ fn run_with_legacy_cleanup<F>(
 where
     F: FnOnce() + Send + 'static,
 {
+    let listener = bind_listener(config)?;
+    run_on_bound_listener(
+        config,
+        listener,
+        shutdown,
+        provider,
+        cleanup,
+        schedule_background_passes,
+    )
+}
+
+/// Run the daemon startup path on a listener the caller already owns.
+fn run_on_bound_listener<F>(
+    config: &DaemonConfig,
+    listener: TcpListener,
+    shutdown: Arc<AtomicBool>,
+    provider: Arc<dyn ProjectProvider>,
+    cleanup: F,
+    schedule_background_passes: bool,
+) -> std::io::Result<()>
+where
+    F: FnOnce() + Send + 'static,
+{
     if let Err(error) = std::thread::Builder::new()
         .name("claude-statusline-retire".to_string())
         .spawn(cleanup)
@@ -121,7 +144,6 @@ where
     let session_hub = crate::daemon::session_activity::SessionActivityHub::global();
     let _ = session_hub.wait_for_update(0, 0, Duration::from_millis(750));
 
-    let listener = bind_listener(config)?;
     #[cfg(feature = "mesh-bridged-backend")]
     let coordination_state =
         Arc::new(crate::coordination::state::CoordinationState::for_process_default());
@@ -775,7 +797,14 @@ mod tests {
         let shutdown = Arc::new(AtomicBool::new(false));
         let shutdown_clone = shutdown.clone();
         let handle = std::thread::spawn(move || {
-            serve_for_test(&config, listener, shutdown_clone, Arc::new(LocalProvider))
+            run_on_bound_listener(
+                &config,
+                listener,
+                shutdown_clone,
+                Arc::new(LocalProvider),
+                || {},
+                false,
+            )
         });
         TestServer {
             port,
@@ -1043,6 +1072,9 @@ mod tests {
         server.shutdown.store(true, Ordering::Relaxed);
     }
 
+    // Regression: commit 3d45cba4 moved the shared fixture directly onto
+    // `serve_for_test`, bypassing the daemon startup path that starts eager
+    // session scans and making this guard depend on sibling-test side effects.
     #[test]
     fn server_start_eagerly_emits_session_scan_cycles() {
         let heavy_guard = crate::test_support::acquire_heavy_test_guard();
