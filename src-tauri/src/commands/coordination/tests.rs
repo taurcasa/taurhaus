@@ -385,6 +385,91 @@ fn disband_team_uses_the_long_running_daemon_poll_interval() {
     assert!(!client.contains("COORDINATION_ROSTER_DAEMON_POLL_INTERVAL"));
 }
 
+// Regression: 8bb45dab made daemon launch settings process-local but relied on
+// the health monitor to repush them. Any inline reconnect can restore the
+// cached connection without entering that recovery hook, leaving the daemon
+// effort sweep disabled for its lifetime.
+#[test]
+fn inline_daemon_reconnect_paths_repush_launch_settings() {
+    let coordination = include_str!("../coordination.rs");
+    let coordination_call = coordination
+        .split("fn call_coordination_daemon(")
+        .nth(1)
+        .expect("coordination daemon call")
+        .split("#[tauri::command]")
+        .next()
+        .expect("coordination daemon call body");
+    let task_sync = include_str!("../../services/task_sync.rs");
+    let task_scan = task_sync
+        .split("fn scan_tasks_from_files(")
+        .nth(1)
+        .expect("task scan")
+        .split("fn tasks_from_daemon_result(")
+        .next()
+        .expect("task scan body");
+    let runtime_snapshot = include_str!("../runtime_snapshot.rs");
+    let runtime_snapshot_call = runtime_snapshot
+        .split("pub(crate) fn daemon_runtime_session_snapshot(")
+        .nth(1)
+        .expect("runtime snapshot call")
+        .split("pub(crate) fn request_daemon_runtime_session_snapshot(")
+        .next()
+        .expect("runtime snapshot call body");
+    let daemon_commands = include_str!("../daemon.rs");
+    let start_daemon = daemon_commands
+        .split("pub fn start_daemon(")
+        .nth(1)
+        .expect("start daemon command")
+        .split("// ---------------------------------------------------------------------------")
+        .next()
+        .expect("start daemon command body");
+    let accounts = include_str!("../accounts/mod.rs");
+    let resolve_launch_base = accounts
+        .split("fn daemon_resolve_launch_base_tracked(")
+        .nth(1)
+        .expect("daemon launch-base resolver")
+        .split("fn resolved_base_from(")
+        .next()
+        .expect("daemon launch-base resolver body");
+    let project_transcript = accounts
+        .split("fn daemon_project_transcript_lookup(")
+        .nth(1)
+        .expect("daemon project-transcript lookup")
+        .split("fn transcript_lookup_from(")
+        .next()
+        .expect("daemon project-transcript lookup body");
+    let list_accounts = accounts
+        .split("fn daemon_accounts(")
+        .nth(1)
+        .expect("daemon accounts lookup")
+        .split("fn daemon_answer<")
+        .next()
+        .expect("daemon accounts lookup body");
+    let workflow_runs = include_str!("../../workflow_runs/mod.rs");
+    let workflow_request = workflow_runs
+        .split("fn daemon_request<T, P>(")
+        .nth(1)
+        .expect("workflow daemon request")
+        .split("#[cfg(test)]")
+        .next()
+        .expect("workflow daemon request body");
+
+    assert!(coordination_call.contains("push_launch_settings_to_daemon"));
+    assert!(task_scan.contains("push_launch_settings_to_daemon"));
+    assert_eq!(
+        runtime_snapshot_call
+            .matches("repush_cached_launch_settings_to_daemon")
+            .count(),
+        2,
+        "both runtime-snapshot reconnect paths must repush launch settings"
+    );
+    assert!(start_daemon.contains("push_launch_settings_to_daemon"));
+    assert!(resolve_launch_base.contains("repush_cached_launch_settings_to_daemon"));
+    assert!(project_transcript.contains("repush_cached_launch_settings_to_daemon"));
+    assert!(list_accounts.contains("repush_cached_launch_settings_to_daemon"));
+    assert!(workflow_request.contains("repush_cached_launch_settings_to_daemon"));
+}
+
 // Regression: 1e1dcea5 kept the config-only roster add in the desktop
 // process, including its project-path resolution and runtime-record write.
 #[test]
@@ -1014,49 +1099,90 @@ fn roster_mutations_use_a_snappy_daemon_poll_interval() {
 }
 
 #[test]
+fn task_effort_client_carries_fresh_settings_and_polls_the_shared_registry() {
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.claude.resume = "claude2 --resume".to_string();
+    let params = crate::daemon::protocol::CoordinationApplyTaskEffortParams {
+        project_path: "/tmp/task-project".to_string(),
+        cli_commands: commands,
+        tmux_layout: "split".to_string(),
+    };
+    let mut calls = Vec::new();
+
+    let report = apply_task_effort_through_daemon_with(
+        params,
+        std::time::Duration::ZERO,
+        |method, params| {
+            calls.push((method.to_string(), params.clone()));
+            match method {
+                crate::daemon::protocol::method::COORDINATION_APPLY_TASK_EFFORT => {
+                    Ok(serde_json::json!({ "run_id": "effort_test" }))
+                }
+                crate::daemon::protocol::method::COORDINATION_APPLY_TASK_EFFORT_STATUS => {
+                    Ok(serde_json::json!({
+                        "run_id": "effort_test",
+                        "outcome": {
+                            "status": "completed",
+                            "report": {
+                                "switched": ["builder"],
+                                "failed": [],
+                                "skipped_teams": []
+                            }
+                        }
+                    }))
+                }
+                _ => panic!("unexpected method: {method}"),
+            }
+        },
+    )
+    .expect("task-effort intent completes");
+
+    assert_eq!(report.switched, vec!["builder"]);
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].1["project_path"], "/tmp/task-project");
+    assert_eq!(calls[0].1["tmux_layout"], "split");
+    assert_eq!(
+        calls[0].1["cli_commands"]["claude"]["resume"],
+        "claude2 --resume"
+    );
+}
+
+// Regression: 8bb45dab routed task-effort relaunches through the multi-second
+// daemon run registry but polled them at the 25 ms roster-interaction cadence,
+// creating unnecessary status traffic while no progress is rendered.
+#[test]
+fn task_effort_uses_the_long_running_daemon_poll_interval() {
+    let source = include_str!("../coordination.rs");
+    let client = source
+        .split("fn apply_task_effort_through_daemon(")
+        .nth(1)
+        .expect("task-effort daemon client")
+        .split("fn apply_task_effort_through_daemon_with(")
+        .next()
+        .expect("task-effort daemon client body");
+
+    assert!(client.contains("COORDINATION_DAEMON_POLL_INTERVAL"));
+    assert!(!client.contains("COORDINATION_ROSTER_DAEMON_POLL_INTERVAL"));
+}
+
+#[test]
+fn app_process_background_pass_owners_are_removed() {
+    let coordination = include_str!("../coordination.rs");
+    let orchestration = include_str!("../../startup/orchestration.rs");
+    let telemetry = include_str!("../../startup/telemetry.rs");
+
+    assert!(!coordination.contains("run_background_self_heal_pass"));
+    assert!(!coordination.contains(".apply_task_effort_for_project_with_launch_resolution("));
+    assert!(!orchestration.contains("spawn_coordination_self_heal_monitor"));
+    assert!(!telemetry.contains("startup.self_heal."));
+}
+
+#[test]
 fn codex_hook_reconcile_failure_is_degraded_for_managed_launches() {
     // Regression: 6fe0aa3 made Codex hook filesystem errors abort initialize,
     // add, and resume before the otherwise valid coordination pipeline ran.
     let source = include_str!("../terminal_settings.rs");
     assert!(source.contains("compaction.codex_hook.degraded"));
-}
-
-// Regression: 135c6f54 made managed-Codex discovery failure abort the entire
-// task-arrival pass. The caller must receive both conservative launch settings
-// and the error so readable teams are still processed without hiding it.
-#[test]
-fn task_effort_launch_settings_returns_usable_settings_and_discovery_failure() {
-    let teams = TempDir::new().expect("teams dir");
-    let broken_team = teams.path().join("broken-team");
-    std::fs::create_dir_all(&broken_team).expect("create broken team");
-    std::fs::write(broken_team.join("config.json"), b"{not valid json")
-        .expect("write broken config");
-    let (db, _db_file) = test_db_state();
-
-    let ((_cli_commands, tmux_layout), error) = task_effort_launch_settings(&db, teams.path());
-
-    assert_eq!(tmux_layout, "new_window");
-    assert!(error
-        .expect("managed-Codex discovery failure must reach the caller")
-        .to_string()
-        .contains("failed to parse"));
-}
-
-// Regression: 135c6f54 made one unreadable team config abort the shared
-// background settings helper, so the 30-second self-heal and mesh-install
-// passes never reached their existing per-team error handling.
-#[test]
-fn background_launch_settings_degrades_managed_codex_discovery_failure() {
-    let teams = TempDir::new().expect("teams dir");
-    let broken_team = teams.path().join("broken-team");
-    std::fs::create_dir_all(&broken_team).expect("create broken team");
-    std::fs::write(broken_team.join("config.json"), b"{not valid json")
-        .expect("write broken config");
-    let (db, _db_file) = test_db_state();
-
-    // Infallible by contract: a discovery failure is logged and degraded,
-    // never surfaced, so the background passes keep their per-team handling.
-    let (_cli_commands, _tmux_layout) = background_launch_settings(&db, teams.path());
 }
 
 #[test]
@@ -1101,56 +1227,6 @@ fn daemon_owned_member_launches_do_not_reconcile_codex_in_the_app() {
             "{command} must leave Codex hook reconciliation to the daemon"
         );
     }
-}
-
-// Regression: 06575d68 resolved both launch modes for every configured team
-// tool while merely assembling settings for the 30-second self-heal pass, so
-// an idle team paid shell/tmux probe cost despite launching nothing.
-#[test]
-fn idle_background_launch_settings_do_not_probe_team_bases() {
-    let tmp = TempDir::new().expect("temp teams dir");
-    let state = test_state(tmp.path().to_path_buf());
-    state
-        .with_orchestrator(|orchestrator| {
-            orchestrator.create_team("idle-team", None)?;
-            orchestrator.add_member(
-                "idle-team",
-                crate::coordination::domain::Member {
-                    name: "team-lead".to_string(),
-                    role: MemberRole::Lead,
-                    role_id: None,
-                    role_name: None,
-                    focus_area: None,
-                    context_summary: None,
-                    behavior_summary: None,
-                    communication_style: None,
-                    runtime_compact_summary: None,
-                    instructions: None,
-                    behavioral_contract: None,
-                    quality_gates: None,
-                    handoff_expectations: None,
-                    definition_of_done: None,
-                    phase_scope: None,
-                    mode: None,
-                    inherits_from: None,
-                    required_artifacts: None,
-                    capabilities: None,
-                    model: None,
-                    reasoning_effort: None,
-                    project_path: PathBuf::from("/tmp/idle"),
-                    cli_tool: CliTool::Claude,
-                    extra: Default::default(),
-                },
-            )?;
-            Ok(())
-        })
-        .expect("seed idle team");
-    let (db, _db_file) = test_db_state();
-    let probe = crate::commands::accounts::install_test_resolution_probe(std::time::Duration::ZERO);
-
-    let _ = background_launch_settings(&db, tmp.path());
-
-    assert_eq!(probe.calls(), 0, "idle settings assembly must not probe");
 }
 
 #[test]

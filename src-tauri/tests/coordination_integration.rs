@@ -168,6 +168,12 @@ mod commands {
         pub struct DbState(pub Arc<Mutex<rusqlite::Connection>>);
     }
 
+    pub mod settings {
+        pub fn push_launch_settings_to_daemon(_app: &tauri::AppHandle) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
     pub mod accounts {
         pub struct TestResolutionProbeGuard;
 
@@ -187,13 +193,6 @@ mod commands {
             _provider: &taurhaus_lib::ProviderState,
             _commands: &mut crate::models::CliCommandSettings,
             _tools: impl IntoIterator<Item = crate::session_scanner::cli_tool::CliTool>,
-        ) {
-        }
-
-        pub fn apply_team_resume_launch_base_resolution(
-            _provider: &taurhaus_lib::ProviderState,
-            _commands: &mut crate::models::CliCommandSettings,
-            _tool: crate::session_scanner::cli_tool::CliTool,
         ) {
         }
     }

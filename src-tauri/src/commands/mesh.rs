@@ -521,26 +521,20 @@ fn check_mesh_install_wsl(
 }
 
 fn install_mesh_native(
-    app: &tauri::AppHandle,
+    _app: &tauri::AppHandle,
     bundled_binary: &Path,
     bundled_contract: &MeshCompatibilityContract,
 ) -> Result<OperationResult, String> {
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
     let target_dir = home.join(".local/bin");
-    install_mesh_native_at(&target_dir, bundled_binary, bundled_contract, || {
-        run_mesh_install_self_heal(app).map(Some)
-    })
+    install_mesh_native_at(&target_dir, bundled_binary, bundled_contract)
 }
 
-fn install_mesh_native_at<F>(
+fn install_mesh_native_at(
     target_dir: &Path,
     bundled_binary: &Path,
     bundled_contract: &MeshCompatibilityContract,
-    run_self_heal: F,
-) -> Result<OperationResult, String>
-where
-    F: FnOnce() -> Result<Option<MeshInstallSelfHealSummary>, String>,
-{
+) -> Result<OperationResult, String> {
     let target_path = target_dir.join("mesh");
     let temp_path = target_dir.join(".mesh.new");
 
@@ -556,9 +550,8 @@ where
         .map_err(|e| format!("Failed to install mesh binary: {e}"))?;
     staged.disarm();
 
-    let self_heal_summary = run_self_heal()?;
     Ok(OperationResult::success(
-        format_mesh_install_success_message(&installed_contract.version, self_heal_summary),
+        format_mesh_install_success_message(&installed_contract.version),
     ))
 }
 
@@ -689,7 +682,7 @@ fn describe_mesh_contract(contract: &MeshCompatibilityContract) -> String {
 }
 
 fn install_mesh_wsl(
-    app: &tauri::AppHandle,
+    _app: &tauri::AppHandle,
     bundled_binary: &Path,
     bundled_contract: &MeshCompatibilityContract,
 ) -> Result<OperationResult, String> {
@@ -708,18 +701,9 @@ fn install_mesh_wsl(
         team_pattern: MESH_TEAM_DAEMON_PATTERN,
     };
 
-    install_mesh_wsl_orchestrated(
-        &plan,
-        bundled_contract,
-        |script, args| run_wsl_install_phase(&distro, script, args),
-        |any_daemons_were_running| {
-            if any_daemons_were_running {
-                run_mesh_install_self_heal(app).map(Some)
-            } else {
-                Ok(None)
-            }
-        },
-    )
+    install_mesh_wsl_orchestrated(&plan, bundled_contract, |script, args| {
+        run_wsl_install_phase(&distro, script, args)
+    })
 }
 
 /// Everything the WSL install scripts need from the app side.
@@ -771,15 +755,13 @@ fn run_wsl_install_phase(
 /// used to swap first and leave every judgement to the app afterwards, so a
 /// truncated answer — or a valid answer from the wrong mesh — replaced a working
 /// installation before anything could reject it.
-fn install_mesh_wsl_orchestrated<R, F>(
+fn install_mesh_wsl_orchestrated<R>(
     plan: &WslMeshInstallPlan<'_>,
     bundled_contract: &MeshCompatibilityContract,
     mut run_phase: R,
-    run_self_heal: F,
 ) -> Result<OperationResult, String>
 where
     R: FnMut(&str, &[&str]) -> Result<std::process::Output, String>,
-    F: FnOnce(bool) -> Result<Option<MeshInstallSelfHealSummary>, String>,
 {
     let staged = match stage_mesh_copy_in_wsl(plan, bundled_contract, &mut run_phase) {
         Ok(contract) => contract,
@@ -804,11 +786,13 @@ where
         return Err(format!("Failed to install mesh in WSL: {stderr}"));
     }
 
-    let cycle = parse_mesh_wsl_finish_output(&output.stdout);
-    let self_heal_summary = run_self_heal(cycle.any_daemons_were_running())?;
+    // The finish script's daemon-cycle report is still parsed for its
+    // stderr-noise guarantees; repair of any cycled daemons is the WSL
+    // daemon's own next self-heal sweep (protocol 21), not the app's.
+    let _ = parse_mesh_wsl_finish_output(&output.stdout);
 
     Ok(OperationResult::success(
-        format_mesh_install_success_message(&staged.version, self_heal_summary),
+        format_mesh_install_success_message(&staged.version),
     ))
 }
 
@@ -862,64 +846,8 @@ where
     );
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct MeshInstallSelfHealSummary {
-    teams_reconciled: usize,
-    team_daemons_ensured: usize,
-}
-
-fn format_mesh_install_success_message(
-    version: &str,
-    self_heal_summary: Option<MeshInstallSelfHealSummary>,
-) -> String {
-    match self_heal_summary {
-        Some(summary) => {
-            format!(
-            "Mesh installed successfully: mesh {} (cycled {} team daemon{}, repaired {} team{})",
-            version,
-            summary.team_daemons_ensured,
-            if summary.team_daemons_ensured == 1 {
-                ""
-            } else {
-                "s"
-            },
-            summary.teams_reconciled,
-            if summary.teams_reconciled == 1 { "" } else { "s" },
-        )
-        }
-        None => format!("Mesh installed successfully: mesh {version}"),
-    }
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-fn run_mesh_install_self_heal(
-    app: &tauri::AppHandle,
-) -> Result<MeshInstallSelfHealSummary, String> {
-    let state = app.state::<crate::coordination::state::CoordinationState>();
-    let db = app.state::<crate::commands::projects::DbState>();
-    let provider = app.state::<crate::ProviderState>();
-    let summary =
-        crate::commands::coordination::run_background_self_heal_pass(&db, provider.inner(), &state)
-            .map_err(|e| format!("Mesh installed but daemon self-heal failed: {e}"))?;
-    if summary.team_errors > 0 {
-        return Err(format!(
-            "Mesh installed but daemon self-heal reported {} team error{}",
-            summary.team_errors,
-            if summary.team_errors == 1 { "" } else { "s" }
-        ));
-    }
-    Ok(MeshInstallSelfHealSummary {
-        teams_reconciled: summary.teams_reconciled,
-        team_daemons_ensured: summary.team_daemons_ensured,
-    })
-}
-
-#[cfg(not(feature = "mesh-bridged-backend"))]
-fn run_mesh_install_self_heal(
-    app: &tauri::AppHandle,
-) -> Result<MeshInstallSelfHealSummary, String> {
-    let _ = app;
-    Ok(MeshInstallSelfHealSummary::default())
+fn format_mesh_install_success_message(version: &str) -> String {
+    format!("Mesh installed successfully: mesh {version}")
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -929,6 +857,10 @@ struct WslMeshDaemonCycle {
 }
 
 impl WslMeshDaemonCycle {
+    // Production only parses the cycle report for its stderr-noise guarantees
+    // since protocol 21 moved repair into the daemon; the accessor remains for
+    // the finish-output parser tests.
+    #[cfg(test)]
     fn any_daemons_were_running(&self) -> bool {
         self.member_daemons_were_running || self.team_daemons_were_running
     }
@@ -1585,6 +1517,22 @@ exit 0
         assert_eq!(contract.version, "0.2.17");
     }
 
+    // Regression: 50251e68 moved install self-heal into the protocol-21 daemon
+    // scheduler but replaced the retired app pass with a zero summary. The two
+    // production callers wrapped that uncomputed value in `Some`, making every
+    // successful install claim it had cycled and repaired zero teams.
+    #[test]
+    fn daemon_owned_mesh_install_does_not_report_an_uncomputed_self_heal_summary() {
+        let source = include_str!("mesh.rs");
+        let runtime = &source[..source.find("#[cfg(test)]").unwrap_or(source.len())];
+
+        assert!(!runtime.contains("run_mesh_install_self_heal"));
+        assert_eq!(
+            format_mesh_install_success_message("9.9.9"),
+            "Mesh installed successfully: mesh 9.9.9"
+        );
+    }
+
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn install_mesh_wsl_replaces_the_installed_binary_and_cycles_matching_daemons() {
@@ -1620,26 +1568,13 @@ exit 0
             member_pattern: &member_pattern,
             team_pattern: &team_pattern,
         };
-        let mut daemons_were_running = None;
-        let result = install_mesh_wsl_orchestrated(
-            &plan,
-            &bundled_test_contract(),
-            |script, args| run_local_install_phase(temp_home.path(), script, args),
-            |any_daemons_were_running| {
-                daemons_were_running = Some(any_daemons_were_running);
-                Ok(Some(MeshInstallSelfHealSummary {
-                    teams_reconciled: 2,
-                    team_daemons_ensured: 1,
-                }))
-            },
-        )
-        .expect("install should succeed");
+        let result =
+            install_mesh_wsl_orchestrated(&plan, &bundled_test_contract(), |script, args| {
+                run_local_install_phase(temp_home.path(), script, args)
+            })
+            .expect("install should succeed");
 
-        assert_eq!(
-            result.message,
-            "Mesh installed successfully: mesh 9.9.9 (cycled 1 team daemon, repaired 2 teams)"
-        );
-        assert_eq!(daemons_were_running, Some(true));
+        assert_eq!(result.message, "Mesh installed successfully: mesh 9.9.9");
         assert_eq!(
             std::fs::read(&installed_mesh).expect("installed mesh"),
             std::fs::read(&source_mesh).expect("source mesh"),
@@ -1766,12 +1701,9 @@ exit 0
             member_pattern: &member_pattern,
             team_pattern: &team_pattern,
         };
-        let err = install_mesh_wsl_orchestrated(
-            &plan,
-            &bundled_test_contract(),
-            |script, args| run_local_install_phase(temp_home.path(), script, args),
-            |_| panic!("self-heal must not run when the install is rejected"),
-        )
+        let err = install_mesh_wsl_orchestrated(&plan, &bundled_test_contract(), |script, args| {
+            run_local_install_phase(temp_home.path(), script, args)
+        })
         .expect_err("a copy whose version output is not JSON must be rejected");
 
         assert!(err.contains("JSON"), "unexpected error: {err}");
@@ -1835,12 +1767,9 @@ exit 0
             member_pattern: &member_pattern,
             team_pattern: &team_pattern,
         };
-        let err = install_mesh_wsl_orchestrated(
-            &plan,
-            &bundled_test_contract(),
-            |script, args| run_local_install_phase(temp_home.path(), script, args),
-            |_| panic!("self-heal must not run when the install is rejected"),
-        )
+        let err = install_mesh_wsl_orchestrated(&plan, &bundled_test_contract(), |script, args| {
+            run_local_install_phase(temp_home.path(), script, args)
+        })
         .expect_err("a copy whose contract differs from the bundle must be rejected");
 
         assert!(err.contains("does not match"), "unexpected error: {err}");
@@ -1866,33 +1795,16 @@ exit 0
 
     #[cfg(not(target_os = "windows"))]
     #[test]
-    fn install_mesh_native_triggers_self_heal_after_successful_install() {
-        use std::cell::Cell;
-
+    fn install_mesh_native_reports_success_without_a_retired_self_heal_summary() {
         let temp_home = tempfile::TempDir::new().expect("tempdir");
         let source_mesh = temp_home.path().join("mesh-new");
         write_executable(&source_mesh, &mesh_version_script("9.9.9"));
 
         let target_dir = temp_home.path().join(".local").join("bin");
-        let self_heal_called = Cell::new(false);
-        let result =
-            install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
-                self_heal_called.set(true);
-                Ok(Some(MeshInstallSelfHealSummary {
-                    teams_reconciled: 2,
-                    team_daemons_ensured: 1,
-                }))
-            })
+        let result = install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract())
             .expect("install should succeed");
 
-        assert!(
-            self_heal_called.get(),
-            "native install should trigger self-heal"
-        );
-        assert_eq!(
-            result.message,
-            "Mesh installed successfully: mesh 9.9.9 (cycled 1 team daemon, repaired 2 teams)"
-        );
+        assert_eq!(result.message, "Mesh installed successfully: mesh 9.9.9");
         // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident. The
         // guarded installer must still install the bundle it verified, and must not
         // leave its temp copy behind.
@@ -2044,10 +1956,7 @@ exit 0
         let source_mesh = temp_home.path().join("mesh-new");
         write_executable(&source_mesh, "");
 
-        let err =
-            install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
-                panic!("self-heal must not run when the install is rejected")
-            })
+        let err = install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract())
             .expect_err("an empty bundled mesh must be rejected");
 
         assert!(
@@ -2079,10 +1988,7 @@ exit 0
         let source_mesh = temp_home.path().join("mesh-new");
         write_executable(&source_mesh, "#!/bin/sh\nexit 0\n");
 
-        let err =
-            install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
-                panic!("self-heal must not run when the install is rejected")
-            })
+        let err = install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract())
             .expect_err("a mesh copy that reports no version must be rejected");
 
         assert!(
@@ -2113,10 +2019,7 @@ exit 0
         let source_mesh = temp_home.path().join("mesh-new");
         write_executable(&source_mesh, &mesh_version_script("0.0.1"));
 
-        let err =
-            install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
-                panic!("self-heal must not run when the install is rejected")
-            })
+        let err = install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract())
             .expect_err("a mesh copy with the wrong version must be rejected");
 
         assert!(
@@ -2166,12 +2069,9 @@ exit 0
             member_pattern: &member_pattern,
             team_pattern: &team_pattern,
         };
-        let err = install_mesh_wsl_orchestrated(
-            &plan,
-            &bundled_test_contract(),
-            |script, args| run_local_install_phase(temp_home.path(), script, args),
-            |_| panic!("self-heal must not run when the install is rejected"),
-        )
+        let err = install_mesh_wsl_orchestrated(&plan, &bundled_test_contract(), |script, args| {
+            run_local_install_phase(temp_home.path(), script, args)
+        })
         .expect_err("a mesh copy that reports no version must be rejected");
 
         assert!(
@@ -2216,10 +2116,7 @@ exit 0
             return;
         }
 
-        let err =
-            install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
-                panic!("self-heal must not run when the install is rejected")
-            })
+        let err = install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract())
             .expect_err("an unreadable bundled mesh must be rejected");
 
         assert!(
@@ -2256,10 +2153,7 @@ exit 0
         let source_mesh = temp_home.path().join("mesh-new");
         write_executable(&source_mesh, &mesh_version_script("9.9.9"));
 
-        let err =
-            install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
-                panic!("self-heal must not run when the swap fails")
-            })
+        let err = install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract())
             .expect_err("a swap onto a directory must fail");
 
         assert!(

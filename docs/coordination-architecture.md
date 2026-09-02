@@ -32,7 +32,7 @@ This document captures the shipped/active coordination subsystem architecture in
 - Taurhaus now owns a broader operational context layer under `~/.claude/teams/{team}/state/`, including per-member operational snapshots and per-member compaction delivery state.
 - `coordination/stall_detector/` and its `#[path]` shim were deleted. The `state/activity/<member>.json` export now lives in `coordination/activity_export.rs`, which also runs the stale-pane ownership probe and quarantines foreign panes before writing a snapshot. It is not the main reinjection context path.
 - The managed-task deadline pass is daemon-owned. It starts after the daemon session-activity hub, runs on a 5-second initial delay and 30-second cadence, and consumes the member activity snapshots exported by that hub. Protocol 15 makes the ownership handoff atomic: the app self-heal loop no longer invokes the pass.
-- Every interactive team mutation is daemon-owned as of protocol 20 (which retired the unused stop-member wire pair): team initialization since protocol 16, add-agent/resume-member/stop-member since protocol 17, resume-team/reonboard since protocol 18, and standalone create/disband plus roster add/remove since protocol 19. The app sends self-contained intents, polls daemon-owned in-memory run registries, and re-emits only the progress event vocabulary each command already exposed. Self-heal, effort, and the B3 writer boundary remain.
+- Every interactive team mutation is daemon-owned as of protocol 20 (which retired the unused stop-member wire pair): team initialization since protocol 16, add-agent/resume-member/stop-member since protocol 17, resume-team/reonboard since protocol 18, and standalone create/disband plus roster add/remove since protocol 19. Protocol 21 also moves the periodic self-heal/retry-pending effort pass and task-arrival effort runs into the daemon. The app sends self-contained intents, polls daemon-owned in-memory run registries, and re-emits only the progress event vocabulary each command already exposed. Only the B3 writer boundary remains.
 - Codex compaction reinjection uses its native `SessionStart(source=compact)` hook by default for managed Codex >= 0.147. Startup and terminal-settings reconciliation keep the managed hook installed; unsupported versions log `compaction.codex_hook.unsupported` once and receive no reinjection. The former transcript extractor/watcher/processor, owner selection and setting are retired.
 - There is one hook bridge for Claude, Codex and Grok, `coordination/compact_hook.rs` (it replaced `claude_hooks.rs`): one `CompactHookInput` parser for the payload shapes, the tool inferred from grok's reserved hook environment or otherwise from `transcript_path`, one resolver (runtime `session_id`, then normalized `cwd`), and `record_delivery_at(teams_dir, …)` as the only bookkeeping path. It installs runtime-appropriate wrappers (`.sh` for WSL/Linux runtimes, `.cmd` for native Windows runtimes) and logs standalone hook execution into the canonical JSONL sink.
 
@@ -325,7 +325,7 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 
 **Status**: Implemented
 
-**Decision**: UI snapshot reads are disk-first and avoid runtime probing. Liveness repair runs only in explicit recovery flows and the background self-heal loop.
+**Decision**: UI snapshot reads are disk-first and avoid runtime probing. Liveness repair runs only in explicit recovery flows and the daemon-owned background self-heal scheduler.
 
 - Fast-path reads:
   - `coordination_get_project_mesh_snapshot`
@@ -335,7 +335,7 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 - Repair paths:
   - `coordination_resume_member`
   - `coordination_resume_team`
-  - background `run_background_self_heal_pass()`
+  - daemon scheduler `run_background_self_heal_core_pass()`
 - Repair conditions:
   - missing `pane_id`
   - `pane_exists == false`
@@ -352,10 +352,10 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 
 **Stale-pane guard.** `MemberRuntimeRecord` (schema v3) carries `pane_pid` and `pane_start_time`, captured at launch — tmux 3.4 has no `pane_start_time`, so it is filled from `/proc` on Linux and left PID-only elsewhere. `pane_belongs_to_member` compares pane_id, pane_pid, pane_start_time, `#{pane_current_command}` against the member's `cli_tool`, and `#{pane_current_path}`. `PaneOwnership::Foreign { reason }` — `pane_id_mismatch`, `pane_pid_mismatch`, `pane_start_time_mismatch`, `cli_tool_mismatch: expected=… found=…`, `project_path_mismatch` — quarantines the member (`SessionDead`, no daemon restart, one foreign snapshot written) and emits `coordination.pane.foreign`. The check runs in liveness, activity export, and delivery; the frontend maps `pane_foreign` to offline.
 - Concurrency rule:
-  - background self-heal runs on a dedicated orchestrator instance, not the app-owned cached orchestrator
-  - tmux, WSL, and process probes run before any filesystem lock is acquired, so the dedicated background instance keeps probe latency off the app-owned coordination mutex and off the team lock
+  - background self-heal runs on a dedicated daemon orchestrator instance, not the shared interactive daemon orchestrator
+  - tmux and process probes run before any filesystem lock is acquired, so the dedicated background instance keeps probe latency off the interactive coordination mutex and off the team lock
   - each individual runtime-record decision commits inside a per-team critical section: acquire the team lock, re-read under the target-file lock, compare `pane_id`, `pane_pid`, `pane_start_time`, `session_id`, `daemon_pid`, `health`, and `appliedEffort`, then apply the patch through the locked save only when those dependencies are unchanged; a pass over several members releases the lock between records and is not atomic as a whole
-  - a stale decision is dropped and logs `coordination.runtime.commit_skipped` with `member` and `changed_fields`; the array contains dependency field names, or the sentinel `record` when the runtime record itself appeared, disappeared, or would not parse — one member's unreadable record skips its own commit and leaves the file to the next `load_all` sweep rather than aborting the pass. The command and background orchestrators therefore cannot interleave a write to the same runtime record even though they remain separate instances
+  - a stale decision is dropped and logs `coordination.runtime.commit_skipped` with `member` and `changed_fields`; the array contains dependency field names, or the sentinel `record` when the runtime record itself appeared, disappeared, or would not parse — one member's unreadable record skips its own commit and leaves the file to the next `load_all` sweep rather than aborting the pass. The interactive and background daemon orchestrators therefore cannot interleave a write to the same runtime record even though they remain separate instances
 
 **Rationale**: This keeps first-render and polling snapshots cheap and predictable while still giving taurhaus a bounded repair path for stale panes/daemons and cold-restart recovery.
 

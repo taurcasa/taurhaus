@@ -271,6 +271,7 @@ fn schedule_project_task_refresh(
         let refresh_result = (|| -> Result<Option<usize>, String> {
             let scan_generation = crate::bootstrap::next_task_scan_cycle_id();
             let scan_result = crate::services::task_sync::scan_tasks_from_files(
+                &app_handle,
                 providers.inner(),
                 &project_path,
                 Some(scan_generation),

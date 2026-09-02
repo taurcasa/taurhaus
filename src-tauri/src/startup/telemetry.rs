@@ -388,60 +388,6 @@ pub(super) fn emit_startup_background_task_completed(task_group: &str, duration_
     );
 }
 
-pub(super) fn emit_startup_self_heal_started(initial_delay_ms: u64, check_interval_ms: u64) {
-    let mut fields = startup_base_fields();
-    insert_u64(&mut fields, "initial_delay_ms", initial_delay_ms);
-    insert_u64(&mut fields, "check_interval_ms", check_interval_ms);
-    emit_startup_event(
-        "info",
-        "startup.self_heal.started",
-        "Startup self-heal monitor started",
-        fields,
-    );
-}
-
-pub(super) fn emit_startup_self_heal_completed(
-    duration_ms: u64,
-    teams_scanned: u64,
-    teams_skipped: u64,
-    teams_reconciled: u64,
-    team_daemons_ensured: u64,
-    team_errors: u64,
-) {
-    let mut fields = startup_base_fields();
-    insert_u64(&mut fields, "duration_ms", duration_ms);
-    insert_u64(&mut fields, "teams_scanned", teams_scanned);
-    insert_u64(&mut fields, "teams_skipped", teams_skipped);
-    insert_u64(&mut fields, "teams_reconciled", teams_reconciled);
-    insert_u64(&mut fields, "team_daemons_ensured", team_daemons_ensured);
-    insert_u64(&mut fields, "team_errors", team_errors);
-    emit_startup_event(
-        "info",
-        "startup.self_heal.completed",
-        "Startup self-heal pass completed",
-        fields,
-    );
-}
-
-pub(super) fn emit_startup_self_heal_failed(duration_ms: u64, error: &str) {
-    let mut fields = startup_base_fields();
-    insert_u64(&mut fields, "duration_ms", duration_ms);
-    fields.insert(
-        "error.code".to_string(),
-        Value::String("STARTUP_SELF_HEAL_FAILED".to_string()),
-    );
-    fields.insert(
-        "error.message".to_string(),
-        Value::String(error.to_string()),
-    );
-    emit_startup_event(
-        "warn",
-        "startup.self_heal.failed",
-        "Startup self-heal pass failed",
-        fields,
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

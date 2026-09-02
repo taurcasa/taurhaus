@@ -38,6 +38,13 @@ pub struct BackgroundSelfHealPassResult {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct BackgroundEffortRetryPassResult {
+    pub teams_scanned: usize,
+    pub team_errors: usize,
+    pub members_effort_resumed: usize,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct BackgroundDeadlinePassResult {
     pub teams_scanned: usize,
     pub team_errors: usize,
@@ -217,31 +224,9 @@ impl CoordinationState {
         Ok(summary)
     }
 
-    /// One background pass over every team.
-    ///
-    /// `cli_commands` and `tmux_layout` are the operator's own launch settings,
-    /// resolved by the caller at the command boundary the way every other
-    /// managed launch resolves them: a relaunch this pass performs must land on
-    /// the same account and the same configured command as the launch it
-    /// replaces.
-    pub fn run_background_self_heal_pass(
+    /// Config-free liveness reconciliation over every team.
+    pub(crate) fn run_background_self_heal_core_pass(
         &self,
-        cli_commands: &CliCommandSettings,
-        tmux_layout: &str,
-    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
-        let mut cli_commands = cli_commands.clone();
-        self.run_background_self_heal_pass_with_launch_resolution(
-            &mut cli_commands,
-            tmux_layout,
-            &mut |_, _| {},
-        )
-    }
-
-    pub(crate) fn run_background_self_heal_pass_with_launch_resolution(
-        &self,
-        cli_commands: &mut CliCommandSettings,
-        tmux_layout: &str,
-        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
         let team_names = TeamConfigStore::list(&self.teams_dir)?;
         let mut summary = BackgroundSelfHealPassResult::default();
@@ -260,7 +245,28 @@ impl CoordinationState {
                     );
                 }
             }
+        }
 
+        Ok(summary)
+    }
+
+    /// Retry only assignment-effort relaunches that already failed.
+    ///
+    /// The daemon caller supplies the app's pushed settings and resolves a
+    /// pane-shell base only when the unchanged effort state machine has found a
+    /// member it will actually relaunch.
+    pub(crate) fn run_background_effort_retry_pass_with_launch_resolution(
+        &self,
+        cli_commands: &mut CliCommandSettings,
+        tmux_layout: &str,
+        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
+    ) -> Result<BackgroundEffortRetryPassResult, CoordinationError> {
+        let team_names = TeamConfigStore::list(&self.teams_dir)?;
+        let mut summary = BackgroundEffortRetryPassResult::default();
+        let mut orchestrator = self.build_background_orchestrator()?;
+
+        for team_name in team_names {
+            summary.teams_scanned += 1;
             // Retries only. A Codex effort switch is started by the task event
             // that made the assignment visible (`apply_task_effort_for_project`);
             // this sweep exists so one that failed there — a pane that would
@@ -1235,7 +1241,7 @@ mod tests {
         let background_state = state.clone();
         let background = std::thread::spawn(move || {
             background_state
-                .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
+                .run_background_self_heal_core_pass()
                 .expect("background pass")
         });
         probe_gate.wait_until_blocked();
@@ -1478,7 +1484,11 @@ mod tests {
         state.orchestrator.lock().expect("state mutex").take();
 
         let summary = state
-            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
+            .run_background_effort_retry_pass_with_launch_resolution(
+                &mut CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                &mut |_, _| {},
+            )
             .expect("background pass succeeds");
 
         assert_eq!(
@@ -1693,7 +1703,7 @@ mod tests {
         seed_deadline_task(&teams_dir, assigned_at, Some(20));
 
         state
-            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
+            .run_background_self_heal_core_pass()
             .expect("app self-heal succeeds");
 
         assert!(deadline_notices(&fake).is_empty());
@@ -2171,7 +2181,7 @@ mod tests {
         state.orchestrator.lock().expect("state mutex").take();
 
         let summary = state
-            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
+            .run_background_self_heal_core_pass()
             .expect("background pass succeeds");
 
         assert_eq!(summary.teams_scanned, 1);
@@ -2253,7 +2263,7 @@ mod tests {
         runtime.set_team_daemon_current_mesh_binary("architecture-final", false);
 
         let summary = state
-            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
+            .run_background_self_heal_core_pass()
             .expect("background pass succeeds");
 
         assert_eq!(summary.teams_scanned, 1);
@@ -2341,7 +2351,7 @@ mod tests {
         runtime.set_team_daemon_current_mesh_binary("architecture-final", false);
 
         let summary = state
-            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
+            .run_background_self_heal_core_pass()
             .expect("self-heal succeeds");
         assert_eq!(summary.teams_reconciled, 1);
         assert_eq!(summary.team_daemons_ensured, 1);
@@ -2438,10 +2448,10 @@ mod tests {
         runtime.set_team_daemon_current_mesh_binary("architecture-final", false);
 
         let first = state
-            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
+            .run_background_self_heal_core_pass()
             .expect("first self-heal pass");
         let second = state
-            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
+            .run_background_self_heal_core_pass()
             .expect("second self-heal pass");
 
         assert_eq!(first.teams_scanned, 1);

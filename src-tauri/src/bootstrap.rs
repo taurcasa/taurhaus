@@ -605,6 +605,7 @@ fn sync_project_tasks_for_projects(
 
         // Scan tasks from files (daemon or local)
         let scan_result = services::task_sync::scan_tasks_from_files(
+            app,
             &provider_state,
             &project.path,
             Some(context.cycle_id),

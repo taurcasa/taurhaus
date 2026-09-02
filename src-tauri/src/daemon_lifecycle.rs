@@ -670,6 +670,14 @@ pub(crate) fn daemon_health_check(
                     consecutive_failures = 0;
                     restart_attempts = 0;
                     ever_connected = true;
+                    #[cfg(feature = "mesh-bridged-backend")]
+                    if let Err(error) =
+                        crate::commands::settings::ensure_daemon_holds_current_launch_settings(&app)
+                    {
+                        // The sprinkled reconnect-path pushes already warn; the
+                        // periodic top-up stays quiet and retries next tick.
+                        tracing::debug!(error = %error, "Launch-settings top-up deferred");
+                    }
                 }
                 DaemonHealth::ProtocolMismatch { running, expected } => {
                     // Reachable but useless: drop it so the reconnect/restart
@@ -1290,6 +1298,10 @@ where
 }
 
 fn handle_daemon_recovered(app: &AppHandle) {
+    #[cfg(feature = "mesh-bridged-backend")]
+    if let Err(error) = crate::commands::settings::push_launch_settings_to_daemon(app) {
+        tracing::warn!(error = %error, "Failed to repush launch settings after daemon recovery");
+    }
     respawn_daemon_watches(app);
     {
         let app_for_reseed = app.clone();
@@ -1960,6 +1972,34 @@ mod tests {
     use crate::session_scanner::cli_tool::CliTool;
     use crate::session_scanner::{ActivityAttribution, ActivityConfidence, SessionState};
     use chrono::{Duration, Utc};
+
+    #[test]
+    fn healthy_branch_tops_up_launch_settings_every_tick() {
+        // Regression class: a push that failed on a healthy connection was
+        // never retried, leaving the daemon's effort sweep off for its whole
+        // life. The Healthy branch reconciles (RPC-free when the last push
+        // was acked at the current version).
+        let body = include_str!("daemon_lifecycle.rs");
+        let healthy = body
+            .split("DaemonHealth::Healthy => {")
+            .nth(1)
+            .expect("healthy branch present");
+        let arm = &healthy[..healthy.find("DaemonHealth::ProtocolMismatch").unwrap()];
+        assert!(arm.contains("ensure_daemon_holds_current_launch_settings"));
+    }
+
+    #[test]
+    fn daemon_recovery_repushes_launch_settings_before_background_retries_resume() {
+        let source = include_str!("daemon_lifecycle.rs");
+        let body = source
+            .split("fn handle_daemon_recovered")
+            .nth(1)
+            .expect("recovery handler")
+            .split("struct SessionBridgeRecoveryTracker")
+            .next()
+            .expect("recovery handler body");
+        assert!(body.contains("push_launch_settings_to_daemon"));
+    }
 
     fn test_project(path: &str, last_activity_at: Option<String>) -> models::Project {
         test_project_with("p1", "Project", path, last_activity_at)

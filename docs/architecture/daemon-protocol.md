@@ -4,7 +4,7 @@ The daemon is a companion process that handles filesystem access, process scanni
 
 ![Daemon Protocol](../images/daemon-protocol.jpg)
 
-> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 47 callable methods (48 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 20; the tables below are authoritative.
+> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 50 callable methods (51 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 21; the tables below are authoritative.
 
 ## Why a daemon
 
@@ -22,7 +22,7 @@ On every platform the daemon process hosts the single session hub: the app reads
 | Transport | TCP |
 | Default address | `127.0.0.1:17233` ([authoritative source](../../src-tauri/src/daemon/server.rs)) |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 20 (current) |
+| Protocol version | 21 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication
@@ -256,6 +256,16 @@ Team-resume and reonboard workers share the same daemon-local `CoordinationState
 
 These workers share one daemon-process `CoordinationState` and the process-wide coordination run registry with 10-minute terminal retention. The desktop polls create and the roster edits at the short interaction interval, while disband polls at the ~500 ms long-running interval used by initialize/add-agent/resume; none emit new progress events, preserving the commands' prior result/progress contracts.
 
+### Coordination background passes (protocol 21)
+
+| Method | Params | Result | Description |
+|--------|--------|--------|-------------|
+| `coordination.put_launch_settings` | `{ version, cli_commands, tmux_layout }` | `{ accepted, version }` | Pushes the latest committed launch-settings snapshot into daemon memory. The highest version wins; snapshots are never persisted by the daemon. |
+| `coordination.apply_task_effort` | `{ project_path, cli_commands, tmux_layout }` | `{ run_id }` | Starts the task-arrival effort pass on the shared daemon coordination state and run registry. |
+| `coordination.apply_task_effort_status` | `{ run_id }` | `{ run_id, outcome }` | Returns the effort report or terminal error. |
+
+The daemon starts one background scheduler per process after the session-activity hub, with the same 5-second initial delay and 30-second cadence as the deadline scheduler. Its self-heal phase is config-free and always runs. Its retry-pending effort phase runs only after the app has pushed a committed launch-settings snapshot; a daemon holding no snapshot skips that phase and never renders from defaults. Account-specific launch-base resolution remains lazy and occurs only when the unchanged effort state machine selects an actual relaunch. The app pushes the snapshot after initial connect, delayed bootstrap connect, reconnect, and relevant settings commits.
+
 ### Session activity stream (app bridge)
 
 The daemon itself does not push `session_changed` TCP events. Instead, session activity uses versioned long-poll:
@@ -340,9 +350,9 @@ Managed Codex launches render the `notify` flag only when all four hold (`comman
 
 ### Protocol version check
 
-On connect, the app sends `ping` and checks `protocol_version` in the response. The gate is exact-match, not a floor: any version *different* from what the app expects (current: v20) is rejected, so a newer daemon is disconnected the same way an older one is, and the user is warned to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
+On connect, the app sends `ping` and checks `protocol_version` in the response. The gate is exact-match, not a floor: any version *different* from what the app expects (current: v21) is rejected, so a newer daemon is disconnected the same way an older one is, and the user is warned to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
 
-The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness (`daemon_lifecycle.rs`), and every reconnect confirms it before the daemon counts as connected — `DaemonProvider::reconnect_checked` is the gate the inline and manual paths use (runtime-snapshot IPC, task sync, the Start Daemon button), so reachability alone never adopts a daemon. A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use. v9 added `set_codex_compaction_mode` (retired again in v14); v10 added the scanner-blackout cursor; v11 replaced the Claude-only account methods with generic account methods (`list_accounts`, `project_transcript`, `refresh_usage`) and added `account_observations` to both session snapshot results; v12 replaced the retired Google value in the `CliTool` wire vocabulary with `agy`; v13 added `grok`; v14 removed `set_codex_compaction_mode` along with the Codex transcript compaction pipeline — the daemon no longer runs a compaction runtime and there is no owner election to switch; v15 moved the managed-task deadline pass into the daemon so app and daemon cannot pair with zero or double deadline execution; v16 moved team initialization into the daemon and made the matching daemon methods mandatory for the app's only initialization path; v17 moved add-agent/resume-member/stop-member into the daemon; v18 moved resume-team/reonboard into the daemon; v19 moved standalone create/disband and roster edits into the daemon; v20 retired the now-redundant `coordination.stop_member`/`coordination.stop_member_status` pair after roster removal became the sole app path. Every interactive team mutation is daemon-owned; self-heal, effort, and the B3 writer boundary remain. v12 and v13 are vocabulary-only changes, and they bump the version because either side decodes the other's tool value as `Unknown` — a session that silently loses its harness identity, not a method that fails loudly. The regression tests that pin this live in `daemon/protocol.rs` (`protocol_version_excludes_daemons_*`).
+The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness (`daemon_lifecycle.rs`), and every reconnect confirms it before the daemon counts as connected — `DaemonProvider::reconnect_checked` is the gate the inline and manual paths use (runtime-snapshot IPC, task sync, the Start Daemon button), so reachability alone never adopts a daemon. A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use. v9 added `set_codex_compaction_mode` (retired again in v14); v10 added the scanner-blackout cursor; v11 replaced the Claude-only account methods with generic account methods (`list_accounts`, `project_transcript`, `refresh_usage`) and added `account_observations` to both session snapshot results; v12 replaced the retired Google value in the `CliTool` wire vocabulary with `agy`; v13 added `grok`; v14 removed `set_codex_compaction_mode` along with the Codex transcript compaction pipeline — the daemon no longer runs a compaction runtime and there is no owner election to switch; v15 moved the managed-task deadline pass into the daemon so app and daemon cannot pair with zero or double deadline execution; v16 moved team initialization into the daemon and made the matching daemon methods mandatory for the app's only initialization path; v17 moved add-agent/resume-member/stop-member into the daemon; v18 moved resume-team/reonboard into the daemon; v19 moved standalone create/disband and roster edits into the daemon; v20 retired the now-redundant `coordination.stop_member`/`coordination.stop_member_status` pair after roster removal became the sole app path; v21 moved self-heal and effort passes into the daemon. Every interactive team mutation and all three background passes are daemon-owned; only the B3 writer boundary remains. v12 and v13 are vocabulary-only changes, and they bump the version because either side decodes the other's tool value as `Unknown` — a session that silently loses its harness identity, not a method that fails loudly. The regression tests that pin this live in `daemon/protocol.rs` (`protocol_version_excludes_daemons_*`).
 
 Separately, startup now validates that the connected daemon is serving from the current installed binary. A daemon still running from a replaced or deleted inode is terminated and restarted before Taurhaus keeps the connection.
 
@@ -353,6 +363,8 @@ Separately, startup now validates that the connected daemon is serving from the 
 | `src-tauri/src/daemon/protocol.rs` | Wire format types, method constants, param/result structs |
 | `src-tauri/src/daemon/server.rs` | TCP server (daemon-side request handling) |
 | `src-tauri/src/daemon/handlers.rs` | Per-method handler dispatch |
+| `src-tauri/src/daemon/background_scheduler.rs` | Daemon-owned self-heal and retry-pending effort cadence plus in-memory launch-settings snapshot |
+| `src-tauri/src/daemon/effort_runs.rs` | Task-arrival effort runs on the shared coordination registry |
 | `src-tauri/src/daemon/session_activity.rs` | Daemon-owned versioned session snapshot hub (scan cycles, focus, degradation revision) |
 | `src-tauri/src/daemon/session_listener.rs` | App-side long-poll client for session updates |
 | `src-tauri/src/daemon/codex_notify.rs` | `codex-notify` sink (bounded append-only JSONL) |
