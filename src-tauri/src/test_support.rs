@@ -5,6 +5,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 static HEAVY_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static GLOBAL_LOG_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static ENV_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static SESSION_SNAPSHOT_CACHE_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 /// Guard that serializes heavy integration-style tests (daemon sockets,
 /// filesystem watchers) both within a process and across test binaries.
@@ -15,6 +16,12 @@ pub struct HeavyTestGuard {
 
 /// Guard that serializes tests mutating the process-global structured log sink.
 pub struct GlobalLogTestGuard {
+    _in_process: MutexGuard<'static, ()>,
+}
+
+/// Guard that serializes tests reading or replacing the process-global session
+/// snapshot cache.
+pub struct SessionSnapshotCacheTestGuard {
     _in_process: MutexGuard<'static, ()>,
 }
 
@@ -100,6 +107,19 @@ pub fn acquire_global_log_test_guard() -> GlobalLogTestGuard {
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     GlobalLogTestGuard {
+        _in_process: in_process,
+    }
+}
+
+/// Acquire the shared guard for tests that clear or populate the session cache.
+///
+/// Regression: commit 108481fe added cache-clearing runtime-snapshot tests
+/// without isolating them from other tests that store a daemon snapshot.
+pub fn acquire_session_snapshot_cache_test_guard() -> SessionSnapshotCacheTestGuard {
+    let in_process = SESSION_SNAPSHOT_CACHE_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    SessionSnapshotCacheTestGuard {
         _in_process: in_process,
     }
 }

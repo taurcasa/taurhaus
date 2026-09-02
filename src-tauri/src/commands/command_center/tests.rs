@@ -388,6 +388,7 @@ fn promote_activity_from_sessions_does_not_overpromote_recent_project_for_unattr
 // read; the app now answers from the daemon hub's own snapshot.
 #[test]
 fn get_foreground_project_impl_answers_from_the_hub_snapshot() {
+    let _cache_guard = crate::test_support::acquire_session_snapshot_cache_test_guard();
     let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
     let daemon = start_stub_daemon(serde_json::json!({
         "result": {
@@ -420,6 +421,7 @@ fn get_foreground_project_impl_answers_from_the_hub_snapshot() {
 
 #[test]
 fn get_foreground_project_impl_returns_none_without_hub_focus() {
+    let _cache_guard = crate::test_support::acquire_session_snapshot_cache_test_guard();
     let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
     let daemon = start_stub_daemon(serde_json::json!({
         "result": {
@@ -448,6 +450,7 @@ fn get_foreground_project_impl_returns_none_without_hub_focus() {
 
 #[test]
 fn daemon_runtime_session_snapshot_uses_snapshot_method_and_returns_payload() {
+    let _cache_guard = crate::test_support::acquire_session_snapshot_cache_test_guard();
     let daemon = start_stub_daemon(serde_json::json!({
         "result": {
             "version": 3,
@@ -1741,6 +1744,7 @@ fn exited_claude_session(
 #[test]
 fn resume_runs_on_the_account_of_the_last_session_after_it_exited() {
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _cache_guard = crate::test_support::acquire_session_snapshot_cache_test_guard();
     let _accounts = with_fake_accounts();
     let daemon = launch_stub_daemon();
     let provider = stub_launch_provider(&daemon);
