@@ -159,13 +159,11 @@ fn packaged_template_manifest_matches_bundled_yaml() {
     let templates_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("resources")
         .join("templates");
+    // Assert the PRODUCTION parser (the include_str! constant + its filter),
+    // not a re-implementation: a stale embedded manifest or a divergent parse
+    // rule must fail here. The on-disk path is only named for the message.
     let manifest_path = templates_dir.join("manifest.txt");
-    let manifest = fs::read_to_string(&manifest_path).expect("read packaged template manifest");
-    let manifested = manifest
-        .lines()
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(PathBuf::from)
-        .collect::<BTreeSet<_>>();
+    let manifested = super::super::packaged_template_manifest();
 
     let mut bundled = BTreeSet::new();
     for dirname in [ROLES_DIRNAME, PRESETS_DIRNAME] {
@@ -180,7 +178,13 @@ fn packaged_template_manifest_matches_bundled_yaml() {
         }
     }
 
-    assert_eq!(manifested, bundled);
+    assert_eq!(
+        manifested,
+        bundled,
+        "resources/templates/manifest.txt must mirror the bundled template files \
+         (edit {}; the closed-manifest rule hides unmanifested files)",
+        manifest_path.display()
+    );
 }
 
 #[test]

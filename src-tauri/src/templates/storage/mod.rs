@@ -5,6 +5,7 @@ use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::thread;
 use std::time::Duration;
 
@@ -39,7 +40,7 @@ const DEFAULT_DEBOUNCE_WINDOW_SECS: i64 = 30;
 const FALLBACK_LOCK_RETRY_DELAY_MS: u64 = 20;
 const FALLBACK_LOCK_RETRY_ATTEMPTS: usize = 250;
 const TEMP_FILE_RANDOM_RETRY_ATTEMPTS: usize = 16;
-const BUILTIN_CATALOG_REVISION: u32 = 3;
+const BUILTIN_CATALOG_REVISION: u32 = 4;
 const PACKAGED_TEMPLATE_MANIFEST: &str = include_str!("../../../resources/templates/manifest.txt");
 
 const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n.lock.fallback\n";
@@ -53,11 +54,32 @@ const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n
 // into the user store on every mutation path, so reconciliation alone does NOT
 // keep already-migrated stores clean. Every future bundled-template edit must
 // bump `BUILTIN_CATALOG_REVISION` and append the superseded bytes'
-// fingerprints here.
+// fingerprints here. Additionally, any file added to or removed from
+// `resources/templates/{roles,presets}` must be mirrored in
+// `resources/templates/manifest.txt` — an unmanifested file is invisible to
+// listing and seeding (the closed-manifest rule; a conformance test enforces
+// the mirror).
 // Revision 2 was an in-branch iteration of the v2 catalog that never shipped,
 // so no fingerprint block exists for it; the recorded supersession below moves
 // stores directly from revision 1 bytes to the current revision.
 const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
+    // Revision 4: Fable 5.1 prose sweep superseded these revision-3 bytes.
+    (
+        "roles/v3-lead-claude.yaml",
+        "33ea424fca7a5e50f5c74929d5b88ac1258085357c924379e1601928e2172d96",
+    ),
+    (
+        "roles/claude-design-lead.yaml",
+        "d4fd955f22e25fcb1e50bea80f37eb6a76e1b06149cd101be0a8c72952423b60",
+    ),
+    (
+        "roles/v3-architect-codex.yaml",
+        "948596c023c847f3d174ef225becccc79e05153c59b5ff5064c28d303089463f",
+    ),
+    (
+        "roles/antigravity-orchestrator.yaml",
+        "d8cca5737ae628a248b6816c7524ff34c330bd39ee10177eff02560ccd1906a0",
+    ),
     // Role catalog v2 superseded bytes. These exact fingerprints let an
     // unmodified seeded catalog advance while preserving local role edits.
     (
@@ -1578,7 +1600,7 @@ impl TemplateStore {
         role_id: &str,
     ) -> Result<Option<RoleTemplateFile>, TemplateStoreError> {
         let path = dir.join(format!("{role_id}.yaml"));
-        self.note_ignored_packaged_templates()?;
+        self.note_ignored_packaged_templates(dir);
         if !self.is_manifested_builtin_path(&path) || !path.exists() {
             return Ok(None);
         }
@@ -1647,7 +1669,7 @@ impl TemplateStore {
         preset_id: &str,
     ) -> Result<Option<TeamPresetFile>, TemplateStoreError> {
         let path = dir.join(format!("{preset_id}.yaml"));
-        self.note_ignored_packaged_templates()?;
+        self.note_ignored_packaged_templates(dir);
         if !self.is_manifested_builtin_path(&path) || !path.exists() {
             return Ok(None);
         }
@@ -1664,7 +1686,7 @@ impl TemplateStore {
             return Ok(Vec::new());
         }
 
-        self.note_ignored_packaged_templates()?;
+        self.note_ignored_packaged_templates(dir);
         let mut files = fs::read_dir(dir)?
             .map(|entry| entry.map(|entry| entry.path()))
             .collect::<Result<Vec<_>, std::io::Error>>()?;
@@ -1684,12 +1706,18 @@ impl TemplateStore {
             .is_none_or(|manifest| manifest.contains(relative))
     }
 
-    fn note_ignored_packaged_templates(&self) -> Result<(), TemplateStoreError> {
+    /// Diagnostic-only: counts packaged files the manifest excludes and logs
+    /// once. Never fails a lookup — IO problems here are logged and swallowed,
+    /// and only paths under the built-ins directory warrant the scan.
+    fn note_ignored_packaged_templates(&self, target_dir: &Path) {
         let Some(manifest) = self.builtin_manifest.as_ref() else {
-            return Ok(());
+            return;
         };
+        if !target_dir.starts_with(&self.builtins_dir) {
+            return;
+        }
         if self.ignored_builtins_noted.swap(true, Ordering::Relaxed) {
-            return Ok(());
+            return;
         }
 
         let mut ignored_count = 0usize;
@@ -1698,12 +1726,15 @@ impl TemplateStore {
             if !dir.exists() {
                 continue;
             }
-            for entry in fs::read_dir(dir)? {
-                let path = entry?.path();
+            let Ok(entries) = fs::read_dir(dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
                 if path.is_file() && is_yaml_file(&path) {
-                    let relative = path
-                        .strip_prefix(&self.builtins_dir)
-                        .expect("path read beneath built-ins directory");
+                    let Ok(relative) = path.strip_prefix(&self.builtins_dir) else {
+                        continue;
+                    };
                     ignored_count += usize::from(!manifest.contains(relative));
                 }
             }
@@ -1716,17 +1747,20 @@ impl TemplateStore {
                 "ignoring packaged template files absent from the embedded manifest"
             );
         }
-        Ok(())
     }
 }
 
-fn packaged_template_manifest() -> BTreeSet<PathBuf> {
+static PACKAGED_MANIFEST_SET: LazyLock<BTreeSet<PathBuf>> = LazyLock::new(|| {
     PACKAGED_TEMPLATE_MANIFEST
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(PathBuf::from)
         .collect()
+});
+
+fn packaged_template_manifest() -> BTreeSet<PathBuf> {
+    PACKAGED_MANIFEST_SET.clone()
 }
 
 fn resolve_signature(repo: &Repository) -> Result<Signature<'_>, TemplateStoreError> {

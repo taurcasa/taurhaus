@@ -1,7 +1,9 @@
 use super::*;
 
-// Regression: efb1b00b made bundled-template discovery directory-open, which let
-// stale install files resurrect and forced the 0.8.8 purge released in 2f824f92.
+// Regression: 9a6b9596 deleted ~28 role YAMLs from the bundled catalog, and
+// because efb1b00b had made bundled-template discovery directory-open, NSIS
+// upgrades left the deleted files in the install dir where discovery
+// resurrected them — forcing the hand-written purge shipped in release 0.8.8.
 #[test]
 fn packaged_manifest_excludes_stray_templates_from_listing_and_seeding() {
     let (_root, app_data, builtins) = setup_dirs();

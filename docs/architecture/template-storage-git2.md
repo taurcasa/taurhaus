@@ -50,7 +50,11 @@ Rationale:
 
 ### Primary data (plain YAML)
 - Runtime source of truth is a merged catalog:
-  - built-ins from `src-tauri/resources/templates/{roles,presets}`
+  - built-ins from `src-tauri/resources/templates/{roles,presets}`, gated by the
+    embedded closed manifest (`resources/templates/manifest.txt`): a packaged file
+    absent from the manifest is invisible to listing and seeding, so stale files a
+    Windows upgrade leaves behind cannot resurrect. Any add/remove under those
+    directories must mirror into the manifest (a conformance test enforces it).
   - user files from `app_data_dir()/templates/{roles,presets}`
 - Resolution rule: user template with matching ID overrides bundled template.
 - Storage layer git history only includes files under `app_data_dir()/templates`.
