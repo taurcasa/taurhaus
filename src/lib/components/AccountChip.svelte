@@ -4,6 +4,7 @@
    * Hidden entirely when the host has a single account — the common case.
    */
   import UsageMeter from './UsageMeter.svelte'
+  import { accountOriginHint } from '../accountPresentation.js'
   import { toolDescriptor } from '../toolRegistry.js'
 
   let {
@@ -171,15 +172,7 @@
     return String(account?.display_name ?? '').trim() || account?.label || account?.id || ''
   }
 
-  const originHint = $derived(
-    origin === 'last_used'
-      ? 'last used'
-      : origin === 'base_command'
-        ? 'from launch command'
-        : origin === 'default' || origin === 'default_config_dir'
-          ? 'default'
-          : ''
-  )
+  const originHint = $derived(accountOriginHint(origin))
 
   const staleNote = 'Accounts unavailable (daemon offline) — using last known'
   const title = $derived(

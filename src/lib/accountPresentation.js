@@ -97,28 +97,23 @@ export function usageIsLastKnown(usage, now = Date.now()) {
   return Number.isFinite(observed) && now - observed > LAST_KNOWN_AFTER_MS
 }
 
+const ACCOUNT_ORIGIN_COPY = {
+  request: { sentence: 'chosen for this launch', hint: 'this launch' },
+  session: { sentence: "resumes this session's account", hint: 'session' },
+  project: { sentence: 'pinned to this project', hint: 'pinned' },
+  last_used: { sentence: 'last used here', hint: 'last used' },
+  global_default: { sentence: 'your global default', hint: 'global default' },
+  base_command: { sentence: 'carried by your launch command', hint: 'from launch command' },
+  signed_in: { sentence: 'a signed-in account', hint: 'signed in' },
+  default_config_dir: { sentence: "the tool's default directory", hint: 'default directory' },
+}
+
 /** Product copy for the backend's settled launch-account provenance. */
 export function accountOriginSentence(origin) {
-  switch (origin) {
-    case 'project':
-    case 'pinned':
-    case 'explicit':
-      return 'pinned to this project'
-    case 'last_used':
-      return 'last used here'
-    case 'global_default':
-    case 'default':
-      return 'your global default'
-    case 'base_command':
-      return 'carried by your launch command'
-    case 'session':
-    case 'transcript':
-      return "resumes this session's account"
-    case 'single_account':
-    case 'only_account':
-    case 'default_config_dir':
-      return 'the only account signed in'
-    default:
-      return 'selected for this project'
-  }
+  return ACCOUNT_ORIGIN_COPY[origin]?.sentence ?? 'selected for this project'
+}
+
+/** Compact form of the same backend-owned provenance vocabulary. */
+export function accountOriginHint(origin) {
+  return ACCOUNT_ORIGIN_COPY[origin]?.hint ?? ''
 }

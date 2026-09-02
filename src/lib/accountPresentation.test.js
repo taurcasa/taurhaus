@@ -112,13 +112,17 @@ describe('usageIsLastKnown', () => {
 })
 
 describe('accountOriginSentence', () => {
+  // Regression: 1043f47 invented frontend-only origin aliases and described
+  // default_config_dir as the only signed-in account, which the backend never promises.
   it.each([
+    ['request', 'chosen for this launch'],
+    ['session', "resumes this session's account"],
     ['project', 'pinned to this project'],
     ['last_used', 'last used here'],
     ['global_default', 'your global default'],
     ['base_command', 'carried by your launch command'],
-    ['session', "resumes this session's account"],
-    ['single_account', 'the only account signed in'],
+    ['signed_in', 'a signed-in account'],
+    ['default_config_dir', "the tool's default directory"],
   ])('renders %s provenance as settled product copy', (origin, sentence) => {
     expect(accountOriginSentence(origin)).toBe(sentence)
   })
