@@ -13,7 +13,6 @@ use super::telemetry;
 use super::SetupContext;
 
 const DATA_DIR_OVERRIDE_ENV: &str = "TAURHAUS_DATA_DIR";
-const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 const STARTUP_DAEMON_FAST_PATH_TIMEOUT: Duration = Duration::from_millis(350);
 const STARTUP_WSL_DISTRO_DETECTION_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -309,26 +308,21 @@ pub(super) fn register_managed_state(
     app.manage(crate::coordination::state::CoordinationState::for_app_startup());
 }
 
-fn env_path_override(var: &str) -> Option<PathBuf> {
-    let value = std::env::var_os(var)?;
-    if value.is_empty() {
-        return None;
-    }
-    Some(PathBuf::from(value))
-}
-
 pub(super) fn data_dir_override_enabled() -> bool {
-    env_path_override(DATA_DIR_OVERRIDE_ENV).is_some()
+    crate::provider::platform_paths::PlatformPaths::data_dir_override().is_some()
 }
 
 pub(super) fn claude_dir_override_enabled() -> bool {
-    env_path_override(CLAUDE_DIR_OVERRIDE_ENV).is_some()
+    crate::provider::platform_paths::PlatformPaths::claude_dir_override().is_some()
 }
 
 pub(crate) fn resolve_app_data_dir(
     app: tauri::AppHandle,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    if let Some(path) = env_path_override(DATA_DIR_OVERRIDE_ENV) {
+    // PlatformPaths owns the override read INCLUDING the Windows->WSL form
+    // conversion; a second raw read here was what still materialised the
+    // literal C-drive directory after the hook-side fix.
+    if let Some(path) = crate::provider::platform_paths::PlatformPaths::data_dir_override() {
         tracing::info!(
             env = DATA_DIR_OVERRIDE_ENV,
             path = %path.display(),
@@ -343,7 +337,7 @@ pub(crate) fn resolve_app_data_dir(
 }
 
 pub(crate) fn resolve_claude_tasks_dir() -> Option<PathBuf> {
-    let _ = env_path_override(CLAUDE_DIR_OVERRIDE_ENV);
+    let _ = crate::provider::platform_paths::PlatformPaths::claude_dir_override();
     Some(crate::provider::platform_paths::PlatformPaths::claude_dir().join("tasks"))
 }
 
