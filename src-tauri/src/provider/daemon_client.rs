@@ -1416,19 +1416,26 @@ mod tests {
     fn try_reconnect_rate_limits() {
         // No daemon running — every try_reconnect will fail, but we can verify
         // rate limiting: the second call within the cooldown should return false
-        // immediately without attempting a connection.
+        // without recording another connection attempt.
         let provider = DaemonProvider::new_disconnected("127.0.0.1:1");
 
         // First attempt: should try (and fail, but that's fine)
         let result1 = provider.try_reconnect();
         assert!(!result1); // fails because no daemon
+        let first_attempt = *provider
+            .last_reconnect_attempt
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert!(first_attempt.is_some());
 
         // Second attempt immediately: should be rate-limited (returns false fast)
-        let start = Instant::now();
         let result2 = provider.try_reconnect();
         assert!(!result2);
-        // Should return very quickly (< 100ms), not spending time on TCP connect
-        assert!(start.elapsed() < Duration::from_millis(100));
+        let second_attempt = *provider
+            .last_reconnect_attempt
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert_eq!(second_attempt, first_attempt);
     }
 
     #[test]

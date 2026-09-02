@@ -600,11 +600,18 @@ fn daemon_listener_fixture_suites_run_without_a_global_thread_pin() {
     }
 
     let recipe = show_recipe("test-rust-integration");
+    let daemon_branch = recipe
+        .split("daemon::server::tests::|provider::daemon_client::tests::)")
+        .nth(1)
+        .and_then(|remainder| remainder.split(";;").next())
+        .expect("integration recipe should have a daemon server/client case branch");
     assert!(
-        recipe.contains(
-            "daemon::server::tests::|provider::daemon_client::tests::) cargo test --lib \"$test_filter\" || exit ;;"
-        ),
-        "daemon server/client fixtures must use Cargo's default parallel test runner"
+        daemon_branch.contains("cargo test --lib"),
+        "daemon server/client branch must execute its lib-test filter: {daemon_branch:?}"
+    );
+    assert!(
+        !daemon_branch.contains("--test-threads=1"),
+        "daemon server/client fixtures must use Cargo's default parallel test runner: {daemon_branch:?}"
     );
 }
 

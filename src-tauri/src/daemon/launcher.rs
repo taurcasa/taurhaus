@@ -1341,8 +1341,8 @@ time.sleep(3600)
         daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
-    // Regression: commit 1dbdf040 reserved closed ports only within this module;
-    // another daemon fixture could still bind one before this poll completed.
+    // Regression: commit 1dbdf040 let another launcher fixture claim this
+    // deliberately closed port before the poll completed.
     #[test]
     fn poll_until_reachable_times_out() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
