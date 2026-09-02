@@ -565,6 +565,7 @@
       {dark}
       {activeTab}
       {settingsOpen}
+      {accountsOpen}
       onSwitchTab={(tab) => projectController.switchTab(tab)}
       onToggleSearch={() => {
         searchOpen = !searchOpen
