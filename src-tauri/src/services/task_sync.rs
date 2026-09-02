@@ -332,13 +332,25 @@ fn normalized_source_outcomes(
 
 /// Scan task files from live sources (daemon or local).
 pub(crate) fn scan_tasks_from_files(
+    app: &tauri::AppHandle,
     provider: &ProviderState,
     project_path: &str,
     scan_cycle_id: Option<u64>,
     cached_sessions: Option<&[RuntimeSession]>,
     cached_claude_index: Option<&crate::task_scanner::claude_index::ClaudeSourceIndex>,
 ) -> crate::task_scanner::TaskResult {
-    if let Some(daemon) = daemon_for_task_scan(provider, project_path) {
+    if let Some((daemon, reconnected)) = daemon_for_task_scan(provider, project_path) {
+        #[cfg(feature = "mesh-bridged-backend")]
+        if reconnected {
+            if let Err(error) = crate::commands::settings::push_launch_settings_to_daemon(app) {
+                tracing::warn!(
+                    error = %error,
+                    "Failed to repush launch settings after task-scan reconnect"
+                );
+            }
+        }
+        #[cfg(not(feature = "mesh-bridged-backend"))]
+        let _ = (app, reconnected);
         let linux_path = crate::provider::path::to_linux(project_path)
             .unwrap_or_else(|| project_path.to_string());
 
@@ -395,17 +407,15 @@ pub(crate) fn scan_tasks_from_files(
 fn daemon_for_task_scan<'a>(
     provider: &'a ProviderState,
     project_path: &str,
-) -> Option<&'a crate::provider::daemon_client::DaemonProvider> {
+) -> Option<(&'a crate::provider::daemon_client::DaemonProvider, bool)> {
     if !crate::provider::path::is_wsl_path(project_path) {
         return None;
     }
 
     let daemon = provider.daemon.as_ref()?;
-    if !daemon.is_connected() {
-        daemon.try_reconnect();
-    }
+    let reconnected = !daemon.is_connected() && daemon.try_reconnect();
 
-    daemon.is_connected().then_some(daemon)
+    daemon.is_connected().then_some((daemon, reconnected))
 }
 
 #[cfg(test)]

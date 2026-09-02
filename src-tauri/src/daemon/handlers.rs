@@ -34,6 +34,8 @@ pub(crate) fn dispatch(
         &crate::daemon::member_runs::MemberOperationsService,
         &crate::daemon::team_runs::TeamOperationsService,
         &crate::daemon::roster_runs::RosterOperationsService,
+        &crate::daemon::effort_runs::EffortOperationsService,
+        &crate::daemon::background_scheduler::LaunchSettingsStore,
     ),
 ) -> DaemonResponse {
     #[cfg(feature = "mesh-bridged-backend")]
@@ -42,6 +44,8 @@ pub(crate) fn dispatch(
         member_operations_service,
         team_operations_service,
         roster_operations_service,
+        effort_operations_service,
+        launch_settings,
     ) = coordination_services;
     tracing::debug!(method = %request.method, id = %request.id, "Received request");
     match request.method.as_str() {
@@ -204,6 +208,24 @@ pub(crate) fn dispatch(
                 &request.id,
                 &request.params,
                 roster_operations_service,
+            )
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_PUT_LAUNCH_SETTINGS => {
+            handle_coordination_put_launch_settings(&request.id, &request.params, launch_settings)
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_APPLY_TASK_EFFORT => handle_coordination_apply_task_effort(
+            &request.id,
+            &request.params,
+            effort_operations_service,
+        ),
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_APPLY_TASK_EFFORT_STATUS => {
+            handle_coordination_apply_task_effort_status(
+                &request.id,
+                &request.params,
+                effort_operations_service,
             )
         }
         _ => DaemonResponse::err(
@@ -521,6 +543,56 @@ fn handle_coordination_remove_member_status(
     match service.remove_member_status(&params.run_id) {
         Some(status) => DaemonResponse::ok(id, status),
         None => coordination_run_not_found(id, "remove-member", &params.run_id),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_put_launch_settings(
+    id: &str,
+    params: &serde_json::Value,
+    store: &crate::daemon::background_scheduler::LaunchSettingsStore,
+) -> DaemonResponse {
+    let params: protocol::CoordinationPutLaunchSettingsParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    DaemonResponse::ok(id, store.put(params))
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_apply_task_effort(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::effort_runs::EffortOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationApplyTaskEffortParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.start(params) {
+        Ok(run_id) => {
+            DaemonResponse::ok(id, protocol::CoordinationApplyTaskEffortAccepted { run_id })
+        }
+        Err(error) => DaemonResponse::err(id, "APPLY_TASK_EFFORT_START_FAILED", error),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_apply_task_effort_status(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::effort_runs::EffortOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationApplyTaskEffortStatusParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.status(&params.run_id) {
+        Some(status) => DaemonResponse::ok(id, status),
+        None => coordination_run_not_found(id, "task-effort", &params.run_id),
     }
 }
 
@@ -1108,5 +1180,39 @@ mod tests {
             serde_json::from_value(fetched.result.expect("get result")).expect("decode run");
         assert_eq!(run.name, "daemon");
         assert_eq!(run.status, crate::workflow_runs::WorkflowRunStatus::Live);
+    }
+
+    #[test]
+    fn put_launch_settings_handler_acknowledges_only_monotonic_snapshots() {
+        let store = crate::daemon::background_scheduler::LaunchSettingsStore::default();
+        let mut commands = crate::models::CliCommandSettings::default();
+        commands.claude.resume = "claude2 --resume".to_string();
+
+        let accepted = handle_coordination_put_launch_settings(
+            "settings-1",
+            &serde_json::json!({
+                "version": 4,
+                "cli_commands": commands,
+                "tmux_layout": "new_window"
+            }),
+            &store,
+        );
+        let stale = handle_coordination_put_launch_settings(
+            "settings-2",
+            &serde_json::json!({
+                "version": 3,
+                "cli_commands": crate::models::CliCommandSettings::default(),
+                "tmux_layout": "split"
+            }),
+            &store,
+        );
+
+        let accepted: protocol::CoordinationPutLaunchSettingsResult =
+            serde_json::from_value(accepted.result.expect("accepted result")).expect("decode");
+        let stale: protocol::CoordinationPutLaunchSettingsResult =
+            serde_json::from_value(stale.result.expect("stale result")).expect("decode");
+        assert!(accepted.accepted);
+        assert!(!stale.accepted);
+        assert_eq!(stale.version, 4);
     }
 }

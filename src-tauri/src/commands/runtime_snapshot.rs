@@ -24,16 +24,24 @@ pub(crate) fn daemon_runtime_session_snapshot(
         });
     };
 
-    if !daemon.is_connected() && !daemon.try_reconnect() {
-        let cached = crate::session_snapshot_cache::load();
-        return Ok(RuntimeSnapshotOutcome {
-            freshness: if cached.is_some() {
-                RuntimeSnapshotFreshness::Cached
-            } else {
-                RuntimeSnapshotFreshness::Unavailable
-            },
-            snapshot: cached,
-        });
+    if !daemon.is_connected() {
+        if !daemon.try_reconnect() {
+            let cached = crate::session_snapshot_cache::load();
+            return Ok(RuntimeSnapshotOutcome {
+                freshness: if cached.is_some() {
+                    RuntimeSnapshotFreshness::Cached
+                } else {
+                    RuntimeSnapshotFreshness::Unavailable
+                },
+                snapshot: cached,
+            });
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        if let Err(error) =
+            crate::commands::settings::repush_cached_launch_settings_to_daemon(daemon)
+        {
+            tracing::warn!(error = %error, "Failed to repush launch settings after runtime-snapshot reconnect");
+        }
     }
 
     match request_daemon_runtime_session_snapshot(daemon) {
@@ -77,6 +85,12 @@ pub(crate) fn daemon_runtime_session_snapshot(
                 "Failed to reach daemon for runtime session snapshot; attempting inline reconnect"
             );
             if daemon.try_reconnect() {
+                #[cfg(feature = "mesh-bridged-backend")]
+                if let Err(error) =
+                    crate::commands::settings::repush_cached_launch_settings_to_daemon(daemon)
+                {
+                    tracing::warn!(error = %error, "Failed to repush launch settings after runtime-snapshot retry reconnect");
+                }
                 match request_daemon_runtime_session_snapshot(daemon) {
                     Ok(Some(snapshot)) => {
                         crate::session_snapshot_cache::store(&snapshot);

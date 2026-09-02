@@ -24,6 +24,7 @@ pub(crate) enum CoordinationRunKind {
     DisbandTeam,
     AddMember,
     RemoveMember,
+    ApplyTaskEffort,
 }
 
 impl CoordinationRunKind {
@@ -38,6 +39,7 @@ impl CoordinationRunKind {
             Self::DisbandTeam => "disband",
             Self::AddMember => "member-add",
             Self::RemoveMember => "member-remove",
+            Self::ApplyTaskEffort => "effort",
         }
     }
 
@@ -52,6 +54,7 @@ impl CoordinationRunKind {
             Self::DisbandTeam => "disband_team",
             Self::AddMember => "add_member",
             Self::RemoveMember => "remove_member",
+            Self::ApplyTaskEffort => "apply_task_effort",
         }
     }
 
@@ -67,6 +70,10 @@ impl CoordinationRunKind {
                 | (Self::DisbandTeam, CoordinationRunReport::DisbandTeam(_))
                 | (Self::AddMember, CoordinationRunReport::AddMember)
                 | (Self::RemoveMember, CoordinationRunReport::RemoveMember(_))
+                | (
+                    Self::ApplyTaskEffort,
+                    CoordinationRunReport::ApplyTaskEffort(_)
+                )
         )
     }
 }
@@ -82,6 +89,7 @@ pub(crate) enum CoordinationRunReport {
     DisbandTeam(DisbandTeamReport),
     AddMember,
     RemoveMember(StopMemberReport),
+    ApplyTaskEffort(crate::daemon::protocol::CoordinationApplyTaskEffortReport),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -324,6 +332,35 @@ pub(crate) fn prepare_daemon_launch_inputs_for_tools(
     );
 }
 
+pub(crate) type PrepareLaunchInputs = dyn Fn(CliTool, &mut CliCommandSettings) + Send + Sync;
+
+/// Build the daemon-host resolver shared by interactive and scheduled effort runs.
+pub(crate) fn daemon_launch_resolver_for(
+    teams_dir: std::path::PathBuf,
+) -> std::sync::Arc<PrepareLaunchInputs> {
+    std::sync::Arc::new(move |tool, commands| {
+        let has_managed_codex = managed_codex_discovery_or_conservative(&teams_dir);
+        prepare_daemon_launch_inputs_for_tools(&teams_dir, has_managed_codex, vec![tool], commands);
+    })
+}
+
+/// Discovery failure degrades to `true` (managed inputs applied), never to an
+/// error: a relaunch pass must not fall over because one team's config is
+/// momentarily unreadable, and over-applying managed inputs is harmless while
+/// under-applying them breaks the member inbox contract.
+fn managed_codex_discovery_or_conservative(teams_dir: &std::path::Path) -> bool {
+    match crate::coordination::compact_hook::any_managed_codex_member(teams_dir) {
+        Ok(has_managed_codex) => has_managed_codex,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "managed-Codex discovery failed; daemon uses conservative launch inputs"
+            );
+            true
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::{Duration, Instant};
@@ -344,6 +381,7 @@ mod tests {
             (CoordinationRunKind::DisbandTeam, "disband_"),
             (CoordinationRunKind::AddMember, "member-add_"),
             (CoordinationRunKind::RemoveMember, "member-remove_"),
+            (CoordinationRunKind::ApplyTaskEffort, "effort_"),
         ] {
             let run_id = registry.start(kind);
             assert!(run_id.starts_with(prefix), "unexpected run id: {run_id}");
@@ -351,6 +389,20 @@ mod tests {
             assert_eq!(status.kind, kind);
             assert_eq!(status.outcome, RunOutcome::Running);
         }
+    }
+
+    #[test]
+    fn broken_team_config_degrades_managed_codex_discovery_to_conservative() {
+        // Regression class: the retired app-side pass warned and proceeded
+        // with managed inputs when discovery failed; the daemon-side owner
+        // must keep that fail-soft shape rather than propagating the error
+        // into the relaunch path.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let team_dir = dir.path().join("broken-team");
+        std::fs::create_dir_all(&team_dir).expect("team dir");
+        std::fs::write(team_dir.join("config.json"), "{not valid json").expect("config");
+
+        assert!(super::managed_codex_discovery_or_conservative(dir.path()));
     }
 
     #[test]

@@ -39,7 +39,9 @@ use serde::{Deserialize, Serialize};
 /// v18: moved resume-team and reonboard into the daemon.
 /// v19: moved standalone team create/disband and roster edits into the daemon.
 /// v20: retired the superseded stop-member wire methods.
-pub const PROTOCOL_VERSION: u32 = 20;
+/// v21: moved self-heal and effort background passes into the daemon and added
+/// the task-arrival effort intent.
+pub const PROTOCOL_VERSION: u32 = 21;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -134,6 +136,9 @@ pub mod method {
     pub const COORDINATION_ADD_MEMBER_STATUS: &str = "coordination.add_member_status";
     pub const COORDINATION_REMOVE_MEMBER: &str = "coordination.remove_member";
     pub const COORDINATION_REMOVE_MEMBER_STATUS: &str = "coordination.remove_member_status";
+    pub const COORDINATION_PUT_LAUNCH_SETTINGS: &str = "coordination.put_launch_settings";
+    pub const COORDINATION_APPLY_TASK_EFFORT: &str = "coordination.apply_task_effort";
+    pub const COORDINATION_APPLY_TASK_EFFORT_STATUS: &str = "coordination.apply_task_effort_status";
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";
@@ -581,6 +586,77 @@ pub enum CoordinationRemoveMemberOutcome {
 pub struct CoordinationRemoveMemberStatus {
     pub run_id: String,
     pub outcome: CoordinationRemoveMemberOutcome,
+}
+
+/// Latest app-committed launch settings used only by the daemon retry sweep.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationPutLaunchSettingsParams {
+    /// The app's settings-save counter; the daemon keeps the highest version
+    /// it has seen. Monotonicity is global by design: this architecture runs
+    /// one daemon per data dir and port (E2E workers get private ports), so a
+    /// second app instance with an older counter is not a supported topology
+    /// — documented rather than defended with per-client state.
+    pub version: u64,
+    pub cli_commands: crate::models::CliCommandSettings,
+    pub tmux_layout: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationPutLaunchSettingsResult {
+    pub accepted: bool,
+    pub version: u64,
+}
+
+/// Self-contained task-arrival intent. Host-local launch inputs are derived by
+/// the daemon immediately before a member is relaunched.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationApplyTaskEffortParams {
+    pub project_path: String,
+    pub cli_commands: crate::models::CliCommandSettings,
+    pub tmux_layout: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationApplyTaskEffortAccepted {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationApplyTaskEffortStatusParams {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationApplyTaskEffortReport {
+    pub switched: Vec<String>,
+    pub failed: Vec<(String, String)>,
+    pub skipped_teams: Vec<(String, String)>,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum CoordinationApplyTaskEffortOutcome {
+    Running,
+    Completed {
+        report: CoordinationApplyTaskEffortReport,
+    },
+    Failed {
+        error: String,
+    },
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationApplyTaskEffortStatus {
+    pub run_id: String,
+    pub outcome: CoordinationApplyTaskEffortOutcome,
 }
 
 /// `list_workflow_runs` — completed and live runs under one Claude session.
@@ -1330,7 +1406,43 @@ mod tests {
     // edit here, in ARCHITECTURE.md, and in docs/architecture/daemon-protocol.md.
     #[test]
     fn protocol_version_is_pinned() {
-        assert_eq!(PROTOCOL_VERSION, 20);
+        assert_eq!(PROTOCOL_VERSION, 21);
+    }
+
+    #[test]
+    fn coordination_background_effort_method_contracts_roundtrip() {
+        let mut cli_commands = crate::models::CliCommandSettings::default();
+        cli_commands.claude.resume = "claude2 --resume".to_string();
+        let launch_settings = CoordinationPutLaunchSettingsParams {
+            version: 7,
+            cli_commands: cli_commands.clone(),
+            tmux_layout: "split".to_string(),
+        };
+        let decoded: CoordinationPutLaunchSettingsParams = serde_json::from_value(
+            serde_json::to_value(&launch_settings).expect("serialize launch settings"),
+        )
+        .expect("decode launch settings");
+        assert_eq!(decoded, launch_settings);
+        assert_eq!(decoded.cli_commands.claude.resume, "claude2 --resume");
+
+        let apply = CoordinationApplyTaskEffortParams {
+            project_path: "/tmp/protocol-21".to_string(),
+            cli_commands,
+            tmux_layout: "new_window".to_string(),
+        };
+        let decoded: CoordinationApplyTaskEffortParams = serde_json::from_value(
+            serde_json::to_value(&apply).expect("serialize task-effort intent"),
+        )
+        .expect("decode task-effort intent");
+        assert_eq!(decoded, apply);
+
+        for method in [
+            method::COORDINATION_PUT_LAUNCH_SETTINGS,
+            method::COORDINATION_APPLY_TASK_EFFORT,
+            method::COORDINATION_APPLY_TASK_EFFORT_STATUS,
+        ] {
+            assert!(method.starts_with("coordination."));
+        }
     }
 
     // Regression: 3c5b6cd9 invalidated only the Windows app's process-local
@@ -1814,6 +1926,15 @@ mod tests {
         // but left the superseded protocol-17 stop-member methods callable.
         let last_protocol_with_stop_member_methods = 19;
         assert!(PROTOCOL_VERSION > last_protocol_with_stop_member_methods);
+    }
+
+    // Regression: 25293092 made a background effort relaunch possible from
+    // stock command defaults. Protocol 20 has no pushed-settings seam, so a
+    // mixed pair could move a `claude2` member off its pinned account.
+    #[test]
+    fn protocol_version_excludes_daemons_without_background_pass_routing() {
+        let last_protocol_without_daemon_background_passes = 20;
+        assert!(PROTOCOL_VERSION > last_protocol_without_daemon_background_passes);
     }
 
     #[test]

@@ -326,27 +326,6 @@ pub(crate) fn apply_team_launch_base_resolutions(
     });
 }
 
-/// Resolve only the resume base an already-selected background relaunch needs.
-///
-/// The caller invokes this after coordination has found a member it will
-/// actually relaunch. Idle self-heal/task passes therefore never probe a shell.
-pub(crate) fn apply_team_resume_launch_base_resolution(
-    provider: &ProviderState,
-    commands: &mut crate::models::CliCommandSettings,
-    tool: CliTool,
-) {
-    apply_team_account_selector_dirs(commands, [tool]);
-    let mode = protocol::LaunchMode::Resume;
-    if commands.resolved_bases.contains_key(&(tool, mode)) {
-        return;
-    }
-    let base = crate::session_scanner::launch::base_command(commands, tool, mode).to_string();
-    let (resolved, answered) = resolve_launch_base_with_force_tracked(provider, tool, &base, false);
-    if answered {
-        commands.resolved_bases.insert((tool, mode), resolved);
-    }
-}
-
 pub(crate) fn apply_team_account_selector_dirs(
     commands: &mut crate::models::CliCommandSettings,
     tools: impl IntoIterator<Item = CliTool>,
@@ -506,8 +485,16 @@ fn daemon_resolve_launch_base_tracked(
     let Some(daemon) = provider.daemon.as_ref() else {
         return (literal_base(base), false);
     };
-    if !daemon.is_connected() && !daemon.try_reconnect() {
-        return (literal_base(base), false);
+    if !daemon.is_connected() {
+        if !daemon.try_reconnect() {
+            return (literal_base(base), false);
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        if let Err(error) =
+            crate::commands::settings::repush_cached_launch_settings_to_daemon(daemon)
+        {
+            tracing::warn!(error = %error, "Failed to repush launch settings after launch-base reconnect");
+        }
     }
 
     let request = protocol::DaemonRequest::new(
@@ -573,11 +560,19 @@ fn daemon_project_transcript_lookup(
             unavailable: Some("The WSL daemon is not running".to_string()),
         };
     };
-    if !daemon.is_connected() && !daemon.try_reconnect() {
-        return TranscriptLookup {
-            transcript: None,
-            unavailable: Some("The WSL daemon is not reachable".to_string()),
-        };
+    if !daemon.is_connected() {
+        if !daemon.try_reconnect() {
+            return TranscriptLookup {
+                transcript: None,
+                unavailable: Some("The WSL daemon is not reachable".to_string()),
+            };
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        if let Err(error) =
+            crate::commands::settings::repush_cached_launch_settings_to_daemon(daemon)
+        {
+            tracing::warn!(error = %error, "Failed to repush launch settings after transcript reconnect");
+        }
     }
 
     let request = protocol::DaemonRequest::new(
@@ -619,8 +614,16 @@ fn daemon_accounts(
     let Some(daemon) = provider.daemon.as_ref() else {
         return DaemonAnswer::Unavailable("The WSL daemon is not running".to_string());
     };
-    if !daemon.is_connected() && !daemon.try_reconnect() {
-        return DaemonAnswer::Unavailable("The WSL daemon is not reachable".to_string());
+    if !daemon.is_connected() {
+        if !daemon.try_reconnect() {
+            return DaemonAnswer::Unavailable("The WSL daemon is not reachable".to_string());
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        if let Err(error) =
+            crate::commands::settings::repush_cached_launch_settings_to_daemon(daemon)
+        {
+            tracing::warn!(error = %error, "Failed to repush launch settings after accounts reconnect");
+        }
     }
 
     let request = protocol::DaemonRequest::new(

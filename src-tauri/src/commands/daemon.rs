@@ -93,6 +93,11 @@ pub fn start_daemon(
             // Checked, not raw: the button must not adopt a daemon whose
             // protocol predates hub-owned focus just because it answers TCP.
             if daemon.reconnect_checked().is_ok() {
+                #[cfg(feature = "mesh-bridged-backend")]
+                if let Err(error) = crate::commands::settings::push_launch_settings_to_daemon(&app)
+                {
+                    tracing::warn!(error = %error, "Failed to push launch settings after manual daemon start");
+                }
                 if let Err(error) = app.emit(
                     "daemon-status",
                     serde_json::json!({ "status": "connected" }),
