@@ -3,6 +3,7 @@
   import GitTab from '../../GitTab.svelte'
   import OverviewTab from '../../OverviewTab.svelte'
   import Settings from '../../Settings.svelte'
+  import AccountsHome from '../AccountsHome.svelte'
   import TaskBoard from '../../TaskBoard.svelte'
   import { describeProjectLoadBanner } from '../../errorCopy.js'
   import { themeTokens } from '../../themeTokens.js'
@@ -14,6 +15,9 @@
     codeThemeLight,
     codeThemeDark,
     settingsOpen = false,
+    accountsOpen = false,
+    accountStates = null,
+    requestedAddTool = null,
     daemonStatus = null,
     daemonRecoveryEscalated = false,
     daemonUpdateAvailable = null,
@@ -42,6 +46,9 @@
     gitPosition = $bindable(null),
     taskPosition = $bindable(null),
     onCloseSettings = () => {},
+    onCloseAccounts = () => {},
+    onOpenProject = () => {},
+    onRequestedAddConsumed = () => {},
     onSettingsChanged = () => {},
     onCodeThemeChanged = () => {},
     onViewAllCommits = () => {},
@@ -149,7 +156,18 @@
     </div>
   {/if}
 
-  {#if settingsOpen}
+  {#if accountsOpen}
+    <AccountsHome
+      {dark}
+      {projects}
+      {selectedProject}
+      states={accountStates}
+      {requestedAddTool}
+      {onRequestedAddConsumed}
+      onClose={onCloseAccounts}
+      {onOpenProject}
+    />
+  {:else if settingsOpen}
     <Settings
       {dark}
       onClose={onCloseSettings}

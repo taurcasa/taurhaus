@@ -5,6 +5,19 @@ import '@testing-library/jest-dom/vitest'
 import ShellMainPanel from './ShellMainPanel.svelte'
 
 describe('ShellMainPanel', () => {
+  it('renders Accounts as a global takeover independently of Settings', () => {
+    render(ShellMainPanel, {
+      props: {
+        accountsOpen: true,
+        accountStates: {},
+        projects: [],
+      },
+    })
+
+    expect(screen.getByTestId('accounts-home')).toBeInTheDocument()
+    expect(screen.queryByText('Select a project')).not.toBeInTheDocument()
+  })
+
   it('shows a restart action once daemon recovery has stalled', async () => {
     const onRestartDaemon = vi.fn()
 

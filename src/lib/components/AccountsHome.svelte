@@ -23,6 +23,8 @@
     onClose = () => {},
     onOpenProject = () => {},
     onSignIn = null,
+    requestedAddTool = null,
+    onRequestedAddConsumed = () => {},
   } = $props()
 
   const registry = $derived(tools())
@@ -48,6 +50,13 @@
   let expandedIds = $state(new Set())
   let addTool = $state(null)
   let signInAccount = $state(null)
+
+  $effect(() => {
+    const requested = requestedAddTool
+    if (!requested) return
+    onRequestedAddConsumed()
+    startAdd(requested)
+  })
 
   function stateFor(tool) {
     return states?.[tool] ?? accountState(tool)

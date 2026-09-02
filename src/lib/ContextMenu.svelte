@@ -467,6 +467,11 @@
           <span class="w-4 h-4 flex items-center justify-center shrink-0">{@html item.icon}</span>
         {/if}
         <span class="flex-1">{item.label}</span>
+        {#if item.meta}
+          <span class="shrink-0 max-w-[9rem] truncate text-[11px] tabular-nums {metaTone}">
+            {item.meta}
+          </span>
+        {/if}
         {#if hasChildren}
           <svg class="w-3 h-3 shrink-0 {textMuted}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/>

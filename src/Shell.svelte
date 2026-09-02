@@ -13,6 +13,8 @@
     launchAccountNotice,
     pendingAccountChoice,
     refreshAccounts,
+    refreshAccountRelationships,
+    refreshUsage,
     requestLaunch,
     resolveChooserAccounts,
   } from './lib/accounts.svelte.js'
@@ -28,7 +30,11 @@
   import { createShellProjectSelectionController } from './lib/shell/projectSelection.svelte.js'
   import { createShellSessionLifecycleController } from './lib/shell/sessionLifecycle.svelte.js'
   import { createStateBridge } from './lib/shell/stateBridge.js'
-  import { setupHistoryNavigation, setupSearchShortcut } from './lib/shell/shortcuts.svelte.js'
+  import {
+    setupAccountsShortcut,
+    setupHistoryNavigation,
+    setupSearchShortcut,
+  } from './lib/shell/shortcuts.svelte.js'
   import { loadThemePreferences, persistDarkModePreference } from './lib/shell/themePreferences.js'
   import {
     closeShellWindow,
@@ -60,6 +66,8 @@
 
   let searchOpen = $state(false)
   let settingsOpen = $state(false)
+  let accountsOpen = $state(false)
+  let requestedAddTool = $state(null)
   let showAddProject = $state(false)
   let showWizard = $state(false)
   let wizardChecked = $state(false)
@@ -238,7 +246,18 @@
       showAddProject = true
     },
     toggleSettings: () => {
+      accountsOpen = false
+      requestedAddTool = null
       settingsOpen = !settingsOpen
+    },
+    toggleAccounts: () => {
+      settingsOpen = false
+      requestedAddTool = null
+      accountsOpen = !accountsOpen
+    },
+    openAccounts: () => {
+      settingsOpen = false
+      accountsOpen = true
     },
     retryProjects: () => {
       projectController.loadProjects()
@@ -329,6 +348,7 @@
     lastAccountDetectionDaemonStatus = status
     for (const tool of registryTools().filter((entry) => entry.capabilities.accountSelection)) {
       void refreshAccounts(tool.id, { force: reconnected })
+      void refreshAccountRelationships(tool.id, { force: reconnected })
     }
   })
 
@@ -514,6 +534,14 @@
     },
   }))
 
+  $effect(() => setupAccountsShortcut({
+    onToggleAccounts: () => {
+      settingsOpen = false
+      requestedAddTool = null
+      accountsOpen = !accountsOpen
+    },
+  }))
+
   $effect(() => setupHistoryNavigation({
     onGoBack: () => {
       const entry = navGoBack()
@@ -560,6 +588,7 @@
           onForegroundProjectChange={(projectId) => sessionController.setForegroundProject(projectId)}
           daemonStatus={daemonStatus}
           {settingsOpen}
+          {accountsOpen}
           {dark}
           actions={{
             onProjectHover: projectController.prefetchProjectSelection,
@@ -572,6 +601,8 @@
         {codeThemeLight}
         {codeThemeDark}
         {settingsOpen}
+        {accountsOpen}
+        {requestedAddTool}
         {daemonStatus}
         {daemonRecoveryEscalated}
         {daemonUpdateAvailable}
@@ -601,6 +632,19 @@
         bind:taskPosition
         onCloseSettings={() => {
           settingsOpen = false
+        }}
+        onCloseAccounts={() => {
+          accountsOpen = false
+          requestedAddTool = null
+        }}
+        onRequestedAddConsumed={() => {
+          requestedAddTool = null
+        }}
+        onOpenProject={(relationship) => {
+          const projectId = relationship?.id ?? relationship?.projectId ?? relationship?.project_id
+          const project = projects.find((candidate) => candidate.id === projectId)
+          if (project) projectController.selectProject(project)
+          accountsOpen = false
         }}
         onSettingsChanged={() => projectController.loadProjects()}
         onCodeThemeChanged={handleCodeThemeChanged}
@@ -655,6 +699,18 @@
       onConfirm={(accountId, remember) => pendingAccount?.confirm(accountId, remember)}
       onCancel={() => pendingAccount?.cancel()}
       onRequestUsage={() => void refreshUsage(pendingAccount.tool)}
+      onAddAccount={(tool) => {
+        pendingAccount?.cancel()
+        settingsOpen = false
+        accountsOpen = true
+        requestedAddTool = tool
+      }}
+      onManageAccounts={() => {
+        pendingAccount?.cancel()
+        settingsOpen = false
+        accountsOpen = true
+        requestedAddTool = null
+      }}
     />
   {/if}
 

@@ -112,6 +112,7 @@ describe('Sidebar component branches', () => {
     const onSelectProject = vi.fn()
     const onAddProject = vi.fn()
     const onToggleSettings = vi.fn()
+    const onToggleAccounts = vi.fn()
     const projects = makeProjects(3)
 
     render(Sidebar, {
@@ -121,6 +122,7 @@ describe('Sidebar component branches', () => {
           onSelectProject,
           onAddProject,
           onToggleSettings,
+          onToggleAccounts,
         },
       },
     })
@@ -137,6 +139,9 @@ describe('Sidebar component branches', () => {
 
     await fireEvent.click(screen.getByTestId('settings-toggle'))
     expect(onToggleSettings).toHaveBeenCalled()
+
+    await fireEvent.click(screen.getByTestId('accounts-toggle'))
+    expect(onToggleAccounts).toHaveBeenCalled()
   })
 
   it('keeps visible focus styling on the filter and project rows', async () => {
