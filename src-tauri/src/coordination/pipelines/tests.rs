@@ -5585,6 +5585,70 @@ fn an_invalid_requested_effort_is_not_recorded_as_applied() {
     assert_eq!(record.applied_effort, None);
 }
 
+// Regression: f9716c83 committed `applied_effort = None` for a level the
+// renderer dropped, while the same successful launch cleared the attempt
+// budget. With ada4cbc6's widened sweep, a level the member's model does not
+// accept therefore stopped and resumed the member on every 30s cycle, forever:
+// nothing recorded an attempt and nothing bounded the next pass.
+#[test]
+fn an_effort_the_model_rejects_is_refused_within_the_attempt_budget() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    // `gpt-5.6-luna` publishes efforts up to `max`, so an `ultra` assignment is
+    // a level the launch renderer will refuse to write into the command.
+    let mut config = TeamConfigStore::load(tmp.path(), "effort-team").expect("team config");
+    config
+        .members
+        .iter_mut()
+        .find(|member| member.name == "builder")
+        .expect("builder member")
+        .model = Some("gpt-5.6-luna".to_string());
+    TeamConfigStore::save(tmp.path(), "effort-team", &config).expect("save team config");
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
+    assign_task(&tmp, "builder", "ultra", "the migration is irreversible");
+
+    let before = codex_launch_attempts(&runtime);
+    for _ in 0..6 {
+        orchestrator
+            .apply_pending_task_effort(
+                "effort-team",
+                &CliCommandSettings::default(),
+                "new_window",
+                EffortPassScope::BackgroundSweep,
+            )
+            .expect("background sweep");
+    }
+
+    assert!(
+        codex_launch_attempts(&runtime) - before <= 3,
+        "a level the rendered command cannot carry must not relaunch the member \
+         more than the attempt budget allows"
+    );
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("low"),
+        "the member keeps the level its session actually runs at"
+    );
+    let failure = record
+        .effort_resume_failure
+        .expect("the refused switch is recorded so the sweep converges");
+    assert_eq!(failure.level, "ultra");
+    assert_eq!(failure.attempts, 3);
+    assert_eq!(failure.reason.as_deref(), Some("budget_exhausted"));
+}
+
 // Regression: 25293092 committed a requested effort even when the launch
 // renderer dropped it in favor of the operator's effort-pinning base command,
 // making the runtime record disagree with the session it described.

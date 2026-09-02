@@ -275,6 +275,11 @@ impl CoordinationOrchestrator {
         expected: &MemberRuntimeSnapshot,
     ) -> Result<RuntimeCommitOutcome, CoordinationError> {
         let guard = acquire_team_lock(&self.teams_dir, &context.team_name)?;
+        let reached_a_level = patch
+            .applied_effort
+            .as_ref()
+            .and_then(Option::as_deref)
+            .is_some_and(|level| !level.trim().is_empty());
 
         let outcome = MemberRuntimeStore::commit_if_unchanged(
             &guard,
@@ -314,14 +319,20 @@ impl CoordinationOrchestrator {
                 if let Some(launch_account) = patch.launch_account.as_ref() {
                     runtime.launch_account = launch_account.clone().unwrap_or_default();
                 }
-                if let Some(applied_effort) = patch.applied_effort {
+                if let Some(applied_effort) = patch.applied_effort.as_ref() {
                     // The launch renderer is the authority on what survived
                     // base-command overrides and validation.
-                    runtime.applied_effort = applied_effort;
+                    runtime.applied_effort.clone_from(applied_effort);
                 }
-                // A committed launch reached a level, so an earlier failed
-                // effort-switch budget no longer applies.
-                runtime.effort_resume_failure = None;
+                // A launch that reached a level moves the switch on, so an
+                // earlier failed effort-switch budget no longer applies. A
+                // launch whose rendered command carried no level leaves the
+                // count standing: clearing it there would let the next pass
+                // stop and resume the member for that same level again, and
+                // again, with nothing to bound it.
+                if reached_a_level {
+                    runtime.effort_resume_failure = None;
+                }
             },
         );
         drop(guard);

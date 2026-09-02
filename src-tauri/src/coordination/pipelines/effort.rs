@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use crate::coordination::domain::{HealthState, Member};
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::member_activation::MemberActivationContext;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::ResumeMemberRequest;
 use crate::coordination::stores::{
@@ -19,6 +20,7 @@ use crate::coordination::task_effort;
 use crate::coordination::validation::validate_team_name;
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::launch::{LaunchSpec, ModelSpec};
 
 /// One member's pending effort switch.
 pub(super) struct PendingEffort {
@@ -59,37 +61,104 @@ pub(super) fn attempt_is_allowed(failed_attempts: u32) -> bool {
     failed_attempts < MAX_EFFORT_RESUME_ATTEMPTS
 }
 
-/// The launch settings an effort relaunch renders from, or `None` when no
+/// A configured base that pins an effort the relaunch cannot rewrite.
+const BASE_CANNOT_CARRY_EFFORT: &str = "configured launch command cannot carry the effort";
+/// A level the launch renderer refuses to write into the command at all — the
+/// member's model does not accept it, or the harness cannot carry one.
+const RENDER_DROPS_EFFORT: &str = "the rendered launch command would not carry the effort";
+
+/// The base command an effort relaunch renders from.
+fn resume_base(cli_commands: &CliCommandSettings, tool: CliTool) -> &str {
+    let mode = crate::daemon::protocol::LaunchMode::Resume;
+    cli_commands
+        .resolved_bases
+        .get(&(tool, mode))
+        .map(|base| base.command.as_str())
+        .unwrap_or_else(|| crate::session_scanner::launch::base_command(cli_commands, tool, mode))
+}
+
+/// The launch settings an effort relaunch renders from, or the reason no
 /// command it could render carries `level`.
 ///
 /// A base that pins nothing is used as it stands — the renderer appends the
-/// requested level itself. A base that pins one has that value replaced, and
-/// the result is read back before the caller stops anything.
+/// requested level itself. A base that pins one has that value replaced.
+/// Either way the result is rendered and read back before the caller stops
+/// anything: a member is only taken down for a command that carries the level.
 fn effort_launch_commands(
     cli_commands: &CliCommandSettings,
     tool: CliTool,
+    model: &str,
     level: &str,
-) -> Option<CliCommandSettings> {
+) -> Result<CliCommandSettings, &'static str> {
     let mode = crate::daemon::protocol::LaunchMode::Resume;
-    let resolved_base = cli_commands.resolved_bases.get(&(tool, mode));
-    let base = resolved_base
-        .map(|base| base.command.as_str())
-        .unwrap_or_else(|| crate::session_scanner::launch::base_command(cli_commands, tool, mode));
-    if !task_effort::base_pins_effort(tool, base) {
-        return Some(cli_commands.clone());
-    }
-    let rewritten = task_effort::base_with_effort(tool, base, level)?;
-    if !task_effort::pinned_base_effort(tool, &rewritten)
-        .is_some_and(|pinned| pinned.eq_ignore_ascii_case(level))
-    {
-        return None;
-    }
     let mut commands = cli_commands.clone();
-    match commands.resolved_bases.get_mut(&(tool, mode)) {
-        Some(base) => base.command = rewritten,
-        None => commands.get_mut(tool)?.resume = rewritten,
+    let base = resume_base(cli_commands, tool);
+    if task_effort::base_pins_effort(tool, base) {
+        let rewritten =
+            task_effort::base_with_effort(tool, base, level).ok_or(BASE_CANNOT_CARRY_EFFORT)?;
+        if !task_effort::pinned_base_effort(tool, &rewritten)
+            .is_some_and(|pinned| pinned.eq_ignore_ascii_case(level))
+        {
+            return Err(BASE_CANNOT_CARRY_EFFORT);
+        }
+        match commands.resolved_bases.get_mut(&(tool, mode)) {
+            Some(base) => base.command = rewritten,
+            None => {
+                commands
+                    .get_mut(tool)
+                    .ok_or(BASE_CANNOT_CARRY_EFFORT)?
+                    .resume = rewritten
+            }
+        }
     }
-    Some(commands)
+    rendered_effort(&commands, tool, model, level)
+        .is_some_and(|applied| applied.eq_ignore_ascii_case(level))
+        .then_some(commands)
+        .ok_or(RENDER_DROPS_EFFORT)
+}
+
+/// The level the relaunch's own command would carry, asked of the renderer
+/// that decides it.
+///
+/// The launch renderer drops a level the member's model does not accept, and a
+/// dropped level would be committed as "unknown" by a launch that had already
+/// stopped the member — leaving every later pass to stop it again. Only the
+/// tool, the base and the model/effort pair decide that verdict; the account,
+/// team and notify inputs the resume pipeline adds cannot change it.
+fn rendered_effort(
+    cli_commands: &CliCommandSettings,
+    tool: CliTool,
+    model: &str,
+    level: &str,
+) -> Option<String> {
+    let base = resume_base(cli_commands, tool);
+    let mut model = ModelSpec::parse_legacy(model);
+    model.reasoning_effort = Some(level.to_string());
+    let rendered = LaunchSpec {
+        tool,
+        mode: crate::daemon::protocol::LaunchMode::Resume,
+        base,
+        model,
+        codex_bypass_hook_trust: false,
+        codex_notify_executable: None,
+        account_dir: None,
+        selector: None,
+        team: None,
+    }
+    .render();
+    super::helpers::launched_effort(&rendered, tool, base)
+}
+
+/// The model the resume pipeline will render this member's launch with.
+///
+/// Read out of the activation context the relaunch itself builds, so the
+/// pre-check validates the level against the model the command will name. Only
+/// the model is read; the lead names the sender of an onboarding message the
+/// relaunch does not send here.
+fn resume_render_model(team_name: &str, member: &Member) -> String {
+    MemberActivationContext::for_resume_member(team_name, "", member)
+        .member
+        .model
 }
 
 /// Assignment target selection for a member with more than one open task.
@@ -358,33 +427,36 @@ impl CoordinationOrchestrator {
             // assignment's level written into it. Whatever the relaunch will
             // render from is checked here, before anything is stopped: a
             // member is only taken down for a command that carries the level.
-            let launch_commands =
-                match effort_launch_commands(cli_commands, member.cli_tool, &pending.requested) {
-                    Some(commands) => commands,
-                    None => {
-                        self.record_failed_effort_attempt(
-                            team_name,
-                            &member.name,
-                            &pending.task_id,
-                            &pending.requested,
-                            pending.failed_attempts + 1,
-                        );
-                        task_effort::emit_effort_resume(
-                            "effort.resume.failed",
-                            team_name,
-                            &member.name,
-                            &pending.task_id,
-                            &pending.requested,
-                            pending.applied.as_deref(),
-                            Some("configured launch command cannot carry the effort"),
-                        );
-                        outcome.failed.push((
-                            member.name.clone(),
-                            "configured launch command cannot carry the effort".to_string(),
-                        ));
-                        continue;
-                    }
-                };
+            let launch_commands = match effort_launch_commands(
+                cli_commands,
+                member.cli_tool,
+                &resume_render_model(team_name, member),
+                &pending.requested,
+            ) {
+                Ok(commands) => commands,
+                Err(reason) => {
+                    self.record_failed_effort_attempt(
+                        team_name,
+                        &member.name,
+                        &pending.task_id,
+                        &pending.requested,
+                        pending.failed_attempts + 1,
+                    );
+                    task_effort::emit_effort_resume(
+                        "effort.resume.failed",
+                        team_name,
+                        &member.name,
+                        &pending.task_id,
+                        &pending.requested,
+                        pending.applied.as_deref(),
+                        Some(reason),
+                    );
+                    outcome
+                        .failed
+                        .push((member.name.clone(), reason.to_string()));
+                    continue;
+                }
+            };
             task_effort::emit_effort_resume(
                 "effort.resume.started",
                 team_name,
