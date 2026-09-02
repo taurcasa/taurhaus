@@ -235,6 +235,9 @@ pub struct CliToolSpec {
     pub settings_label: &'static str,
     /// Base directory name under `$HOME` (e.g., ".claude", ".codex", ".gemini").
     pub base_dir_name: &'static str,
+    /// Command opened in the managed terminal for a new account directory.
+    /// `None` means the harness has no selectable account home.
+    pub account_login_command: Option<&'static str>,
     /// Environment override taurhaus consults when locating this tool's
     /// session home (`PlatformPaths::tool_session_root`). Distinct from the
     /// account selector: Codex and Grok keep `None` here because their
@@ -313,6 +316,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             display_name: "Claude Code",
             settings_label: "Claude Code",
             base_dir_name: ".claude",
+            account_login_command: Some("claude"),
             home_override_env: None,
             projects_subdir: "projects",
             session_extension: "jsonl",
@@ -384,6 +388,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             display_name: "Codex CLI",
             settings_label: "Codex",
             base_dir_name: ".codex",
+            account_login_command: Some("codex login"),
             home_override_env: None,
             projects_subdir: "sessions",
             session_extension: "jsonl",
@@ -480,6 +485,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             display_name: "Antigravity CLI",
             settings_label: "Antigravity CLI",
             base_dir_name: ".gemini",
+            account_login_command: None,
             // agy does not consume this taurhaus-only isolation override.
             home_override_env: Some("TAURHAUS_AGY_DIR"),
             projects_subdir: "antigravity-cli/conversations",
@@ -630,6 +636,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             display_name: "Grok CLI",
             settings_label: "Grok CLI",
             base_dir_name: ".grok",
+            account_login_command: Some("grok login"),
             home_override_env: None,
             projects_subdir: "sessions",
             session_extension: "jsonl",
@@ -699,6 +706,7 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
     display_name: "Unknown tool",
     settings_label: "Unknown tool",
     base_dir_name: "",
+    account_login_command: None,
     home_override_env: None,
     projects_subdir: "",
     session_extension: "",
@@ -884,6 +892,8 @@ pub struct CliToolDescriptor {
     pub medallion_accent: String,
     pub default_agent_role_id: String,
     pub aliases: Vec<String>,
+    pub account_login_command: Option<String>,
+    pub account_dir_name: String,
     pub capabilities: CliCapabilityDescriptor,
 }
 
@@ -901,6 +911,8 @@ impl From<&CliToolSpec> for CliToolDescriptor {
                 .iter()
                 .map(|alias| (*alias).to_string())
                 .collect(),
+            account_login_command: value.account_login_command.map(str::to_string),
+            account_dir_name: value.base_dir_name.to_string(),
             capabilities: value.capabilities.into(),
         }
     }

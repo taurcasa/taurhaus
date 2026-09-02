@@ -134,6 +134,8 @@ fn fully_populated_settings() -> Settings {
         medallion_accent: "emerald".to_string(),
         default_agent_role_id: "fixture-developer".to_string(),
         aliases: vec!["codex".to_string(), "fixture-codex".to_string()],
+        account_login_command: Some("codex login".to_string()),
+        account_dir_name: ".codex".to_string(),
         capabilities: CliCapabilityDescriptor {
             model_flag: Some("-m".to_string()),
             effort_flag: Some(EffortFlagDescriptor::Config {

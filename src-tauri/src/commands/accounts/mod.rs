@@ -13,7 +13,8 @@
 #[cfg(test)]
 mod tests;
 
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
@@ -60,6 +61,38 @@ pub struct AccountsResult {
     /// `resolve_launch_bases` command, never from this report.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resolved_bases: Vec<ResolvedBase>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountProjectRelationship {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountTeamRelationship {
+    pub name: String,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub project_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountRelationships {
+    pub pinned_projects: Vec<AccountProjectRelationship>,
+    pub last_used_projects: Vec<AccountProjectRelationship>,
+    pub teams: Vec<AccountTeamRelationship>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountRelationshipIndex {
+    pub by_account: HashMap<String, AccountRelationships>,
 }
 
 /// One Settings-only base resolution, including the selector value already
@@ -254,6 +287,353 @@ pub fn set_project_account(
         .ipc_cmd("set_project_account");
     span.finish_result(&result);
     result
+}
+
+#[tauri::command(async)]
+pub fn list_account_relationships(
+    db: State<'_, DbState>,
+    provider: State<'_, ProviderState>,
+    tool: CliTool,
+) -> IpcResult<AccountRelationshipIndex> {
+    let span = IpcCommandSpan::start("list_account_relationships");
+    let process_default = accounts_report(provider.inner(), tool)
+        .accounts
+        .into_iter()
+        .find(|account| account.is_process_default)
+        .map(|account| account.id);
+    let result = account_relationships_impl(
+        db.inner(),
+        &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        tool,
+        process_default.as_deref(),
+    )
+    .ipc_cmd("list_account_relationships");
+    span.finish_result(&result);
+    result
+}
+
+pub(crate) fn account_relationships_impl(
+    db: &DbState,
+    teams_dir: &Path,
+    tool: CliTool,
+    process_default_account_id: Option<&str>,
+) -> Result<AccountRelationshipIndex, String> {
+    let conn = db.0.lock().map_err(|error| error.to_string())?;
+    let mut statement = conn
+        .prepare(
+            "SELECT p.id, p.name, p.path, a.account_id, a.origin, a.updated_at
+             FROM project_tool_accounts a
+             JOIN projects p ON p.id = a.project_id
+             WHERE a.tool = ?1
+             ORDER BY p.name COLLATE NOCASE, p.id",
+        )
+        .sanitize_err()?;
+    let rows = statement
+        .query_map([tool.to_string()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+            ))
+        })
+        .sanitize_err()?;
+
+    let mut index = AccountRelationshipIndex::default();
+    let mut projects_by_path = HashMap::new();
+    for row in rows {
+        let (id, name, path, account_id, origin, updated_at) = row.sanitize_err()?;
+        projects_by_path.insert(path.clone(), (id.clone(), name.clone()));
+        let project = AccountProjectRelationship {
+            id,
+            name,
+            path,
+            updated_at,
+        };
+        let relationships = index.by_account.entry(account_id).or_default();
+        match origin.as_str() {
+            "pinned" => relationships.pinned_projects.push(project),
+            "last_used" => relationships.last_used_projects.push(project),
+            _ => {}
+        }
+    }
+
+    if let Some(account_id) = process_default_account_id {
+        let teams = scan_default_root_teams(teams_dir, tool, &projects_by_path);
+        if !teams.is_empty() {
+            index
+                .by_account
+                .entry(account_id.to_string())
+                .or_default()
+                .teams = teams;
+        }
+    }
+    Ok(index)
+}
+
+fn scan_default_root_teams(
+    teams_dir: &Path,
+    tool: CliTool,
+    projects_by_path: &HashMap<String, (String, String)>,
+) -> Vec<AccountTeamRelationship> {
+    let Ok(entries) = std::fs::read_dir(teams_dir) else {
+        return Vec::new();
+    };
+    let mut teams = Vec::new();
+    for entry in entries.flatten() {
+        let config_path = entry.path().join("config.json");
+        let Ok(raw) = std::fs::read(&config_path) else {
+            continue;
+        };
+        let Ok(config) = serde_json::from_slice::<serde_json::Value>(&raw) else {
+            continue;
+        };
+        let members = config
+            .get("members")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let matching = members.iter().filter(|member| {
+            member
+                .get("cli_tool")
+                .or_else(|| member.get("cliTool"))
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|value| value == tool.to_string())
+        });
+        let project_path = matching.filter_map(|member| {
+            member
+                .get("project_path")
+                .or_else(|| member.get("projectPath"))
+                .or_else(|| member.get("cwd"))
+                .and_then(serde_json::Value::as_str)
+        }).next().map(str::to_string);
+        if project_path.is_none() {
+            continue;
+        }
+        let name = config
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+            .or_else(|| entry.file_name().to_str().map(str::to_string))
+            .unwrap_or_else(|| "Team".to_string());
+        let project = project_path
+            .as_ref()
+            .and_then(|path| projects_by_path.get(path));
+        teams.push(AccountTeamRelationship {
+            name,
+            project_id: project.map(|(id, _)| id.clone()),
+            project_name: project.map(|(_, name)| name.clone()),
+            project_path,
+        });
+    }
+    teams.sort_by(|left, right| left.name.cmp(&right.name));
+    teams
+}
+
+#[tauri::command]
+pub fn set_global_default_account(
+    db: State<'_, DbState>,
+    tool: CliTool,
+    account_id: Option<String>,
+) -> IpcResult<()> {
+    let span = IpcCommandSpan::start("set_global_default_account");
+    let result = set_global_default_account_impl(db.inner(), tool, account_id.as_deref())
+        .ipc_cmd("set_global_default_account");
+    span.finish_result(&result);
+    result
+}
+
+pub(crate) fn set_global_default_account_impl(
+    db: &DbState,
+    tool: CliTool,
+    account_id: Option<&str>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|error| error.to_string())?;
+    let mut settings = crate::db::settings_queries::get_all_settings(&conn).sanitize_err()?;
+    match account_id.filter(|value| !value.trim().is_empty()) {
+        Some(account_id) => {
+            settings
+                .terminal
+                .default_account_ids
+                .insert(tool.to_string(), account_id.to_string());
+        }
+        None => {
+            settings
+                .terminal
+                .default_account_ids
+                .remove(&tool.to_string());
+        }
+    }
+    crate::db::settings_queries::save_settings(&conn, &settings).sanitize_err()
+}
+
+pub(crate) fn account_directory_plan(default_dir: &Path, label: &str) -> Result<PathBuf, String> {
+    let slug = label
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else if character == ' ' || character == '_' {
+                '-'
+            } else {
+                '\0'
+            }
+        })
+        .collect::<String>();
+    if slug.contains('\0') {
+        return Err("Account names may contain only letters, numbers, spaces, and underscores".to_string());
+    }
+    let slug = slug.trim_matches('-');
+    if slug.is_empty() {
+        return Err("Enter an account name".to_string());
+    }
+    let base = default_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "The registry account directory has no file name".to_string())?;
+    let parent = default_dir
+        .parent()
+        .ok_or_else(|| "The registry account directory has no parent".to_string())?;
+    Ok(parent.join(format!("{base}-{slug}")))
+}
+
+pub(crate) fn account_login_command(tool: CliTool, config_dir: &Path) -> Result<String, String> {
+    let tool_spec = spec(tool);
+    let selector = tool_spec
+        .capabilities
+        .account_selector
+        .ok_or_else(|| format!("{} does not support selectable account directories", tool_spec.label))?;
+    let login = tool_spec
+        .account_login_command
+        .ok_or_else(|| format!("{} does not declare an account login command", tool_spec.label))?;
+    Ok(format!(
+        "{selector}={} {login}",
+        crate::session_scanner::launch::shell_escape(&config_dir.to_string_lossy())
+    ))
+}
+
+#[tauri::command]
+pub fn prepare_account_directory(tool: CliTool, label: String) -> IpcResult<String> {
+    let span = IpcCommandSpan::start("prepare_account_directory");
+    let result = prepare_account_directory_impl(tool, &label).ipc_cmd("prepare_account_directory");
+    span.finish_result(&result);
+    result
+}
+
+fn prepare_account_directory_impl(tool: CliTool, label: &str) -> Result<String, String> {
+    let default_dir = crate::provider::platform_paths::PlatformPaths::tool_home(tool);
+    let launch_default = crate::provider::path::to_linux(&default_dir.to_string_lossy())
+        .map(PathBuf::from)
+        .unwrap_or(default_dir);
+    let target = account_directory_plan(&launch_default, label)?;
+
+    #[cfg(target_os = "windows")]
+    {
+        let status = crate::daemon::launcher::wsl_command()
+            .args(["-e", "mkdir", "-p", "--"])
+            .arg(&target)
+            .status()
+            .map_err(|error| format!("Failed to create the account directory: {error}"))?;
+        if !status.success() {
+            return Err("Failed to create the account directory in WSL".to_string());
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    std::fs::create_dir_all(&target)
+        .map_err(|error| format!("Failed to create the account directory: {error}"))?;
+
+    Ok(target.to_string_lossy().into_owned())
+}
+
+#[tauri::command(async)]
+pub fn launch_account_login(
+    db: State<'_, DbState>,
+    provider: State<'_, ProviderState>,
+    project_id: String,
+    tool: CliTool,
+    config_dir: String,
+) -> IpcResult<protocol::LaunchSessionResult> {
+    let span = IpcCommandSpan::start("launch_account_login");
+    let result = launch_account_login_impl(
+        db.inner(),
+        provider.inner(),
+        &project_id,
+        tool,
+        Path::new(&config_dir),
+    )
+    .ipc_cmd("launch_account_login");
+    span.finish_result(&result);
+    result
+}
+
+fn launch_account_login_impl(
+    db: &DbState,
+    provider: &ProviderState,
+    project_id: &str,
+    tool: CliTool,
+    config_dir: &Path,
+) -> Result<protocol::LaunchSessionResult, String> {
+    validate_account_login_dir(tool, config_dir)?;
+    let command = account_login_command(tool, config_dir)?;
+    let terminal_settings = crate::commands::terminal_settings::load_terminal_settings(db);
+    let project_path = {
+        let conn = db.0.lock().map_err(|error| error.to_string())?;
+        queries::get_project(&conn, project_id)
+            .sanitize_err()?
+            .map(|project| project.path)
+            .ok_or_else(|| "Project not found".to_string())?
+    };
+    let project_path = crate::provider::path::to_linux(&project_path).unwrap_or(project_path);
+    let (session, window, pane) = crate::session_scanner::control::launch_command_in_tmux_with_layout(
+        &project_path,
+        &terminal_settings.tmux_layout,
+        &command,
+    )?;
+    let _ = crate::terminal::handle_terminal(crate::terminal::TerminalIntent::EnsureOpen {
+        distro: provider.wsl_distro.clone(),
+        tmux_session: session.clone(),
+        emulator: terminal_settings.emulator,
+        custom_command: terminal_settings.custom_command,
+    });
+    Ok(protocol::LaunchSessionResult {
+        tmux_session: Some(session),
+        tmux_window: window,
+        tmux_pane: pane,
+        ..Default::default()
+    })
+}
+
+fn validate_account_login_dir(tool: CliTool, config_dir: &Path) -> Result<(), String> {
+    let default_dir = crate::provider::platform_paths::PlatformPaths::tool_home(tool);
+    let default_dir = crate::provider::path::to_linux(&default_dir.to_string_lossy())
+        .map(PathBuf::from)
+        .unwrap_or(default_dir);
+    let expected_parent = default_dir
+        .parent()
+        .ok_or_else(|| "The registry account directory has no parent".to_string())?;
+    let expected_name = default_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "The registry account directory has no file name".to_string())?;
+    let actual_parent = config_dir
+        .parent()
+        .ok_or_else(|| "The account directory has no parent".to_string())?;
+    let actual_name = config_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "The account directory has no file name".to_string())?;
+    if actual_parent != expected_parent
+        || (actual_name != expected_name && !actual_name.starts_with(&format!("{expected_name}-")))
+    {
+        return Err("The account directory must be the registry home or one of its named siblings"
+            .to_string());
+    }
+    Ok(())
 }
 
 pub(crate) fn set_project_account_impl(

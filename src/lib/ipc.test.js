@@ -809,6 +809,52 @@ describe('ipc module', () => {
       })
       delete window.__TAURI_INTERNALS__
     })
+
+    it('provides the app-only account home and login commands', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke
+        .mockResolvedValueOnce({
+          byAccount: {
+            work: {
+              pinnedProjects: [{ id: 'p1', name: 'taurhaus', path: '/work/taurhaus' }],
+              lastUsedProjects: [],
+              teams: [],
+            },
+          },
+        })
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce('/home/user/.claude-work')
+        .mockResolvedValueOnce({ tmux_pane: '%4' })
+        .mockResolvedValueOnce(undefined)
+
+      const relationships = await ipc.listAccountRelationships('claude')
+      expect(relationships.byAccount.work.pinnedProjects).toHaveLength(1)
+      expect(tauriCore.invoke).toHaveBeenLastCalledWith('list_account_relationships', {
+        tool: 'claude',
+      })
+
+      await ipc.setGlobalDefaultAccount('claude', 'work')
+      expect(tauriCore.invoke).toHaveBeenLastCalledWith('set_global_default_account', {
+        tool: 'claude',
+        accountId: 'work',
+      })
+
+      expect(await ipc.prepareAccountDirectory('claude', 'work')).toBe(
+        '/home/user/.claude-work'
+      )
+      await ipc.launchAccountLogin('p1', 'claude', '/home/user/.claude-work')
+      expect(tauriCore.invoke).toHaveBeenLastCalledWith('launch_account_login', {
+        projectId: 'p1',
+        tool: 'claude',
+        configDir: '/home/user/.claude-work',
+      })
+
+      await ipc.revealDirectory('/home/user/.claude-work')
+      expect(tauriCore.invoke).toHaveBeenLastCalledWith('plugin:opener|reveal_item_in_dir', {
+        path: '/home/user/.claude-work',
+      })
+      delete window.__TAURI_INTERNALS__
+    })
   })
 
   // -----------------------------------------------------------------------

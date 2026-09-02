@@ -62,6 +62,16 @@ describe('toolRegistry', () => {
     expect(toolDisplayName('antigravity')).toBe('Antigravity CLI')
     expect(toolDescriptor('gemini')).toBeNull()
   })
+
+  it('keeps account creation registry-driven and absent for implicit accounts', () => {
+    expect(toolDescriptor('claude')).toMatchObject({
+      accountLoginCommand: 'claude',
+      accountDirName: '.claude',
+    })
+    expect(toolDescriptor('codex').accountLoginCommand).toBe('codex login')
+    expect(toolDescriptor('grok').accountLoginCommand).toBe('grok login')
+    expect(toolDescriptor('agy').accountLoginCommand).toBeNull()
+  })
 })
 
 // Regression: normalizeCapabilities/normalizeDescriptor spread their raw input
@@ -76,13 +86,15 @@ describe('toolRegistry drops the aliases it consumed', () => {
         display_name: 'Claude Code',
         medallion_accent: 'brand',
         default_agent_role_id: 'lead',
+        account_login_command: 'claude',
+        account_dir_name: '.claude',
         capabilities: { model_flag: '--model', account_selector: 'CLAUDE_CONFIG_DIR', usage_note: 'n/a' },
       },
     ])
     expect(tool.displayName).toBe('Claude Code')
     expect(tool.capabilities.modelFlag).toBe('--model')
     expect(tool.capabilities.accountSelector).toBe('CLAUDE_CONFIG_DIR')
-    for (const key of ['display_name', 'medallion_accent', 'default_agent_role_id']) {
+    for (const key of ['display_name', 'medallion_accent', 'default_agent_role_id', 'account_login_command', 'account_dir_name']) {
       expect(tool).not.toHaveProperty(key)
     }
     for (const key of ['model_flag', 'account_selector', 'usage_note']) {

@@ -60,6 +60,116 @@ fn setting_the_account_of_an_unknown_project_is_an_error() {
     assert!(error.contains("Project not found"), "{error}");
 }
 
+#[test]
+fn account_relationships_reverse_index_pins_last_use_and_default_root_teams() {
+    let (db, _tmp) = db_with_project("p1");
+    {
+        let conn = db.0.lock().expect("db lock");
+        let now = chrono::Utc::now().to_rfc3339();
+        queries::insert_project(
+            &conn,
+            &crate::models::Project {
+                id: "p2".to_string(),
+                name: "second-project".to_string(),
+                path: "/home/user/projects/second".to_string(),
+                description: None,
+                last_activity_at: None,
+                hero_preference: None,
+                created_at: now.clone(),
+                updated_at: now,
+                cached_branch: None,
+                cached_is_dirty: None,
+                account_memory: Default::default(),
+            },
+        )
+        .expect("insert second project");
+        queries::set_project_account(&conn, "p1", "claude", Some("account-2"))
+            .expect("pin project");
+        queries::remember_last_used_account(&conn, "p2", "claude", "account-2")
+            .expect("remember account");
+    }
+
+    let teams = TempDir::new().expect("teams root");
+    let config_dir = teams.path().join("wave-a");
+    std::fs::create_dir_all(&config_dir).expect("team dir");
+    std::fs::write(
+        config_dir.join("config.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "name": "wave-a",
+            "members": [{
+                "name": "lead",
+                "cli_tool": "claude",
+                "project_path": "/home/user/projects/test-project"
+            }]
+        }))
+        .expect("team json"),
+    )
+    .expect("write team");
+
+    let index = account_relationships_impl(
+        &db,
+        teams.path(),
+        CliTool::Claude,
+        Some("account-1"),
+    )
+    .expect("relationships");
+
+    let remembered = index.by_account.get("account-2").expect("account-2");
+    assert_eq!(remembered.pinned_projects.len(), 1);
+    assert_eq!(remembered.last_used_projects.len(), 1);
+    let default = index.by_account.get("account-1").expect("default account");
+    assert_eq!(default.teams.len(), 1);
+    assert_eq!(default.teams[0].name, "wave-a");
+}
+
+#[test]
+fn setting_global_default_updates_only_the_requested_tool() {
+    let (db, _tmp) = db_with_project("p1");
+
+    set_global_default_account_impl(&db, CliTool::Claude, Some("account-2"))
+        .expect("set default");
+    set_global_default_account_impl(&db, CliTool::Codex, Some("codex-work"))
+        .expect("set codex default");
+    set_global_default_account_impl(&db, CliTool::Claude, None).expect("clear default");
+
+    let conn = db.0.lock().expect("db lock");
+    let settings = crate::db::settings_queries::get_all_settings(&conn).expect("settings");
+    assert_eq!(settings.terminal.default_account_ids.get("claude"), None);
+    assert_eq!(
+        settings
+            .terminal
+            .default_account_ids
+            .get("codex")
+            .map(String::as_str),
+        Some("codex-work")
+    );
+}
+
+#[test]
+fn account_directory_plan_is_a_safe_sibling_of_the_registry_home() {
+    let default_dir = Path::new("/home/user/.claude");
+
+    assert_eq!(
+        account_directory_plan(default_dir, "Work Two").expect("plan"),
+        Path::new("/home/user/.claude-work-two")
+    );
+    assert!(account_directory_plan(default_dir, "../../tokens").is_err());
+    assert!(account_directory_plan(default_dir, "---").is_err());
+}
+
+#[test]
+fn login_command_comes_from_the_registry_and_quotes_the_selector_dir() {
+    assert_eq!(
+        account_login_command(
+            CliTool::Codex,
+            Path::new("/home/user/.codex-work account")
+        )
+        .expect("login command"),
+        "CODEX_HOME='/home/user/.codex-work account' codex login"
+    );
+    assert!(account_login_command(CliTool::Agy, Path::new("/home/user/.gemini")).is_err());
+}
+
 /// Without a daemon there is nothing to ask on Windows. The call still
 /// succeeds — but the empty list is silence, not an answer, and it says so.
 #[test]
