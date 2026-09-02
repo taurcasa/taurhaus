@@ -121,6 +121,45 @@ fn account_relationships_reverse_index_pins_last_use_and_default_root_teams() {
 }
 
 #[test]
+fn team_links_name_their_project_without_an_account_memory_row() {
+    // Regression: 971d964 built the path index out of project_tool_accounts
+    // rows alone, so a team whose project had never remembered an account came
+    // back with no project to open — and a path spelled with a trailing
+    // separator missed the project it names.
+    let (db, _tmp) = db_with_project("p1");
+
+    let teams = TempDir::new().expect("teams root");
+    let config_dir = teams.path().join("wave-a");
+    std::fs::create_dir_all(&config_dir).expect("team dir");
+    std::fs::write(
+        config_dir.join("config.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "name": "wave-a",
+            "createdAt": 1_772_399_806_546_i64,
+            "members": [{
+                "name": "lead",
+                "model": "claude-sonnet-4-5",
+                "project_path": "/home/user/projects/test-project/"
+            }]
+        }))
+        .expect("team json"),
+    )
+    .expect("write team");
+
+    let index = account_relationships_impl(&db, teams.path(), CliTool::Claude, Some("account-1"))
+        .expect("relationships");
+
+    let teams = &index
+        .by_account
+        .get("account-1")
+        .expect("default account")
+        .teams;
+    assert_eq!(teams.len(), 1);
+    assert_eq!(teams[0].project_id.as_deref(), Some("p1"));
+    assert_eq!(teams[0].project_name.as_deref(), Some("test-project"));
+}
+
+#[test]
 fn registry_home_owns_default_root_teams_when_process_home_differs() {
     let account = |id: &str, dir: &str, is_default, is_process_default| Account {
         tool: CliTool::Claude,

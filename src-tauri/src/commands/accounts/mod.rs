@@ -342,10 +342,8 @@ pub(crate) fn account_relationships_impl(
         .sanitize_err()?;
 
     let mut index = AccountRelationshipIndex::default();
-    let mut projects_by_path = HashMap::new();
     for row in rows {
         let (id, name, path, account_id, origin, updated_at) = row.sanitize_err()?;
-        projects_by_path.insert(path.clone(), (id.clone(), name.clone()));
         let project = AccountProjectRelationship {
             id,
             name,
@@ -361,6 +359,19 @@ pub(crate) fn account_relationships_impl(
     }
 
     if let Some(account_id) = registry_home_account_id {
+        // A team names a project by its path, and a project it names may never
+        // have remembered an account: the registered projects are the map, not
+        // the ones this tool already has a row for.
+        let projects_by_path = queries::list_projects(&conn)
+            .sanitize_err()?
+            .into_iter()
+            .map(|project| {
+                (
+                    crate::provider::path::normalize_project_path(&project.path),
+                    (project.id, project.name),
+                )
+            })
+            .collect::<HashMap<_, _>>();
         let teams = scan_default_root_teams(teams_dir, tool, &projects_by_path);
         if !teams.is_empty() {
             index
@@ -409,7 +420,9 @@ fn scan_default_root_teams(
         else {
             continue;
         };
-        let project = projects_by_path.get(&project_path);
+        let project = projects_by_path.get(&crate::provider::path::normalize_project_path(
+            &project_path,
+        ));
         teams.push(AccountTeamRelationship {
             name: config.name,
             project_id: project.map(|(id, _)| id.clone()),
