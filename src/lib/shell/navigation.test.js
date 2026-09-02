@@ -234,4 +234,62 @@ describe('createShellNavigationController', () => {
     expect(state.filesNavTarget).toEqual({ file: 'src/main.rs' })
     expect(switchTab).toHaveBeenCalledWith('files', { tab: 'files', file: 'src/main.rs' })
   })
+
+  // Regression: 971d964 opened every accounts-home relationship the same way —
+  // select the project, keep whichever tab was already open — so a team link
+  // landed anywhere but the mesh the team runs on, and a link to a project this
+  // app does not know reported nothing at all.
+  describe('openAccountRelationship', () => {
+    const controllerFor = (projects, { selectProject = vi.fn(), switchTab = vi.fn() } = {}) => ({
+      selectProject,
+      switchTab,
+      controller: createShellNavigationController({
+        state: {
+          selectedProject: null,
+          projects,
+          activeTab: 'overview',
+          readmeContent: null,
+          filesPosition: null,
+          filesNavTarget: null,
+          gitNavTarget: null,
+        },
+        ipc: {
+          getRemoteUrl: async () => null,
+          checkPathType: async () => 'not_found',
+          openExternalUrl: async () => {},
+        },
+        selectProject,
+        switchTab,
+        logger: console,
+      }),
+    })
+
+    it('lands a team link on the project mesh', () => {
+      const { controller, selectProject, switchTab } = controllerFor([{ id: 'proj-2' }])
+
+      expect(
+        controller.openAccountRelationship({ name: 'wave-a', projectId: 'proj-2' }, { tab: 'mesh' })
+      ).toBe(true)
+      expect(selectProject).toHaveBeenCalledWith({ id: 'proj-2' })
+      expect(switchTab).toHaveBeenCalledWith('mesh', { tab: 'mesh' })
+    })
+
+    it('keeps the restored tab for a pin or last-used link', () => {
+      const { controller, selectProject, switchTab } = controllerFor([{ id: 'proj-2' }])
+
+      expect(controller.openAccountRelationship({ id: 'proj-2', name: 'mesh' })).toBe(true)
+      expect(selectProject).toHaveBeenCalledWith({ id: 'proj-2' })
+      expect(switchTab).not.toHaveBeenCalled()
+    })
+
+    it('reports a link whose project is not registered instead of navigating', () => {
+      const { controller, selectProject, switchTab } = controllerFor([{ id: 'proj-2' }])
+
+      expect(
+        controller.openAccountRelationship({ name: 'wave-a', project_id: 'proj-9' }, { tab: 'mesh' })
+      ).toBe(false)
+      expect(selectProject).not.toHaveBeenCalled()
+      expect(switchTab).not.toHaveBeenCalled()
+    })
+  })
 })

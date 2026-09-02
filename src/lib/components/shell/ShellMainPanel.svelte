@@ -48,6 +48,7 @@
     onCloseSettings = () => {},
     onCloseAccounts = () => {},
     onOpenProject = () => {},
+    onOpenTeam = () => {},
     onRequestedAddConsumed = () => {},
     onSettingsChanged = () => {},
     onCodeThemeChanged = () => {},
@@ -166,6 +167,7 @@
       {onRequestedAddConsumed}
       onClose={onCloseAccounts}
       {onOpenProject}
+      {onOpenTeam}
     />
   {:else if settingsOpen}
     <Settings

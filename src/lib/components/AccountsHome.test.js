@@ -146,6 +146,28 @@ describe('AccountsHome', () => {
     expect(revealDirectory).toHaveBeenCalledWith('/home/user/.claude-work')
   })
 
+  // Regression: 971d964 sent a team link through the same callback as a pinned
+  // project, so nothing downstream could tell one from the other and a team
+  // link landed on whichever tab happened to be open instead of its mesh.
+  it('opens a team link through its own callback', async () => {
+    const onOpenProject = vi.fn()
+    const onOpenTeam = vi.fn()
+    render(AccountsHome, {
+      props: { states: states(), projects: [], onOpenProject, onOpenTeam },
+    })
+
+    const work = screen.getByTestId('account-row-work')
+    await fireEvent.click(within(work).getByText('wave-a'))
+
+    expect(onOpenTeam).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'wave-a', projectId: 'p1' })
+    )
+    expect(onOpenProject).not.toHaveBeenCalled()
+
+    await fireEvent.click(within(work).getByText('taurhaus'))
+    expect(onOpenProject).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }))
+  })
+
   // Regression: faffe345 treated an already-reset 100% snapshot as unhealthy,
   // auto-expanding a row whose meter correctly had no live exhausted window.
   it('keeps a just-reset account healthy and collapsed', () => {

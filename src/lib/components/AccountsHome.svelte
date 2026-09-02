@@ -25,6 +25,7 @@
     states = null,
     onClose = () => {},
     onOpenProject = () => {},
+    onOpenTeam = () => {},
     onSignIn = null,
     requestedAddTool = null,
     onRequestedAddConsumed = () => {},
@@ -240,6 +241,7 @@
               onToggle={() => toggle(descriptor.id, account.id)}
               onRemovePin={(project) => removePin(descriptor.id, project)}
               {onOpenProject}
+              {onOpenTeam}
               onSetDefault={() => setGlobalDefault(descriptor.id, account.id)}
               onSignIn={() => startSignIn(descriptor.id, account)}
               onReveal={() => revealDirectory(account.dir ?? account.config_dir)}

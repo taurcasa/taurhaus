@@ -15,6 +15,7 @@
     onToggle = () => {},
     onRemovePin = () => {},
     onOpenProject = () => {},
+    onOpenTeam = () => {},
     onSetDefault = () => {},
     onSignIn = () => {},
     onReveal = () => {},
@@ -126,7 +127,7 @@
               <h4 class="mb-1.5 text-[9px] font-semibold uppercase tracking-wider {t.textTertiary}">Teams</h4>
               <div class="space-y-1">
                 {#each teams as team (team.name)}
-                  <button class="block text-[10px] {actionTone}" onclick={() => onOpenProject(team)}>{team.name}</button>
+                  <button class="block text-[10px] {actionTone}" onclick={() => onOpenTeam(team)}>{team.name}</button>
                 {/each}
               </div>
             </section>

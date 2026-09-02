@@ -301,11 +301,31 @@ export function createShellNavigationController({
     }
   }
 
+  /**
+   * Open the project an accounts-home relationship points at.
+   *
+   * A team link is about the mesh that team runs on, so it names the tab it
+   * lands on; a pin or last-used link is about the project itself and keeps
+   * whichever tab that project restores. `false` says the link resolved to no
+   * registered project, and the caller keeps the home open rather than closing
+   * it onto nothing.
+   */
+  function openAccountRelationship(relationship, { tab = null } = {}) {
+    const projectId =
+      relationship?.id ?? relationship?.projectId ?? relationship?.project_id ?? null
+    const project = state.projects.find((candidate) => candidate.id === projectId)
+    if (!project) return false
+    selectProject(project)
+    if (tab) switchTab(tab, { tab })
+    return true
+  }
+
   return {
     navigateToCommit,
     navigateToCommitRange,
     navigateToFile,
     handleMarkdownNavigate,
     handleSearchNavigate,
+    openAccountRelationship,
   }
 }

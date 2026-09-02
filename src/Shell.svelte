@@ -642,10 +642,12 @@
           requestedAddTool = null
         }}
         onOpenProject={(relationship) => {
-          const projectId = relationship?.id ?? relationship?.projectId ?? relationship?.project_id
-          const project = projects.find((candidate) => candidate.id === projectId)
-          if (project) projectController.selectProject(project)
-          accountsOpen = false
+          if (navigationController.openAccountRelationship(relationship)) accountsOpen = false
+        }}
+        onOpenTeam={(team) => {
+          if (navigationController.openAccountRelationship(team, { tab: 'mesh' })) {
+            accountsOpen = false
+          }
         }}
         onSettingsChanged={() => projectController.loadProjects()}
         onCodeThemeChanged={handleCodeThemeChanged}
