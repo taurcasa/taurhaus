@@ -1,6 +1,6 @@
 # Coordination Through the Daemon
 
-Status: **in progress** (operator decision 2026-09-01: "design now, build immediately"). The deadline pass is daemon-owned at protocol 15, initialization at protocol 16, add-agent/resume-member/stop-member at protocol 17, resume-team/reonboard at protocol 18, and standalone create/disband plus roster add/remove at protocol 19. Protocol 20 retired the redundant `coordination.stop_member`/`_status` wire pair; roster removal remains on `coordination.remove_member`. Protocol 21 moved self-heal and effort passes into the daemon according to [`self-heal-effort-daemon-routing.md`](self-heal-effort-daemon-routing.md). Every interactive team mutation and all three background passes are daemon-owned; only the B3 writer boundary remains.
+Status: **complete**. Protocol 22 closes B3: the Windows app never mutates team state directly; the daemon and WSL-native hook processes are the only writers, and the module-boundary suite enumerates those exceptions. Protocols 15-21 remain the worked daemon-routing slices.
 
 ## The problem, from the field
 
@@ -35,7 +35,7 @@ The round-3 move-aside/tolerant-reader machinery is **kept**, not reverted: it p
 
 ## Wire contract
 
-- `PROTOCOL_VERSION` bumped 14 → 15 for the deadline pass, 15 → 16 for initialization, 16 → 17 for add/resume/stop, 17 → 18 for resume-team/reonboard, 18 → 19 for standalone create/disband and roster edits, 19 → 20 to retire the redundant stop-member wire pair, and 20 → 21 for self-heal/effort ownership; app and daemon move in lockstep via the existing exact-match gate and repair flow.
+- `PROTOCOL_VERSION` bumped 14 → 15 for the deadline pass, 15 → 16 for initialization, 16 → 17 for add/resume/stop, 17 → 18 for resume-team/reonboard, 18 → 19 for standalone create/disband and roster edits, 19 → 20 to retire the redundant stop-member wire pair, 20 → 21 for self-heal/effort ownership, and 21 → 22 for the final writer intents and boundary; app and daemon move in lockstep via the existing exact-match gate and repair flow.
 - New namespaced methods (`coordination.*`), each carrying its expectation (CAS semantics) even in phase B1 — the daemon validates under `flock` and returns typed conflict outcomes, mirroring today's `RuntimeCommitOutcome::Skipped` shapes.
 - **B2 progress decision**: initialize uses a `run_id`-keyed in-memory registry and status polling. The app polls at roughly 500 ms and re-emits the existing Tauri progress event; the daemon retains terminal runs for a bounded TTL. Push progress remains a possible later optimization, not part of this slice.
 

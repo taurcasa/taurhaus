@@ -369,6 +369,27 @@ fn disband_team_command_has_no_local_mutation_path() {
     assert!(source.contains("COORDINATION_DISBAND_TEAM_STATUS"));
 }
 
+// Regression: commits 460e5df3 and 439d04b1 left live-status presence
+// reconciliation in the desktop process, including runtime-record commits.
+#[test]
+fn live_status_has_no_local_presence_mutation_path() {
+    let source = include_str!("live_status.rs");
+
+    assert!(!source.contains("orchestrator.reconcile_team_presence_for_live_status"));
+    assert!(source.contains("COORDINATION_RECONCILE_LIVE_PRESENCE"));
+}
+
+// Regression: commit 439d04b1 introduced app-side active-project cleanup and
+// commit, extending the cross-9p writer set during project discovery.
+#[test]
+fn project_discovery_has_no_local_active_team_mutation_path() {
+    let source = include_str!("live_status.rs");
+
+    assert!(!source.contains("ActiveProjectTeamStore::clear_project"));
+    assert!(!source.contains("ActiveProjectTeamStore::set_active_team"));
+    assert!(source.contains("COORDINATION_SET_ACTIVE_PROJECT_TEAM"));
+}
+
 // Regression: 03eb3a2c polled multi-step disband teardown at the 25 ms
 // stop-member interval, producing excessive daemon RPC and JSONL traffic.
 #[test]

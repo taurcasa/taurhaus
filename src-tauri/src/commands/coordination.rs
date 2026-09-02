@@ -1392,13 +1392,28 @@ pub fn coordination_get_feature_availability() -> IpcResult<FeatureAvailabilityR
     result
 }
 
-#[tauri::command(async)]
-pub fn coordination_get_project_mesh_snapshot(
-    state: State<'_, CoordinationState>,
+#[tauri::command]
+pub async fn coordination_get_project_mesh_snapshot(
+    app: AppHandle,
     project_path: String,
 ) -> IpcResult<ProjectMeshSnapshotResponse> {
     let span = IpcCommandSpan::start("coordination_get_project_mesh_snapshot");
-    let result = coordination_get_project_mesh_snapshot_impl(state.inner(), project_path).ipc();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<CoordinationState>();
+        let provider = app.state::<ProviderState>();
+        coordination_get_project_mesh_snapshot_impl(
+            state.inner(),
+            Some(provider.inner()),
+            project_path,
+        )
+        .ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join project mesh snapshot task: {err}"
+        )))
+    });
     span.finish_result(&result);
     result
 }
@@ -1712,9 +1727,10 @@ fn coordination_get_team_status_impl(
 
 fn coordination_get_project_mesh_snapshot_impl(
     state: &CoordinationState,
+    provider: Option<&ProviderState>,
     project_path: String,
 ) -> Result<ProjectMeshSnapshotResponse, String> {
-    live_status::coordination_get_project_mesh_snapshot_impl(state, project_path)
+    live_status::coordination_get_project_mesh_snapshot_impl(state, provider, project_path)
 }
 
 fn coordination_preflight_check_impl(

@@ -37,14 +37,11 @@ pub(super) fn coordination_get_live_team_status_impl(
     if let Some(provider) = provider {
         let snapshot_outcome = daemon_runtime_session_snapshot(provider)?;
         if let Some(snapshot) = snapshot_outcome.snapshot {
-            let reconciled_offline_members = state
-                .with_orchestrator(|orchestrator| {
-                    orchestrator.reconcile_team_presence_for_live_status_with_runtime_sessions(
-                        &team_name,
-                        &snapshot.runtime_sessions,
-                    )
-                })
-                .map_err(super::map_coordination_error)?;
+            let reconciled_offline_members = reconcile_live_presence_through_daemon(
+                provider,
+                &team_name,
+                snapshot.runtime_sessions.clone(),
+            );
             let roster = get_team_roster_with_runtime_sessions(
                 state.teams_dir(),
                 &team_name,
@@ -87,11 +84,9 @@ pub(super) fn coordination_get_live_team_status_impl(
         }
     }
 
-    state
-        .with_orchestrator(|orchestrator| {
-            orchestrator.reconcile_team_presence_for_live_status(&team_name)
-        })
-        .map_err(super::map_coordination_error)?;
+    if let Some(provider) = provider {
+        let _ = reconcile_live_presence_through_daemon(provider, &team_name, Vec::new());
+    }
     let roster = get_team_roster_with_attachments(state.teams_dir(), &team_name)
         .map_err(super::map_coordination_error)?;
     let lead_name = roster_lead_name(&roster);
@@ -121,15 +116,29 @@ pub(super) fn coordination_get_live_team_status_for_tests(
     state: &CoordinationState,
     team_name: String,
 ) -> Result<LiveTeamStatus, String> {
+    crate::daemon::state_writes::reconcile_live_presence(
+        state,
+        crate::daemon::protocol::CoordinationReconcileLivePresenceParams {
+            team_name: team_name.clone(),
+            runtime_sessions: Vec::new(),
+        },
+    )
+    .map_err(super::map_coordination_error)?;
     coordination_get_live_team_status_impl(state, None, team_name)
 }
 
 pub(super) fn coordination_get_project_mesh_snapshot_impl(
     state: &CoordinationState,
+    provider: Option<&ProviderState>,
     project_path: String,
 ) -> Result<ProjectMeshSnapshotResponse, String> {
     let availability = availability_check();
-    coordination_get_project_mesh_snapshot_with_availability(state, project_path, availability)
+    coordination_get_project_mesh_snapshot_with_availability(
+        state,
+        provider,
+        project_path,
+        availability,
+    )
 }
 
 #[cfg(test)]
@@ -139,7 +148,12 @@ pub(super) fn coordination_get_project_mesh_snapshot_with_lookup<L: BinaryLookup
     lookup: &L,
 ) -> Result<ProjectMeshSnapshotResponse, String> {
     let availability = availability_check_with_lookup(lookup);
-    coordination_get_project_mesh_snapshot_with_availability(state, project_path, availability)
+    coordination_get_project_mesh_snapshot_with_availability(
+        state,
+        None,
+        project_path,
+        availability,
+    )
 }
 
 pub(super) fn derive_cross_project_status(
@@ -191,13 +205,24 @@ fn apply_reconciled_offline_members(
 
 fn coordination_get_project_mesh_snapshot_with_availability(
     state: &CoordinationState,
+    provider: Option<&ProviderState>,
     project_path: String,
     availability: BackendAvailabilityReport,
 ) -> Result<ProjectMeshSnapshotResponse, String> {
     super::validate_non_empty("project_path", &project_path)?;
     let project_path = crate::provider::path::normalize_project_path(project_path.trim());
-    let discovery = discover_team_for_project_path(state.teams_dir(), &project_path)
+    let mut discovery = discover_team_for_project_path(state.teams_dir(), &project_path)
         .map_err(super::map_coordination_error)?;
+    if let Some(team_name) = discovery.mapping_update.take() {
+        if let Err(error) =
+            set_active_project_team_through_daemon(provider, state, &project_path, team_name)
+        {
+            discovery.warnings.push(format!(
+                "failed to persist active team mapping for project '{project_path}': {error}"
+            ));
+            discovery.warnings.sort();
+        }
+    }
 
     let team_status = if let Some(team_name) = discovery.team_name.as_deref() {
         Some(
@@ -256,6 +281,7 @@ fn classify_team_runtime_state(team_status: Option<&FastTeamSnapshot>) -> TeamRu
 struct ProjectPathDiscovery {
     team_name: Option<String>,
     warnings: Vec<String>,
+    mapping_update: Option<Option<String>>,
 }
 
 #[derive(Debug)]
@@ -276,19 +302,18 @@ fn discover_team_for_project_path(
         return Ok(ProjectPathDiscovery::default());
     }
 
-    if let Some(active_team_name) =
-        ActiveProjectTeamStore::load_active_team(teams_dir, project_path)?
-    {
+    let active_team_name = ActiveProjectTeamStore::load_active_team(teams_dir, project_path)?;
+    let had_active_mapping = active_team_name.is_some();
+    if let Some(active_team_name) = active_team_name {
         match TeamConfigStore::load(teams_dir, &active_team_name) {
             Ok(config) if config_references_project(&config, project_path) => {
                 return Ok(ProjectPathDiscovery {
                     team_name: Some(config.name),
                     warnings: Vec::new(),
+                    mapping_update: None,
                 });
             }
-            Ok(_) | Err(_) => {
-                let _ = ActiveProjectTeamStore::clear_project(teams_dir, project_path);
-            }
+            Ok(_) | Err(_) => {}
         }
     }
 
@@ -331,21 +356,97 @@ fn discover_team_for_project_path(
         .into_iter()
         .max_by(compare_project_discovery_candidates)
         .map(|candidate| candidate.team_name);
-    if let Some(selected_team_name) = team_name.as_deref() {
-        if let Err(err) =
-            ActiveProjectTeamStore::set_active_team(teams_dir, project_path, selected_team_name)
-        {
-            warnings.push(format!(
-                "failed to persist active team mapping for project '{project_path}': {err}"
-            ));
-        }
-    }
+    let mapping_update = (had_active_mapping || team_name.is_some()).then(|| team_name.clone());
     warnings.sort();
 
     Ok(ProjectPathDiscovery {
         team_name,
         warnings,
+        mapping_update,
     })
+}
+
+fn call_state_write<T: serde::de::DeserializeOwned, P: serde::Serialize>(
+    provider: &ProviderState,
+    method: &str,
+    params: P,
+) -> Result<T, String> {
+    let daemon = provider
+        .daemon
+        .as_ref()
+        .ok_or_else(|| "daemon is unavailable".to_string())?;
+    if !daemon.is_connected() {
+        return Err("daemon is not connected".to_string());
+    }
+    let request = crate::daemon::protocol::DaemonRequest::new(
+        format!("live-state-{}", uuid::Uuid::new_v4().simple()),
+        method,
+        params,
+    );
+    let response = daemon
+        .send_status_request_within(&request, std::time::Duration::from_secs(2))
+        .map_err(|error| error.to_string())?;
+    if let Some(error) = response.error {
+        return Err(error.message);
+    }
+    response
+        .result
+        .ok_or_else(|| format!("daemon method '{method}' returned no result"))
+        .and_then(|result| serde_json::from_value(result).map_err(|error| error.to_string()))
+}
+
+fn reconcile_live_presence_through_daemon(
+    provider: &ProviderState,
+    team_name: &str,
+    runtime_sessions: Vec<crate::session_scanner::RuntimeSession>,
+) -> std::collections::HashSet<String> {
+    let result =
+        call_state_write::<crate::daemon::protocol::CoordinationReconcileLivePresenceResult, _>(
+            provider,
+            crate::daemon::protocol::method::COORDINATION_RECONCILE_LIVE_PRESENCE,
+            crate::daemon::protocol::CoordinationReconcileLivePresenceParams {
+                team_name: team_name.to_string(),
+                runtime_sessions,
+            },
+        );
+    match result {
+        Ok(result) => result.reconciled_offline_members.into_iter().collect(),
+        Err(error) => {
+            tracing::warn!(team = team_name, error = %error, "live presence reconciliation skipped because the daemon is unavailable");
+            std::collections::HashSet::new()
+        }
+    }
+}
+
+fn set_active_project_team_through_daemon(
+    provider: Option<&ProviderState>,
+    _state: &CoordinationState,
+    project_path: &str,
+    team_name: Option<String>,
+) -> Result<(), String> {
+    #[cfg(test)]
+    if provider.is_none() {
+        return crate::daemon::state_writes::set_active_project_team(
+            _state.teams_dir(),
+            crate::daemon::protocol::CoordinationSetActiveProjectTeamParams {
+                project_path: project_path.to_string(),
+                team_name,
+            },
+        )
+        .map(|_| ())
+        .map_err(|error| error.to_string());
+    }
+
+    let provider = provider.ok_or_else(|| "daemon is unavailable".to_string())?;
+    call_state_write::<crate::daemon::protocol::CoordinationSetActiveProjectTeamResult, _>(
+        provider,
+        crate::daemon::protocol::method::COORDINATION_SET_ACTIVE_PROJECT_TEAM,
+        crate::daemon::protocol::CoordinationSetActiveProjectTeamParams {
+            project_path: project_path.to_string(),
+            team_name,
+        },
+    )
+    .map(|_| ())
 }
 
 fn build_project_discovery_candidate(

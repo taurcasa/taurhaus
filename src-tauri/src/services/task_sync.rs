@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use crate::session_scanner::RuntimeSession;
@@ -18,6 +19,7 @@ pub struct TaskScanGenerationState {
 }
 
 const SCAN_GENERATION_RETENTION_WINDOW: u64 = 100;
+static WARNED_SNAPSHOT_DAEMON_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
 
 fn should_apply_scan_generation(
     state: &TaskScanGenerationState,
@@ -76,25 +78,35 @@ pub(crate) fn persist_task_scan_with_generation(
     scan_result: &crate::task_scanner::TaskResult,
     generation_state: &TaskScanGenerationState,
     scan_generation: u64,
+    daemon: Option<&crate::provider::daemon_client::DaemonProvider>,
 ) {
-    persist_task_scan_with_generation_and_operational_dir(
+    persist_task_scan_with_generation_and_publisher(
         conn,
         normalized_path,
         scan_result,
         generation_state,
         scan_generation,
         &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        |params| publish_operational_snapshots_through_daemon(daemon, params),
     );
 }
 
-fn persist_task_scan_with_generation_and_operational_dir(
+fn persist_task_scan_with_generation_and_publisher<P>(
     conn: &rusqlite::Connection,
     normalized_path: &str,
     scan_result: &crate::task_scanner::TaskResult,
     generation_state: &TaskScanGenerationState,
     scan_generation: u64,
     operational_teams_dir: &Path,
-) {
+    publish: P,
+) where
+    P: FnOnce(
+        crate::daemon::protocol::CoordinationPublishOperationalSnapshotsParams,
+    ) -> Result<
+        crate::daemon::protocol::CoordinationPublishOperationalSnapshotsResult,
+        String,
+    >,
+{
     cleanup_applied_scan_generations(generation_state, scan_generation);
     let source_outcomes = normalized_source_outcomes(scan_result);
     let now = chrono::Utc::now().to_rfc3339();
@@ -171,17 +183,97 @@ fn persist_task_scan_with_generation_and_operational_dir(
         scan_generation,
     );
 
-    if let Err(err) = crate::coordination::operational_context::sync_project_task_snapshots(
+    let prepared = match crate::coordination::operational_context::prepare_project_task_snapshots(
         operational_teams_dir,
         conn,
         normalized_path,
     ) {
-        tracing::warn!(
-            project_path = %normalized_path,
-            error = %err,
-            "failed to sync operational snapshots after task persistence"
-        );
+        Ok(prepared) => prepared,
+        Err(err) => {
+            tracing::warn!(
+                project_path = %normalized_path,
+                error = %err,
+                "failed to prepare operational snapshots after task persistence"
+            );
+            return;
+        }
+    };
+    if prepared.is_empty() {
+        return;
     }
+    let params = crate::daemon::protocol::CoordinationPublishOperationalSnapshotsParams {
+        publications: prepared
+            .into_iter()
+            .map(|(snapshot, task_state_changed_at)| {
+                crate::daemon::protocol::CoordinationOperationalSnapshotPublication {
+                    snapshot,
+                    task_state_changed_at,
+                }
+            })
+            .collect(),
+    };
+    if let Err(err) = publish(params) {
+        if !WARNED_SNAPSHOT_DAEMON_UNAVAILABLE.swap(true, Ordering::Relaxed) {
+            tracing::warn!(
+                project_path = %normalized_path,
+                error = %err,
+                "operational snapshot publication skipped because the daemon is unavailable"
+            );
+        }
+    } else {
+        WARNED_SNAPSHOT_DAEMON_UNAVAILABLE.store(false, Ordering::Relaxed);
+    }
+}
+
+fn publish_operational_snapshots_through_daemon(
+    daemon: Option<&crate::provider::daemon_client::DaemonProvider>,
+    params: crate::daemon::protocol::CoordinationPublishOperationalSnapshotsParams,
+) -> Result<crate::daemon::protocol::CoordinationPublishOperationalSnapshotsResult, String> {
+    let daemon = daemon.ok_or_else(|| "daemon is unavailable".to_string())?;
+    if !daemon.is_connected() && !daemon.try_reconnect() {
+        return Err("daemon is not connected".to_string());
+    }
+    let request = crate::daemon::protocol::DaemonRequest::new(
+        format!("snapshot-publish-{}", uuid::Uuid::new_v4().simple()),
+        crate::daemon::protocol::method::COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS,
+        params,
+    );
+    let response = daemon
+        .send_status_request_within(&request, std::time::Duration::from_secs(2))
+        .map_err(|error| error.to_string())?;
+    if let Some(error) = response.error {
+        return Err(error.message);
+    }
+    response
+        .result
+        .ok_or_else(|| "snapshot publication returned no result".to_string())
+        .and_then(|result| serde_json::from_value(result).map_err(|error| error.to_string()))
+}
+
+#[cfg(test)]
+fn persist_task_scan_with_generation_and_operational_dir(
+    conn: &rusqlite::Connection,
+    normalized_path: &str,
+    scan_result: &crate::task_scanner::TaskResult,
+    generation_state: &TaskScanGenerationState,
+    scan_generation: u64,
+    operational_teams_dir: &Path,
+) {
+    persist_task_scan_with_generation_and_publisher(
+        conn,
+        normalized_path,
+        scan_result,
+        generation_state,
+        scan_generation,
+        operational_teams_dir,
+        |params| {
+            crate::daemon::state_writes::publish_operational_snapshots(
+                operational_teams_dir,
+                params,
+            )
+            .map_err(|error| error.to_string())
+        },
+    );
 }
 
 fn prune_stale_tasks(
@@ -452,6 +544,24 @@ mod tests {
         prune_generation_map(&mut map, 300, 100);
         assert!(map.len() <= 101);
         assert!(map.values().all(|generation| *generation >= 200));
+    }
+
+    // Regression: commit 0b87699b introduced the task-scan snapshot writer in
+    // the desktop process, which cannot safely replace WSL team files over 9p.
+    #[test]
+    fn task_scan_team_state_writes_are_daemon_routed() {
+        let source = include_str!("task_sync.rs");
+        let persistence = source
+            .split("pub(crate) fn persist_task_scan_with_generation(")
+            .nth(1)
+            .expect("task persistence implementation")
+            .split("fn persist_task_scan_with_generation_and_publisher")
+            .next()
+            .expect("task persistence body");
+
+        assert!(source.contains("COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS"));
+        assert!(!persistence.contains("sync_project_task_snapshots"));
+        assert!(!persistence.contains("OperationalContextSnapshotStore::save"));
     }
 
     #[test]

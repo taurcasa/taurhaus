@@ -246,7 +246,7 @@ fn serve(
     #[cfg(feature = "mesh-bridged-backend")]
     let effort_operations_service = Arc::new(
         crate::daemon::effort_runs::EffortOperationsService::for_process_default(
-            coordination_state,
+            coordination_state.clone(),
             coordination_run_registry.clone(),
         ),
     );
@@ -304,6 +304,8 @@ fn serve(
                     effort_operations_service: effort_operations_service.clone(),
                     #[cfg(feature = "mesh-bridged-backend")]
                     launch_settings: launch_settings.clone(),
+                    #[cfg(feature = "mesh-bridged-backend")]
+                    coordination_state: coordination_state.clone(),
                 };
                 ACTIVE_CONNECTION_COUNT.fetch_add(1, Ordering::Relaxed);
                 mark_daemon_watch_telemetry_dirty();
@@ -514,6 +516,8 @@ struct ConnectionServices {
     effort_operations_service: Arc<crate::daemon::effort_runs::EffortOperationsService>,
     #[cfg(feature = "mesh-bridged-backend")]
     launch_settings: crate::daemon::background_scheduler::LaunchSettingsStore,
+    #[cfg(feature = "mesh-bridged-backend")]
+    coordination_state: Arc<crate::coordination::state::CoordinationState>,
 }
 
 fn handle_connection(
@@ -598,6 +602,7 @@ fn handle_connection(
                 services.roster_operations_service.as_ref(),
                 services.effort_operations_service.as_ref(),
                 &services.launch_settings,
+                services.coordination_state.as_ref(),
             ),
         );
 

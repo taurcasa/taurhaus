@@ -154,6 +154,7 @@ fn publish_snapshot(
     OperationalContextSnapshotStore::save_locked(&guard, teams_dir, &candidate)
 }
 
+#[cfg(test)]
 pub fn sync_member_snapshot(
     teams_dir: &Path,
     conn: &Connection,
@@ -182,12 +183,17 @@ pub fn sync_member_snapshot(
     save_snapshot_if_changed(teams_dir, snapshot, task_state_changed_at)
 }
 
-pub fn sync_project_task_snapshots(
+/// Prepare changed app-DB-derived snapshots for daemon publication.
+///
+/// Team config and current snapshots remain legal app-side reads. The returned
+/// values are the complete write intent; this function never mutates team state.
+pub(crate) fn prepare_project_task_snapshots(
     teams_dir: &Path,
     conn: &Connection,
     project_path: &str,
-) -> Result<(), CoordinationError> {
+) -> Result<Vec<(OperationalContextSnapshot, Option<DateTime<Utc>>)>, CoordinationError> {
     let tasks = load_project_tasks(conn, project_path)?;
+    let mut prepared = Vec::new();
     for team_name in TeamConfigStore::list(teams_dir)? {
         let config = match TeamConfigStore::load(teams_dir, &team_name) {
             Ok(config) => config,
@@ -219,10 +225,17 @@ pub fn sync_project_task_snapshots(
                 effort,
                 task_state_changed_at,
             );
-            save_snapshot_if_changed(teams_dir, snapshot, task_state_changed_at)?;
+            let unchanged = existing.as_ref().is_some_and(|existing| {
+                let mut candidate = snapshot.clone();
+                candidate.updated_at = existing.updated_at;
+                candidate == *existing
+            });
+            if !unchanged {
+                prepared.push((snapshot, task_state_changed_at));
+            }
         }
     }
-    Ok(())
+    Ok(prepared)
 }
 
 pub fn apply_delivery_context(
