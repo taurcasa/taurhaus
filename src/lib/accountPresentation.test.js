@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  accountOriginSentence,
   ambientAccountSignal,
   usageIsLastKnown,
 } from './accountPresentation.js'
@@ -107,5 +108,18 @@ describe('usageIsLastKnown', () => {
         Date.parse('2026-09-02T10:14:59.000Z')
       )
     ).toBe(false)
+  })
+})
+
+describe('accountOriginSentence', () => {
+  it.each([
+    ['project', 'pinned to this project'],
+    ['last_used', 'last used here'],
+    ['global_default', 'your global default'],
+    ['base_command', 'carried by your launch command'],
+    ['session', "resumes this session's account"],
+    ['single_account', 'the only account signed in'],
+  ])('renders %s provenance as settled product copy', (origin, sentence) => {
+    expect(accountOriginSentence(origin)).toBe(sentence)
   })
 })

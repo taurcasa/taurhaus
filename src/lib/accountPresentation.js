@@ -97,3 +97,28 @@ export function usageIsLastKnown(usage, now = Date.now()) {
   return Number.isFinite(observed) && now - observed > LAST_KNOWN_AFTER_MS
 }
 
+/** Product copy for the backend's settled launch-account provenance. */
+export function accountOriginSentence(origin) {
+  switch (origin) {
+    case 'project':
+    case 'pinned':
+    case 'explicit':
+      return 'pinned to this project'
+    case 'last_used':
+      return 'last used here'
+    case 'global_default':
+    case 'default':
+      return 'your global default'
+    case 'base_command':
+      return 'carried by your launch command'
+    case 'session':
+    case 'transcript':
+      return "resumes this session's account"
+    case 'single_account':
+    case 'only_account':
+    case 'default_config_dir':
+      return 'the only account signed in'
+    default:
+      return 'selected for this project'
+  }
+}

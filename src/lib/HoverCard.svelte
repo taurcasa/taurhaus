@@ -5,6 +5,9 @@
   import { activitySignal, isActiveLevel, isRetainedSignal, workflowWriteAgeMs } from './activitySignal.js'
   import { currentWorkflowStep, formatWriteAge, workflowSessionId } from './workflowRuns.js'
   import { watchWorkflowSession, workflowSessionRuns } from './workflowRunStore.svelte.js'
+  import { previewAccount } from './accounts.svelte.js'
+  import { accountOriginSentence } from './accountPresentation.js'
+  import { toolLabel } from './toolRegistry.js'
 
   const FRESH_SESSION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
   const DEFAULT_WIDTH = 312
@@ -29,6 +32,7 @@
   let latestCommit = $state(null)
   let relationships = $state([])
   let entered = $state(false)
+  let accountPreviews = $state([])
 
   /** Presented activity level → hover-card tone. */
   const LEVEL_TONE = {
@@ -155,6 +159,33 @@
         if (!cancelled && project?.id === projectId) relationships = []
       })
 
+    return () => {
+      cancelled = true
+    }
+  })
+
+  $effect(() => {
+    const currentProject = project
+    const shown = visible
+    const sessionTools = [...new Set(
+      (sessions ?? [])
+        .map((session) => session?.cli_tool ?? session?.cliTool)
+        .filter(Boolean)
+    )]
+    accountPreviews = []
+    if (!shown || !currentProject?.id || sessionTools.length === 0) return
+
+    let cancelled = false
+    Promise.all(
+      sessionTools.map(async (tool) => ({
+        tool,
+        preview: await previewAccount(currentProject, tool, { visible: true, mode: 'continue' }),
+      }))
+    ).then((previews) => {
+      if (!cancelled && project?.id === currentProject.id) {
+        accountPreviews = previews.filter(({ preview }) => preview?.account)
+      }
+    })
     return () => {
       cancelled = true
     }
@@ -560,6 +591,16 @@
         {/if}
       </div>
     </div>
+
+    {#if accountPreviews.length > 0}
+      <div class="mt-2 space-y-1" data-testid="hovercard-account-list">
+        {#each accountPreviews as entry (entry.tool)}
+          <p class="truncate text-[10px] leading-[1.3] {ui.secondaryText}" data-testid="hovercard-account">
+            {toolLabel(entry.tool)} · {entry.preview.account.display_name ?? entry.preview.account.label ?? entry.preview.account.id} · {accountOriginSentence(entry.preview.origin)}
+          </p>
+        {/each}
+      </div>
+    {/if}
 
     <div class="mt-2" data-testid="hovercard-verdict">
       <div class="text-[13px] font-medium leading-[1.25] {verdictToneClass}">{verdict.label}</div>
