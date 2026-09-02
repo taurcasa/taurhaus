@@ -406,13 +406,28 @@ fn protocol_22_state_write_clients_use_the_coordination_timeout_and_reconnect() 
 }
 
 // Regression: d593f81b emitted one WARN for every two-second live-status poll
-// during an outage and let orchestrator contention become a transport timeout.
+// during an outage and let orchestrator contention become a transport timeout;
+// d9c3f354 bounded it with one process-global latch, so one team's recovery
+// reset another team's outage state.
 #[test]
 fn protocol_22_live_presence_degrade_warning_is_bounded_and_skips_are_debug_only() {
     let source = include_str!("live_status.rs");
 
-    assert!(source.contains("WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE.swap"));
-    assert!(source.contains("WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE.store(false"));
+    live_status::mark_live_presence_reconcile_recovered("team-a");
+    live_status::mark_live_presence_reconcile_recovered("team-b");
+    assert!(live_status::mark_live_presence_reconcile_degraded("team-a"));
+    assert!(!live_status::mark_live_presence_reconcile_degraded(
+        "team-a"
+    ));
+    assert!(live_status::mark_live_presence_reconcile_degraded("team-b"));
+    live_status::mark_live_presence_reconcile_recovered("team-a");
+    assert!(live_status::mark_live_presence_reconcile_degraded("team-a"));
+    assert!(!live_status::mark_live_presence_reconcile_degraded(
+        "team-b"
+    ));
+
+    assert!(source.contains("warned_live_presence_teams"));
+    assert!(!source.contains("AtomicBool"));
     assert!(source.contains("CoordinationReconcileLivePresenceOutcome::Skipped"));
     assert!(!source.contains("is_busy_transport_error(&error)"));
     assert!(source.contains("tracing::debug!"));

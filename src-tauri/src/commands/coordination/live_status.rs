@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
 use crate::commands::coordination_types::{
@@ -30,7 +30,24 @@ use crate::ProviderState;
 #[cfg(test)]
 use taurhaus_lib::ProviderState;
 
-static WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
+fn warned_live_presence_teams() -> &'static Mutex<HashSet<String>> {
+    static WARNED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    WARNED.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+pub(super) fn mark_live_presence_reconcile_degraded(team_name: &str) -> bool {
+    warned_live_presence_teams()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .insert(team_name.to_string())
+}
+
+pub(super) fn mark_live_presence_reconcile_recovered(team_name: &str) {
+    warned_live_presence_teams()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .remove(team_name);
+}
 
 pub(super) fn coordination_get_live_team_status_impl(
     state: &CoordinationState,
@@ -422,7 +439,7 @@ fn reconcile_live_presence_through_daemon(
         );
     match result {
         Ok(result) => {
-            WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE.store(false, AtomicOrdering::Relaxed);
+            mark_live_presence_reconcile_recovered(team_name);
             match result.outcome {
                 crate::daemon::protocol::CoordinationReconcileLivePresenceOutcome::Reconciled => {
                     result.reconciled_offline_members.into_iter().collect()
@@ -437,7 +454,7 @@ fn reconcile_live_presence_through_daemon(
             }
         }
         Err(error) => {
-            if !WARNED_LIVE_PRESENCE_DAEMON_UNAVAILABLE.swap(true, AtomicOrdering::Relaxed) {
+            if mark_live_presence_reconcile_degraded(team_name) {
                 tracing::warn!(team = team_name, error = %error, "live presence reconciliation skipped because the daemon is unavailable");
             }
             std::collections::HashSet::new()
