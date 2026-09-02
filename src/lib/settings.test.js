@@ -427,6 +427,38 @@ describe('Settings component', () => {
     expect(line).not.toHaveTextContent('alias for')
   })
 
+  // Regression: 6556676e reported a saved global default as effective without
+  // asking whether it can run. The resolver accepts a default only through
+  // `usable()`, so an operator whose default is signed out was named the wrong
+  // account — the launch command's selector is what their sessions get.
+  it('falls past a signed-out global default to the launch command', async () => {
+    getSettings.mockResolvedValue(
+      mockSettings({ terminal: { default_account_ids: { claude: 'account-1' } } })
+    )
+    listAccounts.mockImplementation(
+      withResolvedBases(
+        [
+          {
+            command: "CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude",
+            selectorValue: '/home/mstie/.claude-account2',
+            expansions: [
+              { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
+            ],
+            opaqueHead: null,
+          },
+        ],
+        [{ ...DETECTED_ACCOUNTS[0], logged_in: false }, DETECTED_ACCOUNTS[1]]
+      )
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    const line = await settledEffectiveDefault()
+    expect(line).toHaveTextContent(
+      'Effective default: B — from your launch command "claude2" (alias for CLAUDE_CONFIG_DIR=~/.claude-account2 claude)'
+    )
+  })
+
   it('warns when the launch command does not run the CLI at all', async () => {
     listAccounts.mockImplementation(
       withResolvedBases([

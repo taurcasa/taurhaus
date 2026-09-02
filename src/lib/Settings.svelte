@@ -210,8 +210,10 @@
     if (selection.opaqueHead) {
       return { account: configured, origin: opaqueBaseNotice(selection.opaqueHead, tool.id) }
     }
+    // Only a default that can run: the resolver accepts a saved default through
+    // `usable()` alone and falls past a signed-out one to the launch command.
     const chosen = state.accounts.find(
-      (account) => account.id === persistedDefaultAccountId(tool.id)
+      (account) => account.id === persistedDefaultAccountId(tool.id) && account.logged_in
     )
     if (chosen) return { account: chosen, origin: 'default' }
     if (selection.account) {

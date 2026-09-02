@@ -326,6 +326,42 @@ describe('AccountsHome', () => {
     expect(rememberChoice).toHaveBeenCalledWith('p-cleared', 'claude', 'work')
   })
 
+  // Regression: 6556676e hid the strip whenever a global default was saved,
+  // while the resolver falls past a default it cannot use and lands on the
+  // selector. An operator whose saved default is signed out was told nothing
+  // about the launch command their sessions actually run on.
+  it('still explains the selector when the saved global default is signed out', () => {
+    const accountStates = states()
+    accountStates.claude.accounts = [
+      account('personal', { logged_in: false, usage: null }),
+      account('work'),
+    ]
+    accountStates.claude.defaultAccountId = 'personal'
+
+    render(AccountsHome, {
+      props: {
+        states: accountStates,
+        projects: [{ id: 'p-free', name: 'free', accountMemory: {} }],
+      },
+    })
+
+    expect(screen.getByTestId('account-alias-claude')).toHaveTextContent('claude2')
+    expect(screen.getByText('Convert to pins')).toBeInTheDocument()
+  })
+
+  it('keeps the strip hidden while the saved global default can run', () => {
+    const accountStates = states()
+
+    render(AccountsHome, {
+      props: {
+        states: accountStates,
+        projects: [{ id: 'p-free', name: 'free', accountMemory: {} }],
+      },
+    })
+
+    expect(screen.queryByTestId('account-alias-claude')).not.toBeInTheDocument()
+  })
+
   // Regression: faffe345 compared the reported selector value verbatim with
   // absolute account directories, so a `~/`-spelled alias lost its conversion strip.
   it('explains a tilde-spelled base-command selector', () => {

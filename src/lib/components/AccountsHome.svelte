@@ -165,11 +165,18 @@
    * What the base command does to this tool's accounts, in the same order
    * Settings reads it: an opaque head first — it outranks the chosen global
    * default — then a selector, whether an alias or the typed command carries it.
+   *
+   * Only a global default that can run silences the strip. The resolver falls
+   * past a saved default it cannot use and lands on the selector, so a
+   * signed-out default leaves the launch command deciding.
    */
   function baseSelection(state) {
     const selection = baseCommandSelection(state.resolvedBases, state.accounts ?? [])
     if (selection.opaqueHead) return selection
-    if (state.defaultAccountId) return null
+    const savedDefault = (state.accounts ?? []).find(
+      (account) => account.id === state.defaultAccountId
+    )
+    if (savedDefault?.logged_in) return null
     return selection.account ? selection : null
   }
 
