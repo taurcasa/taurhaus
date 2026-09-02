@@ -162,6 +162,66 @@ describe('ambientAccountSignal', () => {
       ])
     ).toMatchObject({ visible: true, tone: 'warning', magnitude: '86%' })
   })
+
+  // Regression: 462c18f made every default-directory account relevant on its
+  // flag alone, so a signed-out process default that a signed-in saved global
+  // default has superseded raised a permanent red the launches never touch.
+  it('ignores a default-directory account a signed-in global default supersedes', () => {
+    const processDefault = account({
+      id: 'legacy',
+      logged_in: false,
+      usage: null,
+      is_process_default: true,
+      is_default: true,
+    })
+
+    expect(
+      ambientAccountSignal([
+        {
+          tool: 'claude',
+          defaultAccountId: 'personal',
+          accounts: [processDefault, account()],
+          relationships: {},
+        },
+      ])
+    ).toMatchObject({ visible: false, tone: 'calm' })
+  })
+
+  it('keeps a superseded default directory relevant while something is pinned to it', () => {
+    const processDefault = account({
+      id: 'legacy',
+      logged_in: false,
+      usage: null,
+      is_process_default: true,
+    })
+
+    expect(
+      ambientAccountSignal([
+        {
+          tool: 'claude',
+          defaultAccountId: 'personal',
+          accounts: [processDefault, account()],
+          relationships: { legacy: { pinnedProjects: [{ id: 'p1' }] } },
+        },
+      ])
+    ).toMatchObject({ visible: true, tone: 'danger', magnitude: 'Sign in' })
+  })
+
+  it('keeps the default directory relevant while the saved default is itself signed out', () => {
+    const processDefault = account({ id: 'legacy', is_default: true, is_process_default: true })
+    const savedDefault = account({ id: 'personal', logged_in: false, usage: null })
+
+    expect(
+      ambientAccountSignal([
+        {
+          tool: 'claude',
+          defaultAccountId: 'personal',
+          accounts: [processDefault, savedDefault],
+          relationships: {},
+        },
+      ])
+    ).toMatchObject({ visible: true, tone: 'danger', magnitude: 'Sign in' })
+  })
 })
 
 describe('usageIsLastKnown', () => {

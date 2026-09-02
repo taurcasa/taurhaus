@@ -49,16 +49,41 @@ function relationshipList(relationships, camel, snake) {
   return Array.isArray(value) ? value : []
 }
 
+function isDefaultDirectory(account) {
+  return Boolean(
+    account?.is_default ||
+      account?.isDefault ||
+      account?.is_process_default ||
+      account?.isProcessDefault
+  )
+}
+
+/**
+ * Whether a usable choice the backend ranks higher owns this tool's launches.
+ *
+ * The default directory is the last thing the resolver reaches for: a saved
+ * global default that is signed in answers every launch before the directory is
+ * consulted. A saved default nothing can use is no supersession at all — the
+ * resolver falls past it, and the directory is what launches land on again.
+ */
+function defaultDirectorySuperseded(account, state) {
+  const savedDefaultId = state?.defaultAccountId
+  if (!savedDefaultId || savedDefaultId === account?.id) return false
+  return (state?.accounts ?? []).some(
+    (candidate) => candidate?.id === savedDefaultId && candidate?.logged_in
+  )
+}
+
 function isRelevant(account, state) {
   if (account?.id === state?.defaultAccountId) return true
-  if (account?.is_default || account?.isDefault || account?.is_process_default || account?.isProcessDefault) {
-    return true
-  }
   const relationships = state?.relationships?.[account?.id]
-  return (
+  if (
     relationshipList(relationships, 'pinnedProjects', 'pinned_projects').length > 0 ||
     relationshipList(relationships, 'teams', 'teams').length > 0
-  )
+  ) {
+    return true
+  }
+  return isDefaultDirectory(account) && !defaultDirectorySuperseded(account, state)
 }
 
 function liveWindows(usage, now) {
