@@ -386,9 +386,9 @@ fn disband_team_uses_the_long_running_daemon_poll_interval() {
 }
 
 // Regression: 8bb45dab made daemon launch settings process-local but relied on
-// the health monitor to repush them. An inline reconnect from a coordination
-// call or task scan can restore the cached connection without entering that
-// recovery hook, leaving the daemon effort sweep disabled for its lifetime.
+// the health monitor to repush them. Any inline reconnect can restore the
+// cached connection without entering that recovery hook, leaving the daemon
+// effort sweep disabled for its lifetime.
 #[test]
 fn inline_daemon_reconnect_paths_repush_launch_settings() {
     let coordination = include_str!("../coordination.rs");
@@ -400,9 +400,74 @@ fn inline_daemon_reconnect_paths_repush_launch_settings() {
         .next()
         .expect("coordination daemon call body");
     let task_sync = include_str!("../../services/task_sync.rs");
+    let task_scan = task_sync
+        .split("fn scan_tasks_from_files(")
+        .nth(1)
+        .expect("task scan")
+        .split("fn tasks_from_daemon_result(")
+        .next()
+        .expect("task scan body");
+    let runtime_snapshot = include_str!("../runtime_snapshot.rs");
+    let runtime_snapshot_call = runtime_snapshot
+        .split("pub(crate) fn daemon_runtime_session_snapshot(")
+        .nth(1)
+        .expect("runtime snapshot call")
+        .split("pub(crate) fn request_daemon_runtime_session_snapshot(")
+        .next()
+        .expect("runtime snapshot call body");
+    let daemon_commands = include_str!("../daemon.rs");
+    let start_daemon = daemon_commands
+        .split("pub fn start_daemon(")
+        .nth(1)
+        .expect("start daemon command")
+        .split("// ---------------------------------------------------------------------------")
+        .next()
+        .expect("start daemon command body");
+    let accounts = include_str!("../accounts/mod.rs");
+    let resolve_launch_base = accounts
+        .split("fn daemon_resolve_launch_base_tracked(")
+        .nth(1)
+        .expect("daemon launch-base resolver")
+        .split("fn resolved_base_from(")
+        .next()
+        .expect("daemon launch-base resolver body");
+    let project_transcript = accounts
+        .split("fn daemon_project_transcript_lookup(")
+        .nth(1)
+        .expect("daemon project-transcript lookup")
+        .split("fn transcript_lookup_from(")
+        .next()
+        .expect("daemon project-transcript lookup body");
+    let list_accounts = accounts
+        .split("fn daemon_accounts(")
+        .nth(1)
+        .expect("daemon accounts lookup")
+        .split("fn daemon_answer<")
+        .next()
+        .expect("daemon accounts lookup body");
+    let workflow_runs = include_str!("../../workflow_runs/mod.rs");
+    let workflow_request = workflow_runs
+        .split("fn daemon_request<T, P>(")
+        .nth(1)
+        .expect("workflow daemon request")
+        .split("#[cfg(test)]")
+        .next()
+        .expect("workflow daemon request body");
 
     assert!(coordination_call.contains("push_launch_settings_to_daemon"));
-    assert!(task_sync.contains("push_launch_settings_to_daemon"));
+    assert!(task_scan.contains("push_launch_settings_to_daemon"));
+    assert_eq!(
+        runtime_snapshot_call
+            .matches("repush_cached_launch_settings_to_daemon")
+            .count(),
+        2,
+        "both runtime-snapshot reconnect paths must repush launch settings"
+    );
+    assert!(start_daemon.contains("push_launch_settings_to_daemon"));
+    assert!(resolve_launch_base.contains("repush_cached_launch_settings_to_daemon"));
+    assert!(project_transcript.contains("repush_cached_launch_settings_to_daemon"));
+    assert!(list_accounts.contains("repush_cached_launch_settings_to_daemon"));
+    assert!(workflow_request.contains("repush_cached_launch_settings_to_daemon"));
 }
 
 // Regression: 1e1dcea5 kept the config-only roster add in the desktop

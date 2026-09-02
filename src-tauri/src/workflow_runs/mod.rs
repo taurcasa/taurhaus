@@ -278,8 +278,16 @@ where
         .daemon
         .as_ref()
         .ok_or_else(|| "The WSL daemon is not running".to_string())?;
-    if !daemon.is_connected() && !daemon.try_reconnect() {
-        return Err("The WSL daemon is not reachable".to_string());
+    if !daemon.is_connected() {
+        if !daemon.try_reconnect() {
+            return Err("The WSL daemon is not reachable".to_string());
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        if let Err(error) =
+            crate::commands::settings::repush_cached_launch_settings_to_daemon(daemon)
+        {
+            tracing::warn!(error = %error, "Failed to repush launch settings after workflow reconnect");
+        }
     }
     let request = protocol::DaemonRequest::new(
         format!("{method}-{}", uuid::Uuid::new_v4().simple()),

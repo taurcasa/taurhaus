@@ -1,4 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "mesh-bridged-backend")]
+use std::sync::{LazyLock, Mutex};
 
 use tauri::State;
 
@@ -9,6 +11,11 @@ use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
 use crate::models::Settings;
 
 static SETTINGS_RECONCILE_QUEUED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(feature = "mesh-bridged-backend")]
+static LAST_LAUNCH_SETTINGS_SNAPSHOT: LazyLock<
+    Mutex<Option<crate::daemon::protocol::CoordinationPutLaunchSettingsParams>>,
+> = LazyLock::new(|| Mutex::new(None));
 
 fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str) {
     if SETTINGS_RECONCILE_QUEUED
@@ -180,6 +187,10 @@ pub(crate) fn push_launch_settings_to_daemon(app: &tauri::AppHandle) -> Result<(
 
     let db = app.state::<DbState>();
     let snapshot = launch_settings_snapshot(&db)?;
+    *LAST_LAUNCH_SETTINGS_SNAPSHOT
+        .lock()
+        .map_err(|_| "launch-settings snapshot mutex poisoned".to_string())? =
+        Some(snapshot.clone());
     let providers = app.state::<crate::ProviderState>();
     let daemon = providers
         .daemon
@@ -188,6 +199,26 @@ pub(crate) fn push_launch_settings_to_daemon(app: &tauri::AppHandle) -> Result<(
     if !daemon.is_connected() {
         return Err("daemon is not connected".to_string());
     }
+    send_launch_settings_to_daemon(daemon, snapshot)
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+pub(crate) fn repush_cached_launch_settings_to_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+) -> Result<(), String> {
+    let snapshot = LAST_LAUNCH_SETTINGS_SNAPSHOT
+        .lock()
+        .map_err(|_| "launch-settings snapshot mutex poisoned".to_string())?
+        .clone()
+        .ok_or_else(|| "launch-settings snapshot is not cached".to_string())?;
+    send_launch_settings_to_daemon(daemon, snapshot)
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn send_launch_settings_to_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    snapshot: crate::daemon::protocol::CoordinationPutLaunchSettingsParams,
+) -> Result<(), String> {
     let request = crate::daemon::protocol::DaemonRequest::new(
         format!("launch-settings-{}", uuid::Uuid::new_v4().simple()),
         crate::daemon::protocol::method::COORDINATION_PUT_LAUNCH_SETTINGS,
