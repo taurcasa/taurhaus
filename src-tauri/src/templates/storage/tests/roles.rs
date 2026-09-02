@@ -449,6 +449,14 @@ fn list_roles_picks_up_external_files_added_to_roles_directory() {
 // copies seeded by 0.8.5, so retired roles and stale role/preset bodies won.
 #[test]
 fn previous_release_builtins_reconcile_before_catalog_reads_and_export() {
+    // Regression: d662df09 added the v0.8.10 role fingerprints without a
+    // behavioral fixture, so the upgrade guard only mirrored the hash table.
+    assert_eq!(
+        format!("{:x}", Sha256::digest(PREVIOUS_QUICK_DEV_CODEX.as_bytes())),
+        "11ac612adea02bb15ff5d4e8eed89e5e02a1fafa9e3ab45280928c4e4440edd8",
+        "fixture must be the exact superseded v0.8.10 quick-dev bytes"
+    );
+
     let (root, app_data, _fixture_builtins) = setup_dirs();
     let builtins = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("resources")
@@ -509,10 +517,8 @@ fn previous_release_builtins_reconcile_before_catalog_reads_and_export() {
     assert_eq!(quick_dev.template.defaults.model, "gpt-5.6-sol");
     assert!(quick_dev
         .template
-        .behavioral_contract
-        .communication
-        .join("\n")
-        .contains("RESULT <id>"));
+        .instructions
+        .contains("PORTABLE DELIVERY CONTRACT"));
 
     let pair = store.get_preset("pair").expect("reconciled pair preset");
     assert_eq!(pair.template.version, "4.0.0");
@@ -722,83 +728,6 @@ fn known_shipped_hashes_cover_pre_0_8_4_catalog_deltas() {
     }
 }
 
-#[test]
-fn work_kind_catalog_upgrade_recognizes_every_superseded_role() {
-    assert_eq!(BUILTIN_CATALOG_REVISION, 2);
-    for expected in [
-        (
-            "roles/adversarial-reviewer-claude.yaml",
-            "2310c346d6153fe5c3676e7cd3955c233c2737c8c5c00aeb6c547f19b3a12c54",
-        ),
-        (
-            "roles/antigravity-orchestrator.yaml",
-            "f31535fb94dcb09ab95e33991d8c75b19a8e4f7864273f6af1b610ee23648665",
-        ),
-        (
-            "roles/claude-design-lead.yaml",
-            "041e8308981059ceac04fa28c11c56e20c890195bc33e0baf3a877530ae63b3a",
-        ),
-        (
-            "roles/claude-product-checker.yaml",
-            "6511e2667ffd9f312670fc9e484f840ed7c2a2206d39572b180ab255651bf01d",
-        ),
-        (
-            "roles/claude-researcher.yaml",
-            "bb91b8e7a343806e2442351a0b8adcc001db156b5bdd2685cd67ab932be19634",
-        ),
-        (
-            "roles/codex-orchestrator.yaml",
-            "c1bceca521e650cb950c8ec96aa32074c796885529922ba506d3f14f88ac352b",
-        ),
-        (
-            "roles/codex-qa.yaml",
-            "61acf9b5a6840cbf0aeb6c0a1119cc9984bee20ca561cb37fd96899f9eeadffd",
-        ),
-        (
-            "roles/docs-verifier-codex.yaml",
-            "48d337dd5789990145c9099915908b0e33a72bf4b0ef3ad2b24f7fa85ec3e7c9",
-        ),
-        (
-            "roles/frontend-design-skill-developer.yaml",
-            "d94b175e41be45e0f3ada122fbf203797bc0becb706ebb5e6e37600b8ecbc024",
-        ),
-        (
-            "roles/quick-dev-codex.yaml",
-            "11ac612adea02bb15ff5d4e8eed89e5e02a1fafa9e3ab45280928c4e4440edd8",
-        ),
-        (
-            "roles/v3-architect-codex.yaml",
-            "6c88bebf37e6f0b92243b8d0bb89863a329a698d4ca8af4d1411dd059c3e2f59",
-        ),
-        (
-            "roles/v3-lead-claude.yaml",
-            "8623afce3d973d3d3d3a24ba8645f8b625ca3584478647e7639be4c88beda264",
-        ),
-        (
-            "roles/v4-developer-agy.yaml",
-            "4fb9543656526636f9b042649b6cea53c38b745abca5115351b5fdb4291f4d76",
-        ),
-        (
-            "roles/v4-developer-claude.yaml",
-            "7ee89cbccd43353d623f734bd52dc22941e455a9836e4f34df2f632ee48d0c19",
-        ),
-        (
-            "roles/v4-developer-codex.yaml",
-            "b0a6927bbc6649a8c11301b286655ec0e1f8de690fefdf2b512f33462adf8ed8",
-        ),
-        (
-            "roles/v4-developer-grok.yaml",
-            "77fc1ab71ac69b8d5fef1cd0efa442d9929e1cf3afa54e810b0647fb39a33693",
-        ),
-    ] {
-        assert!(
-            PREVIOUS_BUNDLED_TEMPLATE_HASHES.contains(&expected),
-            "missing work-kind upgrade fingerprint for {}",
-            expected.0
-        );
-    }
-}
-
 const PREVIOUS_CLAUDE_REVIEWER: &str = r#"schema:
   kind: role_template
   version: 1
@@ -881,16 +810,18 @@ const PREVIOUS_QUICK_DEV_CODEX: &str = r#"schema:
 
 role_id: quick-dev-codex
 name: Quick Dev (Codex)
-version: 1.0.0
+version: 2.0.0
 kind: agent
 
 defaults:
   cli_tool: codex
-  model: gpt-5.4
-  reasoning_effort: high
+  model: gpt-5.6-sol
+  reasoning_effort: low
   default_name_pattern: quick-dev-{n}
 
 instructions: |
+  GPT-5.6 Sol is the decided implementer even for this bounded lane. The assignment is a contract: stay inside it, write the test first for logic, record the red failure, then make the smallest green change.
+
   You are the low-ceremony implementation lane for small, clear tasks. Move
   quickly, stay concrete, and avoid unnecessary explanation, but do not cut the
   validation or review loop.
@@ -918,10 +849,11 @@ instructions: |
 focus_area: "Low-ceremony implementation for small, well-bounded tasks"
 context_summary: "Carries the narrow task scope, local file set, and immediate verification lane so small changes can move quickly without losing review discipline."
 behavior_summary: "Implements fast when scope is clear, avoids broad explanation, and always leaves the result ready for explicit final review."
-communication_style: "Minimal. Reports what changed and what to verify. No explanation unless asked."
+communication_style: "Minimal and concrete. Reports what changed and what to verify, with no explanation unless asked. Assignments include an objective, exact deliverable, concrete first action, completion signal, and explicit response expectation. Prefix requests with ACTION REQUIRED:. Prefix context with INFO ONLY: and end it with no response needed."
 
 behavioral_contract:
   communication:
+    - "On managed success, send `RESULT <id>` with the agreed structured result before completing the task; on a real blocker send `BLOCKED <id> <reason>`."
     - "Keep updates short: what changed, current status, and what still needs verification."
     - "Do not add background explanation unless the reviewer asks for it or the risk demands it."
     - "Close with a review-ready summary that points to changed files, validation, and the next owner or reviewer."
@@ -937,9 +869,12 @@ behavioral_contract:
     - "Escalate when the quick path is blocked by unclear ownership or missing context."
 
 quality_gates:
+  - "Run `just check-quick` for each changed task before handoff; run every narrower test the assignment names."
+  - "Never run full `just check` as an agent; the team lead owns that serialized gate."
   - "just check-quick passes"
   - "Changed files committed"
 definition_of_done:
+  - "Send a review-ready handoff with changed files, exact commands and outcomes, red observed where applicable, commit, and honest remaining risk."
   - "Implementation complete"
   - "Tests pass"
   - "Ready for review"
@@ -964,6 +899,23 @@ constraints:
   max_instances: 8
   requires_lead_tool: null
   allowed_project_binding: any
+
+runtime_compact_summary:
+  role_purpose: "Deliver the smallest real solution for a clear local task without skipping regression coverage, validation, commit discipline, or review."
+  keep_doing:
+    - "Stay inside the bounded assignment and touch only the necessary files."
+    - "Write logic tests first, record red, then make the smallest green change."
+    - "Run the named checks and prepare the mandatory review block."
+  workflow_sequence:
+    - "Confirm the task is local, clear, and owned by this lane."
+    - "Implement directly, validate narrowly, then run the required quick gate."
+    - "Commit and report CHANGED, VERIFIED, VERIFY, and remaining risk."
+  avoid:
+    - "Do not expand into architecture, redesign, or broad cleanup."
+    - "Do not trade validation or review discipline for speed."
+  escalate_when:
+    - "The task crosses systems, ownership boundaries, or architectural decisions."
+    - "Scope is unclear or failures sit outside the owned change."
 "#;
 
 const PREVIOUS_PAIR_PRESET: &str = r#"schema:

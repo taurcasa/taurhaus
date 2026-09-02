@@ -37,7 +37,7 @@ const DEFAULT_DEBOUNCE_WINDOW_SECS: i64 = 30;
 const FALLBACK_LOCK_RETRY_DELAY_MS: u64 = 20;
 const FALLBACK_LOCK_RETRY_ATTEMPTS: usize = 250;
 const TEMP_FILE_RANDOM_RETRY_ATTEMPTS: usize = 16;
-const BUILTIN_CATALOG_REVISION: u32 = 2;
+const BUILTIN_CATALOG_REVISION: u32 = 3;
 
 const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n.lock.fallback\n";
 
@@ -52,6 +52,72 @@ const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n
 // bump `BUILTIN_CATALOG_REVISION` and append the superseded bytes'
 // fingerprints here.
 const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
+    // Role catalog v2 fixer-round bytes. Revision 3 advances stores that
+    // already seeded the first v2 bundle while preserving local role edits.
+    (
+        "roles/adversarial-reviewer-claude.yaml",
+        "e4f3f1a02bd082bbce12aa64337098e533022a2318477e138f9aaa1430150729",
+    ),
+    (
+        "roles/antigravity-orchestrator.yaml",
+        "8a010bb92127ddb1cffdac41bdc429e58f3b73f87df1415b8a063f30030e8a7f",
+    ),
+    (
+        "roles/claude-design-lead.yaml",
+        "5b00af3ef82e556ffd33d473aaeb70c4c491ede55600cfc910a425842cbbca0d",
+    ),
+    (
+        "roles/claude-product-checker.yaml",
+        "b923d4df690b42347a5b672d300cc85295fd8026d84b65e7e96024292914f596",
+    ),
+    (
+        "roles/claude-researcher.yaml",
+        "0e66977c2d5194c4e8a9bfff8fc7aeef1fbf1d64ae2f77ef224bd0271dbd86ed",
+    ),
+    (
+        "roles/codex-orchestrator.yaml",
+        "2fe212c9d72deccebbdd52557a612a14126c70ab5f6f8701314e2b035a53631f",
+    ),
+    (
+        "roles/codex-qa.yaml",
+        "8e453f5681cdcc63db9c97d40ddb326c9b37a30b24f26209c88c45920b185ea8",
+    ),
+    (
+        "roles/docs-verifier-codex.yaml",
+        "81a8f891ee0031b32eb4ad55dbfe2d573104a69c51d05c7eff95cf5239843ef4",
+    ),
+    (
+        "roles/frontend-design-skill-developer.yaml",
+        "202262299f1e0fdc49ce1e9b54c57159c319c8a2b671418fd4c3d1bdb21caf3c",
+    ),
+    (
+        "roles/quick-dev-codex.yaml",
+        "26092e0098ef116eb64c03bc7bf49399114e1f5e75e86dce82342c215188b44a",
+    ),
+    (
+        "roles/v3-architect-codex.yaml",
+        "108a6d0f2e4732a24c77d7157efa0c9f85f90fa24bcff57f6f150b43007ddaae",
+    ),
+    (
+        "roles/v3-lead-claude.yaml",
+        "85f4301cc90212007a51e0507390f90d3c431635d8a71c3877ff5e8f86be8aa6",
+    ),
+    (
+        "roles/v4-developer-agy.yaml",
+        "2d18e3f42dcf092e9592b98f8349fe45c120f6e4d60002b676e12854b622b616",
+    ),
+    (
+        "roles/v4-developer-claude.yaml",
+        "ca0b2554e95cb7b086db5045cdf22d44b9adaad69613b240aa18defcdc22d9db",
+    ),
+    (
+        "roles/v4-developer-codex.yaml",
+        "f1303a07f1ab439b9c1dcafd3ac7b59d7258f0791ee538fcb17444ee67604a2f",
+    ),
+    (
+        "roles/v4-developer-grok.yaml",
+        "60e84afaf4cd87387de20a13a3c164b01125f24b8d0417f8fd95ef33af7d14e0",
+    ),
     // Role catalog v2 superseded bytes. These exact fingerprints let an
     // unmodified seeded catalog advance while preserving local role edits.
     (
