@@ -857,6 +857,10 @@ struct WslMeshDaemonCycle {
 }
 
 impl WslMeshDaemonCycle {
+    // Production only parses the cycle report for its stderr-noise guarantees
+    // since protocol 21 moved repair into the daemon; the accessor remains for
+    // the finish-output parser tests.
+    #[cfg(test)]
     fn any_daemons_were_running(&self) -> bool {
         self.member_daemons_were_running || self.team_daemons_were_running
     }
