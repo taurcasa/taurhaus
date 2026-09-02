@@ -309,54 +309,57 @@ impl CoordinationState {
         tmux_layout: &str,
         resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
     ) -> Result<BackgroundEffortRetryPassResult, CoordinationError> {
-        let team_names = TeamConfigStore::list(&self.teams_dir)?;
-        let mut summary = BackgroundEffortRetryPassResult::default();
-        let mut orchestrator = self.build_background_orchestrator()?;
+        Ok(self
+            .try_with_orchestrator(|orchestrator| {
+                let team_names = TeamConfigStore::list(&self.teams_dir)?;
+                let mut summary = BackgroundEffortRetryPassResult::default();
 
-        for team_name in team_names {
-            summary.teams_scanned += 1;
-            // The task event remains the earliest trigger, while this bounded
-            // sweep also starts a switch whose edge the app never observed.
-            match orchestrator.apply_pending_task_effort_outcome(
-                &team_name,
-                cli_commands,
-                tmux_layout,
-                crate::coordination::task_effort::EffortPassScope::BackgroundSweep,
-                resolve_launch_base,
-            ) {
-                Ok(outcome) => {
-                    summary.members_effort_resumed += outcome.switched.len();
-                    if !outcome.failed.is_empty() || !outcome.skipped_teams.is_empty() {
-                        summary.team_errors += 1;
-                        for (member, reason) in outcome.failed {
+                for team_name in team_names {
+                    summary.teams_scanned += 1;
+                    // The task event remains the earliest trigger, while this bounded
+                    // sweep also starts a switch whose edge the app never observed.
+                    match orchestrator.apply_pending_task_effort_outcome(
+                        &team_name,
+                        cli_commands,
+                        tmux_layout,
+                        crate::coordination::task_effort::EffortPassScope::BackgroundSweep,
+                        resolve_launch_base,
+                    ) {
+                        Ok(outcome) => {
+                            summary.members_effort_resumed += outcome.switched.len();
+                            if !outcome.failed.is_empty() || !outcome.skipped_teams.is_empty() {
+                                summary.team_errors += 1;
+                                for (member, reason) in outcome.failed {
+                                    tracing::warn!(
+                                        team = %team_name,
+                                        member = %member,
+                                        error = %reason,
+                                        "background task-effort member failed"
+                                    );
+                                }
+                                for (skipped_team, reason) in outcome.skipped_teams {
+                                    tracing::warn!(
+                                        team = %skipped_team,
+                                        error = %reason,
+                                        "background task-effort team was skipped"
+                                    );
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            summary.team_errors += 1;
                             tracing::warn!(
                                 team = %team_name,
-                                member = %member,
-                                error = %reason,
-                                "background task-effort member failed"
-                            );
-                        }
-                        for (skipped_team, reason) in outcome.skipped_teams {
-                            tracing::warn!(
-                                team = %skipped_team,
-                                error = %reason,
-                                "background task-effort team was skipped"
+                                error = %err,
+                                "background task-effort pass failed"
                             );
                         }
                     }
                 }
-                Err(err) => {
-                    summary.team_errors += 1;
-                    tracing::warn!(
-                        team = %team_name,
-                        error = %err,
-                        "background task-effort pass failed"
-                    );
-                }
-            }
-        }
 
-        Ok(summary)
+                Ok(summary)
+            })?
+            .unwrap_or_default())
     }
 
     /// Put a pending assignment effort into force for every member working in
@@ -991,6 +994,36 @@ mod tests {
             counter.load(Ordering::SeqCst),
             1,
             "backend factory should run only once"
+        );
+    }
+
+    // Regression: ada4cbc6 widened the background effort sweep without taking
+    // the process orchestrator mutex, allowing it to overlap the task-edge
+    // pass's stop-and-resume sequence for the same member.
+    #[test]
+    fn background_effort_pass_skips_while_the_orchestrator_is_owned() {
+        let tmp = TempDir::new().expect("tempdir");
+        let counter = Arc::new(AtomicUsize::new(0));
+        let state = CoordinationState::with_components(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            fake_factory_with_counter(counter.clone()),
+        );
+        let _orchestrator_guard = state.orchestrator.lock().expect("state mutex");
+
+        let summary = state
+            .run_background_effort_retry_pass_with_launch_resolution(
+                &mut CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                &mut |_, _| {},
+            )
+            .expect("busy background pass is skipped");
+
+        assert_eq!(summary, BackgroundEffortRetryPassResult::default());
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            0,
+            "the busy pass must not build an unlocked orchestrator"
         );
     }
 
