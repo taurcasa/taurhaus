@@ -337,6 +337,33 @@
     void loadModelCatalogFromSettings()
   })
 
+  // The backend usage poller re-reads a live account every minute; the ambient
+  // chrome is only true if it keeps step with it.
+  const ACCOUNTS_SYNC_INTERVAL_MS = 60_000
+
+  /**
+   * Bring the ambient account chrome level with the backend.
+   *
+   * Every registry tool is asked, not only the ones that can switch accounts:
+   * a tool with a single implicit account still has usage the footer speaks
+   * for, and a tool nothing has detected yet has no row to speak with. Usage
+   * follows its own detection, because a reading can only be attached to an
+   * account that is already known. The relationship index is re-read only when
+   * something outside this app may have moved it — a fresh start, or a daemon
+   * that just reconnected.
+   */
+  function syncAccountChrome({ force = false, relationships = false } = {}) {
+    for (const tool of registryTools()) {
+      const detected = Promise.resolve(refreshAccounts(tool.id, { force }))
+      if (relationships) void refreshAccountRelationships(tool.id, { force })
+      if (tool.capabilities.usage) {
+        void detected.then(() =>
+          refreshUsage(tool.id, { maxAgeMs: ACCOUNTS_SYNC_INTERVAL_MS })
+        )
+      }
+    }
+  }
+
   // Account detection reads the WSL home through the daemon on Windows, so a
   // daemon that arrives late has to be asked again — until then the chooser
   // has nothing to offer.
@@ -346,10 +373,15 @@
     if (status === lastAccountDetectionDaemonStatus) return
     const reconnected = status === 'connected' && lastAccountDetectionDaemonStatus !== null
     lastAccountDetectionDaemonStatus = status
-    for (const tool of registryTools().filter((entry) => entry.capabilities.accountSelection)) {
-      void refreshAccounts(tool.id, { force: reconnected })
-      void refreshAccountRelationships(tool.id, { force: reconnected })
-    }
+    syncAccountChrome({ force: reconnected, relationships: true })
+  })
+
+  // Nobody hovers the footer to find out whether their week is spent: the
+  // startup pass fills the chrome in, and the interval keeps it honest.
+  $effect(() => {
+    syncAccountChrome({ relationships: true })
+    const timer = setInterval(() => syncAccountChrome(), ACCOUNTS_SYNC_INTERVAL_MS)
+    return () => clearInterval(timer)
   })
 
   $effect(() => {
