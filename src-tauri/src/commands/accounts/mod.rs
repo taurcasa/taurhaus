@@ -326,27 +326,6 @@ pub(crate) fn apply_team_launch_base_resolutions(
     });
 }
 
-/// Resolve only the resume base an already-selected background relaunch needs.
-///
-/// The caller invokes this after coordination has found a member it will
-/// actually relaunch. Idle self-heal/task passes therefore never probe a shell.
-pub(crate) fn apply_team_resume_launch_base_resolution(
-    provider: &ProviderState,
-    commands: &mut crate::models::CliCommandSettings,
-    tool: CliTool,
-) {
-    apply_team_account_selector_dirs(commands, [tool]);
-    let mode = protocol::LaunchMode::Resume;
-    if commands.resolved_bases.contains_key(&(tool, mode)) {
-        return;
-    }
-    let base = crate::session_scanner::launch::base_command(commands, tool, mode).to_string();
-    let (resolved, answered) = resolve_launch_base_with_force_tracked(provider, tool, &base, false);
-    if answered {
-        commands.resolved_bases.insert((tool, mode), resolved);
-    }
-}
-
 pub(crate) fn apply_team_account_selector_dirs(
     commands: &mut crate::models::CliCommandSettings,
     tools: impl IntoIterator<Item = CliTool>,

@@ -80,6 +80,10 @@ fn update_settings_with_span(
         reconcile_agy_hooks_setting(&updated);
         #[cfg(feature = "mesh-bridged-backend")]
         reconcile_grok_hooks_setting(app, &updated);
+        #[cfg(feature = "mesh-bridged-backend")]
+        if let Err(error) = push_launch_settings_to_daemon(app) {
+            tracing::warn!(error = %error, "Failed to push committed launch settings to daemon");
+        }
         enqueue_activity_watch_reconcile(app.clone(), "settings_updated");
         Ok(updated)
     })()
@@ -154,6 +158,63 @@ fn update_settings_impl(db: &DbState, settings: Settings) -> Result<Settings, St
         .sanitize_err()
 }
 
+#[cfg(feature = "mesh-bridged-backend")]
+pub(crate) fn launch_settings_snapshot(
+    db: &DbState,
+) -> Result<crate::daemon::protocol::CoordinationPutLaunchSettingsParams, String> {
+    let conn = db.0.lock().map_err(|_| "db mutex poisoned".to_string())?;
+    let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
+    let version = settings_queries::get_settings_save_version(&conn).sanitize_err()?;
+    Ok(
+        crate::daemon::protocol::CoordinationPutLaunchSettingsParams {
+            version,
+            cli_commands: settings.terminal.cli_commands,
+            tmux_layout: settings.terminal.tmux_layout,
+        },
+    )
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+pub(crate) fn push_launch_settings_to_daemon(app: &tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+
+    let db = app.state::<DbState>();
+    let snapshot = launch_settings_snapshot(&db)?;
+    let providers = app.state::<crate::ProviderState>();
+    let daemon = providers
+        .daemon
+        .as_ref()
+        .ok_or_else(|| "daemon provider is unavailable".to_string())?;
+    if !daemon.is_connected() {
+        return Err("daemon is not connected".to_string());
+    }
+    let request = crate::daemon::protocol::DaemonRequest::new(
+        format!("launch-settings-{}", uuid::Uuid::new_v4().simple()),
+        crate::daemon::protocol::method::COORDINATION_PUT_LAUNCH_SETTINGS,
+        serde_json::to_value(snapshot).map_err(|error| error.to_string())?,
+    );
+    let response = daemon
+        .send_status_request(&request)
+        .map_err(|error| error.to_string())?;
+    if let Some(error) = response.error {
+        return Err(error.message);
+    }
+    let result: crate::daemon::protocol::CoordinationPutLaunchSettingsResult =
+        serde_json::from_value(
+            response
+                .result
+                .ok_or_else(|| "daemon returned no launch-settings result".to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+    if !result.accepted {
+        tracing::debug!(
+            daemon_settings_version = result.version,
+            "Daemon retained a newer launch-settings snapshot"
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,6 +265,23 @@ mod tests {
         let mut command_change = before.clone();
         command_change.terminal.cli_commands.claude.fresh = "claude2 --fresh".to_string();
         assert!(cli_commands_changed(&before, &command_change));
+    }
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    #[test]
+    fn launch_settings_snapshot_uses_the_committed_version_and_raw_launch_fields() {
+        let (db, _tmp) = test_db_state();
+        let mut settings = get_settings_impl(&db).expect("defaults");
+        settings.terminal.cli_commands.claude.resume = "claude2 --resume".to_string();
+        settings.terminal.tmux_layout = "split".to_string();
+        update_settings_impl(&db, settings).expect("commit settings");
+
+        let snapshot = launch_settings_snapshot(&db).expect("launch settings snapshot");
+
+        assert_eq!(snapshot.version, 1);
+        assert_eq!(snapshot.cli_commands.claude.resume, "claude2 --resume");
+        assert_eq!(snapshot.tmux_layout, "split");
+        assert!(snapshot.cli_commands.resolved_bases.is_empty());
     }
 
     #[test]

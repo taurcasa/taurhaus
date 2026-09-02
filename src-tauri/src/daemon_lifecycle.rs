@@ -1290,6 +1290,10 @@ where
 }
 
 fn handle_daemon_recovered(app: &AppHandle) {
+    #[cfg(feature = "mesh-bridged-backend")]
+    if let Err(error) = crate::commands::settings::push_launch_settings_to_daemon(app) {
+        tracing::warn!(error = %error, "Failed to repush launch settings after daemon recovery");
+    }
     respawn_daemon_watches(app);
     {
         let app_for_reseed = app.clone();
@@ -1960,6 +1964,19 @@ mod tests {
     use crate::session_scanner::cli_tool::CliTool;
     use crate::session_scanner::{ActivityAttribution, ActivityConfidence, SessionState};
     use chrono::{Duration, Utc};
+
+    #[test]
+    fn daemon_recovery_repushes_launch_settings_before_background_retries_resume() {
+        let source = include_str!("daemon_lifecycle.rs");
+        let body = source
+            .split("fn handle_daemon_recovered")
+            .nth(1)
+            .expect("recovery handler")
+            .split("struct SessionBridgeRecoveryTracker")
+            .next()
+            .expect("recovery handler body");
+        assert!(body.contains("push_launch_settings_to_daemon"));
+    }
 
     fn test_project(path: &str, last_activity_at: Option<String>) -> models::Project {
         test_project_with("p1", "Project", path, last_activity_at)

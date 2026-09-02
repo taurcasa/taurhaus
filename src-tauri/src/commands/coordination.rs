@@ -64,39 +64,6 @@ use state_sync::*;
 #[cfg(test)]
 use taurhaus_lib::ProviderState;
 
-/// Strict launch settings for the task-arrival effort pass.
-///
-/// Unlike the shared background helper, this boundary reports a roster scan
-/// failure to the caller so the typed effort pass cannot look successful when
-/// it never established the launch inputs its target requires.
-fn task_effort_launch_settings(
-    db: &DbState,
-    teams_dir: &std::path::Path,
-) -> ((CliCommandSettings, String), Option<CoordinationError>) {
-    let (has_managed_codex, discovery_error) =
-        match crate::coordination::compact_hook::any_managed_codex_member(teams_dir) {
-            Ok(has_managed_codex) => (has_managed_codex, None),
-            Err(err) => (true, Some(err)),
-        };
-    (
-        launch_settings_for_managed_codex(db, has_managed_codex),
-        discovery_error,
-    )
-}
-
-fn launch_settings_for_managed_codex(
-    db: &DbState,
-    has_managed_codex: bool,
-) -> (CliCommandSettings, String) {
-    let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(db);
-    crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
-        &mut cli_commands,
-        has_managed_codex,
-        has_managed_codex && crate::coordination::compact_hook::codex_compact_hook_is_installed(),
-    );
-    (cli_commands, tmux_layout)
-}
-
 /// Put a pending assignment effort into force after a project's tasks changed.
 ///
 /// The task scan is the moment an assignment mesh wrote becomes visible to
@@ -111,29 +78,28 @@ fn launch_settings_for_managed_codex(
 pub(crate) fn apply_task_effort_after_task_change(app: &tauri::AppHandle, project_path: &str) {
     use tauri::Manager;
 
-    let state = app.state::<crate::coordination::state::CoordinationState>();
     let db = app.state::<crate::commands::projects::DbState>();
+    let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
     let provider = app.state::<ProviderState>();
-    let ((mut cli_commands, tmux_layout), discovery_error) =
-        task_effort_launch_settings(&db, state.teams_dir());
+    let Some(daemon) = provider.daemon.as_ref() else {
+        tracing::warn!(
+            project_path,
+            "task-arrival effort pass skipped because the daemon is unavailable"
+        );
+        return;
+    };
+    let params = crate::daemon::protocol::CoordinationApplyTaskEffortParams {
+        project_path: project_path.to_string(),
+        cli_commands,
+        tmux_layout,
+    };
 
-    match state.apply_task_effort_for_project_with_launch_resolution(
-        project_path,
-        &mut cli_commands,
-        &tmux_layout,
-        &mut |tool, commands| {
-            crate::commands::accounts::apply_team_resume_launch_base_resolution(
-                provider.inner(),
-                commands,
-                tool,
-            );
-        },
-    ) {
-        Ok(outcome) if !outcome.failed.is_empty() || !outcome.skipped_teams.is_empty() => {
+    match apply_task_effort_through_daemon(daemon, params) {
+        Ok(report) if !report.failed.is_empty() || !report.skipped_teams.is_empty() => {
             tracing::warn!(
                 project_path = %project_path,
-                members_failed = outcome.failed.len(),
-                teams_skipped = outcome.skipped_teams.len(),
+                members_failed = report.failed.len(),
+                teams_skipped = report.skipped_teams.len(),
                 "task-arrival effort pass completed with errors"
             );
         }
@@ -145,13 +111,6 @@ pub(crate) fn apply_task_effort_after_task_change(app: &tauri::AppHandle, projec
                 "task-arrival effort pass failed"
             );
         }
-    }
-    if let Some(err) = discovery_error {
-        tracing::warn!(
-            project_path = %project_path,
-            error = %err,
-            "task-arrival effort pass used conservative settings after managed-Codex discovery failed"
-        );
     }
 }
 
@@ -834,6 +793,59 @@ fn remove_member_through_daemon_with(
                 return Ok(report);
             }
             crate::daemon::protocol::CoordinationRemoveMemberOutcome::Failed { error } => {
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn apply_task_effort_through_daemon(
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    params: crate::daemon::protocol::CoordinationApplyTaskEffortParams,
+) -> Result<crate::daemon::protocol::CoordinationApplyTaskEffortReport, String> {
+    apply_task_effort_through_daemon_with(
+        params,
+        COORDINATION_ROSTER_DAEMON_POLL_INTERVAL,
+        |method, params| call_coordination_daemon(daemon, method, params),
+    )
+}
+
+fn apply_task_effort_through_daemon_with(
+    params: crate::daemon::protocol::CoordinationApplyTaskEffortParams,
+    poll_interval: std::time::Duration,
+    mut call: impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
+) -> Result<crate::daemon::protocol::CoordinationApplyTaskEffortReport, String> {
+    let accepted: crate::daemon::protocol::CoordinationApplyTaskEffortAccepted =
+        serde_json::from_value(
+            call(
+                crate::daemon::protocol::method::COORDINATION_APPLY_TASK_EFFORT,
+                serde_json::to_value(&params).map_err(|error| error.to_string())?,
+            )
+            .map_err(CoordinationDaemonCallError::into_message)?,
+        )
+        .map_err(|error| error.to_string())?;
+    let mut first_poll_error_at = None;
+    loop {
+        let status_value = poll_coordination_status(
+            &mut call,
+            crate::daemon::protocol::method::COORDINATION_APPLY_TASK_EFFORT_STATUS,
+            &accepted.run_id,
+            poll_interval,
+            &mut first_poll_error_at,
+        )?;
+        let status: crate::daemon::protocol::CoordinationApplyTaskEffortStatus =
+            serde_json::from_value(status_value).map_err(|error| error.to_string())?;
+        match status.outcome {
+            crate::daemon::protocol::CoordinationApplyTaskEffortOutcome::Running => {
+                std::thread::sleep(poll_interval);
+            }
+            crate::daemon::protocol::CoordinationApplyTaskEffortOutcome::Completed { report } => {
+                return Ok(report);
+            }
+            crate::daemon::protocol::CoordinationApplyTaskEffortOutcome::Failed { error } => {
                 return Err(error);
             }
         }

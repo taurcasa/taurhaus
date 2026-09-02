@@ -1014,32 +1014,72 @@ fn roster_mutations_use_a_snappy_daemon_poll_interval() {
 }
 
 #[test]
+fn task_effort_client_carries_fresh_settings_and_polls_the_shared_registry() {
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.claude.resume = "claude2 --resume".to_string();
+    let params = crate::daemon::protocol::CoordinationApplyTaskEffortParams {
+        project_path: "/tmp/task-project".to_string(),
+        cli_commands: commands,
+        tmux_layout: "split".to_string(),
+    };
+    let mut calls = Vec::new();
+
+    let report = apply_task_effort_through_daemon_with(
+        params,
+        std::time::Duration::ZERO,
+        |method, params| {
+            calls.push((method.to_string(), params.clone()));
+            match method {
+                crate::daemon::protocol::method::COORDINATION_APPLY_TASK_EFFORT => Ok(
+                    serde_json::json!({ "run_id": "effort_test" }),
+                ),
+                crate::daemon::protocol::method::COORDINATION_APPLY_TASK_EFFORT_STATUS => Ok(
+                    serde_json::json!({
+                        "run_id": "effort_test",
+                        "outcome": {
+                            "status": "completed",
+                            "report": {
+                                "switched": ["builder"],
+                                "failed": [],
+                                "skipped_teams": []
+                            }
+                        }
+                    }),
+                ),
+                _ => panic!("unexpected method: {method}"),
+            }
+        },
+    )
+    .expect("task-effort intent completes");
+
+    assert_eq!(report.switched, vec!["builder"]);
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].1["project_path"], "/tmp/task-project");
+    assert_eq!(calls[0].1["tmux_layout"], "split");
+    assert_eq!(
+        calls[0].1["cli_commands"]["claude"]["resume"],
+        "claude2 --resume"
+    );
+}
+
+#[test]
+fn app_process_background_pass_owners_are_removed() {
+    let coordination = include_str!("../coordination.rs");
+    let orchestration = include_str!("../../startup/orchestration.rs");
+    let telemetry = include_str!("../../startup/telemetry.rs");
+
+    assert!(!coordination.contains("run_background_self_heal_pass"));
+    assert!(!coordination.contains(".apply_task_effort_for_project_with_launch_resolution("));
+    assert!(!orchestration.contains("spawn_coordination_self_heal_monitor"));
+    assert!(!telemetry.contains("startup.self_heal."));
+}
+
+#[test]
 fn codex_hook_reconcile_failure_is_degraded_for_managed_launches() {
     // Regression: 6fe0aa3 made Codex hook filesystem errors abort initialize,
     // add, and resume before the otherwise valid coordination pipeline ran.
     let source = include_str!("../terminal_settings.rs");
     assert!(source.contains("compaction.codex_hook.degraded"));
-}
-
-// Regression: 135c6f54 made managed-Codex discovery failure abort the entire
-// task-arrival pass. The caller must receive both conservative launch settings
-// and the error so readable teams are still processed without hiding it.
-#[test]
-fn task_effort_launch_settings_returns_usable_settings_and_discovery_failure() {
-    let teams = TempDir::new().expect("teams dir");
-    let broken_team = teams.path().join("broken-team");
-    std::fs::create_dir_all(&broken_team).expect("create broken team");
-    std::fs::write(broken_team.join("config.json"), b"{not valid json")
-        .expect("write broken config");
-    let (db, _db_file) = test_db_state();
-
-    let ((_cli_commands, tmux_layout), error) = task_effort_launch_settings(&db, teams.path());
-
-    assert_eq!(tmux_layout, "new_window");
-    assert!(error
-        .expect("managed-Codex discovery failure must reach the caller")
-        .to_string()
-        .contains("failed to parse"));
 }
 
 #[test]

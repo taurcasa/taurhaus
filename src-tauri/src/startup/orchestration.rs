@@ -21,6 +21,14 @@ pub(super) fn run_startup_orchestration(
         bootstrap_complete,
     );
     #[cfg(feature = "mesh-bridged-backend")]
+    if context.daemon_connected_at_startup {
+        if let Err(error) =
+            crate::commands::settings::push_launch_settings_to_daemon(app.handle())
+        {
+            tracing::warn!(error = %error, "Failed to seed daemon launch settings at startup");
+        }
+    }
+    #[cfg(feature = "mesh-bridged-backend")]
     if let Err(error) = reconcile_startup_codex_compaction(app.handle()) {
         tracing::warn!(error = %error, "startup Codex compaction reconciliation failed");
     }
@@ -111,4 +119,20 @@ fn reconcile_startup_grok_hooks(app: &tauri::AppHandle) -> Result<(), String> {
 
 pub(super) fn daemon_watch_bootstrap_enabled(context: &SetupContext) -> bool {
     context.daemon_connected_at_startup && context.daemon_addr.is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn initial_connected_daemon_receives_launch_settings() {
+        let source = include_str!("orchestration.rs");
+        let body = source
+            .split("pub(super) fn run_startup_orchestration(")
+            .nth(1)
+            .expect("startup orchestration")
+            .split("fn reconcile_startup_codex_compaction")
+            .next()
+            .expect("startup orchestration body");
+        assert!(body.contains("push_launch_settings_to_daemon"));
+    }
 }

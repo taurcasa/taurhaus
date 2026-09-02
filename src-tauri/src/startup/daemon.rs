@@ -144,6 +144,12 @@ pub(crate) fn spawn_background_bootstrap(
 
                 if connected {
                     tracing::info!("Background bootstrap: daemon connected");
+                    #[cfg(feature = "mesh-bridged-backend")]
+                    if let Err(error) =
+                        crate::commands::settings::push_launch_settings_to_daemon(&app)
+                    {
+                        tracing::warn!(error = %error, "Failed to seed daemon launch settings after bootstrap");
+                    }
                     crate::startup::watchers::refresh_auxiliary_watches(
                         &app,
                         true,
