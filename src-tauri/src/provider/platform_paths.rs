@@ -26,6 +26,26 @@ pub(crate) const DAEMON_TOKEN_FILENAME: &str = "daemon.token";
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PlatformPaths;
 
+#[derive(Debug)]
+pub struct OneShotSinkPaths {
+    root: PathBuf,
+}
+
+impl OneShotSinkPaths {
+    pub fn log_path(&self) -> PathBuf {
+        self.root.join(JSONL_LOG_FILE_NAME)
+    }
+
+    pub fn codex_notify_path(&self) -> PathBuf {
+        self.root
+            .join(crate::daemon::codex_notify::CODEX_NOTIFY_FILENAME)
+    }
+
+    pub fn agy_hooks_path(&self) -> PathBuf {
+        self.root.join(crate::daemon::agy_hooks::AGY_HOOKS_FILENAME)
+    }
+}
+
 impl PlatformPaths {
     /// Active app data directory for the current run.
     pub fn app_data_root() -> PathBuf {
@@ -55,6 +75,18 @@ impl PlatformPaths {
     /// Native Antigravity hook activity sink.
     pub fn agy_hooks_path() -> PathBuf {
         Self::app_data_root().join(crate::daemon::agy_hooks::AGY_HOOKS_FILENAME)
+    }
+
+    /// Writable sink paths for short-lived WSL hook processes.
+    ///
+    /// These modes inherit the Windows app's environment. Refuse an override
+    /// whose drive is not mounted instead of letting Linux interpret the raw
+    /// Windows value as a relative directory under the hook's working tree.
+    pub fn one_shot_sink_paths() -> Result<OneShotSinkPaths, String> {
+        validate_linux_data_dir_override()?;
+        Ok(OneShotSinkPaths {
+            root: Self::app_data_root(),
+        })
     }
 
     /// Claude home directory (`~/.claude`).
@@ -251,7 +283,45 @@ fn env_path_override(env_key: &str) -> Option<PathBuf> {
     if path.is_empty() {
         return None;
     }
+
+    #[cfg(target_os = "linux")]
+    if let Some(linux_path) = crate::provider::path::to_linux(&path.to_string_lossy()) {
+        return Some(PathBuf::from(linux_path));
+    }
+
     Some(PathBuf::from(path))
+}
+
+fn validate_linux_data_dir_override() -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let Some(raw) = std::env::var_os(DATA_DIR_OVERRIDE_ENV) else {
+            return Ok(());
+        };
+        let raw = raw.to_string_lossy();
+
+        if let Some(linux_path) = crate::provider::path::windows_drive_to_linux(&raw) {
+            let linux_path = Path::new(&linux_path);
+            let mount_root = linux_path
+                .ancestors()
+                .find(|ancestor| ancestor.parent() == Some(Path::new("/mnt")))
+                .ok_or_else(|| {
+                    format!("converted data directory has no WSL mount: {linux_path:?}")
+                })?;
+            if !mount_root.is_dir() {
+                return Err(format!(
+                    "Windows data directory mount is unavailable: {}",
+                    mount_root.display()
+                ));
+            }
+        } else if (raw.starts_with(r"\\") || raw.starts_with("//"))
+            && crate::provider::path::to_linux(&raw).is_none()
+        {
+            return Err("Windows UNC data directory is not accessible from WSL".to_string());
+        }
+    }
+
+    Ok(())
 }
 
 fn home_dir_or_temp() -> PathBuf {
@@ -316,6 +386,49 @@ mod tests {
 
         std::env::remove_var(DATA_DIR_OVERRIDE_ENV);
         assert_eq!(resolved, temp.path());
+    }
+
+    // Regression: commit 61e9a247 added the Codex notify sink under the raw
+    // app-data override, so a Windows C-drive value inherited by its WSL hook
+    // became a literal relative directory under the hook's working directory.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn windows_data_dir_override_resolves_to_wsl_before_sink_paths_are_joined() {
+        let _guard = acquire_env_test_guard();
+        let cwd = TempDir::new().expect("cwd");
+        let windows_root = Path::new(r"C:\Users\field-incident\AppData\Local\taurhaus");
+        let _env = EnvRestore::apply(&[(DATA_DIR_OVERRIDE_ENV, Some(windows_root))]);
+
+        let resolved = PlatformPaths::app_data_root();
+        let notify_path = PlatformPaths::codex_notify_path();
+
+        assert_eq!(
+            resolved,
+            Path::new("/mnt/c/Users/field-incident/AppData/Local/taurhaus")
+        );
+        assert_eq!(notify_path, resolved.join("codex-notify.jsonl"));
+        assert!(
+            !cwd.path().join(windows_root).exists(),
+            "resolution must never create a literal C-drive directory"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn one_shot_sink_paths_reject_an_unavailable_windows_drive_mount() {
+        let _guard = acquire_env_test_guard();
+        let cwd = TempDir::new().expect("cwd");
+        let windows_root = Path::new(r"Z:\taurhaus-missing-mount\data");
+        let _env = EnvRestore::apply(&[(DATA_DIR_OVERRIDE_ENV, Some(windows_root))]);
+
+        let error = PlatformPaths::one_shot_sink_paths()
+            .expect_err("an unavailable Windows drive mount must fail soft");
+
+        assert!(error.contains("/mnt/z"), "unexpected error: {error}");
+        assert!(
+            !cwd.path().join(windows_root).exists(),
+            "validation must not create a literal Windows drive directory"
+        );
     }
 
     #[test]
