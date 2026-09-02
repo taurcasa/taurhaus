@@ -42,6 +42,9 @@ pub(crate) struct BackgroundEffortRetryPassResult {
     pub teams_scanned: usize,
     pub team_errors: usize,
     pub members_effort_resumed: usize,
+    /// The whole cycle was skipped because another operation owned the
+    /// orchestrator. Zero counters otherwise read as "no teams".
+    pub skipped_busy: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -359,7 +362,12 @@ impl CoordinationState {
 
                 Ok(summary)
             })?
-            .unwrap_or_default())
+            // A cycle that never ran is not a cycle that found nothing: the
+            // caller reports the skip rather than a zeroed summary.
+            .unwrap_or(BackgroundEffortRetryPassResult {
+                skipped_busy: true,
+                ..BackgroundEffortRetryPassResult::default()
+            }))
     }
 
     /// Put a pending assignment effort into force for every member working in
@@ -1019,7 +1027,14 @@ mod tests {
             )
             .expect("busy background pass is skipped");
 
-        assert_eq!(summary, BackgroundEffortRetryPassResult::default());
+        assert_eq!(
+            summary,
+            BackgroundEffortRetryPassResult {
+                skipped_busy: true,
+                ..BackgroundEffortRetryPassResult::default()
+            },
+            "a contended cycle does no work and says so"
+        );
         assert_eq!(
             counter.load(Ordering::SeqCst),
             0,
