@@ -289,6 +289,7 @@ fn schedule_project_task_refresh(
                     &scan_result,
                     generation_state.inner(),
                     scan_generation,
+                    providers.daemon.as_ref(),
                 );
                 let after = crate::db::task_queries::get_tasks_for_project(&conn, &project_key)
                     .sanitize_err()?;

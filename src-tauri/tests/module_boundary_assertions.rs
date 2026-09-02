@@ -749,6 +749,229 @@ fn mutable_scan_caches_are_not_global_statics() {
 }
 
 #[test]
+// Regression: d593f81b declared the protocol-22 writer boundary closed while
+// the app-side Command Center still entered the resume pipeline through an
+// allowlisted wrapper and committed team runtime/config state in-process.
+fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
+    // Each exception is a WSL-side owner or shared implementation reached only
+    // from one. Keeping this list explicit makes every new caller a reviewable
+    // architecture change.
+    const ALLOWED_WRITERS: &[(&str, &str)] = &[
+        (
+            "src/coordination/backend/bridged.rs",
+            "daemon-hosted mesh delivery appends inbox records",
+        ),
+        (
+            "src/coordination/backend/claude.rs",
+            "daemon-hosted Claude delivery appends inbox records",
+        ),
+        (
+            "src/coordination/compact_hook.rs",
+            "WSL-native compact-hook process publishes reinjection state",
+        ),
+        (
+            "src/coordination/operational_context.rs",
+            "shared newer-wins publisher is invoked by daemon services",
+        ),
+        (
+            "src/coordination/orchestrator/delivery.rs",
+            "daemon-hosted delivery records last-seen and daemon pid after send",
+        ),
+        (
+            "src/coordination/orchestrator/lifecycle.rs",
+            "daemon-hosted roster lifecycle owns config/runtime commits",
+        ),
+        (
+            "src/coordination/orchestrator/liveness.rs",
+            "daemon-hosted liveness pass owns runtime reconciliation",
+        ),
+        (
+            "src/coordination/pipelines/initialize.rs",
+            "daemon-hosted initialize pipeline creates team state",
+        ),
+        (
+            "src/coordination/pipelines/effort.rs",
+            "daemon-hosted effort pipeline records applied effort transitions",
+        ),
+        (
+            "src/coordination/pipelines/lifecycle.rs",
+            "daemon-hosted member lifecycle owns config/runtime commits",
+        ),
+        (
+            "src/coordination/pipelines/members.rs",
+            "daemon-hosted member pipeline owns runtime CAS commits",
+        ),
+        (
+            "src/coordination/reinjection.rs",
+            "WSL-native compact-hook delivery may append mesh inbox state",
+        ),
+        (
+            "src/coordination/runtime/mod.rs",
+            "shared daemon runtime quarantine helper clears foreign bindings",
+        ),
+        (
+            "src/coordination/stores/active_project.rs",
+            "active-project store implements its own locked write surface",
+        ),
+        (
+            "src/coordination/stores/compaction.rs",
+            "compaction store implements the hook-process write surface (WSL-side, plus the native-Windows compact-hook wrapper)",
+        ),
+        (
+            "src/coordination/stores/mesh_task.rs",
+            "mesh-task store implements daemon deadline CAS writes",
+        ),
+        (
+            "src/coordination/stores/operational.rs",
+            "operational store implements its own locked write surface",
+        ),
+        (
+            "src/coordination/stores/runtime.rs",
+            "runtime store prunes stale WSL-native compaction state during locked saves",
+        ),
+        (
+            "src/coordination/task_deadline_pass.rs",
+            "daemon deadline scheduler owns task and snapshot CAS writes",
+        ),
+        (
+            "src/daemon/initialize_runs.rs",
+            "daemon initialization finalizer publishes snapshots and mappings",
+        ),
+        (
+            "src/daemon/member_runs.rs",
+            "daemon member-run finalizer publishes snapshots and mappings",
+        ),
+        (
+            "src/daemon/roster_runs.rs",
+            "daemon roster service owns active-project cleanup",
+        ),
+        (
+            "src/daemon/team_runs.rs",
+            "daemon team service refreshes active-project mappings",
+        ),
+        (
+            "src/daemon/state_writes.rs",
+            "daemon service hosts the final synchronous writer intents",
+        ),
+        (
+            "src/daemon/session_activity.rs",
+            "daemon hub exports per-member activity snapshots each scan cycle",
+        ),
+        (
+            "src/coordination/activity_export.rs",
+            "daemon-hosted store module that defines and applies the activity-export writers",
+        ),
+        (
+            "src/coordination/orchestrator/teardown.rs",
+            "daemon-hosted teardown quarantines foreign panes during member teardown",
+        ),
+        (
+            "src/commands/coordination/state_sync.rs",
+            "cfg(test)-only command fixture (the cfg gate lives on its `mod` declaration in coordination.rs, not in this file) exercises daemon-owned active-project sync",
+        ),
+    ];
+    // KNOWN LIMIT: this is an enumerative scan over write-API spellings, so it
+    // cannot be complete against wrapper creation — an allowlisted file that
+    // exports a new pub wrapper around a store write mints a spelling this
+    // list does not know (the B3 review demonstrated the class twice). The
+    // structural closure is the TeamStateWriter capability-token follow-up
+    // (a witness type constructible only in daemon/hook entry points, taken
+    // by every store write signature); until it lands, every new wrapper
+    // around a teams-dir write MUST be added here.
+    let markers = [
+        "quarantine_foreign_member(",
+        "export_activity_snapshots_for_sessions(",
+        "publish_initialize_snapshot(",
+        "apply_delivery_context(",
+        "active_project::sync_team_from_config(",
+        "ActiveProjectTeamStore::sync_team(",
+        "ActiveProjectTeamStore::clear_team(",
+        "ActiveProjectTeamStore::clear_project(",
+        "ActiveProjectTeamStore::set_active_team(",
+        "MemberCompactionStore::save(",
+        "MemberCompactionStore::delete(",
+        "MemberCompactionStore::delete_without_lock(",
+        "prune_state_if_session_mismatch(",
+        "record_delivery_at(",
+        "TeamConfigStore::save(",
+        "TeamConfigStore::clear_member_pane_binding(",
+        "TeamConfigStore::delete(",
+        "MeshInboxStore::append(",
+        "commit_status_if_unchanged(",
+        "OperationalContextSnapshotStore::save(",
+        "OperationalContextSnapshotStore::save_locked(",
+        "OperationalContextSnapshotStore::commit_if_unchanged(",
+        "write_snapshot(",
+        "MemberRuntimeStore::save(",
+        "MemberRuntimeStore::save_locked(",
+        "MemberRuntimeStore::save_preserving_applied_effort(",
+        "MemberRuntimeStore::save_preserving_applied_effort_locked(",
+        "MemberRuntimeStore::commit_if_unchanged(",
+        "MemberRuntimeStore::delete(",
+        "MemberRuntimeStore::update(",
+        "MemberRuntimeStore::cleanup_stale(",
+        "reconcile_team_presence_for_live_status_with_runtime_sessions(",
+        "resume_member_with_cli_commands_and_layout(",
+        "commit_member_runtime(",
+        "publish_member_operation_snapshot(",
+    ];
+
+    let mut files = Vec::new();
+    collect_rs_files(&crate_root().join("src"), &mut files);
+    let mut violations = Vec::new();
+    let mut used_allowlist_entries = BTreeSet::new();
+    for path in files {
+        if path.file_name().and_then(|name| name.to_str()) == Some("tests.rs") {
+            continue;
+        }
+        let relative = path
+            .strip_prefix(crate_root())
+            .expect("source lives below crate root")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let source = fs::read_to_string(&path).expect("Rust source should be readable");
+        let runtime = source_without_test_only_items(&source);
+        let used = markers
+            .iter()
+            .filter(|marker| runtime.contains(**marker))
+            .copied()
+            .collect::<Vec<_>>();
+        if used.is_empty() {
+            continue;
+        }
+        let allowed = ALLOWED_WRITERS.iter().any(|(allowed, justification)| {
+            assert!(
+                !justification.trim().is_empty(),
+                "writer exception needs a justification"
+            );
+            relative == *allowed
+        });
+        if !allowed {
+            violations.push(format!("{relative}: {used:?}"));
+        } else {
+            used_allowlist_entries.insert(relative);
+        }
+    }
+
+    let unused_allowlist_entries = ALLOWED_WRITERS
+        .iter()
+        .map(|(path, _)| *path)
+        .filter(|path| !used_allowlist_entries.contains(*path))
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "team-state writer escaped the daemon/native-hook boundary:\n{}",
+        violations.join("\n")
+    );
+    assert!(
+        unused_allowlist_entries.is_empty(),
+        "team-state writer allowlist contains stale exceptions:\n{}",
+        unused_allowlist_entries.join("\n")
+    );
+}
+
+#[test]
 fn the_tmux_focus_path_contains_no_hook_code() {
     // Regression: commits a53ad31 (hook removal added) and f9c1e89 (focus path
     // None => remove every taurhaus hook) let an env-less daemon launch strip

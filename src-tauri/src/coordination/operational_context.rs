@@ -12,6 +12,8 @@ use crate::coordination::stores::{
 };
 use crate::coordination::task_effort::AssignmentEffort;
 
+type PreparedSnapshot = (OperationalContextSnapshot, Option<DateTime<Utc>>);
+
 #[cfg(test)]
 pub fn sync_team_snapshots(
     teams_dir: &Path,
@@ -101,14 +103,14 @@ pub(crate) fn publish_initialize_snapshot(
     teams_dir: &Path,
     snapshot: &OperationalContextSnapshot,
 ) -> Result<(), CoordinationError> {
-    publish_snapshot(teams_dir, snapshot, None)
+    publish_snapshot(teams_dir, snapshot, None).map(|_| ())
 }
 
 pub(crate) fn publish_member_operation_snapshot(
     teams_dir: &Path,
     snapshot: &OperationalContextSnapshot,
     task_state_changed_at: Option<DateTime<Utc>>,
-) -> Result<(), CoordinationError> {
+) -> Result<bool, CoordinationError> {
     publish_snapshot(teams_dir, snapshot, task_state_changed_at)
 }
 
@@ -116,7 +118,7 @@ fn publish_snapshot(
     teams_dir: &Path,
     snapshot: &OperationalContextSnapshot,
     task_state_changed_at: Option<DateTime<Utc>>,
-) -> Result<(), CoordinationError> {
+) -> Result<bool, CoordinationError> {
     let guard =
         crate::coordination::stores::lock::acquire_team_lock(teams_dir, &snapshot.team_name)?;
     let current = OperationalContextSnapshotStore::load(
@@ -128,7 +130,7 @@ fn publish_snapshot(
         .as_ref()
         .is_some_and(|current| current.updated_at >= snapshot.updated_at)
     {
-        return Ok(());
+        return Ok(false);
     }
 
     let mut candidate = snapshot.clone();
@@ -151,9 +153,11 @@ fn publish_snapshot(
         }
     }
 
-    OperationalContextSnapshotStore::save_locked(&guard, teams_dir, &candidate)
+    OperationalContextSnapshotStore::save_locked(&guard, teams_dir, &candidate)?;
+    Ok(true)
 }
 
+#[cfg(test)]
 pub fn sync_member_snapshot(
     teams_dir: &Path,
     conn: &Connection,
@@ -182,12 +186,17 @@ pub fn sync_member_snapshot(
     save_snapshot_if_changed(teams_dir, snapshot, task_state_changed_at)
 }
 
-pub fn sync_project_task_snapshots(
+/// Prepare changed app-DB-derived snapshots for daemon publication.
+///
+/// Team config and current snapshots remain legal app-side reads. The returned
+/// values are the complete write intent; this function never mutates team state.
+pub(crate) fn prepare_project_task_snapshots(
     teams_dir: &Path,
     conn: &Connection,
     project_path: &str,
-) -> Result<(), CoordinationError> {
+) -> Result<Vec<PreparedSnapshot>, CoordinationError> {
     let tasks = load_project_tasks(conn, project_path)?;
+    let mut prepared = Vec::new();
     for team_name in TeamConfigStore::list(teams_dir)? {
         let config = match TeamConfigStore::load(teams_dir, &team_name) {
             Ok(config) => config,
@@ -219,10 +228,12 @@ pub fn sync_project_task_snapshots(
                 effort,
                 task_state_changed_at,
             );
-            save_snapshot_if_changed(teams_dir, snapshot, task_state_changed_at)?;
+            if !snapshot_is_unchanged(existing.as_ref(), &snapshot) {
+                prepared.push((snapshot, task_state_changed_at));
+            }
         }
     }
-    Ok(())
+    Ok(prepared)
 }
 
 pub fn apply_delivery_context(
@@ -505,15 +516,22 @@ fn save_snapshot_if_changed(
         task_state_changed_at,
     );
 
-    if let Some(existing_snapshot) = current.as_ref() {
-        let mut candidate = snapshot.clone();
-        candidate.updated_at = existing_snapshot.updated_at;
-        if candidate == *existing_snapshot {
-            return Ok(());
-        }
+    if snapshot_is_unchanged(current.as_ref(), &snapshot) {
+        return Ok(());
     }
 
     OperationalContextSnapshotStore::save_locked(&guard, teams_dir, &snapshot)
+}
+
+fn snapshot_is_unchanged(
+    existing: Option<&OperationalContextSnapshot>,
+    candidate: &OperationalContextSnapshot,
+) -> bool {
+    existing.is_some_and(|existing| {
+        let mut candidate = candidate.clone();
+        candidate.updated_at = existing.updated_at;
+        candidate == *existing
+    })
 }
 
 /// The task statuses an assignment is still open in. This is the one place
