@@ -588,13 +588,9 @@ fn prepare_account_directory_impl(tool: CliTool, label: &str) -> Result<String, 
         let marker =
             crate::session_scanner::launch::shell_escape(&accounts::pending_account_marker(label));
         let file = accounts::PENDING_ACCOUNT_FILENAME;
+        let script = format!("mkdir -p -- {dir} && printf %s {marker} > {dir}/{file}");
         let mut command = crate::daemon::launcher::wsl_command();
-        command.args([
-            "-e",
-            "sh",
-            "-c",
-            &format!("mkdir -p -- {dir} && printf %s {marker} > {dir}/{file}"),
-        ]);
+        command.args(["-e", "sh", "-c", script.as_str()]);
         let output = crate::process_utils::run_command_with_timeout(
             &mut command,
             ACCOUNT_DIRECTORY_CREATE_TIMEOUT,
