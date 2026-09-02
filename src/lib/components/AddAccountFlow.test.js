@@ -39,6 +39,24 @@ describe('AddAccountFlow', () => {
     )
   })
 
+  // Regression: 186f19a2 promised a resumable signed-out row for an abandoned
+  // run, but a prepared directory with no credentials in it is invisible to
+  // detection, so no such row exists — only re-opening the flow resumes it.
+  it('names the recovery an abandoned run actually has', async () => {
+    prepareAccountDirectory.mockResolvedValue('/home/user/.codex-work')
+    launchAccountLogin.mockResolvedValue({ tmux_pane: '%3' })
+    render(AddAccountFlow, { props: { open: true, tool: 'codex', projectId: 'p1' } })
+
+    await fireEvent.input(screen.getByLabelText('Account name'), { target: { value: 'work' } })
+    await fireEvent.click(screen.getByText('Open sign-in terminal'))
+
+    const waiting = await screen.findByTestId('account-login-waiting')
+    expect(waiting).toHaveTextContent(
+      'You can close this panel; re-open Add account with the same name to resume'
+    )
+    expect(waiting).not.toHaveTextContent('a signed-out row remains resumable')
+  })
+
   it('resumes sign-in for an existing signed-out row without recreating its directory', async () => {
     launchAccountLogin.mockResolvedValue({ tmux_pane: '%5' })
     render(AddAccountFlow, {

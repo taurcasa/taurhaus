@@ -145,7 +145,7 @@
       >Open sign-in terminal</button>
       {#if waiting}
         <p class="mt-3 text-[11px] text-amber-500" data-testid="account-login-waiting">
-          Waiting for {toolLabel} to finish sign-in… You can close this panel; a signed-out row remains resumable.
+          Waiting for {toolLabel} to finish sign-in… You can close this panel; re-open Add account with the same name to resume — the directory is already prepared.
         </p>
       {/if}
       {#if error}
