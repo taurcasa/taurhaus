@@ -23,8 +23,8 @@ use crate::session_scanner::accounts::{configured_default_dir, to_launch_namespa
 use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::session_scanner::control::validate_command_override;
 use crate::session_scanner::launch::{
-    base_command, redact_command_for_logging, shell_escape, EffortIgnoreReason, LaunchCapability,
-    LaunchNote, LaunchSpec, ModelSpec, TeamContext,
+    base_command, redact_command_for_logging, shell_escape, LaunchNote, LaunchSpec, ModelSpec,
+    TeamContext,
 };
 use taurhaus_lib::session_scanner::launch_base::LaunchAccountResult;
 
@@ -755,16 +755,12 @@ pub(super) fn render_team_launch(
         .filter(|level| !level.is_empty())
         .map(str::to_ascii_lowercase);
     let effort_rejected = rendered.notes.iter().any(|note| {
-        matches!(
-            note,
-            LaunchNote::EffortIgnored {
-                reason: EffortIgnoreReason::Invalid,
-                ..
-            } | LaunchNote::CapabilityMissing {
-                capability: LaunchCapability::Effort,
-                ..
-            }
-        )
+        note.event_name() == "launch.effort.invalid"
+            || matches!(
+                note,
+                LaunchNote::CapabilityMissing { capability, .. }
+                    if capability.as_str() == "effort"
+            )
     });
     let applied_effort =
         if crate::coordination::task_effort::base_pins_effort(cli_tool, base.as_ref()) {
