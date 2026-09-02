@@ -56,9 +56,12 @@ run_unit_mode() {
 run_heavy_mode() {
   log "MODE heavy (known daemon/network/watcher suites)"
 
-  run_group "daemon-server" cargo test --lib daemon::server::tests:: -- --test-threads=1
+  # daemon-server and provider-daemon-client run parallel here to match the
+  # lane (the listener class fix retired their pins; a boundary test forbids
+  # re-pinning them in the justfile).
+  run_group "daemon-server" cargo test --lib daemon::server::tests::
   run_group "daemon-event-listener" cargo test --lib daemon::event_listener::tests:: -- --test-threads=1
-  run_group "provider-daemon-client" cargo test --lib provider::daemon_client::tests:: -- --test-threads=1
+  run_group "provider-daemon-client" cargo test --lib provider::daemon_client::tests::
   run_group "daemon-launcher" cargo test --lib daemon::launcher::tests:: -- --test-threads=1
   run_group "fs-watcher-start-stop" cargo test --lib fs::watcher::tests::watcher_starts_and_stops -- --test-threads=1
   run_group "fs-watcher-unwatch-all" cargo test --lib fs::watcher::tests::unwatch_all_clears_everything -- --test-threads=1

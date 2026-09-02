@@ -868,9 +868,12 @@ mod tests {
     #[test]
     fn slow_legacy_cleanup_never_delays_the_listener() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        // Bound listener retained across the handoff (see the idle-timeout
+        // test's comment); the timing closure rides run_on_bound_listener's
+        // cleanup argument, which is the same path production takes after
+        // run() binds.
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        drop(listener);
 
         let shutdown = Arc::new(AtomicBool::new(false));
         let installed = Arc::new(AtomicBool::new(false));
@@ -883,14 +886,16 @@ mod tests {
                 idle_timeout_secs: None,
                 auth_token: None,
             };
-            run_for_test_with_legacy_cleanup(
+            run_on_bound_listener(
                 &config,
+                listener,
                 server_shutdown,
                 Arc::new(LocalProvider),
                 move || {
                     std::thread::sleep(Duration::from_secs(3));
                     install_flag.store(true, Ordering::Relaxed);
                 },
+                false,
             )
         });
 
@@ -950,6 +955,9 @@ mod tests {
     // the scheduler in isolation. Removing `run`'s production registration
     // would therefore leave both the app and daemon with deadline work disabled.
     #[test]
+    // This test deliberately exercises production `run`, which binds its own
+    // listener — so the reserve-and-release window below is unavoidable here;
+    // the heavy guard is what covers it against other guarded fixtures.
     fn production_daemon_run_registers_and_fires_background_schedulers() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let _env_guard = crate::test_support::acquire_env_test_guard();
@@ -1446,9 +1454,11 @@ mod tests {
         // causing occasional ConnectionRefused before the listener was ready.
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
+        // Keep the bound listener across the handoff: releasing the port and
+        // rebinding raced concurrent ephemeral binds now that the suite runs
+        // parallel (the listener-flake class this suite's fix retired).
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        drop(listener);
 
         let config = DaemonConfig {
             port,
@@ -1458,7 +1468,14 @@ mod tests {
         };
         let shutdown_clone = shutdown.clone();
         let handle = std::thread::spawn(move || {
-            run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
+            run_on_bound_listener(
+                &config,
+                listener,
+                shutdown_clone,
+                Arc::new(LocalProvider),
+                || {},
+                false,
+            )
         });
 
         assert!(
