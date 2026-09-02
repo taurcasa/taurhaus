@@ -49,6 +49,7 @@
   const listTone = $derived(dark ? 'border-white/[0.07]' : 'border-zinc-200')
 
   let expandedIds = $state(new Set())
+  const autoExpandedIds = new Set()
   let addTool = $state(null)
   let signInAccount = $state(null)
 
@@ -75,8 +76,10 @@
     let changed = false
     for (const descriptor of registry) {
       for (const account of stateFor(descriptor.id).accounts ?? []) {
-        if (unhealthy(account) && !next.has(`${descriptor.id}:${account.id}`)) {
-          next.add(`${descriptor.id}:${account.id}`)
+        const key = `${descriptor.id}:${account.id}`
+        if (unhealthy(account) && !autoExpandedIds.has(key)) {
+          autoExpandedIds.add(key)
+          next.add(key)
           changed = true
         }
       }

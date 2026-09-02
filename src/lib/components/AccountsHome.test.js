@@ -139,6 +139,19 @@ describe('AccountsHome', () => {
     expect(revealDirectory).toHaveBeenCalledWith('/home/user/.claude-work')
   })
 
+  // Regression: faffe345 auto-expanded unhealthy rows from the same reactive
+  // set the disclosure changed, so collapsing one immediately expanded it again.
+  it('lets the user collapse an unhealthy row after its initial auto-expand', async () => {
+    render(AccountsHome, { props: { states: states(), projects: [] } })
+
+    const work = screen.getByTestId('account-row-work')
+    expect(within(work).getByTestId('account-row-details')).toBeInTheDocument()
+
+    await fireEvent.click(within(work).getByRole('button', { name: 'Collapse work' }))
+
+    expect(within(work).queryByTestId('account-row-details')).not.toBeInTheDocument()
+  })
+
   it('explains base-command selectors and converts affected projects into pins', async () => {
     const projects = [
       { id: 'p-free', name: 'free', accountMemory: {} },
