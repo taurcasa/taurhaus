@@ -402,9 +402,7 @@ pub mod daemon {
     pub mod protocol {
         use serde::{Deserialize, Serialize};
 
-        pub use taurhaus_lib::daemon_api::protocol::{
-            DaemonRequest, DaemonResponse, LaunchMode,
-        };
+        pub use taurhaus_lib::daemon_api::protocol::{DaemonRequest, DaemonResponse, LaunchMode};
 
         pub mod method {
             pub use taurhaus_lib::daemon_api::protocol::method::{
