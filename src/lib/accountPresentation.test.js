@@ -288,6 +288,42 @@ describe('ambientAccountSignal', () => {
     ).toMatchObject({ visible: true, tone: 'danger', magnitude: 'Sign in' })
   })
 
+  // Regression: 6556676e derived pin relevance from the relationship index
+  // alone, which `rememberChoice` never writes. A pin made from Overview or
+  // the sidebar left the footer calm about an account that had just become
+  // something a project depends on.
+  it('counts a pin made during this run before the relationship index catches up', () => {
+    const signedOut = account({ id: 'work', logged_in: false, usage: null })
+
+    expect(
+      ambientAccountSignal([
+        {
+          tool: 'claude',
+          defaultAccountId: 'personal',
+          accounts: [account(), signedOut],
+          relationships: {},
+          projectChoices: { p1: 'work' },
+        },
+      ])
+    ).toMatchObject({ visible: true, tone: 'danger', magnitude: 'Sign in' })
+  })
+
+  it('drops a pin cleared during this run while the index still carries it', () => {
+    const signedOut = account({ id: 'work', logged_in: false, usage: null })
+
+    expect(
+      ambientAccountSignal([
+        {
+          tool: 'claude',
+          defaultAccountId: 'personal',
+          accounts: [account(), signedOut],
+          relationships: { work: { pinnedProjects: [{ id: 'p1' }] } },
+          projectChoices: { p1: null },
+        },
+      ])
+    ).toMatchObject({ visible: false, tone: 'calm' })
+  })
+
   it('ignores a default directory a selector nothing detected keeps launches away from', () => {
     const signedOutDirectory = account({
       id: 'legacy',

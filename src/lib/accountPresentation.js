@@ -105,12 +105,31 @@ function defaultDirectorySuperseded(account, state) {
   return Boolean(selector.account.logged_in) && selector.account.id !== account?.id
 }
 
+/**
+ * Whether any project pins this account, reading both pin authorities.
+ *
+ * The relationship index is the stored truth and a pin made during this run is
+ * the fresher one: `rememberChoice` writes the choice, not the index. So a
+ * project this run has decided about is answered from that decision alone —
+ * which is how a cleared pin stops counting before the index is re-read.
+ */
+function hasPinnedProject(account, state) {
+  const choices = state?.projectChoices ?? {}
+  if (Object.values(choices).some((accountId) => accountId && accountId === account?.id)) {
+    return true
+  }
+  return relationshipList(
+    state?.relationships?.[account?.id],
+    'pinnedProjects',
+    'pinned_projects'
+  ).some((project) => project?.id && !(project.id in choices))
+}
+
 function isRelevant(account, state) {
   if (account?.id === state?.defaultAccountId) return true
-  const relationships = state?.relationships?.[account?.id]
   if (
-    relationshipList(relationships, 'pinnedProjects', 'pinned_projects').length > 0 ||
-    relationshipList(relationships, 'teams', 'teams').length > 0
+    hasPinnedProject(account, state) ||
+    relationshipList(state?.relationships?.[account?.id], 'teams', 'teams').length > 0
   ) {
     return true
   }
