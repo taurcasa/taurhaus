@@ -38,7 +38,8 @@ use serde::{Deserialize, Serialize};
 /// v17: moved add-agent, resume-member, and stop-member into the daemon.
 /// v18: moved resume-team and reonboard into the daemon.
 /// v19: moved standalone team create/disband and roster edits into the daemon.
-pub const PROTOCOL_VERSION: u32 = 19;
+/// v20: retired the superseded stop-member wire methods.
+pub const PROTOCOL_VERSION: u32 = 20;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -121,8 +122,6 @@ pub mod method {
     pub const COORDINATION_ADD_AGENT_STATUS: &str = "coordination.add_agent_status";
     pub const COORDINATION_RESUME_MEMBER: &str = "coordination.resume_member";
     pub const COORDINATION_RESUME_MEMBER_STATUS: &str = "coordination.resume_member_status";
-    pub const COORDINATION_STOP_MEMBER: &str = "coordination.stop_member";
-    pub const COORDINATION_STOP_MEMBER_STATUS: &str = "coordination.stop_member_status";
     pub const COORDINATION_RESUME_TEAM: &str = "coordination.resume_team";
     pub const COORDINATION_RESUME_TEAM_STATUS: &str = "coordination.resume_team_status";
     pub const COORDINATION_REONBOARD: &str = "coordination.reonboard";
@@ -340,48 +339,6 @@ pub struct CoordinationResumeMemberStatus {
     pub run_id: String,
     pub steps: Vec<crate::coordination::requests::StepProgress>,
     pub outcome: CoordinationResumeMemberOutcome,
-}
-
-/// Self-contained member-stop intent. Stop has no launch settings or streamed
-/// frontend progress, but uses the same retained run lifecycle as the other
-/// interactive mutations.
-#[cfg(feature = "mesh-bridged-backend")]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CoordinationStopMemberParams {
-    pub request: crate::coordination::requests::StopMemberRequest,
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CoordinationStopMemberAccepted {
-    pub run_id: String,
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CoordinationStopMemberStatusParams {
-    pub run_id: String,
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", tag = "status")]
-pub enum CoordinationStopMemberOutcome {
-    Running,
-    Completed {
-        report: crate::coordination::requests::StopMemberReport,
-    },
-    Failed {
-        error: String,
-    },
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CoordinationStopMemberStatus {
-    pub run_id: String,
-    pub steps: Vec<crate::coordination::requests::StepProgress>,
-    pub outcome: CoordinationStopMemberOutcome,
 }
 
 /// Self-contained team-resume intent. The daemon derives host-local launch
@@ -1367,7 +1324,7 @@ mod tests {
         let back: crate::session_scanner::launch_base::ResolvedBase =
             serde_json::from_str(&json).unwrap();
         assert_eq!(result, back);
-        assert_eq!(PROTOCOL_VERSION, 19);
+        assert_eq!(PROTOCOL_VERSION, 20);
     }
 
     // Regression: 3c5b6cd9 invalidated only the Windows app's process-local
@@ -1482,13 +1439,6 @@ mod tests {
             operational_snapshot: None,
             task_state_changed_at: None,
         };
-        let stop = CoordinationStopMemberParams {
-            request: crate::coordination::requests::StopMemberRequest {
-                team_name: "arch".to_string(),
-                member_name: "builder".to_string(),
-            },
-        };
-
         assert_eq!(
             serde_json::from_str::<CoordinationAddAgentParams>(
                 &serde_json::to_string(&add).unwrap()
@@ -1503,19 +1453,11 @@ mod tests {
             .unwrap(),
             resume
         );
-        assert_eq!(
-            serde_json::from_str::<CoordinationStopMemberParams>(
-                &serde_json::to_string(&stop).unwrap()
-            )
-            .unwrap(),
-            stop
-        );
         assert_eq!(method::COORDINATION_ADD_AGENT, "coordination.add_agent");
         assert_eq!(
             method::COORDINATION_RESUME_MEMBER,
             "coordination.resume_member"
         );
-        assert_eq!(method::COORDINATION_STOP_MEMBER, "coordination.stop_member");
     }
 
     #[test]
@@ -1858,6 +1800,14 @@ mod tests {
     fn protocol_version_excludes_daemons_without_roster_operations() {
         let last_protocol_without_daemon_roster_operations = 18;
         assert!(PROTOCOL_VERSION > last_protocol_without_daemon_roster_operations);
+    }
+
+    #[test]
+    fn protocol_version_excludes_daemons_with_stop_member_methods() {
+        // Regression: 03eb3a2c made remove-member the app's roster-removal path
+        // but left the superseded protocol-17 stop-member methods callable.
+        let last_protocol_with_stop_member_methods = 19;
+        assert!(PROTOCOL_VERSION > last_protocol_with_stop_member_methods);
     }
 
     #[test]

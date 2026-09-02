@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use crate::coordination::requests::{
     AddAgentReport, DeliveryResult, InitializeReport, ResumeAgentReport, ResumeTeamProgress,
-    ResumeTeamReport, StepProgress, StopMemberReport,
+    ResumeTeamReport, StepProgress,
 };
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
@@ -18,7 +18,6 @@ pub(crate) enum CoordinationRunKind {
     InitializeTeam,
     AddAgent,
     ResumeMember,
-    StopMember,
     ResumeTeam,
     Reonboard,
 }
@@ -29,7 +28,6 @@ impl CoordinationRunKind {
             Self::InitializeTeam => "init",
             Self::AddAgent => "add",
             Self::ResumeMember => "resume",
-            Self::StopMember => "stop",
             Self::ResumeTeam => "team-resume",
             Self::Reonboard => "reonboard",
         }
@@ -40,7 +38,6 @@ impl CoordinationRunKind {
             Self::InitializeTeam => "initialize_team",
             Self::AddAgent => "add_agent",
             Self::ResumeMember => "resume_member",
-            Self::StopMember => "stop_member",
             Self::ResumeTeam => "resume_team",
             Self::Reonboard => "reonboard",
         }
@@ -52,7 +49,6 @@ impl CoordinationRunKind {
             (Self::InitializeTeam, CoordinationRunReport::Initialize(_))
                 | (Self::AddAgent, CoordinationRunReport::AddAgent(_))
                 | (Self::ResumeMember, CoordinationRunReport::ResumeMember(_))
-                | (Self::StopMember, CoordinationRunReport::StopMember(_))
                 | (Self::ResumeTeam, CoordinationRunReport::ResumeTeam(_))
                 | (Self::Reonboard, CoordinationRunReport::Reonboard(_))
         )
@@ -64,7 +60,6 @@ pub(crate) enum CoordinationRunReport {
     Initialize(InitializeReport),
     AddAgent(AddAgentReport),
     ResumeMember(ResumeAgentReport),
-    StopMember(StopMemberReport),
     ResumeTeam(ResumeTeamReport),
     Reonboard(DeliveryResult),
 }
@@ -323,7 +318,6 @@ mod tests {
             (CoordinationRunKind::InitializeTeam, "init_"),
             (CoordinationRunKind::AddAgent, "add_"),
             (CoordinationRunKind::ResumeMember, "resume_"),
-            (CoordinationRunKind::StopMember, "stop_"),
             (CoordinationRunKind::ResumeTeam, "team-resume_"),
             (CoordinationRunKind::Reonboard, "reonboard_"),
         ] {
@@ -340,7 +334,7 @@ mod tests {
         // Regression: 3b81da38 left a mismatched completion Running forever,
         // so the terminal-record pruner could never remove it.
         let registry = CoordinationRunRegistry::with_ttl(Duration::from_secs(600));
-        let run_id = registry.start(CoordinationRunKind::StopMember);
+        let run_id = registry.start(CoordinationRunKind::ResumeMember);
 
         let error = registry
             .complete(
@@ -358,7 +352,7 @@ mod tests {
             )
             .expect_err("mismatched report rejected");
 
-        assert!(error.contains("stop_member"));
+        assert!(error.contains("resume_member"));
         assert!(matches!(
             registry
                 .status(&run_id)

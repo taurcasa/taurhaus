@@ -552,48 +552,6 @@ fn resume_member_through_daemon_with(
     }
 }
 
-#[cfg(test)]
-fn stop_member_through_daemon_with(
-    params: crate::daemon::protocol::CoordinationStopMemberParams,
-    poll_interval: std::time::Duration,
-    mut call: impl FnMut(
-        &str,
-        serde_json::Value,
-    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
-) -> Result<crate::coordination::requests::StopMemberReport, String> {
-    let accepted: crate::daemon::protocol::CoordinationStopMemberAccepted = serde_json::from_value(
-        call(
-            crate::daemon::protocol::method::COORDINATION_STOP_MEMBER,
-            serde_json::to_value(&params).map_err(|error| error.to_string())?,
-        )
-        .map_err(CoordinationDaemonCallError::into_message)?,
-    )
-    .map_err(|error| error.to_string())?;
-    let mut first_poll_error_at: Option<std::time::Instant> = None;
-    loop {
-        let status_value = poll_coordination_status(
-            &mut call,
-            crate::daemon::protocol::method::COORDINATION_STOP_MEMBER_STATUS,
-            &accepted.run_id,
-            poll_interval,
-            &mut first_poll_error_at,
-        )?;
-        let status: crate::daemon::protocol::CoordinationStopMemberStatus =
-            serde_json::from_value(status_value).map_err(|error| error.to_string())?;
-        match status.outcome {
-            crate::daemon::protocol::CoordinationStopMemberOutcome::Running => {
-                std::thread::sleep(poll_interval);
-            }
-            crate::daemon::protocol::CoordinationStopMemberOutcome::Completed { report } => {
-                return Ok(report);
-            }
-            crate::daemon::protocol::CoordinationStopMemberOutcome::Failed { error } => {
-                return Err(error);
-            }
-        }
-    }
-}
-
 fn resume_team_through_daemon(
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationResumeTeamParams,

@@ -608,13 +608,6 @@ pub struct ResumeMemberRequest {
     pub reasoning_effort_override: Option<String>,
 }
 
-/// Request contract for stopping and removing one managed team member.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StopMemberRequest {
-    pub team_name: String,
-    pub member_name: String,
-}
-
 /// Result contract for stopping and removing one managed team member.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StopMemberReport {
