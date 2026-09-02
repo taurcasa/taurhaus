@@ -5317,6 +5317,67 @@ fn adopting_a_foreign_session_clears_applied_effort_and_the_sweep_refires() {
     assert_eq!(record.applied_effort.as_deref(), Some("high"));
 }
 
+// Regression: 51b1b3be treated the first session-id capture after taurhaus's
+// own launch as a foreign adoption, cleared the level that launch applied, and
+// made the background sweep relaunch an already-correct member.
+#[test]
+fn capturing_the_session_id_after_our_launch_preserves_applied_effort() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime.clone());
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.session_id = None;
+        record.jsonl_path = None;
+        record.applied_effort = Some("high".to_string());
+    })
+    .expect("seed launch record without captured session id");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("42", "Risky active work")),
+        "high",
+        "the migration is irreversible",
+    );
+    write_mesh_task(
+        &root,
+        "42",
+        "in_progress",
+        "high",
+        "the migration is irreversible",
+    );
+    runtime.set_detected_runtime_session(
+        "%21",
+        CliTool::Codex,
+        Some("launched-session"),
+        Some("/tmp/launched-session.jsonl"),
+    );
+
+    orchestrator
+        .reconcile_team_liveness("effort-team")
+        .expect("liveness reconcile");
+
+    let captured =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(captured.session_id.as_deref(), Some("launched-session"));
+    assert_eq!(
+        captured.applied_effort.as_deref(),
+        Some("high"),
+        "the first identity capture belongs to the level taurhaus launched"
+    );
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::RetryPending,
+        )
+        .expect("daemon-style sweep");
+
+    assert!(resumed.is_empty(), "the correct session must not relaunch");
+}
+
 #[test]
 fn pending_effort_carries_the_held_task_requested_and_applied_identity() {
     let root = TempDir::new().expect("tempdir");
