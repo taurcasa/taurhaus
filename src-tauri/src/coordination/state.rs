@@ -1,5 +1,6 @@
 //! Shared coordination app state with lazy orchestrator bootstrap.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, TryLockError};
 
@@ -15,7 +16,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::{CoordinationOrchestrator, TeamSelfHealResult};
 use crate::coordination::pipelines::EffortPassOutcome;
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
-use crate::coordination::stores::TeamConfigStore;
+use crate::coordination::stores::{TeamConfigStore, TeamRootRegistry};
 use crate::models::CliCommandSettings;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
@@ -61,11 +62,13 @@ const DEFAULT_TMUX_LAYOUT: &str = "new_window";
 /// App-managed coordination state that lazily initializes the orchestrator.
 pub struct CoordinationState {
     teams_dir: PathBuf,
+    team_root_registry: TeamRootRegistry,
     app_started_at: DateTime<Utc>,
     backend_selector: BackendSelector,
     backend_factory: Arc<BackendFactory>,
     runtime_factory: Arc<RuntimeFactory>,
     orchestrator: Mutex<Option<CoordinationOrchestrator>>,
+    root_orchestrators: Mutex<HashMap<PathBuf, Arc<Mutex<Option<CoordinationOrchestrator>>>>>,
     /// Per-team once-latched warn state for the live-presence degrade path —
     /// app-managed (not a global static) so it shares one ownership story
     /// with the task-sync snapshot latch and tests need no pre-clearing.
@@ -79,9 +82,15 @@ impl std::fmt::Debug for CoordinationState {
             .lock()
             .map(|guard| guard.is_some())
             .unwrap_or(false);
+        let additional_roots = self
+            .root_orchestrators
+            .lock()
+            .map(|guard| guard.len())
+            .unwrap_or_default();
         f.debug_struct("CoordinationState")
             .field("teams_dir", &self.teams_dir)
             .field("initialized", &initialized)
+            .field("additional_roots", &additional_roots)
             .finish()
     }
 }
@@ -141,12 +150,14 @@ impl CoordinationState {
         app_started_at: DateTime<Utc>,
     ) -> Self {
         Self {
+            team_root_registry: TeamRootRegistry::new(teams_dir.clone()),
             teams_dir,
             app_started_at,
             backend_selector,
             backend_factory,
             runtime_factory,
             orchestrator: Mutex::new(None),
+            root_orchestrators: Mutex::new(HashMap::new()),
             live_presence_degraded_teams: Mutex::new(std::collections::HashSet::new()),
         }
     }
@@ -172,6 +183,20 @@ impl CoordinationState {
         &self.teams_dir
     }
 
+    pub(crate) fn team_root_registry(&self) -> &TeamRootRegistry {
+        &self.team_root_registry
+    }
+
+    /// Resolve the authority root before reading any state for a named team.
+    pub fn team_teams_dir(&self, team_name: &str) -> Result<PathBuf, CoordinationError> {
+        self.team_root_registry.resolve(team_name)
+    }
+
+    /// Every root visible to enumerating consumers, default first.
+    pub fn teams_roots(&self) -> Result<Vec<PathBuf>, CoordinationError> {
+        self.team_root_registry.roots()
+    }
+
     pub fn app_started_at(&self) -> DateTime<Utc> {
         self.app_started_at
     }
@@ -186,6 +211,56 @@ impl CoordinationState {
         })?;
         if guard.is_none() {
             *guard = Some(self.build_orchestrator()?);
+        }
+        let orchestrator = guard.as_mut().ok_or_else(|| {
+            CoordinationError::StoreError(
+                "coordination orchestrator missing after initialization".to_string(),
+            )
+        })?;
+        op(orchestrator)
+    }
+
+    /// Run a named-team operation under the orchestrator and mutex belonging
+    /// to the root resolved by the bootstrap registry.
+    pub fn with_team_orchestrator<R, F>(
+        &self,
+        team_name: &str,
+        op: F,
+    ) -> Result<R, CoordinationError>
+    where
+        F: FnOnce(&mut CoordinationOrchestrator) -> Result<R, CoordinationError>,
+    {
+        let teams_dir = self.team_teams_dir(team_name)?;
+        self.with_root_orchestrator(&teams_dir, op)
+    }
+
+    pub(crate) fn with_root_orchestrator<R, F>(
+        &self,
+        teams_dir: &Path,
+        op: F,
+    ) -> Result<R, CoordinationError>
+    where
+        F: FnOnce(&mut CoordinationOrchestrator) -> Result<R, CoordinationError>,
+    {
+        if teams_dir == self.teams_dir {
+            return self.with_orchestrator(op);
+        }
+        let slot = {
+            let mut roots = self.root_orchestrators.lock().map_err(|_| {
+                CoordinationError::StoreError(
+                    "coordination root-orchestrator map mutex poisoned".to_string(),
+                )
+            })?;
+            roots
+                .entry(teams_dir.to_path_buf())
+                .or_insert_with(|| Arc::new(Mutex::new(None)))
+                .clone()
+        };
+        let mut guard = slot.lock().map_err(|_| {
+            CoordinationError::StoreError("coordination root mutex poisoned".to_string())
+        })?;
+        if guard.is_none() {
+            *guard = Some(self.build_orchestrator_for_root(teams_dir)?);
         }
         let orchestrator = guard.as_mut().ok_or_else(|| {
             CoordinationError::StoreError(
@@ -462,27 +537,34 @@ impl CoordinationState {
     }
 
     fn build_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
+        self.build_orchestrator_for_root(&self.teams_dir)
+    }
+
+    fn build_orchestrator_for_root(
+        &self,
+        teams_dir: &Path,
+    ) -> Result<CoordinationOrchestrator, CoordinationError> {
         let kind = self.backend_selector.select_floor();
-        let backend = (self.backend_factory)(kind, &self.teams_dir)?;
+        let backend = (self.backend_factory)(kind, teams_dir)?;
         let runtime = (self.runtime_factory)();
         let mut orchestrator =
-            CoordinationOrchestrator::new_with_runtime(self.teams_dir.clone(), backend, runtime);
+            CoordinationOrchestrator::new_with_runtime(teams_dir.to_path_buf(), backend, runtime);
         // Set dedicated Claude backend for per-member routing: Claude agents get
         // inbox file delivery instead of mesh send, fixing auth failures on
         // Claude-only teams.
         orchestrator.claude_backend =
-            Some(Arc::new(ClaudeNativeBackend::new(self.teams_dir.clone())));
+            Some(Arc::new(ClaudeNativeBackend::new(teams_dir.to_path_buf())));
         if let Err(err) = orchestrator.reconcile_runtime_state_on_startup() {
             tracing::warn!(
                 error = %err,
-                teams_dir = %self.teams_dir.display(),
+                teams_dir = %teams_dir.display(),
                 "startup runtime reconciliation failed"
             );
         }
-        match ensure_startup_claude_compact_hook(&self.teams_dir) {
+        match ensure_startup_claude_compact_hook(teams_dir) {
             Ok(true) => {
                 tracing::info!(
-                    teams_dir = %self.teams_dir.display(),
+                    teams_dir = %teams_dir.display(),
                     "installed Claude compact hook during startup self-heal"
                 );
             }
@@ -490,7 +572,7 @@ impl CoordinationState {
             Err(err) => {
                 tracing::warn!(
                     error = %err,
-                    teams_dir = %self.teams_dir.display(),
+                    teams_dir = %teams_dir.display(),
                     "startup Claude compact hook ensure failed"
                 );
             }
@@ -622,6 +704,55 @@ mod tests {
             counter.fetch_add(1, Ordering::SeqCst);
             Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
         })
+    }
+
+    #[test]
+    fn team_resolution_defaults_without_creating_a_registry() {
+        let temp = TempDir::new().expect("tempdir");
+        let teams_dir = temp.path().join("default").join("teams");
+        let state = CoordinationState::with_components(
+            teams_dir.clone(),
+            BackendSelector::m0(),
+            fake_factory_with_counter(Arc::new(AtomicUsize::new(0))),
+        );
+
+        assert_eq!(state.team_teams_dir("legacy-team").expect("resolve"), teams_dir);
+        assert!(!state.team_root_registry().path().exists());
+    }
+
+    #[test]
+    fn orchestrators_are_cached_by_resolved_root() {
+        let temp = TempDir::new().expect("tempdir");
+        let default_root = temp.path().join("default").join("teams");
+        let work_root = temp.path().join("work").join("teams");
+        let builds = Arc::new(AtomicUsize::new(0));
+        let state = CoordinationState::with_components(
+            default_root.clone(),
+            BackendSelector::m0(),
+            fake_factory_with_counter(builds.clone()),
+        );
+        state
+            .team_root_registry()
+            .set("work-team", &work_root)
+            .expect("register work team");
+
+        let legacy_root = state
+            .with_team_orchestrator("legacy-team", |orchestrator| {
+                Ok(orchestrator.teams_dir.clone())
+            })
+            .expect("default orchestrator");
+        let work_root_seen = state
+            .with_team_orchestrator("work-team", |orchestrator| {
+                Ok(orchestrator.teams_dir.clone())
+            })
+            .expect("work orchestrator");
+        state
+            .with_team_orchestrator("work-team", |_| Ok(()))
+            .expect("cached work orchestrator");
+
+        assert_eq!(legacy_root, default_root);
+        assert_eq!(work_root_seen, work_root);
+        assert_eq!(builds.load(Ordering::SeqCst), 2);
     }
 
     fn sample_member(name: &str, role: MemberRole, tool: CliTool, project_path: &str) -> Member {
