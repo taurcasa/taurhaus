@@ -279,6 +279,7 @@ fn reconcile_codex_hook_for_managed_launch_at(
 /// A managed launch is allowed to add the host's first Codex member before its
 /// team config exists. Every other launch reconciles against the full roster
 /// because the Codex hook lives in one host-global `hooks.json` file.
+#[cfg(test)]
 fn managed_codex_hook_needed_for_launch(
     teams_dir: &std::path::Path,
     launch_has_managed_codex: bool,
