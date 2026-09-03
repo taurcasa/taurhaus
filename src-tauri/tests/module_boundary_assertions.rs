@@ -880,10 +880,6 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "daemon service hosts the final synchronous writer intents",
         ),
         (
-            "src/daemon/session_activity.rs",
-            "daemon hub exports per-member activity snapshots each scan cycle",
-        ),
-        (
             "src/coordination/activity_export.rs",
             "daemon-hosted store module that defines and applies the activity-export writers",
         ),
