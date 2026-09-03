@@ -523,6 +523,19 @@ impl CoordinationOrchestrator {
                 continue;
             }
 
+            // Reviving a dead record whose session identity is not yet
+            // detectable is still a foreign adoption: taurhaus-committed
+            // launches write Healthy plus their capture state at commit time,
+            // so dead -> Healthy only ever happens for a session nothing here
+            // launched. Clearing the level NOW closes the race where the id
+            // becomes detectable one pass later, after health already reads
+            // Healthy, and the stale applied level would otherwise satisfy the
+            // effort sweep forever.
+            if runtime.health == HealthState::SessionDead && runtime.session_id.is_none() {
+                runtime.applied_effort = None;
+                adopted_runtime_session = true;
+            }
+
             runtime.health = HealthState::Healthy;
             runtime.last_seen_at = Some(Utc::now());
             let guard = acquire_team_lock(&self.teams_dir, team_name)?;
