@@ -13,6 +13,7 @@ use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::stores::TeamConfigStore;
 
 const REGISTRY_DIRNAME: &str = ".taurhaus";
 const REGISTRY_FILENAME: &str = "team-roots.json";
@@ -71,6 +72,23 @@ impl TeamRootRegistry {
         roots.push(self.default_teams_dir.clone());
         roots.extend(additional);
         Ok(roots)
+    }
+
+    /// Enumerate only team directories that agree with bootstrap authority.
+    pub fn team_locations(&self) -> Result<Vec<(PathBuf, String)>, CoordinationError> {
+        let registered = self.registered()?;
+        let mut locations = Vec::new();
+        for root in self.roots()? {
+            for team_name in TeamConfigStore::list(&root)? {
+                let authoritative = registered
+                    .get(&team_name)
+                    .unwrap_or(&self.default_teams_dir);
+                if authoritative == &root {
+                    locations.push((root.clone(), team_name));
+                }
+            }
+        }
+        Ok(locations)
     }
 
     /// Daemon-owned commit of one team authority. Pointing at the default root

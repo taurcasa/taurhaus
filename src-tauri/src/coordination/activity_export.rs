@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 
@@ -12,7 +12,9 @@ use crate::coordination::runtime::{
     pane_belongs_to_member, quarantine_foreign_member, CoordinationRuntime, LivePane,
     PaneOwnership, SystemCoordinationRuntime,
 };
-use crate::coordination::stores::{MemberRuntimeRecord, TeamConfigStore};
+use crate::coordination::stores::MemberRuntimeRecord;
+#[cfg(test)]
+use crate::coordination::stores::TeamConfigStore;
 use crate::provider::path::normalize_project_path;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::{
@@ -44,15 +46,31 @@ pub struct ActivitySnapshotExportStats {
     pub write_failures: usize,
 }
 
+#[cfg(test)]
 pub(crate) fn enrich_sessions_with_team_membership(
     teams_dir: &Path,
+    sessions: &mut [DisplaySession],
+) {
+    let memberships = load_session_memberships(teams_dir);
+    enrich_sessions_with_memberships(&memberships, sessions);
+}
+
+pub(crate) fn enrich_sessions_with_team_locations(
+    team_locations: &[(PathBuf, String)],
+    sessions: &mut [DisplaySession],
+) {
+    let memberships = load_session_memberships_for_locations(team_locations);
+    enrich_sessions_with_memberships(&memberships, sessions);
+}
+
+fn enrich_sessions_with_memberships(
+    memberships: &HashMap<(String, CliTool), Vec<SessionMembershipMetadata>>,
     sessions: &mut [DisplaySession],
 ) {
     if sessions.is_empty() {
         return;
     }
 
-    let memberships = load_session_memberships(teams_dir);
     let mut sessions_by_key: HashMap<(String, CliTool), Vec<usize>> = HashMap::new();
 
     for (index, session) in sessions.iter_mut().enumerate() {
@@ -76,15 +94,22 @@ pub(crate) fn enrich_sessions_with_team_membership(
     }
 }
 
-pub(crate) fn enrich_runtime_sessions_with_team_membership(
-    teams_dir: &Path,
+pub(crate) fn enrich_runtime_sessions_with_team_locations(
+    team_locations: &[(PathBuf, String)],
+    sessions: &mut [RuntimeSession],
+) {
+    let memberships = load_session_memberships_for_locations(team_locations);
+    enrich_runtime_sessions_with_memberships(&memberships, sessions);
+}
+
+fn enrich_runtime_sessions_with_memberships(
+    memberships: &HashMap<(String, CliTool), Vec<SessionMembershipMetadata>>,
     sessions: &mut [RuntimeSession],
 ) {
     if sessions.is_empty() {
         return;
     }
 
-    let memberships = load_session_memberships(teams_dir);
     let mut sessions_by_key: HashMap<(String, CliTool), Vec<usize>> = HashMap::new();
 
     for (index, session) in sessions.iter_mut().enumerate() {
@@ -108,19 +133,20 @@ pub(crate) fn enrich_runtime_sessions_with_team_membership(
     }
 }
 
-pub(crate) fn export_activity_snapshots_for_sessions(
-    teams_dir: &Path,
+pub(crate) fn export_activity_snapshots_for_team_locations(
+    team_locations: &[(PathBuf, String)],
     sessions: &[DisplaySession],
     observed_at: DateTime<Utc>,
 ) -> ActivitySnapshotExportStats {
-    export_activity_snapshots_for_sessions_with_runtime(
-        teams_dir,
+    export_activity_snapshots_for_team_locations_with_runtime(
+        team_locations,
         sessions,
         observed_at,
         &SystemCoordinationRuntime,
     )
 }
 
+#[cfg(test)]
 fn export_activity_snapshots_for_sessions_with_runtime(
     teams_dir: &Path,
     sessions: &[DisplaySession],
@@ -139,17 +165,34 @@ fn export_activity_snapshots_for_sessions_with_runtime(
         }
     };
 
-    if team_names.is_empty() {
+    let team_locations = team_names
+        .into_iter()
+        .map(|team_name| (teams_dir.to_path_buf(), team_name))
+        .collect::<Vec<_>>();
+    export_activity_snapshots_for_team_locations_with_runtime(
+        &team_locations,
+        sessions,
+        observed_at,
+        runtime,
+    )
+}
+
+fn export_activity_snapshots_for_team_locations_with_runtime(
+    team_locations: &[(PathBuf, String)],
+    sessions: &[DisplaySession],
+    observed_at: DateTime<Utc>,
+    runtime: &dyn CoordinationRuntime,
+) -> ActivitySnapshotExportStats {
+    if team_locations.is_empty() {
         return ActivitySnapshotExportStats::default();
     }
-
     let mut enriched = sessions.to_vec();
-    enrich_sessions_with_team_membership(teams_dir, &mut enriched);
+    enrich_sessions_with_team_locations(team_locations, &mut enriched);
     let sessions_by_member = best_sessions_by_member(&enriched);
     let mut stats = ActivitySnapshotExportStats::default();
 
-    for team_name in team_names {
-        let roster = match get_team_roster_with_attachments(teams_dir, &team_name) {
+    for (teams_dir, team_name) in team_locations {
+        let roster = match get_team_roster_with_attachments(teams_dir, team_name) {
             Ok(roster) => roster,
             Err(error) => {
                 tracing::warn!(
@@ -243,7 +286,7 @@ fn export_activity_snapshots_for_sessions_with_runtime(
                 &pane_probe,
                 observed_at,
             );
-            if write_member_activity_snapshot(teams_dir, &team_name, member_name, &snapshot).is_ok()
+            if write_member_activity_snapshot(teams_dir, team_name, member_name, &snapshot).is_ok()
             {
                 stats.members_written += 1;
             } else {
@@ -251,7 +294,7 @@ fn export_activity_snapshots_for_sessions_with_runtime(
             }
         }
 
-        cleanup_stale_activity_snapshots(teams_dir, &team_name, &expected_members);
+        cleanup_stale_activity_snapshots(teams_dir, team_name, &expected_members);
     }
 
     stats
@@ -288,6 +331,7 @@ fn preferred_session(existing: &DisplaySession, candidate: &DisplaySession) -> b
     existing.tmux_pane.is_some() && candidate.tmux_pane.is_none()
 }
 
+#[cfg(test)]
 fn load_session_memberships(
     teams_dir: &Path,
 ) -> HashMap<(String, CliTool), Vec<SessionMembershipMetadata>> {
@@ -303,10 +347,20 @@ fn load_session_memberships(
         }
     };
 
+    let team_locations = team_names
+        .into_iter()
+        .map(|team_name| (teams_dir.to_path_buf(), team_name))
+        .collect::<Vec<_>>();
+    load_session_memberships_for_locations(&team_locations)
+}
+
+fn load_session_memberships_for_locations(
+    team_locations: &[(PathBuf, String)],
+) -> HashMap<(String, CliTool), Vec<SessionMembershipMetadata>> {
     let mut memberships: HashMap<_, Vec<SessionMembershipMetadata>> = HashMap::new();
 
-    for team_name in team_names {
-        let roster = match get_team_roster_with_attachments(teams_dir, &team_name) {
+    for (teams_dir, team_name) in team_locations {
+        let roster = match get_team_roster_with_attachments(teams_dir, team_name) {
             Ok(roster) => roster,
             Err(error) => {
                 tracing::warn!(
@@ -796,6 +850,91 @@ mod tests {
             workflow_activity: None,
             workflow_session_id: None,
         }
+    }
+
+    #[test]
+    fn enriches_sessions_across_authoritative_team_roots() {
+        let tmp = TempDir::new().expect("tempdir");
+        let default_root = tmp.path().join("default").join("teams");
+        let work_root = tmp.path().join("work").join("teams");
+        TeamConfigStore::save(
+            &default_root,
+            "default-team",
+            &sample_team_config("default-team", "default-member", "/projects/default"),
+        )
+        .expect("default config saved");
+        TeamConfigStore::save(
+            &work_root,
+            "work-team",
+            &sample_team_config("work-team", "work-member", "/projects/work"),
+        )
+        .expect("work config saved");
+        let locations = vec![
+            (default_root, "default-team".to_string()),
+            (work_root, "work-team".to_string()),
+        ];
+        let mut sessions = vec![
+            sample_session("/projects/default", "%1", SessionState::Idle),
+            sample_session("/projects/work", "%2", SessionState::Active),
+        ];
+
+        enrich_sessions_with_team_locations(&locations, &mut sessions);
+
+        assert_eq!(sessions[0].group_id.as_deref(), Some("default-team"));
+        assert_eq!(sessions[0].member_name.as_deref(), Some("default-member"));
+        assert_eq!(sessions[1].group_id.as_deref(), Some("work-team"));
+        assert_eq!(sessions[1].member_name.as_deref(), Some("work-member"));
+    }
+
+    #[test]
+    fn exports_activity_snapshots_across_authoritative_team_roots() {
+        let tmp = TempDir::new().expect("tempdir");
+        let default_root = tmp.path().join("default").join("teams");
+        let work_root = tmp.path().join("work").join("teams");
+        for (root, team, member, project, pane) in [
+            (
+                &default_root,
+                "default-team",
+                "default-member",
+                "/projects/default",
+                "%1",
+            ),
+            (
+                &work_root,
+                "work-team",
+                "work-member",
+                "/projects/work",
+                "%2",
+            ),
+        ] {
+            TeamConfigStore::save(root, team, &sample_team_config(team, member, project))
+                .expect("config saved");
+            save_runtime(root, team, member, pane);
+        }
+        let locations = vec![
+            (default_root.clone(), "default-team".to_string()),
+            (work_root.clone(), "work-team".to_string()),
+        ];
+        let runtime = RecordingCoordinationRuntime::default();
+        for pane in ["%1", "%2"] {
+            runtime.set_pane_exists(pane, true);
+            runtime.set_pane_current_command(pane, Some("codex"));
+        }
+
+        let stats = export_activity_snapshots_for_team_locations_with_runtime(
+            &locations,
+            &[
+                sample_session("/projects/default", "%1", SessionState::Idle),
+                sample_session("/projects/work", "%2", SessionState::Active),
+            ],
+            ts("2026-03-07T13:32:00+00:00"),
+            &runtime,
+        );
+
+        assert_eq!(stats.teams_exported, 2);
+        assert_eq!(stats.members_written, 2);
+        assert!(activity_snapshot_path(&default_root, "default-team", "default-member").exists());
+        assert!(activity_snapshot_path(&work_root, "work-team", "work-member").exists());
     }
 
     #[test]

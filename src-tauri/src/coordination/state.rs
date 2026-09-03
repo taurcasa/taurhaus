@@ -200,17 +200,7 @@ impl CoordinationState {
     /// Enumerate only teams whose directory agrees with the registry authority.
     /// A copied directory without an entry is never silently adopted.
     pub fn team_locations(&self) -> Result<Vec<(PathBuf, String)>, CoordinationError> {
-        let registered = self.team_root_registry.registered()?;
-        let mut locations = Vec::new();
-        for root in self.teams_roots()? {
-            for team_name in TeamConfigStore::list(&root)? {
-                let authoritative = registered.get(&team_name).unwrap_or(&self.teams_dir);
-                if authoritative == &root {
-                    locations.push((root.clone(), team_name));
-                }
-            }
-        }
-        Ok(locations)
+        self.team_root_registry.team_locations()
     }
 
     pub fn app_started_at(&self) -> DateTime<Utc> {
