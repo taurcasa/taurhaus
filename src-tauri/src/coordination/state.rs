@@ -688,7 +688,7 @@ fn group_team_locations(
     grouped
 }
 
-fn ensure_startup_claude_compact_hook(
+pub(crate) fn ensure_startup_claude_compact_hook(
     teams_dir: &std::path::Path,
 ) -> Result<bool, CoordinationError> {
     let has_managed_claude =

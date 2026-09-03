@@ -106,17 +106,9 @@ fn reconcile_startup_codex_compaction(app: &tauri::AppHandle) -> Result<(), Stri
 #[cfg(feature = "mesh-bridged-backend")]
 fn reconcile_startup_claude_compaction(app: &tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<crate::coordination::state::CoordinationState>();
-    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
     for teams_dir in state.teams_roots().map_err(|error| error.to_string())? {
-        if crate::coordination::compact_hook::any_managed_claude_member(&teams_dir)
-            .map_err(|error| error.to_string())?
-        {
-            crate::coordination::compact_hook::ensure_compact_hook_installed(
-                &teams_dir,
-                &executable,
-            )
+        crate::coordination::state::ensure_startup_claude_compact_hook(&teams_dir)
             .map_err(|error| error.to_string())?;
-        }
     }
     Ok(())
 }
