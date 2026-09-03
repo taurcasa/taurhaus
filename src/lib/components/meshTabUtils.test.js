@@ -2,12 +2,27 @@ import { describe, expect, it } from 'vitest'
 
 import { TEST_MODEL_CATALOG as CATALOG } from '../../test/fixtures/modelCatalog.js'
 import {
+  accountLineLabel,
   buildInitializationRequest,
   buildTeamConfigFromPreset,
   buildTeamConfigFromRuntimeStatus,
   deriveCrossProjectMeta,
   projectNameFromPath,
 } from './meshTabUtils.js'
+
+describe('accountLineLabel', () => {
+  it('uses one wording rule for account fallback and applied states', () => {
+    expect(accountLineLabel({ accountLabel: 'Personal', accountApplied: true })).toBe(
+      'Personal · applied'
+    )
+    expect(accountLineLabel({
+      accountLabel: 'Personal',
+      accountNote: 'account_fallback',
+      accountFallbackFrom: 'Work',
+    })).toBe('was Work → now Personal')
+    expect(accountLineLabel({})).toBe('')
+  })
+})
 
 describe('meshTabUtils cross-project metadata', () => {
   it('extracts a stable project basename from WSL UNC paths', () => {
@@ -472,6 +487,34 @@ describe('meshTabUtils reasoning effort', () => {
     expect(request.agents[0]).toEqual(
       expect.objectContaining({ model: 'gpt-5.6-sol', reasoningEffort: 'low' })
     )
+  })
+
+  it('carries selector-capable member account assignments into initialization', () => {
+    const request = buildInitializationRequest(
+      {
+        initializationMode: 'custom',
+        lead: {
+          name: 'team-lead',
+          tool: 'codex',
+          accountId: 'codex-work',
+          projectId: '/projects/taurhaus',
+        },
+        agents: [
+          {
+            name: 'grok-reviewer',
+            tool: 'grok',
+            accountId: 'grok-personal',
+            projectId: '/projects/taurhaus',
+          },
+        ],
+      },
+      'taurhaus-team',
+      '/projects/taurhaus',
+      CATALOG
+    )
+
+    expect(request.lead.accountId).toBe('codex-work')
+    expect(request.agents[0].accountId).toBe('grok-personal')
   })
 })
 

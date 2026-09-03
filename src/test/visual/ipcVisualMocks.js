@@ -79,6 +79,7 @@ function createMockMap() {
     coordinationRemoveMember: vi.fn(),
     coordinationResumeMember: vi.fn(),
     coordinationResumeTeam: vi.fn(),
+    coordinationSwitchTeamAccount: vi.fn(),
     getRoleTemplate: vi.fn(),
     upsertRoleTemplate: vi.fn(),
     deleteRoleTemplate: vi.fn(),
@@ -201,6 +202,7 @@ export function resetVisualIpcMocks(overrides = {}) {
   visualIpcMocks.coordinationRemoveMember.mockResolvedValue(undefined)
   visualIpcMocks.coordinationResumeMember.mockResolvedValue(undefined)
   visualIpcMocks.coordinationResumeTeam.mockResolvedValue(undefined)
+  visualIpcMocks.coordinationSwitchTeamAccount.mockResolvedValue(undefined)
   visualIpcMocks.getRoleTemplate.mockResolvedValue(null)
   visualIpcMocks.upsertRoleTemplate.mockResolvedValue(undefined)
   visualIpcMocks.deleteRoleTemplate.mockResolvedValue(undefined)

@@ -1,5 +1,6 @@
 //! Backend-agnostic coordination requests and responses.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::coordination::domain::{HealthState, Member};
@@ -514,6 +515,8 @@ pub struct AgentDefinition {
     pub model: String,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    #[serde(default, alias = "accountId", skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
     pub project_id: String,
     pub description: Option<String>,
     #[serde(default)]
@@ -702,6 +705,53 @@ pub struct ResumeTeamRequest {
     pub team_name: String,
 }
 
+/// Intent to move every member of one selector-capable harness in a team to
+/// another detected account. Claude is deliberately excluded because its
+/// team namespace makes mixed-account teams physically impossible.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SwitchTeamAccountRequest {
+    pub team_name: String,
+    pub cli_tool: CliTool,
+    pub account_id: String,
+}
+
+/// A pointer-only record of the session that existed before an account switch.
+/// Transcript contents are never copied or moved.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountSwitchMemberHandoff {
+    pub member_name: String,
+    pub previous_account_id: Option<String>,
+    pub previous_account_label: Option<String>,
+    pub session_id: Option<String>,
+    pub transcript_path: Option<String>,
+    pub last_activity_line: String,
+}
+
+/// Append-only handoff manifest stored at `<team>/state/account-switches.json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountSwitchHandoffManifest {
+    pub switched_at: DateTime<Utc>,
+    pub cli_tool: CliTool,
+    pub account_id: String,
+    pub account_label: String,
+    pub members: Vec<AccountSwitchMemberHandoff>,
+}
+
+/// Completed account-switch result. The nested resume report preserves the
+/// existing partial-resume semantics and warnings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SwitchTeamAccountReport {
+    pub team_name: String,
+    pub cli_tool: CliTool,
+    pub account_id: String,
+    pub account_label: String,
+    pub switched_members: Vec<String>,
+    pub handoff_manifest_count: usize,
+    pub resume: ResumeTeamReport,
+}
+
 /// Request contract for re-sending onboarding to one persisted member.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReonboardRequest {
@@ -826,6 +876,7 @@ mod tests {
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Codex,
                 extra: Default::default(),
@@ -887,6 +938,7 @@ mod tests {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
             agents: vec![AgentDefinition {
                 name: "frontend-dev".to_string(),
@@ -912,6 +964,7 @@ mod tests {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             }],
         };
 
@@ -949,6 +1002,7 @@ mod tests {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
         };
 

@@ -341,6 +341,7 @@ function finalizeResumeProgress(
 }
 
 export function createMeshTabRuntime({ state, refs, deps, gate }) {
+  let switchingAccount = false
   async function handleConfirmAction() {
     if (state.isResumingTeam) return
     if (!state.confirmContext) return
@@ -403,6 +404,29 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
       await gate.refreshProjectMeshSnapshot(sequence, { preserveNotices: true })
     } catch (error) {
       state.errorMessage = error?.message || `Failed to resume member '${currentNode.name}'.`
+    }
+  }
+
+  async function switchSelectedAccount(accountId) {
+    if (state.isResumingTeam || switchingAccount) return
+    const currentNode = state.selectedNode
+    const cliTool = currentNode?.tool ?? currentNode?.cliTool ?? currentNode?.cli_tool
+    if (!currentNode || !cliTool || !accountId) return
+    switchingAccount = true
+    try {
+      const report = await deps.coordinationSwitchTeamAccount(
+        state.teamName,
+        cliTool,
+        accountId
+      )
+      state.runtimeMessage = `Switched ${report?.switchedMembers?.length ?? 0} ${cliTool} member${report?.switchedMembers?.length === 1 ? '' : 's'} to ${report?.accountLabel ?? accountId}.`
+      state.selectedNodeId = null
+      const sequence = ++refs.discoverySequence
+      await gate.refreshProjectMeshSnapshot(sequence, { preserveNotices: true })
+    } catch (error) {
+      state.errorMessage = error?.message || `Failed to switch the ${cliTool} team account.`
+    } finally {
+      switchingAccount = false
     }
   }
 
@@ -552,6 +576,7 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
     handleConfirmAction,
     requestDisband,
     resumeSelected,
+    switchSelectedAccount,
     resumeTeam,
     stopSelected,
     toggleNode,

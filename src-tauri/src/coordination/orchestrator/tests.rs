@@ -52,6 +52,7 @@ fn sample_member(name: &str, tool: CliTool) -> Member {
         capabilities: None,
         model: None,
         reasoning_effort: None,
+        account_id: None,
         project_path: PathBuf::from("/tmp/taurhaus"),
         cli_tool: tool,
         extra: Default::default(),
@@ -592,6 +593,7 @@ impl CoordinationRuntime for MeshPreAddRuntime {
                 cli_tool: CliTool::Codex,
                 model: Some(model.to_string()),
                 reasoning_effort: None,
+                account_id: None,
                 extra: Default::default(),
             });
             TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
@@ -1173,6 +1175,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
             cli_tool: "claude".to_string(),
             model: "opus".to_string(),
             reasoning_effort: None,
+            account_id: None,
             project_id: "/tmp/lead".to_string(),
             description: Some("lead".to_string()),
             role_id: None,
@@ -1199,6 +1202,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
                 cli_tool: "codex".to_string(),
                 model: "gpt-5.4".to_string(),
                 reasoning_effort: None,
+                account_id: None,
                 project_id: "/tmp/frontend".to_string(),
                 description: Some("frontend".to_string()),
                 role_id: None,
@@ -1224,6 +1228,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
                 cli_tool: "agy".to_string(),
                 model: "pro".to_string(),
                 reasoning_effort: None,
+                account_id: None,
                 project_id: "/tmp/reviewer".to_string(),
                 description: Some("review".to_string()),
                 role_id: None,
@@ -1256,6 +1261,7 @@ fn add_agent_request(team_name: &str, agent_name: &str, cli_tool: &str) -> AddAg
             cli_tool: cli_tool.to_string(),
             model: "model".to_string(),
             reasoning_effort: None,
+            account_id: None,
             project_id: format!("/tmp/{agent_name}"),
             description: Some("hot-added".to_string()),
             role_id: None,
@@ -1308,6 +1314,7 @@ fn create_running_team(orchestrator: &mut CoordinationOrchestrator, team_name: &
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
@@ -1343,6 +1350,7 @@ fn member_with_project(name: &str, role: MemberRole, tool: CliTool, project_path
         capabilities: None,
         model: None,
         reasoning_effort: None,
+        account_id: None,
         project_path: PathBuf::from(project_path),
         cli_tool: tool,
         extra: Default::default(),
@@ -1721,6 +1729,7 @@ fn disband_team_stops_team_daemon_best_effort() {
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
@@ -2052,6 +2061,7 @@ fn remove_member_cleans_runtime() {
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
@@ -2117,6 +2127,7 @@ fn remove_member_tears_down_runtime_resources() {
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
@@ -2206,6 +2217,7 @@ fn remove_member_discovers_and_terminates_daemon_when_runtime_pid_is_missing() {
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
@@ -2291,6 +2303,7 @@ fn remove_member_discovers_and_terminates_daemon_from_pidfile_when_runtime_attac
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
@@ -2365,6 +2378,7 @@ fn remove_member_rejects_lead_removal() {
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
@@ -2424,6 +2438,7 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
@@ -2484,6 +2499,46 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
         }
         other => panic!("expected operator notice, got {other:?}"),
     }
+}
+
+// Regression: 0bc79ceb treated a pane that was already gone as a fatal account-switch
+// teardown failure, leaving the team stopped before its config could be rewritten.
+#[test]
+fn account_switch_stop_accepts_an_already_missing_pane_and_clears_launch_account() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let fake = Arc::new(FakeBackend::default());
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), fake, runtime.clone());
+    let team_name = "architecture-final";
+    let member = sample_member("codex-reviewer", CliTool::Codex);
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(team_name, member.clone())
+        .expect("add member");
+    MemberRuntimeStore::update(tmp.path(), team_name, &member.name, |record| {
+        record.health = HealthState::Healthy;
+        record.pane_id = Some("%missing".to_string());
+        record.cli_tool = Some(CliTool::Codex);
+        record.launch_account.account_applied = Some(true);
+        record.launch_account.account_id = Some("personal".to_string());
+        record.launch_account.account_label = Some("Personal".to_string());
+    })
+    .expect("seed runtime");
+    runtime.set_pane_exists("%missing", false);
+
+    orchestrator
+        .stop_member_for_account_switch(team_name, &member)
+        .expect("an already absent pane is a successful stop");
+
+    let stopped =
+        MemberRuntimeStore::load(tmp.path(), team_name, &member.name).expect("stopped runtime");
+    assert_eq!(stopped.health, HealthState::SessionDead);
+    assert_eq!(stopped.daemon_pid, None);
+    assert_eq!(stopped.launch_account, Default::default());
 }
 
 #[test]

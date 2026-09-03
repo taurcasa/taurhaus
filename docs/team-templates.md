@@ -247,13 +247,15 @@ Prefer outputs another human or agent can immediately use.
 - quick presets, applied in one click
 - a searchable role catalog with `tool`, `kind`, and `mode` filters, plus `Import YAML`, `New role`, and `Focus search` buttons
 - drag-and-drop lead / agent composition
-- inline roster editing for names, tools, models, project binding, and descriptions, with inline validation
+- inline roster editing for names, tools, models, member accounts, project binding, and descriptions, with inline validation
 
 Model editing uses the shared effort-aware `ModelSelect` (model plus reasoning effort). It keeps unknown YAML models as custom entries, shows deprecation hints, and displays an inherited role effort as the effective value. Its list comes from `ModelCatalog` on the terminal contract.
 
 The builder's catalog hand-off (`onBrowseCatalog`) opens `TemplateBrowserPanel` for advanced import/export/history work, and preset editing/saving can flow through the advanced customizer panel when needed.
 
-When more than one **Claude** account is registered, the builder notes that team members run on the team's config dir — per-team account selection is a follow-up. The note is scoped to Claude: it reads the first tool declaring `teamConfigNamespace` (`teamAccountNote`, `MeshTeamBuilder.svelte:83-91`), and Claude is the only harness that does (`cli_tool.rs:299` — every other entry declares `false`), so extra Codex or Grok accounts produce no note. A launch that names an account anyway is dropped and logged once as `launch.account.ignored_for_team`.
+Codex and Grok roster rows use the shared account picker beside `ModelSelect`. The saved roster keeps the provider's stable account id; the launch renderer resolves its directory from fresh detection and pins the harness selector. If detection cannot supply the requested account, launch continues on today's default home and the Mesh node says `was … → now …` with `not guaranteed` truth rather than pretending the request applied.
+
+Claude rows show a noninteractive `Team account` truth chip. Claude's account owns the team namespace, so per-member Claude choices and mixed-account Claude teams remain invalid. The current process-wide `teams_dir` authority does not yet support moving one team between Claude roots; Claude account switching is rejected rather than partially migrating its state.
 
 ## Composition And Validation
 

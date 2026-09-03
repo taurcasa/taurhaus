@@ -39,6 +39,8 @@ pub(super) fn run_startup_orchestration(
     if let Err(error) = reconcile_startup_grok_hooks(app.handle()) {
         tracing::warn!(error = %error, "startup Grok compaction hook reconciliation failed");
     }
+    #[cfg(feature = "mesh-bridged-backend")]
+    reconcile_startup_account_homes(app.handle());
     let watchers_started_at = Instant::now();
     if let Err(error) = crate::startup::watchers::initialize(app, context) {
         telemetry::emit_startup_init_failed(
@@ -114,6 +116,22 @@ fn reconcile_startup_grok_hooks(app: &tauri::AppHandle) -> Result<(), String> {
     )
     .map(|_| ())
     .map_err(|error| error.to_string())
+}
+
+/// Sweep the hook out of every account home no roster member still launches
+/// from. The per-tool startup reconcilers above visit only each tool's default
+/// home, so a home an earlier build left a hook in — or one the last team on it
+/// was disbanded from while taurhaus was closed — is only reached here. It logs
+/// its own degradation and never fails startup.
+#[cfg(feature = "mesh-bridged-backend")]
+fn reconcile_startup_account_homes(app: &tauri::AppHandle) {
+    let db = app.state::<crate::commands::projects::DbState>();
+    let terminal = crate::commands::terminal_settings::load_terminal_settings(&db);
+    let state = app.state::<crate::coordination::state::CoordinationState>();
+    crate::commands::terminal_settings::reconcile_managed_account_hooks_for_roster(
+        state.teams_dir(),
+        terminal.harness.grok_hooks,
+    );
 }
 
 pub(super) fn daemon_watch_bootstrap_enabled(context: &SetupContext) -> bool {

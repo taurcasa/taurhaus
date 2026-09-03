@@ -1643,6 +1643,8 @@ mod tests {
             protocol::method::COORDINATION_RESUME_MEMBER_STATUS,
             protocol::method::COORDINATION_RESUME_TEAM,
             protocol::method::COORDINATION_RESUME_TEAM_STATUS,
+            protocol::method::COORDINATION_SWITCH_TEAM_ACCOUNT,
+            protocol::method::COORDINATION_SWITCH_TEAM_ACCOUNT_STATUS,
             protocol::method::COORDINATION_REONBOARD,
             protocol::method::COORDINATION_REONBOARD_STATUS,
             protocol::method::COORDINATION_CREATE_TEAM,

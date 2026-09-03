@@ -647,6 +647,7 @@ mod tests {
             capabilities: None,
             model: None,
             reasoning_effort: None,
+            account_id: None,
             project_path: PathBuf::from(project_path),
             cli_tool: tool,
             extra: Default::default(),

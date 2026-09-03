@@ -255,7 +255,12 @@ fn prepare_add_launch_inputs(
     let has_managed_codex = crate::session_scanner::cli_tool::spec(tool)
         .capabilities
         .hook_trust;
-    prepare_daemon_launch_inputs_for_tools(teams_dir, has_managed_codex, vec![tool], commands);
+    prepare_daemon_launch_inputs_for_tools(
+        teams_dir,
+        has_managed_codex,
+        vec![(tool, request.agent.account_id.clone())],
+        commands,
+    );
     Ok(())
 }
 
@@ -266,23 +271,28 @@ fn prepare_resume_launch_inputs(
 ) -> Result<(), String> {
     let config = crate::coordination::stores::TeamConfigStore::load(teams_dir, &request.team_name)
         .map_err(|error| error.to_string())?;
-    let tool = config
+    let member = config
         .members
         .iter()
         .find(|member| member.name == request.member_name)
-        .map(|member| member.cli_tool)
         .ok_or_else(|| {
             format!(
                 "member '{}' not found in team '{}'",
                 request.member_name, request.team_name
             )
         })?;
+    let tool = member.cli_tool;
     let has_managed_codex = config.members.iter().any(|member| {
         crate::session_scanner::cli_tool::spec(member.cli_tool)
             .capabilities
             .hook_trust
     });
-    prepare_daemon_launch_inputs_for_tools(teams_dir, has_managed_codex, vec![tool], commands);
+    prepare_daemon_launch_inputs_for_tools(
+        teams_dir,
+        has_managed_codex,
+        vec![(tool, member.account_id.clone())],
+        commands,
+    );
     Ok(())
 }
 
@@ -435,6 +445,7 @@ mod tests {
             cli_tool: "codex".to_string(),
             model: "gpt-5.4".to_string(),
             reasoning_effort: None,
+            account_id: None,
             project_id: project.display().to_string(),
             description: None,
             role_id: None,

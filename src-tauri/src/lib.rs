@@ -282,6 +282,8 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_resume_team,
             #[cfg(feature = "mesh-bridged-backend")]
+            commands::coordination::coordination_switch_team_account,
+            #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_reonboard,
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_get_live_team_status,

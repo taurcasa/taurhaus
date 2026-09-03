@@ -1,5 +1,6 @@
 //! Store layer for coordination data.
 
+pub mod account_switch;
 pub mod active_project;
 pub mod compaction;
 pub mod config;
@@ -9,6 +10,8 @@ pub mod mesh_task;
 pub mod operational;
 pub mod runtime;
 
+#[allow(unused_imports)]
+pub use account_switch::AccountSwitchManifestStore;
 #[allow(unused_imports)]
 pub use active_project::ActiveProjectTeamStore;
 #[allow(unused_imports)]

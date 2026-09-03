@@ -137,6 +137,7 @@ impl DaemonRpcSpan {
                 | protocol::method::COORDINATION_ADD_AGENT_STATUS
                 | protocol::method::COORDINATION_RESUME_MEMBER_STATUS
                 | protocol::method::COORDINATION_RESUME_TEAM_STATUS
+                | protocol::method::COORDINATION_SWITCH_TEAM_ACCOUNT_STATUS
                 | protocol::method::COORDINATION_REONBOARD_STATUS
                 | protocol::method::COORDINATION_CREATE_TEAM_STATUS
                 | protocol::method::COORDINATION_DISBAND_TEAM_STATUS
@@ -272,6 +273,7 @@ mod tests {
             protocol::method::COORDINATION_ADD_AGENT_STATUS,
             protocol::method::COORDINATION_RESUME_MEMBER_STATUS,
             protocol::method::COORDINATION_RESUME_TEAM_STATUS,
+            protocol::method::COORDINATION_SWITCH_TEAM_ACCOUNT_STATUS,
             protocol::method::COORDINATION_REONBOARD_STATUS,
             protocol::method::COORDINATION_CREATE_TEAM_STATUS,
             protocol::method::COORDINATION_DISBAND_TEAM_STATUS,

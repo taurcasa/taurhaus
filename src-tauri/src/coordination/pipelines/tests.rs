@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
 use taurhaus_lib::logging::{install_global_sink, LogFileState};
-use taurhaus_lib::session_scanner::launch_base::{AliasExpansion, ResolvedBase};
+use taurhaus_lib::session_scanner::launch_base::{
+    AliasExpansion, LaunchAccountResult, ResolvedBase,
+};
 use tempfile::TempDir;
 
 use crate::coordination::backend::fake::FakeBackend;
@@ -620,6 +622,7 @@ fn member(name: &str, role: MemberRole, cli_tool: CliTool, project: &str) -> Mem
         capabilities: None,
         model: None,
         reasoning_effort: None,
+        account_id: None,
         project_path: PathBuf::from(project),
         cli_tool,
         extra: Default::default(),
@@ -651,6 +654,7 @@ fn setup_config(name: &str, cli_tool: &str, model: &str, project_id: &str) -> Ag
         inherits_from: None,
         required_artifacts: None,
         capabilities: None,
+        account_id: None,
     }
 }
 
@@ -1876,6 +1880,7 @@ fn build_cli_launch_command_uses_configured_fresh_command() {
         inherits_from: None,
         required_artifacts: None,
         capabilities: None,
+        account_id: None,
     };
     assert_eq!(
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
@@ -1911,6 +1916,7 @@ fn build_cli_launch_command_for_codex_appends_model_when_missing() {
         inherits_from: None,
         required_artifacts: None,
         capabilities: None,
+        account_id: None,
     };
     assert_eq!(
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
@@ -2015,6 +2021,197 @@ fn managed_codex_team_launch_carries_the_account_selector() {
         command,
         "CODEX_HOME='/accounts/codex-work' codex --yolo -m 'gpt-5.4'"
     );
+}
+
+#[test]
+fn managed_codex_member_launch_resolves_its_persisted_account_id() {
+    let mut agent = setup_config("builder", "codex", "gpt-5.4", "/tmp/project");
+    agent.account_id = Some("codex-work".to_string());
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.managed_accounts.insert(
+        CliTool::Codex,
+        vec![crate::models::ManagedLaunchAccount {
+            id: "codex-work".to_string(),
+            label: "Work".to_string(),
+            dir: std::path::PathBuf::from("/accounts/codex-work"),
+            logged_in: true,
+            is_default: false,
+        }],
+    );
+    commands.account_selector_dirs.insert(
+        "CODEX_HOME".to_string(),
+        std::path::PathBuf::from("/accounts/codex-personal"),
+    );
+
+    let result = render_team_launch(
+        &commands,
+        CliTool::Codex,
+        "gpt-5.4",
+        None,
+        "architecture-final",
+        "builder",
+        MemberRole::Agent,
+        false,
+        None,
+        agent.account_id.as_deref(),
+    )
+    .expect("managed command");
+
+    assert_eq!(
+        result.command,
+        "CODEX_HOME='/accounts/codex-work' codex --yolo -m 'gpt-5.4'"
+    );
+    assert_eq!(result.account.account_applied, Some(true));
+    assert_eq!(result.account.account_id.as_deref(), Some("codex-work"));
+    assert_eq!(result.account.account_label.as_deref(), Some("Work"));
+    assert_eq!(result.account.fallback_from, None);
+}
+
+#[test]
+fn unavailable_member_account_falls_back_loudly_to_the_registry_home() {
+    let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("tempdir");
+    let log_path = tmp.path().join("member-account-fallback.log.jsonl");
+    let log_state = LogFileState::new(log_path.clone()).expect("log state");
+    install_global_sink(&log_state);
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.account_selector_dirs.insert(
+        "CODEX_HOME".to_string(),
+        std::path::PathBuf::from("/accounts/codex-personal"),
+    );
+    commands.managed_accounts.insert(
+        CliTool::Codex,
+        vec![crate::models::ManagedLaunchAccount {
+            id: "personal".to_string(),
+            label: "Personal".to_string(),
+            dir: std::path::PathBuf::from("/accounts/codex-personal"),
+            logged_in: true,
+            is_default: true,
+        }],
+    );
+
+    let result = render_team_launch(
+        &commands,
+        CliTool::Codex,
+        "gpt-5.4",
+        None,
+        "fallback-team",
+        "builder",
+        MemberRole::Agent,
+        false,
+        None,
+        Some("missing-work"),
+    )
+    .expect("fallback remains launchable");
+
+    assert!(result
+        .command
+        .starts_with("CODEX_HOME='/accounts/codex-personal'"));
+    assert_eq!(result.account.account_applied, Some(false));
+    assert_eq!(result.account.account_id.as_deref(), Some("personal"));
+    assert_eq!(result.account.account_label.as_deref(), Some("Personal"));
+    assert_eq!(
+        result.account.fallback_from.as_deref(),
+        Some("missing-work")
+    );
+    let contents =
+        wait_for_pipeline_log_contains(&log_path, "\"event\":\"launch.account.fallback\"");
+    assert!(contents.contains("\"member\":\"builder\""));
+    assert!(contents.contains("\"requested_account_id\":\"missing-work\""));
+}
+
+// Regression: cba5b9941 described a missing managed-account detection result
+// as a signed-out account even though detection had never run.
+#[test]
+fn unavailable_account_without_detection_reports_detection_unavailable() {
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.account_selector_dirs.insert(
+        "CODEX_HOME".to_string(),
+        std::path::PathBuf::from("/accounts/codex-personal"),
+    );
+
+    let result = render_team_launch(
+        &commands,
+        CliTool::Codex,
+        "gpt-5.4",
+        None,
+        "fallback-team",
+        "builder",
+        MemberRole::Agent,
+        false,
+        None,
+        Some("missing-work"),
+    )
+    .expect("fallback remains launchable without account detection");
+
+    assert_eq!(
+        result.account.account_note_detail.as_deref(),
+        Some("account detection unavailable")
+    );
+}
+
+#[test]
+fn signed_out_member_account_fallback_uses_its_human_label() {
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.account_selector_dirs.insert(
+        "CODEX_HOME".to_string(),
+        std::path::PathBuf::from("/accounts/codex-personal"),
+    );
+    commands.managed_accounts.insert(
+        CliTool::Codex,
+        vec![
+            crate::models::ManagedLaunchAccount {
+                id: "personal-id".to_string(),
+                label: "Personal".to_string(),
+                dir: std::path::PathBuf::from("/accounts/codex-personal"),
+                logged_in: true,
+                is_default: true,
+            },
+            crate::models::ManagedLaunchAccount {
+                id: "3f2a1b8c-0000-0000-0000-000000000000".to_string(),
+                label: "Work".to_string(),
+                dir: std::path::PathBuf::from("/accounts/codex-work"),
+                logged_in: false,
+                is_default: false,
+            },
+        ],
+    );
+
+    let result = render_team_launch(
+        &commands,
+        CliTool::Codex,
+        "gpt-5.4",
+        None,
+        "fallback-team",
+        "builder",
+        MemberRole::Agent,
+        false,
+        None,
+        Some("3f2a1b8c-0000-0000-0000-000000000000"),
+    )
+    .expect("signed-out selection falls back");
+
+    assert_eq!(result.account.fallback_from.as_deref(), Some("Work"));
+    assert_eq!(result.account.account_label.as_deref(), Some("Personal"));
+}
+
+#[test]
+fn selectorless_member_without_detected_account_has_no_fabricated_account_result() {
+    let result = render_team_launch(
+        &crate::models::CliCommandSettings::default(),
+        CliTool::Agy,
+        "gemini-3.1-pro-high",
+        None,
+        "architecture-final",
+        "researcher",
+        MemberRole::Agent,
+        false,
+        None,
+        None,
+    )
+    .expect("selectorless launch");
+
+    assert_eq!(result.account, LaunchAccountResult::default());
 }
 
 #[test]
@@ -2125,6 +2322,7 @@ fn opaque_team_base_reports_the_account_note_and_logs_once() {
         "opaque-base-member",
         MemberRole::Agent,
         false,
+        None,
         None,
     )
     .expect("opaque wrapper must remain launchable");
@@ -2291,6 +2489,7 @@ fn build_cli_launch_command_for_codex_emits_legacy_reasoning_effort() {
         inherits_from: None,
         required_artifacts: None,
         capabilities: None,
+        account_id: None,
     };
 
     let command = build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
@@ -2327,6 +2526,7 @@ fn team_agent(cli_tool: &str) -> AgentSetupConfig {
         inherits_from: None,
         required_artifacts: None,
         capabilities: None,
+        account_id: None,
     }
 }
 
@@ -2429,6 +2629,7 @@ fn build_cli_launch_command_for_claude_appends_team_context() {
         inherits_from: None,
         required_artifacts: None,
         capabilities: None,
+        account_id: None,
     };
     let command =
         build_cli_launch_command(&agent, "ledger-team", MemberRole::Lead, &cmds).expect("command");
@@ -3106,6 +3307,7 @@ fn load_resume_member_state_preserves_role_template_context() {
                 capabilities: Some(vec!["implementation".to_string(), "testing".to_string()]),
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/builder"),
                 cli_tool: CliTool::Codex,
                 extra: Default::default(),
@@ -3654,6 +3856,7 @@ fn resume_onboarding_entry_uses_immediate_policy() {
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/research"),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
@@ -3836,6 +4039,7 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
                 capabilities: Some(vec!["analysis".to_string()]),
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/research"),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),

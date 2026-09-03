@@ -16,14 +16,20 @@ function normalizeMember(member, fallbackId) {
   }
 }
 
-export function hasOpaqueAccountNote(member) {
+function hasOpaqueAccountNote(member) {
   return member?.accountApplied === false
     && member?.accountNote === 'opaque_base_command'
     && String(member?.accountNoteDetail ?? '').trim().length > 0
 }
 
+export function hasAccountLine(member) {
+  return String(member?.accountLabel ?? member?.accountId ?? '').trim().length > 0
+    || hasOpaqueAccountNote(member)
+    || String(member?.accountFallbackFrom ?? '').trim().length > 0
+}
+
 export function memberNodeHeight(member, lead = false) {
-  if (hasOpaqueAccountNote(member)) return lead ? 90 : 82
+  if (hasAccountLine(member)) return lead ? 90 : 82
   return lead ? 72 : 64
 }
 

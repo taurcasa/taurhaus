@@ -153,6 +153,22 @@ pub(crate) fn dispatch(
             )
         }
         #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_SWITCH_TEAM_ACCOUNT => {
+            handle_coordination_switch_team_account(
+                &request.id,
+                &request.params,
+                team_operations_service,
+            )
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_SWITCH_TEAM_ACCOUNT_STATUS => {
+            handle_coordination_switch_team_account_status(
+                &request.id,
+                &request.params,
+                team_operations_service,
+            )
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
         protocol::method::COORDINATION_REONBOARD => {
             handle_coordination_reonboard(&request.id, &request.params, team_operations_service)
         }
@@ -449,6 +465,43 @@ fn handle_coordination_resume_team_status(
     match service.resume_team_status(&params.run_id) {
         Some(status) => DaemonResponse::ok(id, status),
         None => coordination_run_not_found(id, "resume-team", &params.run_id),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_switch_team_account(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::team_runs::TeamOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationSwitchTeamAccountParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.start_switch_team_account(params) {
+        Ok(run_id) => DaemonResponse::ok(
+            id,
+            protocol::CoordinationSwitchTeamAccountAccepted { run_id },
+        ),
+        Err(error) => DaemonResponse::err(id, "SWITCH_TEAM_ACCOUNT_START_FAILED", error),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_switch_team_account_status(
+    id: &str,
+    params: &serde_json::Value,
+    service: &crate::daemon::team_runs::TeamOperationsService,
+) -> DaemonResponse {
+    let params: protocol::CoordinationSwitchTeamAccountStatusParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match service.switch_team_account_status(&params.run_id) {
+        Some(status) => DaemonResponse::ok(id, status),
+        None => coordination_run_not_found(id, "account-switch", &params.run_id),
     }
 }
 

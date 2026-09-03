@@ -109,7 +109,9 @@ fn fully_populated_settings() -> Settings {
             "codex".to_string(),
             PathBuf::from("/fixtures/codex-home"),
         )]),
+        managed_accounts: HashMap::new(),
         resolved_bases: HashMap::new(),
+        grok_hooks_enabled: None,
     };
     let model_catalog = ModelCatalog {
         claude: vec![model_entry("fixture-claude")],
@@ -242,6 +244,9 @@ fn fully_populated_live_team_status() -> LiveTeamStatus {
             account_applied: Some(false),
             account_note: Some("opaque_base_command".to_string()),
             account_note_detail: Some("fixture-wrapper".to_string()),
+            account_id: Some("fixture-account".to_string()),
+            account_label: Some("Fixture Account".to_string()),
+            account_fallback_from: None,
         }],
     }
 }

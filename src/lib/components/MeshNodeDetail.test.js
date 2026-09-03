@@ -2,6 +2,12 @@ import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
+const accountFixtures = vi.hoisted(() => ({ byTool: {} }))
+
+vi.mock('../accounts.svelte.js', () => ({
+  accountState: (tool) => accountFixtures.byTool[tool] ?? { accounts: [] },
+}))
+
 vi.mock('../MarkdownRenderer.svelte', () => ({
   default: function MockMarkdownRenderer(target, props) {
     const element = document.createElement('div')
@@ -58,6 +64,84 @@ function renderDetail(props = {}) {
 }
 
 describe('MeshNodeDetail', () => {
+  it('offers an exhausted selector-based member a team account switch', async () => {
+    const onSwitchAccount = vi.fn()
+    accountFixtures.byTool.codex = {
+      accounts: [
+        {
+          id: 'work',
+          display_name: 'Work',
+          logged_in: true,
+          usage: { windows: [{ used_percentage: 100, resets_at: Math.floor(Date.now() / 1000) + 3600 }] },
+        },
+        { id: 'personal', display_name: 'Personal', logged_in: true },
+      ],
+    }
+
+    renderDetail({ node: { tool: 'codex', accountId: 'work', accountLabel: 'Work' }, actions: { onSwitchAccount } })
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Switch exhausted account' }))
+    await fireEvent.click(screen.getByTestId('account-option-personal'))
+
+    expect(onSwitchAccount).toHaveBeenCalledWith('personal')
+  })
+
+  // Regression: 0bc79ceb kept the member picker live throughout the team-wide
+  // switch, allowing a second click to queue another full stop/resume cycle.
+  it('blocks duplicate exhausted-account switches while the team restart is pending', async () => {
+    let finishSwitch
+    const onSwitchAccount = vi.fn(
+      () => new Promise((resolve) => { finishSwitch = resolve })
+    )
+    accountFixtures.byTool.codex = {
+      accounts: [
+        {
+          id: 'work',
+          display_name: 'Work',
+          logged_in: true,
+          usage: { windows: [{ used_percentage: 100 }] },
+        },
+        { id: 'personal', display_name: 'Personal', logged_in: true },
+      ],
+    }
+
+    renderDetail({
+      node: { tool: 'codex', accountId: 'work', accountLabel: 'Work' },
+      actions: { onSwitchAccount },
+    })
+    await fireEvent.click(screen.getByRole('button', { name: 'Switch exhausted account' }))
+    const option = screen.getByTestId('account-option-personal')
+    expect(screen.getByText('Switches every Codex member and restarts the team.')).toBeInTheDocument()
+    await fireEvent.click(option)
+    await fireEvent.click(option)
+
+    expect(onSwitchAccount).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('mesh-account-switch-pending')).toHaveTextContent(
+      'Switching the team account'
+    )
+
+    finishSwitch()
+  })
+
+  it('shows the member account truth in runtime configuration', () => {
+    render(MeshNodeDetail, {
+      props: {
+        mode: 'runtime',
+        node: {
+          name: 'builder',
+          tool: 'codex',
+          accountLabel: 'Personal',
+          accountApplied: false,
+          accountFallbackFrom: 'Work',
+        },
+      },
+    })
+
+    expect(screen.getByTestId('mesh-node-detail-account')).toHaveTextContent(
+      'was Work → now Personal'
+    )
+    expect(screen.queryByTestId('mesh-node-detail-account-meter')).not.toBeInTheDocument()
+  })
   it('states the assignment effort next to the launch effort, with the reason on hover', () => {
     renderDetail({
       node: { taskEffort: 'high', taskEffortWhy: 'the migration is irreversible' },

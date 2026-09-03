@@ -125,6 +125,8 @@ struct MeshCompatibleMemberWire {
     model: Option<String>,
     #[serde(rename = "reasoningEffort", skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<String>,
+    #[serde(rename = "accountId", skip_serializing_if = "Option::is_none")]
+    account_id: Option<String>,
     #[serde(rename = "joinedAt")]
     joined_at_millis: i64,
     #[serde(rename = "projectPath")]
@@ -227,6 +229,8 @@ struct MeshMemberWire {
     model: Option<String>,
     #[serde(default, alias = "reasoningEffort")]
     reasoning_effort: Option<String>,
+    #[serde(default, alias = "accountId")]
+    account_id: Option<String>,
     #[serde(flatten, default)]
     extra: BTreeMap<String, Value>,
 }
@@ -285,6 +289,8 @@ struct NativeMemberWire {
     model: Option<String>,
     #[serde(default, alias = "reasoningEffort")]
     reasoning_effort: Option<String>,
+    #[serde(default, alias = "accountId")]
+    account_id: Option<String>,
     #[serde(flatten, default)]
     extra: BTreeMap<String, Value>,
 }
@@ -906,6 +912,7 @@ fn mesh_compatible_wire(
                 },
                 model: member.model.clone(),
                 reasoning_effort: member.reasoning_effort.clone(),
+                account_id: member.account_id.clone(),
                 joined_at_millis: created_at_millis,
                 project_path_camel: project_path.clone(),
                 cwd: project_path,
@@ -1095,6 +1102,7 @@ fn mesh_member_to_domain(member: MeshMemberWire) -> Result<Member, CoordinationE
         capabilities: member.capabilities,
         model,
         reasoning_effort,
+        account_id: member.account_id,
         project_path,
         cli_tool,
         extra: extension_fields_only(member.extra, MEMBER_AUTHORED_KEYS),
@@ -1137,6 +1145,7 @@ fn native_member_to_domain(member: NativeMemberWire) -> Result<Member, Coordinat
         capabilities: member.capabilities,
         model,
         reasoning_effort,
+        account_id: member.account_id,
         project_path,
         cli_tool: member.cli_tool,
         extra: extension_fields_only(member.extra, MEMBER_AUTHORED_KEYS),
@@ -1198,6 +1207,8 @@ const MEMBER_AUTHORED_KEYS: &[&str] = &[
     "model",
     "reasoning_effort",
     "reasoningEffort",
+    "account_id",
+    "accountId",
     "agentId",
     "joinedAt",
     "tmuxPaneId",
@@ -1295,6 +1306,7 @@ mod tests {
                 capabilities: None,
                 model: Some("claude-sonnet-4-5".to_string()),
                 reasoning_effort: Some("high".to_string()),
+                account_id: None,
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
@@ -1335,6 +1347,7 @@ mod tests {
                 capabilities: Some(vec!["implementation".to_string(), "testing".to_string()]),
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Codex,
                 extra: Default::default(),
@@ -1512,6 +1525,27 @@ mod tests {
         assert_eq!(
             value["members"][0]["handoffExpectations"][0],
             "Report verification evidence"
+        );
+    }
+
+    #[test]
+    fn member_account_id_round_trips_through_mesh_config() {
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "account-team";
+        let mut config = sample_config(team_name);
+        config.members[0].account_id = Some("work-account".to_string());
+
+        TeamConfigStore::save(tmp.path(), team_name, &config).expect("save config");
+
+        let raw = fs::read_to_string(tmp.path().join(team_name).join(CONFIG_FILENAME))
+            .expect("read config");
+        let value: Value = serde_json::from_str(&raw).expect("config json");
+        assert_eq!(value["members"][0]["accountId"], "work-account");
+
+        let loaded = TeamConfigStore::load(tmp.path(), team_name).expect("load config");
+        assert_eq!(
+            loaded.members[0].account_id.as_deref(),
+            Some("work-account")
         );
     }
 
@@ -2363,6 +2397,7 @@ mod tests {
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/agent-a"),
                 cli_tool: CliTool::Codex,
                 extra: Default::default(),

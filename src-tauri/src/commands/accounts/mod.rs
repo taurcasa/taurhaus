@@ -322,6 +322,7 @@ pub fn list_account_relationships(
         &crate::provider::platform_paths::PlatformPaths::teams_dir(),
         tool,
         registry_home_account.as_deref(),
+        &report.accounts,
     )
     .ipc_cmd("list_account_relationships");
     span.finish_result(&result);
@@ -333,6 +334,7 @@ pub(crate) fn account_relationships_impl(
     teams_dir: &Path,
     tool: CliTool,
     registry_home_account_id: Option<&str>,
+    detected_accounts: &[Account],
 ) -> Result<AccountRelationshipIndex, String> {
     let conn = db.0.lock().map_err(|error| error.to_string())?;
     let mut statement = conn
@@ -374,28 +376,32 @@ pub(crate) fn account_relationships_impl(
         }
     }
 
-    if let Some(account_id) = registry_home_account_id {
-        // A team names a project by its path, and a project it names may never
-        // have remembered an account: the registered projects are the map, not
-        // the ones this tool already has a row for.
-        let projects_by_path = queries::list_projects(&conn)
-            .sanitize_err()?
-            .into_iter()
-            .map(|project| {
-                (
-                    crate::provider::path::normalize_project_path(&project.path),
-                    (project.id, project.name),
-                )
-            })
-            .collect::<HashMap<_, _>>();
-        let teams = scan_default_root_teams(teams_dir, tool, &projects_by_path);
-        if !teams.is_empty() {
-            index
-                .by_account
-                .entry(account_id.to_string())
-                .or_default()
-                .teams = teams;
-        }
+    // A team names a project by its path, and a project it names may never
+    // have remembered an account: the registered projects are the map, not
+    // the ones this tool already has a row for.
+    let projects_by_path = queries::list_projects(&conn)
+        .sanitize_err()?
+        .into_iter()
+        .map(|project| {
+            (
+                crate::provider::path::normalize_project_path(&project.path),
+                (project.id, project.name),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    for (account_id, teams) in scan_team_account_relationships(
+        teams_dir,
+        tool,
+        &projects_by_path,
+        registry_home_account_id,
+        detected_accounts,
+    ) {
+        index
+            .by_account
+            .entry(account_id)
+            .or_default()
+            .teams
+            .extend(teams);
     }
     Ok(index)
 }
@@ -412,51 +418,119 @@ fn registry_home_account_id(accounts: &[Account], registry_home: &Path) -> Optio
         .map(|account| account.id.clone())
 }
 
+/// The account a team member is actually on, rather than the one its config
+/// asks for.
+///
+/// The launch authority (`managed_member_account`) applies a requested account
+/// only while detection says it is logged in, and otherwise runs the member on
+/// the registry home; a running member's `MemberRuntimeRecord.launch_account`
+/// records which of those actually happened. Listing a team under an account
+/// whose launch it would never get puts the hub's switch action on a
+/// relationship that does not exist. Detection that has no opinion about an
+/// account is missing evidence, not proof, so the configured id still stands.
 #[cfg(feature = "mesh-bridged-backend")]
-fn scan_default_root_teams(
+fn member_launch_account_id(
+    teams_dir: &Path,
+    team_name: &str,
+    member: &crate::coordination::domain::Member,
+    default_account_id: Option<&str>,
+    detected_accounts: &[Account],
+) -> Option<String> {
+    if let Ok(runtime) =
+        crate::coordination::stores::MemberRuntimeStore::load(teams_dir, team_name, &member.name)
+    {
+        if runtime.health != crate::coordination::domain::HealthState::SessionDead {
+            if let Some(launched) = runtime.launch_account.account_id {
+                return Some(launched);
+            }
+        }
+    }
+    let requested = member.account_id.as_deref()?;
+    // Mirror the launch authority (managed_member_account): only a DETECTED,
+    // logged-in requested id launches as itself; a signed-out id AND an id
+    // that has vanished from a non-empty detection snapshot both fall back to
+    // the usable default — otherwise the hub indexes the team under an
+    // account it cannot launch on and omits it from the actual account's
+    // team list.
+    let requested_usable = detected_accounts
+        .iter()
+        .any(|account| account.id == requested && account.identity.logged_in);
+    if requested_usable {
+        return Some(requested.to_string());
+    }
+    if detected_accounts.is_empty() {
+        // No detection at all: nothing contradicts the configured id, and the
+        // launch would resolve the same way once detection returns.
+        return Some(requested.to_string());
+    }
+    default_account_id.map(str::to_string)
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn scan_team_account_relationships(
     teams_dir: &Path,
     tool: CliTool,
     projects_by_path: &HashMap<String, (String, String)>,
-) -> Vec<AccountTeamRelationship> {
+    default_account_id: Option<&str>,
+    detected_accounts: &[Account],
+) -> HashMap<String, Vec<AccountTeamRelationship>> {
     use crate::coordination::stores::TeamConfigStore;
 
     let Ok(team_names) = TeamConfigStore::list(teams_dir) else {
-        return Vec::new();
+        return HashMap::new();
     };
-    let mut teams = Vec::new();
+    let mut by_account = HashMap::<String, Vec<AccountTeamRelationship>>::new();
     for team_name in team_names {
         let Ok(config) = TeamConfigStore::load(teams_dir, &team_name) else {
             continue;
         };
-        let Some(project_path) = config
+        for member in config
             .members
             .iter()
-            .find(|member| member.cli_tool == tool)
-            .map(|member| member.project_path.to_string_lossy().into_owned())
-        else {
-            continue;
-        };
-        let project = projects_by_path.get(&crate::provider::path::normalize_project_path(
-            &project_path,
-        ));
-        teams.push(AccountTeamRelationship {
-            name: config.name,
-            project_id: project.map(|(id, _)| id.clone()),
-            project_name: project.map(|(_, name)| name.clone()),
-            project_path: Some(project_path),
-        });
+            .filter(|member| member.cli_tool == tool)
+        {
+            let account_id = member_launch_account_id(
+                teams_dir,
+                &team_name,
+                member,
+                default_account_id,
+                detected_accounts,
+            )
+            .or_else(|| default_account_id.map(str::to_string));
+            let Some(account_id) = account_id else {
+                continue;
+            };
+            let account_teams = by_account.entry(account_id).or_default();
+            if account_teams.iter().any(|team| team.name == config.name) {
+                continue;
+            }
+            let project_path = member.project_path.to_string_lossy().into_owned();
+            let project = projects_by_path.get(&crate::provider::path::normalize_project_path(
+                &project_path,
+            ));
+            account_teams.push(AccountTeamRelationship {
+                name: config.name.clone(),
+                project_id: project.map(|(id, _)| id.clone()),
+                project_name: project.map(|(_, name)| name.clone()),
+                project_path: Some(project_path),
+            });
+        }
     }
-    teams.sort_by(|left, right| left.name.cmp(&right.name));
-    teams
+    for teams in by_account.values_mut() {
+        teams.sort_by(|left, right| left.name.cmp(&right.name));
+    }
+    by_account
 }
 
 #[cfg(not(feature = "mesh-bridged-backend"))]
-fn scan_default_root_teams(
+fn scan_team_account_relationships(
     _teams_dir: &Path,
     _tool: CliTool,
     _projects_by_path: &HashMap<String, (String, String)>,
-) -> Vec<AccountTeamRelationship> {
-    Vec::new()
+    _default_account_id: Option<&str>,
+    _detected_accounts: &[Account],
+) -> HashMap<String, Vec<AccountTeamRelationship>> {
+    HashMap::new()
 }
 
 #[tauri::command]
@@ -829,6 +903,35 @@ pub(crate) fn apply_team_account_selector_dirs(
     apply_team_account_selector_dirs_with(commands, tools, |tool| {
         crate::provider::platform_paths::PlatformPaths::tool_home(tool)
     });
+}
+
+/// Carry a credential-free detection snapshot into managed launch rendering.
+/// The member keeps only an account id; its machine-local directory is looked
+/// up again for every operation that can start a pane.
+pub(crate) fn apply_team_managed_accounts(
+    commands: &mut crate::models::CliCommandSettings,
+    tools: impl IntoIterator<Item = CliTool>,
+) {
+    for tool in tools {
+        if crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .account_selector
+            .is_none()
+        {
+            continue;
+        }
+        let accounts = accounts::detect(tool)
+            .into_iter()
+            .map(|account| crate::models::ManagedLaunchAccount {
+                id: account.id,
+                label: account.identity.label,
+                dir: account.dir,
+                logged_in: account.identity.logged_in,
+                is_default: account.is_default,
+            })
+            .collect();
+        commands.managed_accounts.insert(tool, accounts);
+    }
 }
 
 pub(crate) fn apply_team_account_selector_dirs_with(

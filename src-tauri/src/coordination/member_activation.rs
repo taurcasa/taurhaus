@@ -57,6 +57,7 @@ pub struct MemberIdentity {
     pub cli_tool: CliTool,
     pub model: String,
     pub reasoning_effort: Option<String>,
+    pub account_id: Option<String>,
     pub project_path: PathBuf,
 }
 
@@ -143,6 +144,7 @@ impl MemberActivationContext {
                     })
                     .unwrap_or_default(),
                 reasoning_effort: member.reasoning_effort,
+                account_id: member.account_id,
                 project_path: member.project_path.clone(),
             },
             pane_policy: MemberActivationPanePolicy::ReuseOrCreate,
@@ -170,6 +172,7 @@ fn member_identity_from_agent_setup(
             .or_else(|| ModelCatalog::default_for(cli_tool).map(|entry| entry.id.clone()))
             .unwrap_or_default(),
         reasoning_effort: declared.reasoning_effort,
+        account_id: member.account_id.clone(),
         project_path: PathBuf::from(&member.project_id),
     })
 }
@@ -343,6 +346,7 @@ mod tests {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         }
     }
 
@@ -433,6 +437,7 @@ mod tests {
             capabilities: None,
             model: None,
             reasoning_effort: None,
+            account_id: None,
             project_path: PathBuf::from("/tmp/review"),
             cli_tool: CliTool::Claude,
             extra: Default::default(),
@@ -502,6 +507,7 @@ mod tests {
             capabilities: None,
             model: None,
             reasoning_effort: None,
+            account_id: None,
             project_path: PathBuf::from("/tmp/review"),
             cli_tool: CliTool::Claude,
             extra: Default::default(),

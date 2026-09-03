@@ -421,6 +421,9 @@ pub mod daemon {
             pub const COORDINATION_RESUME_MEMBER_STATUS: &str = "coordination.resume_member_status";
             pub const COORDINATION_RESUME_TEAM: &str = "coordination.resume_team";
             pub const COORDINATION_RESUME_TEAM_STATUS: &str = "coordination.resume_team_status";
+            pub const COORDINATION_SWITCH_TEAM_ACCOUNT: &str = "coordination.switch_team_account";
+            pub const COORDINATION_SWITCH_TEAM_ACCOUNT_STATUS: &str =
+                "coordination.switch_team_account_status";
             pub const COORDINATION_REONBOARD: &str = "coordination.reonboard";
             pub const COORDINATION_REONBOARD_STATUS: &str = "coordination.reonboard_status";
             pub const COORDINATION_CREATE_TEAM: &str = "coordination.create_team";
@@ -581,6 +584,36 @@ pub mod daemon {
             pub run_id: String,
             pub steps: Vec<crate::coordination::requests::ResumeTeamProgress>,
             pub outcome: CoordinationResumeTeamOutcome,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationSwitchTeamAccountParams {
+            pub request: crate::coordination::requests::SwitchTeamAccountRequest,
+            pub cli_commands: crate::models::CliCommandSettings,
+            pub tmux_layout: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationSwitchTeamAccountAccepted {
+            pub run_id: String,
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        #[serde(rename_all = "snake_case", tag = "status")]
+        pub enum CoordinationSwitchTeamAccountOutcome {
+            Running,
+            Completed {
+                report: Box<crate::coordination::requests::SwitchTeamAccountReport>,
+            },
+            Failed {
+                error: String,
+            },
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+        pub struct CoordinationSwitchTeamAccountStatus {
+            pub run_id: String,
+            pub outcome: CoordinationSwitchTeamAccountOutcome,
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

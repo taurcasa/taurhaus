@@ -269,6 +269,7 @@ fn coordination_add_member_impl(
                     capabilities: None,
                     model: None,
                     reasoning_effort: None,
+                    account_id: None,
                     project_path,
                     cli_tool,
                     extra: Default::default(),
@@ -1003,6 +1004,72 @@ fn reonboard_daemon_client_uses_its_run_status_method() {
 }
 
 #[test]
+fn switch_team_account_daemon_client_uses_accept_then_poll() {
+    let params = protocol::CoordinationSwitchTeamAccountParams {
+        request: crate::coordination::requests::SwitchTeamAccountRequest {
+            team_name: "arch".to_string(),
+            cli_tool: CliTool::Codex,
+            account_id: "work".to_string(),
+        },
+        cli_commands: CliCommandSettings::default(),
+        tmux_layout: "new_window".to_string(),
+    };
+    let report = crate::coordination::requests::SwitchTeamAccountReport {
+        team_name: "arch".to_string(),
+        cli_tool: CliTool::Codex,
+        account_id: "work".to_string(),
+        account_label: "Work".to_string(),
+        switched_members: vec!["builder".to_string()],
+        handoff_manifest_count: 2,
+        resume: crate::coordination::requests::ResumeTeamReport {
+            team_name: "arch".to_string(),
+            resumed: true,
+            total_members: 1,
+            resumed_members: vec!["builder".to_string()],
+            failed_members: Vec::new(),
+            warnings: Vec::new(),
+            started_team_daemon: true,
+            team_daemon_warning: None,
+        },
+    };
+    let mut responses = std::collections::VecDeque::from([
+        serde_json::to_value(protocol::CoordinationSwitchTeamAccountAccepted {
+            run_id: "account-switch-test".to_string(),
+        })
+        .expect("accepted payload"),
+        serde_json::to_value(protocol::CoordinationSwitchTeamAccountStatus {
+            run_id: "account-switch-test".to_string(),
+            outcome: protocol::CoordinationSwitchTeamAccountOutcome::Completed {
+                report: Box::new(report.clone()),
+            },
+        })
+        .expect("status payload"),
+    ]);
+    let mut methods = Vec::new();
+
+    let switched = switch_team_account_through_daemon_with(
+        params,
+        std::time::Duration::ZERO,
+        |method, _params| {
+            methods.push(method.to_string());
+            responses.pop_front().ok_or_else(|| {
+                CoordinationDaemonCallError::Transport("unexpected daemon call".to_string())
+            })
+        },
+    )
+    .expect("account switch completes");
+
+    assert_eq!(switched, report);
+    assert_eq!(
+        methods,
+        [
+            protocol::method::COORDINATION_SWITCH_TEAM_ACCOUNT,
+            protocol::method::COORDINATION_SWITCH_TEAM_ACCOUNT_STATUS,
+        ]
+    );
+}
+
+#[test]
 fn roster_daemon_clients_use_their_distinct_run_status_methods() {
     let create_params = protocol::CoordinationCreateTeamParams {
         request: crate::coordination::requests::CreateTeamRequest {
@@ -1510,6 +1577,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         },
         agents: vec![
             AgentSetupConfig {
@@ -1540,6 +1608,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
@@ -1565,6 +1634,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
         ],
     }
@@ -1597,6 +1667,7 @@ fn sample_add_agent_request(team_name: &str, member_name: &str) -> AddAgentReque
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         },
     }
 }
@@ -2080,6 +2151,7 @@ fn add_agent_and_reonboard_validate_empty_strings() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
         },
         &crate::models::CliCommandSettings::default(),
@@ -3293,6 +3365,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         },
         agents: vec![
             AgentSetupConfig {
@@ -3319,6 +3392,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
             AgentSetupConfig {
                 name: "reviewer-2".to_string(),
@@ -3344,6 +3418,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
         ],
     };
@@ -3505,6 +3580,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         },
         agents: vec![
             AgentSetupConfig {
@@ -3531,6 +3607,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
             AgentSetupConfig {
                 name: "dev-2".to_string(),
@@ -3556,6 +3633,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
         ],
     };
@@ -3726,6 +3804,7 @@ fn initialize_team_request_round_trip() {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         },
         agents: vec![
             AgentSetupConfig {
@@ -3752,6 +3831,7 @@ fn initialize_team_request_round_trip() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
@@ -3777,6 +3857,7 @@ fn initialize_team_request_round_trip() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
         ],
     };
@@ -3847,6 +3928,7 @@ fn add_agent_request_and_report_round_trip() {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         },
     };
     let req_json = serde_json::to_string(&request).expect("serialize add-agent request");
@@ -4003,6 +4085,9 @@ fn live_team_status_round_trip() {
                 account_applied: None,
                 account_note: None,
                 account_note_detail: None,
+                account_id: None,
+                account_label: None,
+                account_fallback_from: None,
             },
             LiveAgentStatus {
                 name: "frontend-dev".to_string(),
@@ -4028,6 +4113,9 @@ fn live_team_status_round_trip() {
                 account_applied: Some(false),
                 account_note: Some("opaque_base_command".to_string()),
                 account_note_detail: Some("team-wrapper".to_string()),
+                account_id: Some("personal".to_string()),
+                account_label: Some("Personal".to_string()),
+                account_fallback_from: Some("Work".to_string()),
             },
         ],
     };
@@ -4071,6 +4159,9 @@ fn project_mesh_snapshot_round_trip() {
                 account_applied: Some(false),
                 account_note: Some("opaque_base_command".to_string()),
                 account_note_detail: Some("team-wrapper".to_string()),
+                account_id: Some("personal".to_string()),
+                account_label: Some("Personal".to_string()),
+                account_fallback_from: Some("Work".to_string()),
             }],
         }),
         warnings: vec!["skipped team folder 'broken-team'".to_string()],
@@ -4576,9 +4667,12 @@ fn live_team_status_carries_the_opaque_base_account_note() {
     )
     .expect("initialize should succeed");
 
-    let note = taurhaus_lib::session_scanner::launch_base::LaunchAccountResult::for_opaque_head(
+    let mut note = taurhaus_lib::session_scanner::launch_base::LaunchAccountResult::for_opaque_head(
         Some("team-wrapper"),
     );
+    note.account_id = Some("personal".to_string());
+    note.account_label = Some("Personal".to_string());
+    note.fallback_from = Some("Work".to_string());
     MemberRuntimeStore::update(tmp.path(), "architecture-final", "frontend-dev", |record| {
         record.launch_account = note.clone();
     })
@@ -4601,6 +4695,9 @@ fn live_team_status_carries_the_opaque_base_account_note() {
     assert_eq!(member.account_applied, Some(false));
     assert_eq!(member.account_note.as_deref(), Some("opaque_base_command"));
     assert_eq!(member.account_note_detail.as_deref(), Some("team-wrapper"));
+    assert_eq!(member.account_id.as_deref(), Some("personal"));
+    assert_eq!(member.account_label.as_deref(), Some("Personal"));
+    assert_eq!(member.account_fallback_from.as_deref(), Some("Work"));
 }
 
 #[test]

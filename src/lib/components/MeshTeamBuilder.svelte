@@ -33,6 +33,7 @@
   import { projectNameFromPath } from './meshTabUtils.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import MeshNodeDetail from './MeshNodeDetail.svelte'
+  import MemberAccountPicker from './MemberAccountPicker.svelte'
   import ModelSelect from './ModelSelect.svelte'
   import MeshRoleEditorDialog from './MeshRoleEditorDialog.svelte'
   import {
@@ -57,6 +58,7 @@
     presets = [],
     availableProjects = [],
     modelCatalog = null,
+    accountStates = null,
     onBrowseCatalog = () => {},
     onOpenTemplateBrowser = () => {},
     onTeamNameChange = () => {},
@@ -77,21 +79,13 @@
   } = $props()
 
   const t = $derived(themeTokens(dark))
-  // Agent inboxes live under the single `PlatformPaths::teams_dir()`, so a team
-  // always runs on the default config dir even when a project picked another
-  // subscription. Per-team accounts need a per-team teams dir first.
-  const teamAccountNote = $derived.by(() => {
-    const provider = tools().find((tool) => tool.capabilities.teamConfigNamespace)
-    if (!provider) return ''
-    const detected = accountState(provider.id).accounts
-    if (detected.length < 2) return ''
-    const fallback = detected.find((account) => account.is_default)
-    if (!fallback) return ''
-    return `Team members run on ${fallback.label ?? fallback.email} (per-team account selection is a follow-up).`
-  })
   const modelCatalogContext = getModelCatalogContext()
   const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
   const toolOptions = $derived(tools())
+
+  function accountsFor(tool) {
+    return accountStates?.[normalizeTool(tool)] ?? accountState(normalizeTool(tool))
+  }
 
   // The effort a role-bound roster row actually launches with when it declares
   // none itself: the backend refills it from the role template.
@@ -2236,11 +2230,6 @@
                 : `${agents.length} agent${agents.length === 1 ? '' : 's'} supporting the lead.`}
             </p>
 
-            {#if teamAccountNote}
-              <p class="text-[11px] {t.textMuted}" data-testid="mesh-builder-account-note">
-                {teamAccountNote}
-              </p>
-            {/if}
           </div>
         </div>
 
@@ -2328,7 +2317,7 @@
                   </div>
 
                   {#if leadDetailsExpanded}
-                    <div class="mt-3 grid gap-2 border-t pt-3 {dark ? 'border-white/[0.08]' : 'border-zinc-200/80'} lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
+                    <div class="mt-3 grid gap-2 border-t pt-3 {dark ? 'border-white/[0.08]' : 'border-zinc-200/80'} lg:grid-cols-2 xl:grid-cols-4">
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Lead name</span>
                         <input
@@ -2352,6 +2341,16 @@
                           onchange={(next) => onUpdateLead(next)}
                         />
                       </div>
+                      <MemberAccountPicker
+                        memberId="lead"
+                        tool={normalizeTool(normalizedTeam.lead.tool)}
+                        accountId={normalizedTeam.lead.accountId ?? null}
+                        accounts={accountsFor(normalizedTeam.lead.tool).accounts ?? []}
+                        defaultAccountId={accountsFor(normalizedTeam.lead.tool).defaultAccountId ?? null}
+                        degraded={accountsFor(normalizedTeam.lead.tool).degraded ?? false}
+                        {dark}
+                        onchange={(next) => onUpdateLead(next)}
+                      />
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Project</span>
                         <div class="relative">
@@ -2466,7 +2465,7 @@
                   </div>
 
                   {#if isAgentExpanded(agent.id)}
-                    <div class="mt-3 grid gap-2 border-t pt-3 {dark ? 'border-white/[0.08]' : 'border-zinc-200/80'} lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
+                    <div class="mt-3 grid gap-2 border-t pt-3 {dark ? 'border-white/[0.08]' : 'border-zinc-200/80'} lg:grid-cols-2 xl:grid-cols-4">
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Agent name</span>
                         <input
@@ -2490,6 +2489,16 @@
                           onchange={(next) => onUpdateAgent(agent.id, next)}
                         />
                       </div>
+                      <MemberAccountPicker
+                        memberId={agent.id}
+                        tool={normalizeTool(agent.tool)}
+                        accountId={agent.accountId ?? null}
+                        accounts={accountsFor(agent.tool).accounts ?? []}
+                        defaultAccountId={accountsFor(agent.tool).defaultAccountId ?? null}
+                        degraded={accountsFor(agent.tool).degraded ?? false}
+                        {dark}
+                        onchange={(next) => onUpdateAgent(agent.id, next)}
+                      />
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Project</span>
                         <div class="relative">

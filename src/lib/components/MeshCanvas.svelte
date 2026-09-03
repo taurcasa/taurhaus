@@ -608,6 +608,9 @@
         accountApplied={layout.lead.accountApplied}
         accountNote={layout.lead.accountNote}
         accountNoteDetail={layout.lead.accountNoteDetail}
+        accountId={layout.lead.accountId}
+        accountLabel={layout.lead.accountLabel}
+        accountFallbackFrom={layout.lead.accountFallbackFrom}
         status={layout.lead.status}
         isCrossProject={layout.lead.isCrossProject}
         projectLabel={layout.lead.projectLabel}
@@ -638,6 +641,9 @@
           accountApplied={agent.accountApplied}
           accountNote={agent.accountNote}
           accountNoteDetail={agent.accountNoteDetail}
+          accountId={agent.accountId}
+          accountLabel={agent.accountLabel}
+          accountFallbackFrom={agent.accountFallbackFrom}
           status={agent.status}
           isCrossProject={agent.isCrossProject}
           projectLabel={agent.projectLabel}

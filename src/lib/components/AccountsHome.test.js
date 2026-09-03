@@ -18,6 +18,7 @@ vi.mock('../ipc.js', () => ({
   revealDirectory: vi.fn(() => Promise.resolve()),
   prepareAccountDirectory: vi.fn(() => Promise.resolve()),
   launchAccountLogin: vi.fn(() => Promise.resolve()),
+  coordinationSwitchTeamAccount: vi.fn(() => Promise.resolve({ status: 'accepted' })),
 }))
 
 import AccountsHome from './AccountsHome.svelte'
@@ -27,7 +28,7 @@ import {
   rememberChoice,
   setGlobalDefault,
 } from '../accounts.svelte.js'
-import { revealDirectory } from '../ipc.js'
+import { coordinationSwitchTeamAccount, revealDirectory } from '../ipc.js'
 
 const now = Date.now()
 const usage = (used = 42) => ({
@@ -166,6 +167,72 @@ describe('AccountsHome', () => {
 
     await fireEvent.click(within(work).getByText('taurhaus'))
     expect(onOpenProject).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }))
+  })
+
+  it('offers deliberate team account switching only for selector-based harnesses', async () => {
+    const accountStates = states()
+    accountStates.codex.accounts = [
+      account('codex-personal', { dir: '/home/user/.codex-personal' }),
+      account('codex-work', { dir: '/home/user/.codex-work' }),
+    ]
+    accountStates.codex.defaultAccountId = 'codex-personal'
+    accountStates.codex.relationships = {
+      'codex-personal': {
+        pinnedProjects: [],
+        lastUsedProjects: [],
+        teams: [{ name: 'wave-b', projectId: 'p1', projectName: 'taurhaus' }],
+      },
+    }
+
+    render(AccountsHome, { props: { states: accountStates, projects: [] } })
+
+    const personal = screen.getByTestId('account-row-codex-personal')
+    await fireEvent.click(within(personal).getByRole('button', { name: 'Expand codex-personal' }))
+    await fireEvent.click(within(personal).getByRole('button', { name: 'Switch wave-b account' }))
+    await fireEvent.click(screen.getByTestId('account-option-codex-work'))
+
+    expect(coordinationSwitchTeamAccount).toHaveBeenCalledWith(
+      'wave-b',
+      'codex',
+      'codex-work'
+    )
+    expect(within(screen.getByTestId('account-row-work')).queryByText('Switch…')).toBeNull()
+  })
+
+  // Regression: 0bc79ceb left the account picker interactive while the
+  // accept-then-poll switch ran, so a second click queued a second team restart.
+  it('blocks duplicate team switches while the first operation is pending', async () => {
+    let finishSwitch
+    coordinationSwitchTeamAccount.mockImplementation(
+      () => new Promise((resolve) => { finishSwitch = resolve })
+    )
+    const accountStates = states()
+    accountStates.codex.accounts = [
+      account('codex-personal', { dir: '/home/user/.codex-personal' }),
+      account('codex-work', { dir: '/home/user/.codex-work' }),
+    ]
+    accountStates.codex.relationships = {
+      'codex-personal': {
+        pinnedProjects: [],
+        lastUsedProjects: [],
+        teams: [{ name: 'wave-b', projectId: 'p1', projectName: 'taurhaus' }],
+      },
+    }
+
+    render(AccountsHome, { props: { states: accountStates, projects: [] } })
+    const personal = screen.getByTestId('account-row-codex-personal')
+    await fireEvent.click(within(personal).getByRole('button', { name: 'Expand codex-personal' }))
+    await fireEvent.click(within(personal).getByRole('button', { name: 'Switch wave-b account' }))
+    const option = screen.getByTestId('account-option-codex-work')
+    await fireEvent.click(option)
+    await fireEvent.click(option)
+
+    expect(coordinationSwitchTeamAccount).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('team-account-switch-pending')).toHaveTextContent(
+      'Switching wave-b'
+    )
+
+    finishSwitch({ status: 'accepted' })
   })
 
   // Regression: 971d964 rendered every team as a link, including one whose

@@ -909,6 +909,111 @@ describe('MeshTeamBuilder', () => {
     expect(agentCard).not.toHaveClass('mesh-builder-roster-entry')
   })
 
+  it('uses the shared account picker for Codex members and a truth chip for Claude', async () => {
+    const onUpdateAgent = vi.fn()
+    renderBuilder({
+      teamConfig: sampleRosterConfig(),
+      accountStates: {
+        claude: {
+          accounts: [{ id: 'claude-default', label: 'Claude Default', logged_in: true, is_default: true }],
+          defaultAccountId: 'claude-default',
+        },
+        codex: {
+          accounts: [
+            { id: 'personal', label: 'Personal', logged_in: true, is_default: true },
+            { id: 'work', label: 'Work', logged_in: true, is_default: false },
+          ],
+          defaultAccountId: 'personal',
+        },
+      },
+      onUpdateAgent,
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-lead-edit-toggle'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-agent-edit-toggle-agent-codex-1'))
+
+    expect(screen.getByTestId('mesh-builder-member-account-lead')).toHaveTextContent(
+      'Team account · Claude Default'
+    )
+    await fireEvent.click(screen.getByTestId('mesh-builder-member-account-agent-codex-1'))
+    await fireEvent.click(screen.getByTestId('account-option-work'))
+    expect(onUpdateAgent).toHaveBeenCalledWith('agent-codex-1', { accountId: 'work' })
+  })
+
+  // Regression: 0bc79ceb made the Claude team truth chip prefer the app-launch
+  // global default even though managed teams still launch from the registry home.
+  it('names the registry-home Claude account in the team truth chip', async () => {
+    renderBuilder({
+      teamConfig: sampleRosterConfig(),
+      accountStates: {
+        claude: {
+          accounts: [
+            { id: 'claude-home', label: 'Claude Home', logged_in: true, is_default: true },
+            { id: 'claude-work', label: 'Claude Work', logged_in: true, is_default: false },
+          ],
+          defaultAccountId: 'claude-work',
+        },
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-lead-edit-toggle'))
+
+    expect(screen.getByTestId('mesh-builder-member-account-lead')).toHaveTextContent(
+      'Team account · Claude Home'
+    )
+  })
+
+  // Regression: 0bc79ceb made a new Codex member's account row prefer the
+  // app-launch global default even though managed teams launch from the registry home.
+  it('names the registry-home Codex account when the member has no account choice', async () => {
+    renderBuilder({
+      teamConfig: sampleRosterConfig(),
+      accountStates: {
+        codex: {
+          accounts: [
+            { id: 'personal', label: 'Personal', logged_in: true, is_default: true },
+            { id: 'work', label: 'Work', logged_in: true, is_default: false },
+          ],
+          defaultAccountId: 'work',
+        },
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-agent-edit-toggle-agent-codex-1'))
+
+    expect(screen.getByTestId('mesh-builder-member-account-agent-codex-1')).toHaveTextContent(
+      'Personal'
+    )
+  })
+
+  // Regression: 95848682 fixed the row label to mirror the registry home but
+  // left the popover preselecting the app-launch global default, which
+  // `managed_member_account` never consults. The row said Personal while the
+  // picker opened on Work, so confirming without moving pinned Work.
+  it('opens the member account popover on the account the row names', async () => {
+    renderBuilder({
+      teamConfig: sampleRosterConfig(),
+      accountStates: {
+        codex: {
+          accounts: [
+            { id: 'personal', label: 'Personal', logged_in: true, is_default: true },
+            { id: 'work', label: 'Work', logged_in: true, is_default: false },
+          ],
+          defaultAccountId: 'work',
+        },
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-agent-edit-toggle-agent-codex-1'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-member-account-agent-codex-1'))
+
+    expect(screen.getByTestId('account-option-personal')).toHaveAttribute(
+      'data-preselected',
+      'true'
+    )
+    expect(screen.getByTestId('account-option-work')).toHaveAttribute('data-preselected', 'false')
+  })
+
   it('waits for the exit animation before removing an agent card', async () => {
     vi.useFakeTimers()
     const onRemoveAgent = vi.fn()

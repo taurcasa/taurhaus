@@ -51,6 +51,9 @@ pub struct AgentSetupConfig {
     // canonical `reasoning_effort` next to `model`.
     #[serde(default, alias = "reasoning_effort")]
     pub reasoning_effort: Option<String>,
+    /// Stable account id for selector-capable managed members.
+    #[serde(default, alias = "account_id")]
+    pub account_id: Option<String>,
     pub project_id: String,
     pub description: Option<String>,
     pub role_id: Option<String>,
@@ -119,6 +122,15 @@ pub struct ResumeTeamRequest {
     pub team_name: String,
 }
 
+/// IPC request for switching every selector-capable member of one harness.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchTeamAccountRequest {
+    pub team_name: String,
+    pub cli_tool: crate::session_scanner::cli_tool::CliTool,
+    pub account_id: String,
+}
+
 /// IPC response for hot-add operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -171,6 +183,19 @@ pub struct ResumeTeamReport {
     pub warnings: Vec<String>,
     pub started_team_daemon: bool,
     pub team_daemon_warning: Option<String>,
+}
+
+/// IPC response for the stop/rewrite/resume account switch operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchTeamAccountReport {
+    pub team_name: String,
+    pub cli_tool: crate::session_scanner::cli_tool::CliTool,
+    pub account_id: String,
+    pub account_label: String,
+    pub switched_members: Vec<String>,
+    pub handoff_manifest_count: usize,
+    pub resume: ResumeTeamReport,
 }
 
 /// IPC response for runtime member removal with teardown diagnostics.
@@ -243,6 +268,16 @@ pub struct LiveAgentStatus {
     /// Wrapper command head associated with `account_note`.
     #[serde(default)]
     pub account_note_detail: Option<String>,
+    /// Detected account actually used by the launch, or the persisted selector
+    /// assignment while the member is offline.
+    #[serde(default)]
+    pub account_id: Option<String>,
+    /// Human label for the account actually in force.
+    #[serde(default)]
+    pub account_label: Option<String>,
+    /// Requested account that could not be applied before fallback.
+    #[serde(default)]
+    pub account_fallback_from: Option<String>,
 }
 
 /// Live-team payload for the frontend mesh roster.
@@ -304,6 +339,15 @@ pub struct FastAgentSnapshot {
     /// See `LiveAgentStatus::account_note_detail`.
     #[serde(default)]
     pub account_note_detail: Option<String>,
+    /// See `LiveAgentStatus::account_id`.
+    #[serde(default)]
+    pub account_id: Option<String>,
+    /// See `LiveAgentStatus::account_label`.
+    #[serde(default)]
+    pub account_label: Option<String>,
+    /// See `LiveAgentStatus::account_fallback_from`.
+    #[serde(default)]
+    pub account_fallback_from: Option<String>,
 }
 
 /// Fast team snapshot built from persisted config + runtime only.

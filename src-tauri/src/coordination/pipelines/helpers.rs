@@ -256,6 +256,7 @@ pub(super) fn build_cli_launch_command(
         role,
         cli_commands.codex_bypass_hook_trust,
         None,
+        agent.account_id.as_deref(),
     )
 }
 
@@ -495,6 +496,7 @@ pub(super) fn build_member_activation_launch_command(
         context.member.role,
         cli_commands.codex_bypass_hook_trust,
         context.resume_session_id.as_deref(),
+        context.member.account_id.as_deref(),
     )
 }
 
@@ -617,6 +619,7 @@ pub fn render_team_launch_command(
     role: MemberRole,
     codex_bypass_hook_trust: bool,
     resume_session_id: Option<&str>,
+    account_id: Option<&str>,
 ) -> Result<String, CoordinationError> {
     render_team_launch(
         cli_commands,
@@ -628,6 +631,7 @@ pub fn render_team_launch_command(
         role,
         codex_bypass_hook_trust,
         resume_session_id,
+        account_id,
     )
     .map(|result| result.command)
 }
@@ -677,6 +681,7 @@ pub(super) fn render_team_launch(
     role: MemberRole,
     codex_bypass_hook_trust: bool,
     resume_session_id: Option<&str>,
+    requested_account_id: Option<&str>,
 ) -> Result<TeamLaunchResult, CoordinationError> {
     let mode = if resume_session_id.is_some() {
         LaunchMode::Resume
@@ -732,13 +737,14 @@ pub(super) fn render_team_launch(
     if reasoning_effort.is_some() {
         model.reasoning_effort = reasoning_effort.map(str::to_string);
     }
-    // Team members stay on the default config dir: agent inboxes live under
-    // `PlatformPaths::teams_dir()`, and v1 does not move a member to another
-    // subscription. That root is only implicit while it *is* the dir Claude
-    // Code reads on its own — `TAURHAUS_CLAUDE_DIR` moves it, and a member
-    // launched without the assignment writes its inbox where no team reads.
     let capabilities = spec(cli_tool).capabilities;
-    let team_config_dir = capabilities
+    if capabilities.team_config_namespace && requested_account_id.is_some() {
+        return Err(CoordinationError::Validation(
+            "Claude account selection belongs to the whole team; mixed-account Claude members are impossible"
+                .to_string(),
+        ));
+    }
+    let default_team_config_dir = capabilities
         .team_config_namespace
         .then(|| configured_default_dir(cli_tool))
         .flatten()
@@ -748,6 +754,14 @@ pub(super) fn render_team_launch(
                 .and_then(|selector| cli_commands.account_selector_dirs.get(selector).cloned())
         })
         .map(|dir| to_launch_namespace(&dir));
+    let (team_config_dir, mut account) = managed_member_account(
+        cli_commands,
+        cli_tool,
+        requested_account_id,
+        default_team_config_dir,
+        team_name,
+        agent_name,
+    );
     let rendered = LaunchSpec {
         tool: cli_tool,
         mode,
@@ -771,10 +785,13 @@ pub(super) fn render_team_launch(
     validate_command_override(&rendered.command).map_err(CoordinationError::Validation)?;
     let applied_effort = launched_effort(&rendered, cli_tool, base.as_ref());
 
-    let account = LaunchAccountResult::for_opaque_head(
+    let opaque = LaunchAccountResult::for_opaque_head(
         resolved_base.and_then(|resolved| resolved.opaque_head.as_deref()),
     );
-    if let Some(head) = account.account_note_detail.as_deref() {
+    if let Some(head) = opaque.account_note_detail.as_deref() {
+        account.account_applied = Some(false);
+        account.account_note = opaque.account_note;
+        account.account_note_detail = opaque.account_note_detail.clone();
         let mut fields = Map::new();
         fields.insert("team".to_string(), Value::String(team_name.to_string()));
         fields.insert("member".to_string(), Value::String(agent_name.to_string()));
@@ -886,6 +903,99 @@ pub(super) fn render_team_launch(
         account,
         applied_effort,
     })
+}
+
+fn managed_member_account(
+    cli_commands: &CliCommandSettings,
+    cli_tool: CliTool,
+    requested_account_id: Option<&str>,
+    default_dir: Option<PathBuf>,
+    team_name: &str,
+    member_name: &str,
+) -> (Option<PathBuf>, LaunchAccountResult) {
+    let requested = requested_account_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let accounts = cli_commands.managed_accounts.get(&cli_tool);
+    let requested_account = requested.and_then(|requested| {
+        accounts
+            .into_iter()
+            .flatten()
+            .find(|account| account.id == requested)
+    });
+    if requested.is_some() {
+        if let Some(selected) = requested_account.filter(|account| account.logged_in) {
+            return (
+                Some(to_launch_namespace(&selected.dir)),
+                LaunchAccountResult {
+                    account_applied: Some(true),
+                    account_id: Some(selected.id.clone()),
+                    account_label: Some(selected.label.clone()),
+                    ..LaunchAccountResult::default()
+                },
+            );
+        }
+    }
+
+    let actual = default_dir.as_ref().and_then(|dir| {
+        accounts.into_iter().flatten().find(|account| {
+            account.is_default && account.logged_in && to_launch_namespace(&account.dir) == *dir
+        })
+    });
+    if requested.is_none() && actual.is_none() {
+        return (default_dir, LaunchAccountResult::default());
+    }
+    let fallback_from = requested.map(|requested| {
+        requested_account
+            .map(|account| account.label.clone())
+            .unwrap_or_else(|| requested.to_string())
+    });
+    let fallback = fallback_from.is_some();
+    let account = LaunchAccountResult {
+        account_applied: Some(!fallback),
+        account_note: fallback.then(|| "account_fallback".to_string()),
+        account_note_detail: fallback.then(|| {
+            if accounts.is_none_or(|accounts| accounts.is_empty()) {
+                "account detection unavailable".to_string()
+            } else {
+                "requested account unavailable or signed out".to_string()
+            }
+        }),
+        account_id: actual.map(|account| account.id.clone()),
+        account_label: Some(
+            actual
+                .map(|account| account.label.clone())
+                .unwrap_or_else(|| "Default".to_string()),
+        ),
+        fallback_from,
+    };
+
+    if fallback {
+        let mut fields = Map::new();
+        fields.insert("team".to_string(), Value::String(team_name.to_string()));
+        fields.insert("member".to_string(), Value::String(member_name.to_string()));
+        fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
+        fields.insert(
+            "requested_account_id".to_string(),
+            Value::String(requested.expect("fallback requires request").to_string()),
+        );
+        fields.insert(
+            "fallback_account_id".to_string(),
+            account
+                .account_id
+                .clone()
+                .map(Value::String)
+                .unwrap_or(Value::Null),
+        );
+        emit_global(
+            "warn",
+            "coordination",
+            "launch.account.fallback",
+            Some("Managed member account was unavailable; using the registry home".to_string()),
+            fields,
+        );
+    }
+    (default_dir, account)
 }
 
 fn detect_member_session_identity(
@@ -1047,6 +1157,7 @@ pub(super) fn member_from_agent_setup(
         capabilities: setup.capabilities.clone(),
         model: declared_model.model,
         reasoning_effort: declared_model.reasoning_effort,
+        account_id: setup.account_id.clone(),
         project_path: PathBuf::from(&setup.project_id),
         cli_tool: parse_cli_tool(&setup.cli_tool)?,
         extra: Default::default(),

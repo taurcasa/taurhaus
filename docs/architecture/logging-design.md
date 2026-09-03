@@ -61,7 +61,8 @@ The daemon binary and the compact-hook CLI install the *same* sink (`install_glo
 | `launch.model.invalid` | warn | Configured model is not in the catalog. |
 | `launch.account.fallback` | warn | Requested account unusable for that tool; fell back down the resolution order. |
 | `launch.account.derived_from_session` | info | Account inferred from an existing session's transcript. |
-| `launch.account.ignored_for_team` | warn | A per-launch account pick was dropped because a team launch runs on the default account home. |
+| `launch.account.ignored_for_team` | warn | A Claude team launch or degraded managed-account fallback dropped a per-launch account pick and used the registry home. |
+| `coordination.account_switch.manifest_unreadable` | warn | A corrupt account-switch manifest was quarantined before a fresh append-only history was started. |
 | `account.provider.floor` | info (`tracing` only) | A harness declares an account selector but its `AccountProvider` has not landed, so detection returns an empty scan. Emitted once per run per tool through `tracing::info!` (`accounts/mod.rs:463-481`), **not** through `emit_global` — it reaches stderr and the `tracing` layer, not the canonical JSONL sink. |
 | `usage.fetched` | debug | `{tool, account_id, status, windows}` — never tokens, never a URL with a query string. |
 | `usage.failed` | warn | Once per state change, per (tool, account). |

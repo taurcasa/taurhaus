@@ -661,6 +661,7 @@ fn setup_config(tool: CliTool) -> AgentSetupConfig {
         cli_tool: tool.to_string(),
         model: default.id.clone(),
         reasoning_effort: default.default_effort.clone(),
+        account_id: None,
         project_id: "/tmp/taurhaus-conformance-project".to_string(),
         description: None,
         role_id: None,

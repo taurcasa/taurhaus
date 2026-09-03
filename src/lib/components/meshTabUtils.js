@@ -20,6 +20,23 @@ function optionalText(value) {
   return String(value ?? '').trim() || null
 }
 
+export function accountLineLabel(account = {}) {
+  const label = String(account.accountLabel ?? account.account_label ?? '').trim()
+  const id = String(account.accountId ?? account.account_id ?? '').trim()
+  const actual = label || id || 'Account'
+  const fallbackFrom = String(
+    account.accountFallbackFrom ?? account.account_fallback_from ?? ''
+  ).trim()
+  const note = String(account.accountNote ?? account.account_note ?? '').trim()
+  const applied = account.accountApplied ?? account.account_applied ?? null
+  if (fallbackFrom || note === 'account_fallback') {
+    return `was ${fallbackFrom || 'requested account'} → now ${actual}`
+  }
+  if (applied === false) return `${actual} · not guaranteed`
+  if (applied === true) return `${actual} · applied`
+  return label || id ? `${actual} · configured` : ''
+}
+
 export function inferTeamName(path) {
   const project = projectNameFromPath(path)
   return `${project}-team`
@@ -104,6 +121,11 @@ export function createLead(overrides = {}, projectPath = '') {
     accountApplied: overrides.accountApplied ?? overrides.account_applied ?? null,
     accountNote: optionalText(overrides.accountNote ?? overrides.account_note),
     accountNoteDetail: optionalText(overrides.accountNoteDetail ?? overrides.account_note_detail),
+    accountId: optionalText(overrides.accountId ?? overrides.account_id),
+    accountLabel: optionalText(overrides.accountLabel ?? overrides.account_label),
+    accountFallbackFrom: optionalText(
+      overrides.accountFallbackFrom ?? overrides.account_fallback_from
+    ),
     status: activityLevel({ status: overrides.status }),
     projectId: String(overrides.projectId ?? projectPath ?? ''),
     isCrossProject: false,
@@ -136,6 +158,11 @@ export function createAgent(index, overrides = {}, projectPath = '') {
     accountApplied: overrides.accountApplied ?? overrides.account_applied ?? null,
     accountNote: optionalText(overrides.accountNote ?? overrides.account_note),
     accountNoteDetail: optionalText(overrides.accountNoteDetail ?? overrides.account_note_detail),
+    accountId: optionalText(overrides.accountId ?? overrides.account_id),
+    accountLabel: optionalText(overrides.accountLabel ?? overrides.account_label),
+    accountFallbackFrom: optionalText(
+      overrides.accountFallbackFrom ?? overrides.account_fallback_from
+    ),
     status: activityLevel({ status: overrides.status }),
     projectId: String(overrides.projectId ?? projectPath ?? ''),
     isCrossProject: Boolean(overrides.isCrossProject ?? overrides.is_cross_project),
@@ -370,6 +397,11 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
     accountApplied: member?.accountApplied ?? member?.account_applied ?? null,
     accountNote: optionalText(member?.accountNote ?? member?.account_note),
     accountNoteDetail: optionalText(member?.accountNoteDetail ?? member?.account_note_detail),
+    accountId: optionalText(member?.accountId ?? member?.account_id),
+    accountLabel: optionalText(member?.accountLabel ?? member?.account_label),
+    accountFallbackFrom: optionalText(
+      member?.accountFallbackFrom ?? member?.account_fallback_from
+    ),
     status: activityLevel(member),
     projectId: String(member?.projectId ?? member?.project_id ?? projectPath ?? ''),
     description: member?.description ?? null,
@@ -407,6 +439,9 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
       accountApplied: normalizedLeadMember?.accountApplied ?? null,
       accountNote: normalizedLeadMember?.accountNote ?? null,
       accountNoteDetail: normalizedLeadMember?.accountNoteDetail ?? null,
+      accountId: normalizedLeadMember?.accountId ?? null,
+      accountLabel: normalizedLeadMember?.accountLabel ?? null,
+      accountFallbackFrom: normalizedLeadMember?.accountFallbackFrom ?? null,
       status: normalizedLeadMember?.status ?? 'active',
       projectId: normalizedLeadMember?.projectId ?? projectPath,
       description: normalizedLeadMember?.description ?? 'Team lead',
@@ -441,6 +476,9 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
           accountApplied: member.accountApplied,
           accountNote: member.accountNote,
           accountNoteDetail: member.accountNoteDetail,
+          accountId: member.accountId,
+          accountLabel: member.accountLabel,
+          accountFallbackFrom: member.accountFallbackFrom,
           status: member.status,
           projectId: member.projectId,
           isCrossProject: member.isCrossProject,
@@ -536,6 +574,7 @@ export function buildInitializationRequest(
       cliTool: normalizeOptionalTool(lead?.tool),
       model: leadModel.model,
       reasoningEffort: leadModel.reasoningEffort,
+      accountId: optionalText(lead?.accountId ?? lead?.account_id),
       projectId: lead?.projectId || projectPath,
       description: lead?.description ?? 'Team lead',
       roleId: lead?.roleId ?? null,
@@ -554,6 +593,7 @@ export function buildInitializationRequest(
         cliTool: normalizeTool(agent?.tool),
         model: agentModel.model,
         reasoningEffort: agentModel.reasoningEffort,
+        accountId: optionalText(agent?.accountId ?? agent?.account_id),
         projectId: agent?.projectId || projectPath,
         description: agent?.description ?? null,
         roleId: agent?.roleId ?? null,

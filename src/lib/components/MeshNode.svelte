@@ -1,9 +1,11 @@
 <script>
-  import { opaqueBaseNotice } from '../accounts.svelte.js'
+  import { accountState, opaqueBaseNotice } from '../accounts.svelte.js'
   import { activityLevel } from '../activitySignal.js'
   import { getToolIcon } from '../toolLogos.js'
   import { normalizeTool } from '../toolRegistry.js'
-  import { hasOpaqueAccountNote, memberNodeHeight } from './meshLayout.js'
+  import { hasAccountLine, memberNodeHeight } from './meshLayout.js'
+  import { accountLineLabel as formatAccountLine } from './meshTabUtils.js'
+  import { accountHeadroom as usageHeadroom } from '../usageWindows.js'
 
   let {
     nodeId = '',
@@ -21,6 +23,9 @@
     accountApplied = null,
     accountNote = '',
     accountNoteDetail = '',
+    accountId = '',
+    accountLabel = '',
+    accountFallbackFrom = '',
     status = 'offline',
     isCrossProject = false,
     projectLabel = '',
@@ -43,11 +48,33 @@
     accountNote,
     accountNoteDetail: safeAccountNoteDetail,
   }))
-  const showOpaqueAccountNote = $derived(hasOpaqueAccountNote(launchAccountResult))
-  const accountNoteSentence = $derived(opaqueBaseNotice(safeAccountNoteDetail, safeTool))
-  // Node-sized variant: the wrapper head is the part that must survive the
-  // ellipsis; the full sentence rides on the title.
-  const accountNoteLabel = $derived(`Account not guaranteed: "${safeAccountNoteDetail}"`)
+  const safeAccountId = $derived(String(accountId || '').trim())
+  const safeAccountLabel = $derived(String(accountLabel || safeAccountId || '').trim())
+  const safeAccountFallbackFrom = $derived(String(accountFallbackFrom || '').trim())
+  const showAccountLine = $derived(hasAccountLine({
+    accountId: safeAccountId,
+    accountLabel: safeAccountLabel,
+    accountApplied,
+    accountNote,
+    accountNoteDetail: safeAccountNoteDetail,
+    accountFallbackFrom: safeAccountFallbackFrom,
+  }))
+  const accountLineLabel = $derived(formatAccountLine({
+    accountId: safeAccountId,
+    accountLabel: safeAccountLabel,
+    accountApplied,
+    accountNote,
+    accountFallbackFrom: safeAccountFallbackFrom,
+  }))
+  const accountLineTitle = $derived(
+    accountNote === 'opaque_base_command' && safeAccountNoteDetail
+      ? opaqueBaseNotice(safeAccountNoteDetail, safeTool)
+      : accountLineLabel
+  )
+  const detectedAccount = $derived(
+    accountState(safeTool).accounts.find((account) => account.id === safeAccountId) ?? null
+  )
+  const accountHeadroom = $derived(usageHeadroom(detectedAccount?.usage))
   const requestedHeight = $derived(Number(height))
   const nodeHeight = $derived(
     Number.isFinite(requestedHeight) && requestedHeight > 0
@@ -191,12 +218,20 @@
       </span>
     {/if}
 
-    {#if showOpaqueAccountNote}
+    {#if showAccountLine}
       <span
-        class="mesh-node-account-note"
-        data-testid={`mesh-node-account-note-${normalizedRole}`}
-        title={accountNoteSentence}
-      >{accountNoteLabel}</span>
+        class="mesh-node-account-line"
+        class:is-warning={accountApplied === false}
+        data-testid={`mesh-node-account-line-${normalizedRole}`}
+        title={accountLineTitle}
+      >
+        {#if accountHeadroom !== null}
+          <span class="mesh-node-account-meter" data-testid={`mesh-node-account-meter-${normalizedRole}`}>
+            <span style={`width: ${accountHeadroom}%`}></span>
+          </span>
+        {/if}
+        <span class="mesh-node-account-label">{accountLineLabel}</span>
+      </span>
     {/if}
   </span>
 </button>
@@ -357,10 +392,37 @@
     text-overflow: ellipsis;
   }
 
-  .mesh-node-account-note {
-    color: var(--color-warning-500);
+  .mesh-node-account-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 10px;
     line-height: 1.2;
+    color: color-mix(in srgb, currentColor 72%, var(--color-success-500) 28%);
+  }
+
+  .mesh-node-account-line.is-warning {
+    color: var(--color-warning-500);
+  }
+
+  .mesh-node-account-meter {
+    width: 22px;
+    height: 3px;
+    overflow: hidden;
+    flex: 0 0 auto;
+    border-radius: 9999px;
+    background: color-mix(in srgb, currentColor 18%, transparent);
+  }
+
+  .mesh-node-account-meter > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: currentColor;
+  }
+
+  .mesh-node-account-label {
+    min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

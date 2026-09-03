@@ -666,6 +666,14 @@ fn live_agent_status_from_roster(
         member_cross_project_status(lead_project_path, member.configured_project_path.as_path());
     let workflow_activity = member_workflow_activity(&member);
     let launch_account = member.launch_account.clone();
+    let account_id = launch_account
+        .account_id
+        .clone()
+        .or_else(|| member.account_id.clone());
+    let account_label = launch_account
+        .account_label
+        .clone()
+        .or_else(|| account_id.clone());
     let (task_effort, task_effort_why) =
         member_task_effort(teams_dir, team_name, &member.member_name);
     LiveAgentStatus {
@@ -698,6 +706,9 @@ fn live_agent_status_from_roster(
         account_applied: launch_account.account_applied,
         account_note: launch_account.account_note,
         account_note_detail: launch_account.account_note_detail,
+        account_id,
+        account_label,
+        account_fallback_from: launch_account.fallback_from,
     }
 }
 
@@ -711,6 +722,14 @@ fn fast_agent_snapshot_from_roster(
         member_cross_project_status(lead_project_path, member.configured_project_path.as_path());
     let workflow_activity = member_workflow_activity(&member);
     let launch_account = member.launch_account.clone();
+    let account_id = launch_account
+        .account_id
+        .clone()
+        .or_else(|| member.account_id.clone());
+    let account_label = launch_account
+        .account_label
+        .clone()
+        .or_else(|| account_id.clone());
     let (task_effort, task_effort_why) =
         member_task_effort(teams_dir, team_name, &member.member_name);
     FastAgentSnapshot {
@@ -743,6 +762,9 @@ fn fast_agent_snapshot_from_roster(
         account_applied: launch_account.account_applied,
         account_note: launch_account.account_note,
         account_note_detail: launch_account.account_note_detail,
+        account_id,
+        account_label,
+        account_fallback_from: launch_account.fallback_from,
     }
 }
 

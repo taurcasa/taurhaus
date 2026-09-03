@@ -4,7 +4,7 @@ use std::sync::{Mutex, OnceLock};
 
 use serde_json::{Map, Value};
 
-use crate::coordination::domain::MemberRole;
+use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{
     AddAgentRequest, InitializeTeamRequest, ResumeMemberRequest, ResumeTeamRequest, TeardownMode,
@@ -31,6 +31,61 @@ pub(crate) struct TeardownDiagnostics {
 }
 
 impl CoordinationOrchestrator {
+    /// Stop one member without removing its config so an account-switch run can
+    /// resume it through the established activation pipeline.
+    pub(crate) fn stop_member_for_account_switch(
+        &mut self,
+        team_name: &str,
+        member: &Member,
+    ) -> Result<(), String> {
+        let runtime = match MemberRuntimeStore::load(&self.teams_dir, team_name, &member.name) {
+            Ok(runtime) if runtime.health != HealthState::SessionDead => runtime,
+            _ => return Ok(()),
+        };
+        let diagnostics = self.teardown_member_resources_best_effort(
+            team_name,
+            &member.name,
+            Some(member.project_path.as_path()),
+            Some(&runtime),
+        );
+        let pane_was_already_missing = diagnostics.steps.iter().any(|step| {
+            step.step == "verify_pane_ownership"
+                && step
+                    .message
+                    .as_deref()
+                    .is_some_and(|message| message.contains("pane_missing"))
+        });
+        if let Some(failed) = diagnostics
+            .steps
+            .iter()
+            .find(|step| step.step == "kill_pane" && !step.success)
+            .filter(|_| !pane_was_already_missing)
+        {
+            return Err(format!(
+                "stop failed: {}",
+                failed
+                    .message
+                    .clone()
+                    .unwrap_or_else(|| "pane was not terminated".to_string())
+            ));
+        }
+        if let Err(error) =
+            MemberRuntimeStore::update(&self.teams_dir, team_name, &member.name, |record| {
+                record.health = HealthState::SessionDead;
+                record.daemon_pid = None;
+                record.launch_account = Default::default();
+            })
+        {
+            tracing::warn!(
+                team = %team_name,
+                member = %member.name,
+                error = %error,
+                "failed to mark a member offline before its account switch"
+            );
+        }
+        Ok(())
+    }
+
     /// Stop everything a member is running: its mesh daemon, its mesh
     /// membership, and its pane.
     ///

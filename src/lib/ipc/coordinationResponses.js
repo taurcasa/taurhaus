@@ -189,6 +189,13 @@ function normalizeCoordinationMember(value) {
     'accountNoteDetail',
     value.accountNoteDetail ?? value.account_note_detail
   )
+  assignIfDefined(normalized, 'accountId', value.accountId ?? value.account_id)
+  assignIfDefined(normalized, 'accountLabel', value.accountLabel ?? value.account_label)
+  assignIfDefined(
+    normalized,
+    'accountFallbackFrom',
+    value.accountFallbackFrom ?? value.account_fallback_from
+  )
 
   const model = String(value.model ?? '').trim()
   if (model) normalized.model = model

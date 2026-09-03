@@ -316,6 +316,7 @@ fn team_launch_commands_match_tool_goldens() {
                 MemberRole::Agent,
                 commands.codex_bypass_hook_trust,
                 None,
+                None,
             )
             .expect("team launch command")
         };

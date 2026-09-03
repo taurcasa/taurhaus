@@ -697,6 +697,12 @@ fn parse_runtime_record(
         account_note: Option<String>,
         #[serde(default, alias = "accountNoteDetail")]
         account_note_detail: Option<String>,
+        #[serde(default, alias = "accountId")]
+        account_id: Option<String>,
+        #[serde(default, alias = "accountLabel")]
+        account_label: Option<String>,
+        #[serde(default, alias = "fallbackFrom")]
+        fallback_from: Option<String>,
         #[serde(flatten, default)]
         extra: BTreeMap<String, Value>,
     }
@@ -731,6 +737,9 @@ fn parse_runtime_record(
             account_applied: wire.account_applied,
             account_note: wire.account_note,
             account_note_detail: wire.account_note_detail,
+            account_id: wire.account_id,
+            account_label: wire.account_label,
+            fallback_from: wire.fallback_from,
         },
         extra: extension_fields_only(wire.extra, RUNTIME_AUTHORED_KEYS),
     })
@@ -779,6 +788,21 @@ fn merge_current_extension_fields(
             .or_else(|| current.get("account_note_detail"))
             .and_then(Value::as_str)
             .map(str::to_string),
+        account_id: current
+            .get("accountId")
+            .or_else(|| current.get("account_id"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        account_label: current
+            .get("accountLabel")
+            .or_else(|| current.get("account_label"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        fallback_from: current
+            .get("fallbackFrom")
+            .or_else(|| current.get("fallback_from"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
     };
     // The file is the authority for foreign keys: a key mesh deleted between
     // this snapshot's load and its save must stay deleted, so the snapshot's
@@ -790,8 +814,8 @@ fn merge_current_extension_fields(
     }
 }
 
-// LaunchAccountResult is shared with IPC and intentionally serializes these
-// three flattened fields in camelCase. The snake_case spellings remain listed
+// LaunchAccountResult is shared with IPC and intentionally serializes its
+// flattened fields in camelCase. The snake_case spellings remain listed
 // as read aliases for runtime records written before that contract settled.
 const RUNTIME_AUTHORED_KEYS: &[&str] = &[
     "schema_version",
@@ -832,6 +856,12 @@ const RUNTIME_AUTHORED_KEYS: &[&str] = &[
     "accountNote",
     "account_note_detail",
     "accountNoteDetail",
+    "account_id",
+    "accountId",
+    "account_label",
+    "accountLabel",
+    "fallback_from",
+    "fallbackFrom",
 ];
 
 fn is_stale(record: &MemberRuntimeRecord, cutoff: DateTime<Utc>) -> bool {

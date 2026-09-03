@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import AccountRow from './AccountRow.svelte'
+  import AccountPicker from './AccountPicker.svelte'
   import AddAccountFlow from './AddAccountFlow.svelte'
   import {
     accountState,
@@ -12,7 +13,7 @@
     rememberChoice,
     setGlobalDefault,
   } from '../accounts.svelte.js'
-  import { revealDirectory } from '../ipc.js'
+  import { coordinationSwitchTeamAccount, revealDirectory } from '../ipc.js'
   import { baseCommandSelection } from '../accountPresentation.js'
   import { tools } from '../toolRegistry.js'
   import { themeTokens } from '../themeTokens.js'
@@ -51,11 +52,19 @@
       : 'border-zinc-200 text-zinc-600 hover:bg-white'
   )
   const listTone = $derived(dark ? 'border-white/[0.07]' : 'border-zinc-200')
+  const switchPendingTone = $derived(
+    dark
+      ? 'border-brand-400/30 bg-zinc-950/95 text-zinc-200'
+      : 'border-brand-200 bg-white text-zinc-700'
+  )
 
   let expandedIds = $state(new Set())
   const autoExpandedIds = new Set()
   let addTool = $state(null)
   let signInAccount = $state(null)
+  let switchContext = $state(null)
+  let switchError = $state(null)
+  let switching = $state(false)
 
   $effect(() => {
     const requested = requestedAddTool
@@ -159,6 +168,27 @@
   function closeAdd() {
     addTool = null
     signInAccount = null
+  }
+
+  function startTeamSwitch(tool, account, team) {
+    switchError = null
+    switchContext = { tool, account, team }
+  }
+
+  async function switchTeamAccount(accountId) {
+    const context = switchContext
+    if (!context || switching) return
+    switchError = null
+    switching = true
+    try {
+      await coordinationSwitchTeamAccount(context.team.name, context.tool, accountId)
+      switchContext = null
+      await refreshAccountRelationships(context.tool, { force: true })
+    } catch (error) {
+      switchError = error?.message ?? String(error)
+    } finally {
+      switching = false
+    }
   }
 
   /**
@@ -278,6 +308,9 @@
               onRemovePin={(project) => removePin(descriptor.id, project)}
               {onOpenProject}
               {onOpenTeam}
+              onSwitchTeamAccount={descriptor.capabilities.accountSelection && !descriptor.capabilities.teamConfigNamespace
+                ? (team) => startTeamSwitch(descriptor.id, account, team)
+                : null}
               onSetDefault={() => setGlobalDefault(descriptor.id, account.id)}
               onSignIn={() => startSignIn(descriptor.id, account)}
               onReveal={() => revealDirectory(account.dir ?? account.config_dir)}
@@ -321,4 +354,39 @@
     {dark}
     onClose={closeAdd}
   />
+{/if}
+
+{#if switchContext}
+  {@const switchState = stateFor(switchContext.tool)}
+  <div class="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" data-testid="team-account-switcher">
+    <div>
+      {#if switching}
+        <div
+          class="w-[22rem] max-w-full rounded-xl border p-4 text-sm shadow-2xl {switchPendingTone}"
+          role="status"
+          data-testid="team-account-switch-pending"
+        >
+          Switching {switchContext.team.name}… The team will restart when the account is ready.
+        </div>
+      {:else}
+        <AccountPicker
+          tool={switchContext.tool}
+          accounts={switchState.accounts ?? []}
+          projectName={switchContext.team.name}
+          defaultAccountId={switchState.defaultAccountId}
+          degraded={switchState.degraded}
+          preselectedAccountId={switchContext.account.id}
+          {dark}
+          showRemember={false}
+          onConfirm={switchTeamAccount}
+          onCancel={() => { switchContext = null }}
+          onAddAccount={(tool) => { switchContext = null; startAdd(tool) }}
+          onManageAccounts={() => { switchContext = null }}
+        />
+      {/if}
+      {#if switchError}
+        <p class="mt-2 rounded-md bg-rose-950 px-3 py-2 text-[11px] text-rose-200" role="status">{switchError}</p>
+      {/if}
+    </div>
+  </div>
 {/if}

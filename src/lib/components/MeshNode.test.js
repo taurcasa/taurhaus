@@ -157,12 +157,13 @@ describe('MeshNode', () => {
     expect(screen.queryByTestId('mesh-node-project-chip-agent')).not.toBeInTheDocument()
   })
 
-  it('shows one sentence when a wrapper makes account selection uncertain', () => {
+  it('shows one account line for applied, not-guaranteed, and fallback states', async () => {
     // Regression: commit 0f2bfbb0 kept the opaque-base warning on app launch
     // results only, so managed member nodes hid the same uncertainty.
-    render(MeshNode, {
+    const view = render(MeshNode, {
       props: {
         role: 'agent',
+        accountLabel: 'Personal',
         accountApplied: false,
         accountNote: 'opaque_base_command',
         accountNoteDetail: 'team-wrapper',
@@ -170,13 +171,36 @@ describe('MeshNode', () => {
       },
     })
 
-    expect(screen.getByTestId('mesh-node-account-note-agent')).toHaveTextContent(
-      'Account not guaranteed: "team-wrapper"'
+    expect(screen.getByTestId('mesh-node-account-line-agent')).toHaveTextContent(
+      'Personal · not guaranteed'
     )
-    expect(screen.getByTestId('mesh-node-account-note-agent')).toHaveAttribute(
+    expect(screen.getByTestId('mesh-node-account-line-agent')).toHaveAttribute(
       'title',
       'taurhaus could not select an account: your launch command runs "team-wrapper", which is not the Claude CLI'
     )
     expect(screen.getByTestId('mesh-node-agent')).toHaveAttribute('data-node-height', '82')
+
+    await view.rerender({
+      role: 'agent',
+      accountLabel: 'Personal',
+      accountApplied: false,
+      accountNote: 'account_fallback',
+      accountFallbackFrom: 'Work',
+    })
+    expect(screen.getByTestId('mesh-node-account-line-agent')).toHaveTextContent(
+      'was Work → now Personal'
+    )
+
+    await view.rerender({
+      role: 'agent',
+      accountLabel: 'Work',
+      accountApplied: true,
+      accountNote: '',
+      accountFallbackFrom: '',
+    })
+    expect(screen.getByTestId('mesh-node-account-line-agent')).toHaveTextContent('Work · applied')
+    // Regression: 0bc79ceb drew a full meter when no provider reading existed,
+    // making unknown usage look like a genuinely untouched subscription.
+    expect(screen.queryByTestId('mesh-node-account-meter-agent')).not.toBeInTheDocument()
   })
 })

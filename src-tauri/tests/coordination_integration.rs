@@ -234,25 +234,18 @@ mod commands {
             Ok(false)
         }
 
-        pub fn reconcile_codex_hook_for_managed_launch(
-            _teams_dir: &std::path::Path,
-            _launch_has_managed_codex: bool,
-        ) -> Result<bool, CoordinationError> {
-            Ok(false)
-        }
-
-        pub fn managed_codex_hook_trust_for_launch(
-            _teams_dir: &std::path::Path,
-            has_managed_codex: bool,
-        ) -> bool {
-            has_managed_codex
-        }
-
         pub fn reconcile_grok_hooks_for_roster(
             _teams_dir: &std::path::Path,
             _enabled: bool,
         ) -> Result<bool, CoordinationError> {
             Ok(false)
+        }
+
+        pub fn reconcile_managed_account_hooks_for_roster(
+            _teams_dir: &std::path::Path,
+            _grok_enabled: bool,
+        ) -> bool {
+            false
         }
     }
 
@@ -372,6 +365,7 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
             behavioral_contract: None,
             quality_gates: None,
             reasoning_effort: None,
+            account_id: None,
             handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
@@ -398,6 +392,7 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
                 behavioral_contract: None,
                 quality_gates: None,
                 reasoning_effort: None,
+                account_id: None,
                 handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
@@ -423,6 +418,7 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
                 behavioral_contract: None,
                 quality_gates: None,
                 reasoning_effort: None,
+                account_id: None,
                 handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
@@ -459,6 +455,7 @@ fn make_ipc_request(team_name: &str) -> commands::coordination::InitializeTeamRe
             behavioral_contract: request.lead.behavioral_contract,
             quality_gates: None,
             reasoning_effort: request.lead.reasoning_effort,
+            account_id: None,
             handoff_expectations: request.lead.handoff_expectations,
             definition_of_done: None,
             phase_scope: None,
@@ -487,6 +484,7 @@ fn make_ipc_request(team_name: &str) -> commands::coordination::InitializeTeamRe
                 behavioral_contract: agent.behavioral_contract,
                 quality_gates: None,
                 reasoning_effort: agent.reasoning_effort,
+                account_id: None,
                 handoff_expectations: agent.handoff_expectations,
                 definition_of_done: None,
                 phase_scope: None,
@@ -519,6 +517,7 @@ fn make_add_request(team_name: &str, member_name: &str) -> AddAgentRequest {
             behavioral_contract: None,
             quality_gates: None,
             reasoning_effort: None,
+            account_id: None,
             handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
