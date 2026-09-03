@@ -356,19 +356,15 @@ pub(crate) fn execute_switch_team_account(
     crate::coordination::errors::CoordinationError,
 > {
     use crate::coordination::errors::CoordinationError;
-    use crate::coordination::requests::{AccountSwitchHandoffManifest, SwitchTeamAccountReport};
+    use crate::coordination::requests::{
+        AccountSwitchHandoffManifest, SwitchTeamAccountReport, TeamStateMove,
+    };
     use crate::coordination::stores::{
         AccountSwitchManifestStore, MemberRuntimeStore, TeamConfigStore,
     };
 
     crate::coordination::validation::validate_team_name(&request.team_name)?;
     let capabilities = crate::session_scanner::cli_tool::spec(request.cli_tool).capabilities;
-    if capabilities.team_config_namespace {
-        return Err(CoordinationError::Validation(
-            "Claude accounts belong to the whole team; mixed-account Claude teams are impossible"
-                .to_string(),
-        ));
-    }
     if capabilities.account_selector.is_none() {
         return Err(CoordinationError::Validation(format!(
             "{} does not support account switching",
@@ -381,7 +377,7 @@ pub(crate) fn execute_switch_team_account(
             "account id must not be empty".to_string(),
         ));
     }
-    state.with_team_orchestrator(&request.team_name, |orchestrator| {
+    let prepared = state.with_team_orchestrator(&request.team_name, |orchestrator| {
         let teams_dir = state.team_teams_dir(&request.team_name)?;
         let mut config = TeamConfigStore::load(&teams_dir, &request.team_name)?;
         let switched_members = config
@@ -414,7 +410,16 @@ pub(crate) fn execute_switch_team_account(
                 ))
             })?
             .clone();
-        if config
+        let target_teams_dir = target.dir.join("teams");
+        let team_root_switch = capabilities.team_config_namespace;
+        if team_root_switch && target_teams_dir == teams_dir {
+            return Err(CoordinationError::Validation(format!(
+                "team '{}' already uses account '{}' for {}",
+                request.team_name, target.label, request.cli_tool
+            )));
+        }
+        if !team_root_switch
+            && config
             .members
             .iter()
             .filter(|member| member.cli_tool == request.cli_tool)
@@ -499,18 +504,26 @@ pub(crate) fn execute_switch_team_account(
         // homes is deferred until every old session has stopped and the new
         // config is committed — a failed teardown must never leave a running
         // pane whose hook was already taken away.
-        crate::commands::terminal_settings::reconcile_account_switch_hooks(
-            &crate::commands::terminal_settings::AccountSwitchHookRequest {
-                teams_dir: &teams_dir,
-                team_name: &request.team_name,
-                cli_tool: request.cli_tool,
-                target_home: &target.dir,
-                previous_homes: &previous_homes,
-                accounts: detected_accounts.map(Vec::as_slice).unwrap_or(&[]),
-                grok_enabled: cli_commands.grok_hooks_enabled.unwrap_or(true),
-            },
-            crate::commands::terminal_settings::AccountSwitchHookPhase::InstallTarget,
-        )?;
+        if team_root_switch {
+            let executable = std::env::current_exe().map_err(CoordinationError::Io)?;
+            crate::coordination::compact_hook::ensure_compact_hook_installed(
+                &target_teams_dir,
+                &executable,
+            )?;
+        } else {
+            crate::commands::terminal_settings::reconcile_account_switch_hooks(
+                &crate::commands::terminal_settings::AccountSwitchHookRequest {
+                    teams_dir: &teams_dir,
+                    team_name: &request.team_name,
+                    cli_tool: request.cli_tool,
+                    target_home: &target.dir,
+                    previous_homes: &previous_homes,
+                    accounts: detected_accounts.map(Vec::as_slice).unwrap_or(&[]),
+                    grok_enabled: cli_commands.grok_hooks_enabled.unwrap_or(true),
+                },
+                crate::commands::terminal_settings::AccountSwitchHookPhase::InstallTarget,
+            )?;
+        }
 
         orchestrator.stop_team_daemon_best_effort(&request.team_name);
         for member in &config.members {
@@ -519,6 +532,7 @@ pub(crate) fn execute_switch_team_account(
                 .map_err(CoordinationError::Backend)?;
         }
 
+        let previous_config = config.clone();
         for member in &mut config.members {
             if member.cli_tool == request.cli_tool {
                 member.account_id = Some(target.id.clone());
@@ -530,6 +544,11 @@ pub(crate) fn execute_switch_team_account(
             account_id: target.id.clone(),
             account_label: target.label.clone(),
             members: handoffs.clone(),
+            team_state_move: team_root_switch.then(|| TeamStateMove {
+                from_teams_dir: teams_dir.display().to_string(),
+                to_teams_dir: target_teams_dir.display().to_string(),
+                strategy: "rename-or-copy-verify".to_string(),
+            }),
         };
         let handoff_manifest_count = AccountSwitchManifestStore::append(
             &teams_dir,
@@ -538,10 +557,41 @@ pub(crate) fn execute_switch_team_account(
         )?;
         TeamConfigStore::save(&teams_dir, &request.team_name, &config)?;
 
+        if team_root_switch {
+            if let Err(error) = crate::daemon::team_move::move_team_directory(
+                &teams_dir,
+                &target_teams_dir,
+                &request.team_name,
+            ) {
+                TeamConfigStore::save(&teams_dir, &request.team_name, &previous_config)?;
+                return Err(error);
+            }
+            if let Err(error) = state
+                .team_root_registry()
+                .set(&request.team_name, &target_teams_dir)
+            {
+                let rollback = crate::daemon::team_move::move_team_directory(
+                    &target_teams_dir,
+                    &teams_dir,
+                    &request.team_name,
+                );
+                if rollback.is_ok() {
+                    TeamConfigStore::save(&teams_dir, &request.team_name, &previous_config)?;
+                }
+                return match rollback {
+                    Ok(_) => Err(error),
+                    Err(rollback_error) => Err(CoordinationError::StoreError(format!(
+                        "team root registry commit failed ({error}); move rollback failed ({rollback_error})"
+                    ))),
+                };
+            }
+        }
+
         // Old sessions are down and the new config is committed: the previous
         // homes may now lose their hooks (still gated on no other roster
         // member needing each home).
-        crate::commands::terminal_settings::reconcile_account_switch_hooks(
+        if !team_root_switch {
+            crate::commands::terminal_settings::reconcile_account_switch_hooks(
             &crate::commands::terminal_settings::AccountSwitchHookRequest {
                 teams_dir: &teams_dir,
                 team_name: &request.team_name,
@@ -552,13 +602,36 @@ pub(crate) fn execute_switch_team_account(
                 grok_enabled: cli_commands.grok_hooks_enabled.unwrap_or(true),
             },
             crate::commands::terminal_settings::AccountSwitchHookPhase::RemovePrevious,
-        )?;
+            )?;
+        } else if !crate::coordination::compact_hook::any_managed_claude_member(&teams_dir)? {
+            crate::coordination::compact_hook::remove_compact_hook(&teams_dir)?;
+        }
+
+        Ok((
+            target,
+            switched_members,
+            handoffs,
+            lead_name,
+            handoff_manifest_count,
+        ))
+    })?;
+
+    let (target, switched_members, handoffs, lead_name, handoff_manifest_count) = prepared;
+    state.with_team_orchestrator(&request.team_name, |orchestrator| {
+        let mut resume_commands = cli_commands.clone();
+        if capabilities.team_config_namespace {
+            if let Some(selector) = capabilities.account_selector {
+                resume_commands
+                    .account_selector_dirs
+                    .insert(selector.to_string(), target.dir.clone());
+            }
+        }
 
         let resume = orchestrator.resume_team_with_cli_commands_and_layout(
             &crate::coordination::requests::ResumeTeamRequest {
                 team_name: request.team_name.clone(),
             },
-            cli_commands,
+            &resume_commands,
             tmux_layout,
         )?;
         for handoff in &handoffs {
@@ -1153,23 +1226,68 @@ mod tests {
     }
 
     #[test]
-    fn switch_team_account_rejects_per_member_claude_selection() {
+    fn switch_team_account_moves_a_claude_team_then_commits_its_root() {
         let temp = tempfile::TempDir::new().expect("tempdir");
-        let (state, _backend, _runtime) = state(temp.path());
-        let error = super::execute_switch_team_account(
+        let default_teams = temp.path().join("claude-default/teams");
+        let target_account = temp.path().join("claude-work");
+        let target_teams = target_account.join("teams");
+        let (state, _backend, runtime) = state(&default_teams);
+        initialize_team(state.as_ref(), temp.path());
+        let transcript = temp.path().join("transcripts/team-lead.jsonl");
+        std::fs::create_dir_all(transcript.parent().expect("transcript parent"))
+            .expect("transcript dir");
+        std::fs::write(&transcript, "conversation stays here").expect("transcript fixture");
+        let mut config = TeamConfigStore::load(&default_teams, "arch").expect("config");
+        for member in &mut config.members {
+            member.cli_tool = CliTool::Claude;
+            member.account_id = Some("claude-default".to_string());
+        }
+        TeamConfigStore::save(&default_teams, "arch", &config).expect("Claude config");
+        MemberRuntimeStore::update(&default_teams, "arch", "team-lead", |record| {
+            record.session_id = Some("session-lead".to_string());
+            record.jsonl_path = Some(transcript.clone());
+        })
+        .expect("runtime transcript pointer");
+        runtime.set_mesh_join_teams_dir(&target_teams);
+        let mut commands = CliCommandSettings::default();
+        commands.managed_accounts.insert(
+            CliTool::Claude,
+            vec![ManagedLaunchAccount {
+                id: "claude-work".to_string(),
+                label: "Work".to_string(),
+                dir: target_account,
+                logged_in: true,
+                is_default: false,
+            }],
+        );
+
+        let report = super::execute_switch_team_account(
             state.as_ref(),
             &SwitchTeamAccountRequest {
                 team_name: "arch".to_string(),
                 cli_tool: CliTool::Claude,
                 account_id: "claude-work".to_string(),
             },
-            &CliCommandSettings::default(),
+            &commands,
             "new_window",
         )
-        .expect_err("Claude has one account namespace per team");
-        assert!(error
-            .to_string()
-            .contains("mixed-account Claude teams are impossible"));
+        .expect("Claude team switch");
+
+        assert_eq!(report.switched_members, ["team-lead", "builder"]);
+        assert!(!default_teams.join("arch").exists());
+        assert!(TeamConfigStore::load(&target_teams, "arch").is_ok());
+        assert_eq!(
+            state.team_teams_dir("arch").expect("committed root"),
+            target_teams
+        );
+        let manifests =
+            AccountSwitchManifestStore::load(&state.team_teams_dir("arch").expect("root"), "arch")
+                .expect("move manifest");
+        assert!(manifests[0].team_state_move.is_some());
+        assert_eq!(
+            std::fs::read_to_string(transcript).expect("transcript remains"),
+            "conversation stays here"
+        );
     }
 
     // Regression: 2f0d7c7e treated the requested config id as proof that the

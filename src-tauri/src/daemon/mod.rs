@@ -25,6 +25,8 @@ pub mod session_listener;
 #[cfg(feature = "mesh-bridged-backend")]
 pub(crate) mod state_writes;
 #[cfg(feature = "mesh-bridged-backend")]
+pub(crate) mod team_move;
+#[cfg(feature = "mesh-bridged-backend")]
 pub(crate) mod team_runs;
 pub mod usage_poller;
 pub(crate) mod watch;

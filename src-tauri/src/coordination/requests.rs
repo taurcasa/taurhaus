@@ -737,6 +737,17 @@ pub struct AccountSwitchHandoffManifest {
     pub account_id: String,
     pub account_label: String,
     pub members: Vec<AccountSwitchMemberHandoff>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_state_move: Option<TeamStateMove>,
+}
+
+/// Verified relocation performed for a team-root-scoped account switch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamStateMove {
+    pub from_teams_dir: String,
+    pub to_teams_dir: String,
+    pub strategy: String,
 }
 
 /// Completed account-switch result. The nested resume report preserves the

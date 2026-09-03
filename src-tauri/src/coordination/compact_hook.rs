@@ -648,6 +648,16 @@ pub fn ensure_compact_hook_installed(
     ClaudeCompactionSignalSource.install(claude_dir, taurhaus_exe)
 }
 
+pub fn remove_compact_hook(teams_dir: &Path) -> Result<bool, CoordinationError> {
+    let Some(claude_dir) = teams_dir.parent() else {
+        return Err(CoordinationError::Validation(format!(
+            "team directory '{}' has no parent Claude dir",
+            teams_dir.display()
+        )));
+    };
+    ClaudeCompactionSignalSource.remove(claude_dir)
+}
+
 pub fn ensure_codex_compact_hook_installed(taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
     match crate::models::CliVersions::current().codex_compaction_hooks_support() {
         Some(true) => {

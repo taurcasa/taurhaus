@@ -147,6 +147,7 @@ mod tests {
                 account_id: "work".to_string(),
                 account_label: "Work".to_string(),
                 members: Vec::new(),
+                team_state_move: None,
             },
         )
         .expect("corrupt history is non-blocking");
