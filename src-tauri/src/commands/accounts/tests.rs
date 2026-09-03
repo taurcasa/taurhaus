@@ -160,6 +160,45 @@ fn team_links_name_their_project_without_an_account_memory_row() {
 }
 
 #[test]
+fn selector_team_links_are_indexed_under_each_configured_member_account() {
+    let (db, _tmp) = db_with_project("p1");
+    let teams = TempDir::new().expect("teams root");
+    let config_dir = teams.path().join("wave-b");
+    std::fs::create_dir_all(&config_dir).expect("team dir");
+    std::fs::write(
+        config_dir.join("config.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "name": "wave-b",
+            "createdAt": 1_772_399_806_546_i64,
+            "members": [
+                {
+                    "name": "builder",
+                    "cliTool": "codex",
+                    "model": "gpt-5.6",
+                    "accountId": "codex-work",
+                    "project_path": "/home/user/projects/test-project"
+                },
+                {
+                    "name": "reviewer",
+                    "cliTool": "codex",
+                    "model": "gpt-5.6",
+                    "accountId": "codex-personal",
+                    "project_path": "/home/user/projects/test-project"
+                }
+            ]
+        }))
+        .expect("team json"),
+    )
+    .expect("write team");
+
+    let index =
+        account_relationships_impl(&db, teams.path(), CliTool::Codex, None).expect("relationships");
+
+    assert_eq!(index.by_account["codex-work"].teams[0].name, "wave-b");
+    assert_eq!(index.by_account["codex-personal"].teams[0].name, "wave-b");
+}
+
+#[test]
 fn registry_home_owns_default_root_teams_when_process_home_differs() {
     let account = |id: &str, dir: &str, is_default, is_process_default| Account {
         tool: CliTool::Claude,

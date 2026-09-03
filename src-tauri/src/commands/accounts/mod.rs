@@ -374,28 +374,31 @@ pub(crate) fn account_relationships_impl(
         }
     }
 
-    if let Some(account_id) = registry_home_account_id {
-        // A team names a project by its path, and a project it names may never
-        // have remembered an account: the registered projects are the map, not
-        // the ones this tool already has a row for.
-        let projects_by_path = queries::list_projects(&conn)
-            .sanitize_err()?
-            .into_iter()
-            .map(|project| {
-                (
-                    crate::provider::path::normalize_project_path(&project.path),
-                    (project.id, project.name),
-                )
-            })
-            .collect::<HashMap<_, _>>();
-        let teams = scan_default_root_teams(teams_dir, tool, &projects_by_path);
-        if !teams.is_empty() {
-            index
-                .by_account
-                .entry(account_id.to_string())
-                .or_default()
-                .teams = teams;
-        }
+    // A team names a project by its path, and a project it names may never
+    // have remembered an account: the registered projects are the map, not
+    // the ones this tool already has a row for.
+    let projects_by_path = queries::list_projects(&conn)
+        .sanitize_err()?
+        .into_iter()
+        .map(|project| {
+            (
+                crate::provider::path::normalize_project_path(&project.path),
+                (project.id, project.name),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    for (account_id, teams) in scan_team_account_relationships(
+        teams_dir,
+        tool,
+        &projects_by_path,
+        registry_home_account_id,
+    ) {
+        index
+            .by_account
+            .entry(account_id)
+            .or_default()
+            .teams
+            .extend(teams);
     }
     Ok(index)
 }
@@ -413,50 +416,60 @@ fn registry_home_account_id(accounts: &[Account], registry_home: &Path) -> Optio
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
-fn scan_default_root_teams(
+fn scan_team_account_relationships(
     teams_dir: &Path,
     tool: CliTool,
     projects_by_path: &HashMap<String, (String, String)>,
-) -> Vec<AccountTeamRelationship> {
+    default_account_id: Option<&str>,
+) -> HashMap<String, Vec<AccountTeamRelationship>> {
     use crate::coordination::stores::TeamConfigStore;
 
     let Ok(team_names) = TeamConfigStore::list(teams_dir) else {
-        return Vec::new();
+        return HashMap::new();
     };
-    let mut teams = Vec::new();
+    let mut by_account = HashMap::<String, Vec<AccountTeamRelationship>>::new();
     for team_name in team_names {
         let Ok(config) = TeamConfigStore::load(teams_dir, &team_name) else {
             continue;
         };
-        let Some(project_path) = config
+        for member in config
             .members
             .iter()
-            .find(|member| member.cli_tool == tool)
-            .map(|member| member.project_path.to_string_lossy().into_owned())
-        else {
-            continue;
-        };
-        let project = projects_by_path.get(&crate::provider::path::normalize_project_path(
-            &project_path,
-        ));
-        teams.push(AccountTeamRelationship {
-            name: config.name,
-            project_id: project.map(|(id, _)| id.clone()),
-            project_name: project.map(|(_, name)| name.clone()),
-            project_path: Some(project_path),
-        });
+            .filter(|member| member.cli_tool == tool)
+        {
+            let Some(account_id) = member.account_id.as_deref().or(default_account_id) else {
+                continue;
+            };
+            let account_teams = by_account.entry(account_id.to_string()).or_default();
+            if account_teams.iter().any(|team| team.name == config.name) {
+                continue;
+            }
+            let project_path = member.project_path.to_string_lossy().into_owned();
+            let project = projects_by_path.get(&crate::provider::path::normalize_project_path(
+                &project_path,
+            ));
+            account_teams.push(AccountTeamRelationship {
+                name: config.name.clone(),
+                project_id: project.map(|(id, _)| id.clone()),
+                project_name: project.map(|(_, name)| name.clone()),
+                project_path: Some(project_path),
+            });
+        }
     }
-    teams.sort_by(|left, right| left.name.cmp(&right.name));
-    teams
+    for teams in by_account.values_mut() {
+        teams.sort_by(|left, right| left.name.cmp(&right.name));
+    }
+    by_account
 }
 
 #[cfg(not(feature = "mesh-bridged-backend"))]
-fn scan_default_root_teams(
+fn scan_team_account_relationships(
     _teams_dir: &Path,
     _tool: CliTool,
     _projects_by_path: &HashMap<String, (String, String)>,
-) -> Vec<AccountTeamRelationship> {
-    Vec::new()
+    _default_account_id: Option<&str>,
+) -> HashMap<String, Vec<AccountTeamRelationship>> {
+    HashMap::new()
 }
 
 #[tauri::command]
