@@ -2120,6 +2120,36 @@ fn unavailable_member_account_falls_back_loudly_to_the_registry_home() {
     assert!(contents.contains("\"requested_account_id\":\"missing-work\""));
 }
 
+// Regression: cba5b9941 described a missing managed-account detection result
+// as a signed-out account even though detection had never run.
+#[test]
+fn unavailable_account_without_detection_reports_detection_unavailable() {
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.account_selector_dirs.insert(
+        "CODEX_HOME".to_string(),
+        std::path::PathBuf::from("/accounts/codex-personal"),
+    );
+
+    let result = render_team_launch(
+        &commands,
+        CliTool::Codex,
+        "gpt-5.4",
+        None,
+        "fallback-team",
+        "builder",
+        MemberRole::Agent,
+        false,
+        None,
+        Some("missing-work"),
+    )
+    .expect("fallback remains launchable without account detection");
+
+    assert_eq!(
+        result.account.account_note_detail.as_deref(),
+        Some("account detection unavailable")
+    );
+}
+
 #[test]
 fn signed_out_member_account_fallback_uses_its_human_label() {
     let mut commands = crate::models::CliCommandSettings::default();

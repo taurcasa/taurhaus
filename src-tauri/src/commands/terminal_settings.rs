@@ -628,15 +628,15 @@ fn managed_home_needed_after_switch(
         .find(|account| account.is_default && account.logged_in)
         .map(|account| account.dir.as_path());
     for team_name in crate::coordination::stores::TeamConfigStore::list(teams_dir)? {
+        if team_name == switching_team {
+            continue;
+        }
         let config = crate::coordination::stores::TeamConfigStore::load(teams_dir, &team_name)?;
         for member in config
             .members
             .iter()
             .filter(|member| member.cli_tool == cli_tool)
         {
-            if team_name == switching_team {
-                continue;
-            }
             let resolved = member
                 .account_id
                 .as_deref()

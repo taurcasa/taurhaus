@@ -955,7 +955,7 @@ fn managed_member_account(
         account_applied: Some(!fallback),
         account_note: fallback.then(|| "account_fallback".to_string()),
         account_note_detail: fallback.then(|| {
-            if accounts.is_some_and(|accounts| accounts.is_empty()) {
+            if accounts.is_none_or(|accounts| accounts.is_empty()) {
                 "account detection unavailable".to_string()
             } else {
                 "requested account unavailable or signed out".to_string()
