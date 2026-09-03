@@ -318,6 +318,18 @@ pub(crate) fn prepare_daemon_launch_inputs_for_tools(
         .map(|(tool, _)| *tool)
         .collect::<Vec<_>>();
     crate::commands::accounts::apply_team_account_selector_dirs(commands, tools.iter().copied());
+    if let Some(team_config_dir) = teams_dir.parent() {
+        for tool in &tools {
+            let descriptor = crate::session_scanner::cli_tool::spec(*tool);
+            if descriptor.capabilities.team_config_namespace {
+                if let Some(selector) = descriptor.capabilities.account_selector {
+                    commands
+                        .account_selector_dirs
+                        .insert(selector.to_string(), team_config_dir.to_path_buf());
+                }
+            }
+        }
+    }
     crate::commands::accounts::apply_team_managed_accounts(commands, tools.iter().copied());
     let codex_bypass_hook_trust =
         crate::commands::terminal_settings::reconcile_managed_account_hooks_for_launch(
@@ -346,16 +358,15 @@ pub(crate) fn prepare_daemon_launch_inputs_for_tools(
     );
 }
 
-pub(crate) type PrepareLaunchInputs = dyn Fn(CliTool, &mut CliCommandSettings) + Send + Sync;
+pub(crate) type PrepareLaunchInputs =
+    dyn Fn(&std::path::Path, CliTool, &mut CliCommandSettings) + Send + Sync;
 
 /// Build the daemon-host resolver shared by interactive and scheduled effort runs.
-pub(crate) fn daemon_launch_resolver_for(
-    teams_dir: std::path::PathBuf,
-) -> std::sync::Arc<PrepareLaunchInputs> {
-    std::sync::Arc::new(move |tool, commands| {
-        let has_managed_codex = managed_codex_discovery_or_conservative(&teams_dir);
+pub(crate) fn daemon_launch_resolver() -> std::sync::Arc<PrepareLaunchInputs> {
+    std::sync::Arc::new(move |teams_dir, tool, commands| {
+        let has_managed_codex = managed_codex_discovery_or_conservative(teams_dir);
         prepare_daemon_launch_inputs_for_tools(
-            &teams_dir,
+            teams_dir,
             has_managed_codex,
             vec![(tool, None)],
             commands,
@@ -422,6 +433,31 @@ mod tests {
         std::fs::write(team_dir.join("config.json"), "{not valid json").expect("config");
 
         assert!(super::managed_codex_discovery_or_conservative(dir.path()));
+    }
+
+    #[test]
+    fn daemon_launch_inputs_pin_claude_to_the_supplied_team_root() {
+        let _guard = crate::test_support::acquire_env_test_guard();
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let default_claude_dir = temp.path().join("default");
+        let work_teams_dir = temp.path().join("work").join("teams");
+        std::fs::create_dir_all(&work_teams_dir).expect("work teams dir");
+        std::env::set_var("TAURHAUS_CLAUDE_DIR", &default_claude_dir);
+        let mut commands = crate::models::CliCommandSettings::default();
+
+        super::prepare_daemon_launch_inputs_for_tools(
+            &work_teams_dir,
+            false,
+            vec![(crate::session_scanner::cli_tool::CliTool::Claude, None)],
+            &mut commands,
+        );
+
+        assert_eq!(
+            commands.account_selector_dirs.get("CLAUDE_CONFIG_DIR"),
+            Some(&temp.path().join("work")),
+            "a background relaunch must stay inside the team's authority root"
+        );
+        std::env::remove_var("TAURHAUS_CLAUDE_DIR");
     }
 
     #[test]

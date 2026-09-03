@@ -407,7 +407,7 @@ impl CoordinationState {
         &self,
         cli_commands: &mut CliCommandSettings,
         tmux_layout: &str,
-        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
+        resolve_launch_base: &mut dyn FnMut(&Path, CliTool, &mut CliCommandSettings),
     ) -> Result<BackgroundEffortRetryPassResult, CoordinationError> {
         let mut teams_by_root = std::collections::BTreeMap::<PathBuf, Vec<String>>::new();
         for root in self.teams_roots()? {
@@ -424,12 +424,16 @@ impl CoordinationState {
                     root_summary.teams_scanned += 1;
                     // The task event remains the earliest trigger, while this bounded
                     // sweep also starts a switch whose edge the app never observed.
+                    let mut resolve_for_root =
+                        |tool: CliTool, commands: &mut CliCommandSettings| {
+                            resolve_launch_base(&root, tool, commands);
+                        };
                     match orchestrator.apply_pending_task_effort_outcome(
                         &team_name,
                         cli_commands,
                         tmux_layout,
                         crate::coordination::task_effort::EffortPassScope::BackgroundSweep,
-                        resolve_launch_base,
+                        &mut resolve_for_root,
                     ) {
                         Ok(outcome) => {
                             root_summary.members_effort_resumed += outcome.switched.len();
@@ -499,7 +503,7 @@ impl CoordinationState {
             project_path,
             &mut cli_commands,
             tmux_layout,
-            &mut |_, _| {},
+            &mut |_, _, _| {},
         )
     }
 
@@ -511,7 +515,7 @@ impl CoordinationState {
         project_path: &str,
         cli_commands: &mut CliCommandSettings,
         tmux_layout: &str,
-        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
+        resolve_launch_base: &mut dyn FnMut(&Path, CliTool, &mut CliCommandSettings),
     ) -> Result<EffortPassOutcome, CoordinationError> {
         let (teams, skipped_teams) = self.project_effort_teams(project_path)?;
         let mut outcome = EffortPassOutcome {
@@ -523,12 +527,15 @@ impl CoordinationState {
         }
         for (teams_dir, team_name) in teams {
             let result = self.with_root_orchestrator(&teams_dir, |orchestrator| {
+                let mut resolve_for_root = |tool: CliTool, commands: &mut CliCommandSettings| {
+                    resolve_launch_base(&teams_dir, tool, commands);
+                };
                 orchestrator.apply_pending_task_effort_outcome(
                     &team_name,
                     cli_commands,
                     tmux_layout,
                     crate::coordination::task_effort::EffortPassScope::TaskChanged,
-                    resolve_launch_base,
+                    &mut resolve_for_root,
                 )
             });
             match result {
@@ -1298,7 +1305,7 @@ mod tests {
             .run_background_effort_retry_pass_with_launch_resolution(
                 &mut CliCommandSettings::default(),
                 DEFAULT_TMUX_LAYOUT,
-                &mut |_, _| {},
+                &mut |_, _, _| {},
             )
             .expect("busy background pass is skipped");
 
@@ -1853,7 +1860,7 @@ mod tests {
             .run_background_effort_retry_pass_with_launch_resolution(
                 &mut CliCommandSettings::default(),
                 DEFAULT_TMUX_LAYOUT,
-                &mut |_, _| {},
+                &mut |_, _, _| {},
             )
             .expect("background pass succeeds");
 

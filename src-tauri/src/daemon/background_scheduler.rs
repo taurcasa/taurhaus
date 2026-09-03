@@ -168,10 +168,9 @@ fn run_pass(
     state: &CoordinationState,
     launch_settings: Option<CoordinationPutLaunchSettingsParams>,
 ) -> Result<PassOutcome, crate::coordination::errors::CoordinationError> {
-    let prepare_launch_inputs =
-        crate::daemon::coordination_runs::daemon_launch_resolver_for(state.teams_dir().clone());
-    run_pass_with_launch_resolution(state, launch_settings, &mut |tool, commands| {
-        prepare_launch_inputs(tool, commands)
+    let prepare_launch_inputs = crate::daemon::coordination_runs::daemon_launch_resolver();
+    run_pass_with_launch_resolution(state, launch_settings, &mut |root, tool, commands| {
+        prepare_launch_inputs(root, tool, commands)
     })
 }
 
@@ -179,6 +178,7 @@ fn run_pass_with_launch_resolution(
     state: &CoordinationState,
     launch_settings: Option<CoordinationPutLaunchSettingsParams>,
     resolve_launch_base: &mut dyn FnMut(
+        &std::path::Path,
         crate::session_scanner::cli_tool::CliTool,
         &mut crate::models::CliCommandSettings,
     ),
@@ -621,7 +621,7 @@ mod tests {
         run_pass_with_launch_resolution(
             &state,
             Some(settings(1, "claude --resume")),
-            &mut |_, _| resolutions += 1,
+            &mut |_, _, _| resolutions += 1,
         )
         .expect("idle pass");
 
@@ -676,7 +676,7 @@ mod tests {
         let (summary, signals) = run_pass_with_launch_resolution(
             &state,
             Some(settings(1, "claude --resume")),
-            &mut |_, _| {},
+            &mut |_, _, _| {},
         )
         .expect("daemon sweep");
 
@@ -732,7 +732,7 @@ mod tests {
             .iter()
             .filter(|call| matches!(call, RuntimeCall::SendKeys { .. }))
             .count();
-        let (_summary, signals) = run_pass_with_launch_resolution(&state, None, &mut |_, _| {})
+        let (_summary, signals) = run_pass_with_launch_resolution(&state, None, &mut |_, _, _| {})
             .expect("config-free self-heal pass");
         assert!(signals.awaiting_settings);
         assert_eq!(
@@ -758,7 +758,7 @@ mod tests {
         let mut pushed = pushed;
         pushed.cli_commands.codex.resume = "codex2 resume --last".to_string();
         let (summary, signals) =
-            run_pass_with_launch_resolution(&state, Some(pushed), &mut |_, _| {})
+            run_pass_with_launch_resolution(&state, Some(pushed), &mut |_, _, _| {})
                 .expect("effort retry pass");
 
         assert!(!signals.awaiting_settings);
@@ -791,7 +791,7 @@ mod tests {
                 run_pass_with_launch_resolution(
                     &state,
                     Some(settings(1, "claude --resume")),
-                    &mut |_, _| {},
+                    &mut |_, _, _| {},
                 )
                 .map(|(_summary, signals)| signals)
             })
