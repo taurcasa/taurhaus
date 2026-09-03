@@ -963,6 +963,29 @@ describe('MeshTeamBuilder', () => {
     )
   })
 
+  // Regression: 0bc79ceb made a new Codex member's account row prefer the
+  // app-launch global default even though managed teams launch from the registry home.
+  it('names the registry-home Codex account when the member has no account choice', async () => {
+    renderBuilder({
+      teamConfig: sampleRosterConfig(),
+      accountStates: {
+        codex: {
+          accounts: [
+            { id: 'personal', label: 'Personal', logged_in: true, is_default: true },
+            { id: 'work', label: 'Work', logged_in: true, is_default: false },
+          ],
+          defaultAccountId: 'work',
+        },
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-agent-edit-toggle-agent-codex-1'))
+
+    expect(screen.getByTestId('mesh-builder-member-account-agent-codex-1')).toHaveTextContent(
+      'Personal'
+    )
+  })
+
   it('waits for the exit animation before removing an agent card', async () => {
     vi.useFakeTimers()
     const onRemoveAgent = vi.fn()
