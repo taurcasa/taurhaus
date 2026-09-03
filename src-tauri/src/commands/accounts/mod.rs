@@ -317,7 +317,7 @@ pub fn list_account_relationships(
     let registry_home = crate::provider::platform_paths::PlatformPaths::tool_home(tool);
     let report = accounts_report(provider.inner(), tool);
     let registry_home_account = registry_home_account_id(&report.accounts, &registry_home);
-    let result = account_relationships_impl(
+    let result = account_relationships_across_roots_impl(
         db.inner(),
         &crate::provider::platform_paths::PlatformPaths::teams_dir(),
         tool,
@@ -335,6 +335,69 @@ pub(crate) fn account_relationships_impl(
     tool: CliTool,
     registry_home_account_id: Option<&str>,
     detected_accounts: &[Account],
+) -> Result<AccountRelationshipIndex, String> {
+    account_relationships_for_roots_impl(
+        db,
+        &[(
+            teams_dir.to_path_buf(),
+            registry_home_account_id.map(str::to_string),
+        )],
+        tool,
+        registry_home_account_id,
+        detected_accounts,
+        None,
+    )
+}
+
+pub(crate) fn account_relationships_across_roots_impl(
+    db: &DbState,
+    default_teams_dir: &Path,
+    tool: CliTool,
+    registry_home_account_id: Option<&str>,
+    detected_accounts: &[Account],
+) -> Result<AccountRelationshipIndex, String> {
+    let registry =
+        crate::coordination::stores::TeamRootRegistry::new(default_teams_dir.to_path_buf());
+    let registered = registry.registered().map_err(|error| error.to_string())?;
+    let roots = registry.roots().map_err(|error| error.to_string())?;
+    let team_roots = roots
+        .into_iter()
+        .map(|teams_dir| {
+            let account_dir = teams_dir.parent().unwrap_or(&teams_dir);
+            let account_id = detected_accounts
+                .iter()
+                .find(|account| same_normalized_path(&account.dir, account_dir))
+                .map(|account| account.id.clone())
+                .or_else(|| {
+                    (teams_dir == default_teams_dir)
+                        .then(|| registry_home_account_id.map(str::to_string))
+                        .flatten()
+                });
+            (teams_dir, account_id)
+        })
+        .collect::<Vec<_>>();
+    account_relationships_for_roots_impl(
+        db,
+        &team_roots,
+        tool,
+        registry_home_account_id,
+        detected_accounts,
+        Some((&registered, default_teams_dir)),
+    )
+}
+
+fn same_normalized_path(left: &Path, right: &Path) -> bool {
+    crate::provider::path::normalize_project_path(&left.to_string_lossy())
+        == crate::provider::path::normalize_project_path(&right.to_string_lossy())
+}
+
+fn account_relationships_for_roots_impl(
+    db: &DbState,
+    team_roots: &[(PathBuf, Option<String>)],
+    tool: CliTool,
+    registry_home_account_id: Option<&str>,
+    detected_accounts: &[Account],
+    authority: Option<(&std::collections::BTreeMap<String, PathBuf>, &Path)>,
 ) -> Result<AccountRelationshipIndex, String> {
     let conn = db.0.lock().map_err(|error| error.to_string())?;
     let mut statement = conn
@@ -389,19 +452,23 @@ pub(crate) fn account_relationships_impl(
             )
         })
         .collect::<HashMap<_, _>>();
-    for (account_id, teams) in scan_team_account_relationships(
-        teams_dir,
-        tool,
-        &projects_by_path,
-        registry_home_account_id,
-        detected_accounts,
-    ) {
-        index
-            .by_account
-            .entry(account_id)
-            .or_default()
-            .teams
-            .extend(teams);
+    for (teams_dir, root_account_id) in team_roots {
+        for (account_id, teams) in scan_team_account_relationships(
+            teams_dir,
+            tool,
+            &projects_by_path,
+            registry_home_account_id,
+            detected_accounts,
+            root_account_id.as_deref(),
+            authority,
+        ) {
+            index
+                .by_account
+                .entry(account_id)
+                .or_default()
+                .teams
+                .extend(teams);
+        }
     }
     Ok(index)
 }
@@ -473,6 +540,8 @@ fn scan_team_account_relationships(
     projects_by_path: &HashMap<String, (String, String)>,
     default_account_id: Option<&str>,
     detected_accounts: &[Account],
+    root_account_id: Option<&str>,
+    authority: Option<(&std::collections::BTreeMap<String, PathBuf>, &Path)>,
 ) -> HashMap<String, Vec<AccountTeamRelationship>> {
     use crate::coordination::stores::TeamConfigStore;
 
@@ -481,9 +550,40 @@ fn scan_team_account_relationships(
     };
     let mut by_account = HashMap::<String, Vec<AccountTeamRelationship>>::new();
     for team_name in team_names {
+        if let Some((registered, default_teams_dir)) = authority {
+            let authoritative = registered
+                .get(&team_name)
+                .map(PathBuf::as_path)
+                .unwrap_or(default_teams_dir);
+            if authoritative != teams_dir {
+                continue;
+            }
+        }
         let Ok(config) = TeamConfigStore::load(teams_dir, &team_name) else {
             continue;
         };
+        if spec(tool).capabilities.team_config_namespace {
+            let Some(account_id) = root_account_id else {
+                continue;
+            };
+            let Some(member) = config.members.iter().find(|member| member.cli_tool == tool) else {
+                continue;
+            };
+            let project_path = member.project_path.to_string_lossy().into_owned();
+            let project = projects_by_path.get(&crate::provider::path::normalize_project_path(
+                &project_path,
+            ));
+            by_account
+                .entry(account_id.to_string())
+                .or_default()
+                .push(AccountTeamRelationship {
+                    name: config.name.clone(),
+                    project_id: project.map(|(id, _)| id.clone()),
+                    project_name: project.map(|(_, name)| name.clone()),
+                    project_path: Some(project_path),
+                });
+            continue;
+        }
         for member in config
             .members
             .iter()
@@ -529,6 +629,8 @@ fn scan_team_account_relationships(
     _projects_by_path: &HashMap<String, (String, String)>,
     _default_account_id: Option<&str>,
     _detected_accounts: &[Account],
+    _root_account_id: Option<&str>,
+    _authority: Option<(&std::collections::BTreeMap<String, PathBuf>, &Path)>,
 ) -> HashMap<String, Vec<AccountTeamRelationship>> {
     HashMap::new()
 }
