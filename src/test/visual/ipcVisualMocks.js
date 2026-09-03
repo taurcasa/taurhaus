@@ -50,6 +50,11 @@ function createMockMap() {
     listAccounts: vi.fn(),
     refreshAccountsUsage: vi.fn(),
     setProjectAccount: vi.fn(),
+    listAccountRelationships: vi.fn(),
+    setGlobalDefaultAccount: vi.fn(),
+    prepareAccountDirectory: vi.fn(),
+    launchAccountLogin: vi.fn(),
+    revealDirectory: vi.fn(),
     buildFrontendFallbackTerminalContract: vi.fn(),
     search: vi.fn(),
     getProjectTasks: vi.fn(),
@@ -151,6 +156,11 @@ export function resetVisualIpcMocks(overrides = {}) {
   })
   visualIpcMocks.refreshAccountsUsage.mockResolvedValue(false)
   visualIpcMocks.setProjectAccount.mockResolvedValue(undefined)
+  visualIpcMocks.listAccountRelationships.mockResolvedValue({ byAccount: {} })
+  visualIpcMocks.setGlobalDefaultAccount.mockResolvedValue(undefined)
+  visualIpcMocks.prepareAccountDirectory.mockResolvedValue(null)
+  visualIpcMocks.launchAccountLogin.mockResolvedValue(null)
+  visualIpcMocks.revealDirectory.mockResolvedValue(undefined)
   // A pure helper, not an IPC call: the visual lane wants the real contract.
   visualIpcMocks.buildFrontendFallbackTerminalContract.mockImplementation(
     (platform = 'linux') => actualFallbackTerminalContract(platform),

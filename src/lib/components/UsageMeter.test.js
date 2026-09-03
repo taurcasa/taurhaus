@@ -64,6 +64,31 @@ describe('UsageMeter', () => {
     expect(screen.getByTestId('usage-meter')).toHaveTextContent('5h 26%')
   })
 
+  it('renders an age-based dashed last-known state for provider windows', () => {
+    const providerUsage = {
+      status: 'ok',
+      observed_at: new Date(NOW.getTime() - 16 * 60_000).toISOString(),
+      windows: [
+        {
+          key: 'weekly',
+          title: 'Week',
+          used_percentage: 42,
+          resets_at: Math.floor(NOW.getTime() / 1000) + 40 * 3600,
+          severity: 'normal',
+        },
+      ],
+    }
+
+    render(UsageMeter, { props: { usage: providerUsage } })
+
+    expect(screen.getByTestId('usage-meter')).toHaveAttribute('data-last-known', 'true')
+    expect(screen.getByTestId('usage-last-known')).toHaveTextContent('Last known · 16m ago')
+    expect(screen.getByTestId('usage-track-weekly')).toHaveClass('border-dashed')
+    // Regression: 67fea5f hid the still-valid absolute reset time whenever the
+    // observed percentage crossed the last-known age threshold.
+    expect(screen.getByTestId('usage-reset')).toHaveTextContent('Resets')
+  })
+
   it('shows the window it has when the payload carried only one', () => {
     render(UsageMeter, { props: { usage: usage({ sevenDay: null }) } })
 
@@ -309,6 +334,32 @@ describe('UsageMeter', () => {
     expect(screen.getByText('Current session')).toBeInTheDocument()
     expect(screen.getByText('Current week (Fable)')).toBeInTheDocument()
     expect(screen.getByText('82% used')).toBeInTheDocument()
+  })
+
+  // Regression: 186f19a2 painted the bar from provider severity alone while the
+  // account row read percentage, so a window past 80% that the provider left
+  // `normal` drew a calm bar beside an amber health dot.
+  it('paints pressure the account row agrees with when severity says nothing', () => {
+    render(UsageMeter, {
+      props: {
+        tool: 'claude',
+        usage: {
+          status: 'ok',
+          observed_at: new Date(NOW - 60_000).toISOString(),
+          windows: [
+            {
+              key: 'weekly',
+              title: 'Current week',
+              used_percentage: 85,
+              resets_at: Math.floor((NOW + 3 * 86400_000) / 1000),
+              severity: 'normal',
+            },
+          ],
+        },
+      },
+    })
+
+    expect(screen.getByTestId('usage-bar-weekly')).toHaveClass('bg-amber-500')
   })
 
   it('renders two scoped weekly windows even when a provider repeats its raw kind', () => {

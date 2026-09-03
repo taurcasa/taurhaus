@@ -560,6 +560,7 @@ function normalizeResolvedBase(raw) {
       .filter((expansion) => expansion.name),
     opaqueHead: opaqueHead == null ? null : String(opaqueHead),
     selectorValue: selectorValue == null ? null : String(selectorValue),
+    modes: Array.isArray(base.modes) ? base.modes.map(String) : [],
   }
   delete normalized.opaque_head
   delete normalized.selector_value
@@ -615,6 +616,80 @@ export function resolveLaunchBases(tool, force = false) {
 
 export function refreshAccountsUsage(tool) {
   return invokeOrMock('refresh_accounts_usage', { tool }, () => false)
+}
+
+function normalizeAccountProjectRelationship(raw) {
+  const relationship = raw && typeof raw === 'object' ? raw : {}
+  return {
+    ...relationship,
+    id: String(relationship.id ?? ''),
+    name: String(relationship.name ?? ''),
+    path: String(relationship.path ?? ''),
+    updatedAt: relationship.updatedAt ?? relationship.updated_at ?? null,
+  }
+}
+
+function normalizeAccountRelationships(raw) {
+  const relationships = raw && typeof raw === 'object' ? raw : {}
+  const projects = (camel, snake) =>
+    (Array.isArray(relationships[camel] ?? relationships[snake])
+      ? relationships[camel] ?? relationships[snake]
+      : []
+    ).map(normalizeAccountProjectRelationship)
+  const teams = Array.isArray(relationships.teams) ? relationships.teams : []
+  return {
+    pinnedProjects: projects('pinnedProjects', 'pinned_projects'),
+    lastUsedProjects: projects('lastUsedProjects', 'last_used_projects'),
+    teams: teams.map((team) => ({
+      ...(team && typeof team === 'object' ? team : {}),
+      name: String(team?.name ?? ''),
+      projectId: team?.projectId ?? team?.project_id ?? null,
+      projectName: team?.projectName ?? team?.project_name ?? null,
+      projectPath: team?.projectPath ?? team?.project_path ?? null,
+    })),
+  }
+}
+
+export function listAccountRelationships(tool) {
+  return invokeOrMock('list_account_relationships', { tool }, () => ({ byAccount: {} })).then(
+    (raw) => {
+      const source = raw?.byAccount ?? raw?.by_account ?? {}
+      return {
+        byAccount: Object.fromEntries(
+          Object.entries(source).map(([accountId, relationships]) => [
+            accountId,
+            normalizeAccountRelationships(relationships),
+          ])
+        ),
+      }
+    }
+  )
+}
+
+export function setGlobalDefaultAccount(tool, accountId) {
+  return invokeOrMock(
+    'set_global_default_account',
+    { tool, accountId: accountId ?? null },
+    () => undefined
+  )
+}
+
+export function prepareAccountDirectory(tool, label) {
+  return invokeOrMock('prepare_account_directory', { tool, label }, () => `/tmp/${tool}-${label}`)
+}
+
+export function launchAccountLogin(projectId, tool, configDir) {
+  return invokeOrMock(
+    'launch_account_login',
+    { projectId, tool, configDir },
+    () => ({ tmux_session: 'taurhaus', tmux_window: 'accounts', tmux_pane: '%98' })
+  )
+}
+
+export function revealDirectory(path) {
+  return invokeOrMock('account_directory_host_path', { path }, () => path).then((revealPath) => {
+    return invokeOrMock('plugin:opener|reveal_item_in_dir', { path: revealPath }, () => undefined)
+  })
 }
 
 export function search(query, limit = 20) {

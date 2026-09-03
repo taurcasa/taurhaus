@@ -5,6 +5,7 @@ import {
   workflowLedgerRow,
 } from './ipc/workflows.js'
 import { persistDarkModePreference } from './shell/themePreferences.js'
+import defaultCapabilities from '../../src-tauri/capabilities/default.json'
 
 // Mock @tauri-apps/api/core — must be before importing ipc module
 vi.mock('@tauri-apps/api/core', () => ({
@@ -735,6 +736,7 @@ describe('ipc module', () => {
               { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
             ],
             opaqueHead: null,
+          modes: [],
             selectorValue: '/home/mstie/.claude-account2',
           },
           { command: 'my-wrapper', expansions: [], opaqueHead: 'my-wrapper' },
@@ -749,11 +751,13 @@ describe('ipc module', () => {
             "CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude --dangerously-skip-permissions",
           expansions: [{ name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' }],
           opaqueHead: null,
+          modes: [],
           selectorValue: '/home/mstie/.claude-account2',
         },
         {
           command: 'my-wrapper',
           expansions: [],
+          modes: [],
           opaqueHead: 'my-wrapper',
           selectorValue: null,
         },
@@ -778,6 +782,12 @@ describe('ipc module', () => {
   })
 
   describe('generic account commands', () => {
+    // Regression: 971d964 invoked the opener reveal command without granting
+    // its distinct ACL permission, so production rejected every reveal request.
+    it('grants the opener permission used by account directory reveal', () => {
+      expect(defaultCapabilities.permissions).toContain('opener:allow-reveal-item-in-dir')
+    })
+
     it('refreshes usage for one tool', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValue(true)
@@ -806,6 +816,75 @@ describe('ipc module', () => {
         tool: 'claude',
         mode: 'resume',
         sessionId: 's1',
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('provides the app-only account home and login commands', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke
+        .mockResolvedValueOnce({
+          byAccount: {
+            work: {
+              pinnedProjects: [{ id: 'p1', name: 'taurhaus', path: '/work/taurhaus' }],
+              lastUsedProjects: [],
+              teams: [],
+            },
+          },
+        })
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce('/home/user/.claude-work')
+        .mockResolvedValueOnce({ tmux_pane: '%4' })
+        .mockResolvedValueOnce('/home/user/.claude-work')
+        .mockResolvedValueOnce(undefined)
+
+      const relationships = await ipc.listAccountRelationships('claude')
+      expect(relationships.byAccount.work.pinnedProjects).toHaveLength(1)
+      expect(tauriCore.invoke).toHaveBeenLastCalledWith('list_account_relationships', {
+        tool: 'claude',
+      })
+
+      await ipc.setGlobalDefaultAccount('claude', 'work')
+      expect(tauriCore.invoke).toHaveBeenLastCalledWith('set_global_default_account', {
+        tool: 'claude',
+        accountId: 'work',
+      })
+
+      expect(await ipc.prepareAccountDirectory('claude', 'work')).toBe(
+        '/home/user/.claude-work'
+      )
+      await ipc.launchAccountLogin('p1', 'claude', '/home/user/.claude-work')
+      expect(tauriCore.invoke).toHaveBeenLastCalledWith('launch_account_login', {
+        projectId: 'p1',
+        tool: 'claude',
+        configDir: '/home/user/.claude-work',
+      })
+
+      await ipc.revealDirectory('/home/user/.claude-work')
+      expect(tauriCore.invoke).toHaveBeenLastCalledWith('plugin:opener|reveal_item_in_dir', {
+        path: '/home/user/.claude-work',
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    // Regression: f60cb250 duplicated the Rust path authority in JavaScript,
+    // allowing host-path conversion rules to drift between the two languages.
+    it('asks the app path authority before revealing an account directory', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockImplementation((command) => {
+        if (command === 'account_directory_host_path') {
+          return Promise.resolve('\\\\wsl.localhost\\Ubuntu\\home\\user\\.claude-work')
+        }
+        return Promise.resolve(undefined)
+      })
+
+      await ipc.revealDirectory('/home/user/.claude-work')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('account_directory_host_path', {
+        path: '/home/user/.claude-work',
+      })
+      expect(tauriCore.invoke).toHaveBeenLastCalledWith('plugin:opener|reveal_item_in_dir', {
+        path: '\\\\wsl.localhost\\Ubuntu\\home\\user\\.claude-work',
       })
       delete window.__TAURI_INTERNALS__
     })

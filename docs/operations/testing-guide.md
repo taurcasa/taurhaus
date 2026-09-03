@@ -23,7 +23,7 @@ Per-module `#[test]` functions with `pretty_assertions` for readable diffs and `
 just test-rust            # Full Rust lane (fast compile + unit + integration/system)
 just test-rust-fast       # Compile check only (fast feedback)
 just test-rust-unit       # Unit/bin tests, heavy suites excluded
-just test-rust-integration # Every src-tauri/tests/*.rs binary plus the heavy --lib suites, serialized
+just test-rust-integration # Every src-tauri/tests/*.rs binary plus the heavy --lib suites
 just test-daemon-connectivity # Manual daemon chain verification (WSL/local)
 ```
 
@@ -173,7 +173,7 @@ All paid lanes take on every host change they make as an undo (`e2e/helpers/lane
 | `just test-fast` | Rust compile-check + frontend Vitest |
 | `just test-rust-fast` | Cargo test compile check |
 | `just test-rust-unit` | Rust unit tests (no daemon/network) |
-| `just test-rust-integration` | Every `src-tauri/tests/*.rs` system/integration test binary plus the heavy `--lib` suites, serialized |
+| `just test-rust-integration` | Every `src-tauri/tests/*.rs` system/integration test binary plus the heavy `--lib` suites; system binaries and shared-global subsets are serialized, while daemon server/client fixture suites use default parallelism |
 | `just test-frontend` | Vitest frontend tests |
 | `just test-visual` | Browser-mode visual screenshot lane |
 | `just visual-shot C S [V] [T] [OUT]` | One fixture shot at window size via Edge headless |
@@ -200,6 +200,12 @@ All paid lanes take on every host change they make as an undo (`e2e/helpers/lane
 Both Rust jobs cache build artifacts, including failed builds for faster retries, without skipping test execution. The Rust-only lanes need Cargo, `just`, and the Linux/Tauri system libraries installed by the workflow; the current recipe's tmux interactions use a fake executable, while its Git fixtures use libgit2 with explicit signatures.
 
 `just test-rust-integration` runs **every** binary in `src-tauri/tests` — all 11 of them — because the recipe derives its `--test` arguments from a `justfile` variable that globs `src-tauri/tests/*.rs` rather than from a hand-kept list (`justfile:9`). A guard in `src-tauri/tests/module_boundary_assertions.rs` evaluates that variable and fails the build if the derived manifest and the directory disagree in either direction, and a second guard requires both Rust lanes to source the heavy-suite filters from the same `heavy_rust_test_filters` variable (`justfile:10`), so a heavy suite the unit lane skips is a heavy suite the integration lane re-runs.
+
+The daemon server and daemon-client fixture suites run with Cargo's default
+parallel test runner. Their shared fixtures bind one ephemeral listener and
+retain that exact socket across the serving-thread handoff, closing the former
+drop-and-rebind race. Heavy tests that exercise true process-global or watcher
+state remain behind named guards or the lane's explicit serial branch.
 
 ### Bisection recipes
 

@@ -34,6 +34,8 @@ export const FALLBACK_TOOLS = Object.freeze([
     medallionAccent: 'amber',
     defaultAgentRoleId: 'v4-developer-claude',
     aliases: ['claude', 'claude_native'],
+    accountLoginCommand: 'claude',
+    accountDirName: '.claude',
     capabilities: {
       modelFlag: '--model',
       effortFlag: { kind: 'argument', flag: '--effort' },
@@ -67,6 +69,8 @@ export const FALLBACK_TOOLS = Object.freeze([
     medallionAccent: 'emerald',
     defaultAgentRoleId: 'v4-developer-codex',
     aliases: ['codex', 'mesh', 'mesh_bridged'],
+    accountLoginCommand: 'codex login',
+    accountDirName: '.codex',
     capabilities: {
       modelFlag: '-m',
       effortFlag: { kind: 'config', flag: '-c', key: 'model_reasoning_effort' },
@@ -100,6 +104,8 @@ export const FALLBACK_TOOLS = Object.freeze([
     medallionAccent: 'google-blue',
     defaultAgentRoleId: 'v4-developer-agy',
     aliases: ['agy', 'antigravity'],
+    accountLoginCommand: null,
+    accountDirName: '.gemini',
     capabilities: {
       modelFlag: '--model',
       effortFlag: { kind: 'argument', flag: '--effort' },
@@ -133,6 +139,8 @@ export const FALLBACK_TOOLS = Object.freeze([
     medallionAccent: 'graphite',
     defaultAgentRoleId: 'v4-developer-grok',
     aliases: ['grok'],
+    accountLoginCommand: 'grok login',
+    accountDirName: '.grok',
     capabilities: {
       modelFlag: '--model',
       effortFlag: { kind: 'argument', flag: '--effort' },
@@ -180,7 +188,13 @@ const CAPABILITY_ALIASES = [
   'account_selector', 'account_selection', 'team_config_namespace', 'usage_note',
   'notify_sink', 'hook_trust', 'managed_home',
 ]
-const DESCRIPTOR_ALIASES = ['display_name', 'medallion_accent', 'default_agent_role_id']
+const DESCRIPTOR_ALIASES = [
+  'display_name',
+  'medallion_accent',
+  'default_agent_role_id',
+  'account_login_command',
+  'account_dir_name',
+]
 
 function withoutKeys(value, keys) {
   for (const key of keys) delete value[key]
@@ -248,6 +262,10 @@ function normalizeDescriptor(raw) {
       String(raw.medallionAccent ?? raw.medallion_accent ?? raw.accent ?? 'brand').trim() ||
       'brand',
     defaultAgentRoleId: stringOrNull(raw.defaultAgentRoleId ?? raw.default_agent_role_id),
+    accountLoginCommand: stringOrNull(
+      raw.accountLoginCommand ?? raw.account_login_command
+    ),
+    accountDirName: stringOrNull(raw.accountDirName ?? raw.account_dir_name),
     aliases,
     capabilities: normalizeCapabilities(raw.capabilities),
   }, DESCRIPTOR_ALIASES)

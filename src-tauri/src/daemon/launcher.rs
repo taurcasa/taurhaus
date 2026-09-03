@@ -1079,6 +1079,7 @@ mod tests {
     }
 
     struct TestDaemon {
+        port: u16,
         shutdown: Arc<AtomicBool>,
         _heavy_guard: crate::test_support::HeavyTestGuard,
         handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
@@ -1192,12 +1193,14 @@ mod tests {
     /// serving thread, so there is no window in which the helper has returned
     /// and the port is still closed. That window used to be covered by
     /// `sleep(100 ms)` at every call site.
-    fn spawn_test_daemon(port: u16) -> TestDaemon {
+    fn spawn_test_daemon() -> TestDaemon {
         let heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
-        let config = test_daemon_config(port);
+        let mut config = test_daemon_config(0);
         let listener = crate::daemon::server::bind_listener_for_test(&config)
-            .expect("test daemon listener should bind on a reserved free port");
+            .expect("test daemon listener should bind on an ephemeral port");
+        let port = listener.local_addr().expect("test daemon address").port();
+        config.port = port;
         let shutdown_clone = shutdown.clone();
         let handle = std::thread::spawn(move || {
             crate::daemon::server::serve_for_test(
@@ -1208,6 +1211,7 @@ mod tests {
             )
         });
         TestDaemon {
+            port,
             shutdown,
             _heavy_guard: heavy_guard,
             handle: Some(handle),
@@ -1219,8 +1223,9 @@ mod tests {
     /// The sleep here is the subject, not synchronisation: it is what the
     /// polling paths under test exist for. The port stays closed until it
     /// elapses, exactly as a daemon that is still starting.
-    fn spawn_delayed_test_daemon(port: u16, startup_delay: Duration) -> TestDaemon {
+    fn spawn_delayed_test_daemon(startup_delay: Duration) -> TestDaemon {
         let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let port = reserve_free_port();
         let shutdown = Arc::new(AtomicBool::new(false));
         let config = test_daemon_config(port);
         let shutdown_clone = shutdown.clone();
@@ -1235,6 +1240,7 @@ mod tests {
             )
         });
         TestDaemon {
+            port,
             shutdown,
             _heavy_guard: heavy_guard,
             handle: Some(handle),
@@ -1288,10 +1294,9 @@ time.sleep(3600)
     // the calling thread, so the port is accepting the moment it returns.
     #[test]
     fn spawn_test_daemon_returns_with_the_port_accepting() {
-        let port = reserve_free_port();
-        let daemon = spawn_test_daemon(port);
+        let daemon = spawn_test_daemon();
 
-        std::net::TcpStream::connect(format!("127.0.0.1:{port}"))
+        std::net::TcpStream::connect(format!("127.0.0.1:{}", daemon.port))
             .expect("the helper must return with its port already accepting");
 
         daemon.shutdown.store(true, Ordering::Relaxed);
@@ -1299,8 +1304,7 @@ time.sleep(3600)
 
     #[test]
     fn connects_to_running_daemon() {
-        let port = reserve_free_port();
-        let daemon = spawn_test_daemon(port);
+        let daemon = spawn_test_daemon();
 
         // On native platforms, distro is ignored — daemon connects directly.
         // On Windows/Linux-in-WSL, we'd need a valid distro.
@@ -1309,7 +1313,7 @@ time.sleep(3600)
         } else {
             Some("Ubuntu")
         };
-        let result = try_connect_daemon(distro, port, &test_log_path());
+        let result = try_connect_daemon(distro, daemon.port, &test_log_path());
         assert!(result.is_some());
 
         daemon.shutdown.store(true, Ordering::Relaxed);
@@ -1317,6 +1321,7 @@ time.sleep(3600)
 
     #[test]
     fn dead_port_returns_none() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let port = reserve_free_port();
 
         let result = try_connect(port);
@@ -1325,10 +1330,9 @@ time.sleep(3600)
 
     #[test]
     fn poll_until_reachable_succeeds_when_daemon_starts() {
-        let port = reserve_free_port();
-        let daemon = spawn_delayed_test_daemon(port, Duration::from_millis(300));
+        let daemon = spawn_delayed_test_daemon(Duration::from_millis(300));
 
-        let result = poll_until_reachable(port, Duration::from_secs(3));
+        let result = poll_until_reachable(daemon.port, Duration::from_secs(3));
         assert!(
             result.is_some(),
             "Should connect to daemon that started after a delay"
@@ -1337,8 +1341,11 @@ time.sleep(3600)
         daemon.shutdown.store(true, Ordering::Relaxed);
     }
 
+    // Regression: commit 1dbdf040 let another launcher fixture claim this
+    // deliberately closed port before the poll completed.
     #[test]
     fn poll_until_reachable_times_out() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let port = reserve_free_port();
 
         let start = Instant::now();
@@ -1352,12 +1359,10 @@ time.sleep(3600)
 
     #[test]
     fn reconnect_existing_provider_until_reachable_succeeds_when_daemon_starts() {
-        let port = reserve_free_port();
-        let provider = DaemonProvider::new_disconnected(&format!("127.0.0.1:{port}"));
-
-        let daemon = spawn_delayed_test_daemon(port, Duration::from_millis(300));
+        let daemon = spawn_delayed_test_daemon(Duration::from_millis(300));
+        let provider = DaemonProvider::new_disconnected(&format!("127.0.0.1:{}", daemon.port));
         let start = Instant::now();
-        let result = reconnect_existing_provider_until_reachable(&provider, port);
+        let result = reconnect_existing_provider_until_reachable(&provider, daemon.port);
 
         assert!(
             result.is_ok(),
@@ -1435,11 +1440,10 @@ time.sleep(3600)
             return; // Only relevant on macOS/Linux
         }
 
-        let port = reserve_free_port();
-        let daemon = spawn_test_daemon(port);
+        let daemon = spawn_test_daemon();
 
         // Key assertion: None distro doesn't cause early return on native.
-        let result = try_connect_daemon(None, port, &test_log_path());
+        let result = try_connect_daemon(None, daemon.port, &test_log_path());
         assert!(
             result.is_some(),
             "None distro should still connect on native platforms"

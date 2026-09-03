@@ -590,6 +590,32 @@ fn heavy_unit_skips_match_integration_reruns() {
 }
 
 #[test]
+fn daemon_listener_fixture_suites_run_without_a_global_thread_pin() {
+    // Regression: commit 831571dac globally serialized the daemon fixture
+    // suites to contain their released-listener race instead of retaining the
+    // already-bound ephemeral sockets across the serving-thread handoff.
+    if Command::new("just").arg("--version").output().is_err() {
+        eprintln!("skipping: `just` is not installed");
+        return;
+    }
+
+    let recipe = show_recipe("test-rust-integration");
+    let daemon_branch = recipe
+        .split("daemon::server::tests::|provider::daemon_client::tests::)")
+        .nth(1)
+        .and_then(|remainder| remainder.split(";;").next())
+        .expect("integration recipe should have a daemon server/client case branch");
+    assert!(
+        daemon_branch.contains("cargo test --lib"),
+        "daemon server/client branch must execute its lib-test filter: {daemon_branch:?}"
+    );
+    assert!(
+        !daemon_branch.contains("--test-threads=1"),
+        "daemon server/client fixtures must use Cargo's default parallel test runner: {daemon_branch:?}"
+    );
+}
+
+#[test]
 fn rust_integration_ci_runs_on_every_pull_request() {
     // Regression: commit 797bae05 kept the integration job label-gated after
     // measured warm runs met the PR budget, leaving unlabeled PRs without the

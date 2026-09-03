@@ -21,6 +21,10 @@ vi.mock('./format.js', () => ({
   formatDuration: vi.fn((ms) => `${Math.round(ms)}ms`),
 }))
 
+vi.mock('./accounts.svelte.js', () => ({
+  previewAccount: vi.fn(),
+}))
+
 const {
   getLatestSession,
   getRecentCommits,
@@ -29,6 +33,7 @@ const {
   listWorkflowRuns,
 } = await import('./ipc.js')
 const { resetWorkflowRunsForTest } = await import('./workflowRunStore.svelte.js')
+const { previewAccount } = await import('./accounts.svelte.js')
 
 import HoverCard from './HoverCard.svelte'
 
@@ -62,6 +67,7 @@ describe('HoverCard', () => {
       { hash: 'abc1234', message: 'Fix tests', date: 'today' },
     ])
     getRelationships.mockResolvedValue([])
+    previewAccount.mockResolvedValue(null)
   })
 
   it('does not render when project is missing', () => {
@@ -73,6 +79,32 @@ describe('HoverCard', () => {
     })
 
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('shows the visible session account and why it will be used', async () => {
+    previewAccount.mockResolvedValue({
+      account: { id: 'work', display_name: 'Work' },
+      origin: 'session',
+    })
+
+    render(HoverCard, {
+      props: {
+        project: createProject(),
+        sessions: [{ live: true, cli_tool: 'claude', state: 'active' }],
+        visible: true,
+      },
+    })
+
+    await waitFor(() => {
+      expect(previewAccount).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'proj-1' }),
+        'claude',
+        { visible: true, mode: 'continue' },
+      )
+      expect(screen.getByTestId('hovercard-account')).toHaveTextContent(
+        "Claude · Work · resumes this session's account"
+      )
+    })
   })
 
   it('renders verdict-first layout with dirty chip, session summary, and unresolved item', async () => {

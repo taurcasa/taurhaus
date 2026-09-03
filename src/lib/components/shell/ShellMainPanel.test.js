@@ -5,6 +5,36 @@ import '@testing-library/jest-dom/vitest'
 import ShellMainPanel from './ShellMainPanel.svelte'
 
 describe('ShellMainPanel', () => {
+  it('renders Accounts as a global takeover independently of Settings', () => {
+    render(ShellMainPanel, {
+      props: {
+        accountsOpen: true,
+        accountStates: {},
+        projects: [],
+      },
+    })
+
+    expect(screen.getByTestId('accounts-home')).toBeInTheDocument()
+    expect(screen.queryByText('Select a project')).not.toBeInTheDocument()
+  })
+
+  // Regression: e28881d copied the Settings takeover but left project and
+  // shell notices visible above Accounts, stacking project chrome into the hub.
+  it('suppresses project-scoped notices during the Accounts takeover', () => {
+    render(ShellMainPanel, {
+      props: {
+        accountsOpen: true,
+        accountStates: {},
+        projects: [],
+        projectLoadIssues: [{ section: 'README', message: 'boom' }],
+        shellNotice: 'Project details changed.',
+      },
+    })
+
+    expect(screen.queryByTestId('project-load-degraded-banner')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('shell-notice-banner')).not.toBeInTheDocument()
+  })
+
   it('shows a restart action once daemon recovery has stalled', async () => {
     const onRestartDaemon = vi.fn()
 

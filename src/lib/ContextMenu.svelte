@@ -23,6 +23,10 @@
     y = 0,
     dark = false,
     onClose = () => {},
+    autoFocus = true,
+    keyboardNavigation = true,
+    onMouseEnter = () => {},
+    onMouseLeave = () => {},
     /** Label of a parent whose flyout opens on mount. Fixtures and tests only. */
     openChildOf = null,
   } = $props()
@@ -221,7 +225,7 @@
 
   // Keyboard navigation
   $effect(() => {
-    if (!menuEl) return
+    if (!menuEl || !autoFocus) return
     queueMicrotask(() => {
       menuEl?.focus()
     })
@@ -302,9 +306,18 @@
 
   $effect(() => {
     function handleKeydown(e) {
+      // Escape dismisses the menu whether or not it navigates: a hover-only
+      // board still has to close on the key every other menu closes on.
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        if (openIndex >= 0) closeSubmenu()
+        else onClose()
+        return
+      }
+      if (!keyboardNavigation) return
       // An open flyout owns the keyboard: it is the level the user is on.
       if (openIndex >= 0) {
-        if (e.key === 'Escape' || e.key === 'ArrowLeft') {
+        if (e.key === 'ArrowLeft') {
           e.preventDefault()
           closeSubmenu()
           return
@@ -333,12 +346,6 @@
         if (e.key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey && /\S/.test(e.key)) {
           runTypeahead(e, openChildren, childFocusIndex, (index) => { childFocusIndex = index })
         }
-        return
-      }
-
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
         return
       }
 
@@ -442,6 +449,8 @@
   role="menu"
   tabindex="-1"
   data-testid="context-menu"
+  onmouseenter={onMouseEnter}
+  onmouseleave={onMouseLeave}
 >
   {#each items as item, i}
     {#if item.separator}
@@ -467,6 +476,11 @@
           <span class="w-4 h-4 flex items-center justify-center shrink-0">{@html item.icon}</span>
         {/if}
         <span class="flex-1">{item.label}</span>
+        {#if item.meta}
+          <span class="shrink-0 max-w-[9rem] truncate text-[11px] tabular-nums {metaTone}">
+            {item.meta}
+          </span>
+        {/if}
         {#if hasChildren}
           <svg class="w-3 h-3 shrink-0 {textMuted}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/>

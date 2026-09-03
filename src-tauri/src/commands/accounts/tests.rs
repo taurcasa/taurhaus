@@ -1,6 +1,6 @@
 use super::*;
 use crate::db::queries;
-use crate::session_scanner::accounts::{install_detection_override, AccountScan};
+use crate::session_scanner::accounts::{install_detection_override, AccountIdentity, AccountScan};
 use std::path::Path;
 use std::sync::Mutex;
 use tempfile::{NamedTempFile, TempDir};
@@ -58,6 +58,276 @@ fn setting_the_account_of_an_unknown_project_is_an_error() {
         .expect_err("unknown project");
 
     assert!(error.contains("Project not found"), "{error}");
+}
+
+#[test]
+fn account_relationships_reverse_index_pins_last_use_and_default_root_teams() {
+    let (db, _tmp) = db_with_project("p1");
+    {
+        let conn = db.0.lock().expect("db lock");
+        let now = chrono::Utc::now().to_rfc3339();
+        queries::insert_project(
+            &conn,
+            &crate::models::Project {
+                id: "p2".to_string(),
+                name: "second-project".to_string(),
+                path: "/home/user/projects/second".to_string(),
+                description: None,
+                last_activity_at: None,
+                hero_preference: None,
+                created_at: now.clone(),
+                updated_at: now,
+                cached_branch: None,
+                cached_is_dirty: None,
+                account_memory: Default::default(),
+            },
+        )
+        .expect("insert second project");
+        queries::set_project_account(&conn, "p1", "claude", Some("account-2"))
+            .expect("pin project");
+        queries::remember_last_used_account(&conn, "p2", "claude", "account-2")
+            .expect("remember account");
+    }
+
+    let teams = TempDir::new().expect("teams root");
+    let config_dir = teams.path().join("wave-a");
+    std::fs::create_dir_all(&config_dir).expect("team dir");
+    std::fs::write(
+        config_dir.join("config.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "name": "wave-a",
+            "createdAt": 1_772_399_806_546_i64,
+            "members": [{
+                "name": "lead",
+                "model": "claude-sonnet-4-5",
+                "project_path": "/home/user/projects/test-project"
+            }]
+        }))
+        .expect("team json"),
+    )
+    .expect("write team");
+
+    let index = account_relationships_impl(&db, teams.path(), CliTool::Claude, Some("account-1"))
+        .expect("relationships");
+
+    let remembered = index.by_account.get("account-2").expect("account-2");
+    assert_eq!(remembered.pinned_projects.len(), 1);
+    assert_eq!(remembered.last_used_projects.len(), 1);
+    // Regression: 971d964 bypassed TeamConfigStore and therefore ignored the
+    // store's legacy tool inference for otherwise valid team configs.
+    let default = index.by_account.get("account-1").expect("default account");
+    assert_eq!(default.teams.len(), 1);
+    assert_eq!(default.teams[0].name, "wave-a");
+}
+
+#[test]
+fn team_links_name_their_project_without_an_account_memory_row() {
+    // Regression: 971d964 built the path index out of project_tool_accounts
+    // rows alone, so a team whose project had never remembered an account came
+    // back with no project to open — and a path spelled with a trailing
+    // separator missed the project it names.
+    let (db, _tmp) = db_with_project("p1");
+
+    let teams = TempDir::new().expect("teams root");
+    let config_dir = teams.path().join("wave-a");
+    std::fs::create_dir_all(&config_dir).expect("team dir");
+    std::fs::write(
+        config_dir.join("config.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "name": "wave-a",
+            "createdAt": 1_772_399_806_546_i64,
+            "members": [{
+                "name": "lead",
+                "model": "claude-sonnet-4-5",
+                "project_path": "/home/user/projects/test-project/"
+            }]
+        }))
+        .expect("team json"),
+    )
+    .expect("write team");
+
+    let index = account_relationships_impl(&db, teams.path(), CliTool::Claude, Some("account-1"))
+        .expect("relationships");
+
+    let teams = &index
+        .by_account
+        .get("account-1")
+        .expect("default account")
+        .teams;
+    assert_eq!(teams.len(), 1);
+    assert_eq!(teams[0].project_id.as_deref(), Some("p1"));
+    assert_eq!(teams[0].project_name.as_deref(), Some("test-project"));
+}
+
+#[test]
+fn registry_home_owns_default_root_teams_when_process_home_differs() {
+    let account = |id: &str, dir: &str, is_default, is_process_default| Account {
+        tool: CliTool::Claude,
+        id: id.to_string(),
+        dir: PathBuf::from(dir),
+        identity: AccountIdentity {
+            id: id.to_string(),
+            label: id.to_string(),
+            display_name: None,
+            organization: None,
+            plan: None,
+            logged_in: true,
+            usage_capable: true,
+            credential_expires_at: None,
+        },
+        is_default,
+        is_process_default,
+        usage: None,
+    };
+    let accounts = vec![
+        account("process", "/home/user/.claude", false, true),
+        account("registry", "/home/user/.claude-work", true, false),
+    ];
+
+    // Regression: 971d964 attributed teams to the process default even though
+    // managed launches pin the registry tool home.
+    assert_eq!(
+        registry_home_account_id(&accounts, Path::new("/home/user/.claude-work")).as_deref(),
+        Some("registry")
+    );
+}
+
+#[test]
+fn account_directory_host_path_uses_the_shared_path_authority() {
+    // Regression: f60cb250 duplicated Linux-to-Windows conversion in the
+    // frontend instead of routing account paths through provider::path.
+    assert_eq!(
+        account_directory_host_path_impl("/mnt/d/work/accounts", Some("Ubuntu"))
+            .expect("mounted drive"),
+        r"D:\work\accounts"
+    );
+    assert_eq!(
+        account_directory_host_path_impl("/home/user/.claude-work", Some("Ubuntu"))
+            .expect("WSL home"),
+        r"\\wsl.localhost\Ubuntu\home\user\.claude-work"
+    );
+    assert_eq!(
+        account_directory_host_path_impl("/home/user/.claude-work", Some("native"))
+            .expect("native path"),
+        "/home/user/.claude-work"
+    );
+}
+
+#[test]
+fn setting_global_default_updates_only_the_requested_tool() {
+    let (db, _tmp) = db_with_project("p1");
+
+    set_global_default_account_impl(&db, CliTool::Claude, Some("account-2")).expect("set default");
+    set_global_default_account_impl(&db, CliTool::Codex, Some("codex-work"))
+        .expect("set codex default");
+    set_global_default_account_impl(&db, CliTool::Claude, None).expect("clear default");
+
+    let conn = db.0.lock().expect("db lock");
+    let settings = crate::db::settings_queries::get_all_settings(&conn).expect("settings");
+    assert_eq!(settings.terminal.default_account_ids.get("claude"), None);
+    assert_eq!(
+        settings
+            .terminal
+            .default_account_ids
+            .get("codex")
+            .map(String::as_str),
+        Some("codex-work")
+    );
+}
+
+#[test]
+fn account_directory_plan_is_a_safe_sibling_of_the_registry_home() {
+    let default_dir = Path::new("/home/user/.claude");
+
+    let planned = account_directory_plan(default_dir, "Work Two").expect("plan");
+    assert_eq!(planned, Path::new("/home/user/.claude-work-two"));
+    assert!(
+        !planned.to_string_lossy().contains('\\'),
+        "the Linux launch path must not contain a host separator: {}",
+        planned.display()
+    );
+    // Regression: 971d964 joined a Linux launch-namespace parent with the
+    // host separator, producing `/home/user\\.claude-work` on Windows.
+    let windows_parent = Path::new(r"\home\user/.claude");
+    assert_eq!(
+        account_directory_plan(windows_parent, "Work").expect("Windows-host plan"),
+        Path::new("/home/user/.claude-work")
+    );
+    // Regression: 971d964 rejected the hyphenated account labels used by the
+    // approved add-account journey even though output directories use hyphens.
+    assert_eq!(
+        account_directory_plan(default_dir, "work-2").expect("hyphenated plan"),
+        Path::new("/home/user/.claude-work-2")
+    );
+    assert!(account_directory_plan(default_dir, "../../tokens").is_err());
+    assert!(account_directory_plan(default_dir, "---").is_err());
+}
+
+#[test]
+fn login_command_comes_from_the_registry_and_quotes_the_selector_dir() {
+    assert_eq!(
+        account_login_command(CliTool::Codex, Path::new("/home/user/.codex-work account"))
+            .expect("login command"),
+        "CODEX_HOME='/home/user/.codex-work account' codex login"
+    );
+    assert!(account_login_command(CliTool::Agy, Path::new("/home/user/.gemini")).is_err());
+}
+
+// Regression: 971d9643 prepared the sibling directory and nothing else, so an
+// abandoned sign-in left detection nothing to report and the promised
+// signed-out row never appeared.
+#[cfg(not(target_os = "windows"))]
+#[test]
+fn a_prepared_directory_records_the_account_detection_will_report() {
+    let home = TempDir::new().expect("temp home");
+    let target = home.path().join(".claude-work");
+
+    create_account_directory(&target, "work").expect("prepared directory");
+
+    let marker = std::fs::read_to_string(
+        target.join(crate::session_scanner::accounts::PENDING_ACCOUNT_FILENAME),
+    )
+    .expect("marker");
+    assert_eq!(
+        marker,
+        crate::session_scanner::accounts::pending_account_marker("work")
+    );
+    assert!(marker.contains("\"label\":\"work\""), "marker: {marker}");
+}
+
+// Regression: 971d9643 required a project id for every sign-in, so the
+// app-global Accounts home offered Add account to a user with no projects and
+// then refused to perform it.
+#[test]
+fn a_sign_in_without_a_project_runs_where_the_account_directories_live() {
+    assert_eq!(
+        account_login_working_dir(Path::new("/home/user/.claude-work")).expect("working dir"),
+        "/home/user"
+    );
+    assert_eq!(
+        account_login_working_dir(Path::new(r"\home\user/.codex-work")).expect("Windows-host dir"),
+        "/home/user"
+    );
+    assert!(account_login_working_dir(Path::new(".claude")).is_err());
+}
+
+#[test]
+fn account_login_directory_stays_at_the_registry_home_or_a_named_sibling() {
+    let default_dir = Path::new("/home/user/.claude");
+
+    assert!(validate_account_login_dir_against(default_dir, default_dir).is_ok());
+    assert!(
+        validate_account_login_dir_against(default_dir, Path::new("/home/user/.claude-work"))
+            .is_ok()
+    );
+    assert!(validate_account_login_dir_against(
+        default_dir,
+        Path::new("/home/user/.claude-work/../../etc")
+    )
+    .is_err());
+    assert!(
+        validate_account_login_dir_against(default_dir, Path::new("/home/other/.claude")).is_err()
+    );
 }
 
 /// Without a daemon there is nothing to ask on Windows. The call still

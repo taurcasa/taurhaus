@@ -71,6 +71,9 @@ vi.mock('./lib/ipc.js', () => ({
   listAccounts: vi.fn(() =>
     Promise.resolve({ accounts: [], source: 'native', degraded: false, error: null })
   ),
+  // Regression: 971d9643 added the app-side account reverse index, and Shell's
+  // startup refresh made this integration mock part of that IPC contract.
+  listAccountRelationships: vi.fn(() => Promise.resolve({ byAccount: {} })),
   setProjectAccount: vi.fn(() => Promise.resolve()),
   startDaemon: vi.fn(),
 }))

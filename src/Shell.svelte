@@ -13,6 +13,9 @@
     launchAccountNotice,
     pendingAccountChoice,
     refreshAccounts,
+    refreshAccountRelationships,
+    refreshResolvedBases,
+    refreshUsage,
     requestLaunch,
     resolveChooserAccounts,
   } from './lib/accounts.svelte.js'
@@ -28,7 +31,11 @@
   import { createShellProjectSelectionController } from './lib/shell/projectSelection.svelte.js'
   import { createShellSessionLifecycleController } from './lib/shell/sessionLifecycle.svelte.js'
   import { createStateBridge } from './lib/shell/stateBridge.js'
-  import { setupHistoryNavigation, setupSearchShortcut } from './lib/shell/shortcuts.svelte.js'
+  import {
+    setupAccountsShortcut,
+    setupHistoryNavigation,
+    setupSearchShortcut,
+  } from './lib/shell/shortcuts.svelte.js'
   import { loadThemePreferences, persistDarkModePreference } from './lib/shell/themePreferences.js'
   import {
     closeShellWindow,
@@ -60,6 +67,8 @@
 
   let searchOpen = $state(false)
   let settingsOpen = $state(false)
+  let accountsOpen = $state(false)
+  let requestedAddTool = $state(null)
   let showAddProject = $state(false)
   let showWizard = $state(false)
   let wizardChecked = $state(false)
@@ -238,7 +247,24 @@
       showAddProject = true
     },
     toggleSettings: () => {
+      accountsOpen = false
+      requestedAddTool = null
       settingsOpen = !settingsOpen
+    },
+    toggleAccounts: () => {
+      settingsOpen = false
+      requestedAddTool = null
+      accountsOpen = !accountsOpen
+    },
+    openAccounts: () => {
+      settingsOpen = false
+      accountsOpen = true
+    },
+    // The picker footer's `Add account…`, from wherever a picker is open.
+    openAddAccount: (tool) => {
+      settingsOpen = false
+      accountsOpen = true
+      requestedAddTool = tool
     },
     retryProjects: () => {
       projectController.loadProjects()
@@ -318,6 +344,43 @@
     void loadModelCatalogFromSettings()
   })
 
+  // The backend usage poller re-reads a live account every minute; the ambient
+  // chrome is only true if it keeps step with it.
+  const ACCOUNTS_SYNC_INTERVAL_MS = 60_000
+
+  /**
+   * Bring the ambient account chrome level with the backend.
+   *
+   * Every registry tool is asked, not only the ones that can switch accounts:
+   * a tool with a single implicit account still has usage the footer speaks
+   * for, and a tool nothing has detected yet has no row to speak with.
+   *
+   * Only the opening pass asks a provider for a fresh reading, because that is
+   * the one moment taurhaus may hold none. From then on a listing carries
+   * whatever the backend poller last observed, and the poller — not this
+   * timer — decides how often a subscription is worth asking again.
+   *
+   * The relationship index is not a provider read, and the footer's relevance
+   * rule is only true while it keeps step with the pins in force — so every
+   * pass re-reads it. What the launch commands select is asked for on the
+   * opening and reconnect passes alone: resolving a base probes an interactive
+   * shell, and nothing but a Settings edit — which invalidates it itself — can
+   * change the answer between them.
+   */
+  function syncAccountChrome({ force = false, provider = false } = {}) {
+    for (const tool of registryTools()) {
+      const detected = Promise.resolve(refreshAccounts(tool.id, { force }))
+      void refreshAccountRelationships(tool.id, { force })
+      if (!provider) continue
+      if (tool.capabilities.accountSelection) void refreshResolvedBases(tool.id, { force })
+      if (tool.capabilities.usage) {
+        void detected.then(() =>
+          refreshUsage(tool.id, { maxAgeMs: ACCOUNTS_SYNC_INTERVAL_MS })
+        )
+      }
+    }
+  }
+
   // Account detection reads the WSL home through the daemon on Windows, so a
   // daemon that arrives late has to be asked again — until then the chooser
   // has nothing to offer.
@@ -327,9 +390,19 @@
     if (status === lastAccountDetectionDaemonStatus) return
     const reconnected = status === 'connected' && lastAccountDetectionDaemonStatus !== null
     lastAccountDetectionDaemonStatus = status
-    for (const tool of registryTools().filter((entry) => entry.capabilities.accountSelection)) {
-      void refreshAccounts(tool.id, { force: reconnected })
-    }
+    syncAccountChrome({ force: reconnected, provider: true })
+  })
+
+  // Nobody hovers the footer to find out whether their week is spent: the
+  // opening pass fills the chrome in, and the interval keeps it level with what
+  // the poller has observed since.
+  $effect(() => {
+    syncAccountChrome({ provider: true })
+    const timer = setInterval(
+      () => syncAccountChrome({ force: true }),
+      ACCOUNTS_SYNC_INTERVAL_MS
+    )
+    return () => clearInterval(timer)
   })
 
   $effect(() => {
@@ -514,6 +587,14 @@
     },
   }))
 
+  $effect(() => setupAccountsShortcut({
+    onToggleAccounts: () => {
+      settingsOpen = false
+      requestedAddTool = null
+      accountsOpen = !accountsOpen
+    },
+  }))
+
   $effect(() => setupHistoryNavigation({
     onGoBack: () => {
       const entry = navGoBack()
@@ -537,6 +618,7 @@
       {dark}
       {activeTab}
       {settingsOpen}
+      {accountsOpen}
       onSwitchTab={(tab) => projectController.switchTab(tab)}
       onToggleSearch={() => {
         searchOpen = !searchOpen
@@ -560,6 +642,7 @@
           onForegroundProjectChange={(projectId) => sessionController.setForegroundProject(projectId)}
           daemonStatus={daemonStatus}
           {settingsOpen}
+          {accountsOpen}
           {dark}
           actions={{
             onProjectHover: projectController.prefetchProjectSelection,
@@ -572,6 +655,8 @@
         {codeThemeLight}
         {codeThemeDark}
         {settingsOpen}
+        {accountsOpen}
+        {requestedAddTool}
         {daemonStatus}
         {daemonRecoveryEscalated}
         {daemonUpdateAvailable}
@@ -601,6 +686,26 @@
         bind:taskPosition
         onCloseSettings={() => {
           settingsOpen = false
+        }}
+        onCloseAccounts={() => {
+          accountsOpen = false
+          requestedAddTool = null
+        }}
+        onOpenAccounts={() => {
+          settingsOpen = false
+          accountsOpen = true
+          requestedAddTool = null
+        }}
+        onRequestedAddConsumed={() => {
+          requestedAddTool = null
+        }}
+        onOpenProject={(relationship) => {
+          if (navigationController.openAccountRelationship(relationship)) accountsOpen = false
+        }}
+        onOpenTeam={(team) => {
+          if (navigationController.openAccountRelationship(team, { tab: 'mesh' })) {
+            accountsOpen = false
+          }
         }}
         onSettingsChanged={() => projectController.loadProjects()}
         onCodeThemeChanged={handleCodeThemeChanged}
@@ -655,6 +760,18 @@
       onConfirm={(accountId, remember) => pendingAccount?.confirm(accountId, remember)}
       onCancel={() => pendingAccount?.cancel()}
       onRequestUsage={() => void refreshUsage(pendingAccount.tool)}
+      onAddAccount={(tool) => {
+        pendingAccount?.cancel()
+        settingsOpen = false
+        accountsOpen = true
+        requestedAddTool = tool
+      }}
+      onManageAccounts={() => {
+        pendingAccount?.cancel()
+        settingsOpen = false
+        accountsOpen = true
+        requestedAddTool = null
+      }}
     />
   {/if}
 

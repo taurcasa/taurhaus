@@ -18,6 +18,21 @@ describe('ShellTitlebar', () => {
     expect(screen.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'false')
   })
 
+  // Regression: e28881d added the Accounts main-panel takeover without giving
+  // the titlebar its takeover state, leaving every project tab as a dead control.
+  it('replaces project tabs with the Accounts takeover label', () => {
+    render(ShellTitlebar, {
+      props: {
+        dark: true,
+        activeTab: 'overview',
+        accountsOpen: true,
+      },
+    })
+
+    expect(screen.getByText('Accounts')).toBeInTheDocument()
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+  })
+
   it('supports arrow-key navigation between tabs', async () => {
     const onSwitchTab = vi.fn()
 

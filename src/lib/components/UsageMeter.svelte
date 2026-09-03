@@ -1,5 +1,6 @@
 <script>
-  import { compactSelection, resetLabel } from '../usageWindows.js'
+  import { compactSelection, liveUsageWindows, resetLabel, windowPressure } from '../usageWindows.js'
+  import { usageIsLastKnown } from '../accountPresentation.js'
 
   let {
     tool,
@@ -17,13 +18,6 @@
     return () => clearInterval(timer)
   })
 
-  function live(window) {
-    if (!Number.isFinite(Number(window?.used_percentage))) return null
-    if (window.resets_at == null) return window
-    const reset = Number(window.resets_at)
-    return Number.isFinite(reset) && reset * 1000 <= now ? null : window
-  }
-
   // The two-field 0.6.8 shape remains readable during the in-memory upgrade;
   // every new response uses the ordered provider windows.
   const providerWindows = $derived(
@@ -39,7 +33,7 @@
         ].filter(Boolean)
   )
   const legacy = $derived(!Array.isArray(usage?.windows))
-  const windows = $derived(providerWindows.map(live).filter(Boolean))
+  const windows = $derived(liveUsageWindows(providerWindows, now))
   // Compact surfaces compare account headroom, so session-only noise is
   // omitted when provider windows include longer-lived limits. The flag narrows
   // the list rather than gating it: a provider that flags nothing still has
@@ -49,6 +43,7 @@
   const observedAt = $derived(usage?.observed_at ? Date.parse(usage.observed_at) : Number.NaN)
   const ageMs = $derived(Number.isFinite(observedAt) ? Math.max(0, now - observedAt) : Number.NaN)
   const legacyStale = $derived(legacy && Number.isFinite(ageMs) && ageMs > 60 * 60 * 1000)
+  const lastKnown = $derived(!legacy && usageIsLastKnown(usage, now))
   const nextResetMs = $derived(
     windows
       .map((window) => Number(window.resets_at) * 1000 - now)
@@ -60,6 +55,13 @@
   const labelTone = $derived(dark ? 'text-zinc-400' : 'text-zinc-600')
   const valueTone = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
   const mutedTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
+  const lastKnownTrackTone = $derived(
+    lastKnown
+      ? dark
+        ? 'border border-dashed border-zinc-600'
+        : 'border border-dashed border-zinc-400'
+      : ''
+  )
 
   function percent(window) {
     return Math.round(Number(window.used_percentage))
@@ -74,8 +76,9 @@
   }
 
   function barTone(window) {
-    if (window.severity === 'critical') return dark ? 'bg-rose-400/80' : 'bg-rose-500'
-    if (window.severity === 'warning') return dark ? 'bg-amber-400/80' : 'bg-amber-500'
+    const pressure = windowPressure(window)
+    if (pressure === 'critical') return dark ? 'bg-rose-400/80' : 'bg-rose-500'
+    if (pressure === 'warning') return dark ? 'bg-amber-400/80' : 'bg-amber-500'
     return dark ? 'bg-brand-400/80' : 'bg-brand-500'
   }
 
@@ -103,19 +106,19 @@
 </script>
 
 {#if shown.length && compact}
-  <span class="text-[10px] leading-none tabular-nums {valueTone}" data-tool={tool} data-testid="usage-meter">
+  <span class="text-[10px] leading-none tabular-nums {valueTone}" data-tool={tool} data-testid="usage-meter" data-last-known={lastKnown ? 'true' : 'false'}>
     {shown.map((window) => `${compactTitle(window)} ${percent(window)}%`).join(' · ')}
     {#if statusSuffix()}<span class="{mutedTone}"> · {statusSuffix()}</span>{/if}
   </span>
 {:else if shown.length}
-  <span class="flex flex-col gap-1.5" data-tool={tool} data-testid="usage-meter">
+  <span class="flex flex-col gap-1.5" data-tool={tool} data-testid="usage-meter" data-last-known={lastKnown ? 'true' : 'false'}>
     {#each shown as window, index (`${window.key}:${index}`)}
       <span class="flex flex-col gap-0.5">
         <span class="flex items-center justify-between gap-2 text-[10px] leading-none">
           <span class="truncate {labelTone}">{window.title}</span>
           <span class="shrink-0 tabular-nums {valueTone}">{percent(window)}% used</span>
         </span>
-        <span class="h-1 overflow-hidden rounded-full {trackTone}">
+        <span class="h-1 overflow-hidden rounded-full {trackTone} {lastKnownTrackTone}" data-testid="usage-track-{window.key}">
           <span
             class="block h-full rounded-full {barTone(window)}"
             style="width: {barWidth(window)}"
@@ -129,7 +132,11 @@
         {/if}
       </span>
     {/each}
-    {#if legacyStale}
+    {#if lastKnown}
+      <span class="text-[10px] leading-none {mutedTone}" data-testid="usage-last-known">
+        Last known · {duration(ageMs)} ago
+      </span>
+    {:else if legacyStale}
       <span class="text-[10px] leading-none {mutedTone}" data-testid="usage-stale">
         last seen {duration(ageMs)} ago
       </span>
