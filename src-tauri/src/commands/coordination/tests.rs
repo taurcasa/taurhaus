@@ -269,6 +269,7 @@ fn coordination_add_member_impl(
                     capabilities: None,
                     model: None,
                     reasoning_effort: None,
+                    account_id: None,
                     project_path,
                     cli_tool,
                     extra: Default::default(),
@@ -1510,6 +1511,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         },
         agents: vec![
             AgentSetupConfig {
@@ -1540,6 +1542,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
@@ -1565,6 +1568,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
         ],
     }
@@ -1597,6 +1601,7 @@ fn sample_add_agent_request(team_name: &str, member_name: &str) -> AddAgentReque
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         },
     }
 }
@@ -2080,6 +2085,7 @@ fn add_agent_and_reonboard_validate_empty_strings() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
         },
         &crate::models::CliCommandSettings::default(),
@@ -3293,6 +3299,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         },
         agents: vec![
             AgentSetupConfig {
@@ -3319,6 +3326,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
             AgentSetupConfig {
                 name: "reviewer-2".to_string(),
@@ -3344,6 +3352,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
         ],
     };
@@ -3505,6 +3514,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         },
         agents: vec![
             AgentSetupConfig {
@@ -3531,6 +3541,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
             AgentSetupConfig {
                 name: "dev-2".to_string(),
@@ -3556,6 +3567,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
         ],
     };
@@ -3726,6 +3738,7 @@ fn initialize_team_request_round_trip() {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         },
         agents: vec![
             AgentSetupConfig {
@@ -3752,6 +3765,7 @@ fn initialize_team_request_round_trip() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
@@ -3777,6 +3791,7 @@ fn initialize_team_request_round_trip() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
         ],
     };
@@ -3847,6 +3862,7 @@ fn add_agent_request_and_report_round_trip() {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            account_id: None,
         },
     };
     let req_json = serde_json::to_string(&request).expect("serialize add-agent request");

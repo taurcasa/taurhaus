@@ -51,6 +51,9 @@ pub struct AgentSetupConfig {
     // canonical `reasoning_effort` next to `model`.
     #[serde(default, alias = "reasoning_effort")]
     pub reasoning_effort: Option<String>,
+    /// Stable account id for selector-capable managed members.
+    #[serde(default, alias = "account_id")]
+    pub account_id: Option<String>,
     pub project_id: String,
     pub description: Option<String>,
     pub role_id: Option<String>,

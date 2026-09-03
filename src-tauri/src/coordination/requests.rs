@@ -514,6 +514,8 @@ pub struct AgentDefinition {
     pub model: String,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    #[serde(default, alias = "accountId", skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
     pub project_id: String,
     pub description: Option<String>,
     #[serde(default)]
@@ -826,6 +828,7 @@ mod tests {
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Codex,
                 extra: Default::default(),
@@ -887,6 +890,7 @@ mod tests {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
             agents: vec![AgentDefinition {
                 name: "frontend-dev".to_string(),
@@ -912,6 +916,7 @@ mod tests {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             }],
         };
 
@@ -949,6 +954,7 @@ mod tests {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                account_id: None,
             },
         };
 

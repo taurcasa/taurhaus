@@ -43,7 +43,7 @@ use serde::{Deserialize, Serialize};
 /// the task-arrival effort intent.
 /// v22: moved the final desktop-owned team-state writes (task snapshots,
 /// live-presence reconciliation, and active-project mappings) into the daemon.
-pub const PROTOCOL_VERSION: u32 = 22;
+pub const PROTOCOL_VERSION: u32 = 23;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -1470,7 +1470,7 @@ mod tests {
     // edit here, in ARCHITECTURE.md, and in docs/architecture/daemon-protocol.md.
     #[test]
     fn protocol_version_is_pinned() {
-        assert_eq!(PROTOCOL_VERSION, 22);
+        assert_eq!(PROTOCOL_VERSION, 23);
     }
 
     #[test]
@@ -1573,6 +1573,7 @@ mod tests {
                     cli_tool: "claude".to_string(),
                     model: "sonnet".to_string(),
                     reasoning_effort: None,
+                    account_id: None,
                     project_id: "/tmp/daemon-init".to_string(),
                     description: None,
                     role_id: None,
@@ -1619,6 +1620,7 @@ mod tests {
             cli_tool: "codex".to_string(),
             model: "gpt-5.4".to_string(),
             reasoning_effort: Some("high".to_string()),
+            account_id: Some("codex-work".to_string()),
             project_id: "/tmp/builder".to_string(),
             description: None,
             role_id: None,
@@ -2044,6 +2046,12 @@ mod tests {
     fn protocol_version_excludes_daemons_without_the_final_writer_intents() {
         let last_protocol_with_app_side_team_state_writers = 21;
         assert!(PROTOCOL_VERSION > last_protocol_with_app_side_team_state_writers);
+    }
+
+    #[test]
+    fn protocol_version_excludes_daemons_without_member_accounts() {
+        let last_protocol_without_member_accounts = 22;
+        assert!(PROTOCOL_VERSION > last_protocol_without_member_accounts);
     }
 
     #[test]

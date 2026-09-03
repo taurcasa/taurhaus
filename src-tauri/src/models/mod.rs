@@ -255,6 +255,19 @@ pub struct ToolCommands {
     pub resume: String,
 }
 
+/// Detection-backed account facts carried from the daemon command boundary to
+/// pure managed-launch rendering. Tokens and provider credentials never enter
+/// this shape.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedLaunchAccount {
+    pub id: String,
+    pub label: String,
+    pub dir: std::path::PathBuf,
+    pub logged_in: bool,
+    pub is_default: bool,
+}
+
 /// Per-tool launch command configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -278,6 +291,11 @@ pub struct CliCommandSettings {
     /// never probes the ambient process environment.
     #[serde(skip)]
     pub account_selector_dirs: HashMap<String, std::path::PathBuf>,
+    /// Runtime-only detection snapshot used to resolve persisted member ids at
+    /// render time. Empty means detection was unavailable and forces the
+    /// explicit registry-home fallback.
+    #[serde(skip)]
+    pub managed_accounts: HashMap<CliTool, Vec<ManagedLaunchAccount>>,
     /// Runtime-only shell-resolved bases for managed team launches. Missing
     /// entries mean resolution was unavailable and render fail-soft literally.
     #[serde(skip)]
@@ -302,6 +320,7 @@ impl Default for CliCommandSettings {
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
             account_selector_dirs: HashMap::new(),
+            managed_accounts: HashMap::new(),
             resolved_bases: HashMap::new(),
         }
     }

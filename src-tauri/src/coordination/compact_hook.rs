@@ -1652,6 +1652,7 @@ mod tests {
             capabilities: None,
             model: None,
             reasoning_effort: None,
+            account_id: None,
             project_path: project_path.to_path_buf(),
             cli_tool: CliTool::Claude,
             extra: Default::default(),

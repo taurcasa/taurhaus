@@ -34,6 +34,14 @@ pub struct LaunchAccountResult {
     pub account_note: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account_note_detail: Option<String>,
+    /// Account that actually received the launch, when detection identified it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_label: Option<String>,
+    /// Requested account id that could not be applied before falling back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_from: Option<String>,
 }
 
 impl LaunchAccountResult {
@@ -45,6 +53,9 @@ impl LaunchAccountResult {
             account_applied: Some(false),
             account_note: Some(OPAQUE_BASE_COMMAND.to_string()),
             account_note_detail: Some(head.to_string()),
+            account_id: None,
+            account_label: None,
+            fallback_from: None,
         }
     }
 
@@ -52,6 +63,9 @@ impl LaunchAccountResult {
         self.account_applied.is_none()
             && self.account_note.is_none()
             && self.account_note_detail.is_none()
+            && self.account_id.is_none()
+            && self.account_label.is_none()
+            && self.fallback_from.is_none()
     }
 }
 

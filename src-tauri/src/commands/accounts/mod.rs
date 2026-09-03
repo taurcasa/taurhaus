@@ -809,6 +809,7 @@ pub(crate) fn apply_team_launch_base_resolutions(
 ) {
     let tools = tools.into_iter().collect::<Vec<_>>();
     apply_team_account_selector_dirs(commands, tools.iter().copied());
+    apply_team_managed_accounts(commands, tools.iter().copied());
     let probe = (!cfg!(target_os = "windows"))
         .then(crate::session_scanner::launch_base::ShellAliasProbe::for_pane);
     apply_team_launch_base_resolutions_with(commands, tools, |base, tool| {
@@ -829,6 +830,35 @@ pub(crate) fn apply_team_account_selector_dirs(
     apply_team_account_selector_dirs_with(commands, tools, |tool| {
         crate::provider::platform_paths::PlatformPaths::tool_home(tool)
     });
+}
+
+/// Carry a credential-free detection snapshot into managed launch rendering.
+/// The member keeps only an account id; its machine-local directory is looked
+/// up again for every operation that can start a pane.
+pub(crate) fn apply_team_managed_accounts(
+    commands: &mut crate::models::CliCommandSettings,
+    tools: impl IntoIterator<Item = CliTool>,
+) {
+    for tool in tools {
+        if crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .account_selector
+            .is_none()
+        {
+            continue;
+        }
+        let accounts = accounts::detect(tool)
+            .into_iter()
+            .map(|account| crate::models::ManagedLaunchAccount {
+                id: account.id,
+                label: account.identity.label,
+                dir: account.dir,
+                logged_in: account.identity.logged_in,
+                is_default: account.is_default,
+            })
+            .collect();
+        commands.managed_accounts.insert(tool, accounts);
+    }
 }
 
 pub(crate) fn apply_team_account_selector_dirs_with(

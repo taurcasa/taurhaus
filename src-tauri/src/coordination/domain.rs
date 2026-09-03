@@ -46,6 +46,10 @@ pub struct Member {
     pub model: Option<String>,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    /// Stable provider account id resolved to a config directory only when the
+    /// managed member launches. Machine-local directories never persist here.
+    #[serde(default, alias = "accountId", skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
     pub project_path: PathBuf,
     pub cli_tool: CliTool,
     #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -147,6 +151,7 @@ mod tests {
             capabilities: Some(vec!["review".to_string(), "testing".to_string()]),
             model: Some("gpt-5.6-sol".to_string()),
             reasoning_effort: Some("high".to_string()),
+            account_id: None,
             project_path: PathBuf::from("/tmp/taurhaus"),
             cli_tool: CliTool::Codex,
             extra: BTreeMap::new(),

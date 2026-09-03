@@ -286,6 +286,7 @@ fn execute_add_member(
                 capabilities: None,
                 model: None,
                 reasoning_effort: None,
+                account_id: None,
                 project_path,
                 cli_tool,
                 extra: Default::default(),

@@ -318,6 +318,7 @@ pub(crate) fn prepare_daemon_launch_inputs_for_tools(
 
     let probe = crate::session_scanner::launch_base::ShellAliasProbe::for_pane();
     crate::commands::accounts::apply_team_account_selector_dirs(commands, tools.iter().copied());
+    crate::commands::accounts::apply_team_managed_accounts(commands, tools.iter().copied());
     crate::commands::accounts::apply_team_launch_base_resolutions_with(
         commands,
         tools,

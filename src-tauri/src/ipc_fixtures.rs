@@ -109,6 +109,7 @@ fn fully_populated_settings() -> Settings {
             "codex".to_string(),
             PathBuf::from("/fixtures/codex-home"),
         )]),
+        managed_accounts: HashMap::new(),
         resolved_bases: HashMap::new(),
     };
     let model_catalog = ModelCatalog {
