@@ -37,6 +37,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
     onCloseNode = () => {},
     onResumeSelected = () => {},
     onStopSelected = () => {},
+    onSwitchSelectedAccount = () => {},
     onFocusSelectedPane = () => {},
     onCaptureRole = () => {},
     onCloseAddAgent = () => {},
@@ -77,6 +78,10 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
       paneId: selectedNode.paneId ?? selectedNode.pane_id ?? '',
       sessionId: selectedNode.sessionId ?? selectedNode.session_id ?? '',
       sessionState: selectedNode.sessionState ?? selectedNode.session_status ?? '',
+      accountId: selectedNode.accountId ?? selectedNode.account_id ?? '',
+      accountLabel: selectedNode.accountLabel ?? selectedNode.account_label ?? '',
+      accountApplied: selectedNode.accountApplied ?? selectedNode.account_applied ?? null,
+      accountFallbackFrom: selectedNode.accountFallbackFrom ?? selectedNode.account_fallback_from ?? '',
     }
   })
   const canFocusSelectedPane = $derived.by(
@@ -390,6 +395,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
             onResume: onResumeSelected,
             resumeDisabled: isResumingTeam,
             onStop: onStopSelected,
+            onSwitchAccount: onSwitchSelectedAccount,
             stopDisabled: isResumingTeam,
             onFocusPane: canFocusSelectedPane ? onFocusSelectedPane : null,
             onCapture: onCaptureRole,

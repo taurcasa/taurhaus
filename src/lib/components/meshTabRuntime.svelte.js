@@ -406,6 +406,26 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
     }
   }
 
+  async function switchSelectedAccount(accountId) {
+    if (state.isResumingTeam) return
+    const currentNode = state.selectedNode
+    const cliTool = currentNode?.tool ?? currentNode?.cliTool ?? currentNode?.cli_tool
+    if (!currentNode || !cliTool || !accountId) return
+    try {
+      const report = await deps.coordinationSwitchTeamAccount(
+        state.teamName,
+        cliTool,
+        accountId
+      )
+      state.runtimeMessage = `Switched ${report?.switchedMembers?.length ?? 0} ${cliTool} member${report?.switchedMembers?.length === 1 ? '' : 's'} to ${report?.accountLabel ?? accountId}.`
+      state.selectedNodeId = null
+      const sequence = ++refs.discoverySequence
+      await gate.refreshProjectMeshSnapshot(sequence, { preserveNotices: true })
+    } catch (error) {
+      state.errorMessage = error?.message || `Failed to switch the ${cliTool} team account.`
+    }
+  }
+
   function stopSelected() {
     if (!state.selectedNode) return
     if (state.selectedNode.role === 'lead') {
@@ -552,6 +572,7 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
     handleConfirmAction,
     requestDisband,
     resumeSelected,
+    switchSelectedAccount,
     resumeTeam,
     stopSelected,
     toggleNode,

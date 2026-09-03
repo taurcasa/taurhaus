@@ -473,6 +473,34 @@ describe('meshTabUtils reasoning effort', () => {
       expect.objectContaining({ model: 'gpt-5.6-sol', reasoningEffort: 'low' })
     )
   })
+
+  it('carries selector-capable member account assignments into initialization', () => {
+    const request = buildInitializationRequest(
+      {
+        initializationMode: 'custom',
+        lead: {
+          name: 'team-lead',
+          tool: 'codex',
+          accountId: 'codex-work',
+          projectId: '/projects/taurhaus',
+        },
+        agents: [
+          {
+            name: 'grok-reviewer',
+            tool: 'grok',
+            accountId: 'grok-personal',
+            projectId: '/projects/taurhaus',
+          },
+        ],
+      },
+      'taurhaus-team',
+      '/projects/taurhaus',
+      CATALOG
+    )
+
+    expect(request.lead.accountId).toBe('codex-work')
+    expect(request.agents[0].accountId).toBe('grok-personal')
+  })
 })
 
 describe('meshTabUtils task effort', () => {

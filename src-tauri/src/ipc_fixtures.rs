@@ -243,6 +243,9 @@ fn fully_populated_live_team_status() -> LiveTeamStatus {
             account_applied: Some(false),
             account_note: Some("opaque_base_command".to_string()),
             account_note_detail: Some("fixture-wrapper".to_string()),
+            account_id: Some("fixture-account".to_string()),
+            account_label: Some("Fixture Account".to_string()),
+            account_fallback_from: None,
         }],
     }
 }

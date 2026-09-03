@@ -4085,6 +4085,9 @@ fn live_team_status_round_trip() {
                 account_applied: None,
                 account_note: None,
                 account_note_detail: None,
+                account_id: None,
+                account_label: None,
+                account_fallback_from: None,
             },
             LiveAgentStatus {
                 name: "frontend-dev".to_string(),
@@ -4110,6 +4113,9 @@ fn live_team_status_round_trip() {
                 account_applied: Some(false),
                 account_note: Some("opaque_base_command".to_string()),
                 account_note_detail: Some("team-wrapper".to_string()),
+                account_id: Some("personal".to_string()),
+                account_label: Some("Personal".to_string()),
+                account_fallback_from: Some("Work".to_string()),
             },
         ],
     };
@@ -4153,6 +4159,9 @@ fn project_mesh_snapshot_round_trip() {
                 account_applied: Some(false),
                 account_note: Some("opaque_base_command".to_string()),
                 account_note_detail: Some("team-wrapper".to_string()),
+                account_id: Some("personal".to_string()),
+                account_label: Some("Personal".to_string()),
+                account_fallback_from: Some("Work".to_string()),
             }],
         }),
         warnings: vec!["skipped team folder 'broken-team'".to_string()],
@@ -4658,9 +4667,12 @@ fn live_team_status_carries_the_opaque_base_account_note() {
     )
     .expect("initialize should succeed");
 
-    let note = taurhaus_lib::session_scanner::launch_base::LaunchAccountResult::for_opaque_head(
+    let mut note = taurhaus_lib::session_scanner::launch_base::LaunchAccountResult::for_opaque_head(
         Some("team-wrapper"),
     );
+    note.account_id = Some("personal".to_string());
+    note.account_label = Some("Personal".to_string());
+    note.fallback_from = Some("Work".to_string());
     MemberRuntimeStore::update(tmp.path(), "architecture-final", "frontend-dev", |record| {
         record.launch_account = note.clone();
     })
@@ -4683,6 +4695,9 @@ fn live_team_status_carries_the_opaque_base_account_note() {
     assert_eq!(member.account_applied, Some(false));
     assert_eq!(member.account_note.as_deref(), Some("opaque_base_command"));
     assert_eq!(member.account_note_detail.as_deref(), Some("team-wrapper"));
+    assert_eq!(member.account_id.as_deref(), Some("personal"));
+    assert_eq!(member.account_label.as_deref(), Some("Personal"));
+    assert_eq!(member.account_fallback_from.as_deref(), Some("Work"));
 }
 
 #[test]

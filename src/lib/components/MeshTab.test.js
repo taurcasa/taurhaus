@@ -27,6 +27,7 @@ vi.mock('../ipc.js', () => ({
   coordinationRemoveMember: vi.fn(),
   coordinationResumeTeam: vi.fn(),
   coordinationResumeMember: vi.fn(),
+  coordinationSwitchTeamAccount: vi.fn(),
   getRoleTemplate: vi.fn(),
   getTeamPreset: vi.fn(),
   installMesh: vi.fn(),

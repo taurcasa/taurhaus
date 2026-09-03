@@ -268,6 +268,16 @@ pub struct LiveAgentStatus {
     /// Wrapper command head associated with `account_note`.
     #[serde(default)]
     pub account_note_detail: Option<String>,
+    /// Detected account actually used by the launch, or the persisted selector
+    /// assignment while the member is offline.
+    #[serde(default)]
+    pub account_id: Option<String>,
+    /// Human label for the account actually in force.
+    #[serde(default)]
+    pub account_label: Option<String>,
+    /// Requested account that could not be applied before fallback.
+    #[serde(default)]
+    pub account_fallback_from: Option<String>,
 }
 
 /// Live-team payload for the frontend mesh roster.
@@ -329,6 +339,15 @@ pub struct FastAgentSnapshot {
     /// See `LiveAgentStatus::account_note_detail`.
     #[serde(default)]
     pub account_note_detail: Option<String>,
+    /// See `LiveAgentStatus::account_id`.
+    #[serde(default)]
+    pub account_id: Option<String>,
+    /// See `LiveAgentStatus::account_label`.
+    #[serde(default)]
+    pub account_label: Option<String>,
+    /// See `LiveAgentStatus::account_fallback_from`.
+    #[serde(default)]
+    pub account_fallback_from: Option<String>,
 }
 
 /// Fast team snapshot built from persisted config + runtime only.

@@ -1,13 +1,16 @@
 <script>
   import { focusFirstInteractiveElement, handleModalKeydown, registerModalLayer } from '../a11y.js'
   import { activitySignal } from '../activitySignal.js'
+  import { accountState } from '../accounts.svelte.js'
   import MarkdownRenderer from '../MarkdownRenderer.svelte'
+  import AccountPicker from './AccountPicker.svelte'
   import ModelSelect from './ModelSelect.svelte'
   import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
   import { normalizeTool } from '../meshDefaults.js'
   import { EMPTY_MODEL_CATALOG, defaultEffortFor, defaultModelFor } from '../modelCatalog.js'
   import { themeTokens } from '../themeTokens.js'
   import { toolLabel as registeredToolLabel, tools } from '../toolRegistry.js'
+  import { exhaustedUsage } from '../usageWindows.js'
 
   let {
     node = {},
@@ -76,6 +79,43 @@
   const modelDisplay = $derived(
     model ? `${model}${reasoningEffort ? ` · ${reasoningEffort}` : ''}` : ''
   )
+  const accountId = $derived.by(() => String(node?.accountId ?? node?.account_id ?? '').trim())
+  const accountLabel = $derived.by(() =>
+    String(node?.accountLabel ?? node?.account_label ?? accountId ?? '').trim()
+  )
+  const accountFallbackFrom = $derived.by(() =>
+    String(node?.accountFallbackFrom ?? node?.account_fallback_from ?? '').trim()
+  )
+  const accountApplied = $derived(node?.accountApplied ?? node?.account_applied ?? null)
+  const accountDisplay = $derived.by(() => {
+    const actual = accountLabel || 'Account'
+    if (accountFallbackFrom) return `was ${accountFallbackFrom} → now ${actual}`
+    if (accountApplied === false) return `${actual} · not guaranteed`
+    if (accountApplied === true) return `${actual} · applied`
+    return accountLabel ? `${actual} · configured` : ''
+  })
+  const detectedAccount = $derived(
+    accountState(tool).accounts.find((account) => account.id === accountId) ?? null
+  )
+  const detectedAccounts = $derived(accountState(tool).accounts ?? [])
+  const exhaustedAccountReason = $derived(exhaustedUsage(detectedAccount?.usage))
+  const toolDescriptor = $derived(toolOptions.find((descriptor) => descriptor.id === tool) ?? null)
+  const canSwitchExhaustedAccount = $derived(
+    normalizedContext === 'runtime' &&
+      Boolean(exhaustedAccountReason) &&
+      Boolean(toolDescriptor?.capabilities?.accountSelection) &&
+      !toolDescriptor?.capabilities?.teamConfigNamespace &&
+      detectedAccounts.some((account) => account.logged_in && account.id !== accountId) &&
+      typeof actions?.onSwitchAccount === 'function'
+  )
+  let accountPickerOpen = $state(false)
+  const accountHeadroom = $derived.by(() => {
+    const readings = (detectedAccount?.usage?.windows ?? [])
+      .map((window) => Number(window?.used_percentage ?? window?.usedPercentage))
+      .filter(Number.isFinite)
+    if (readings.length === 0) return null
+    return Math.max(0, Math.min(100, 100 - Math.max(...readings)))
+  })
   // The effort the lead attached to the current assignment. Distinct from the
   // launch effort in `modelDisplay`, and only ever set for a runtime node.
   const taskEffort = $derived.by(() =>
@@ -276,6 +316,15 @@
       { label: 'Model', value: modelDisplay || 'Not specified', testId: null },
     ]
 
+    if (accountDisplay) {
+      entries.push({
+        label: 'Account',
+        value: accountDisplay,
+        testId: 'mesh-node-detail-account',
+        account: true,
+      })
+    }
+
     if (taskEffort) {
       entries.push({
         label: 'Task effort',
@@ -407,6 +456,11 @@
 
   function invoke(handler) {
     if (typeof handler === 'function') handler()
+  }
+
+  function switchAccount(nextAccountId) {
+    accountPickerOpen = false
+    actions?.onSwitchAccount?.(nextAccountId)
   }
 
   function updateDraft(patch) {
@@ -705,6 +759,17 @@
             >
               Capture
             </button>
+            {#if canSwitchExhaustedAccount}
+              <button
+                class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {secondaryActionTone}"
+                type="button"
+                aria-label="Switch exhausted account"
+                onclick={() => { accountPickerOpen = !accountPickerOpen }}
+                data-testid="mesh-node-detail-switch-account"
+              >
+                Switch account…
+              </button>
+            {/if}
           {:else if isEditing}
             <button
               class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {secondaryActionTone}"
@@ -765,6 +830,28 @@
             </button>
           {/if}
         </div>
+
+        {#if accountPickerOpen}
+          <div class="mt-3">
+            <AccountPicker
+              {tool}
+              accounts={detectedAccounts}
+              defaultAccountId={accountId}
+              preselectedAccountId={accountId}
+              {dark}
+              skin="popover"
+              showRemember={false}
+              reason={{
+                kind: exhaustedAccountReason?.kind,
+                accountLabel: accountLabel,
+                windowTitle: exhaustedAccountReason?.window?.title,
+                resetsAt: exhaustedAccountReason?.window?.resets_at ?? exhaustedAccountReason?.window?.resetsAt,
+              }}
+              onConfirm={switchAccount}
+              onCancel={() => { accountPickerOpen = false }}
+            />
+          </div>
+        {/if}
         {/if}
       </div>
     </div>
@@ -1143,7 +1230,22 @@
                     data-testid={entry.testId}
                     title={entry.title ?? entry.value}
                   >
-                    {entry.value}
+                    {#if entry.account}
+                      <span class="inline-flex items-center gap-2">
+                        <span
+                          class="h-1.5 w-8 overflow-hidden rounded-full bg-zinc-300/50"
+                          data-testid="mesh-node-detail-account-meter"
+                        >
+                          <span
+                            class="block h-full rounded-full bg-brand-500"
+                            style={`width: ${accountHeadroom ?? 100}%`}
+                          ></span>
+                        </span>
+                        <span>{entry.value}</span>
+                      </span>
+                    {:else}
+                      {entry.value}
+                    {/if}
                   </dd>
                 </div>
               {/each}

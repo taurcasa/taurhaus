@@ -189,6 +189,7 @@
       onCloseNode={controller.clearSelectedNode}
       onResumeSelected={controller.resumeSelected}
       onStopSelected={controller.stopSelected}
+      onSwitchSelectedAccount={controller.switchSelectedAccount}
       onFocusSelectedPane={controller.focusSelectedPane}
       onCaptureRole={controller.openCaptureRoleDialog}
       onCloseAddAgent={controller.closeSlideOver}

@@ -176,12 +176,18 @@ describe('coordinationResponses launch account note', () => {
           accountApplied: false,
           accountNote: 'opaque_base_command',
           accountNoteDetail: 'team-wrapper',
+          accountId: 'personal',
+          accountLabel: 'Personal',
+          accountFallbackFrom: 'Work',
         },
         {
           name: 'dev-2',
           account_applied: false,
           account_note: 'opaque_base_command',
           account_note_detail: 'other-wrapper',
+          account_id: 'work',
+          account_label: 'Work',
+          account_fallback_from: 'Personal',
         },
       ],
     })
@@ -193,6 +199,14 @@ describe('coordinationResponses launch account note', () => {
     ])).toEqual([
       [false, 'opaque_base_command', 'team-wrapper'],
       [false, 'opaque_base_command', 'other-wrapper'],
+    ])
+    expect(status.members.map(({ accountId, accountLabel, accountFallbackFrom }) => [
+      accountId,
+      accountLabel,
+      accountFallbackFrom,
+    ])).toEqual([
+      ['personal', 'Personal', 'Work'],
+      ['work', 'Work', 'Personal'],
     ])
   })
 })

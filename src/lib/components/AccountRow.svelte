@@ -16,6 +16,7 @@
     onRemovePin = () => {},
     onOpenProject = () => {},
     onOpenTeam = () => {},
+    onSwitchTeamAccount = null,
     onSetDefault = () => {},
     onSignIn = () => {},
     onReveal = () => {},
@@ -127,13 +128,22 @@
               <h4 class="mb-1.5 text-[9px] font-semibold uppercase tracking-wider {t.textTertiary}">Teams</h4>
               <div class="space-y-1">
                 {#each teams as team (team.name)}
-                  {#if team.projectId ?? team.project_id}
-                    <button class="block text-[10px] {actionTone}" onclick={() => onOpenTeam(team)}>{team.name}</button>
-                  {:else}
-                    <!-- A team whose project this app does not know has nowhere
-                         to open: its name is a fact, not an offer. -->
-                    <span class="block text-[10px] {t.textTertiary}">{team.name}</span>
-                  {/if}
+                  <div class="flex items-center gap-2">
+                    {#if team.projectId ?? team.project_id}
+                      <button class="text-[10px] {actionTone}" onclick={() => onOpenTeam(team)}>{team.name}</button>
+                    {:else}
+                      <!-- A team whose project this app does not know has nowhere
+                           to open: its name is a fact, not an offer. -->
+                      <span class="text-[10px] {t.textTertiary}">{team.name}</span>
+                    {/if}
+                    {#if onSwitchTeamAccount}
+                      <button
+                        class="text-[9px] font-medium {actionTone}"
+                        aria-label={`Switch ${team.name} account`}
+                        onclick={() => onSwitchTeamAccount(team)}
+                      >Switch…</button>
+                    {/if}
+                  </div>
                 {/each}
               </div>
             </section>
