@@ -917,12 +917,14 @@ fn managed_member_account(
         .map(str::trim)
         .filter(|value| !value.is_empty());
     let accounts = cli_commands.managed_accounts.get(&cli_tool);
-    if let Some(requested) = requested {
-        if let Some(selected) = accounts
+    let requested_account = requested.and_then(|requested| {
+        accounts
             .into_iter()
             .flatten()
-            .find(|account| account.id == requested && account.logged_in)
-        {
+            .find(|account| account.id == requested)
+    });
+    if requested.is_some() {
+        if let Some(selected) = requested_account.filter(|account| account.logged_in) {
             return (
                 Some(to_launch_namespace(&selected.dir)),
                 LaunchAccountResult {
@@ -936,12 +938,18 @@ fn managed_member_account(
     }
 
     let actual = default_dir.as_ref().and_then(|dir| {
-        accounts
-            .into_iter()
-            .flatten()
-            .find(|account| to_launch_namespace(&account.dir) == *dir && account.logged_in)
+        accounts.into_iter().flatten().find(|account| {
+            account.is_default && account.logged_in && to_launch_namespace(&account.dir) == *dir
+        })
     });
-    let fallback_from = requested.map(str::to_string);
+    if requested.is_none() && actual.is_none() {
+        return (default_dir, LaunchAccountResult::default());
+    }
+    let fallback_from = requested.map(|requested| {
+        requested_account
+            .map(|account| account.label.clone())
+            .unwrap_or_else(|| requested.to_string())
+    });
     let fallback = fallback_from.is_some();
     let account = LaunchAccountResult {
         account_applied: Some(!fallback),

@@ -2119,6 +2119,73 @@ fn unavailable_member_account_falls_back_loudly_to_the_registry_home() {
 }
 
 #[test]
+fn signed_out_member_account_fallback_uses_its_human_label() {
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.account_selector_dirs.insert(
+        "CODEX_HOME".to_string(),
+        std::path::PathBuf::from("/accounts/codex-personal"),
+    );
+    commands.managed_accounts.insert(
+        CliTool::Codex,
+        vec![
+            crate::models::ManagedLaunchAccount {
+                id: "personal-id".to_string(),
+                label: "Personal".to_string(),
+                dir: std::path::PathBuf::from("/accounts/codex-personal"),
+                logged_in: true,
+                is_default: true,
+            },
+            crate::models::ManagedLaunchAccount {
+                id: "3f2a1b8c-0000-0000-0000-000000000000".to_string(),
+                label: "Work".to_string(),
+                dir: std::path::PathBuf::from("/accounts/codex-work"),
+                logged_in: false,
+                is_default: false,
+            },
+        ],
+    );
+
+    let result = render_team_launch(
+        &commands,
+        CliTool::Codex,
+        "gpt-5.4",
+        None,
+        "fallback-team",
+        "builder",
+        MemberRole::Agent,
+        false,
+        None,
+        Some("3f2a1b8c-0000-0000-0000-000000000000"),
+    )
+    .expect("signed-out selection falls back");
+
+    assert_eq!(result.account.fallback_from.as_deref(), Some("Work"));
+    assert_eq!(result.account.account_label.as_deref(), Some("Personal"));
+}
+
+#[test]
+fn selectorless_member_without_detected_account_has_no_fabricated_account_result() {
+    let result = render_team_launch(
+        &crate::models::CliCommandSettings::default(),
+        CliTool::Agy,
+        "gemini-3.1-pro-high",
+        None,
+        "architecture-final",
+        "researcher",
+        MemberRole::Agent,
+        false,
+        None,
+        None,
+    )
+    .expect("selectorless launch");
+
+    assert_eq!(
+        result.account,
+        crate::session_scanner::launch_base::LaunchAccountResult::default()
+    );
+}
+
+#[test]
 fn managed_team_launch_defeats_a_base_alias_account_selector() {
     // Regression: commit 0f2bfbb0 resolved aliases only on the app-launch path,
     // so a managed member still ran on the account selected inside `claude2`.
