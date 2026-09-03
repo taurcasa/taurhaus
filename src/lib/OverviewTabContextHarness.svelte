@@ -11,6 +11,8 @@
     onViewAllCommits,
     onDismissRelationship,
     onMarkdownNavigate,
+    onOpenAccounts = () => {},
+    onOpenAddAccount = () => {},
   } = $props()
 
   let projectContextValue = $state({
@@ -30,6 +32,8 @@
     openTerminal: () => {},
     openManageProjects: () => {},
     toggleSettings: () => {},
+    openAccounts: (...args) => onOpenAccounts(...args),
+    openAddAccount: (...args) => onOpenAddAccount(...args),
     retryProjects: () => {},
   })
   setSessionContext(sessionContextValue)

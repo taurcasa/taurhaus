@@ -13,17 +13,15 @@
     opaqueBaseNotice,
     refreshAccounts,
     refreshResolvedBases,
-    refreshUsage,
-    setDefaultAccount,
   } from './accounts.svelte.js'
-  import UsageMeter from './components/UsageMeter.svelte'
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
   import { formatUserFacingError } from './format.js'
+  import { baseCommandSelection } from './accountPresentation.js'
   import { themeTokens } from './themeTokens.js'
   import { tools, toolAccent } from './toolRegistry.js'
   import { getToolIcon } from './toolLogos.js'
 
-  let { dark = false, onClose = () => {}, onSettingsChanged = () => {}, codeThemeLight = DEFAULT_LIGHT_THEME, codeThemeDark = DEFAULT_DARK_THEME, onCodeThemeChanged = () => {} } = $props()
+  let { dark = false, onClose = () => {}, onSettingsChanged = () => {}, codeThemeLight = DEFAULT_LIGHT_THEME, codeThemeDark = DEFAULT_DARK_THEME, onCodeThemeChanged = () => {}, onOpenAccounts = () => {} } = $props()
 
   // Shared theme tokens
   const t = $derived(themeTokens(dark))
@@ -156,8 +154,10 @@
   $effect(() => {
     loadSettings()
     loadIndexStatus()
+    // Detection alone: Settings names the account a launch command lands on,
+    // and every usage reading it once painted belongs to the Accounts home.
     for (const tool of cliTools.filter((entry) => entry.capabilities.accountSelection)) {
-      void refreshAccounts(tool.id).then(() => refreshUsage(tool.id))
+      void refreshAccounts(tool.id)
     }
   })
 
@@ -180,47 +180,13 @@
     )
   }
 
-  function selectedAccountId(tool) {
-    const state = accountState(tool)
-    return (
-      persistedDefaultAccountId(tool) ??
-      state.accounts.find((account) => account.is_default)?.id ??
-      ''
-    )
-  }
-
-  async function setToolDefaultAccount(tool, accountId) {
-    ensureCliCommands()
-    settings.terminal.default_account_ids ??= {}
-    const previous = settings.terminal.default_account_ids[tool] ?? null
-    if (accountId) settings.terminal.default_account_ids[tool] = accountId
-    else delete settings.terminal.default_account_ids[tool]
-    if (await saveSettings()) setDefaultAccount(tool, accountId || null)
-    else if (previous == null) delete settings.terminal.default_account_ids[tool]
-    else settings.terminal.default_account_ids[tool] = previous
-  }
-
   function accountLabel(account) {
     return String(account?.display_name ?? '').trim() || account?.label || account?.id || ''
-  }
-
-  function accountMeta(account) {
-    return [account?.organization, account?.plan].filter(Boolean).join(' · ')
   }
 
   /** The launch commands and selector values as the backend resolved them. */
   function launchBases(tool) {
     return accountState(tool.id).resolvedBases ?? []
-  }
-
-  function accountForSelectorValue(value, accounts) {
-    const dir = String(value ?? '')
-    if (!dir) return null
-    if (dir.startsWith('~/')) {
-      const tail = dir.slice(1)
-      return accounts.find((account) => String(account.dir).endsWith(tail)) ?? null
-    }
-    return accounts.find((account) => account.dir === dir) ?? null
   }
 
   /**
@@ -237,28 +203,33 @@
     const configured = state.accounts.find(
       (account) => account.is_process_default || account.is_default
     )
-    const bases = launchBases(tool)
     // A launch command taurhaus cannot see through decides the account itself,
     // whatever was chosen here — so the warning outranks every precedence rule
     // below, the chosen global default included.
-    const opaqueHead = bases.map((base) => base.opaqueHead ?? base.opaque_head).find(Boolean)
-    if (opaqueHead) return { account: configured, origin: opaqueBaseNotice(opaqueHead, tool.id) }
+    const selection = baseCommandSelection(launchBases(tool), state.accounts)
+    if (selection.opaqueHead) {
+      return { account: configured, origin: opaqueBaseNotice(selection.opaqueHead, tool.id) }
+    }
+    // Only a default that can run: the resolver accepts a saved default through
+    // `usable()` alone and falls past a signed-out one to the launch command.
     const chosen = state.accounts.find(
-      (account) => account.id === persistedDefaultAccountId(tool.id)
+      (account) => account.id === persistedDefaultAccountId(tool.id) && account.logged_in
     )
     if (chosen) return { account: chosen, origin: 'default' }
-    for (const base of bases) {
-      const account = accountForSelectorValue(
-        base.selectorValue ?? base.selector_value,
-        state.accounts,
-      )
-      if (!account) continue
-      const alias = base.expansions?.[0]
+    if (selection.account && selection.usable) {
       return {
-        account,
-        origin: alias
-          ? `from your launch command \"${alias.name}\" (alias for ${alias.body})`
-          : `from your launch command \"${base.command}\"`,
+        account: selection.account,
+        origin: selection.alias
+          ? `from your launch command \"${selection.alias.name}\" (alias for ${selection.alias.body})`
+          : `from your launch command \"${selection.command}\"`,
+      }
+    }
+    if (selection.account && !selection.usable) {
+      // The resolver rejects a signed-out selector account and falls through;
+      // say so instead of presenting the dead selector as effective.
+      return {
+        account: configured,
+        origin: `default config directory (your launch command names ${selection.account.display_name ?? selection.account.label}, which is signed out)`,
       }
     }
     return { account: configured, origin: 'default config directory' }
@@ -812,13 +783,24 @@
         <!-- ═══ ACCOUNTS ═══ -->
         {#if accountTools.length}
           <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-accounts">
-            <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Accounts</h2>
-            <div class="space-y-4">
+            <div class="mb-2 flex items-center justify-between gap-3">
+              <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor}">Accounts</h2>
+              <button
+                type="button"
+                class="text-[11px] text-brand-500 hover:underline {buttonFocusRing}"
+                onclick={onOpenAccounts}
+                data-testid="settings-open-accounts"
+              >Manage accounts →</button>
+            </div>
+            <p class="text-[12px] {t.textSecondary}">
+              Defaults, pins and sign-in live in Accounts. Settings owns the launch commands, and says which account each one lands on.
+            </p>
+            <div class="mt-3 space-y-3">
               {#each accountTools as tool (tool.id)}
                 {@const state = accountState(tool.id)}
                 {@const effective = effectiveDefault(tool)}
                 <div data-testid="settings-accounts-{tool.id}">
-                  <div class="mb-2 flex items-center justify-between">
+                  <div class="flex items-center justify-between">
                     <h3 class="flex items-center gap-2 text-[13px] font-semibold {t.textBody}">
                       <svg
                         class="h-[13px] w-[13px] shrink-0 {toolMarkTone(tool.id)}"
@@ -837,44 +819,7 @@
                       onclick={() => focusCliCommands(tool.id)}
                     >CLI commands</button>
                   </div>
-                  <div class="space-y-2">
-                    {#each state.accounts as account (account.id)}
-                      <label
-                        class="flex items-start gap-3 rounded-md border {t.keyline} px-3 py-2 {account.logged_in ? '' : 'opacity-50'}"
-                        data-testid="account-row-{tool.id}-{account.id}"
-                      >
-                        <input
-                          type="radio"
-                          name="{tool.id}-default-account"
-                          class="mt-1 h-3.5 w-3.5 accent-brand-500 {fieldFocusRing}"
-                          value={account.id}
-                          checked={selectedAccountId(tool.id) === account.id}
-                          disabled={!account.logged_in}
-                          onchange={() => setToolDefaultAccount(tool.id, account.id)}
-                          data-testid="account-default-{tool.id}-{account.id}"
-                        />
-                        <span class="min-w-0 flex-1">
-                          <span class="block text-[13px] {t.textBody}">{accountLabel(account)}</span>
-                          <span class="block text-[12px] {t.textSecondary}">{account.label}</span>
-                          {#if accountMeta(account)}
-                            <span class="block text-[11px] {textTertiary}">{accountMeta(account)}</span>
-                          {/if}
-                          {#if account.usage}
-                            <span class="mt-1 block"><UsageMeter tool={tool.id} usage={account.usage} {dark} compact /></span>
-                          {/if}
-                        </span>
-                        {#if !account.logged_in}
-                          <span class="text-[11px] {textTertiary}">Not logged in</span>
-                        {/if}
-                      </label>
-                    {/each}
-                  </div>
-                  {#if !tool.capabilities.usage && tool.capabilities.usageNote}
-                    <p class="mt-2 text-[11px] {textTertiary}" data-testid="usage-note-{tool.id}">
-                      {tool.capabilities.usageNote}
-                    </p>
-                  {/if}
-                  <p class="mt-2 text-[11px] {textTertiary}" data-testid="effective-default-{tool.id}">
+                  <p class="mt-1 text-[11px] {textTertiary}" data-testid="effective-default-{tool.id}">
                     {#if state.resolvingBases}
                       Effective default: resolving…
                     {:else}

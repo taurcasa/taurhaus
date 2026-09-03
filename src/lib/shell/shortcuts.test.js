@@ -1,7 +1,35 @@
 import { describe, expect, it, vi } from 'vitest'
-import { setupHistoryNavigation, setupSearchShortcut } from './shortcuts.svelte.js'
+import {
+  setupAccountsShortcut,
+  setupHistoryNavigation,
+  setupSearchShortcut,
+} from './shortcuts.svelte.js'
 
 describe('shell shortcuts', () => {
+  it('toggles accounts on ctrl/cmd+shift+a', () => {
+    const addEventListener = vi.fn()
+    const removeEventListener = vi.fn()
+    const doc = { addEventListener, removeEventListener }
+    const onToggleAccounts = vi.fn()
+
+    const cleanup = setupAccountsShortcut({ doc, onToggleAccounts })
+    const handler = addEventListener.mock.calls[0][1]
+    const event = {
+      key: 'A',
+      shiftKey: true,
+      ctrlKey: true,
+      metaKey: false,
+      preventDefault: vi.fn(),
+    }
+
+    handler(event)
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1)
+    expect(onToggleAccounts).toHaveBeenCalledTimes(1)
+    cleanup()
+    expect(removeEventListener).toHaveBeenCalledWith('keydown', handler)
+  })
+
   it('toggles search on ctrl/cmd+k', () => {
     const addEventListener = vi.fn()
     const removeEventListener = vi.fn()

@@ -35,7 +35,7 @@ const { getSessionsForProject } = await import('./sessionStore.svelte.js')
 
 import OverviewTab from './OverviewTab.svelte'
 import OverviewTabContextHarness from './OverviewTabContextHarness.svelte'
-import { accountState, resetAccountsForTest } from './accounts.svelte.js'
+import { accountState, refreshAccounts, resetAccountsForTest } from './accounts.svelte.js'
 
 /** Minimal project for rendering. */
 function makeProject(overrides = {}) {
@@ -182,6 +182,37 @@ describe('OverviewTab', () => {
     expect(screen.getByTestId('account-chip')).toHaveTextContent('One')
     expect(screen.getByTestId('usage-meter')).toHaveAttribute('data-tool', 'codex')
     expect(screen.getByTestId('usage-meter')).toHaveTextContent('Weekly limit 50%')
+  })
+
+  // Regression: the chip's picker footer is the way from a launch surface into
+  // account management, and Overview rendered it with nothing behind either
+  // action — so the two hub affordances Wave A promises did nothing.
+  it('routes the chip picker footer into the accounts home', async () => {
+    // Detection answers with nothing in a browser test; let it settle before
+    // seeding the store, or it lands mid-test and empties the header again.
+    await refreshAccounts('codex')
+    accountState('codex').accounts = [
+      { id: 'codex-one', label: 'one@example.com', display_name: 'One', logged_in: true, is_default: true },
+      { id: 'codex-two', label: 'two@example.com', display_name: 'Two', logged_in: true },
+    ]
+    const onOpenAccounts = vi.fn()
+    const onOpenAddAccount = vi.fn()
+
+    render(OverviewTabContextHarness, {
+      props: {
+        contextSelectedProject: makeProject(),
+        onOpenAccounts,
+        onOpenAddAccount,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('account-chip'))
+    await fireEvent.click(screen.getByText('Add account…'))
+    expect(onOpenAddAccount).toHaveBeenCalledWith('codex')
+
+    await fireEvent.click(screen.getByTestId('account-chip'))
+    await fireEvent.click(screen.getByText('Manage accounts →'))
+    expect(onOpenAccounts).toHaveBeenCalled()
   })
 
   it('shows description when present', () => {

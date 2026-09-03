@@ -5,6 +5,7 @@
     dark = false,
     activeTab = 'overview',
     settingsOpen = false,
+    accountsOpen = false,
     onSwitchTab = () => {},
     onToggleSearch = () => {},
     onSetDarkMode = () => {},
@@ -22,6 +23,7 @@
       : 'Search (Ctrl+K)'
   )
   const TAB_ORDER = ['overview', 'files', 'tasks', 'mesh', 'git']
+  const takeoverLabel = $derived(settingsOpen ? 'Settings' : accountsOpen ? 'Accounts' : null)
 
   let overviewTabEl = $state(null)
   let filesTabEl = $state(null)
@@ -80,8 +82,8 @@
 
   <div class="flex-1 flex items-end min-w-0" data-tauri-drag-region>
     <div class="shell-main-surface flex items-center px-4 h-[36px] rounded-t-lg ml-1.5" role="tablist" aria-label="Project sections">
-      {#if settingsOpen}
-        <span class="px-3 py-1 text-[13px] font-medium {t.textPrimary}">Settings</span>
+      {#if takeoverLabel}
+        <span class="px-3 py-1 text-[13px] font-medium {t.textPrimary}">{takeoverLabel}</span>
       {:else}
         <button
           bind:this={overviewTabEl}

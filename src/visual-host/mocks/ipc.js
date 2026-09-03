@@ -48,6 +48,26 @@ export function setProjectAccount(...args) {
   return asyncResult('setProjectAccount', args)
 }
 
+export function listAccountRelationships(...args) {
+  return asyncResult('listAccountRelationships', args)
+}
+
+export function setGlobalDefaultAccount(...args) {
+  return asyncResult('setGlobalDefaultAccount', args)
+}
+
+export function prepareAccountDirectory(...args) {
+  return asyncResult('prepareAccountDirectory', args)
+}
+
+export function launchAccountLogin(...args) {
+  return asyncResult('launchAccountLogin', args)
+}
+
+export function revealDirectory(...args) {
+  return asyncResult('revealDirectory', args)
+}
+
 export function getProjectTasks(...args) {
   return asyncResult('getProjectTasks', args)
 }

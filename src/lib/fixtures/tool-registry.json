@@ -7,6 +7,8 @@
     "medallionAccent": "amber",
     "defaultAgentRoleId": "v4-developer-claude",
     "aliases": ["claude", "claude_native"],
+    "accountLoginCommand": "claude",
+    "accountDirName": ".claude",
     "capabilities": {
       "modelFlag": "--model",
       "effortFlag": { "kind": "argument", "flag": "--effort" },
@@ -40,6 +42,8 @@
     "medallionAccent": "emerald",
     "defaultAgentRoleId": "v4-developer-codex",
     "aliases": ["codex", "mesh", "mesh_bridged"],
+    "accountLoginCommand": "codex login",
+    "accountDirName": ".codex",
     "capabilities": {
       "modelFlag": "-m",
       "effortFlag": { "kind": "config", "flag": "-c", "key": "model_reasoning_effort" },
@@ -73,6 +77,8 @@
     "medallionAccent": "google-blue",
     "defaultAgentRoleId": "v4-developer-agy",
     "aliases": ["agy", "antigravity"],
+    "accountLoginCommand": null,
+    "accountDirName": ".gemini",
     "capabilities": {
       "modelFlag": "--model",
       "effortFlag": { "kind": "argument", "flag": "--effort" },
@@ -106,6 +112,8 @@
     "medallionAccent": "graphite",
     "defaultAgentRoleId": "v4-developer-grok",
     "aliases": ["grok"],
+    "accountLoginCommand": "grok login",
+    "accountDirName": ".grok",
     "capabilities": {
       "modelFlag": "--model",
       "effortFlag": { "kind": "argument", "flag": "--effort" },

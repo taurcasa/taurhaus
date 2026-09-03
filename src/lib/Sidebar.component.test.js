@@ -14,6 +14,7 @@ vi.mock('./ipc.js', () => ({
     Promise.resolve({ accounts: [], source: 'native', degraded: false, error: null })
   ),
   setProjectAccount: vi.fn(() => Promise.resolve()),
+  listAccountRelationships: vi.fn(() => Promise.resolve({ byAccount: {} })),
   resolveLaunchAccount: vi.fn(() => Promise.resolve({ needsChoice: true })),
   getSettings: vi.fn(() => Promise.resolve({ terminal: {} })),
 }))
@@ -112,6 +113,7 @@ describe('Sidebar component branches', () => {
     const onSelectProject = vi.fn()
     const onAddProject = vi.fn()
     const onToggleSettings = vi.fn()
+    const onToggleAccounts = vi.fn()
     const projects = makeProjects(3)
 
     render(Sidebar, {
@@ -121,6 +123,7 @@ describe('Sidebar component branches', () => {
           onSelectProject,
           onAddProject,
           onToggleSettings,
+          onToggleAccounts,
         },
       },
     })
@@ -137,6 +140,25 @@ describe('Sidebar component branches', () => {
 
     await fireEvent.click(screen.getByTestId('settings-toggle'))
     expect(onToggleSettings).toHaveBeenCalled()
+
+    await fireEvent.click(screen.getByTestId('accounts-toggle'))
+    expect(onToggleAccounts).toHaveBeenCalled()
+  })
+
+  // Regression: e28881d opened the Accounts usage board on pointer entry but
+  // never closed it on pointer exit, leaving a sticky menu over the sidebar.
+  it('closes the hover-opened accounts board after the leave grace', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    render(Sidebar, { props: { projects: [] } })
+
+    const button = screen.getByTestId('accounts-toggle')
+    await fireEvent.mouseEnter(button)
+    expect(screen.getByTestId('context-menu')).toBeInTheDocument()
+
+    await fireEvent.mouseLeave(button)
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(screen.queryByTestId('context-menu')).not.toBeInTheDocument()
   })
 
   it('keeps visible focus styling on the filter and project rows', async () => {

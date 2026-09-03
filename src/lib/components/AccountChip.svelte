@@ -1,9 +1,11 @@
 <script>
   /**
-   * Which Claude subscription this project runs on, and a menu to change it.
-   * Hidden entirely when the host has a single account — the common case.
+   * Which subscription this project runs on, and the shared picker to change
+   * it. Hidden entirely when the host has a single account — the common case.
    */
+  import AccountPicker from './AccountPicker.svelte'
   import UsageMeter from './UsageMeter.svelte'
+  import { accountOriginHint } from '../accountPresentation.js'
   import { toolDescriptor } from '../toolRegistry.js'
 
   let {
@@ -17,6 +19,7 @@
     /** Detection could not run: these are the accounts last known, not current. */
     degraded = false,
     origin = null,
+    projectName = '',
     dark = false,
     onSelect = () => {},
     /**
@@ -24,17 +27,22 @@
      * and the numbers behind them move while the project stays mounted.
      */
     onRequestUsage = () => {},
+    /** The picker footer's two actions, the whole hub affordance offered here. */
+    onAddAccount = () => {},
+    onManageAccounts = () => {},
   } = $props()
 
   const toolLabel = $derived(toolDescriptor(tool)?.label ?? tool)
+  /** The popup the chip owns, named so the button can point at it. */
+  const popoverId = $derived(`account-popover-${tool}`)
 
   /** How often an open menu asks again. Percentages move in tens of seconds. */
   const USAGE_POLL_MS = 30 * 1000
 
   /** Breathing room between the menu and the window edge, as `ContextMenu`. */
   const VIEWPORT_MARGIN = 8
-  /** The `w-56` the menu renders at, for the first paint before it is measured. */
-  const ASSUMED_WIDTH = 224
+  /** The `w-[22rem]` popover skin, for the first paint before it is measured. */
+  const ASSUMED_WIDTH = 352
 
   let chipEl = $state(null)
   let menuEl = $state(null)
@@ -155,12 +163,6 @@
       ? 'border-white/[0.08] bg-zinc-900/70 text-zinc-300 hover:border-brand-500/50 hover:text-zinc-100'
       : 'border-brand-200/70 bg-white text-zinc-600 hover:border-brand-400 hover:text-zinc-900'
   )
-  const menuTone = $derived(
-    dark
-      ? 'border-white/[0.08] bg-zinc-950/95 text-zinc-200 shadow-2xl shadow-black/50'
-      : 'border-brand-200/60 bg-white text-zinc-800 shadow-xl shadow-brand-900/10'
-  )
-  const itemTone = $derived(dark ? 'hover:bg-zinc-900' : 'hover:bg-brand-50')
   const dividerTone = $derived(dark ? 'border-white/[0.08]' : 'border-brand-200/70')
   const metaTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
   const focusRing = $derived(
@@ -171,15 +173,7 @@
     return String(account?.display_name ?? '').trim() || account?.label || account?.id || ''
   }
 
-  const originHint = $derived(
-    origin === 'last_used'
-      ? 'last used'
-      : origin === 'base_command'
-        ? 'from launch command'
-        : origin === 'default' || origin === 'default_config_dir'
-          ? 'default'
-          : ''
-  )
+  const originHint = $derived(accountOriginHint(origin))
 
   const staleNote = 'Accounts unavailable (daemon offline) — using last known'
   const title = $derived(
@@ -203,7 +197,8 @@
       type="button"
       class="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors {chipTone} {focusRing}"
       {title}
-      aria-haspopup="menu"
+      aria-haspopup="dialog"
+      aria-controls={open ? popoverId : undefined}
       aria-expanded={open}
       onclick={toggle}
       data-testid="account-chip"
@@ -222,49 +217,31 @@
     </button>
 
     {#if open}
+      <!-- The popover skin of the shared picker, clamped to the viewport the
+           way `ContextMenu` is. Management — unpinning, defaults, sign-in —
+           belongs to the accounts home the footer points at. -->
       <div
         bind:this={menuEl}
-        class="fixed z-[100] w-56 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border p-1 {menuTone}"
+        id={popoverId}
+        class="fixed z-[100] max-h-[calc(100vh-2rem)] overflow-y-auto"
         style="left: {menuLeft}px; top: {menuTop}px;"
-        role="menu"
         data-testid="account-menu"
       >
-        {#if degraded}
-          <p class="px-2 py-1 text-[10px] {metaTone}" data-testid="accounts-degraded">
-            {staleNote}
-          </p>
-        {/if}
-        {#each accounts as account (account.id)}
-          <button
-            type="button"
-            role="menuitem"
-            class="flex w-full flex-col items-start rounded-md px-2 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-50 {itemTone} {focusRing}"
-            disabled={!account.logged_in}
-            onclick={() => pick(account.id)}
-            data-testid="account-menu-item-{account.id}"
-          >
-            <span class="text-[12px]">{labelFor(account)}</span>
-            <span class="text-[10px] {metaTone}">
-              {account.label}{account.logged_in ? '' : ' · not logged in'}
-            </span>
-            {#if account.usage}
-              <span class="mt-1 w-full">
-                <UsageMeter {tool} usage={account.usage} {dark} />
-              </span>
-            {/if}
-          </button>
-        {/each}
-        {#if selectedAccountId}
-          <button
-            type="button"
-            role="menuitem"
-            class="mt-1 w-full rounded-md px-2 py-1.5 text-left text-[11px] {metaTone} {itemTone} {focusRing}"
-            onclick={() => pick(null)}
-            data-testid="account-menu-clear"
-          >
-            Use the default account
-          </button>
-        {/if}
+        <AccountPicker
+          {tool}
+          {accounts}
+          {projectName}
+          {defaultAccountId}
+          {degraded}
+          {dark}
+          preselectedAccountId={selected?.id ?? null}
+          skin="popover"
+          showRemember={false}
+          onConfirm={(accountId) => pick(accountId)}
+          onCancel={() => { open = false }}
+          onAddAccount={(toolId) => { open = false; onAddAccount(toolId) }}
+          onManageAccounts={(toolId) => { open = false; onManageAccounts(toolId) }}
+        />
       </div>
     {/if}
   </div>

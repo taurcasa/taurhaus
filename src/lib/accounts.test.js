@@ -8,6 +8,8 @@ vi.mock('./ipc.js', () => ({
   resolveLaunchAccount: vi.fn(),
   resolveLaunchBases: vi.fn(() => Promise.resolve([])),
   getSettings: vi.fn(),
+  listAccountRelationships: vi.fn(() => Promise.resolve({ byAccount: {} })),
+  setGlobalDefaultAccount: vi.fn(() => Promise.resolve()),
 }))
 
 const {
@@ -18,6 +20,8 @@ const {
   resolveLaunchAccount,
   resolveLaunchBases,
   getSettings,
+  listAccountRelationships,
+  setGlobalDefaultAccount,
 } = await import('./ipc.js')
 const {
   accountState,
@@ -25,12 +29,15 @@ const {
   effectiveAccount,
   loggedInAccounts,
   refreshAccounts,
+  refreshAccountRelationships,
   refreshResolvedBases,
   refreshUsage,
   requestLaunch,
   resolveChooserAccounts,
   resetAccountsForTest,
   setDefaultAccount,
+  setGlobalDefault,
+  previewAccount,
 } = await import('./accounts.svelte.js')
 
 const claudeAccounts = accountState('claude')
@@ -103,6 +110,83 @@ describe('claudeAccounts store', () => {
     })
     resolveLaunchBases.mockResolvedValue([])
     getSettings.mockResolvedValue({ terminal: { default_account_ids: {} } })
+    listAccountRelationships.mockResolvedValue({ byAccount: {} })
+  })
+
+  it('caches passive launch previews by project, tool, and account generation', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    resolveLaunchAccount.mockResolvedValue({
+      accountId: 'account-2',
+      source: 'project',
+      needsChoice: false,
+    })
+    await refreshAccounts('claude')
+
+    expect(await previewAccount({ id: 'p1' }, 'claude')).toBeNull()
+    const first = await previewAccount({ id: 'p1' }, 'claude', { visible: true })
+    const second = await previewAccount({ id: 'p1' }, 'claude', { visible: true })
+
+    expect(first).toMatchObject({ accountId: 'account-2', origin: 'project' })
+    expect(second).toEqual(first)
+    expect(resolveLaunchAccount).toHaveBeenCalledTimes(1)
+
+    await refreshAccounts('claude', { force: true })
+    await previewAccount({ id: 'p1' }, 'claude', { visible: true })
+    expect(resolveLaunchAccount).toHaveBeenCalledTimes(2)
+  })
+
+  // Regression: 4a1abae orphaned every prior generation's preview entries,
+  // growing the module cache for the lifetime of the desktop process.
+  it('drops previews from earlier account generations', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    resolveLaunchAccount.mockResolvedValue({
+      accountId: 'account-2',
+      source: 'project',
+      needsChoice: false,
+    })
+
+    await refreshAccounts('claude')
+    await previewAccount({ id: 'p1' }, 'claude', { visible: true })
+    const firstGeneration = accountState('claude').generation
+
+    await refreshAccounts('claude', { force: true })
+    await previewAccount({ id: 'p1' }, 'claude', { visible: true })
+
+    accountState('claude').generation = firstGeneration
+    await previewAccount({ id: 'p1' }, 'claude', { visible: true })
+    expect(resolveLaunchAccount).toHaveBeenCalledTimes(3)
+  })
+
+  it('loads reverse relationships and persists the global default optimistically', async () => {
+    listAccountRelationships.mockResolvedValue({
+      byAccount: {
+        'account-2': { pinnedProjects: [{ id: 'p1' }], lastUsedProjects: [], teams: [] },
+      },
+    })
+
+    await refreshAccountRelationships('claude', { force: true })
+    expect(accountState('claude').relationships['account-2'].pinnedProjects).toHaveLength(1)
+
+    await setGlobalDefault('claude', 'account-2')
+    expect(accountState('claude').defaultAccountId).toBe('account-2')
+    expect(setGlobalDefaultAccount).toHaveBeenCalledWith('claude', 'account-2')
+  })
+
+  // Regression: c982822 pushed a newly chosen default into the shared account
+  // store before the write landed and restored nothing when it failed, so every
+  // launch read a default the backend had never persisted. The Settings radios
+  // that carried that bug are retired; this setter is the one writer now.
+  it('restores the shared default when the global-default write fails', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+    setGlobalDefaultAccount.mockRejectedValueOnce(new Error('disk full'))
+
+    await expect(setGlobalDefault('claude', 'account-2')).rejects.toThrow('disk full')
+
+    expect(accountState('claude').defaultAccountId).toBeNull()
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+    expect(launchCliSession).not.toHaveBeenCalled()
+    expect(accountState('claude').pending).toMatchObject({ projectId: 'p1' })
   })
 
   // Regression: b1856a33 cached a successful fail-soft launch-base response
@@ -362,6 +446,21 @@ describe('claudeAccounts store', () => {
       'account-1',
       'account-2',
     ])
+  })
+
+  // Regression: 0745ebe refreshed provider usage on every hover-board entry,
+  // even when the last request was only moments old.
+  it('reuses a recent usage refresh when a passive caller supplies a max age', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+    listAccounts.mockClear()
+    refreshAccountsUsage.mockClear()
+
+    await refreshUsage('claude', { maxAgeMs: 60_000 })
+    await refreshUsage('claude', { maxAgeMs: 60_000 })
+
+    expect(refreshAccountsUsage).toHaveBeenCalledTimes(1)
+    expect(listAccounts).toHaveBeenCalledTimes(1)
   })
 
   it('re-reads usage after an asynchronous refresh is acknowledged', async () => {

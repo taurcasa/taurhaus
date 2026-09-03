@@ -13,6 +13,25 @@ export function setupSearchShortcut({
   return () => doc.removeEventListener('keydown', handler)
 }
 
+export function setupAccountsShortcut({
+  doc = document,
+  onToggleAccounts,
+}) {
+  const handler = (event) => {
+    if (
+      event.key.toLowerCase() === 'a'
+      && event.shiftKey
+      && (event.metaKey || event.ctrlKey)
+    ) {
+      event.preventDefault()
+      onToggleAccounts?.()
+    }
+  }
+
+  doc.addEventListener('keydown', handler)
+  return () => doc.removeEventListener('keydown', handler)
+}
+
 export function setupHistoryNavigation({
   doc = document,
   onGoBack,

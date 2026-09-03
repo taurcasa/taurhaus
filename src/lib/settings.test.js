@@ -38,8 +38,7 @@ const {
   launchCliSession,
   resolveLaunchBases,
 } = await import('./ipc.js')
-const { accountState, requestLaunch, resetAccountsForTest } = await import('./accounts.svelte.js')
-const claudeAccounts = accountState('claude')
+const { resetAccountsForTest } = await import('./accounts.svelte.js')
 
 import Settings from './Settings.svelte'
 import { TOOL_ICONS } from './toolLogos.js'
@@ -162,60 +161,32 @@ describe('Settings component', () => {
     { id: 'account-2', email: 'b@example.com', display_name: 'B', logged_in: true, is_default: false },
   ]
 
-  it('refreshes usage after account detection on mount', async () => {
-    // Regression: c11770e only listed accounts from Settings, so the compact
-    // meters never requested a current snapshot.
+  it('leaves accounts management to the Accounts home', async () => {
+    // Accounts is the one place defaults, pins and usage are managed. Settings
+    // keeps the launch commands and points at the home; it neither offers a
+    // second default control nor polls usage for meters it no longer paints.
     listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
-    render(Settings, { props: defaultProps() })
+    const onOpenAccounts = vi.fn()
+    render(Settings, { props: defaultProps({ onOpenAccounts }) })
 
-    await waitFor(() => expect(refreshAccountsUsage).toHaveBeenCalledWith('claude'))
+    await waitFor(() => expect(screen.getByTestId('settings-accounts')).toBeTruthy())
+    expect(screen.queryByTestId('account-default-claude-account-2')).toBeNull()
+    expect(refreshAccountsUsage).not.toHaveBeenCalled()
+
+    await fireEvent.click(screen.getByTestId('settings-open-accounts'))
+    expect(onOpenAccounts).toHaveBeenCalled()
   })
 
-  it('shows Codex accounts and usage through the generic settings surface', async () => {
+  it('names Codex among the tools whose launch command decides an account', async () => {
     // Regression: 08c3961 left Codex account selection and usage disabled in
-    // the registry, hiding two CODEX_HOME accounts from generic settings.
-    const resetsAt = Math.floor(Date.now() / 1000) + 90_000
-    const codexAccounts = TWO_ACCOUNTS.map((account, index) => ({
-      ...account,
-      id: `codex-${index + 1}`,
-      usage:
-        index === 0
-          ? {
-              observed_at: new Date().toISOString(),
-              status: 'ok',
-              windows: [
-                {
-                  key: 'codex.weekly',
-                  title: 'Weekly limit',
-                  used_percentage: 50,
-                  resets_at: resetsAt,
-                  severity: 'normal',
-                  is_active: false,
-                },
-              ],
-            }
-          : null,
-    }))
-    listAccounts.mockImplementation((tool) =>
-      Promise.resolve(detected(tool === 'codex' ? codexAccounts : []))
-    )
-
-    render(Settings, { props: defaultProps() })
-
-    await waitFor(() => expect(screen.getByTestId('settings-accounts-codex')).toBeInTheDocument())
-    expect(screen.getByTestId('account-row-codex-codex-1')).toHaveTextContent('Weekly limit 50%')
-    expect(refreshAccountsUsage).toHaveBeenCalledWith('codex')
-  })
-
-  it('shows Grok accounts without a meter and says where usage lives', async () => {
-    // Regression: commit c1005ec left grok without an account provider, and a
-    // harness with no usage endpoint must explain the missing meter rather than
-    // leave an empty gap where every other tool shows one.
+    // the registry, hiding two CODEX_HOME accounts from generic settings. The
+    // accounts and their meters live in the home now; what stays here is the
+    // launch-command story, and Codex must still have one.
     listAccounts.mockImplementation((tool) =>
       Promise.resolve(
         detected(
-          tool === 'grok'
-            ? TWO_ACCOUNTS.map((account, index) => ({ ...account, id: `grok-${index + 1}` }))
+          tool === 'codex'
+            ? TWO_ACCOUNTS.map((account, index) => ({ ...account, id: `codex-${index + 1}` }))
             : []
         )
       )
@@ -223,10 +194,8 @@ describe('Settings component', () => {
 
     render(Settings, { props: defaultProps() })
 
-    await waitFor(() => expect(screen.getByTestId('settings-accounts-grok')).toBeInTheDocument())
-    expect(screen.getByTestId('usage-note-grok')).toHaveTextContent(
-      'Grok shows credits in its own /usage'
-    )
+    await waitFor(() => expect(screen.getByTestId('settings-accounts-codex')).toBeInTheDocument())
+    expect(screen.getByTestId('effective-default-codex')).toHaveTextContent('Effective default:')
   })
 
   it('gives every account section its registry mark, Grok in graphite', async () => {
@@ -458,6 +427,38 @@ describe('Settings component', () => {
     expect(line).not.toHaveTextContent('alias for')
   })
 
+  // Regression: 6556676e reported a saved global default as effective without
+  // asking whether it can run. The resolver accepts a default only through
+  // `usable()`, so an operator whose default is signed out was named the wrong
+  // account — the launch command's selector is what their sessions get.
+  it('falls past a signed-out global default to the launch command', async () => {
+    getSettings.mockResolvedValue(
+      mockSettings({ terminal: { default_account_ids: { claude: 'account-1' } } })
+    )
+    listAccounts.mockImplementation(
+      withResolvedBases(
+        [
+          {
+            command: "CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude",
+            selectorValue: '/home/mstie/.claude-account2',
+            expansions: [
+              { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
+            ],
+            opaqueHead: null,
+          },
+        ],
+        [{ ...DETECTED_ACCOUNTS[0], logged_in: false }, DETECTED_ACCOUNTS[1]]
+      )
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    const line = await settledEffectiveDefault()
+    expect(line).toHaveTextContent(
+      'Effective default: B — from your launch command "claude2" (alias for CLAUDE_CONFIG_DIR=~/.claude-account2 claude)'
+    )
+  })
+
   it('warns when the launch command does not run the CLI at all', async () => {
     listAccounts.mockImplementation(
       withResolvedBases([
@@ -553,52 +554,6 @@ describe('Settings component', () => {
 
     await waitFor(() => expect(listAccounts).toHaveBeenCalled())
     expect(screen.queryByTestId('settings-accounts')).toBeNull()
-  })
-
-  // Regression: c982822 pushed the newly chosen default into the shared account
-  // store before the write landed, and restored neither the store nor the form
-  // when it failed. requestClaudeLaunch reads that store as an established
-  // default and launches without naming an account, while the backend still
-  // reads the old persisted one — so a failed save left the UI claiming one
-  // subscription while every launch used another.
-  it('keeps the shared default untouched when saving it fails', async () => {
-    listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
-    updateSettings.mockRejectedValueOnce(new Error('disk full'))
-    render(Settings, { props: defaultProps() })
-    await waitFor(() => expect(screen.getByTestId('settings-accounts')).toBeTruthy())
-
-    await fireEvent.click(screen.getByTestId('account-default-claude-account-2'))
-
-    await waitFor(() => expect(screen.getByTestId('settings-save-error')).toBeTruthy())
-    expect(claudeAccounts.defaultAccountId).toBe(null)
-
-    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
-    expect(launchCliSession).not.toHaveBeenCalled()
-    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
-  })
-
-  it('removes an absent default key when a settings save fails', async () => {
-    // Regression: c11770e rolled an absent string map entry back to null,
-    // making every later Rust settings deserialization fail.
-    listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
-    updateSettings.mockRejectedValueOnce(new Error('disk full'))
-    render(Settings, { props: defaultProps() })
-    await waitFor(() => expect(screen.getByTestId('settings-accounts')).toBeTruthy())
-
-    await fireEvent.click(screen.getByTestId('account-default-claude-account-2'))
-    await waitFor(() => expect(screen.getByTestId('settings-save-error')).toBeTruthy())
-
-    expect(updateSettings.mock.calls[0][0].terminal.default_account_ids).toEqual({})
-  })
-
-  it('shares the chosen default once it is persisted', async () => {
-    listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
-    render(Settings, { props: defaultProps() })
-    await waitFor(() => expect(screen.getByTestId('settings-accounts')).toBeTruthy())
-
-    await fireEvent.click(screen.getByTestId('account-default-claude-account-2'))
-
-    await waitFor(() => expect(claudeAccounts.defaultAccountId).toBe('account-2'))
   })
 
   // --- IPC loading ---
