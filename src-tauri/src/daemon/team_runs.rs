@@ -1205,7 +1205,7 @@ mod tests {
     #[test]
     fn switch_team_account_snapshots_and_onboards_every_restarted_member() {
         let temp = tempfile::TempDir::new().expect("tempdir");
-        let (state, backend, _runtime) = state(temp.path());
+        let (state, _backend, _runtime) = state(temp.path());
         initialize_team(state.as_ref(), temp.path());
 
         let mut config = TeamConfigStore::load(temp.path(), "arch").expect("config");

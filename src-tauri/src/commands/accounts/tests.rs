@@ -107,8 +107,9 @@ fn account_relationships_reverse_index_pins_last_use_and_default_root_teams() {
     )
     .expect("write team");
 
-    let index = account_relationships_impl(&db, teams.path(), CliTool::Claude, Some("account-1"))
-        .expect("relationships");
+    let index =
+        account_relationships_impl(&db, teams.path(), CliTool::Claude, Some("account-1"), &[])
+            .expect("relationships");
 
     let remembered = index.by_account.get("account-2").expect("account-2");
     assert_eq!(remembered.pinned_projects.len(), 1);
@@ -146,8 +147,9 @@ fn team_links_name_their_project_without_an_account_memory_row() {
     )
     .expect("write team");
 
-    let index = account_relationships_impl(&db, teams.path(), CliTool::Claude, Some("account-1"))
-        .expect("relationships");
+    let index =
+        account_relationships_impl(&db, teams.path(), CliTool::Claude, Some("account-1"), &[])
+            .expect("relationships");
 
     let teams = &index
         .by_account
@@ -191,8 +193,8 @@ fn selector_team_links_are_indexed_under_each_configured_member_account() {
     )
     .expect("write team");
 
-    let index =
-        account_relationships_impl(&db, teams.path(), CliTool::Codex, None).expect("relationships");
+    let index = account_relationships_impl(&db, teams.path(), CliTool::Codex, None, &[])
+        .expect("relationships");
 
     assert_eq!(index.by_account["codex-work"].teams[0].name, "wave-b");
     assert_eq!(index.by_account["codex-personal"].teams[0].name, "wave-b");
@@ -842,5 +844,133 @@ fn team_selector_dirs_come_from_the_registry_tool_home() {
             .get("CLAUDE_CONFIG_DIR")
             .expect("claude selector dir seeded"),
         &crate::session_scanner::accounts::to_launch_namespace(claude_home.path()),
+    );
+}
+
+fn detected_account(id: &str, dir: &str, logged_in: bool, is_default: bool) -> Account {
+    Account {
+        tool: CliTool::Codex,
+        id: id.to_string(),
+        dir: PathBuf::from(dir),
+        identity: AccountIdentity {
+            id: id.to_string(),
+            label: id.to_string(),
+            display_name: None,
+            organization: None,
+            plan: None,
+            logged_in,
+            usage_capable: true,
+            credential_expires_at: None,
+        },
+        is_default,
+        is_process_default: is_default,
+        usage: None,
+    }
+}
+
+fn write_codex_team(teams_dir: &Path, team_name: &str, member: &str, account_id: &str) {
+    let config_dir = teams_dir.join(team_name);
+    std::fs::create_dir_all(&config_dir).expect("team dir");
+    std::fs::write(
+        config_dir.join("config.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "name": team_name,
+            "createdAt": 1_772_399_806_546_i64,
+            "members": [{
+                "name": member,
+                "cliTool": "codex",
+                "model": "gpt-5.6",
+                "accountId": account_id,
+                "project_path": "/home/user/projects/test-project"
+            }]
+        }))
+        .expect("team json"),
+    )
+    .expect("write team");
+}
+
+// Regression: 95848682 placed a team by its persisted account id alone, so a
+// member configured for an account detection reports as signed out was listed
+// under that account — and offered its switch action from there — while the
+// launch it would actually get runs on the registry home.
+#[test]
+fn a_signed_out_member_account_does_not_hold_the_team() {
+    let (db, _tmp) = db_with_project("p1");
+    let teams = TempDir::new().expect("teams root");
+    write_codex_team(teams.path(), "wave-b", "builder", "codex-work");
+    let detected = vec![
+        detected_account("codex-personal", "/home/user/.codex", true, true),
+        detected_account("codex-work", "/home/user/.codex-work", false, false),
+    ];
+
+    let index = account_relationships_impl(
+        &db,
+        teams.path(),
+        CliTool::Codex,
+        Some("codex-personal"),
+        &detected,
+    )
+    .expect("relationships");
+
+    assert_eq!(index.by_account["codex-personal"].teams[0].name, "wave-b");
+    assert!(
+        index.by_account.get("codex-work").is_none(),
+        "a signed-out account cannot hold a team the launch would not give it"
+    );
+}
+
+// Regression: 95848682 never consulted the runtime record, so a member running
+// on the account its launch actually fell back to was still listed under the
+// account it had merely asked for.
+#[test]
+fn a_running_member_holds_the_team_under_the_account_it_launched_on() {
+    use crate::coordination::stores::MemberRuntimeStore;
+
+    let (db, _tmp) = db_with_project("p1");
+    let teams = TempDir::new().expect("teams root");
+    write_codex_team(teams.path(), "wave-b", "builder", "codex-work");
+    let mut runtime = crate::coordination::stores::MemberRuntimeRecord {
+        schema_version: 3,
+        member_name: "builder".to_string(),
+        cli_tool: Some(CliTool::Codex),
+        project_path: None,
+        pane_id: Some("%1".to_string()),
+        pane_pid: None,
+        pane_start_time: None,
+        session_id: Some("session-builder".to_string()),
+        jsonl_path: None,
+        daemon_pid: None,
+        health: crate::coordination::domain::HealthState::Healthy,
+        delivery_lease: None,
+        attached_at: None,
+        last_seen_at: None,
+        applied_effort: None,
+        effort_resume_failure: None,
+        launch_account: Default::default(),
+        extra: Default::default(),
+    };
+    runtime.launch_account.account_id = Some("codex-personal".to_string());
+    runtime.launch_account.account_applied = Some(false);
+    runtime.launch_account.fallback_from = Some("codex-work".to_string());
+    MemberRuntimeStore::save(teams.path(), "wave-b", "builder", &runtime)
+        .expect("seed the live runtime");
+    let detected = vec![
+        detected_account("codex-personal", "/home/user/.codex", true, true),
+        detected_account("codex-work", "/home/user/.codex-work", true, false),
+    ];
+
+    let index = account_relationships_impl(
+        &db,
+        teams.path(),
+        CliTool::Codex,
+        Some("codex-personal"),
+        &detected,
+    )
+    .expect("relationships");
+
+    assert_eq!(index.by_account["codex-personal"].teams[0].name, "wave-b");
+    assert!(
+        index.by_account.get("codex-work").is_none(),
+        "the running member's launch account owns the relationship"
     );
 }
