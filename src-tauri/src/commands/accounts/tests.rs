@@ -200,6 +200,45 @@ fn selector_team_links_are_indexed_under_each_configured_member_account() {
     assert_eq!(index.by_account["codex-personal"].teams[0].name, "wave-b");
 }
 
+// Regression (Wave B round 7): a configured account id that VANISHED from a
+// non-empty detection snapshot was still returned as the member's launch
+// account, indexing the team under an account the launch authority
+// (managed_member_account) would never launch on — and omitting it from the
+// account it actually falls back to. Only empty detection preserves the
+// configured id (missing evidence, not contradiction).
+#[test]
+fn a_vanished_member_account_id_indexes_under_the_usable_default() {
+    let (db, _tmp) = db_with_project("p1");
+    let teams = TempDir::new().expect("teams root");
+    write_codex_team(teams.path(), "wave-b", "builder", "codex-gone");
+
+    let detected = vec![detected_account(
+        "codex-personal",
+        "/home/user/.codex",
+        true,
+        true,
+    )];
+    let index = account_relationships_impl(
+        &db,
+        teams.path(),
+        CliTool::Codex,
+        Some("codex-personal"),
+        &detected,
+    )
+    .expect("relationships");
+    assert!(index
+        .by_account
+        .get("codex-gone")
+        .map(|entry| entry.teams.is_empty())
+        .unwrap_or(true));
+    assert_eq!(index.by_account["codex-personal"].teams[0].name, "wave-b");
+
+    // Empty detection: nothing contradicts the configured id, so it stands.
+    let cold = account_relationships_impl(&db, teams.path(), CliTool::Codex, None, &[])
+        .expect("relationships");
+    assert_eq!(cold.by_account["codex-gone"].teams[0].name, "wave-b");
+}
+
 #[test]
 fn registry_home_owns_default_root_teams_when_process_home_differs() {
     let account = |id: &str, dir: &str, is_default, is_process_default| Account {

@@ -446,13 +446,24 @@ fn member_launch_account_id(
         }
     }
     let requested = member.account_id.as_deref()?;
-    let signed_out = detected_accounts
+    // Mirror the launch authority (managed_member_account): only a DETECTED,
+    // logged-in requested id launches as itself; a signed-out id AND an id
+    // that has vanished from a non-empty detection snapshot both fall back to
+    // the usable default — otherwise the hub indexes the team under an
+    // account it cannot launch on and omits it from the actual account's
+    // team list.
+    let requested_usable = detected_accounts
         .iter()
-        .any(|account| account.id == requested && !account.identity.logged_in);
-    if signed_out {
-        return default_account_id.map(str::to_string);
+        .any(|account| account.id == requested && account.identity.logged_in);
+    if requested_usable {
+        return Some(requested.to_string());
     }
-    Some(requested.to_string())
+    if detected_accounts.is_empty() {
+        // No detection at all: nothing contradicts the configured id, and the
+        // launch would resolve the same way once detection returns.
+        return Some(requested.to_string());
+    }
+    default_account_id.map(str::to_string)
 }
 
 #[cfg(feature = "mesh-bridged-backend")]

@@ -512,7 +512,7 @@ fn account_switch_moves_the_codex_hook_to_the_selected_home() {
     reconcile_codex_hook_at_with_support(&personal, true, Some(true), &exe)
         .expect("seed personal hook");
 
-    reconcile_account_switch_hooks_at(
+    reconcile_account_switch_hooks_at_both_phases(
         AccountSwitchHookContext {
             teams_dir: &temp.path().join("teams"),
             team_name: "switching-team",
@@ -546,7 +546,7 @@ fn account_switch_moves_the_enabled_grok_hook_to_the_selected_home() {
     std::fs::write(&exe, b"daemon").expect("daemon fixture");
     reconcile_grok_hooks_at(&personal, true, true, &exe).expect("seed personal hook");
 
-    reconcile_account_switch_hooks_at(
+    reconcile_account_switch_hooks_at_both_phases(
         AccountSwitchHookContext {
             teams_dir: &temp.path().join("teams"),
             team_name: "switching-team",
@@ -666,6 +666,104 @@ fn disabled_grok_hook_setting_survives_the_daemon_settings_payload() {
 
 // Regression: 96f69205 removed the hook from the switching team's previous
 // home without checking another team's members that still launch there.
+// Regression (Wave B round 7): a LIVE runtime whose fallback launch recorded
+// no account id was discarded as authority, so reconciliation re-resolved the
+// configured account and could remove the hook of the home the session is
+// actually running on. Live-but-unplaceable must read as unresolved, which
+// suppresses removal for the tool.
+#[test]
+fn a_live_launch_without_an_account_id_marks_the_tool_unresolved() {
+    use crate::session_scanner::cli_tool::CliTool;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = temp.path().join("teams");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    write_team_with_account(&teams_dir, "team-a", "codex", "work");
+    let record = crate::coordination::stores::runtime::MemberRuntimeRecord {
+        schema_version: 3,
+        member_name: "builder".to_string(),
+        cli_tool: Some(CliTool::Codex),
+        project_path: None,
+        pane_id: Some("%9".to_string()),
+        pane_pid: None,
+        pane_start_time: None,
+        session_id: Some("live-session".to_string()),
+        jsonl_path: None,
+        daemon_pid: None,
+        health: crate::coordination::domain::HealthState::Healthy,
+        delivery_lease: None,
+        attached_at: None,
+        last_seen_at: None,
+        applied_effort: None,
+        effort_resume_failure: None,
+        launch_account: Default::default(),
+        extra: Default::default(),
+    };
+    crate::coordination::stores::MemberRuntimeStore::save(&teams_dir, "team-a", "builder", &record)
+        .expect("live runtime without an account id");
+
+    let homes = collect_managed_hook_homes_for_roster(
+        &teams_dir,
+        &crate::models::CliCommandSettings::default(),
+    )
+    .expect("collect homes");
+    assert!(
+        homes[&CliTool::Codex].unresolved_member,
+        "a live session on an unplaceable home must suppress removal"
+    );
+}
+
+// Regression (Wave B round 7): the switch removed the previous account's hook
+// BEFORE tearing the old sessions down, so a failed teardown left a running
+// pane whose compaction hook was already gone. The install phase must leave
+// previous homes untouched; removal is a separate post-teardown phase.
+#[test]
+fn the_install_phase_never_removes_the_previous_hook() {
+    use crate::models::ManagedLaunchAccount;
+    use crate::session_scanner::cli_tool::{CliTool, CompactionDelivery};
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = temp.path().join("teams");
+    let personal = temp.path().join("codex-personal");
+    let work = temp.path().join("codex-work");
+    let exe = temp.path().join("taurhaus-daemon");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    write_team(&teams_dir, "team-a", "codex");
+    reconcile_codex_hook_at_with_support(&personal, true, Some(true), &exe)
+        .expect("seed previous hook");
+    let accounts = vec![ManagedLaunchAccount {
+        id: "work".to_string(),
+        label: "Work".to_string(),
+        dir: work.clone(),
+        logged_in: true,
+        is_default: false,
+    }];
+
+    reconcile_account_switch_hooks_at(
+        AccountSwitchHookContext {
+            teams_dir: &teams_dir,
+            team_name: "team-a",
+            cli_tool: CliTool::Codex,
+            delivery: CompactionDelivery::HookStdout,
+            accounts: &accounts,
+            codex_hooks_supported: Some(true),
+            grok_enabled: true,
+            taurhaus_exe: &exe,
+        },
+        &work,
+        std::slice::from_ref(&personal),
+        AccountSwitchHookPhase::InstallTarget,
+    )
+    .expect("install phase");
+
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&work));
+    assert!(
+        crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&personal),
+        "the previous session must keep its hook until teardown completes"
+    );
+}
+
 #[test]
 fn account_switch_keeps_the_previous_hook_when_another_team_uses_that_home() {
     use crate::models::ManagedLaunchAccount;
@@ -699,7 +797,7 @@ fn account_switch_keeps_the_previous_hook_when_another_team_uses_that_home() {
         },
     ];
 
-    reconcile_account_switch_hooks_at(
+    reconcile_account_switch_hooks_at_both_phases(
         AccountSwitchHookContext {
             teams_dir: &teams_dir,
             team_name: "team-a",

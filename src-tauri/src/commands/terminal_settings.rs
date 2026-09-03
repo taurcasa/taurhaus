@@ -522,7 +522,15 @@ fn live_launch_home(
     if runtime.health == crate::coordination::domain::HealthState::SessionDead {
         return None;
     }
-    let account_id = runtime.launch_account.account_id?;
+    // A LIVE session is always the authority over config. When its launch
+    // account cannot be named (a fallback launch recorded account_id: None),
+    // the session is running on SOME home we cannot place — report it as
+    // live-unresolved so hook removal is suppressed for this tool, instead of
+    // falling back to the configured account and letting reconciliation
+    // remove the hook of the home actually in use.
+    let Some(account_id) = runtime.launch_account.account_id else {
+        return Some(None);
+    };
     Some(
         cli_commands
             .managed_accounts
@@ -853,16 +861,33 @@ fn managed_home_needed_after_switch(
 /// Move a managed member's account-scoped compaction hook before its team is
 /// relaunched. Installing the target first keeps the previous session covered
 /// if writing the new home fails.
+/// Which half of the switch-hook move to perform. Installing the target
+/// before teardown keeps the previous session covered; removing the previous
+/// homes must wait until every old session has stopped and the new config is
+/// committed, or a failed teardown leaves a running pane with no hook.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AccountSwitchHookPhase {
+    InstallTarget,
+    RemovePrevious,
+}
+
+/// Everything a switch-hook phase needs, bundled so both phases share one
+/// call shape.
+pub(crate) struct AccountSwitchHookRequest<'a> {
+    pub teams_dir: &'a std::path::Path,
+    pub team_name: &'a str,
+    pub cli_tool: CliTool,
+    pub target_home: &'a std::path::Path,
+    pub previous_homes: &'a [std::path::PathBuf],
+    pub accounts: &'a [crate::models::ManagedLaunchAccount],
+    pub grok_enabled: bool,
+}
+
 pub(crate) fn reconcile_account_switch_hooks(
-    teams_dir: &std::path::Path,
-    team_name: &str,
-    cli_tool: CliTool,
-    target_home: &std::path::Path,
-    previous_homes: &[std::path::PathBuf],
-    accounts: &[crate::models::ManagedLaunchAccount],
-    grok_enabled: bool,
+    request: &AccountSwitchHookRequest<'_>,
+    phase: AccountSwitchHookPhase,
 ) -> Result<bool, CoordinationError> {
-    let capabilities = crate::session_scanner::cli_tool::spec(cli_tool).capabilities;
+    let capabilities = crate::session_scanner::cli_tool::spec(request.cli_tool).capabilities;
     if !capabilities.compaction_hook
         || capabilities.session_root == SessionRoot::AppManagedClaudeDir
     {
@@ -870,20 +895,22 @@ pub(crate) fn reconcile_account_switch_hooks(
     }
     reconcile_account_switch_hooks_at(
         AccountSwitchHookContext {
-            teams_dir,
-            team_name,
-            cli_tool,
+            teams_dir: request.teams_dir,
+            team_name: request.team_name,
+            cli_tool: request.cli_tool,
             delivery: capabilities.compaction_delivery,
-            accounts,
+            accounts: request.accounts,
             codex_hooks_supported: CliVersions::current().codex_compaction_hooks_support(),
-            grok_enabled,
+            grok_enabled: request.grok_enabled,
             taurhaus_exe: &compact_hook_executable()?,
         },
-        target_home,
-        previous_homes,
+        request.target_home,
+        request.previous_homes,
+        phase,
     )
 }
 
+#[derive(Clone, Copy)]
 struct AccountSwitchHookContext<'a> {
     teams_dir: &'a std::path::Path,
     team_name: &'a str,
@@ -895,25 +922,53 @@ struct AccountSwitchHookContext<'a> {
     taurhaus_exe: &'a std::path::Path,
 }
 
-fn reconcile_account_switch_hooks_at(
+/// Test helper mirroring the production sequencing: install the target, then
+/// remove the previous homes — the two phases the switch runs around teardown.
+#[cfg(test)]
+fn reconcile_account_switch_hooks_at_both_phases(
     context: AccountSwitchHookContext<'_>,
     target_home: &std::path::Path,
     previous_homes: &[std::path::PathBuf],
 ) -> Result<bool, CoordinationError> {
-    let mut changed = match context.delivery {
-        CompactionDelivery::HookStdout => reconcile_codex_hook_at_with_support(
-            target_home,
-            true,
-            context.codex_hooks_supported,
-            context.taurhaus_exe,
-        )?,
-        CompactionDelivery::MeshInbox => reconcile_grok_hooks_at(
-            target_home,
-            context.grok_enabled,
-            true,
-            context.taurhaus_exe,
-        )?,
-    };
+    let installed = reconcile_account_switch_hooks_at(
+        context,
+        target_home,
+        previous_homes,
+        AccountSwitchHookPhase::InstallTarget,
+    )?;
+    let removed = reconcile_account_switch_hooks_at(
+        context,
+        target_home,
+        previous_homes,
+        AccountSwitchHookPhase::RemovePrevious,
+    )?;
+    Ok(installed || removed)
+}
+
+fn reconcile_account_switch_hooks_at(
+    context: AccountSwitchHookContext<'_>,
+    target_home: &std::path::Path,
+    previous_homes: &[std::path::PathBuf],
+    phase: AccountSwitchHookPhase,
+) -> Result<bool, CoordinationError> {
+    let mut changed = false;
+    if phase == AccountSwitchHookPhase::InstallTarget {
+        changed = match context.delivery {
+            CompactionDelivery::HookStdout => reconcile_codex_hook_at_with_support(
+                target_home,
+                true,
+                context.codex_hooks_supported,
+                context.taurhaus_exe,
+            )?,
+            CompactionDelivery::MeshInbox => reconcile_grok_hooks_at(
+                target_home,
+                context.grok_enabled,
+                true,
+                context.taurhaus_exe,
+            )?,
+        };
+        return Ok(changed);
+    }
     for previous_home in previous_homes {
         if previous_home == target_home {
             continue;

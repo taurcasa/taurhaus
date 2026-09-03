@@ -484,14 +484,22 @@ pub(crate) fn execute_switch_team_account(
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
+        // Install the target home's hook BEFORE teardown so the previous
+        // session stays covered if the write fails; removal of the previous
+        // homes is deferred until every old session has stopped and the new
+        // config is committed — a failed teardown must never leave a running
+        // pane whose hook was already taken away.
         crate::commands::terminal_settings::reconcile_account_switch_hooks(
-            state.teams_dir(),
-            &request.team_name,
-            request.cli_tool,
-            &target.dir,
-            &previous_homes,
-            detected_accounts.map(Vec::as_slice).unwrap_or(&[]),
-            cli_commands.grok_hooks_enabled.unwrap_or(true),
+            &crate::commands::terminal_settings::AccountSwitchHookRequest {
+                teams_dir: state.teams_dir(),
+                team_name: &request.team_name,
+                cli_tool: request.cli_tool,
+                target_home: &target.dir,
+                previous_homes: &previous_homes,
+                accounts: detected_accounts.map(Vec::as_slice).unwrap_or(&[]),
+                grok_enabled: cli_commands.grok_hooks_enabled.unwrap_or(true),
+            },
+            crate::commands::terminal_settings::AccountSwitchHookPhase::InstallTarget,
         )?;
 
         orchestrator.stop_team_daemon_best_effort(&request.team_name);
@@ -519,6 +527,22 @@ pub(crate) fn execute_switch_team_account(
             manifest,
         )?;
         TeamConfigStore::save(state.teams_dir(), &request.team_name, &config)?;
+
+        // Old sessions are down and the new config is committed: the previous
+        // homes may now lose their hooks (still gated on no other roster
+        // member needing each home).
+        crate::commands::terminal_settings::reconcile_account_switch_hooks(
+            &crate::commands::terminal_settings::AccountSwitchHookRequest {
+                teams_dir: state.teams_dir(),
+                team_name: &request.team_name,
+                cli_tool: request.cli_tool,
+                target_home: &target.dir,
+                previous_homes: &previous_homes,
+                accounts: detected_accounts.map(Vec::as_slice).unwrap_or(&[]),
+                grok_enabled: cli_commands.grok_hooks_enabled.unwrap_or(true),
+            },
+            crate::commands::terminal_settings::AccountSwitchHookPhase::RemovePrevious,
+        )?;
 
         let resume = orchestrator.resume_team_with_cli_commands_and_layout(
             &crate::coordination::requests::ResumeTeamRequest {
