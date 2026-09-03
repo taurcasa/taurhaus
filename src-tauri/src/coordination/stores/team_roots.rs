@@ -278,10 +278,8 @@ mod tests {
         // root, then handed it unchanged to Windows app filesystem readers.
         let temp = tempfile::TempDir::new().expect("tempdir");
         let default_teams_dir = temp.path().join("default-account/teams");
-        let registry = TeamRootRegistry::with_reader_wsl_distro(
-            default_teams_dir,
-            Some("Ubuntu".to_string()),
-        );
+        let registry =
+            TeamRootRegistry::with_reader_wsl_distro(default_teams_dir, Some("Ubuntu".to_string()));
         registry
             .set(
                 "work-team",
@@ -291,9 +289,7 @@ mod tests {
 
         assert_eq!(
             registry.resolve("work-team").expect("host resolve"),
-            std::path::PathBuf::from(
-                r"\\wsl.localhost\Ubuntu\home\user\.claude-work\teams"
-            )
+            std::path::PathBuf::from(r"\\wsl.localhost\Ubuntu\home\user\.claude-work\teams")
         );
         assert_eq!(
             registry
@@ -306,9 +302,7 @@ mod tests {
         );
         assert_eq!(
             registry.roots().expect("host roots")[1],
-            std::path::PathBuf::from(
-                r"\\wsl.localhost\Ubuntu\home\user\.claude-work\teams"
-            )
+            std::path::PathBuf::from(r"\\wsl.localhost\Ubuntu\home\user\.claude-work\teams")
         );
     }
 
