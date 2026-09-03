@@ -178,6 +178,15 @@ pub trait CoordinationRuntime: Send + Sync {
         Ok(None)
     }
 
+    fn find_existing_mesh_daemon_pid_by_member_at_root(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        _teams_dir: &Path,
+    ) -> Result<Option<u32>, CoordinationError> {
+        self.find_existing_mesh_daemon_pid_by_member(team_name, member_name)
+    }
+
     fn pane_belongs_to_project(
         &self,
         pane_id: &str,
@@ -212,6 +221,14 @@ pub trait CoordinationRuntime: Send + Sync {
         Ok(true)
     }
 
+    fn team_daemon_uses_current_binary_at_root(
+        &self,
+        team_name: &str,
+        _teams_dir: &Path,
+    ) -> Result<bool, CoordinationError> {
+        self.team_daemon_uses_current_binary(team_name)
+    }
+
     fn clear_mesh_daemon_pid_file(
         &self,
         _team_name: &str,
@@ -220,8 +237,25 @@ pub trait CoordinationRuntime: Send + Sync {
         Ok(())
     }
 
+    fn clear_mesh_daemon_pid_file_at_root(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        _teams_dir: &Path,
+    ) -> Result<(), CoordinationError> {
+        self.clear_mesh_daemon_pid_file(team_name, member_name)
+    }
+
     fn stop_team_daemon(&self, _team_name: &str) -> Result<(), CoordinationError> {
         Ok(())
+    }
+
+    fn stop_team_daemon_at_root(
+        &self,
+        team_name: &str,
+        _teams_dir: &Path,
+    ) -> Result<(), CoordinationError> {
+        self.stop_team_daemon(team_name)
     }
 }
 
@@ -395,7 +429,9 @@ pub fn quarantine_foreign_member(
             }
         }
     }
-    if let Err(error) = runtime.clear_mesh_daemon_pid_file(team_name, member_name) {
+    if let Err(error) =
+        runtime.clear_mesh_daemon_pid_file_at_root(team_name, member_name, teams_dir)
+    {
         tracing::warn!(
             team = %team_name,
             member = %member_name,

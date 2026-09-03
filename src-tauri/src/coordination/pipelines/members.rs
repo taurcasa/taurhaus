@@ -813,10 +813,15 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                                 }
                             }
                         }
-                        if let Err(err) = self.orchestrator.runtime.clear_mesh_daemon_pid_file(
-                            &prepared.activation_context.team_name,
-                            &prepared.member.name,
-                        ) {
+                        if let Err(err) = self
+                            .orchestrator
+                            .runtime
+                            .clear_mesh_daemon_pid_file_at_root(
+                                &prepared.activation_context.team_name,
+                                &prepared.member.name,
+                                &self.orchestrator.teams_dir,
+                            )
+                        {
                             self.warnings.push(format!(
                                 "failed to clear foreign-pane daemon pid file: {err}"
                             ));

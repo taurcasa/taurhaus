@@ -111,8 +111,11 @@ impl CoordinationOrchestrator {
         }
         match self
             .runtime
-            .find_existing_mesh_daemon_pid_by_member(team_name, member_name)
-        {
+            .find_existing_mesh_daemon_pid_by_member_at_root(
+                team_name,
+                member_name,
+                &self.teams_dir,
+            ) {
             Ok(Some(pid)) => daemon_pids.push(pid),
             Ok(None) => {}
             Err(err) => {
@@ -201,9 +204,9 @@ impl CoordinationOrchestrator {
             }
         }
 
-        if let Err(err) = self
-            .runtime
-            .clear_mesh_daemon_pid_file(team_name, member_name)
+        if let Err(err) =
+            self.runtime
+                .clear_mesh_daemon_pid_file_at_root(team_name, member_name, &self.teams_dir)
         {
             tracing::warn!(
                 team = %team_name,
@@ -462,7 +465,10 @@ impl CoordinationOrchestrator {
     }
 
     pub(crate) fn stop_team_daemon_best_effort(&self, team_name: &str) {
-        if let Err(err) = self.runtime.stop_team_daemon(team_name) {
+        if let Err(err) = self
+            .runtime
+            .stop_team_daemon_at_root(team_name, &self.teams_dir)
+        {
             tracing::warn!(
                 team = %team_name,
                 error = %err,

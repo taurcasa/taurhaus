@@ -279,22 +279,28 @@ pub(super) fn find_existing_mesh_daemon_pids_system(
 
 pub(super) fn resolve_mesh_daemon_pid_path(team_name: &str, member_name: &str) -> Option<PathBuf> {
     resolve_host_claude_dir().map(|claude_dir| {
-        claude_dir
-            .join("teams")
-            .join(team_name)
-            .join("daemons")
-            .join(format!("{member_name}.pid"))
+        resolve_mesh_daemon_pid_path_at(&claude_dir.join("teams"), team_name, member_name)
     })
 }
 
+pub(super) fn resolve_mesh_daemon_pid_path_at(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+) -> PathBuf {
+    teams_dir
+        .join(team_name)
+        .join("daemons")
+        .join(format!("{member_name}.pid"))
+}
+
 pub(super) fn resolve_team_daemon_pid_path(team_name: &str) -> Option<PathBuf> {
-    resolve_host_claude_dir().map(|claude_dir| {
-        claude_dir
-            .join("teams")
-            .join(team_name)
-            .join("daemons")
-            .join("team.pid")
-    })
+    resolve_host_claude_dir()
+        .map(|claude_dir| resolve_team_daemon_pid_path_at(&claude_dir.join("teams"), team_name))
+}
+
+pub(super) fn resolve_team_daemon_pid_path_at(teams_dir: &Path, team_name: &str) -> PathBuf {
+    teams_dir.join(team_name).join("daemons").join("team.pid")
 }
 
 #[cfg(test)]

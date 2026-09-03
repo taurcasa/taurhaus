@@ -609,8 +609,9 @@ impl CoordinationOrchestrator {
         validate_team_name(team_name)?;
 
         let initial_status = self.get_team_status_fast(team_name)?;
-        let team_daemon_binary_drifted =
-            !self.runtime.team_daemon_uses_current_binary(team_name)?;
+        let team_daemon_binary_drifted = !self
+            .runtime
+            .team_daemon_uses_current_binary_at_root(team_name, &self.teams_dir)?;
         let runtime_candidate_found = team_is_self_heal_candidate(&initial_status.members_runtime)
             || team_daemon_binary_drifted;
         if !runtime_candidate_found {

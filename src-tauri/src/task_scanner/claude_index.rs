@@ -137,10 +137,7 @@ fn build_claude_source_index_in_roots(
                 teams.insert(team_name, projects);
             }
         }
-        if let Some(existing) = task_roots
-            .iter_mut()
-            .find(|root| root.path == *tasks_base)
-        {
+        if let Some(existing) = task_roots.iter_mut().find(|root| root.path == *tasks_base) {
             existing.authoritative_teams.extend(authoritative_teams);
         } else {
             task_roots.push(ClaudeTaskRoot {
