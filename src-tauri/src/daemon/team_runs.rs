@@ -555,11 +555,6 @@ pub(crate) fn execute_switch_team_account(
                 strategy: "rename-or-copy-verify".to_string(),
             }),
         };
-        let handoff_manifest_count = AccountSwitchManifestStore::append(
-            &teams_dir,
-            &request.team_name,
-            manifest,
-        )?;
         TeamConfigStore::save(&teams_dir, &request.team_name, &config)?;
 
         if team_root_switch {
@@ -591,6 +586,17 @@ pub(crate) fn execute_switch_team_account(
                 };
             }
         }
+
+        let manifest_teams_dir = if team_root_switch {
+            &target_teams_dir
+        } else {
+            &teams_dir
+        };
+        let handoff_manifest_count = AccountSwitchManifestStore::append(
+            manifest_teams_dir,
+            &request.team_name,
+            manifest,
+        )?;
 
         // Old sessions are down and the new config is committed: the previous
         // homes may now lose their hooks (still gated on no other roster
@@ -1346,6 +1352,14 @@ mod tests {
         assert_eq!(
             state.team_teams_dir("arch").expect("old authority remains"),
             default_teams
+        );
+        // Regression: 42840d4a appended a successful team-state move before
+        // the registry commit, leaving a false relocation record on rollback.
+        assert!(
+            AccountSwitchManifestStore::load(&default_teams, "arch")
+                .expect("rolled-back switch manifests")
+                .is_empty(),
+            "a rolled-back move must not be recorded as completed"
         );
     }
 
