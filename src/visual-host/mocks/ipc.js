@@ -68,6 +68,10 @@ export function revealDirectory(...args) {
   return asyncResult('revealDirectory', args)
 }
 
+export function coordinationSwitchTeamAccount(...args) {
+  return asyncResult('coordinationSwitchTeamAccount', args)
+}
+
 export function getProjectTasks(...args) {
   return asyncResult('getProjectTasks', args)
 }

@@ -10,6 +10,7 @@ pub mod mesh_task;
 pub mod operational;
 pub mod runtime;
 
+#[allow(unused_imports)]
 pub use account_switch::AccountSwitchManifestStore;
 #[allow(unused_imports)]
 pub use active_project::ActiveProjectTeamStore;
