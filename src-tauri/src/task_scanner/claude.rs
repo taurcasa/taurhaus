@@ -15,6 +15,7 @@ use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::RuntimeSession;
 use crate::task_scanner::claude_index::{
     build_claude_source_index_in, build_claude_source_index_with_live_sessions, ClaudeSourceIndex,
+    ClaudeTaskRoot,
 };
 use crate::task_scanner::types::{ScanOutcome, TaskStatus, UnifiedTask};
 use std::fs;
@@ -210,11 +211,14 @@ pub fn get_tasks_in_with_index(
         }
     };
     let task_roots = if index.task_roots.is_empty() {
-        vec![tasks_base.to_path_buf()]
+        vec![ClaudeTaskRoot {
+            path: tasks_base.to_path_buf(),
+            authoritative_teams: index.teams.keys().cloned().collect(),
+        }]
     } else {
         index.task_roots.clone()
     };
-    if !task_roots.iter().any(|root| root.is_dir()) {
+    if !task_roots.iter().any(|root| root.path.is_dir()) {
         return ScanOutcome::Unavailable(format!(
             "Claude tasks base does not exist: {}",
             tasks_base.display()
@@ -243,16 +247,16 @@ pub fn get_tasks_in_with_index(
 
 fn scan_all_task_directories(
     project_path: &str,
-    task_roots: &[std::path::PathBuf],
+    task_roots: &[ClaudeTaskRoot],
     index: &ClaudeSourceIndex,
 ) -> ClaudeScanOutcome {
     let mut outcome = ClaudeScanOutcome::default();
     let project_key = crate::provider::path::normalize_project_path(project_path);
-    for tasks_base in task_roots {
-        if !tasks_base.exists() {
+    for task_root in task_roots {
+        if !task_root.path.exists() {
             continue;
         }
-        scan_task_root(tasks_base, &project_key, index, &mut outcome);
+        scan_task_root(task_root, &project_key, index, &mut outcome);
     }
 
     outcome.tasks.sort_by(|a, b| {
@@ -272,12 +276,12 @@ fn scan_all_task_directories(
 }
 
 fn scan_task_root(
-    tasks_base: &Path,
+    task_root: &ClaudeTaskRoot,
     project_key: &str,
     index: &ClaudeSourceIndex,
     outcome: &mut ClaudeScanOutcome,
 ) {
-    let entries = match fs::read_dir(tasks_base) {
+    let entries = match fs::read_dir(&task_root.path) {
         Ok(entries) => entries,
         Err(e) => {
             outcome.record_error(format!("Failed to read tasks base: {e}"));
@@ -306,6 +310,12 @@ fn scan_task_root(
         else {
             continue;
         };
+
+        if index.teams.contains_key(source_key)
+            && !task_root.authoritative_teams.contains(source_key)
+        {
+            continue;
+        }
 
         if !source_matches_project(source_key, project_key, index) {
             continue;
@@ -464,6 +474,7 @@ fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<Uni
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
     use std::fs::File;
     use std::io::Write;
     use std::path::PathBuf;
@@ -497,7 +508,16 @@ mod tests {
             r#"{"id":"1","subject":"Account-root task","status":"pending"}"#,
         );
         let mut index = ClaudeSourceIndex {
-            task_roots: vec![default_tasks.clone(), account_tasks],
+            task_roots: vec![
+                ClaudeTaskRoot {
+                    path: default_tasks.clone(),
+                    authoritative_teams: BTreeSet::new(),
+                },
+                ClaudeTaskRoot {
+                    path: account_tasks,
+                    authoritative_teams: BTreeSet::from(["work-team".to_string()]),
+                },
+            ],
             ..Default::default()
         };
         index.teams.insert(
@@ -519,6 +539,61 @@ mod tests {
         };
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].subject, "Account-root task");
+    }
+
+    #[test]
+    fn registered_team_tasks_are_scanned_only_from_the_authoritative_root() {
+        // Regression: 21b63ff scanned every account's same-named team task
+        // directory after resolving the team itself to just one authoritative root.
+        let tmp = TempDir::new().unwrap();
+        let default_tasks = tmp.path().join("default/tasks");
+        let account_tasks = tmp.path().join("work/tasks");
+        for task_root in [&default_tasks, &account_tasks] {
+            fs::create_dir_all(task_root.join("work-team")).unwrap();
+        }
+        write_task(
+            &default_tasks.join("work-team"),
+            "1.json",
+            r#"{"id":"1","subject":"Stale default-root task","status":"pending"}"#,
+        );
+        write_task(
+            &account_tasks.join("work-team"),
+            "1.json",
+            r#"{"id":"1","subject":"Authoritative work-root task","status":"pending"}"#,
+        );
+
+        let mut index = ClaudeSourceIndex {
+            task_roots: vec![
+                ClaudeTaskRoot {
+                    path: default_tasks.clone(),
+                    authoritative_teams: BTreeSet::new(),
+                },
+                ClaudeTaskRoot {
+                    path: account_tasks,
+                    authoritative_teams: BTreeSet::from(["work-team".to_string()]),
+                },
+            ],
+            ..Default::default()
+        };
+        index.teams.insert(
+            "work-team".to_string(),
+            vec![PathBuf::from("/projects/work")],
+        );
+
+        let outcome = get_tasks_in_with_index(
+            "/projects/work",
+            &[],
+            &default_tasks,
+            &tmp.path().join("default/projects"),
+            &tmp.path().join("default/teams"),
+            Some(&index),
+        );
+
+        let ScanOutcome::Data(tasks) = outcome else {
+            panic!("authoritative task root should remain available");
+        };
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].subject, "Authoritative work-root task");
     }
 
     #[test]

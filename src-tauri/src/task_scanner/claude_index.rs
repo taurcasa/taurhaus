@@ -24,7 +24,14 @@ pub struct ClaudeSourceIndex {
     /// Team source key (team name) -> one or more project paths.
     pub teams: HashMap<String, Vec<PathBuf>>,
     /// Account-scoped task roots to scan. The default root remains first.
-    pub task_roots: Vec<PathBuf>,
+    pub task_roots: Vec<ClaudeTaskRoot>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ClaudeTaskRoot {
+    pub path: PathBuf,
+    /// Team-named task directories whose registry authority is this account root.
+    pub authoritative_teams: BTreeSet<String>,
 }
 
 /// Build Claude source index using default user directories and live sessions.
@@ -99,8 +106,11 @@ pub fn build_claude_source_index_in(
 
     ClaudeSourceIndex {
         sessions,
+        task_roots: vec![ClaudeTaskRoot {
+            path: tasks_base.to_path_buf(),
+            authoritative_teams: teams.keys().cloned().collect(),
+        }],
         teams,
-        task_roots: vec![tasks_base.to_path_buf()],
     }
 }
 
@@ -112,21 +122,31 @@ fn build_claude_source_index_in_roots(
 ) -> ClaudeSourceIndex {
     let mut sessions = HashMap::new();
     let mut teams = HashMap::new();
-    let mut task_roots = Vec::new();
+    let mut task_roots: Vec<ClaudeTaskRoot> = Vec::new();
     merge_live_session_map(live_sessions, &mut sessions);
     for (tasks_base, projects_base, teams_base) in roots {
         merge_offline_session_map(projects_base, &mut sessions);
-        if !task_roots.contains(tasks_base) {
-            task_roots.push(tasks_base.clone());
-        }
+        let mut authoritative_teams = BTreeSet::new();
         for (team_name, projects) in build_team_map(tasks_base, teams_base) {
             let authoritative = registered
                 .get(&team_name)
                 .map(PathBuf::as_path)
                 .unwrap_or(default_teams);
             if authoritative == teams_base {
+                authoritative_teams.insert(team_name.clone());
                 teams.insert(team_name, projects);
             }
+        }
+        if let Some(existing) = task_roots
+            .iter_mut()
+            .find(|root| root.path == *tasks_base)
+        {
+            existing.authoritative_teams.extend(authoritative_teams);
+        } else {
+            task_roots.push(ClaudeTaskRoot {
+                path: tasks_base.clone(),
+                authoritative_teams,
+            });
         }
     }
     ClaudeSourceIndex {
@@ -442,8 +462,17 @@ mod tests {
         let index = build_claude_source_index_in_roots(&[], &roots, &default_teams, &registered);
 
         assert_eq!(
-            index.task_roots,
+            index
+                .task_roots
+                .iter()
+                .map(|root| root.path.clone())
+                .collect::<Vec<_>>(),
             vec![roots[0].0.clone(), roots[1].0.clone()]
+        );
+        assert!(index.task_roots[0].authoritative_teams.is_empty());
+        assert_eq!(
+            index.task_roots[1].authoritative_teams,
+            BTreeSet::from(["work-team".to_string()])
         );
         assert_eq!(
             index.teams["work-team"],
