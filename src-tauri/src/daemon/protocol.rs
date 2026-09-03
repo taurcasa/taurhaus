@@ -41,7 +41,9 @@ use serde::{Deserialize, Serialize};
 /// v20: retired the superseded stop-member wire methods.
 /// v21: moved self-heal and effort background passes into the daemon and added
 /// the task-arrival effort intent.
-pub const PROTOCOL_VERSION: u32 = 21;
+/// v22: moved the final desktop-owned team-state writes (task snapshots,
+/// live-presence reconciliation, and active-project mappings) into the daemon.
+pub const PROTOCOL_VERSION: u32 = 22;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -139,6 +141,10 @@ pub mod method {
     pub const COORDINATION_PUT_LAUNCH_SETTINGS: &str = "coordination.put_launch_settings";
     pub const COORDINATION_APPLY_TASK_EFFORT: &str = "coordination.apply_task_effort";
     pub const COORDINATION_APPLY_TASK_EFFORT_STATUS: &str = "coordination.apply_task_effort_status";
+    pub const COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS: &str =
+        "coordination.publish_operational_snapshots";
+    pub const COORDINATION_RECONCILE_LIVE_PRESENCE: &str = "coordination.reconcile_live_presence";
+    pub const COORDINATION_SET_ACTIVE_PROJECT_TEAM: &str = "coordination.set_active_project_team";
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";
@@ -658,6 +664,64 @@ pub struct CoordinationApplyTaskEffortStatus {
     pub run_id: String,
     pub outcome: CoordinationApplyTaskEffortOutcome,
 }
+
+/// One app-DB-derived operational snapshot publication. The task timestamp is
+/// carried separately so the daemon can preserve deadline marker semantics.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationOperationalSnapshotPublication {
+    pub snapshot: crate::coordination::stores::OperationalContextSnapshot,
+    #[serde(default)]
+    pub task_state_changed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationPublishOperationalSnapshotsParams {
+    pub publications: Vec<CoordinationOperationalSnapshotPublication>,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationPublishOperationalSnapshotsResult {
+    pub published: usize,
+    pub skipped: usize,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CoordinationReconcileLivePresenceParams {
+    pub team_name: String,
+    #[serde(default)]
+    pub runtime_sessions: Vec<crate::session_scanner::RuntimeSession>,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CoordinationReconcileLivePresenceOutcome {
+    Reconciled,
+    Skipped,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationReconcileLivePresenceResult {
+    pub outcome: CoordinationReconcileLivePresenceOutcome,
+    pub reconciled_offline_members: Vec<String>,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationSetActiveProjectTeamParams {
+    pub project_path: String,
+    #[serde(default)]
+    pub team_name: Option<String>,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationSetActiveProjectTeamResult {}
 
 /// `list_workflow_runs` — completed and live runs under one Claude session.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1406,7 +1470,46 @@ mod tests {
     // edit here, in ARCHITECTURE.md, and in docs/architecture/daemon-protocol.md.
     #[test]
     fn protocol_version_is_pinned() {
-        assert_eq!(PROTOCOL_VERSION, 21);
+        assert_eq!(PROTOCOL_VERSION, 22);
+    }
+
+    #[test]
+    fn protocol_22_pins_the_last_team_state_writer_intents() {
+        assert_eq!(
+            method::COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS,
+            "coordination.publish_operational_snapshots"
+        );
+        assert_eq!(
+            method::COORDINATION_RECONCILE_LIVE_PRESENCE,
+            "coordination.reconcile_live_presence"
+        );
+        assert_eq!(
+            method::COORDINATION_SET_ACTIVE_PROJECT_TEAM,
+            "coordination.set_active_project_team"
+        );
+
+        let snapshots = CoordinationPublishOperationalSnapshotsParams {
+            publications: Vec::new(),
+        };
+        let decoded: CoordinationPublishOperationalSnapshotsParams =
+            serde_json::from_value(serde_json::to_value(&snapshots).unwrap()).unwrap();
+        assert_eq!(decoded, snapshots);
+
+        let presence = CoordinationReconcileLivePresenceParams {
+            team_name: "architecture-final".to_string(),
+            runtime_sessions: Vec::new(),
+        };
+        let decoded: CoordinationReconcileLivePresenceParams =
+            serde_json::from_value(serde_json::to_value(&presence).unwrap()).unwrap();
+        assert_eq!(decoded, presence);
+
+        let mapping = CoordinationSetActiveProjectTeamParams {
+            project_path: "/work/taurhaus".to_string(),
+            team_name: Some("architecture-final".to_string()),
+        };
+        let decoded: CoordinationSetActiveProjectTeamParams =
+            serde_json::from_value(serde_json::to_value(&mapping).unwrap()).unwrap();
+        assert_eq!(decoded, mapping);
     }
 
     #[test]
@@ -1935,6 +2038,12 @@ mod tests {
     fn protocol_version_excludes_daemons_without_background_pass_routing() {
         let last_protocol_without_daemon_background_passes = 20;
         assert!(PROTOCOL_VERSION > last_protocol_without_daemon_background_passes);
+    }
+
+    #[test]
+    fn protocol_version_excludes_daemons_without_the_final_writer_intents() {
+        let last_protocol_with_app_side_team_state_writers = 21;
+        assert!(PROTOCOL_VERSION > last_protocol_with_app_side_team_state_writers);
     }
 
     #[test]

@@ -112,6 +112,29 @@ fn run_with_legacy_cleanup<F>(
 where
     F: FnOnce() + Send + 'static,
 {
+    let listener = bind_listener(config)?;
+    run_on_bound_listener(
+        config,
+        listener,
+        shutdown,
+        provider,
+        cleanup,
+        schedule_background_passes,
+    )
+}
+
+/// Run the daemon startup path on a listener the caller already owns.
+fn run_on_bound_listener<F>(
+    config: &DaemonConfig,
+    listener: TcpListener,
+    shutdown: Arc<AtomicBool>,
+    provider: Arc<dyn ProjectProvider>,
+    cleanup: F,
+    schedule_background_passes: bool,
+) -> std::io::Result<()>
+where
+    F: FnOnce() + Send + 'static,
+{
     if let Err(error) = std::thread::Builder::new()
         .name("claude-statusline-retire".to_string())
         .spawn(cleanup)
@@ -121,7 +144,6 @@ where
     let session_hub = crate::daemon::session_activity::SessionActivityHub::global();
     let _ = session_hub.wait_for_update(0, 0, Duration::from_millis(750));
 
-    let listener = bind_listener(config)?;
     #[cfg(feature = "mesh-bridged-backend")]
     let coordination_state =
         Arc::new(crate::coordination::state::CoordinationState::for_process_default());
@@ -246,7 +268,7 @@ fn serve(
     #[cfg(feature = "mesh-bridged-backend")]
     let effort_operations_service = Arc::new(
         crate::daemon::effort_runs::EffortOperationsService::for_process_default(
-            coordination_state,
+            coordination_state.clone(),
             coordination_run_registry.clone(),
         ),
     );
@@ -304,6 +326,8 @@ fn serve(
                     effort_operations_service: effort_operations_service.clone(),
                     #[cfg(feature = "mesh-bridged-backend")]
                     launch_settings: launch_settings.clone(),
+                    #[cfg(feature = "mesh-bridged-backend")]
+                    coordination_state: coordination_state.clone(),
                 };
                 ACTIVE_CONNECTION_COUNT.fetch_add(1, Ordering::Relaxed);
                 mark_daemon_watch_telemetry_dirty();
@@ -514,6 +538,8 @@ struct ConnectionServices {
     effort_operations_service: Arc<crate::daemon::effort_runs::EffortOperationsService>,
     #[cfg(feature = "mesh-bridged-backend")]
     launch_settings: crate::daemon::background_scheduler::LaunchSettingsStore,
+    #[cfg(feature = "mesh-bridged-backend")]
+    coordination_state: Arc<crate::coordination::state::CoordinationState>,
 }
 
 fn handle_connection(
@@ -598,6 +624,7 @@ fn handle_connection(
                 services.roster_operations_service.as_ref(),
                 services.effort_operations_service.as_ref(),
                 &services.launch_settings,
+                services.coordination_state.as_ref(),
             ),
         );
 
@@ -751,57 +778,85 @@ mod tests {
         config: DaemonConfig,
         heavy_guard: crate::test_support::HeavyTestGuard,
     ) -> TestServer {
+        start_server_with_heavy_guard_and_probe(config, heavy_guard, |_| {})
+    }
+
+    // Regression: commit 831571dac released the selected ephemeral port before
+    // the serving thread rebound it. Keep the listener owned across the handoff
+    // so parallel daemon tests cannot take the same kernel resource.
+    fn start_server_with_heavy_guard_and_probe(
+        mut config: DaemonConfig,
+        heavy_guard: crate::test_support::HeavyTestGuard,
+        probe: impl FnOnce(u16),
+    ) -> TestServer {
+        let listener = bind_listener_for_test(&config).expect("bind test daemon listener");
+        let port = listener.local_addr().expect("test daemon address").port();
+        config.port = port;
+        probe(port);
+
         let shutdown = Arc::new(AtomicBool::new(false));
-        let port = config.port;
         let shutdown_clone = shutdown.clone();
         let handle = std::thread::spawn(move || {
-            run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
+            run_on_bound_listener(
+                &config,
+                listener,
+                shutdown_clone,
+                Arc::new(LocalProvider),
+                || {},
+                false,
+            )
         });
-        let server = TestServer {
+        TestServer {
             port,
             shutdown,
             _heavy_guard: heavy_guard,
             handle: Some(handle),
-        };
-
-        // Poll until the server is accepting connections (up to 2s).
-        // A fixed sleep was flaky under parallel test load.
-        if wait_for_server_accepting(port, std::time::Duration::from_secs(2)) {
-            return server;
         }
-        panic!("test server on port {port} did not start within 2s");
     }
 
     fn start_test_server() -> TestServer {
-        // Find a free port
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
+        start_test_server_with_port_probe(|_| {})
+    }
 
-        start_server(DaemonConfig {
-            port,
-            bind_addr: "127.0.0.1".to_string(),
-            idle_timeout_secs: None,
-            auth_token: None,
-        })
+    fn start_test_server_with_port_probe(probe: impl FnOnce(u16)) -> TestServer {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        start_server_with_heavy_guard_and_probe(
+            DaemonConfig {
+                port: 0,
+                bind_addr: "127.0.0.1".to_string(),
+                idle_timeout_secs: None,
+                auth_token: None,
+            },
+            heavy_guard,
+            probe,
+        )
     }
 
     fn start_test_server_with_heavy_guard(
         heavy_guard: crate::test_support::HeavyTestGuard,
     ) -> TestServer {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-
         start_server_with_heavy_guard(
             DaemonConfig {
-                port,
+                port: 0,
                 bind_addr: "127.0.0.1".to_string(),
                 idle_timeout_secs: None,
                 auth_token: None,
             },
             heavy_guard,
         )
+    }
+
+    // Regression: commit 831571dac made the fixture release its ephemeral port
+    // during handoff, letting a parallel listener steal it.
+    #[test]
+    fn test_server_fixture_keeps_ephemeral_port_owned_during_handoff() {
+        let server = start_test_server_with_port_probe(|port| {
+            let error = TcpListener::bind(("127.0.0.1", port))
+                .expect_err("the test fixture must retain ownership of its selected port");
+            assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+        });
+
+        assert_ne!(server.port, 0);
     }
 
     // Regression: 79be608 installed the Claude status-line bridge from `run`,
@@ -813,9 +868,12 @@ mod tests {
     #[test]
     fn slow_legacy_cleanup_never_delays_the_listener() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        // Bound listener retained across the handoff (see the idle-timeout
+        // test's comment); the timing closure rides run_on_bound_listener's
+        // cleanup argument, which is the same path production takes after
+        // run() binds.
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        drop(listener);
 
         let shutdown = Arc::new(AtomicBool::new(false));
         let installed = Arc::new(AtomicBool::new(false));
@@ -828,14 +886,16 @@ mod tests {
                 idle_timeout_secs: None,
                 auth_token: None,
             };
-            run_for_test_with_legacy_cleanup(
+            run_on_bound_listener(
                 &config,
+                listener,
                 server_shutdown,
                 Arc::new(LocalProvider),
                 move || {
                     std::thread::sleep(Duration::from_secs(3));
                     install_flag.store(true, Ordering::Relaxed);
                 },
+                false,
             )
         });
 
@@ -895,6 +955,9 @@ mod tests {
     // the scheduler in isolation. Removing `run`'s production registration
     // would therefore leave both the app and daemon with deadline work disabled.
     #[test]
+    // This test deliberately exercises production `run`, which binds its own
+    // listener — so the reserve-and-release window below is unavoidable here;
+    // the heavy guard is what covers it against other guarded fixtures.
     fn production_daemon_run_registers_and_fires_background_schedulers() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let _env_guard = crate::test_support::acquire_env_test_guard();
@@ -1017,6 +1080,9 @@ mod tests {
         server.shutdown.store(true, Ordering::Relaxed);
     }
 
+    // Regression: commit 3d45cba4 moved the shared fixture directly onto
+    // `serve_for_test`, bypassing the daemon startup path that starts eager
+    // session scans and making this guard depend on sibling-test side effects.
     #[test]
     fn server_start_eagerly_emits_session_scan_cycles() {
         let heavy_guard = crate::test_support::acquire_heavy_test_guard();
@@ -1388,9 +1454,11 @@ mod tests {
         // causing occasional ConnectionRefused before the listener was ready.
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
+        // Keep the bound listener across the handoff: releasing the port and
+        // rebinding raced concurrent ephemeral binds now that the suite runs
+        // parallel (the listener-flake class this suite's fix retired).
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        drop(listener);
 
         let config = DaemonConfig {
             port,
@@ -1400,7 +1468,14 @@ mod tests {
         };
         let shutdown_clone = shutdown.clone();
         let handle = std::thread::spawn(move || {
-            run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
+            run_on_bound_listener(
+                &config,
+                listener,
+                shutdown_clone,
+                Arc::new(LocalProvider),
+                || {},
+                false,
+            )
         });
 
         assert!(
@@ -1456,12 +1531,8 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn start_authed_server(token: &str) -> TestServer {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-
         start_server(DaemonConfig {
-            port,
+            port: 0,
             bind_addr: "127.0.0.1".to_string(),
             idle_timeout_secs: None,
             auth_token: Some(token.to_string()),
@@ -1585,6 +1656,9 @@ mod tests {
             protocol::method::COORDINATION_PUT_LAUNCH_SETTINGS,
             protocol::method::COORDINATION_APPLY_TASK_EFFORT,
             protocol::method::COORDINATION_APPLY_TASK_EFFORT_STATUS,
+            protocol::method::COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS,
+            protocol::method::COORDINATION_RECONCILE_LIVE_PRESENCE,
+            protocol::method::COORDINATION_SET_ACTIVE_PROJECT_TEAM,
         ];
 
         for (idx, method) in methods.into_iter().enumerate() {

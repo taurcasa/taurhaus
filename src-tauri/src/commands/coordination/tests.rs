@@ -369,6 +369,67 @@ fn disband_team_command_has_no_local_mutation_path() {
     assert!(source.contains("COORDINATION_DISBAND_TEAM_STATUS"));
 }
 
+// Regression: commits 460e5df3 and 439d04b1 left live-status presence
+// reconciliation in the desktop process, including runtime-record commits.
+#[test]
+fn live_status_has_no_local_presence_mutation_path() {
+    let source = include_str!("live_status.rs");
+
+    assert!(!source.contains("orchestrator.reconcile_team_presence_for_live_status"));
+    assert!(source.contains("COORDINATION_RECONCILE_LIVE_PRESENCE"));
+}
+
+// Regression: commit 439d04b1 introduced app-side active-project cleanup and
+// commit, extending the cross-9p writer set during project discovery.
+#[test]
+fn project_discovery_has_no_local_active_team_mutation_path() {
+    let source = include_str!("live_status.rs");
+
+    assert!(!source.contains("ActiveProjectTeamStore::clear_project"));
+    assert!(!source.contains("ActiveProjectTeamStore::set_active_team"));
+    assert!(source.contains("COORDINATION_SET_ACTIVE_PROJECT_TEAM"));
+}
+
+// Regression: d593f81b gave the final protocol-22 state-write clients a two-second
+// transport timeout, so ordinary orchestrator mutex contention disconnected the pool.
+#[test]
+fn protocol_22_state_write_clients_use_the_coordination_timeout_and_reconnect() {
+    let live_status = include_str!("live_status.rs");
+    let task_sync = include_str!("../../services/task_sync.rs");
+
+    assert!(live_status.contains("super::COORDINATION_DAEMON_REQUEST_TIMEOUT"));
+    assert!(task_sync.contains("COORDINATION_DAEMON_REQUEST_TIMEOUT"));
+    assert!(!live_status.contains("Duration::from_secs(2)"));
+    assert!(!task_sync.contains("Duration::from_secs(2)"));
+    assert!(live_status.contains("if !daemon.is_connected()"));
+    assert!(live_status.contains("if !daemon.try_reconnect()"));
+}
+
+// Regression: d593f81b emitted one WARN for every two-second live-status poll
+// during an outage and let orchestrator contention become a transport timeout;
+// d9c3f354 bounded it with one process-global latch, so one team's recovery
+// reset another team's outage state.
+#[test]
+fn protocol_22_live_presence_degrade_warning_is_bounded_and_skips_are_debug_only() {
+    let source = include_str!("live_status.rs");
+
+    // The latch is app-managed on CoordinationState (not a global static), so
+    // a fresh state starts clean and one team's recovery never touches another.
+    let state = test_state(tempfile::tempdir().expect("tempdir").keep());
+    assert!(state.mark_live_presence_degraded("team-a"));
+    assert!(!state.mark_live_presence_degraded("team-a"));
+    assert!(state.mark_live_presence_degraded("team-b"));
+    state.mark_live_presence_recovered("team-a");
+    assert!(state.mark_live_presence_degraded("team-a"));
+    assert!(!state.mark_live_presence_degraded("team-b"));
+
+    assert!(source.contains("state.mark_live_presence_degraded"));
+    assert!(!source.contains("AtomicBool"));
+    assert!(source.contains("CoordinationReconcileLivePresenceOutcome::Skipped"));
+    assert!(!source.contains("is_busy_transport_error(&error)"));
+    assert!(source.contains("tracing::debug!"));
+}
+
 // Regression: 03eb3a2c polled multi-step disband teardown at the 25 ms
 // stop-member interval, producing excessive daemon RPC and JSONL traffic.
 #[test]
@@ -386,9 +447,10 @@ fn disband_team_uses_the_long_running_daemon_poll_interval() {
 }
 
 // Regression: 8bb45dab made daemon launch settings process-local but relied on
-// the health monitor to repush them. Any inline reconnect can restore the
-// cached connection without entering that recovery hook, leaving the daemon
-// effort sweep disabled for its lifetime.
+// the health monitor to repush them, and d593f81b added two protocol-22 inline
+// reconnects without that repush. Any inline reconnect can restore the cached
+// connection without entering the recovery hook, leaving the daemon effort
+// sweep disabled for its lifetime.
 #[test]
 fn inline_daemon_reconnect_paths_repush_launch_settings() {
     let coordination = include_str!("../coordination.rs");
@@ -407,6 +469,21 @@ fn inline_daemon_reconnect_paths_repush_launch_settings() {
         .split("fn tasks_from_daemon_result(")
         .next()
         .expect("task scan body");
+    let snapshot_publish = task_sync
+        .split("fn publish_operational_snapshots_through_daemon(")
+        .nth(1)
+        .expect("snapshot publication client")
+        .split("#[cfg(test)]")
+        .next()
+        .expect("snapshot publication client body");
+    let live_status = include_str!("live_status.rs");
+    let live_state_write = live_status
+        .split("fn call_state_write<")
+        .nth(1)
+        .expect("live state-write client")
+        .split("fn reconcile_live_presence_through_daemon(")
+        .next()
+        .expect("live state-write client body");
     let runtime_snapshot = include_str!("../runtime_snapshot.rs");
     let runtime_snapshot_call = runtime_snapshot
         .split("pub(crate) fn daemon_runtime_session_snapshot(")
@@ -456,6 +533,8 @@ fn inline_daemon_reconnect_paths_repush_launch_settings() {
 
     assert!(coordination_call.contains("push_launch_settings_to_daemon"));
     assert!(task_scan.contains("push_launch_settings_to_daemon"));
+    assert!(snapshot_publish.contains("repush_cached_launch_settings_to_daemon"));
+    assert!(live_state_write.contains("repush_cached_launch_settings_to_daemon"));
     assert_eq!(
         runtime_snapshot_call
             .matches("repush_cached_launch_settings_to_daemon")
@@ -1336,7 +1415,10 @@ impl Drop for StubDaemon {
     }
 }
 
-fn start_stub_daemon(response: serde_json::Value) -> StubDaemon {
+fn start_live_status_stub_daemon(
+    snapshot_response: serde_json::Value,
+    state: Arc<CoordinationState>,
+) -> StubDaemon {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub daemon");
     let addr = listener.local_addr().expect("stub daemon addr");
     let addr_string = format!("127.0.0.1:{}", addr.port());
@@ -1344,24 +1426,50 @@ fn start_stub_daemon(response: serde_json::Value) -> StubDaemon {
     let handle = thread::spawn(move || {
         let (stream, _) = listener.accept().expect("accept daemon client");
         let mut reader = BufReader::new(stream.try_clone().expect("clone stream"));
-        let mut line = String::new();
-        reader.read_line(&mut line).expect("read request");
-
-        let request: protocol::DaemonRequest =
-            serde_json::from_str(&line).expect("parse daemon request");
-        let mut response = response;
-        if let Some(map) = response.as_object_mut() {
-            map.insert("id".to_string(), serde_json::Value::String(request.id));
-        }
-        let response_line = format!(
-            "{}\n",
-            serde_json::to_string(&response).expect("serialize daemon response")
-        );
         let mut writer = stream;
-        writer
-            .write_all(response_line.as_bytes())
-            .expect("write daemon response");
-        writer.flush().expect("flush daemon response");
+
+        for _ in 0..2 {
+            let mut line = String::new();
+            reader.read_line(&mut line).expect("read request");
+            let request: protocol::DaemonRequest =
+                serde_json::from_str(&line).expect("parse daemon request");
+            let response = match request.method.as_str() {
+                protocol::method::GET_RUNTIME_SESSION_SNAPSHOT => snapshot_response.clone(),
+                protocol::method::COORDINATION_RECONCILE_LIVE_PRESENCE => {
+                    let params = serde_json::from_value(request.params)
+                        .expect("parse live presence reconciliation params");
+                    let response = match crate::daemon::state_writes::reconcile_live_presence(
+                        &state, params,
+                    ) {
+                        Ok(result) => protocol::DaemonResponse::ok(&request.id, result),
+                        Err(error) => protocol::DaemonResponse::err(
+                            &request.id,
+                            "LIVE_PRESENCE_RECONCILE_FAILED",
+                            error.to_string(),
+                        ),
+                    };
+                    serde_json::to_value(response).expect("serialize live presence response")
+                }
+                method => serde_json::to_value(protocol::DaemonResponse::err(
+                    &request.id,
+                    "UNKNOWN_METHOD",
+                    format!("Unknown method: {method}"),
+                ))
+                .expect("serialize unknown method response"),
+            };
+            let mut response = response;
+            if let Some(map) = response.as_object_mut() {
+                map.insert("id".to_string(), serde_json::Value::String(request.id));
+            }
+            let response_line = format!(
+                "{}\n",
+                serde_json::to_string(&response).expect("serialize daemon response")
+            );
+            writer
+                .write_all(response_line.as_bytes())
+                .expect("write daemon response");
+            writer.flush().expect("flush daemon response");
+        }
     });
 
     StubDaemon {
@@ -4053,7 +4161,10 @@ fn live_status_uses_lightweight_presence_reconcile_without_heavy_daemon_calls() 
 fn live_status_provider_snapshot_yields_to_current_pane_loss() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
+    let state = Arc::new(test_state_with_runtime(
+        tmp.path().to_path_buf(),
+        runtime.clone(),
+    ));
     initialize_team_pipeline_test_fixture(
         &state,
         None,
@@ -4159,10 +4270,13 @@ fn live_status_provider_snapshot_yields_to_current_pane_loss() {
         .expect("decode runtime snapshot payload");
     assert_eq!(decoded_snapshot.runtime_sessions.len(), 3);
 
-    let daemon = start_stub_daemon(serde_json::json!({
-        "result": snapshot_payload,
-        "error": null
-    }));
+    let daemon = start_live_status_stub_daemon(
+        serde_json::json!({
+            "result": snapshot_payload,
+            "error": null
+        }),
+        state.clone(),
+    );
     let provider = ProviderState {
         local: taurhaus_lib::provider::local::LocalProvider,
         daemon: Some(
@@ -4172,9 +4286,9 @@ fn live_status_provider_snapshot_yields_to_current_pane_loss() {
         wsl_distro: None,
     };
 
-    // Regression: provider-backed live status trusted a stale daemon runtime
-    // snapshot and kept pane-loss members active, so the runtime bar stayed on
-    // "Team running normally" and exposed Add Agent instead of degraded actions.
+    // Regression: d593f81b moved presence writes behind the daemon without
+    // teaching this provider-backed path to observe the daemon's reconciliation
+    // result, so pane-loss members stayed active in the returned roster.
     let status = coordination_get_live_team_status_impl(
         &state,
         Some(&provider),

@@ -3184,7 +3184,8 @@ fn daemon_pid_survives_an_interleaved_live_status_save() {
             Arc::new(FakeBackend::default()),
             runtime_for_status,
         );
-        status_orchestrator.reconcile_team_presence_for_live_status(team_name)
+        status_orchestrator
+            .reconcile_team_presence_for_live_status_with_runtime_sessions(team_name, &[])
     });
     probe_gate.wait_until_blocked();
 

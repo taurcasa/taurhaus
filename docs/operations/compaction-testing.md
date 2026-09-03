@@ -65,7 +65,7 @@ Before a delivery test:
 
 1. The target member is live and attached to the expected managed harness.
 2. The operational snapshot contains a resumable task.
-3. The app and daemon are the paired build; protocol 21 rejects a mismatched peer.
+3. The app and daemon are the paired build; protocol 22 rejects a mismatched peer.
 4. For Codex, the installed CLI is >= 0.147 and any lower automatic-compaction threshold was configured before member launch.
 
 No resumable task is an intentional skip, not a transport failure.

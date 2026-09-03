@@ -1,7 +1,7 @@
 //! Shared coordination app state with lazy orchestrator bootstrap.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
 
 use chrono::{DateTime, Utc};
 
@@ -63,6 +63,10 @@ pub struct CoordinationState {
     backend_factory: Arc<BackendFactory>,
     runtime_factory: Arc<RuntimeFactory>,
     orchestrator: Mutex<Option<CoordinationOrchestrator>>,
+    /// Per-team once-latched warn state for the live-presence degrade path —
+    /// app-managed (not a global static) so it shares one ownership story
+    /// with the task-sync snapshot latch and tests need no pre-clearing.
+    live_presence_degraded_teams: Mutex<std::collections::HashSet<String>>,
 }
 
 impl std::fmt::Debug for CoordinationState {
@@ -140,7 +144,25 @@ impl CoordinationState {
             backend_factory,
             runtime_factory,
             orchestrator: Mutex::new(None),
+            live_presence_degraded_teams: Mutex::new(std::collections::HashSet::new()),
         }
+    }
+
+    /// Latch the live-presence degrade warn for a team; true when this is the
+    /// first degradation since the last recovery.
+    pub fn mark_live_presence_degraded(&self, team_name: &str) -> bool {
+        self.live_presence_degraded_teams
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .insert(team_name.to_string())
+    }
+
+    /// Clear the live-presence degrade latch on a successful reconcile.
+    pub fn mark_live_presence_recovered(&self, team_name: &str) {
+        self.live_presence_degraded_teams
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(team_name);
     }
 
     pub fn teams_dir(&self) -> &PathBuf {
@@ -168,6 +190,32 @@ impl CoordinationState {
             )
         })?;
         op(orchestrator)
+    }
+
+    /// Run an operation only when the process-wide orchestrator is immediately
+    /// available. `None` means another operation currently owns the mutex.
+    pub fn try_with_orchestrator<R, F>(&self, op: F) -> Result<Option<R>, CoordinationError>
+    where
+        F: FnOnce(&mut CoordinationOrchestrator) -> Result<R, CoordinationError>,
+    {
+        let mut guard = match self.orchestrator.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => return Ok(None),
+            Err(TryLockError::Poisoned(_)) => {
+                return Err(CoordinationError::StoreError(
+                    "coordination state mutex poisoned".to_string(),
+                ));
+            }
+        };
+        if guard.is_none() {
+            *guard = Some(self.build_orchestrator()?);
+        }
+        let orchestrator = guard.as_mut().ok_or_else(|| {
+            CoordinationError::StoreError(
+                "coordination orchestrator missing after initialization".to_string(),
+            )
+        })?;
+        op(orchestrator).map(Some)
     }
 
     pub fn trigger_team_self_heal(

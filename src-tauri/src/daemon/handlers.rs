@@ -36,6 +36,7 @@ pub(crate) fn dispatch(
         &crate::daemon::roster_runs::RosterOperationsService,
         &crate::daemon::effort_runs::EffortOperationsService,
         &crate::daemon::background_scheduler::LaunchSettingsStore,
+        &crate::coordination::state::CoordinationState,
     ),
 ) -> DaemonResponse {
     #[cfg(feature = "mesh-bridged-backend")]
@@ -46,6 +47,7 @@ pub(crate) fn dispatch(
         roster_operations_service,
         effort_operations_service,
         launch_settings,
+        coordination_state,
     ) = coordination_services;
     tracing::debug!(method = %request.method, id = %request.id, "Received request");
     match request.method.as_str() {
@@ -228,11 +230,85 @@ pub(crate) fn dispatch(
                 effort_operations_service,
             )
         }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS => {
+            handle_coordination_publish_operational_snapshots(
+                &request.id,
+                &request.params,
+                coordination_state,
+            )
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_RECONCILE_LIVE_PRESENCE => {
+            handle_coordination_reconcile_live_presence(
+                &request.id,
+                &request.params,
+                coordination_state,
+            )
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        protocol::method::COORDINATION_SET_ACTIVE_PROJECT_TEAM => {
+            handle_coordination_set_active_project_team(
+                &request.id,
+                &request.params,
+                coordination_state,
+            )
+        }
         _ => DaemonResponse::err(
             &request.id,
             "UNKNOWN_METHOD",
             format!("Unknown method: {}", request.method),
         ),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_publish_operational_snapshots(
+    id: &str,
+    params: &serde_json::Value,
+    state: &crate::coordination::state::CoordinationState,
+) -> DaemonResponse {
+    let params = match serde_json::from_value(params.clone()) {
+        Ok(params) => params,
+        Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+    };
+    match crate::daemon::state_writes::publish_operational_snapshots(state.teams_dir(), params) {
+        Ok(result) => DaemonResponse::ok(id, result),
+        Err(error) => DaemonResponse::err(id, "SNAPSHOT_PUBLICATION_FAILED", error.to_string()),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_reconcile_live_presence(
+    id: &str,
+    params: &serde_json::Value,
+    state: &crate::coordination::state::CoordinationState,
+) -> DaemonResponse {
+    let params = match serde_json::from_value(params.clone()) {
+        Ok(params) => params,
+        Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+    };
+    match crate::daemon::state_writes::reconcile_live_presence(state, params) {
+        Ok(result) => DaemonResponse::ok(id, result),
+        Err(error) => DaemonResponse::err(id, "LIVE_PRESENCE_RECONCILE_FAILED", error.to_string()),
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn handle_coordination_set_active_project_team(
+    id: &str,
+    params: &serde_json::Value,
+    state: &crate::coordination::state::CoordinationState,
+) -> DaemonResponse {
+    let params = match serde_json::from_value(params.clone()) {
+        Ok(params) => params,
+        Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+    };
+    match crate::daemon::state_writes::set_active_project_team(state.teams_dir(), params) {
+        Ok(result) => DaemonResponse::ok(id, result),
+        Err(error) => {
+            DaemonResponse::err(id, "ACTIVE_PROJECT_TEAM_UPDATE_FAILED", error.to_string())
+        }
     }
 }
 

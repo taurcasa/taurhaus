@@ -206,6 +206,7 @@ mod tests {
     #[test]
     fn the_inline_reconnect_refuses_a_daemon_that_predates_hub_owned_focus() {
         let _guard = crate::test_support::acquire_heavy_test_guard();
+        let _cache_guard = crate::test_support::acquire_session_snapshot_cache_test_guard();
         crate::session_snapshot_cache::clear();
 
         let stub = StubDaemon::start(
@@ -240,6 +241,7 @@ mod tests {
     #[test]
     fn the_inline_reconnect_adopts_a_daemon_speaking_this_protocol() {
         let _guard = crate::test_support::acquire_heavy_test_guard();
+        let _cache_guard = crate::test_support::acquire_session_snapshot_cache_test_guard();
         crate::session_snapshot_cache::clear();
 
         let stub = StubDaemon::start(

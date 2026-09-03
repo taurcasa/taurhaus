@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -15,9 +15,26 @@ struct ScanGenerationKey {
 #[derive(Default)]
 pub struct TaskScanGenerationState {
     applied_generations: Mutex<HashMap<ScanGenerationKey, u64>>,
+    snapshot_publish_degraded_projects: Mutex<HashSet<String>>,
 }
 
 const SCAN_GENERATION_RETENTION_WINDOW: u64 = 100;
+
+fn mark_snapshot_publication_degraded(state: &TaskScanGenerationState, project_path: &str) -> bool {
+    state
+        .snapshot_publish_degraded_projects
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .insert(project_path.to_string())
+}
+
+fn mark_snapshot_publication_recovered(state: &TaskScanGenerationState, project_path: &str) {
+    state
+        .snapshot_publish_degraded_projects
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .remove(project_path);
+}
 
 fn should_apply_scan_generation(
     state: &TaskScanGenerationState,
@@ -76,25 +93,35 @@ pub(crate) fn persist_task_scan_with_generation(
     scan_result: &crate::task_scanner::TaskResult,
     generation_state: &TaskScanGenerationState,
     scan_generation: u64,
+    daemon: Option<&crate::provider::daemon_client::DaemonProvider>,
 ) {
-    persist_task_scan_with_generation_and_operational_dir(
+    persist_task_scan_with_generation_and_publisher(
         conn,
         normalized_path,
         scan_result,
         generation_state,
         scan_generation,
         &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        |params| publish_operational_snapshots_through_daemon(daemon, params),
     );
 }
 
-fn persist_task_scan_with_generation_and_operational_dir(
+fn persist_task_scan_with_generation_and_publisher<P>(
     conn: &rusqlite::Connection,
     normalized_path: &str,
     scan_result: &crate::task_scanner::TaskResult,
     generation_state: &TaskScanGenerationState,
     scan_generation: u64,
     operational_teams_dir: &Path,
-) {
+    publish: P,
+) where
+    P: FnOnce(
+        crate::daemon::protocol::CoordinationPublishOperationalSnapshotsParams,
+    ) -> Result<
+        crate::daemon::protocol::CoordinationPublishOperationalSnapshotsResult,
+        String,
+    >,
+{
     cleanup_applied_scan_generations(generation_state, scan_generation);
     let source_outcomes = normalized_source_outcomes(scan_result);
     let now = chrono::Utc::now().to_rfc3339();
@@ -171,17 +198,108 @@ fn persist_task_scan_with_generation_and_operational_dir(
         scan_generation,
     );
 
-    if let Err(err) = crate::coordination::operational_context::sync_project_task_snapshots(
+    let prepared = match crate::coordination::operational_context::prepare_project_task_snapshots(
         operational_teams_dir,
         conn,
         normalized_path,
     ) {
-        tracing::warn!(
-            project_path = %normalized_path,
-            error = %err,
-            "failed to sync operational snapshots after task persistence"
-        );
+        Ok(prepared) => prepared,
+        Err(err) => {
+            tracing::warn!(
+                project_path = %normalized_path,
+                error = %err,
+                "failed to prepare operational snapshots after task persistence"
+            );
+            return;
+        }
+    };
+    if prepared.is_empty() {
+        return;
     }
+    let params = crate::daemon::protocol::CoordinationPublishOperationalSnapshotsParams {
+        publications: prepared
+            .into_iter()
+            .map(|(snapshot, task_state_changed_at)| {
+                crate::daemon::protocol::CoordinationOperationalSnapshotPublication {
+                    snapshot,
+                    task_state_changed_at,
+                }
+            })
+            .collect(),
+    };
+    if let Err(err) = publish(params) {
+        if mark_snapshot_publication_degraded(generation_state, normalized_path) {
+            tracing::warn!(
+                project_path = %normalized_path,
+                error = %err,
+                "operational snapshot publication failed; snapshots remain derivable from task state"
+            );
+        }
+    } else {
+        mark_snapshot_publication_recovered(generation_state, normalized_path);
+    }
+}
+
+fn publish_operational_snapshots_through_daemon(
+    daemon: Option<&crate::provider::daemon_client::DaemonProvider>,
+    params: crate::daemon::protocol::CoordinationPublishOperationalSnapshotsParams,
+) -> Result<crate::daemon::protocol::CoordinationPublishOperationalSnapshotsResult, String> {
+    let daemon = daemon.ok_or_else(|| "daemon is unavailable".to_string())?;
+    if !daemon.is_connected() {
+        if !daemon.try_reconnect() {
+            return Err("daemon is not connected".to_string());
+        }
+        #[cfg(feature = "mesh-bridged-backend")]
+        if let Err(error) =
+            crate::commands::settings::repush_cached_launch_settings_to_daemon(daemon)
+        {
+            tracing::warn!(error = %error, "Failed to repush launch settings after snapshot-publication reconnect");
+        }
+    }
+    let request = crate::daemon::protocol::DaemonRequest::new(
+        format!("snapshot-publish-{}", uuid::Uuid::new_v4().simple()),
+        crate::daemon::protocol::method::COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS,
+        params,
+    );
+    let response = daemon
+        .send_status_request_within(
+            &request,
+            crate::commands::coordination::COORDINATION_DAEMON_REQUEST_TIMEOUT,
+        )
+        .map_err(|error| error.to_string())?;
+    if let Some(error) = response.error {
+        return Err(error.message);
+    }
+    response
+        .result
+        .ok_or_else(|| "snapshot publication returned no result".to_string())
+        .and_then(|result| serde_json::from_value(result).map_err(|error| error.to_string()))
+}
+
+#[cfg(test)]
+fn persist_task_scan_with_generation_and_operational_dir(
+    conn: &rusqlite::Connection,
+    normalized_path: &str,
+    scan_result: &crate::task_scanner::TaskResult,
+    generation_state: &TaskScanGenerationState,
+    scan_generation: u64,
+    operational_teams_dir: &Path,
+) {
+    persist_task_scan_with_generation_and_publisher(
+        conn,
+        normalized_path,
+        scan_result,
+        generation_state,
+        scan_generation,
+        operational_teams_dir,
+        |params| {
+            crate::daemon::state_writes::publish_operational_snapshots(
+                operational_teams_dir,
+                params,
+            )
+            .map_err(|error| error.to_string())
+        },
+    );
 }
 
 fn prune_stale_tasks(
@@ -452,6 +570,53 @@ mod tests {
         prune_generation_map(&mut map, 300, 100);
         assert!(map.len() <= 101);
         assert!(map.values().all(|generation| *generation >= 200));
+    }
+
+    // Regression: commit 0b87699b introduced the task-scan snapshot writer in
+    // the desktop process, which cannot safely replace WSL team files over 9p.
+    #[test]
+    fn task_scan_team_state_writes_are_daemon_routed() {
+        let source = include_str!("task_sync.rs");
+        // Anchor on the WHOLE runtime source, not just the thin delegating
+        // wrapper: the publisher body is where a local write would actually
+        // reappear. cfg(test) code below the module marker is excluded.
+        let runtime = source.split("#[cfg(test)]").next().expect("runtime source");
+
+        assert!(runtime.contains("COORDINATION_PUBLISH_OPERATIONAL_SNAPSHOTS"));
+        assert!(!runtime.contains("sync_project_task_snapshots"));
+        assert!(!runtime.contains("OperationalContextSnapshotStore::save"));
+    }
+
+    // Regression: d9c3f354 kept a special degrade branch for a daemon-busy
+    // transport error after the pooled client stopped producing that error.
+    #[test]
+    fn snapshot_publication_failures_use_the_bounded_warning_path() {
+        let source = include_str!("task_sync.rs");
+        let persistence = source
+            .split("fn persist_task_scan_with_generation_and_publisher")
+            .nth(1)
+            .expect("task persistence implementation")
+            .split("fn publish_operational_snapshots_through_daemon")
+            .next()
+            .expect("task persistence body");
+
+        assert!(!persistence.contains("is_busy_transport_error(&err)"));
+        assert!(!persistence.contains("shared daemon connection is busy"));
+    }
+
+    // Regression: d593f81b used a process-global warning latch for snapshot
+    // publication, so one project's recovery changed another project's warning state.
+    #[test]
+    fn snapshot_publication_degrade_state_is_owned_per_project() {
+        let state = TaskScanGenerationState::default();
+
+        assert!(mark_snapshot_publication_degraded(&state, "/projects/a"));
+        assert!(!mark_snapshot_publication_degraded(&state, "/projects/a"));
+        assert!(mark_snapshot_publication_degraded(&state, "/projects/b"));
+
+        mark_snapshot_publication_recovered(&state, "/projects/a");
+        assert!(mark_snapshot_publication_degraded(&state, "/projects/a"));
+        assert!(!mark_snapshot_publication_degraded(&state, "/projects/b"));
     }
 
     #[test]

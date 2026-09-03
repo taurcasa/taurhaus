@@ -259,7 +259,8 @@ pub async fn coordination_initialize_team(
     result
 }
 
-const COORDINATION_DAEMON_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+pub(crate) const COORDINATION_DAEMON_REQUEST_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(10);
 const COORDINATION_DAEMON_POLL_INTERVAL: std::time::Duration =
     std::time::Duration::from_millis(500);
 const COORDINATION_ROSTER_DAEMON_POLL_INTERVAL: std::time::Duration =
@@ -413,7 +414,7 @@ fn add_agent_through_daemon_with(
     }
 }
 
-fn resume_member_through_daemon(
+pub(crate) fn resume_member_through_daemon(
     app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
     params: crate::daemon::protocol::CoordinationResumeMemberParams,
@@ -1392,13 +1393,28 @@ pub fn coordination_get_feature_availability() -> IpcResult<FeatureAvailabilityR
     result
 }
 
-#[tauri::command(async)]
-pub fn coordination_get_project_mesh_snapshot(
-    state: State<'_, CoordinationState>,
+#[tauri::command]
+pub async fn coordination_get_project_mesh_snapshot(
+    app: AppHandle,
     project_path: String,
 ) -> IpcResult<ProjectMeshSnapshotResponse> {
     let span = IpcCommandSpan::start("coordination_get_project_mesh_snapshot");
-    let result = coordination_get_project_mesh_snapshot_impl(state.inner(), project_path).ipc();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<CoordinationState>();
+        let provider = app.state::<ProviderState>();
+        coordination_get_project_mesh_snapshot_impl(
+            state.inner(),
+            Some(provider.inner()),
+            project_path,
+        )
+        .ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join project mesh snapshot task: {err}"
+        )))
+    });
     span.finish_result(&result);
     result
 }
@@ -1712,9 +1728,10 @@ fn coordination_get_team_status_impl(
 
 fn coordination_get_project_mesh_snapshot_impl(
     state: &CoordinationState,
+    provider: Option<&ProviderState>,
     project_path: String,
 ) -> Result<ProjectMeshSnapshotResponse, String> {
-    live_status::coordination_get_project_mesh_snapshot_impl(state, project_path)
+    live_status::coordination_get_project_mesh_snapshot_impl(state, provider, project_path)
 }
 
 fn coordination_preflight_check_impl(

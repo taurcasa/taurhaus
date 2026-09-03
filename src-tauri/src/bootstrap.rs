@@ -631,6 +631,7 @@ fn sync_project_tasks_for_projects(
                 &scan_result,
                 generation_state.inner(),
                 context.cycle_id,
+                provider_state.daemon.as_ref(),
             );
             let after = load_active_task_signature(&conn, &normalized_path);
             (before, after)
