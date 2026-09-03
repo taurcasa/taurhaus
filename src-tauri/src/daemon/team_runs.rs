@@ -218,7 +218,7 @@ impl TeamOperationsService {
                     Ok(Ok(report)) => {
                         let _ = registry.complete(
                             &run_id_for_task,
-                            CoordinationRunReport::SwitchTeamAccount(report),
+                            CoordinationRunReport::SwitchTeamAccount(Box::new(report)),
                         );
                     }
                     Ok(Err(error)) => {

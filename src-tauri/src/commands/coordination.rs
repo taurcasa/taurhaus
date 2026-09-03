@@ -590,7 +590,7 @@ fn switch_team_account_through_daemon_with(
                 std::thread::sleep(poll_interval);
             }
             crate::daemon::protocol::CoordinationSwitchTeamAccountOutcome::Completed { report } => {
-                return Ok(report);
+                return Ok(*report);
             }
             crate::daemon::protocol::CoordinationSwitchTeamAccountOutcome::Failed { error } => {
                 return Err(error);

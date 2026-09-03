@@ -91,7 +91,7 @@ pub(crate) enum CoordinationRunReport {
     AddAgent(AddAgentReport),
     ResumeMember(ResumeAgentReport),
     ResumeTeam(ResumeTeamReport),
-    SwitchTeamAccount(crate::coordination::requests::SwitchTeamAccountReport),
+    SwitchTeamAccount(Box<crate::coordination::requests::SwitchTeamAccountReport>),
     Reonboard(DeliveryResult),
     CreateTeam,
     DisbandTeam(DisbandTeamReport),

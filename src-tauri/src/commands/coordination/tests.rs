@@ -1040,7 +1040,7 @@ fn switch_team_account_daemon_client_uses_accept_then_poll() {
         serde_json::to_value(protocol::CoordinationSwitchTeamAccountStatus {
             run_id: "account-switch-test".to_string(),
             outcome: protocol::CoordinationSwitchTeamAccountOutcome::Completed {
-                report: report.clone(),
+                report: Box::new(report.clone()),
             },
         })
         .expect("status payload"),

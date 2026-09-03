@@ -428,7 +428,7 @@ pub struct CoordinationSwitchTeamAccountStatusParams {
 pub enum CoordinationSwitchTeamAccountOutcome {
     Running,
     Completed {
-        report: crate::coordination::requests::SwitchTeamAccountReport,
+        report: Box<crate::coordination::requests::SwitchTeamAccountReport>,
     },
     Failed {
         error: String,
