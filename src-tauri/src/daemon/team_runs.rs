@@ -401,6 +401,17 @@ pub(crate) fn execute_switch_team_account(
                 request.team_name, request.cli_tool
             )));
         }
+        if config
+            .members
+            .iter()
+            .filter(|member| member.cli_tool == request.cli_tool)
+            .all(|member| member.account_id.as_deref() == Some(target.id.as_str()))
+        {
+            return Err(CoordinationError::Validation(format!(
+                "team '{}' already uses account '{}' for {}",
+                request.team_name, target.label, request.cli_tool
+            )));
+        }
         let lead_name = config
             .members
             .iter()
@@ -1042,13 +1053,13 @@ mod tests {
             &commands,
             "new_window",
         )
-        .expect("second switch appends another handoff");
-        assert_eq!(second.handoff_manifest_count, 2);
+        .expect_err("selecting the account already in force is a no-op");
+        assert!(second.to_string().contains("already uses account 'Work'"));
         assert_eq!(
             AccountSwitchManifestStore::load(temp.path(), "arch")
                 .expect("persisted manifests")
                 .len(),
-            2
+            1
         );
     }
 
