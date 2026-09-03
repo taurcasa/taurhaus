@@ -15,7 +15,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::reinjection::CompactionReinjectionService;
 use crate::coordination::stores::{
     record_delivery_at, CompactionDeliveryResult, MemberCompactionStore, MemberRuntimeStore,
-    OperationalContextSnapshotStore, TeamConfigStore,
+    OperationalContextSnapshotStore, TeamConfigStore, TeamRootRegistry,
 };
 use crate::provider::path;
 use crate::provider::platform_paths::PlatformPaths;
@@ -112,6 +112,7 @@ pub struct CompactHookSpecificOutput {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HookMemberMatch {
+    teams_dir: PathBuf,
     team_name: String,
     member: Member,
 }
@@ -477,7 +478,12 @@ pub fn handle_compact_hook(
         .compaction_hook_compat_import
     {
         emit_compaction_hook_compat_import(tool);
-        if compat_import_duplicate(teams_dir, &matched, &payload.session_id, Utc::now())? {
+        if compat_import_duplicate(
+            &matched.teams_dir,
+            &matched,
+            &payload.session_id,
+            Utc::now(),
+        )? {
             emit_compact_hook_skipped(
                 &payload,
                 Some(&matched),
@@ -497,11 +503,14 @@ pub fn handle_compact_hook(
         Utc::now()
     };
 
-    let Some(snapshot) =
-        OperationalContextSnapshotStore::load(teams_dir, &matched.team_name, &matched.member.name)?
+    let Some(snapshot) = OperationalContextSnapshotStore::load(
+        &matched.teams_dir,
+        &matched.team_name,
+        &matched.member.name,
+    )?
     else {
         record_delivery_at(
-            teams_dir,
+            &matched.teams_dir,
             &matched.team_name,
             &matched.member.name,
             tool,
@@ -530,7 +539,7 @@ pub fn handle_compact_hook(
 
     if !CompactionReinjectionService::snapshot_has_resumable_task(&snapshot) {
         record_delivery_at(
-            teams_dir,
+            &matched.teams_dir,
             &matched.team_name,
             &matched.member.name,
             tool,
@@ -557,7 +566,8 @@ pub fn handle_compact_hook(
         return Ok(CompactHookResponse::default());
     }
 
-    let card = CompactionReinjectionService::compose(teams_dir, &matched.member, &snapshot);
+    let card =
+        CompactionReinjectionService::compose(&matched.teams_dir, &matched.member, &snapshot);
     let additional_context = CompactionReinjectionService::render_additional_context_text(&card)
         .map_err(|err| {
             emit_compact_hook_failed(
@@ -579,14 +589,14 @@ pub fn handle_compact_hook(
     // before the delivery is recorded — the hook answer would go nowhere.
     if delivery == CompactionDelivery::MeshInbox {
         if let Err(error) = CompactionReinjectionService::deliver_to_inbox(
-            teams_dir,
+            &matched.teams_dir,
             &matched.team_name,
             &matched.member.name,
             &card,
             Utc::now(),
         ) {
             let _ = record_delivery_at(
-                teams_dir,
+                &matched.teams_dir,
                 &matched.team_name,
                 &matched.member.name,
                 tool,
@@ -608,7 +618,7 @@ pub fn handle_compact_hook(
     }
 
     record_delivery_at(
-        teams_dir,
+        &matched.teams_dir,
         &matched.team_name,
         &matched.member.name,
         tool,
@@ -768,8 +778,10 @@ fn resolve_member_match(
 ) -> Result<Result<HookMemberMatch, CompactHookSkipReason>, CoordinationError> {
     let mut candidates = Vec::new();
 
-    for team_name in TeamConfigStore::list(teams_dir)? {
-        let config = match TeamConfigStore::load(teams_dir, &team_name) {
+    for (team_teams_dir, team_name) in
+        TeamRootRegistry::new(teams_dir.to_path_buf()).team_locations()?
+    {
+        let config = match TeamConfigStore::load(&team_teams_dir, &team_name) {
             Ok(config) => config,
             Err(err) => {
                 tracing::warn!(
@@ -785,11 +797,13 @@ fn resolve_member_match(
             if member.cli_tool != tool {
                 continue;
             }
-            let runtime_session_id = MemberRuntimeStore::load(teams_dir, &team_name, &member.name)
-                .ok()
-                .and_then(|runtime| runtime.session_id);
+            let runtime_session_id =
+                MemberRuntimeStore::load(&team_teams_dir, &team_name, &member.name)
+                    .ok()
+                    .and_then(|runtime| runtime.session_id);
             candidates.push((
                 HookMemberMatch {
+                    teams_dir: team_teams_dir.clone(),
                     team_name: team_name.clone(),
                     member,
                 },
@@ -2419,6 +2433,52 @@ mod tests {
         )
         .expect("load unrelated-root state")
         .is_none());
+    }
+
+    #[test]
+    fn codex_compact_hook_resolves_member_under_registered_team_root() {
+        // Regression: 18810949 introduced selected Claude team roots without
+        // teaching the global Codex hook to resolve members outside the default root.
+        let guard = acquire_env_test_guard();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let default_claude_dir = tmp.path().join("default-claude");
+        let default_teams_dir = default_claude_dir.join("teams");
+        let work_teams_dir = tmp.path().join("work-claude").join("teams");
+        guard.set_override(&default_claude_dir);
+
+        crate::coordination::stores::TeamRootRegistry::new(default_teams_dir.clone())
+            .set("work-team", &work_teams_dir)
+            .expect("register work team root");
+
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let mut member = sample_member(&project);
+        member.name = "codex-architect".to_string();
+        member.cli_tool = CliTool::Codex;
+        write_team_fixture(&work_teams_dir, "work-team", &member, "codex-session");
+        write_snapshot_fixture(&work_teams_dir, "work-team", &member.name);
+
+        let response = handle_compact_hook(
+            &json!({
+                "hook_event_name": "SessionStart",
+                "session_id": "codex-session",
+                "source": "compact",
+                "cwd": &project,
+                "transcript_path": project.join(
+                    ".codex/sessions/2026/09/03/rollout-2026-09-03T10-00-00-codex-session.jsonl"
+                ),
+            })
+            .to_string(),
+            &default_teams_dir,
+        )
+        .expect("Codex hook should resolve the registered-root member");
+
+        assert!(response.hook_specific_output.is_some());
+        assert!(
+            MemberCompactionStore::load(&work_teams_dir, "work-team", &member.name)
+                .expect("load work-root delivery state")
+                .is_some()
+        );
     }
 
     #[test]
