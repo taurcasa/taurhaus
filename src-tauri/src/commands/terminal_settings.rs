@@ -98,41 +98,6 @@ pub(crate) fn apply_managed_codex_launch_inputs(
     }
 }
 
-pub(crate) fn managed_codex_hook_trust_for_launch(
-    teams_dir: &std::path::Path,
-    has_managed_codex: bool,
-) -> bool {
-    match reconcile_codex_hook_for_managed_launch(teams_dir, has_managed_codex) {
-        Ok(_) => {
-            has_managed_codex
-                && crate::coordination::compact_hook::codex_compact_hook_is_installed()
-        }
-        Err(error) => {
-            tracing::warn!(
-                error = %error,
-                "Codex compact hook reconciliation degraded; continuing managed launch"
-            );
-            let mut fields = serde_json::Map::new();
-            fields.insert(
-                "tool".to_string(),
-                serde_json::Value::String("codex".to_string()),
-            );
-            fields.insert(
-                "error.message".to_string(),
-                serde_json::Value::String(crate::errors::sanitize_error(&error.to_string())),
-            );
-            crate::commands::logging::emit_global(
-                "warn",
-                "coordination",
-                "compaction.codex_hook.degraded",
-                Some("Managed launch continued without Codex hook trust bypass".to_string()),
-                fields,
-            );
-            false
-        }
-    }
-}
-
 fn apply_managed_account_selector(
     cli_commands: &mut crate::models::CliCommandSettings,
     enabled: bool,
@@ -291,15 +256,6 @@ pub(crate) fn reconcile_codex_hook(has_managed_codex: bool) -> Result<bool, Coor
         );
     }
     Ok(changed)
-}
-
-pub(crate) fn reconcile_codex_hook_for_managed_launch(
-    teams_dir: &std::path::Path,
-    launch_has_managed_codex: bool,
-) -> Result<bool, CoordinationError> {
-    let host_has_managed_codex =
-        managed_codex_hook_needed_for_launch(teams_dir, launch_has_managed_codex)?;
-    reconcile_codex_hook(host_has_managed_codex)
 }
 
 #[cfg(test)]
@@ -492,13 +448,205 @@ pub(crate) fn reconcile_grok_hooks_at(
     }
 }
 
+fn resolved_managed_home(
+    cli_commands: &crate::models::CliCommandSettings,
+    cli_tool: CliTool,
+    account_id: Option<&str>,
+) -> Option<std::path::PathBuf> {
+    let accounts = cli_commands.managed_accounts.get(&cli_tool);
+    let selected = account_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|requested| {
+            accounts
+                .into_iter()
+                .flatten()
+                .find(|account| account.id == requested && account.logged_in)
+        });
+    if let Some(selected) = selected {
+        return Some(selected.dir.clone());
+    }
+    let default_detected = accounts
+        .into_iter()
+        .flatten()
+        .find(|account| account.is_default && account.logged_in)
+        .map(|account| account.dir.clone());
+    let selector = crate::session_scanner::cli_tool::spec(cli_tool)
+        .capabilities
+        .account_selector;
+    default_detected.or_else(|| {
+        selector.and_then(|selector| cli_commands.account_selector_dirs.get(selector).cloned())
+    })
+}
+
+fn collect_managed_hook_homes_for_launch(
+    teams_dir: &std::path::Path,
+    launch_members: &[(CliTool, Option<String>)],
+    cli_commands: &crate::models::CliCommandSettings,
+) -> Result<
+    std::collections::HashMap<CliTool, std::collections::BTreeSet<std::path::PathBuf>>,
+    CoordinationError,
+> {
+    let launched_tools = launch_members
+        .iter()
+        .map(|(tool, _)| *tool)
+        .collect::<std::collections::HashSet<_>>();
+    let mut homes =
+        std::collections::HashMap::<CliTool, std::collections::BTreeSet<std::path::PathBuf>>::new();
+    for (tool, account_id) in launch_members {
+        let capabilities = crate::session_scanner::cli_tool::spec(*tool).capabilities;
+        if capabilities.compaction_hook
+            && capabilities.session_root != SessionRoot::AppManagedClaudeDir
+        {
+            if let Some(home) = resolved_managed_home(cli_commands, *tool, account_id.as_deref()) {
+                homes.entry(*tool).or_default().insert(home);
+            }
+        }
+    }
+    for team_name in crate::coordination::stores::TeamConfigStore::list(teams_dir)? {
+        let config = crate::coordination::stores::TeamConfigStore::load(teams_dir, &team_name)?;
+        for member in config.members {
+            if !launched_tools.contains(&member.cli_tool) {
+                continue;
+            }
+            let capabilities = crate::session_scanner::cli_tool::spec(member.cli_tool).capabilities;
+            if capabilities.compaction_hook
+                && capabilities.session_root != SessionRoot::AppManagedClaudeDir
+            {
+                if let Some(home) = resolved_managed_home(
+                    cli_commands,
+                    member.cli_tool,
+                    member.account_id.as_deref(),
+                ) {
+                    homes.entry(member.cli_tool).or_default().insert(home);
+                }
+            }
+        }
+    }
+    Ok(homes)
+}
+
+pub(crate) fn reconcile_managed_account_hooks_for_launch(
+    teams_dir: &std::path::Path,
+    launch_members: &[(CliTool, Option<String>)],
+    cli_commands: &crate::models::CliCommandSettings,
+) -> bool {
+    match reconcile_managed_account_hooks_for_launch_at(
+        teams_dir,
+        launch_members,
+        cli_commands,
+        CliVersions::current().codex_compaction_hooks_support(),
+        cli_commands.grok_hooks_enabled.unwrap_or(true),
+        &match compact_hook_executable() {
+            Ok(executable) => executable,
+            Err(error) => {
+                tracing::warn!(error = %error, "managed account hook reconciliation degraded");
+                return false;
+            }
+        },
+    ) {
+        Ok(trusted) => trusted,
+        Err(error) => {
+            tracing::warn!(error = %error, "managed account hook reconciliation degraded");
+            false
+        }
+    }
+}
+
+fn reconcile_managed_account_hooks_for_launch_at(
+    teams_dir: &std::path::Path,
+    launch_members: &[(CliTool, Option<String>)],
+    cli_commands: &crate::models::CliCommandSettings,
+    codex_hooks_supported: Option<bool>,
+    grok_enabled: bool,
+    taurhaus_exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    let homes = collect_managed_hook_homes_for_launch(teams_dir, launch_members, cli_commands)?;
+    for (tool, tool_homes) in &homes {
+        let delivery = crate::session_scanner::cli_tool::spec(*tool)
+            .capabilities
+            .compaction_delivery;
+        for home in tool_homes {
+            match delivery {
+                CompactionDelivery::HookStdout => {
+                    reconcile_codex_hook_at_with_support(
+                        home,
+                        true,
+                        codex_hooks_supported,
+                        taurhaus_exe,
+                    )?;
+                }
+                CompactionDelivery::MeshInbox => {
+                    reconcile_grok_hooks_at(home, grok_enabled, true, taurhaus_exe)?;
+                }
+            }
+        }
+    }
+    let codex_launch_homes = launch_members
+        .iter()
+        .filter(|(tool, _)| *tool == CliTool::Codex)
+        .filter_map(|(tool, account_id)| {
+            resolved_managed_home(cli_commands, *tool, account_id.as_deref())
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    Ok(!codex_launch_homes.is_empty()
+        && codex_launch_homes.iter().all(|home| {
+            crate::coordination::compact_hook::codex_compact_hook_is_installed_at(home)
+        }))
+}
+
+fn managed_home_needed_after_switch(
+    teams_dir: &std::path::Path,
+    switching_team: &str,
+    cli_tool: CliTool,
+    home: &std::path::Path,
+    accounts: &[crate::models::ManagedLaunchAccount],
+) -> Result<bool, CoordinationError> {
+    let default_home = accounts
+        .iter()
+        .find(|account| account.is_default && account.logged_in)
+        .map(|account| account.dir.as_path());
+    for team_name in crate::coordination::stores::TeamConfigStore::list(teams_dir)? {
+        let config = crate::coordination::stores::TeamConfigStore::load(teams_dir, &team_name)?;
+        for member in config
+            .members
+            .iter()
+            .filter(|member| member.cli_tool == cli_tool)
+        {
+            if team_name == switching_team {
+                continue;
+            }
+            let resolved = member
+                .account_id
+                .as_deref()
+                .and_then(|account_id| {
+                    accounts
+                        .iter()
+                        .find(|account| account.id == account_id && account.logged_in)
+                })
+                .map(|account| account.dir.as_path())
+                .or(default_home);
+            match resolved {
+                Some(resolved) if resolved == home => return Ok(true),
+                Some(_) => {}
+                None => return Ok(true),
+            }
+        }
+    }
+    Ok(false)
+}
+
 /// Move a managed member's account-scoped compaction hook before its team is
 /// relaunched. Installing the target first keeps the previous session covered
 /// if writing the new home fails.
 pub(crate) fn reconcile_account_switch_hooks(
+    teams_dir: &std::path::Path,
+    team_name: &str,
     cli_tool: CliTool,
     target_home: &std::path::Path,
     previous_homes: &[std::path::PathBuf],
+    accounts: &[crate::models::ManagedLaunchAccount],
+    grok_enabled: bool,
 ) -> Result<bool, CoordinationError> {
     let capabilities = crate::session_scanner::cli_tool::spec(cli_tool).capabilities;
     if !capabilities.compaction_hook
@@ -506,14 +654,14 @@ pub(crate) fn reconcile_account_switch_hooks(
     {
         return Ok(false);
     }
-    let grok_enabled = capabilities.compaction_delivery == CompactionDelivery::MeshInbox
-        && std::iter::once(target_home)
-            .chain(previous_homes.iter().map(std::path::PathBuf::as_path))
-            .any(crate::coordination::compact_hook::grok_compact_hook_is_installed_at);
     reconcile_account_switch_hooks_at(
+        teams_dir,
+        team_name,
+        cli_tool,
         capabilities.compaction_delivery,
         target_home,
         previous_homes,
+        accounts,
         CliVersions::current().codex_compaction_hooks_support(),
         grok_enabled,
         &compact_hook_executable()?,
@@ -521,9 +669,13 @@ pub(crate) fn reconcile_account_switch_hooks(
 }
 
 fn reconcile_account_switch_hooks_at(
+    teams_dir: &std::path::Path,
+    team_name: &str,
+    cli_tool: CliTool,
     delivery: CompactionDelivery,
     target_home: &std::path::Path,
     previous_homes: &[std::path::PathBuf],
+    accounts: &[crate::models::ManagedLaunchAccount],
     codex_hooks_supported: Option<bool>,
     grok_enabled: bool,
     taurhaus_exe: &std::path::Path,
@@ -543,15 +695,22 @@ fn reconcile_account_switch_hooks_at(
         if previous_home == target_home {
             continue;
         }
+        let keep_installed = managed_home_needed_after_switch(
+            teams_dir,
+            team_name,
+            cli_tool,
+            previous_home,
+            accounts,
+        )?;
         changed |= match delivery {
             CompactionDelivery::HookStdout => reconcile_codex_hook_at_with_support(
                 previous_home,
-                false,
+                keep_installed,
                 codex_hooks_supported,
                 taurhaus_exe,
             )?,
             CompactionDelivery::MeshInbox => {
-                reconcile_grok_hooks_at(previous_home, grok_enabled, false, taurhaus_exe)?
+                reconcile_grok_hooks_at(previous_home, grok_enabled, keep_installed, taurhaus_exe)?
             }
         };
     }

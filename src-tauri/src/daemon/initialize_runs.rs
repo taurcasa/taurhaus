@@ -213,7 +213,11 @@ fn prepare_daemon_launch_inputs(
         });
     let tools = std::iter::once(&request.lead)
         .chain(request.agents.iter())
-        .filter_map(|member| CliTool::from_alias(&member.cli_tool).ok())
+        .filter_map(|member| {
+            CliTool::from_alias(&member.cli_tool)
+                .ok()
+                .map(|tool| (tool, member.account_id.clone()))
+        })
         .collect::<Vec<_>>();
     prepare_daemon_launch_inputs_for_tools(teams_dir, has_codex, tools, commands);
 }

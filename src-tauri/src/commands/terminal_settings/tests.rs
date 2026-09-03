@@ -581,8 +581,8 @@ mod managed_launch_sites {
         );
         assert!(
             shared_daemon_prepare
-                .contains("terminal_settings::managed_codex_hook_trust_for_launch("),
-            "daemon-owned launches must call the roster-wide reconciler locally"
+                .contains("terminal_settings::reconcile_managed_account_hooks_for_launch("),
+            "daemon-owned launches must reconcile every selected account home locally"
         );
         let daemon_team_source = daemon_team_runs_source();
         let daemon_team_prepare =
@@ -617,9 +617,13 @@ fn account_switch_moves_the_codex_hook_to_the_selected_home() {
         .expect("seed personal hook");
 
     reconcile_account_switch_hooks_at(
+        &temp.path().join("teams"),
+        "switching-team",
+        crate::session_scanner::cli_tool::CliTool::Codex,
         CompactionDelivery::HookStdout,
         &work,
         std::slice::from_ref(&personal),
+        &[],
         Some(true),
         true,
         &exe,
@@ -645,9 +649,13 @@ fn account_switch_moves_the_enabled_grok_hook_to_the_selected_home() {
     reconcile_grok_hooks_at(&personal, true, true, &exe).expect("seed personal hook");
 
     reconcile_account_switch_hooks_at(
+        &temp.path().join("teams"),
+        "switching-team",
+        crate::session_scanner::cli_tool::CliTool::Grok,
         CompactionDelivery::MeshInbox,
         &work,
         std::slice::from_ref(&personal),
+        &[],
         Some(true),
         true,
         &exe,
@@ -656,4 +664,99 @@ fn account_switch_moves_the_enabled_grok_hook_to_the_selected_home() {
 
     assert!(grok_compact_hook_is_installed_at(&work));
     assert!(!grok_compact_hook_is_installed_at(&personal));
+}
+
+// Regression: 0bc79ceb pinned a managed Codex member to its selected
+// CODEX_HOME while launch-time reconciliation still installed only in the
+// default home, so compaction reinjection silently disappeared.
+#[test]
+fn managed_launch_installs_the_codex_hook_in_the_selected_home() {
+    use crate::models::ManagedLaunchAccount;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = temp.path().join("teams");
+    let work = temp.path().join("codex-work");
+    let exe = temp.path().join("taurhaus-daemon");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.managed_accounts.insert(
+        crate::session_scanner::cli_tool::CliTool::Codex,
+        vec![ManagedLaunchAccount {
+            id: "codex-work".to_string(),
+            label: "Work".to_string(),
+            dir: work.clone(),
+            logged_in: true,
+            is_default: false,
+        }],
+    );
+
+    let trusted = reconcile_managed_account_hooks_for_launch_at(
+        &teams_dir,
+        &[(
+            crate::session_scanner::cli_tool::CliTool::Codex,
+            Some("codex-work".to_string()),
+        )],
+        &commands,
+        Some(true),
+        true,
+        &exe,
+    )
+    .expect("reconcile selected home");
+
+    assert!(trusted);
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&work));
+}
+
+// Regression: 96f69205 removed the hook from the switching team's previous
+// home without checking another team's members that still launch there.
+#[test]
+fn account_switch_keeps_the_previous_hook_when_another_team_uses_that_home() {
+    use crate::models::ManagedLaunchAccount;
+    use crate::session_scanner::cli_tool::{CliTool, CompactionDelivery};
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = temp.path().join("teams");
+    let personal = temp.path().join("codex-personal");
+    let work = temp.path().join("codex-work");
+    let exe = temp.path().join("taurhaus-daemon");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    write_team(&teams_dir, "team-a", "codex");
+    write_team(&teams_dir, "team-b", "codex");
+    reconcile_codex_hook_at_with_support(&personal, true, Some(true), &exe)
+        .expect("seed shared hook");
+    let accounts = vec![
+        ManagedLaunchAccount {
+            id: "personal".to_string(),
+            label: "Personal".to_string(),
+            dir: personal.clone(),
+            logged_in: true,
+            is_default: true,
+        },
+        ManagedLaunchAccount {
+            id: "work".to_string(),
+            label: "Work".to_string(),
+            dir: work.clone(),
+            logged_in: true,
+            is_default: false,
+        },
+    ];
+
+    reconcile_account_switch_hooks_at(
+        &teams_dir,
+        "team-a",
+        CliTool::Codex,
+        CompactionDelivery::HookStdout,
+        &work,
+        std::slice::from_ref(&personal),
+        &accounts,
+        Some(true),
+        true,
+        &exe,
+    )
+    .expect("move one team");
+
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&work));
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&personal));
 }

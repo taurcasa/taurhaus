@@ -125,10 +125,9 @@ fn load_cli_commands_and_layout(db: &DbState) -> (CliCommandSettings, String) {
     #[cfg(not(test))]
     {
         let terminal_settings = crate::commands::terminal_settings::load_terminal_settings(db);
-        (
-            terminal_settings.cli_commands,
-            terminal_settings.tmux_layout,
-        )
+        let mut cli_commands = terminal_settings.cli_commands;
+        cli_commands.grok_hooks_enabled = Some(terminal_settings.harness.grok_hooks);
+        (cli_commands, terminal_settings.tmux_layout)
     }
 }
 

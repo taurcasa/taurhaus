@@ -310,13 +310,20 @@ impl CoordinationRunRegistry {
 pub(crate) fn prepare_daemon_launch_inputs_for_tools(
     teams_dir: &std::path::Path,
     has_managed_codex: bool,
-    tools: Vec<CliTool>,
+    launch_members: Vec<(CliTool, Option<String>)>,
     commands: &mut CliCommandSettings,
 ) {
+    let tools = launch_members
+        .iter()
+        .map(|(tool, _)| *tool)
+        .collect::<Vec<_>>();
+    crate::commands::accounts::apply_team_account_selector_dirs(commands, tools.iter().copied());
+    crate::commands::accounts::apply_team_managed_accounts(commands, tools.iter().copied());
     let codex_bypass_hook_trust =
-        crate::commands::terminal_settings::managed_codex_hook_trust_for_launch(
+        crate::commands::terminal_settings::reconcile_managed_account_hooks_for_launch(
             teams_dir,
-            has_managed_codex,
+            &launch_members,
+            commands,
         );
     crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
         commands,
@@ -325,8 +332,6 @@ pub(crate) fn prepare_daemon_launch_inputs_for_tools(
     );
 
     let probe = crate::session_scanner::launch_base::ShellAliasProbe::for_pane();
-    crate::commands::accounts::apply_team_account_selector_dirs(commands, tools.iter().copied());
-    crate::commands::accounts::apply_team_managed_accounts(commands, tools.iter().copied());
     crate::commands::accounts::apply_team_launch_base_resolutions_with(
         commands,
         tools,
@@ -349,7 +354,12 @@ pub(crate) fn daemon_launch_resolver_for(
 ) -> std::sync::Arc<PrepareLaunchInputs> {
     std::sync::Arc::new(move |tool, commands| {
         let has_managed_codex = managed_codex_discovery_or_conservative(&teams_dir);
-        prepare_daemon_launch_inputs_for_tools(&teams_dir, has_managed_codex, vec![tool], commands);
+        prepare_daemon_launch_inputs_for_tools(
+            &teams_dir,
+            has_managed_codex,
+            vec![(tool, None)],
+            commands,
+        );
     })
 }
 

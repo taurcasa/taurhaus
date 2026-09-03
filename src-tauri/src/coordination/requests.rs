@@ -728,7 +728,7 @@ pub struct AccountSwitchMemberHandoff {
     pub last_activity_line: String,
 }
 
-/// Append-only handoff manifest embedded in the team config extension map.
+/// Append-only handoff manifest stored at `<team>/state/account-switches.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountSwitchHandoffManifest {

@@ -323,7 +323,7 @@ fn prepare_resume_team_launch_inputs(
     let tools = config
         .members
         .iter()
-        .map(|member| member.cli_tool)
+        .map(|member| (member.cli_tool, member.account_id.clone()))
         .collect::<Vec<_>>();
     // The named authority for "team has a managed Codex member" — hook_trust
     // only coincides with it while Codex is the sole trusted harness, and
@@ -405,7 +405,19 @@ pub(crate) fn execute_switch_team_account(
             .members
             .iter()
             .filter(|member| member.cli_tool == request.cli_tool)
-            .all(|member| member.account_id.as_deref() == Some(target.id.as_str()))
+            .all(|member| {
+                member.account_id.as_deref() == Some(target.id.as_str())
+                    && MemberRuntimeStore::load(
+                        state.teams_dir(),
+                        &request.team_name,
+                        &member.name,
+                    )
+                    .is_ok_and(|runtime| {
+                        runtime.launch_account.account_applied != Some(false)
+                            && runtime.launch_account.account_id.as_deref()
+                                == Some(target.id.as_str())
+                    })
+            })
         {
             return Err(CoordinationError::Validation(format!(
                 "team '{}' already uses account '{}' for {}",
@@ -447,8 +459,14 @@ pub(crate) fn execute_switch_team_account(
             .iter()
             .filter(|member| member.cli_tool == request.cli_tool)
             .filter_map(|member| {
-                member
-                    .account_id
+                MemberRuntimeStore::load(
+                    state.teams_dir(),
+                    &request.team_name,
+                    &member.name,
+                )
+                .ok()
+                .and_then(|runtime| runtime.launch_account.account_id)
+                .or_else(|| member.account_id.clone())
                     .as_deref()
                     .and_then(|account_id| {
                         detected_accounts
@@ -463,9 +481,13 @@ pub(crate) fn execute_switch_team_account(
             .into_iter()
             .collect::<Vec<_>>();
         crate::commands::terminal_settings::reconcile_account_switch_hooks(
+            state.teams_dir(),
+            &request.team_name,
             request.cli_tool,
             &target.dir,
             &previous_homes,
+            detected_accounts.map(Vec::as_slice).unwrap_or(&[]),
+            cli_commands.grok_hooks_enabled.unwrap_or(true),
         )?;
 
         orchestrator.stop_team_daemon_best_effort(&request.team_name);
@@ -502,7 +524,9 @@ pub(crate) fn execute_switch_team_account(
             tmux_layout,
         )?;
         for handoff in &handoffs {
-            if !resume.resumed_members.contains(&handoff.member_name) {
+            if handoff.member_name == lead_name
+                || !resume.resumed_members.contains(&handoff.member_name)
+            {
                 continue;
             }
             let previous_label = handoff

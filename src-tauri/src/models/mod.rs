@@ -300,6 +300,11 @@ pub struct CliCommandSettings {
     /// entries mean resolution was unavailable and render fail-soft literally.
     #[serde(skip)]
     pub resolved_bases: HashMap<(CliTool, crate::daemon::protocol::LaunchMode), ResolvedBase>,
+    /// Runtime-only copy of the harness setting that owns Grok compaction
+    /// hooks. It is carried to the daemon with launch intents but omitted from
+    /// persisted/default command settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grok_hooks_enabled: Option<bool>,
 }
 
 impl Default for CliCommandSettings {
@@ -322,6 +327,7 @@ impl Default for CliCommandSettings {
             account_selector_dirs: HashMap::new(),
             managed_accounts: HashMap::new(),
             resolved_bases: HashMap::new(),
+            grok_hooks_enabled: None,
         }
     }
 }
