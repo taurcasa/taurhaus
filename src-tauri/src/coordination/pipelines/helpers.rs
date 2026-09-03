@@ -376,6 +376,7 @@ pub(super) fn should_use_mesh_sidecar(agent: &AgentSetupConfig) -> Result<bool, 
     )?))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn join_mesh_if_required(
     runtime: &dyn CoordinationRuntime,
     team_name: &str,
@@ -410,6 +411,7 @@ pub(super) fn join_mesh_if_required(
     Ok(true)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn start_member_daemon_if_required(
     runtime: &dyn CoordinationRuntime,
     team_name: &str,

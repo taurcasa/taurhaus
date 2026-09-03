@@ -223,7 +223,7 @@ fn export_activity_snapshots_for_team_locations_with_runtime(
             .iter()
             .map(|member| {
                 member.pane_id.as_deref().and_then(|pane_id| {
-                    probe_live_pane(runtime, pane_id, &team_name, &member.member_name)
+                    probe_live_pane(runtime, pane_id, team_name, &member.member_name)
                 })
             })
             .collect();
@@ -258,7 +258,7 @@ fn export_activity_snapshots_for_team_locations_with_runtime(
                     match quarantine_foreign_member(
                         teams_dir,
                         runtime,
-                        &team_name,
+                        team_name,
                         member_name,
                         record,
                         live_pane,

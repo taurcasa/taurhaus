@@ -496,8 +496,10 @@ mod tests {
             "1.json",
             r#"{"id":"1","subject":"Account-root task","status":"pending"}"#,
         );
-        let mut index = ClaudeSourceIndex::default();
-        index.task_roots = vec![default_tasks.clone(), account_tasks];
+        let mut index = ClaudeSourceIndex {
+            task_roots: vec![default_tasks.clone(), account_tasks],
+            ..Default::default()
+        };
         index.teams.insert(
             "work-team".to_string(),
             vec![PathBuf::from("/projects/work")],
