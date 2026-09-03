@@ -1802,22 +1802,34 @@ fn ipc_error_code_name(error: &IpcError) -> &'static str {
 fn coordination_list_teams_impl(
     state: &CoordinationState,
 ) -> Result<TeamDiscoveryResponse, String> {
-    state
-        .with_orchestrator(|orchestrator| orchestrator.discover_teams())
-        .map_err(map_coordination_error)
-        .map(|discovery| TeamDiscoveryResponse {
-            teams: discovery
+    let mut names_by_root =
+        std::collections::BTreeMap::<std::path::PathBuf, std::collections::BTreeSet<String>>::new();
+    for (root, team_name) in state.team_locations().map_err(map_coordination_error)? {
+        names_by_root.entry(root).or_default().insert(team_name);
+    }
+
+    let mut teams = Vec::new();
+    let mut warnings = Vec::new();
+    for (root, authoritative_names) in names_by_root {
+        let discovery = state
+            .with_root_orchestrator(&root, |orchestrator| orchestrator.discover_teams())
+            .map_err(map_coordination_error)?;
+        teams.extend(
+            discovery
                 .teams
                 .into_iter()
+                .filter(|team| authoritative_names.contains(&team.team_name))
                 .map(|team| TeamSummary {
                     team_name: team.team_name,
                     lead_project_path: team
                         .lead_project_path
                         .map(|path| path.display().to_string()),
-                })
-                .collect(),
-            warnings: discovery.warnings,
-        })
+                }),
+        );
+        warnings.extend(discovery.warnings);
+    }
+    teams.sort_by(|left, right| left.team_name.cmp(&right.team_name));
+    Ok(TeamDiscoveryResponse { teams, warnings })
 }
 
 fn coordination_get_team_status_impl(
@@ -1826,7 +1838,9 @@ fn coordination_get_team_status_impl(
 ) -> Result<TeamStatus, String> {
     validate_non_empty("team_name", &team_name)?;
     state
-        .with_orchestrator(|orchestrator| orchestrator.get_team_status(&team_name))
+        .with_team_orchestrator(&team_name, |orchestrator| {
+            orchestrator.get_team_status(&team_name)
+        })
         .map_err(map_coordination_error)
         .map(|status| TeamStatus {
             team_name: status.config.name,

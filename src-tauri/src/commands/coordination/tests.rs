@@ -2853,6 +2853,39 @@ fn list_teams_happy_path_returns_sorted_summaries() {
 }
 
 #[test]
+fn list_and_status_commands_resolve_registered_team_roots() {
+    // Regression: 18810949 introduced selected team roots while these legacy
+    // IPC readers continued to query only the default-root orchestrator.
+    let tmp = TempDir::new().expect("tempdir");
+    let default_teams = tmp.path().join("default/teams");
+    let account_teams = tmp.path().join("account-b/teams");
+    let account_state = test_state(account_teams.clone());
+    initialize_team_pipeline_test_fixture(
+        &account_state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize account-root team");
+
+    let state = test_state(default_teams);
+    state
+        .team_root_registry()
+        .set("architecture-final", &account_teams)
+        .expect("register account root");
+
+    let discovery = coordination_list_teams_impl(&state).expect("list registered-root team");
+    assert_eq!(discovery.teams.len(), 1);
+    assert_eq!(discovery.teams[0].team_name, "architecture-final");
+    let status = coordination_get_team_status_impl(&state, "architecture-final".to_string())
+        .expect("status for registered-root team");
+    assert_eq!(status.team_name, "architecture-final");
+    assert_eq!(status.members.len(), 3);
+}
+
+#[test]
 fn list_teams_error_mapping_io() {
     let tmp = TempDir::new().expect("tempdir");
     let file_path = tmp.path().join("teams-file");
