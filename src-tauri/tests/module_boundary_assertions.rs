@@ -796,6 +796,10 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "WSL-native compact-hook process publishes reinjection state",
         ),
         (
+            "src/coordination/state.rs",
+            "daemon coordination state owns the registry and root-keyed orchestrator cache",
+        ),
+        (
             "src/coordination/operational_context.rs",
             "shared newer-wins publisher is invoked by daemon services",
         ),
@@ -860,6 +864,18 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "daemon deadline scheduler owns task and snapshot CAS writes",
         ),
         (
+            "src/commands/accounts/mod.rs",
+            "read-only account relationship lookup constructs the registry without writing it",
+        ),
+        (
+            "src/services/task_sync.rs",
+            "read-only task synchronization enumerates registry-authoritative team locations",
+        ),
+        (
+            "src/task_scanner/claude_index.rs",
+            "read-only Claude task indexing enumerates registry-authoritative account roots",
+        ),
+        (
             "src/daemon/initialize_runs.rs",
             "daemon initialization finalizer publishes snapshots and mappings",
         ),
@@ -878,6 +894,10 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         (
             "src/daemon/state_writes.rs",
             "daemon service hosts the final synchronous writer intents",
+        ),
+        (
+            "src/daemon/session_activity.rs",
+            "daemon session-activity hub exports snapshots and reads registry authority",
         ),
         (
             "src/coordination/activity_export.rs",
@@ -902,8 +922,9 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
     // around a teams-dir write MUST be added here.
     let markers = [
         ".team_root_registry()",
+        "TeamRootRegistry::new(",
         "quarantine_foreign_member(",
-        "export_activity_snapshots_for_sessions(",
+        "export_activity_snapshots_for_team_locations(",
         "publish_initialize_snapshot(",
         "apply_delivery_context(",
         "active_project::sync_team_from_config(",
