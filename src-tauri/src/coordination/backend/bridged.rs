@@ -1,6 +1,6 @@
 //! Mesh-bridged backend adapter.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(feature = "mesh-bridged-backend")]
 use std::process::Command;
 
@@ -16,9 +16,7 @@ use crate::coordination::requests::{
     OperatorNoticeDelivery, ProbeRequest, ProbeResult, TeardownRequest, TeardownResult,
 };
 #[cfg(feature = "mesh-bridged-backend")]
-use crate::coordination::runtime::{
-    apply_background_command_settings, mesh_command_invocation_for_member,
-};
+use crate::coordination::runtime::apply_background_command_settings;
 use crate::coordination::stores::{MeshInboxMessage, MeshInboxStore};
 use crate::session_scanner::cli_tool::CliTool;
 use chrono::Utc;
@@ -127,12 +125,17 @@ fn binary_lookup_invocation(binary_name: &str) -> CommandInvocation {
 /// Uses the known install path (`~/.local/bin/mesh`) rather than relying
 /// on PATH discovery — matches the daemon execution pattern.
 #[cfg(feature = "mesh-bridged-backend")]
-fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
+fn mesh_command_invocation(args: &[&str], teams_dir: &Path) -> CommandInvocation {
     let team_name = command_flag_value(args, "--team");
     let member_name = command_flag_value(args, "--name");
     match (team_name, member_name) {
         (Some(team_name), Some(member_name)) => {
-            mesh_command_invocation_for_member(args, team_name, member_name)
+            crate::coordination::runtime::mesh_command_invocation_for_member_at(
+                args,
+                team_name,
+                member_name,
+                teams_dir,
+            )
         }
         _ => mesh_cli::mesh_command_invocation(args),
     }
@@ -300,7 +303,7 @@ pub struct MeshCommandOutput {
 
 /// Executes mesh CLI commands.
 pub trait MeshCommandRunner: Send + Sync {
-    fn run(&self, args: &[&str]) -> Result<MeshCommandOutput, CoordinationError>;
+    fn run(&self, args: &[&str], teams_dir: &Path) -> Result<MeshCommandOutput, CoordinationError>;
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
@@ -309,8 +312,8 @@ struct SystemMeshCommandRunner;
 
 #[cfg(feature = "mesh-bridged-backend")]
 impl MeshCommandRunner for SystemMeshCommandRunner {
-    fn run(&self, args: &[&str]) -> Result<MeshCommandOutput, CoordinationError> {
-        let invocation = mesh_command_invocation(args);
+    fn run(&self, args: &[&str], teams_dir: &Path) -> Result<MeshCommandOutput, CoordinationError> {
+        let invocation = mesh_command_invocation(args, teams_dir);
         let output = run_system_command(&invocation).map_err(CoordinationError::Io)?;
 
         Ok(MeshCommandOutput {
@@ -384,7 +387,17 @@ impl MeshBridgedBackend {
 
     #[cfg(feature = "mesh-bridged-backend")]
     fn run_mesh(&self, args: &[&str]) -> Result<MeshCommandOutput, CoordinationError> {
-        self.runner.run(args)
+        let mut rooted_args = args
+            .iter()
+            .map(|arg| (*arg).to_string())
+            .collect::<Vec<_>>();
+        if let Some(claude_dir) = self.teams_dir.parent() {
+            rooted_args.push("--claude-dir".to_string());
+            rooted_args
+                .push(crate::coordination::runtime::mesh_cli_claude_dir_arg_from_path(claude_dir));
+        }
+        let rooted_arg_refs = rooted_args.iter().map(String::as_str).collect::<Vec<_>>();
+        self.runner.run(&rooted_arg_refs, &self.teams_dir)
     }
 
     #[cfg(feature = "mesh-bridged-backend")]
@@ -581,7 +594,11 @@ mod tests {
 
     #[cfg(feature = "mesh-bridged-backend")]
     impl MeshCommandRunner for MockRunner {
-        fn run(&self, args: &[&str]) -> Result<MeshCommandOutput, CoordinationError> {
+        fn run(
+            &self,
+            args: &[&str],
+            _teams_dir: &Path,
+        ) -> Result<MeshCommandOutput, CoordinationError> {
             self.calls
                 .lock()
                 .expect("calls mutex poisoned")
@@ -666,7 +683,7 @@ mod tests {
     #[cfg(feature = "mesh-bridged-backend")]
     #[test]
     fn mesh_command_invocation_uses_known_path() {
-        let invocation = mesh_command_invocation(&["read", "--unread"]);
+        let invocation = mesh_command_invocation(&["read", "--unread"], Path::new("/tmp/teams"));
         let expected_path = dirs::home_dir()
             .unwrap()
             .join(".local/bin/mesh")
@@ -719,12 +736,15 @@ mod tests {
     #[cfg(feature = "mesh-bridged-backend")]
     #[test]
     fn launch_invokes_mesh_join() {
+        let temp = TempDir::new().expect("tempdir");
+        let teams_dir = temp.path().join("work").join("teams");
         let runner = MockRunner::with_outcomes(vec![MeshCommandOutput {
             success: true,
             stdout: "joined".to_string(),
             stderr: String::new(),
         }]);
-        let backend = MeshBridgedBackend::with_runner(runner.clone());
+        let backend =
+            MeshBridgedBackend::with_runner_and_teams_dir(runner.clone(), teams_dir.clone());
 
         let result = backend
             .launch(LaunchRequest {
@@ -740,11 +760,17 @@ mod tests {
         assert_eq!(
             runner.calls(),
             vec![vec![
-                "join",
-                "--team",
-                "architecture-final",
-                "--name",
-                "codex-reviewer"
+                "join".to_string(),
+                "--team".to_string(),
+                "architecture-final".to_string(),
+                "--name".to_string(),
+                "codex-reviewer".to_string(),
+                "--claude-dir".to_string(),
+                teams_dir
+                    .parent()
+                    .expect("Claude dir")
+                    .to_string_lossy()
+                    .to_string()
             ]]
         );
     }

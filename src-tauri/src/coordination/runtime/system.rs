@@ -352,8 +352,12 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
             ));
         }
         let args_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-        let invocation =
-            super::mesh_command_invocation_for_member(&args_refs, team_name, operator_name);
+        let invocation = super::mesh_command_invocation_for_member_at(
+            &args_refs,
+            team_name,
+            operator_name,
+            teams_dir,
+        );
         let mut child = spawn_system_command(&invocation)?;
 
         let Some(pid_path) = daemon_pid_path.as_deref() else {

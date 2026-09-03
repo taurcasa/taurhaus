@@ -25,14 +25,6 @@ fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
     mesh_cli::mesh_command_invocation(args)
 }
 
-pub(crate) fn mesh_command_invocation_for_member(
-    args: &[&str],
-    team_name: &str,
-    member_name: &str,
-) -> CommandInvocation {
-    mesh_command_invocation_for_member_at(args, team_name, member_name, &PlatformPaths::teams_dir())
-}
-
 pub(crate) fn mesh_command_invocation_for_member_at(
     args: &[&str],
     team_name: &str,
@@ -351,7 +343,7 @@ pub(crate) fn resolve_mesh_cli_claude_dir_arg() -> Option<String> {
     resolve_host_claude_dir().map(|path| mesh_cli_claude_dir_arg_from_path(&path))
 }
 
-pub(super) fn mesh_cli_claude_dir_arg_from_path(path: &Path) -> String {
+pub(crate) fn mesh_cli_claude_dir_arg_from_path(path: &Path) -> String {
     let raw = path.to_string_lossy().to_string();
     #[cfg(target_os = "windows")]
     {

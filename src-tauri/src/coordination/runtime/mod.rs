@@ -23,7 +23,10 @@ mod tmux;
 
 #[cfg(test)]
 pub(crate) use process::resolve_mesh_cli_claude_dir_arg;
-pub(crate) use process::{apply_background_command_settings, mesh_command_invocation_for_member};
+pub(crate) use process::{
+    apply_background_command_settings, mesh_cli_claude_dir_arg_from_path,
+    mesh_command_invocation_for_member_at,
+};
 pub use recording::{RecordingCoordinationRuntime, RuntimeCall};
 /// Test seam used by the scanner tests; the integration-test shim crates
 /// compile this module too and do not use it.
