@@ -738,20 +738,14 @@ pub(super) fn render_team_launch(
         model.reasoning_effort = reasoning_effort.map(str::to_string);
     }
     let capabilities = spec(cli_tool).capabilities;
-    if capabilities.team_config_namespace && requested_account_id.is_some() {
-        return Err(CoordinationError::Validation(
-            "Claude account selection belongs to the whole team; mixed-account Claude members are impossible"
-                .to_string(),
-        ));
-    }
     let default_team_config_dir = capabilities
-        .team_config_namespace
-        .then(|| configured_default_dir(cli_tool))
-        .flatten()
+        .account_selector
+        .and_then(|selector| cli_commands.account_selector_dirs.get(selector).cloned())
         .or_else(|| {
             capabilities
-                .account_selector
-                .and_then(|selector| cli_commands.account_selector_dirs.get(selector).cloned())
+                .team_config_namespace
+                .then(|| configured_default_dir(cli_tool))
+                .flatten()
         })
         .map(|dir| to_launch_namespace(&dir));
     let (team_config_dir, mut account) = managed_member_account(

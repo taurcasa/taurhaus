@@ -2068,6 +2068,45 @@ fn managed_codex_member_launch_resolves_its_persisted_account_id() {
 }
 
 #[test]
+fn managed_claude_team_launch_uses_the_selected_team_root() {
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.managed_accounts.insert(
+        CliTool::Claude,
+        vec![crate::models::ManagedLaunchAccount {
+            id: "claude-work".to_string(),
+            label: "Work".to_string(),
+            dir: std::path::PathBuf::from("/accounts/claude-work"),
+            logged_in: true,
+            is_default: false,
+        }],
+    );
+    commands.account_selector_dirs.insert(
+        "CLAUDE_CONFIG_DIR".to_string(),
+        std::path::PathBuf::from("/accounts/claude-default"),
+    );
+
+    let result = render_team_launch(
+        &commands,
+        CliTool::Claude,
+        "opus",
+        None,
+        "architecture-final",
+        "team-lead",
+        MemberRole::Lead,
+        false,
+        None,
+        Some("claude-work"),
+    )
+    .expect("team-scoped Claude account");
+
+    assert!(result
+        .command
+        .starts_with("CLAUDE_CONFIG_DIR='/accounts/claude-work'"));
+    assert_eq!(result.account.account_applied, Some(true));
+    assert_eq!(result.account.account_id.as_deref(), Some("claude-work"));
+}
+
+#[test]
 fn unavailable_member_account_falls_back_loudly_to_the_registry_home() {
     let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
     let tmp = TempDir::new().expect("tempdir");
