@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
 use taurhaus_lib::logging::{install_global_sink, LogFileState};
-use taurhaus_lib::session_scanner::launch_base::{AliasExpansion, ResolvedBase};
+use taurhaus_lib::session_scanner::launch_base::{
+    AliasExpansion, LaunchAccountResult, ResolvedBase,
+};
 use tempfile::TempDir;
 
 use crate::coordination::backend::fake::FakeBackend;
@@ -2179,10 +2181,7 @@ fn selectorless_member_without_detected_account_has_no_fabricated_account_result
     )
     .expect("selectorless launch");
 
-    assert_eq!(
-        result.account,
-        crate::session_scanner::launch_base::LaunchAccountResult::default()
-    );
+    assert_eq!(result.account, LaunchAccountResult::default());
 }
 
 #[test]
