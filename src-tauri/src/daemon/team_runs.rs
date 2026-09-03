@@ -401,6 +401,12 @@ pub(crate) fn execute_switch_team_account(
                 request.team_name, request.cli_tool
             )));
         }
+        let lead_name = config
+            .members
+            .iter()
+            .find(|member| member.role == MemberRole::Lead)
+            .map(|member| member.name.clone())
+            .unwrap_or_else(|| "team-lead".to_string());
 
         let handoffs = switched_members
             .iter()
@@ -483,6 +489,54 @@ pub(crate) fn execute_switch_team_account(
                     member = %handoff.member_name,
                     error = %error,
                     "failed to deliver account-switch onboarding"
+                );
+            }
+        }
+        if resume.resumed_members.contains(&lead_name) {
+            let previous_accounts = handoffs
+                .iter()
+                .map(|handoff| {
+                    handoff
+                        .previous_account_label
+                        .as_deref()
+                        .or(handoff.previous_account_id.as_deref())
+                        .unwrap_or("Default")
+                })
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>()
+                .join(", ");
+            let member_entries = handoffs
+                .iter()
+                .map(|handoff| {
+                    format!(
+                        "- {}: previous session {}; transcript {} ({})",
+                        handoff.member_name,
+                        handoff.session_id.as_deref().unwrap_or("unavailable"),
+                        handoff.transcript_path.as_deref().unwrap_or("unavailable"),
+                        handoff.last_activity_line,
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let message = format!(
+                "[taurhaus] Team account switch complete: {previous_accounts} → {}.\nPrior-run entry points (not required reading):\n{member_entries}\nSkim transcript tails only if context is missing; canonical state is the task ledger. Rebuild task context with `mesh task get ID` before continuing.",
+                target.label,
+            );
+            if let Err(error) = orchestrator.deliver_message(DeliveryRequest::operator_notice(
+                OperatorNoticeDelivery {
+                    member_name: lead_name.clone(),
+                    team_name: request.team_name.clone(),
+                    message,
+                    sender_name: None,
+                    operational_context: None,
+                },
+            )) {
+                tracing::warn!(
+                    team = %request.team_name,
+                    member = %lead_name,
+                    error = %error,
+                    "failed to deliver account-switch lead onboarding"
                 );
             }
         }
@@ -638,8 +692,8 @@ mod tests {
     use crate::coordination::runtime::{CoordinationRuntime, RecordingCoordinationRuntime};
     use crate::coordination::state::CoordinationState;
     use crate::coordination::stores::{
-        AccountSwitchManifestStore, MemberRuntimeStore, OperationalContextSnapshotStore,
-        TeamConfigStore,
+        AccountSwitchManifestStore, MemberRuntimeStore, MeshInboxStore,
+        OperationalContextSnapshotStore, TeamConfigStore,
     };
     use crate::daemon::coordination_runs::CoordinationRunRegistry;
     use crate::daemon::protocol::{
@@ -860,7 +914,11 @@ mod tests {
 
         let mut config = TeamConfigStore::load(temp.path(), "arch").expect("config");
         for member in &mut config.members {
-            member.account_id = Some("personal".to_string());
+            if member.role == crate::coordination::domain::MemberRole::Lead {
+                member.cli_tool = CliTool::Claude;
+            } else {
+                member.account_id = Some("personal".to_string());
+            }
         }
         TeamConfigStore::save(temp.path(), "arch", &config).expect("seed member accounts");
         for member_name in ["team-lead", "builder"] {
@@ -899,13 +957,17 @@ mod tests {
         .expect("switch account");
 
         assert_eq!(report.account_label, "Work");
-        assert_eq!(report.switched_members, ["team-lead", "builder"]);
+        assert_eq!(report.switched_members, ["builder"]);
         assert_eq!(report.handoff_manifest_count, 1);
         let config = TeamConfigStore::load(temp.path(), "arch").expect("updated config");
-        assert!(config
-            .members
-            .iter()
-            .all(|member| member.account_id.as_deref() == Some("work")));
+        assert_eq!(
+            config
+                .members
+                .iter()
+                .find(|member| member.name == "builder")
+                .and_then(|member| member.account_id.as_deref()),
+            Some("work")
+        );
         let manifests =
             AccountSwitchManifestStore::load(temp.path(), "arch").expect("persisted manifests");
         assert_eq!(manifests.len(), 1);
@@ -917,7 +979,7 @@ mod tests {
             .transcript_path
             .as_deref()
             .expect("pointer")
-            .ends_with("team-lead.jsonl"));
+            .ends_with("builder.jsonl"));
         assert!(manifests[0].members[0]
             .last_activity_line
             .starts_with("Last activity: "));
@@ -929,6 +991,15 @@ mod tests {
                 if notice.message.contains("Account switch complete")
                     && notice.message.contains("Previous transcript:")
         )));
+        // Regression: 0bc79ceb delivered switch onboarding only to members of
+        // the switched tool, so a Claude lead never received the handoff map.
+        let lead_inbox =
+            MeshInboxStore::load(temp.path(), "arch", "team-lead").expect("Claude lead inbox");
+        assert!(lead_inbox.iter().any(|notice| {
+            notice.text.contains("builder")
+                && notice.text.contains("builder.jsonl")
+                && notice.text.contains("mesh task get")
+        }));
 
         let second = super::execute_switch_team_account(
             state.as_ref(),

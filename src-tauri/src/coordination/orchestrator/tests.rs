@@ -2501,6 +2501,46 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
     }
 }
 
+// Regression: 0bc79ceb treated a pane that was already gone as a fatal account-switch
+// teardown failure, leaving the team stopped before its config could be rewritten.
+#[test]
+fn account_switch_stop_accepts_an_already_missing_pane_and_clears_launch_account() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let fake = Arc::new(FakeBackend::default());
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), fake, runtime.clone());
+    let team_name = "architecture-final";
+    let member = sample_member("codex-reviewer", CliTool::Codex);
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(team_name, member.clone())
+        .expect("add member");
+    MemberRuntimeStore::update(tmp.path(), team_name, &member.name, |record| {
+        record.health = HealthState::Healthy;
+        record.pane_id = Some("%missing".to_string());
+        record.cli_tool = Some(CliTool::Codex);
+        record.launch_account.account_applied = Some(true);
+        record.launch_account.account_id = Some("personal".to_string());
+        record.launch_account.account_label = Some("Personal".to_string());
+    })
+    .expect("seed runtime");
+    runtime.set_pane_exists("%missing", false);
+
+    orchestrator
+        .stop_member_for_account_switch(team_name, &member)
+        .expect("an already absent pane is a successful stop");
+
+    let stopped =
+        MemberRuntimeStore::load(tmp.path(), team_name, &member.name).expect("stopped runtime");
+    assert_eq!(stopped.health, HealthState::SessionDead);
+    assert_eq!(stopped.daemon_pid, None);
+    assert_eq!(stopped.launch_account, Default::default());
+}
+
 #[test]
 fn remove_member_does_not_kill_same_project_pane_owned_by_another_process() {
     // Regression: 4344edb4 gated teardown only by project path, so one member

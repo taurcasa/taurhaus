@@ -48,10 +48,18 @@ impl CoordinationOrchestrator {
             Some(member.project_path.as_path()),
             Some(&runtime),
         );
+        let pane_was_already_missing = diagnostics.steps.iter().any(|step| {
+            step.step == "verify_pane_ownership"
+                && step
+                    .message
+                    .as_deref()
+                    .is_some_and(|message| message.contains("pane_missing"))
+        });
         if let Some(failed) = diagnostics
             .steps
             .iter()
             .find(|step| step.step == "kill_pane" && !step.success)
+            .filter(|_| !pane_was_already_missing)
         {
             return Err(format!(
                 "stop failed: {}",
@@ -65,6 +73,7 @@ impl CoordinationOrchestrator {
             MemberRuntimeStore::update(&self.teams_dir, team_name, &member.name, |record| {
                 record.health = HealthState::SessionDead;
                 record.daemon_pid = None;
+                record.launch_account = Default::default();
             })
         {
             tracing::warn!(
