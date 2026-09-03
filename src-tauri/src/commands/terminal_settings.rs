@@ -7,7 +7,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::models::CliCommandSettings;
 use crate::models::{CliVersions, TerminalSettings};
 use crate::provider::platform_paths::PlatformPaths;
-use crate::session_scanner::cli_tool::{all, CliTool};
+use crate::session_scanner::cli_tool::{all, CliTool, CompactionDelivery, SessionRoot};
 
 pub fn load_terminal_settings(db: &DbState) -> TerminalSettings {
     let conn = match db.0.lock() {
@@ -500,12 +500,18 @@ pub(crate) fn reconcile_account_switch_hooks(
     target_home: &std::path::Path,
     previous_homes: &[std::path::PathBuf],
 ) -> Result<bool, CoordinationError> {
-    let grok_enabled = cli_tool == CliTool::Grok
+    let capabilities = crate::session_scanner::cli_tool::spec(cli_tool).capabilities;
+    if !capabilities.compaction_hook
+        || capabilities.session_root == SessionRoot::AppManagedClaudeDir
+    {
+        return Ok(false);
+    }
+    let grok_enabled = capabilities.compaction_delivery == CompactionDelivery::MeshInbox
         && std::iter::once(target_home)
             .chain(previous_homes.iter().map(std::path::PathBuf::as_path))
             .any(crate::coordination::compact_hook::grok_compact_hook_is_installed_at);
     reconcile_account_switch_hooks_at(
-        cli_tool,
+        capabilities.compaction_delivery,
         target_home,
         previous_homes,
         CliVersions::current().codex_compaction_hooks_support(),
@@ -515,38 +521,38 @@ pub(crate) fn reconcile_account_switch_hooks(
 }
 
 fn reconcile_account_switch_hooks_at(
-    cli_tool: CliTool,
+    delivery: CompactionDelivery,
     target_home: &std::path::Path,
     previous_homes: &[std::path::PathBuf],
     codex_hooks_supported: Option<bool>,
     grok_enabled: bool,
     taurhaus_exe: &std::path::Path,
 ) -> Result<bool, CoordinationError> {
-    let mut changed = match cli_tool {
-        CliTool::Codex => reconcile_codex_hook_at_with_support(
+    let mut changed = match delivery {
+        CompactionDelivery::HookStdout => reconcile_codex_hook_at_with_support(
             target_home,
             true,
             codex_hooks_supported,
             taurhaus_exe,
         )?,
-        CliTool::Grok => reconcile_grok_hooks_at(target_home, grok_enabled, true, taurhaus_exe)?,
-        _ => return Ok(false),
+        CompactionDelivery::MeshInbox => {
+            reconcile_grok_hooks_at(target_home, grok_enabled, true, taurhaus_exe)?
+        }
     };
     for previous_home in previous_homes {
         if previous_home == target_home {
             continue;
         }
-        changed |= match cli_tool {
-            CliTool::Codex => reconcile_codex_hook_at_with_support(
+        changed |= match delivery {
+            CompactionDelivery::HookStdout => reconcile_codex_hook_at_with_support(
                 previous_home,
                 false,
                 codex_hooks_supported,
                 taurhaus_exe,
             )?,
-            CliTool::Grok => {
+            CompactionDelivery::MeshInbox => {
                 reconcile_grok_hooks_at(previous_home, grok_enabled, false, taurhaus_exe)?
             }
-            _ => false,
         };
     }
     Ok(changed)

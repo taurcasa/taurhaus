@@ -606,7 +606,7 @@ mod managed_launch_sites {
 #[test]
 fn account_switch_moves_the_codex_hook_to_the_selected_home() {
     use crate::coordination::compact_hook::codex_compact_hook_is_installed_at;
-    use crate::session_scanner::cli_tool::CliTool;
+    use crate::session_scanner::cli_tool::CompactionDelivery;
 
     let temp = tempfile::tempdir().expect("tempdir");
     let personal = temp.path().join("codex-personal");
@@ -617,7 +617,7 @@ fn account_switch_moves_the_codex_hook_to_the_selected_home() {
         .expect("seed personal hook");
 
     reconcile_account_switch_hooks_at(
-        CliTool::Codex,
+        CompactionDelivery::HookStdout,
         &work,
         std::slice::from_ref(&personal),
         Some(true),
@@ -635,7 +635,7 @@ fn account_switch_moves_the_codex_hook_to_the_selected_home() {
 #[test]
 fn account_switch_moves_the_enabled_grok_hook_to_the_selected_home() {
     use crate::coordination::compact_hook::grok_compact_hook_is_installed_at;
-    use crate::session_scanner::cli_tool::CliTool;
+    use crate::session_scanner::cli_tool::CompactionDelivery;
 
     let temp = tempfile::tempdir().expect("tempdir");
     let personal = temp.path().join("grok-personal");
@@ -645,7 +645,7 @@ fn account_switch_moves_the_enabled_grok_hook_to_the_selected_home() {
     reconcile_grok_hooks_at(&personal, true, true, &exe).expect("seed personal hook");
 
     reconcile_account_switch_hooks_at(
-        CliTool::Grok,
+        CompactionDelivery::MeshInbox,
         &work,
         std::slice::from_ref(&personal),
         Some(true),
