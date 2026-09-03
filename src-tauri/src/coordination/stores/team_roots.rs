@@ -80,6 +80,9 @@ impl TeamRootRegistry {
         let mut locations = Vec::new();
         for root in self.roots()? {
             for team_name in TeamConfigStore::list(&root)? {
+                if team_name.starts_with('.') {
+                    continue;
+                }
                 let authoritative = registered
                     .get(&team_name)
                     .unwrap_or(&self.default_teams_dir);
@@ -206,5 +209,20 @@ mod tests {
             registry.roots().expect("roots"),
             vec![default_teams_dir, work_teams_dir]
         );
+    }
+
+    #[test]
+    fn hidden_move_directories_are_not_team_locations() {
+        // Regression: 42840d4a staged cross-device moves inside teams roots,
+        // allowing a leftover hidden backup to enumerate as a real team.
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let default_teams_dir = temp.path().join("default-account/teams");
+        std::fs::create_dir_all(default_teams_dir.join(".arch.taurhaus-backup-deadbeef"))
+            .expect("hidden backup");
+        std::fs::create_dir_all(default_teams_dir.join(".arch.taurhaus-move-deadbeef"))
+            .expect("hidden staging");
+        let registry = TeamRootRegistry::new(default_teams_dir);
+
+        assert!(registry.team_locations().expect("locations").is_empty());
     }
 }

@@ -199,6 +199,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn cross_device_copy_move_verifies_promotes_and_removes_temporaries() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let source = temp.path().join("default/teams");
+        let target = temp.path().join("work/teams");
+        std::fs::create_dir_all(source.join("arch/state")).expect("source tree");
+        std::fs::write(source.join("arch/config.json"), b"config").expect("config");
+        std::fs::write(source.join("arch/state/runtime.json"), b"runtime").expect("runtime");
+        let direct_source = source.join("arch");
+        let direct_target = target.join("arch");
+        let mut cross_device_once = |from: &Path, to: &Path| {
+            if from == direct_source && to == direct_target {
+                Err(std::io::Error::from(std::io::ErrorKind::CrossesDevices))
+            } else {
+                std::fs::rename(from, to)
+            }
+        };
+
+        let strategy = move_team_directory_with(&source, &target, "arch", &mut cross_device_once)
+            .expect("copy+verify move");
+
+        assert_eq!(strategy, TeamMoveStrategy::CopyVerify);
+        assert!(!source.join("arch").exists());
+        assert_eq!(
+            std::fs::read(target.join("arch/state/runtime.json")).expect("moved runtime"),
+            b"runtime"
+        );
+        for root in [&source, &target] {
+            let leftovers = std::fs::read_dir(root)
+                .expect("teams root")
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|name| name.starts_with(".arch.taurhaus-"))
+                .collect::<Vec<_>>();
+            assert!(leftovers.is_empty(), "leftover move paths: {leftovers:?}");
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn failed_copy_move_leaves_only_the_source_team_loadable() {
