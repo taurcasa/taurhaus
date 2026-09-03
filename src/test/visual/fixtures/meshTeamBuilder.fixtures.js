@@ -188,22 +188,55 @@ const availableProjects = [
   { id: '/projects/atlas', name: 'Atlas' },
 ]
 
+// Detection always marks exactly one account per tool `is_default` (Rust
+// `Account::is_default`), and every consumer — AccountPicker, AccountChip,
+// MemberAccountPicker — resolves the shown account through that flag rather
+// than through the state-level `defaultAccountId`. Mock accounts therefore
+// carry it too, or the Claude team truth chip falls back to "Default".
 const accountStates = {
   claude: {
-    accounts: [{ id: 'claude-team', display_name: 'Team Pro', label: 'team@example.com', logged_in: true }],
+    accounts: [
+      {
+        id: 'claude-team',
+        display_name: 'Team Pro',
+        label: 'team@example.com',
+        logged_in: true,
+        is_default: true,
+      },
+    ],
     defaultAccountId: 'claude-team',
     degraded: false,
   },
   codex: {
     accounts: [
-      { id: 'codex-work', display_name: 'Work', label: 'work@example.com', logged_in: true },
-      { id: 'codex-personal', display_name: 'Personal', label: 'personal@example.com', logged_in: true },
+      {
+        id: 'codex-work',
+        display_name: 'Work',
+        label: 'work@example.com',
+        logged_in: true,
+        is_default: true,
+      },
+      {
+        id: 'codex-personal',
+        display_name: 'Personal',
+        label: 'personal@example.com',
+        logged_in: true,
+        is_default: false,
+      },
     ],
     defaultAccountId: 'codex-work',
     degraded: false,
   },
   grok: {
-    accounts: [{ id: 'grok-main', display_name: 'Main', label: 'main@example.com', logged_in: true }],
+    accounts: [
+      {
+        id: 'grok-main',
+        display_name: 'Main',
+        label: 'main@example.com',
+        logged_in: true,
+        is_default: true,
+      },
+    ],
     defaultAccountId: 'grok-main',
     degraded: false,
   },
