@@ -600,3 +600,60 @@ mod managed_launch_sites {
         assert!(daemon_client.contains("COORDINATION_INITIALIZE_TEAM"));
     }
 }
+
+// Regression: 0bc79ceb launched a switched Codex member from its selected
+// CODEX_HOME but left the compact hook in the previous account home.
+#[test]
+fn account_switch_moves_the_codex_hook_to_the_selected_home() {
+    use crate::coordination::compact_hook::codex_compact_hook_is_installed_at;
+    use crate::session_scanner::cli_tool::CliTool;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let personal = temp.path().join("codex-personal");
+    let work = temp.path().join("codex-work");
+    let exe = temp.path().join("taurhaus-daemon");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    reconcile_codex_hook_at_with_support(&personal, true, Some(true), &exe)
+        .expect("seed personal hook");
+
+    reconcile_account_switch_hooks_at(
+        CliTool::Codex,
+        &work,
+        &[personal.clone()],
+        Some(true),
+        true,
+        &exe,
+    )
+    .expect("move hook");
+
+    assert!(codex_compact_hook_is_installed_at(&work));
+    assert!(!codex_compact_hook_is_installed_at(&personal));
+}
+
+// Regression: 0bc79ceb had the same split-home failure for Grok: GROK_HOME
+// moved with the member while the native hook stayed in the prior home.
+#[test]
+fn account_switch_moves_the_enabled_grok_hook_to_the_selected_home() {
+    use crate::coordination::compact_hook::grok_compact_hook_is_installed_at;
+    use crate::session_scanner::cli_tool::CliTool;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let personal = temp.path().join("grok-personal");
+    let work = temp.path().join("grok-work");
+    let exe = temp.path().join("taurhaus-daemon");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    reconcile_grok_hooks_at(&personal, true, true, &exe).expect("seed personal hook");
+
+    reconcile_account_switch_hooks_at(
+        CliTool::Grok,
+        &work,
+        &[personal.clone()],
+        Some(true),
+        true,
+        &exe,
+    )
+    .expect("move hook");
+
+    assert!(grok_compact_hook_is_installed_at(&work));
+    assert!(!grok_compact_hook_is_installed_at(&personal));
+}

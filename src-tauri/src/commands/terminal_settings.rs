@@ -7,7 +7,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::models::CliCommandSettings;
 use crate::models::{CliVersions, TerminalSettings};
 use crate::provider::platform_paths::PlatformPaths;
-use crate::session_scanner::cli_tool::all;
+use crate::session_scanner::cli_tool::{all, CliTool};
 
 pub fn load_terminal_settings(db: &DbState) -> TerminalSettings {
     let conn = match db.0.lock() {
@@ -490,6 +490,66 @@ pub(crate) fn reconcile_grok_hooks_at(
     } else {
         crate::coordination::compact_hook::remove_grok_compact_hook_at(grok_home)
     }
+}
+
+/// Move a managed member's account-scoped compaction hook before its team is
+/// relaunched. Installing the target first keeps the previous session covered
+/// if writing the new home fails.
+pub(crate) fn reconcile_account_switch_hooks(
+    cli_tool: CliTool,
+    target_home: &std::path::Path,
+    previous_homes: &[std::path::PathBuf],
+) -> Result<bool, CoordinationError> {
+    let grok_enabled = cli_tool == CliTool::Grok
+        && std::iter::once(target_home)
+            .chain(previous_homes.iter().map(std::path::PathBuf::as_path))
+            .any(crate::coordination::compact_hook::grok_compact_hook_is_installed_at);
+    reconcile_account_switch_hooks_at(
+        cli_tool,
+        target_home,
+        previous_homes,
+        CliVersions::current().codex_compaction_hooks_support(),
+        grok_enabled,
+        &compact_hook_executable()?,
+    )
+}
+
+fn reconcile_account_switch_hooks_at(
+    cli_tool: CliTool,
+    target_home: &std::path::Path,
+    previous_homes: &[std::path::PathBuf],
+    codex_hooks_supported: Option<bool>,
+    grok_enabled: bool,
+    taurhaus_exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    let mut changed = match cli_tool {
+        CliTool::Codex => reconcile_codex_hook_at_with_support(
+            target_home,
+            true,
+            codex_hooks_supported,
+            taurhaus_exe,
+        )?,
+        CliTool::Grok => reconcile_grok_hooks_at(target_home, grok_enabled, true, taurhaus_exe)?,
+        _ => return Ok(false),
+    };
+    for previous_home in previous_homes {
+        if previous_home == target_home {
+            continue;
+        }
+        changed |= match cli_tool {
+            CliTool::Codex => reconcile_codex_hook_at_with_support(
+                previous_home,
+                false,
+                codex_hooks_supported,
+                taurhaus_exe,
+            )?,
+            CliTool::Grok => {
+                reconcile_grok_hooks_at(previous_home, grok_enabled, false, taurhaus_exe)?
+            }
+            _ => false,
+        };
+    }
+    Ok(changed)
 }
 
 fn compact_hook_executable() -> Result<std::path::PathBuf, CoordinationError> {

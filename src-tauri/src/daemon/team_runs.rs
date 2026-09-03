@@ -426,6 +426,37 @@ pub(crate) fn execute_switch_team_account(
             })
             .collect::<Vec<_>>();
 
+        let detected_accounts = cli_commands.managed_accounts.get(&request.cli_tool);
+        let default_account = detected_accounts
+            .into_iter()
+            .flatten()
+            .find(|account| account.is_default);
+        let previous_homes = config
+            .members
+            .iter()
+            .filter(|member| member.cli_tool == request.cli_tool)
+            .filter_map(|member| {
+                member
+                    .account_id
+                    .as_deref()
+                    .and_then(|account_id| {
+                        detected_accounts
+                            .into_iter()
+                            .flatten()
+                            .find(|account| account.id == account_id)
+                    })
+                    .or(default_account)
+                    .map(|account| account.dir.clone())
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        crate::commands::terminal_settings::reconcile_account_switch_hooks(
+            request.cli_tool,
+            &target.dir,
+            &previous_homes,
+        )?;
+
         orchestrator.stop_team_daemon_best_effort(&request.team_name);
         for member in &config.members {
             orchestrator
