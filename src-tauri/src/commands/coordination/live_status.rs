@@ -313,7 +313,10 @@ fn discover_team_for_project_path_in_state(
             continue;
         };
         had_active_mapping = true;
-        if state.team_teams_dir(&active_team_name)? != teams_dir {
+        if !crate::coordination::stores::team_roots::same_teams_root(
+            &state.team_teams_dir(&active_team_name)?,
+            &teams_dir,
+        ) {
             continue;
         }
         if let Ok(config) = TeamConfigStore::load(&teams_dir, &active_team_name) {

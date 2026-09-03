@@ -556,7 +556,7 @@ fn scan_team_account_relationships(
                 .get(&team_name)
                 .map(PathBuf::as_path)
                 .unwrap_or(default_teams_dir);
-            if authoritative != teams_dir {
+            if !crate::coordination::stores::team_roots::same_teams_root(authoritative, teams_dir) {
                 continue;
             }
         }

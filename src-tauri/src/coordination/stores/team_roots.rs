@@ -20,9 +20,14 @@ const REGISTRY_FILENAME: &str = "team-roots.json";
 const REGISTRY_LOCK_FILENAME: &str = "team-roots.lock";
 const REGISTRY_TMP_FILENAME: &str = "team-roots.json.tmp";
 
+pub(crate) fn normalize_teams_root(root: &Path) -> PathBuf {
+    PathBuf::from(crate::provider::path::normalize_project_path(
+        &root.to_string_lossy(),
+    ))
+}
+
 pub(crate) fn same_teams_root(left: &Path, right: &Path) -> bool {
-    crate::provider::path::normalize_project_path(&left.to_string_lossy())
-        == crate::provider::path::normalize_project_path(&right.to_string_lossy())
+    normalize_teams_root(left) == normalize_teams_root(right)
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

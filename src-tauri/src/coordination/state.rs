@@ -16,7 +16,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::{CoordinationOrchestrator, TeamSelfHealResult};
 use crate::coordination::pipelines::EffortPassOutcome;
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
-use crate::coordination::stores::team_roots::same_teams_root;
+use crate::coordination::stores::team_roots::{normalize_teams_root, same_teams_root};
 use crate::coordination::stores::{TeamConfigStore, TeamRootRegistry};
 use crate::models::CliCommandSettings;
 use crate::provider::platform_paths::PlatformPaths;
@@ -259,7 +259,7 @@ impl CoordinationState {
                 )
             })?;
             roots
-                .entry(teams_dir.to_path_buf())
+                .entry(normalize_teams_root(teams_dir))
                 .or_insert_with(|| Arc::new(Mutex::new(None)))
                 .clone()
         };
@@ -653,7 +653,7 @@ impl CoordinationState {
                 )
             })?;
             roots
-                .entry(teams_dir.to_path_buf())
+                .entry(normalize_teams_root(teams_dir))
                 .or_insert_with(|| Arc::new(Mutex::new(None)))
                 .clone()
         };
@@ -852,6 +852,35 @@ mod tests {
         assert_eq!(legacy_root, default_root);
         assert_eq!(work_root_seen, work_root);
         assert_eq!(builds.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn orchestrator_cache_uses_normalized_root_identity() {
+        // Regression: 18810949 normalized registry authority but keyed the
+        // root orchestrator map by raw paths, splitting one WSL root's lock.
+        let temp = TempDir::new().expect("tempdir");
+        let builds = Arc::new(AtomicUsize::new(0));
+        let state = CoordinationState::with_components(
+            temp.path().join("default/teams"),
+            BackendSelector::m0(),
+            fake_factory_with_counter(builds.clone()),
+        );
+
+        state
+            .with_root_orchestrator(
+                Path::new(r"\\wsl$\Ubuntu\home\user\.claude-work\teams"),
+                |_| Ok(()),
+            )
+            .expect("first root spelling");
+        state
+            .with_root_orchestrator(
+                Path::new(r"\\wsl.localhost\Ubuntu\home\user\.claude-work\teams"),
+                |_| Ok(()),
+            )
+            .expect("equivalent root spelling");
+
+        assert_eq!(builds.load(Ordering::SeqCst), 1);
+        assert_eq!(state.root_orchestrators.lock().expect("root map").len(), 1);
     }
 
     fn sample_member(name: &str, role: MemberRole, tool: CliTool, project_path: &str) -> Member {

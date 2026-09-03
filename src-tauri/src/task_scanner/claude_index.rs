@@ -153,7 +153,7 @@ fn build_claude_source_index_in_roots(
                 .get(&team_name)
                 .map(PathBuf::as_path)
                 .unwrap_or(default_teams);
-            if authoritative == teams_base {
+            if crate::coordination::stores::team_roots::same_teams_root(authoritative, teams_base) {
                 authoritative_teams.insert(team_name.clone());
                 teams.insert(team_name, projects);
             }

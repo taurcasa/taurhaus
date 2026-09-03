@@ -412,7 +412,12 @@ pub(crate) fn execute_switch_team_account(
             .clone();
         let target_teams_dir = target.dir.join("teams");
         let team_root_switch = capabilities.team_config_namespace;
-        if team_root_switch && target_teams_dir == teams_dir {
+        if team_root_switch
+            && crate::coordination::stores::team_roots::same_teams_root(
+                &target_teams_dir,
+                &teams_dir,
+            )
+        {
             return Err(CoordinationError::Validation(format!(
                 "team '{}' already uses account '{}' for {}",
                 request.team_name, target.label, request.cli_tool
