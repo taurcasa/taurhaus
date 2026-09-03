@@ -1,6 +1,6 @@
 # Coordination Through the Daemon
 
-Status: **complete**. Protocol 22 closes B3: the Windows app never mutates team state directly; the daemon and the hook processes (WSL-side, plus the compact hook's native-Windows wrapper runtime) are the only writers, and the module-boundary suite enumerates those exceptions. Protocol 23 applies the same accept-then-poll ownership to team account switching. Protocols 15-22 remain the worked daemon-routing slices.
+Status: **complete**. Protocol 22 closes B3: the Windows app never mutates team state directly; the daemon and the hook processes (WSL-side, plus the compact hook's native-Windows wrapper runtime) are the only writers, and the module-boundary suite enumerates those exceptions. Protocol 23 applies the same accept-then-poll ownership to team account switching. Protocol 24 makes that authority root-aware and enables Claude team account switching. Protocols 15-22 remain the worked daemon-routing slices.
 
 ## The problem, from the field
 
@@ -35,7 +35,7 @@ The round-3 move-aside/tolerant-reader machinery is **kept**, not reverted: it p
 
 ## Wire contract
 
-- `PROTOCOL_VERSION` bumped 14 → 15 for the deadline pass, 15 → 16 for initialization, 16 → 17 for add/resume/stop, 17 → 18 for resume-team/reonboard, 18 → 19 for standalone create/disband and roster edits, 19 → 20 to retire the redundant stop-member wire pair, 20 → 21 for self-heal/effort ownership, 21 → 22 for the final writer intents and boundary, and 22 → 23 for member account ids and team account switching; app and daemon move in lockstep via the existing exact-match gate and repair flow.
+- `PROTOCOL_VERSION` bumped 14 → 15 for the deadline pass, 15 → 16 for initialization, 16 → 17 for add/resume/stop, 17 → 18 for resume-team/reonboard, 18 → 19 for standalone create/disband and roster edits, 19 → 20 to retire the redundant stop-member wire pair, 20 → 21 for self-heal/effort ownership, 21 → 22 for the final writer intents and boundary, 22 → 23 for member account ids and team account switching, and 23 → 24 for per-team root authority; app and daemon move in lockstep via the existing exact-match gate and repair flow.
 - New namespaced methods (`coordination.*`), each carrying its expectation (CAS semantics) even in phase B1 — the daemon validates under `flock` and returns typed conflict outcomes, mirroring today's `RuntimeCommitOutcome::Skipped` shapes.
 - **B2 progress decision**: initialize uses a `run_id`-keyed in-memory registry and status polling. The app polls at roughly 500 ms and re-emits the existing Tauri progress event; the daemon retains terminal runs for a bounded TTL. Push progress remains a possible later optimization, not part of this slice.
 
@@ -47,18 +47,19 @@ This entire failure class was invisible to CI because E2E is Linux-only and ever
 - A module-boundary assertion (B3) that forbids team-state writes from app-side modules, so the class cannot silently return.
 - The one thing CI cannot simulate — 9p semantics — stays covered by the field probes documented in the 0.8.9 ledger; a `just` probe recipe (PowerShell `LockFileEx`/`MoveFileEx` checks against `\\wsl.localhost`) makes them repeatable on the operator's machine after Windows/WSL updates.
 
-## Per-team root authority audit (protocol 23)
+## Per-team root authority audit (protocol 24)
 
-The protocol-23 account slice mapped the full `teams_dir` consumer set before attempting a Claude-root move. The current authority is process-wide, not team-keyed:
+The protocol-23 account slice mapped the full `teams_dir` consumer set before attempting a Claude-root move. Protocol 24 shipped the mapped authority migration atomically:
 
-- bootstrap captures one `PlatformPaths::teams_dir()` in the app and daemon (`lib.rs`, `bin/taurhaus-daemon.rs`) and constructs one `CoordinationState` plus a cached orchestrator for it;
-- app readers use that same root for Mesh discovery/live status, account relationships, task scans, settings, and startup hook reconciliation;
-- daemon team/member/roster runs, deadline and effort schedulers, session activity, live-presence, task-snapshot, and active-project writers all enumerate or mutate beneath that one root;
-- the compact-hook resolver/installers and every coordination store receive that root and locate a team by appending its name.
+- bootstrap still holds one process-wide `CoordinationState`, but it owns the default-root registry and caches orchestrators by root instead of constructing divergent states;
+- every name-based operation resolves `team_name → teams_dir` before reading config, while a missing registry entry returns the historical default path without creating a file;
+- schedulers, discovery/live status, task scanning, account relationships, and hook reconciliation enumerate the default root plus every registered root;
+- daemon team/member/roster runs and the session-activity, live-presence, task-snapshot, and active-project writers mutate beneath the resolved root and retain the B3 writer boundary;
+- initialization pins mesh, member-daemon, compact-hook, and native launch routing to the selected Claude root.
 
-A per-team Claude root must therefore refine the `teams_dir` authority itself. It needs a bootstrap registry that resolves `team_name → teams_dir` before reading the team's moved config, root-keyed orchestrator/lock ownership, and multi-root enumeration for schedulers, discovery, task scanning, account relationships, and hook reconciliation. Moving only initialization or switch writes would strand the team from those consumers and split writers across lock domains.
+A Claude switch stops the team, writes its handoff manifest, moves the team directory by rename or copy/verify/remove, and only then commits the registry entry. A failed move leaves exactly one named team directory loadable and the old registry authority intact. Transcripts remain external and are referenced by the manifest rather than migrated.
 
-That authority migration is intentionally not partially implemented in protocol 23. Claude remains one team-root-scoped account and Claude switching is rejected; Codex and Grok member selectors switch safely without moving team state. Transcript files remain external and are only referenced by switch manifests. A future root migration must land atomically across the consumer groups above and keep the B3 writer assertion green.
+The landing is atomic across the audited consumer groups, and the B3 module-boundary assertion remains the release gate. Claude remains one account per team; Codex and Grok remain per-member selectors.
 
 ## Risks
 
