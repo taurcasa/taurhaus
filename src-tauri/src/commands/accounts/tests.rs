@@ -914,7 +914,7 @@ fn a_signed_out_member_account_does_not_hold_the_team() {
 
     assert_eq!(index.by_account["codex-personal"].teams[0].name, "wave-b");
     assert!(
-        index.by_account.get("codex-work").is_none(),
+        !index.by_account.contains_key("codex-work"),
         "a signed-out account cannot hold a team the launch would not give it"
     );
 }
@@ -970,7 +970,7 @@ fn a_running_member_holds_the_team_under_the_account_it_launched_on() {
 
     assert_eq!(index.by_account["codex-personal"].teams[0].name, "wave-b");
     assert!(
-        index.by_account.get("codex-work").is_none(),
+        !index.by_account.contains_key("codex-work"),
         "the running member's launch account owns the relationship"
     );
 }
