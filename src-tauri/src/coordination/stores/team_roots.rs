@@ -1,0 +1,174 @@
+//! Bootstrap authority for locating team state before a team's config can be read.
+//!
+//! The registry always lives under the default teams root. Reads are deliberately
+//! side-effect free so an existing installation with no registry entry follows
+//! exactly the historical `<default>/teams/<team>` path.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+use fs2::FileExt;
+use serde::{Deserialize, Serialize};
+
+use crate::coordination::errors::CoordinationError;
+
+const REGISTRY_DIRNAME: &str = ".taurhaus";
+const REGISTRY_FILENAME: &str = "team-roots.json";
+const REGISTRY_LOCK_FILENAME: &str = "team-roots.lock";
+const REGISTRY_TMP_FILENAME: &str = "team-roots.json.tmp";
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TeamRootRegistryState {
+    #[serde(default = "schema_version")]
+    schema_version: u32,
+    #[serde(default)]
+    teams: BTreeMap<String, PathBuf>,
+}
+
+const fn schema_version() -> u32 {
+    1
+}
+
+#[derive(Debug, Clone)]
+pub struct TeamRootRegistry {
+    default_teams_dir: PathBuf,
+}
+
+impl TeamRootRegistry {
+    pub fn new(default_teams_dir: PathBuf) -> Self {
+        Self { default_teams_dir }
+    }
+
+    pub fn default_teams_dir(&self) -> &Path {
+        &self.default_teams_dir
+    }
+
+    pub fn path(&self) -> PathBuf {
+        self.registry_dir().join(REGISTRY_FILENAME)
+    }
+
+    pub fn resolve(&self, team_name: &str) -> Result<PathBuf, CoordinationError> {
+        Ok(self
+            .load()?
+            .teams
+            .get(team_name)
+            .cloned()
+            .unwrap_or_else(|| self.default_teams_dir.clone()))
+    }
+
+    pub fn registered(&self) -> Result<BTreeMap<String, PathBuf>, CoordinationError> {
+        Ok(self.load()?.teams)
+    }
+
+    pub fn roots(&self) -> Result<Vec<PathBuf>, CoordinationError> {
+        let state = self.load()?;
+        let mut additional = state.teams.into_values().collect::<BTreeSet<_>>();
+        additional.remove(&self.default_teams_dir);
+        let mut roots = Vec::with_capacity(additional.len() + 1);
+        roots.push(self.default_teams_dir.clone());
+        roots.extend(additional);
+        Ok(roots)
+    }
+
+    /// Daemon-owned commit of one team authority. Pointing at the default root
+    /// removes the entry, preserving the zero-migration representation.
+    pub(crate) fn set(
+        &self,
+        team_name: &str,
+        teams_dir: &Path,
+    ) -> Result<(), CoordinationError> {
+        let registry_dir = self.registry_dir();
+        fs::create_dir_all(&registry_dir)?;
+        let lock_path = registry_dir.join(REGISTRY_LOCK_FILENAME);
+        let lock = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(lock_path)?;
+        lock.lock_exclusive()?;
+
+        let mut state = self.load()?;
+        state.schema_version = schema_version();
+        if teams_dir == self.default_teams_dir {
+            state.teams.remove(team_name);
+        } else {
+            state
+                .teams
+                .insert(team_name.to_string(), teams_dir.to_path_buf());
+        }
+        let payload = serde_json::to_vec_pretty(&state).map_err(|error| {
+            CoordinationError::StoreError(format!(
+                "failed to serialize team-root registry: {error}"
+            ))
+        })?;
+        let tmp_path = registry_dir.join(REGISTRY_TMP_FILENAME);
+        let mut tmp = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&tmp_path)?;
+        tmp.write_all(&payload)?;
+        tmp.sync_all()?;
+        fs::rename(tmp_path, self.path())?;
+        Ok(())
+    }
+
+    fn registry_dir(&self) -> PathBuf {
+        self.default_teams_dir.join(REGISTRY_DIRNAME)
+    }
+
+    fn load(&self) -> Result<TeamRootRegistryState, CoordinationError> {
+        let path = self.path();
+        let raw = match super::lock::read_to_string_with_retry(&path) {
+            Ok(raw) => raw,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(TeamRootRegistryState::default());
+            }
+            Err(error) => return Err(CoordinationError::Io(error)),
+        };
+        serde_json::from_str(&raw).map_err(|error| {
+            CoordinationError::StoreError(format!(
+                "failed to parse team-root registry at {}: {error}",
+                path.display()
+            ))
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TeamRootRegistry;
+
+    #[test]
+    fn missing_registry_is_a_byte_identical_default_root_lookup() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let default_teams_dir = temp.path().join("default-account").join("teams");
+        let registry = TeamRootRegistry::new(default_teams_dir.clone());
+
+        assert_eq!(registry.resolve("legacy-team").expect("resolve"), default_teams_dir);
+        assert_eq!(registry.roots().expect("roots"), vec![default_teams_dir.clone()]);
+        assert!(!registry.path().exists(), "a read must not migrate or write state");
+    }
+
+    #[test]
+    fn registry_round_trips_team_roots_and_enumerates_each_root_once() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let default_teams_dir = temp.path().join("default-account").join("teams");
+        let work_teams_dir = temp.path().join("work-account").join("teams");
+        let registry = TeamRootRegistry::new(default_teams_dir.clone());
+
+        registry.set("work-team", &work_teams_dir).expect("set work team");
+        registry.set("other-work-team", &work_teams_dir).expect("set second work team");
+
+        assert_eq!(registry.resolve("work-team").expect("resolve"), work_teams_dir);
+        assert_eq!(registry.resolve("legacy-team").expect("resolve"), default_teams_dir);
+        assert_eq!(
+            registry.roots().expect("roots"),
+            vec![default_teams_dir, work_teams_dir]
+        );
+    }
+}
