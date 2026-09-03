@@ -192,12 +192,18 @@ pub struct ClaudeCompactionSignalSource;
 
 impl CompactionSignalSource for ClaudeCompactionSignalSource {
     fn install(&self, config_dir: &Path, taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
+        let default_config_dir = PlatformPaths::claude_dir();
+        let pinned_config_dir = (!crate::coordination::stores::team_roots::same_teams_root(
+            config_dir,
+            &default_config_dir,
+        ))
+        .then_some(config_dir);
         ensure_source_installed(
             config_dir,
             CLAUDE_SETTINGS_FILENAME,
             taurhaus_exe,
             None,
-            Some(config_dir),
+            pinned_config_dir,
         )
     }
 
@@ -2688,6 +2694,30 @@ mod tests {
                 "bash {}",
                 shell_quote_string(&script_path.display().to_string())
             )
+        );
+    }
+
+    #[test]
+    fn default_root_hook_script_keeps_the_unpinned_historical_bytes() {
+        // Regression: a4fd2cf2 pinned every Claude hook script, rewriting the
+        // default-root script even though its resolution behavior was unchanged.
+        let guard = acquire_env_test_guard();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let claude_dir = tmp.path().join("claude");
+        let teams_dir = claude_dir.join("teams");
+        guard.set_override(&claude_dir);
+        fs::create_dir_all(&teams_dir).expect("teams dir");
+        let exe_path = tmp.path().join("taurhaus");
+        fs::write(&exe_path, b"binary").expect("exe path");
+
+        ensure_compact_hook_installed(&teams_dir, &exe_path).expect("install default hook");
+
+        let script_path = claude_dir
+            .join("hooks")
+            .join(platform_hook_filename(HookRuntime::Posix));
+        assert_eq!(
+            fs::read_to_string(script_path).expect("script"),
+            render_hook_script(&exe_path, HookRuntime::Posix).expect("historical script")
         );
     }
 
