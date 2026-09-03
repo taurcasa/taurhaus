@@ -814,8 +814,8 @@ fn merge_current_extension_fields(
     }
 }
 
-// LaunchAccountResult is shared with IPC and intentionally serializes these
-// three flattened fields in camelCase. The snake_case spellings remain listed
+// LaunchAccountResult is shared with IPC and intentionally serializes its
+// flattened fields in camelCase. The snake_case spellings remain listed
 // as read aliases for runtime records written before that contract settled.
 const RUNTIME_AUTHORED_KEYS: &[&str] = &[
     "schema_version",

@@ -245,7 +245,7 @@ Team-resume and reonboard workers share the same daemon-local `CoordinationState
 
 | Method | Params | Result | Description |
 |--------|--------|--------|-------------|
-| `coordination.switch_team_account` | `{ request: { team_name, cli_tool, account_id }, cli_commands, tmux_layout, managed_accounts[] }` | `{ run_id }` | Starts a selector-account switch after validating the detected, signed-in account. The daemon snapshots the accumulating handoff manifest, tears down the team, rewrites matching member assignments, resumes through the existing pipeline, and delivers switch onboarding. |
+| `coordination.switch_team_account` | `{ request: { team_name, cli_tool, account_id }, cli_commands, tmux_layout }` | `{ run_id }` | Starts a selector-account switch after validating the detected, signed-in account. The daemon rebuilds the credential-free account snapshot host-side, records the accumulating handoff manifest, tears down the team, rewrites matching member assignments, resumes through the existing pipeline, and delivers switch onboarding. |
 | `coordination.switch_team_account_status` | `{ run_id }` | `{ run_id, outcome }` | Returns the structured switch report or terminal error. |
 
 Only selector-based member accounts are supported: Codex (`CODEX_HOME`) and Grok (`GROK_HOME`). Claude remains team-root-scoped, so mixed Claude accounts and Claude switching are rejected. Transcript files stay in place; the manifest records their paths as optional entry points and never migrates their contents.

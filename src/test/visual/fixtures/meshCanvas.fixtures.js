@@ -136,7 +136,7 @@ export const runtime_workflowMixedRuns_dark = createMeshCanvasScenario({
   ],
 })
 
-const runtime_accountStates_dark = createMeshCanvasScenario({
+export const runtime_accountStates_dark = createMeshCanvasScenario({
   name: 'runtime_accountStates_dark',
   theme: 'dark',
   agentCount: 3,
@@ -147,7 +147,7 @@ const runtime_accountStates_dark = createMeshCanvasScenario({
   ],
 })
 
-const runtime_accountStates_light = createMeshCanvasScenario({
+export const runtime_accountStates_light = createMeshCanvasScenario({
   name: 'runtime_accountStates_light',
   theme: 'light',
   agentCount: 3,

@@ -157,7 +157,7 @@ See [data model reference](docs/architecture/data-model.md) for schema details.
 
 ### IPC Commands
 
-Fine-grained, one command per operation. The default build registers 95 commands in the authoritative [`generate_handler!` list](src-tauri/src/lib.rs#L176) — 80 without the default `mesh-bridged-backend` feature, which gates the 15 coordination commands. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the command catalog.
+Fine-grained, one command per operation. The default build registers 101 commands in the authoritative [`generate_handler!` list](src-tauri/src/lib.rs#L176) — 85 without the default `mesh-bridged-backend` feature, which gates the 16 coordination commands. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the command catalog.
 
 Grouped by command module:
 - **Projects** (12): includes `create_project`, registration flows, path/directory helpers, and first-run checks

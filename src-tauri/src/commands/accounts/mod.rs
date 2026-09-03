@@ -822,7 +822,6 @@ pub(crate) fn apply_team_launch_base_resolutions(
 ) {
     let tools = tools.into_iter().collect::<Vec<_>>();
     apply_team_account_selector_dirs(commands, tools.iter().copied());
-    apply_team_managed_accounts(commands, tools.iter().copied());
     let probe = (!cfg!(target_os = "windows"))
         .then(crate::session_scanner::launch_base::ShellAliasProbe::for_pane);
     apply_team_launch_base_resolutions_with(commands, tools, |base, tool| {
