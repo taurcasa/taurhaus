@@ -46,11 +46,31 @@ const fn schema_version() -> u32 {
 #[derive(Debug, Clone)]
 pub struct TeamRootRegistry {
     default_teams_dir: PathBuf,
+    reader_wsl_distro: Option<String>,
 }
 
 impl TeamRootRegistry {
     pub fn new(default_teams_dir: PathBuf) -> Self {
-        Self { default_teams_dir }
+        #[cfg(target_os = "windows")]
+        let reader_wsl_distro =
+            crate::coordination::mesh_cli::resolve_wsl_distro_for_coordination(None);
+        #[cfg(not(target_os = "windows"))]
+        let reader_wsl_distro = None;
+        Self {
+            default_teams_dir,
+            reader_wsl_distro,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_reader_wsl_distro(
+        default_teams_dir: PathBuf,
+        reader_wsl_distro: Option<String>,
+    ) -> Self {
+        Self {
+            default_teams_dir,
+            reader_wsl_distro,
+        }
     }
 
     pub fn default_teams_dir(&self) -> &Path {
@@ -67,16 +87,21 @@ impl TeamRootRegistry {
             .teams
             .get(team_name)
             .cloned()
+            .map(|root| self.path_for_reader(root))
             .unwrap_or_else(|| self.default_teams_dir.clone()))
     }
 
     pub fn registered(&self) -> Result<BTreeMap<String, PathBuf>, CoordinationError> {
-        Ok(self.load()?.teams)
+        Ok(self
+            .load()?
+            .teams
+            .into_iter()
+            .map(|(team_name, root)| (team_name, self.path_for_reader(root)))
+            .collect())
     }
 
     pub fn roots(&self) -> Result<Vec<PathBuf>, CoordinationError> {
-        let state = self.load()?;
-        let additional = state.teams.into_values().collect::<BTreeSet<_>>();
+        let additional = self.registered()?.into_values().collect::<BTreeSet<_>>();
         let mut roots = Vec::with_capacity(additional.len() + 1);
         roots.push(self.default_teams_dir.clone());
         for root in additional {
@@ -157,6 +182,16 @@ impl TeamRootRegistry {
             .join(REGISTRY_DIRNAME)
     }
 
+    fn path_for_reader(&self, path: PathBuf) -> PathBuf {
+        let raw = path.to_string_lossy();
+        match self.reader_wsl_distro.as_deref() {
+            Some(distro) if raw.starts_with('/') => {
+                PathBuf::from(crate::provider::path::to_windows(&raw, distro))
+            }
+            _ => path,
+        }
+    }
+
     fn load(&self) -> Result<TeamRootRegistryState, CoordinationError> {
         let path = self.path();
         let raw = match super::lock::read_to_string_with_retry(&path) {
@@ -234,6 +269,64 @@ mod tests {
         assert_eq!(
             registry.roots().expect("roots"),
             vec![default_teams_dir, work_teams_dir]
+        );
+    }
+
+    #[test]
+    fn host_reader_converts_daemon_native_registered_roots_to_wsl_unc() {
+        // Regression: 42840d4a persisted the daemon's Linux-native account
+        // root, then handed it unchanged to Windows app filesystem readers.
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let default_teams_dir = temp.path().join("default-account/teams");
+        let registry = TeamRootRegistry::with_reader_wsl_distro(
+            default_teams_dir,
+            Some("Ubuntu".to_string()),
+        );
+        registry
+            .set(
+                "work-team",
+                std::path::Path::new("/home/user/.claude-work/teams"),
+            )
+            .expect("set daemon-native root");
+
+        assert_eq!(
+            registry.resolve("work-team").expect("host resolve"),
+            std::path::PathBuf::from(
+                r"\\wsl.localhost\Ubuntu\home\user\.claude-work\teams"
+            )
+        );
+        assert_eq!(
+            registry
+                .registered()
+                .expect("host registered roots")
+                .get("work-team"),
+            Some(&std::path::PathBuf::from(
+                r"\\wsl.localhost\Ubuntu\home\user\.claude-work\teams"
+            ))
+        );
+        assert_eq!(
+            registry.roots().expect("host roots")[1],
+            std::path::PathBuf::from(
+                r"\\wsl.localhost\Ubuntu\home\user\.claude-work\teams"
+            )
+        );
+    }
+
+    #[test]
+    fn daemon_reader_keeps_registered_roots_linux_native() {
+        // Regression: 42840d4a requires conversion only at the Windows app
+        // read boundary; the WSL daemon must retain its native path.
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let default_teams_dir = temp.path().join("default-account/teams");
+        let registry = TeamRootRegistry::with_reader_wsl_distro(default_teams_dir, None);
+        let work_teams_dir = std::path::PathBuf::from("/home/user/.claude-work/teams");
+        registry
+            .set("work-team", &work_teams_dir)
+            .expect("set daemon-native root");
+
+        assert_eq!(
+            registry.resolve("work-team").expect("daemon resolve"),
+            work_teams_dir
         );
     }
 
