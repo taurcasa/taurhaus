@@ -541,17 +541,33 @@ pub(crate) fn reconcile_managed_account_hooks_for_launch(
         &match compact_hook_executable() {
             Ok(executable) => executable,
             Err(error) => {
-                tracing::warn!(error = %error, "managed account hook reconciliation degraded");
+                log_managed_account_hook_degraded(&error);
                 return false;
             }
         },
     ) {
         Ok(trusted) => trusted,
         Err(error) => {
-            tracing::warn!(error = %error, "managed account hook reconciliation degraded");
+            log_managed_account_hook_degraded(&error);
             false
         }
     }
+}
+
+fn log_managed_account_hook_degraded(error: &CoordinationError) {
+    tracing::warn!(error = %error, "managed account hook reconciliation degraded");
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "error.message".to_string(),
+        serde_json::Value::String(crate::errors::sanitize_error(&error.to_string())),
+    );
+    crate::commands::logging::emit_global(
+        "warn",
+        "coordination",
+        "compaction.codex_hook.degraded",
+        Some("Managed launch continued without compact-hook trust".to_string()),
+        fields,
+    );
 }
 
 fn reconcile_managed_account_hooks_for_launch_at(

@@ -111,7 +111,7 @@ fn fully_populated_settings() -> Settings {
         )]),
         managed_accounts: HashMap::new(),
         resolved_bases: HashMap::new(),
-        grok_hooks_enabled: Some(false),
+        grok_hooks_enabled: None,
     };
     let model_catalog = ModelCatalog {
         claude: vec![model_entry("fixture-claude")],
