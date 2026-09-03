@@ -601,7 +601,11 @@ fn reconcile_managed_account_hooks_for_launch_at(
     }
     let codex_launch_homes = launch_members
         .iter()
-        .filter(|(tool, _)| *tool == CliTool::Codex)
+        .filter(|(tool, _)| {
+            crate::session_scanner::cli_tool::spec(*tool)
+                .capabilities
+                .hook_trust
+        })
         .filter_map(|(tool, account_id)| {
             resolved_managed_home(cli_commands, *tool, account_id.as_deref())
         })
