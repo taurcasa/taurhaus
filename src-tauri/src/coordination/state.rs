@@ -197,6 +197,24 @@ impl CoordinationState {
         self.team_root_registry.roots()
     }
 
+    /// Enumerate only teams whose directory agrees with the registry authority.
+    /// A copied directory without an entry is never silently adopted.
+    pub fn team_locations(&self) -> Result<Vec<(PathBuf, String)>, CoordinationError> {
+        let registered = self.team_root_registry.registered()?;
+        let mut locations = Vec::new();
+        for root in self.teams_roots()? {
+            for team_name in TeamConfigStore::list(&root)? {
+                let authoritative = registered
+                    .get(&team_name)
+                    .unwrap_or(&self.teams_dir);
+                if authoritative == &root {
+                    locations.push((root.clone(), team_name));
+                }
+            }
+        }
+        Ok(locations)
+    }
+
     pub fn app_started_at(&self) -> DateTime<Utc> {
         self.app_started_at
     }
@@ -801,6 +819,30 @@ mod tests {
             },
         )
         .expect("team fixture saved");
+    }
+
+    #[test]
+    fn team_enumeration_uses_default_and_registered_roots_without_adopting_strays() {
+        let temp = TempDir::new().expect("tempdir");
+        let default_root = temp.path().join("default").join("teams");
+        let work_root = temp.path().join("work").join("teams");
+        save_team_fixture(&default_root, "legacy-team", Vec::new());
+        save_team_fixture(&work_root, "work-team", Vec::new());
+        save_team_fixture(&work_root, "unregistered-copy", Vec::new());
+        let state = CoordinationState::with_components(
+            default_root.clone(),
+            BackendSelector::m0(),
+            fake_factory_with_counter(Arc::new(AtomicUsize::new(0))),
+        );
+        state
+            .team_root_registry()
+            .set("work-team", &work_root)
+            .expect("register work team");
+
+        assert_eq!(
+            state.team_locations().expect("locations"),
+            vec![(default_root, "legacy-team".to_string()), (work_root, "work-team".to_string())]
+        );
     }
 
     fn write_lead_credential(teams_dir: &std::path::Path, team_name: &str) {

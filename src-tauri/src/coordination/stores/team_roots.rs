@@ -118,7 +118,10 @@ impl TeamRootRegistry {
     }
 
     fn registry_dir(&self) -> PathBuf {
-        self.default_teams_dir.join(REGISTRY_DIRNAME)
+        self.default_teams_dir
+            .parent()
+            .unwrap_or(&self.default_teams_dir)
+            .join(REGISTRY_DIRNAME)
     }
 
     fn load(&self) -> Result<TeamRootRegistryState, CoordinationError> {
