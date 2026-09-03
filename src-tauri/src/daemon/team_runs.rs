@@ -1290,6 +1290,60 @@ mod tests {
         );
     }
 
+    #[test]
+    fn claude_team_switch_rolls_the_move_back_when_registry_commit_fails() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let default_teams = temp.path().join("claude-default/teams");
+        let target_account = temp.path().join("claude-work");
+        let target_teams = target_account.join("teams");
+        let (state, _backend, runtime) = state(&default_teams);
+        initialize_team(state.as_ref(), temp.path());
+        let mut config = TeamConfigStore::load(&default_teams, "arch").expect("config");
+        for member in &mut config.members {
+            member.cli_tool = CliTool::Claude;
+            member.account_id = Some("claude-default".to_string());
+        }
+        TeamConfigStore::save(&default_teams, "arch", &config).expect("Claude config");
+        runtime.set_mesh_join_teams_dir(&target_teams);
+        let mut commands = CliCommandSettings::default();
+        commands.managed_accounts.insert(
+            CliTool::Claude,
+            vec![ManagedLaunchAccount {
+                id: "claude-work".to_string(),
+                label: "Work".to_string(),
+                dir: target_account,
+                logged_in: true,
+                is_default: false,
+            }],
+        );
+
+        let registry_tmp = default_teams
+            .parent()
+            .expect("default account")
+            .join(".taurhaus/team-roots.json.tmp");
+        std::fs::create_dir_all(&registry_tmp).expect("block registry temp-file creation");
+
+        let error = super::execute_switch_team_account(
+            state.as_ref(),
+            &SwitchTeamAccountRequest {
+                team_name: "arch".to_string(),
+                cli_tool: CliTool::Claude,
+                account_id: "claude-work".to_string(),
+            },
+            &commands,
+            "new_window",
+        )
+        .expect_err("registry commit should fail");
+
+        assert!(error.to_string().contains("Is a directory"), "{error}");
+        assert!(TeamConfigStore::load(&default_teams, "arch").is_ok());
+        assert!(!target_teams.join("arch").exists());
+        assert_eq!(
+            state.team_teams_dir("arch").expect("old authority remains"),
+            default_teams
+        );
+    }
+
     // Regression: 2f0d7c7e treated the requested config id as proof that the
     // member launched on it, so a signed-in retry after launch fallback was
     // rejected as redundant.
