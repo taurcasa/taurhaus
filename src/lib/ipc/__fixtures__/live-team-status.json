@@ -3,6 +3,9 @@
   "members": [
     {
       "accountApplied": false,
+      "accountFallbackFrom": null,
+      "accountId": "fixture-account",
+      "accountLabel": "Fixture Account",
       "accountNote": "opaque_base_command",
       "accountNoteDetail": "fixture-wrapper",
       "behaviorSummary": "Preserve future fields",
