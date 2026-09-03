@@ -6687,6 +6687,42 @@ fn a_pin_the_rewrite_cannot_read_leaves_the_member_running() {
     assert_eq!(record.health, HealthState::Healthy);
 }
 
+// Regression: 4463736e reported a base-pinned Codex level as the first
+// `model_reasoning_effort` override in the command, while Codex applies the
+// last. A base — here one an alias expands to — carrying two overrides ran at
+// one level and had the other committed as applied.
+#[test]
+fn a_base_pinning_two_levels_records_the_one_the_launch_runs_at() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut cli_commands = CliCommandSettings::default();
+    cli_commands.codex.fresh = "codex2 -c model_reasoning_effort=\"high\"".to_string();
+    cli_commands.resolved_bases.insert(
+        (CliTool::Codex, crate::daemon::protocol::LaunchMode::Fresh),
+        ResolvedBase {
+            command: concat!(
+                "codex -c model_reasoning_effort=\"low\" ",
+                "-c model_reasoning_effort=\"high\""
+            )
+            .to_string(),
+            expansions: vec![AliasExpansion {
+                name: "codex2".to_string(),
+                body: "codex -c model_reasoning_effort=\"low\"".to_string(),
+            }],
+            opaque_head: None,
+        },
+    );
+
+    let _orchestrator = seed_running_codex_member(&tmp, runtime, &cli_commands);
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("high"),
+        "the record has to name the override the launched command actually applies"
+    );
+}
+
 // Regression: word_spans split on whitespace alone, so a quoted assignment
 // ahead of the frozen variable ('A="b c"') broke the env prefix early and the
 // frozen effort level survived into the managed launch.

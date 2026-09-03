@@ -201,11 +201,17 @@ fn read_config_value(rest: &str) -> Option<(usize, String)> {
 ///
 /// The relaunch checks its own rewrite with this before it stops anything: a
 /// member is only taken down for a command that demonstrably carries the level.
+/// The runtime record's applied level is read back here too, so this has to
+/// answer with the assignment the harness ends up on: config overrides are
+/// applied in the order they are given, so a key assigned twice takes the last
+/// value — reporting the first would record a level the session is not running
+/// at.
 pub fn pinned_base_effort(tool: CliTool, base: &str) -> Option<String> {
     let capabilities = spec(tool).capabilities;
     match capabilities.effort_flag? {
         EffortFlag::Config { key, .. } => config_assignment_spans(base, key)
             .into_iter()
+            .rev()
             .find_map(|(_, value)| trimmed(Some(value.trim_matches(['\'', '"'])))),
         EffortFlag::Argument { flag } => {
             let tokens: Vec<&str> = base.split_whitespace().collect();
@@ -516,6 +522,33 @@ mod tests {
         assert_eq!(
             pinned_base_effort(tool, &rewritten).as_deref(),
             Some("high")
+        );
+    }
+
+    // Regression: 4463736e read a config pin with `find_map`, reporting the
+    // first `model_reasoning_effort` override in the base while Codex applies
+    // the last one — so a base pinning two levels ran at one and recorded the
+    // other.
+    #[test]
+    fn a_base_pinning_two_levels_reads_back_as_the_override_that_wins() {
+        let tool = resume_with_flag_tool();
+        let base = concat!(
+            "codex resume --last -c model_reasoning_effort=\"low\" ",
+            "-c model_reasoning_effort=\"high\" --yolo"
+        );
+
+        assert!(base_pins_effort(tool, base));
+        assert_eq!(
+            pinned_base_effort(tool, base).as_deref(),
+            Some("high"),
+            "the later config override is the one the harness applies"
+        );
+
+        let rewritten = base_with_effort(tool, base, "medium").expect("the pin is rewritable");
+        assert_eq!(
+            pinned_base_effort(tool, &rewritten).as_deref(),
+            Some("medium"),
+            "every pin is rewritten, so the winning one carries the new level"
         );
     }
 
