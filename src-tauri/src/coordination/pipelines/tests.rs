@@ -5401,6 +5401,85 @@ fn capturing_the_session_id_after_our_launch_preserves_applied_effort() {
     assert!(resumed.is_empty(), "the correct session must not relaunch");
 }
 
+// Regression: f02b0b1d required a recorded session id before an adopted one
+// counted as foreign, so a member hand-restarted after liveness had already
+// cleared that id kept asserting the dead session's level and the sweep stayed
+// suppressed.
+#[test]
+fn adopting_a_session_after_an_offline_pass_clears_applied_effort() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime.clone());
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("high".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("42", "Risky active work")),
+        "high",
+        "the migration is irreversible",
+    );
+    write_mesh_task(
+        &root,
+        "42",
+        "in_progress",
+        "high",
+        "the migration is irreversible",
+    );
+
+    // The member's session exits: liveness sees a bare shell and clears the
+    // session id while the level it applied stays recorded.
+    runtime.set_pane_current_command("%21", Some("zsh"));
+    orchestrator
+        .reconcile_team_liveness("effort-team")
+        .expect("offline liveness reconcile");
+    let offline =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(offline.health, HealthState::SessionDead);
+    assert_eq!(offline.session_id, None);
+
+    // The operator restarts `codex` by hand in the same pane.
+    runtime.set_pane_current_command("%21", Some("codex"));
+    runtime.set_detected_runtime_session(
+        "%21",
+        CliTool::Codex,
+        Some("hand-restarted-session"),
+        Some("/tmp/hand-restarted-session.jsonl"),
+    );
+
+    orchestrator
+        .reconcile_team_liveness("effort-team")
+        .expect("liveness reconcile");
+
+    let adopted =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(
+        adopted.session_id.as_deref(),
+        Some("hand-restarted-session")
+    );
+    assert_eq!(
+        adopted.applied_effort, None,
+        "a session that appeared on a dead record is not one taurhaus launched"
+    );
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::BackgroundSweep,
+        )
+        .expect("daemon-style sweep");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+}
+
 #[test]
 fn pending_effort_carries_the_held_task_requested_and_applied_identity() {
     let root = TempDir::new().expect("tempdir");

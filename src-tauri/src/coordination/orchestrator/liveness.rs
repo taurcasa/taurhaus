@@ -475,8 +475,19 @@ impl CoordinationOrchestrator {
                                     runtime.session_id.clone()
                                 };
                             let session_id_changed = next_session_id != runtime.session_id;
-                            let adopted_foreign_session =
-                                session_id_changed && runtime.session_id.is_some();
+                            // A session appearing where the record has none is
+                            // taurhaus's own staged first capture only while
+                            // that record is still healthy from the launch that
+                            // committed the level. Once liveness has marked the
+                            // record dead it also cleared the session id, so a
+                            // session found afterwards is one nothing here
+                            // launched — a hand-restart running at whatever its
+                            // config says. `applied_effort` must stop asserting
+                            // the dead session's level, or the next pass reads
+                            // the member as already switched.
+                            let adopted_foreign_session = session_id_changed
+                                && (runtime.session_id.is_some()
+                                    || runtime.health == HealthState::SessionDead);
                             let next_jsonl_path = if session_id_changed
                                 || detected.jsonl_path.is_some()
                                 || runtime.jsonl_path.is_none()
