@@ -372,21 +372,6 @@ pub(crate) fn execute_switch_team_account(
             "account id must not be empty".to_string(),
         ));
     }
-    let target = cli_commands
-        .managed_accounts
-        .get(&request.cli_tool)
-        .and_then(|accounts| {
-            accounts
-                .iter()
-                .find(|account| account.id == requested_account_id && account.logged_in)
-        })
-        .ok_or_else(|| {
-            CoordinationError::Validation(format!(
-                "account '{requested_account_id}' is unavailable or signed out"
-            ))
-        })?
-        .clone();
-
     state.with_orchestrator(|orchestrator| {
         let mut config = TeamConfigStore::load(state.teams_dir(), &request.team_name)?;
         let switched_members = config
@@ -395,12 +380,30 @@ pub(crate) fn execute_switch_team_account(
             .filter(|member| member.cli_tool == request.cli_tool)
             .map(|member| member.name.clone())
             .collect::<Vec<_>>();
+        // The roster check runs before the target lookup: `managed_accounts`
+        // carries entries only for the tools this launch prepared, so asking it
+        // about a tool the team does not run fails for an unrelated reason and
+        // would report the account as signed out.
         if switched_members.is_empty() {
             return Err(CoordinationError::Validation(format!(
                 "team '{}' has no {} members",
                 request.team_name, request.cli_tool
             )));
         }
+        let target = cli_commands
+            .managed_accounts
+            .get(&request.cli_tool)
+            .and_then(|accounts| {
+                accounts
+                    .iter()
+                    .find(|account| account.id == requested_account_id && account.logged_in)
+            })
+            .ok_or_else(|| {
+                CoordinationError::Validation(format!(
+                    "account '{requested_account_id}' is unavailable or signed out"
+                ))
+            })?
+            .clone();
         if config
             .members
             .iter()
