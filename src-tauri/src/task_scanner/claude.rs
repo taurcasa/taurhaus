@@ -218,15 +218,15 @@ pub fn get_tasks_in_with_index(
     } else {
         index.task_roots.clone()
     };
-    if !task_roots.iter().any(|root| root.path.is_dir()) {
+    if tasks_base.exists() && !tasks_base.is_dir() {
         return ScanOutcome::Unavailable(format!(
-            "Claude tasks base does not exist: {}",
+            "Claude tasks base is not a directory: {}",
             tasks_base.display()
         ));
     }
-    if tasks_base.exists() && !tasks_base.is_dir() && task_roots.len() == 1 {
+    if !task_roots.iter().any(|root| root.path.is_dir()) {
         return ScanOutcome::Unavailable(format!(
-            "Claude tasks base is not a directory: {}",
+            "Claude tasks base does not exist: {}",
             tasks_base.display()
         ));
     }
@@ -1143,6 +1143,33 @@ mod tests {
             &teams_base,
         );
         assert!(matches!(outcome, ScanOutcome::Unavailable(_)));
+    }
+
+    #[test]
+    fn default_tasks_base_file_reports_not_a_directory() {
+        // Regression: 4ca848a checked whether any task root was a directory
+        // first, making the historical default-root file diagnostic unreachable.
+        let tmp = TempDir::new().unwrap();
+        let tasks_base = tmp.path().join("tasks");
+        let projects_base = tmp.path().join("projects");
+        let teams_base = tmp.path().join("teams");
+        fs::write(&tasks_base, "not a directory").unwrap();
+
+        let outcome = get_tasks_in(
+            "/home/user/projects/myapp",
+            &[],
+            &tasks_base,
+            &projects_base,
+            &teams_base,
+        );
+
+        assert_eq!(
+            outcome,
+            ScanOutcome::Unavailable(format!(
+                "Claude tasks base is not a directory: {}",
+                tasks_base.display()
+            ))
+        );
     }
 
     #[test]
