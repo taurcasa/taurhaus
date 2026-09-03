@@ -140,7 +140,7 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByTestId('mesh-node-detail-account')).toHaveTextContent(
       'was Work → now Personal'
     )
-    expect(screen.getByTestId('mesh-node-detail-account-meter')).toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-node-detail-account-meter')).not.toBeInTheDocument()
   })
   it('states the assignment effort next to the launch effort, with the reason on hover', () => {
     renderDetail({

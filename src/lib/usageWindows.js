@@ -54,6 +54,15 @@ export function liveUsageWindows(windows, now = Date.now()) {
   })
 }
 
+/** Remaining percentage across the tightest provider window, or unknown. */
+export function accountHeadroom(usage) {
+  const readings = (Array.isArray(usage?.windows) ? usage.windows : [])
+    .map((window) => Number(window?.used_percentage ?? window?.usedPercentage))
+    .filter(Number.isFinite)
+  if (readings.length === 0) return null
+  return Math.max(0, Math.min(100, 100 - Math.max(...readings)))
+}
+
 /**
  * Whether an account has nothing left to spend, and why.
  *

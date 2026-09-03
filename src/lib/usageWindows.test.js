@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  accountHeadroom,
   compactSelection,
   exhaustedUsage,
   resetLabel,
@@ -34,6 +35,15 @@ describe('compactSelection', () => {
     expect(compactSelection([window('session', 'Current session', 10), flagged])).toEqual([
       flagged,
     ])
+  })
+})
+
+describe('accountHeadroom', () => {
+  it('distinguishes unknown usage from a real untouched subscription', () => {
+    expect(accountHeadroom(null)).toBe(null)
+    expect(accountHeadroom({ windows: [] })).toBe(null)
+    expect(accountHeadroom({ windows: [{ used_percentage: 0 }] })).toBe(100)
+    expect(accountHeadroom({ windows: [{ used_percentage: 20 }, { usedPercentage: 75 }] })).toBe(25)
   })
 })
 

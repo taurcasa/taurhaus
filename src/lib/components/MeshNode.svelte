@@ -4,6 +4,8 @@
   import { getToolIcon } from '../toolLogos.js'
   import { normalizeTool } from '../toolRegistry.js'
   import { hasAccountLine, memberNodeHeight } from './meshLayout.js'
+  import { accountLineLabel as formatAccountLine } from './meshTabUtils.js'
+  import { accountHeadroom as usageHeadroom } from '../usageWindows.js'
 
   let {
     nodeId = '',
@@ -57,15 +59,13 @@
     accountNoteDetail: safeAccountNoteDetail,
     accountFallbackFrom: safeAccountFallbackFrom,
   }))
-  const accountLineLabel = $derived.by(() => {
-    const actual = safeAccountLabel || 'Account'
-    if (safeAccountFallbackFrom || accountNote === 'account_fallback') {
-      return `was ${safeAccountFallbackFrom || 'requested account'} → now ${actual}`
-    }
-    if (accountApplied === false) return `${actual} · not guaranteed`
-    if (accountApplied === true) return `${actual} · applied`
-    return `${actual} · configured`
-  })
+  const accountLineLabel = $derived(formatAccountLine({
+    accountId: safeAccountId,
+    accountLabel: safeAccountLabel,
+    accountApplied,
+    accountNote,
+    accountFallbackFrom: safeAccountFallbackFrom,
+  }))
   const accountLineTitle = $derived(
     accountNote === 'opaque_base_command' && safeAccountNoteDetail
       ? opaqueBaseNotice(safeAccountNoteDetail, safeTool)
@@ -74,13 +74,7 @@
   const detectedAccount = $derived(
     accountState(safeTool).accounts.find((account) => account.id === safeAccountId) ?? null
   )
-  const accountHeadroom = $derived.by(() => {
-    const readings = (detectedAccount?.usage?.windows ?? [])
-      .map((window) => Number(window?.used_percentage ?? window?.usedPercentage))
-      .filter(Number.isFinite)
-    if (readings.length === 0) return null
-    return Math.max(0, Math.min(100, 100 - Math.max(...readings)))
-  })
+  const accountHeadroom = $derived(usageHeadroom(detectedAccount?.usage))
   const requestedHeight = $derived(Number(height))
   const nodeHeight = $derived(
     Number.isFinite(requestedHeight) && requestedHeight > 0
@@ -231,9 +225,11 @@
         data-testid={`mesh-node-account-line-${normalizedRole}`}
         title={accountLineTitle}
       >
-        <span class="mesh-node-account-meter" data-testid={`mesh-node-account-meter-${normalizedRole}`}>
-          <span style={`width: ${accountHeadroom ?? 100}%`}></span>
-        </span>
+        {#if accountHeadroom !== null}
+          <span class="mesh-node-account-meter" data-testid={`mesh-node-account-meter-${normalizedRole}`}>
+            <span style={`width: ${accountHeadroom}%`}></span>
+          </span>
+        {/if}
         <span class="mesh-node-account-label">{accountLineLabel}</span>
       </span>
     {/if}

@@ -199,6 +199,8 @@ describe('MeshNode', () => {
       accountFallbackFrom: '',
     })
     expect(screen.getByTestId('mesh-node-account-line-agent')).toHaveTextContent('Work · applied')
-    expect(screen.getByTestId('mesh-node-account-meter-agent')).toBeInTheDocument()
+    // Regression: 0bc79ceb drew a full meter when no provider reading existed,
+    // making unknown usage look like a genuinely untouched subscription.
+    expect(screen.queryByTestId('mesh-node-account-meter-agent')).not.toBeInTheDocument()
   })
 })

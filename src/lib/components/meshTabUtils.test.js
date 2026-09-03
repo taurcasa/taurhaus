@@ -2,12 +2,27 @@ import { describe, expect, it } from 'vitest'
 
 import { TEST_MODEL_CATALOG as CATALOG } from '../../test/fixtures/modelCatalog.js'
 import {
+  accountLineLabel,
   buildInitializationRequest,
   buildTeamConfigFromPreset,
   buildTeamConfigFromRuntimeStatus,
   deriveCrossProjectMeta,
   projectNameFromPath,
 } from './meshTabUtils.js'
+
+describe('accountLineLabel', () => {
+  it('uses one wording rule for account fallback and applied states', () => {
+    expect(accountLineLabel({ accountLabel: 'Personal', accountApplied: true })).toBe(
+      'Personal · applied'
+    )
+    expect(accountLineLabel({
+      accountLabel: 'Personal',
+      accountNote: 'account_fallback',
+      accountFallbackFrom: 'Work',
+    })).toBe('was Work → now Personal')
+    expect(accountLineLabel({})).toBe('')
+  })
+})
 
 describe('meshTabUtils cross-project metadata', () => {
   it('extracts a stable project basename from WSL UNC paths', () => {

@@ -10,7 +10,8 @@
   import { EMPTY_MODEL_CATALOG, defaultEffortFor, defaultModelFor } from '../modelCatalog.js'
   import { themeTokens } from '../themeTokens.js'
   import { toolLabel as registeredToolLabel, tools } from '../toolRegistry.js'
-  import { exhaustedUsage } from '../usageWindows.js'
+  import { accountHeadroom as usageHeadroom, exhaustedUsage } from '../usageWindows.js'
+  import { accountLineLabel } from './meshTabUtils.js'
 
   let {
     node = {},
@@ -87,13 +88,12 @@
     String(node?.accountFallbackFrom ?? node?.account_fallback_from ?? '').trim()
   )
   const accountApplied = $derived(node?.accountApplied ?? node?.account_applied ?? null)
-  const accountDisplay = $derived.by(() => {
-    const actual = accountLabel || 'Account'
-    if (accountFallbackFrom) return `was ${accountFallbackFrom} → now ${actual}`
-    if (accountApplied === false) return `${actual} · not guaranteed`
-    if (accountApplied === true) return `${actual} · applied`
-    return accountLabel ? `${actual} · configured` : ''
-  })
+  const accountDisplay = $derived(accountLineLabel({
+    accountId,
+    accountLabel,
+    accountApplied,
+    accountFallbackFrom,
+  }))
   const detectedAccount = $derived(
     accountState(tool).accounts.find((account) => account.id === accountId) ?? null
   )
@@ -110,13 +110,7 @@
   )
   let accountPickerOpen = $state(false)
   let switchingAccount = $state(false)
-  const accountHeadroom = $derived.by(() => {
-    const readings = (detectedAccount?.usage?.windows ?? [])
-      .map((window) => Number(window?.used_percentage ?? window?.usedPercentage))
-      .filter(Number.isFinite)
-    if (readings.length === 0) return null
-    return Math.max(0, Math.min(100, 100 - Math.max(...readings)))
-  })
+  const accountHeadroom = $derived(usageHeadroom(detectedAccount?.usage))
   // The effort the lead attached to the current assignment. Distinct from the
   // launch effort in `modelDisplay`, and only ever set for a runtime node.
   const taskEffort = $derived.by(() =>
@@ -1246,15 +1240,17 @@
                   >
                     {#if entry.account}
                       <span class="inline-flex items-center gap-2">
-                        <span
-                          class="h-1.5 w-8 overflow-hidden rounded-full bg-zinc-300/50"
-                          data-testid="mesh-node-detail-account-meter"
-                        >
+                        {#if accountHeadroom !== null}
                           <span
-                            class="block h-full rounded-full bg-brand-500"
-                            style={`width: ${accountHeadroom ?? 100}%`}
-                          ></span>
-                        </span>
+                            class="h-1.5 w-8 overflow-hidden rounded-full bg-zinc-300/50"
+                            data-testid="mesh-node-detail-account-meter"
+                          >
+                            <span
+                              class="block h-full rounded-full bg-brand-500"
+                              style={`width: ${accountHeadroom}%`}
+                            ></span>
+                          </span>
+                        {/if}
                         <span>{entry.value}</span>
                       </span>
                     {:else}

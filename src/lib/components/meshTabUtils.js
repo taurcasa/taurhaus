@@ -20,6 +20,23 @@ function optionalText(value) {
   return String(value ?? '').trim() || null
 }
 
+export function accountLineLabel(account = {}) {
+  const label = String(account.accountLabel ?? account.account_label ?? '').trim()
+  const id = String(account.accountId ?? account.account_id ?? '').trim()
+  const actual = label || id || 'Account'
+  const fallbackFrom = String(
+    account.accountFallbackFrom ?? account.account_fallback_from ?? ''
+  ).trim()
+  const note = String(account.accountNote ?? account.account_note ?? '').trim()
+  const applied = account.accountApplied ?? account.account_applied ?? null
+  if (fallbackFrom || note === 'account_fallback') {
+    return `was ${fallbackFrom || 'requested account'} → now ${actual}`
+  }
+  if (applied === false) return `${actual} · not guaranteed`
+  if (applied === true) return `${actual} · applied`
+  return label || id ? `${actual} · configured` : ''
+}
+
 export function inferTeamName(path) {
   const project = projectNameFromPath(path)
   return `${project}-team`
