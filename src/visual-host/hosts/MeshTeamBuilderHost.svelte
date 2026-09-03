@@ -52,6 +52,12 @@
         await tick()
       }
     }
+
+    for (const memberName of scenario?.expandedMemberNames ?? []) {
+      const label = memberName === 'lead' ? 'Edit lead details' : `Edit ${memberName} details`
+      document.querySelector(`button[aria-label="${label}"]`)?.click()
+      await tick()
+    }
   })
 </script>
 
@@ -65,6 +71,7 @@
       roleTemplates={scenario?.roleTemplates ?? []}
       presets={scenario?.presets ?? []}
       availableProjects={scenario?.availableProjects ?? []}
+      accountStates={scenario?.accountStates ?? null}
       onBrowseCatalog={actions.onBrowseCatalog}
       onTeamNameChange={actions.onTeamNameChange}
       onDescriptionChange={actions.onDescriptionChange}

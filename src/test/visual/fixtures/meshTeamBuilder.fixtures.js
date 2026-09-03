@@ -45,9 +45,11 @@ function createScenario({
   roleTemplates,
   presets,
   availableProjects,
+  accountStates,
   viewport = { width: 1100, height: 1200 },
   pinnedRoleIds = [],
   expandCatalogAfterMount = false,
+  expandedMemberNames = [],
   expected,
 } = {}) {
   return {
@@ -59,9 +61,11 @@ function createScenario({
     roleTemplates,
     presets,
     availableProjects,
+    accountStates,
     viewport,
     pinnedRoleIds,
     expandCatalogAfterMount,
+    expandedMemberNames,
     expected,
   }
 }
@@ -73,9 +77,10 @@ function createLead({
   roleName = 'Claude Orchestrator',
   tool = 'claude',
   model = 'claude-opus-4.5',
+  accountId = null,
   projectId = '/projects/taurhaus',
 } = {}) {
-  return { id, name, roleId, roleName, tool, model, projectId }
+  return { id, name, roleId, roleName, tool, model, accountId, projectId }
 }
 
 function createAgent({
@@ -85,9 +90,10 @@ function createAgent({
   roleName,
   tool,
   model,
+  accountId = null,
   projectId = '/projects/taurhaus',
 } = {}) {
-  return { id, name, roleId, roleName, tool, model, projectId }
+  return { id, name, roleId, roleName, tool, model, accountId, projectId }
 }
 
 const roleTemplates = [
@@ -182,6 +188,27 @@ const availableProjects = [
   { id: '/projects/atlas', name: 'Atlas' },
 ]
 
+const accountStates = {
+  claude: {
+    accounts: [{ id: 'claude-team', display_name: 'Team Pro', label: 'team@example.com', logged_in: true }],
+    defaultAccountId: 'claude-team',
+    degraded: false,
+  },
+  codex: {
+    accounts: [
+      { id: 'codex-work', display_name: 'Work', label: 'work@example.com', logged_in: true },
+      { id: 'codex-personal', display_name: 'Personal', label: 'personal@example.com', logged_in: true },
+    ],
+    defaultAccountId: 'codex-work',
+    degraded: false,
+  },
+  grok: {
+    accounts: [{ id: 'grok-main', display_name: 'Main', label: 'main@example.com', logged_in: true }],
+    defaultAccountId: 'grok-main',
+    degraded: false,
+  },
+}
+
 const emptyTeam = {
   description: '',
   lead: null,
@@ -199,6 +226,7 @@ const devTeamRoster = {
       roleName: 'Codex Developer',
       tool: 'codex',
       model: 'gpt-5.4 high',
+      accountId: 'codex-work',
     }),
     createAgent({
       id: 'agent-2',
@@ -207,6 +235,7 @@ const devTeamRoster = {
       roleName: 'Codex Developer',
       tool: 'codex',
       model: 'gpt-5.4 high',
+      accountId: 'codex-personal',
       projectId: '/projects/mir',
     }),
   ],
@@ -223,6 +252,7 @@ const partialRoster = {
       roleName: 'Codex Developer',
       tool: 'codex',
       model: 'gpt-5.4 high',
+      accountId: 'codex-work',
     }),
     createAgent({
       id: 'agent-2',
@@ -247,6 +277,7 @@ const fullTeamRoster = {
       roleName: 'Codex Architect',
       tool: 'codex',
       model: 'gpt-5.4 high',
+      accountId: 'codex-work',
     }),
     createAgent({
       id: 'agent-2',
@@ -255,6 +286,7 @@ const fullTeamRoster = {
       roleName: 'Codex Developer',
       tool: 'codex',
       model: 'gpt-5.4 high',
+      accountId: 'codex-personal',
     }),
     createAgent({
       id: 'agent-3',
@@ -286,6 +318,7 @@ const roster_builder_empty_state = createScenario({
   roleTemplates,
   presets,
   availableProjects,
+  accountStates,
   expected: {
     labels: ['Available Roles', 'Your Team', 'Choose a lead role to anchor the team.', 'Quick start'],
     catalogCollapsed: 'false',
@@ -301,8 +334,10 @@ const roster_builder_partial_state = createScenario({
   roleTemplates,
   presets,
   availableProjects,
+  accountStates,
+  expandedMemberNames: ['lead', 'builder'],
   expected: {
-    labels: ['Available Roles', 'Your Team', '3 members', 'Lead, implementation, and review are in place.'],
+    labels: ['Available Roles', 'Your Team', '3 members', 'Lead, implementation, and review are in place.', 'Team account · Team Pro', 'Work'],
     catalogCollapsed: 'false',
   },
 })
@@ -316,9 +351,11 @@ const roster_builder_ready_state = createScenario({
   roleTemplates,
   presets,
   availableProjects,
+  accountStates,
+  expandedMemberNames: ['lead', 'dev-1'],
   viewport: { width: 1280, height: 1320 },
   expected: {
-    labels: ['Available Roles', 'Your Team', '5 members', 'Initialize Team'],
+    labels: ['Available Roles', 'Your Team', '5 members', 'Initialize Team', 'Team account · Team Pro', 'Personal'],
     catalogCollapsed: 'false',
   },
 })

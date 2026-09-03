@@ -136,6 +136,28 @@ export const runtime_workflowMixedRuns_dark = createMeshCanvasScenario({
   ],
 })
 
+export const runtime_accountStates_dark = createMeshCanvasScenario({
+  name: 'runtime_accountStates_dark',
+  theme: 'dark',
+  agentCount: 3,
+  agentOverrides: [
+    { accountId: 'codex-work', accountLabel: 'Work', accountApplied: true },
+    { accountId: 'agy-main', accountLabel: 'Main', accountApplied: false },
+    { accountId: 'claude-team', accountLabel: 'Team Pro', accountFallbackFrom: 'Legacy' },
+  ],
+})
+
+export const runtime_accountStates_light = createMeshCanvasScenario({
+  name: 'runtime_accountStates_light',
+  theme: 'light',
+  agentCount: 3,
+  agentOverrides: [
+    { accountId: 'codex-work', accountLabel: 'Work', accountApplied: true },
+    { accountId: 'agy-main', accountLabel: 'Main', accountApplied: false },
+    { accountId: 'claude-team', accountLabel: 'Team Pro', accountFallbackFrom: 'Legacy' },
+  ],
+})
+
 export const empty_noAgents_light = createMeshCanvasScenario({
   name: 'empty_noAgents_light',
   theme: 'light',
@@ -154,5 +176,7 @@ export const meshCanvasScenarios = [
   runtime_workflowLiveTree_dark,
   runtime_workflowLiveTree_light,
   runtime_workflowMixedRuns_dark,
+  runtime_accountStates_dark,
+  runtime_accountStates_light,
   empty_noAgents_light,
 ]
