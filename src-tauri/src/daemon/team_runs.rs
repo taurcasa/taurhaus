@@ -40,11 +40,14 @@ impl TeamOperationsService {
         state: Arc<CoordinationState>,
         registry: CoordinationRunRegistry,
     ) -> Self {
-        let teams_dir = state.teams_dir().clone();
+        let prepare_state = state.clone();
         Self::with_state_and_prepare(
             state,
             registry,
             Arc::new(move |request, commands| {
+                let teams_dir = prepare_state
+                    .team_teams_dir(&request.team_name)
+                    .map_err(|error| error.to_string())?;
                 prepare_resume_team_launch_inputs(&teams_dir, request, commands)
             }),
         )
@@ -101,8 +104,11 @@ impl TeamOperationsService {
                         }),
                     )
                     .map_err(|error| error.to_string())?;
+                    let teams_dir = state
+                        .team_teams_dir(&report.team_name)
+                        .map_err(|error| error.to_string())?;
                     crate::coordination::stores::active_project::sync_team_from_config(
-                        state.teams_dir(),
+                        &teams_dir,
                         &report.team_name,
                     )
                     .map_err(|error| error.to_string())?;
@@ -153,8 +159,11 @@ impl TeamOperationsService {
                     } = params;
                     let report = execute_reonboard_pipeline(state.as_ref(), &request)
                         .map_err(|error| error.to_string())?;
+                    let teams_dir = state
+                        .team_teams_dir(&request.team_name)
+                        .map_err(|error| error.to_string())?;
                     finalize_reonboard_state(
-                        state.teams_dir(),
+                        &teams_dir,
                         &request,
                         operational_snapshot.as_ref(),
                         task_state_changed_at,
@@ -372,8 +381,9 @@ pub(crate) fn execute_switch_team_account(
             "account id must not be empty".to_string(),
         ));
     }
-    state.with_orchestrator(|orchestrator| {
-        let mut config = TeamConfigStore::load(state.teams_dir(), &request.team_name)?;
+    state.with_team_orchestrator(&request.team_name, |orchestrator| {
+        let teams_dir = state.team_teams_dir(&request.team_name)?;
+        let mut config = TeamConfigStore::load(&teams_dir, &request.team_name)?;
         let switched_members = config
             .members
             .iter()
@@ -411,7 +421,7 @@ pub(crate) fn execute_switch_team_account(
             .all(|member| {
                 member.account_id.as_deref() == Some(target.id.as_str())
                     && MemberRuntimeStore::load(
-                        state.teams_dir(),
+                        &teams_dir,
                         &request.team_name,
                         &member.name,
                     )
@@ -444,7 +454,7 @@ pub(crate) fn execute_switch_team_account(
             .iter()
             .map(|member| {
                 let runtime = MemberRuntimeStore::load(
-                    state.teams_dir(),
+                    &teams_dir,
                     &request.team_name,
                     &member.name,
                 )
@@ -464,7 +474,7 @@ pub(crate) fn execute_switch_team_account(
             .filter(|member| member.cli_tool == request.cli_tool)
             .filter_map(|member| {
                 MemberRuntimeStore::load(
-                    state.teams_dir(),
+                    &teams_dir,
                     &request.team_name,
                     &member.name,
                 )
@@ -491,7 +501,7 @@ pub(crate) fn execute_switch_team_account(
         // pane whose hook was already taken away.
         crate::commands::terminal_settings::reconcile_account_switch_hooks(
             &crate::commands::terminal_settings::AccountSwitchHookRequest {
-                teams_dir: state.teams_dir(),
+                teams_dir: &teams_dir,
                 team_name: &request.team_name,
                 cli_tool: request.cli_tool,
                 target_home: &target.dir,
@@ -522,18 +532,18 @@ pub(crate) fn execute_switch_team_account(
             members: handoffs.clone(),
         };
         let handoff_manifest_count = AccountSwitchManifestStore::append(
-            state.teams_dir(),
+            &teams_dir,
             &request.team_name,
             manifest,
         )?;
-        TeamConfigStore::save(state.teams_dir(), &request.team_name, &config)?;
+        TeamConfigStore::save(&teams_dir, &request.team_name, &config)?;
 
         // Old sessions are down and the new config is committed: the previous
         // homes may now lose their hooks (still gated on no other roster
         // member needing each home).
         crate::commands::terminal_settings::reconcile_account_switch_hooks(
             &crate::commands::terminal_settings::AccountSwitchHookRequest {
-                teams_dir: state.teams_dir(),
+                teams_dir: &teams_dir,
                 team_name: &request.team_name,
                 cli_tool: request.cli_tool,
                 target_home: &target.dir,
@@ -694,7 +704,7 @@ pub(crate) fn execute_reonboard_pipeline(
     state: &CoordinationState,
     request: &ReonboardRequest,
 ) -> Result<DeliveryResult, crate::coordination::errors::CoordinationError> {
-    state.with_orchestrator(|orchestrator| {
+    state.with_team_orchestrator(&request.team_name, |orchestrator| {
         let team = orchestrator.get_team_status(&request.team_name)?;
         let lead_name = team
             .config

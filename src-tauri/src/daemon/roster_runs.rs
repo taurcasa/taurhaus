@@ -43,7 +43,7 @@ impl RosterOperationsService {
     ) -> Result<String, String> {
         self.start_operation(CoordinationRunKind::CreateTeam, "create", move |state| {
             state
-                .with_orchestrator(|orchestrator| {
+                .with_team_orchestrator(&params.request.team_name, |orchestrator| {
                     orchestrator
                         .create_team(&params.request.team_name, None)
                         .map(|_| ())
@@ -85,8 +85,11 @@ impl RosterOperationsService {
             move |state| {
                 let report = execute_remove_member(state.as_ref(), &params.request)
                     .map_err(|error| error.to_string())?;
+                let teams_dir = state
+                    .team_teams_dir(&report.team_name)
+                    .map_err(|error| error.to_string())?;
                 crate::coordination::stores::active_project::sync_team_from_config(
-                    state.teams_dir(),
+                    &teams_dir,
                     &report.team_name,
                 )
                 .map_err(|error| error.to_string())?;
@@ -231,8 +234,11 @@ fn execute_disband_team(
     request: &DisbandTeamRequest,
 ) -> Result<DisbandTeamReport, CoordinationError> {
     let result = state
-        .with_orchestrator(|orchestrator| orchestrator.disband_team(&request.team_name, None))?;
-    ActiveProjectTeamStore::clear_team(state.teams_dir(), &result.team_name)?;
+        .with_team_orchestrator(&request.team_name, |orchestrator| {
+            orchestrator.disband_team(&request.team_name, None)
+        })?;
+    let teams_dir = state.team_teams_dir(&result.team_name)?;
+    ActiveProjectTeamStore::clear_team(&teams_dir, &result.team_name)?;
     let message = if result.already_disbanded {
         "team already disbanded"
     } else {
@@ -256,7 +262,7 @@ fn execute_add_member(
             request.backend_kind.trim()
         ))
     })?;
-    state.with_orchestrator(|orchestrator| {
+    state.with_team_orchestrator(&request.team_name, |orchestrator| {
         let team_status = orchestrator.get_team_status(&request.team_name)?;
         let project_path = resolve_member_project_path(
             &team_status.config.members,
@@ -327,7 +333,7 @@ fn execute_remove_member(
     request: &RemoveMemberRequest,
 ) -> Result<StopMemberReport, CoordinationError> {
     state
-        .with_orchestrator(|orchestrator| {
+        .with_team_orchestrator(&request.team_name, |orchestrator| {
             orchestrator.remove_member(&request.team_name, &request.member_name, None)
         })
         .map(StopMemberReport::from_remove_member_result)
