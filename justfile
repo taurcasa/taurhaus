@@ -1452,8 +1452,10 @@ release:
         echo "✗ Must be on main branch (currently on $BRANCH)"
         exit 1
     fi
-    if [ -n "$(git status --porcelain)" ]; then
-        echo "✗ Working tree is dirty — commit or stash changes first"
+    # Untracked files never block a release: the shared-repo workflow keeps
+    # parked drafts in the tree, and they cannot alter tagged tracked state.
+    if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+        echo "✗ Working tree has uncommitted tracked changes — commit or stash first"
         exit 1
     fi
 
