@@ -533,7 +533,7 @@ pub(crate) fn account_directory_plan(default_dir: &Path, label: &str) -> Result<
     Ok(PathBuf::from(format!("{parent}{separator}{base}-{slug}")))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn account_directory_host_path(
     provider: State<'_, ProviderState>,
     path: String,
