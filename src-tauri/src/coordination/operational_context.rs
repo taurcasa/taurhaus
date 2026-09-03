@@ -190,15 +190,15 @@ pub fn sync_member_snapshot(
 ///
 /// Team config and current snapshots remain legal app-side reads. The returned
 /// values are the complete write intent; this function never mutates team state.
-pub(crate) fn prepare_project_task_snapshots(
-    teams_dir: &Path,
+pub(crate) fn prepare_project_task_snapshots_for_team_locations(
+    team_locations: &[(std::path::PathBuf, String)],
     conn: &Connection,
     project_path: &str,
 ) -> Result<Vec<PreparedSnapshot>, CoordinationError> {
     let tasks = load_project_tasks(conn, project_path)?;
     let mut prepared = Vec::new();
-    for team_name in TeamConfigStore::list(teams_dir)? {
-        let config = match TeamConfigStore::load(teams_dir, &team_name) {
+    for (teams_dir, team_name) in team_locations {
+        let config = match TeamConfigStore::load(teams_dir, team_name) {
             Ok(config) => config,
             Err(err) => {
                 tracing::warn!(
@@ -216,12 +216,12 @@ pub(crate) fn prepare_project_task_snapshots(
             .filter(|member| member.project_path == Path::new(project_path))
         {
             let existing =
-                OperationalContextSnapshotStore::load(teams_dir, &team_name, &member.name)?;
+                OperationalContextSnapshotStore::load(teams_dir, team_name, &member.name)?;
             let (task, effort, task_state_changed_at) =
                 latest_owned_task_from_tasks(&tasks, &member.name);
             let snapshot = build_member_snapshot(
                 existing.as_ref(),
-                &team_name,
+                team_name,
                 &member.name,
                 project_path,
                 task,
@@ -719,6 +719,30 @@ mod tests {
         )
         .expect("load snapshot")
         .is_none());
+    }
+
+    #[test]
+    fn prepares_project_snapshots_from_registered_team_locations() {
+        let (conn, _db) = test_db();
+        let temp = TempDir::new().expect("tempdir");
+        let work_root = temp.path().join("work").join("teams");
+        write_team(&work_root);
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &owned_task("agent-task", "Build frontend", "in_progress", None),
+        )
+        .expect("upsert task");
+
+        let snapshots = prepare_project_task_snapshots_for_team_locations(
+            &[(work_root, "architecture-final".to_string())],
+            &conn,
+            "proj-web",
+        )
+        .expect("prepare snapshots");
+
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].0.team_name, "architecture-final");
+        assert_eq!(snapshots[0].0.member_name, "frontend-dev");
     }
 
     #[test]
