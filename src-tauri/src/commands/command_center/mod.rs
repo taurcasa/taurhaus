@@ -3,7 +3,6 @@ mod launching;
 mod navigation;
 mod session_listing;
 
-use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -301,15 +300,14 @@ fn resolve_project_launch_target(
 }
 
 fn find_unique_team_member_match(
-    teams_dir: &Path,
+    state: &CoordinationState,
     project_path: &str,
     cli_tool: CliTool,
 ) -> TeamMemberMatchResult {
-    let team_names = match TeamConfigStore::list(teams_dir) {
-        Ok(team_names) => team_names,
+    let team_locations = match state.team_locations() {
+        Ok(team_locations) => team_locations,
         Err(error) => {
             tracing::warn!(
-                teams_dir = %teams_dir.display(),
                 error = %error,
                 "Failed to list team configs while resolving generic resume delegation"
             );
@@ -320,8 +318,8 @@ fn find_unique_team_member_match(
     let project_key = crate::provider::path::normalize_project_path(project_path);
     let mut matches = Vec::new();
 
-    for team_name in team_names {
-        let config = match TeamConfigStore::load(teams_dir, &team_name) {
+    for (teams_dir, team_name) in team_locations {
+        let config = match TeamConfigStore::load(&teams_dir, &team_name) {
             Ok(config) => config,
             Err(error) => {
                 tracing::warn!(

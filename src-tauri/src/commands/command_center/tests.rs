@@ -2255,6 +2255,36 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
 }
 
 #[test]
+fn generic_resume_match_searches_registered_team_roots() {
+    let tmp = TempDir::new().expect("temp roots");
+    let default_teams = tmp.path().join("default/teams");
+    let work_teams = tmp.path().join("work/teams");
+    save_team_member(
+        &work_teams,
+        "work-team",
+        "developer",
+        "/tmp/work-project",
+        CliTool::Codex,
+    );
+    let state = test_coordination_state(
+        &default_teams,
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    state
+        .team_root_registry()
+        .set("work-team", &work_teams)
+        .expect("register work root");
+
+    assert_eq!(
+        find_unique_team_member_match(&state, "/tmp/work-project", CliTool::Codex),
+        TeamMemberMatchResult::Unique(TeamMemberMatch {
+            team_name: "work-team".to_string(),
+            member_name: "developer".to_string(),
+        })
+    );
+}
+
+#[test]
 fn generic_resume_falls_back_to_raw_launch_when_team_match_is_ambiguous() {
     // A launch emits into the process-global sink; hold the log guard so it
     // never lands in the file another test is reading.

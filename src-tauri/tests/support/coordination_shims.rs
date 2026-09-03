@@ -195,6 +195,23 @@ pub mod daemon {
             }
             Ok(crate::daemon::protocol::CoordinationSetActiveProjectTeamResult {})
         }
+
+        pub(crate) fn set_active_project_team_for_state(
+            state: &crate::coordination::state::CoordinationState,
+            params: crate::daemon::protocol::CoordinationSetActiveProjectTeamParams,
+        ) -> Result<
+            crate::daemon::protocol::CoordinationSetActiveProjectTeamResult,
+            crate::coordination::errors::CoordinationError,
+        > {
+            if let Some(team_name) = params.team_name.as_deref() {
+                let teams_dir = state.team_teams_dir(team_name)?;
+                return set_active_project_team(&teams_dir, params);
+            }
+            for teams_dir in state.teams_roots()? {
+                set_active_project_team(&teams_dir, params.clone())?;
+            }
+            Ok(crate::daemon::protocol::CoordinationSetActiveProjectTeamResult {})
+        }
     }
 
     pub mod initialize_runs {

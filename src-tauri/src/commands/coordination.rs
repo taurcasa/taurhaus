@@ -145,8 +145,11 @@ fn prepare_member_operation_snapshot(
     String,
 > {
     let conn = db.0.lock().map_err(|_| "db mutex poisoned".to_string())?;
+    let teams_dir = state
+        .team_teams_dir(team_name)
+        .map_err(map_coordination_error)?;
     crate::coordination::operational_context::prepare_member_snapshot_with_task_timestamp(
-        state.teams_dir(),
+        &teams_dir,
         &conn,
         team_name,
         member_name,
@@ -1075,7 +1078,10 @@ pub async fn coordination_resume_member(
         let state = app_for_task.state::<CoordinationState>();
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         let contract_request = map_resume_member_request_to_contract(&request);
-        let config = TeamConfigStore::load(state.teams_dir(), &contract_request.team_name)
+        let teams_dir = state
+            .team_teams_dir(&contract_request.team_name)
+            .map_err(map_coordination_error)?;
+        let config = TeamConfigStore::load(&teams_dir, &contract_request.team_name)
             .map_err(map_coordination_error)?;
         let project_path = config
             .members
@@ -1223,7 +1229,10 @@ pub async fn coordination_reonboard(
         validate_non_empty("member_name", &request.member_name)?;
         let db = app_for_task.state::<DbState>();
         let state = app_for_task.state::<CoordinationState>();
-        let config = TeamConfigStore::load(state.teams_dir(), &request.team_name)
+        let teams_dir = state
+            .team_teams_dir(&request.team_name)
+            .map_err(map_coordination_error)?;
+        let config = TeamConfigStore::load(&teams_dir, &request.team_name)
             .map_err(map_coordination_error)?;
         let project_path = config
             .members
@@ -1516,14 +1525,16 @@ fn maybe_ensure_compact_hooks_for_team<T>(
     result.as_ref().map_err(Clone::clone)?;
 
     let state = app.state::<CoordinationState>();
-    let teams_dir = state.teams_dir();
-    let has_claude = team_has_managed_claude_member(teams_dir, team_name)
+    let teams_dir = state
+        .team_teams_dir(team_name)
+        .map_err(|err| IpcError::internal(sanitize_error(&err.to_string())))?;
+    let has_claude = team_has_managed_claude_member(&teams_dir, team_name)
         .map_err(|err| IpcError::internal(sanitize_error(&err.to_string())))?;
     if has_claude {
         let current_exe = std::env::current_exe().map_err(|err| {
             IpcError::internal(format!("failed to resolve taurhaus executable: {err}"))
         })?;
-        let _ = ensure_compact_hook_installed(teams_dir, &current_exe)
+        let _ = ensure_compact_hook_installed(&teams_dir, &current_exe)
             .map_err(|err| IpcError::internal(sanitize_error(&err.to_string())))?;
     }
 
@@ -1549,8 +1560,15 @@ fn reconcile_global_harness_hooks(app: &AppHandle) {
         return;
     };
     let terminal = crate::commands::terminal_settings::load_terminal_settings(&db);
-    if let Err(error) = crate::commands::terminal_settings::reconcile_grok_hooks_for_roster(
-        state.teams_dir(),
+    let teams_roots = match state.teams_roots() {
+        Ok(roots) => roots,
+        Err(error) => {
+            tracing::warn!(error = %error, "Team-root discovery failed during hook reconciliation");
+            return;
+        }
+    };
+    if let Err(error) = crate::commands::terminal_settings::reconcile_grok_hooks_for_roots(
+        &teams_roots,
         terminal.harness.grok_hooks,
     ) {
         tracing::warn!(error = %error, "Grok compaction hook reconciliation failed after a roster change");
@@ -1567,8 +1585,8 @@ fn reconcile_global_harness_hooks(app: &AppHandle) {
             fields,
         );
     }
-    crate::commands::terminal_settings::reconcile_managed_account_hooks_for_roster(
-        state.teams_dir(),
+    crate::commands::terminal_settings::reconcile_managed_account_hooks_for_roots(
+        &teams_roots,
         terminal.harness.grok_hooks,
     );
 }

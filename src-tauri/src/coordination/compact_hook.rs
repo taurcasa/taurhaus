@@ -711,6 +711,10 @@ pub fn any_managed_codex_member(teams_dir: &Path) -> Result<bool, CoordinationEr
     any_managed_member(teams_dir, CliTool::Codex)
 }
 
+pub fn any_managed_claude_member(teams_dir: &Path) -> Result<bool, CoordinationError> {
+    any_managed_member(teams_dir, CliTool::Claude)
+}
+
 pub fn any_managed_grok_member(teams_dir: &Path) -> Result<bool, CoordinationError> {
     any_managed_member(teams_dir, CliTool::Grok)
 }

@@ -381,16 +381,29 @@ fn log_agy_hooks_gate_once(hooks_support: Option<bool>) {
 /// neither an unreadable teams directory nor one team's unreadable config is
 /// proof the last grok member is gone, and uninstalling on either would
 /// silently disable reinjection for a live session.
-pub(crate) fn reconcile_grok_hooks_for_roster(
-    teams_dir: &std::path::Path,
+pub(crate) fn reconcile_grok_hooks_for_roots(
+    teams_roots: &[std::path::PathBuf],
     enabled: bool,
 ) -> Result<bool, CoordinationError> {
-    reconcile_grok_hooks_for_roster_at(
-        teams_dir,
+    reconcile_grok_hooks_for_roots_at(
+        teams_roots,
         &PlatformPaths::grok_dir(),
         enabled,
         &compact_hook_executable()?,
     )
+}
+
+pub(crate) fn reconcile_grok_hooks_for_roots_at(
+    teams_roots: &[std::path::PathBuf],
+    grok_home: &std::path::Path,
+    enabled: bool,
+    taurhaus_exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    let mut has_managed_grok = false;
+    for teams_dir in teams_roots {
+        has_managed_grok |= crate::coordination::compact_hook::any_managed_grok_member(teams_dir)?;
+    }
+    reconcile_grok_hooks_at(grok_home, enabled, has_managed_grok, taurhaus_exe)
 }
 
 pub(crate) fn reconcile_grok_hooks_for_roster_at(
@@ -639,8 +652,8 @@ pub(crate) fn reconcile_managed_account_hooks_for_launch(
 /// member using one is gone: disbanding the only team on `~/.codex-work` left
 /// the taurhaus hook in that home forever. Removal only — installing stays
 /// with the launch that knows which account it is about to use.
-pub(crate) fn reconcile_managed_account_hooks_for_roster(
-    teams_dir: &std::path::Path,
+pub(crate) fn reconcile_managed_account_hooks_for_roots(
+    teams_roots: &[std::path::PathBuf],
     grok_enabled: bool,
 ) -> bool {
     let tools = crate::session_scanner::cli_tool::all()
@@ -661,8 +674,8 @@ pub(crate) fn reconcile_managed_account_hooks_for_roster(
             return false;
         }
     };
-    match reconcile_managed_account_hooks_for_roster_at(
-        teams_dir,
+    match reconcile_managed_account_hooks_for_roots_at(
+        teams_roots,
         &cli_commands,
         CliVersions::current().codex_compaction_hooks_support(),
         grok_enabled,
@@ -708,6 +721,26 @@ fn collect_managed_hook_homes_for_roster(
     Ok(homes)
 }
 
+fn collect_managed_hook_homes_for_roots(
+    teams_roots: &[std::path::PathBuf],
+    cli_commands: &crate::models::CliCommandSettings,
+) -> Result<std::collections::HashMap<CliTool, ManagedHookHomes>, CoordinationError> {
+    let mut combined = crate::session_scanner::cli_tool::all()
+        .iter()
+        .map(|spec| spec.tool)
+        .filter(|tool| hook_reconciled_tool(*tool))
+        .map(|tool| (tool, ManagedHookHomes::default()))
+        .collect::<std::collections::HashMap<_, _>>();
+    for teams_dir in teams_roots {
+        for (tool, homes) in collect_managed_hook_homes_for_roster(teams_dir, cli_commands)? {
+            let aggregate = combined.entry(tool).or_default();
+            aggregate.needed.extend(homes.needed);
+            aggregate.unresolved_member |= homes.unresolved_member;
+        }
+    }
+    Ok(combined)
+}
+
 fn reconcile_managed_account_hooks_for_roster_at(
     teams_dir: &std::path::Path,
     cli_commands: &crate::models::CliCommandSettings,
@@ -716,6 +749,22 @@ fn reconcile_managed_account_hooks_for_roster_at(
     taurhaus_exe: &std::path::Path,
 ) -> Result<bool, CoordinationError> {
     let homes = collect_managed_hook_homes_for_roster(teams_dir, cli_commands)?;
+    reconcile_unused_managed_hook_homes(
+        homes,
+        cli_commands,
+        codex_hooks_supported,
+        grok_enabled,
+        taurhaus_exe,
+    )
+}
+
+fn reconcile_unused_managed_hook_homes(
+    homes: std::collections::HashMap<CliTool, ManagedHookHomes>,
+    cli_commands: &crate::models::CliCommandSettings,
+    codex_hooks_supported: Option<bool>,
+    grok_enabled: bool,
+    taurhaus_exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
     let mut changed = false;
     for (tool, tool_homes) in &homes {
         if tool_homes.unresolved_member {
@@ -742,6 +791,23 @@ fn reconcile_managed_account_hooks_for_roster_at(
         }
     }
     Ok(changed)
+}
+
+fn reconcile_managed_account_hooks_for_roots_at(
+    teams_roots: &[std::path::PathBuf],
+    cli_commands: &crate::models::CliCommandSettings,
+    codex_hooks_supported: Option<bool>,
+    grok_enabled: bool,
+    taurhaus_exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    let homes = collect_managed_hook_homes_for_roots(teams_roots, cli_commands)?;
+    reconcile_unused_managed_hook_homes(
+        homes,
+        cli_commands,
+        codex_hooks_supported,
+        grok_enabled,
+        taurhaus_exe,
+    )
 }
 
 fn log_managed_account_hook_degraded(error: &CoordinationError, message: &str) {
