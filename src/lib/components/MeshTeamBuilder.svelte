@@ -27,6 +27,7 @@
     defaultToolForRole,
     toolAccent,
     toolCounts,
+    toolDescriptor,
     toolLabel,
     tools,
   } from '../toolRegistry.js'
@@ -311,6 +312,18 @@
     )
   )
   const agents = $derived(Array.isArray(normalizedTeam.agents) ? normalizedTeam.agents : [])
+
+  function updateTeamAccount(accountId) {
+    const update = { accountId }
+    if (toolDescriptor(normalizeTool(normalizedTeam.lead?.tool))?.capabilities?.teamConfigNamespace) {
+      onUpdateLead(update)
+    }
+    for (const agent of agents) {
+      if (toolDescriptor(normalizeTool(agent.tool))?.capabilities?.teamConfigNamespace) {
+        onUpdateAgent(agent.id, update)
+      }
+    }
+  }
   const availableProjectOptions = $derived.by(() =>
     (availableProjects ?? [])
       .map((project) => normalizeProjectOption(project, { stringLabel: 'raw', objectFallbackLabel: 'raw' }))
@@ -2350,6 +2363,7 @@
                         degraded={accountsFor(normalizedTeam.lead.tool).degraded ?? false}
                         {dark}
                         onchange={(next) => onUpdateLead(next)}
+                        onTeamAccountChange={updateTeamAccount}
                       />
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Project</span>
@@ -2498,6 +2512,7 @@
                         degraded={accountsFor(agent.tool).degraded ?? false}
                         {dark}
                         onchange={(next) => onUpdateAgent(agent.id, next)}
+                        onTeamAccountChange={updateTeamAccount}
                       />
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Project</span>
