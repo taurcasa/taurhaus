@@ -20,11 +20,13 @@
     Boolean(descriptor?.capabilities?.accountSelection) && !isTeamAccount
   )
   const selected = $derived(
-    accounts.find((account) => account.id === accountId && account.logged_in)
-      ?? accounts.find((account) => account.id === defaultAccountId && account.logged_in)
-      ?? accounts.find((account) => account.is_default && account.logged_in)
-      ?? accounts.find((account) => account.logged_in)
-      ?? null
+    isTeamAccount
+      ? accounts.find((account) => account.is_default && account.logged_in) ?? null
+      : accounts.find((account) => account.id === accountId && account.logged_in)
+        ?? accounts.find((account) => account.id === defaultAccountId && account.logged_in)
+        ?? accounts.find((account) => account.is_default && account.logged_in)
+        ?? accounts.find((account) => account.logged_in)
+        ?? null
   )
   const label = $derived(
     String(selected?.display_name ?? selected?.label ?? selected?.email ?? selected?.id ?? 'Default')

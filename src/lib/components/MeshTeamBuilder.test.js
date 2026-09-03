@@ -940,6 +940,29 @@ describe('MeshTeamBuilder', () => {
     expect(onUpdateAgent).toHaveBeenCalledWith('agent-codex-1', { accountId: 'work' })
   })
 
+  // Regression: 0bc79ceb made the Claude team truth chip prefer the app-launch
+  // global default even though managed teams still launch from the registry home.
+  it('names the registry-home Claude account in the team truth chip', async () => {
+    renderBuilder({
+      teamConfig: sampleRosterConfig(),
+      accountStates: {
+        claude: {
+          accounts: [
+            { id: 'claude-home', label: 'Claude Home', logged_in: true, is_default: true },
+            { id: 'claude-work', label: 'Claude Work', logged_in: true, is_default: false },
+          ],
+          defaultAccountId: 'claude-work',
+        },
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-lead-edit-toggle'))
+
+    expect(screen.getByTestId('mesh-builder-member-account-lead')).toHaveTextContent(
+      'Team account · Claude Home'
+    )
+  })
+
   it('waits for the exit animation before removing an agent card', async () => {
     vi.useFakeTimers()
     const onRemoveAgent = vi.fn()
