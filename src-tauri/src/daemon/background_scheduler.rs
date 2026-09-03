@@ -93,13 +93,18 @@ impl BackgroundScheduler {
                     return;
                 }
                 let mut awaiting_settings_emitted = false;
+                let mut skipped_busy_emitted = false;
                 while !shutdown.load(Ordering::Relaxed) {
                     let started = Instant::now();
                     match run_pass(state.as_ref(), launch_settings.get()) {
-                        Ok((summary, awaiting_settings)) => {
-                            if awaiting_settings && !awaiting_settings_emitted {
+                        Ok((summary, signals)) => {
+                            if signals.awaiting_settings && !awaiting_settings_emitted {
                                 emit_awaiting_settings();
                                 awaiting_settings_emitted = true;
+                            }
+                            if signals.effort_skipped_busy && !skipped_busy_emitted {
+                                emit_effort_sweep_skipped_busy();
+                                skipped_busy_emitted = true;
                             }
                             emit_pass_completed(&summary, started.elapsed());
                             if summary.team_errors > 0 {
@@ -147,10 +152,22 @@ impl BackgroundScheduler {
     }
 }
 
+/// What one pass has to report beyond its counters: the reasons a cycle did
+/// not do the effort work it exists for.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct PassSignals {
+    /// The app has not pushed launch settings, so no command can be rendered.
+    awaiting_settings: bool,
+    /// Another operation owned the orchestrator for the whole cycle.
+    effort_skipped_busy: bool,
+}
+
+type PassOutcome = (BackgroundSelfHealPassResult, PassSignals);
+
 fn run_pass(
     state: &CoordinationState,
     launch_settings: Option<CoordinationPutLaunchSettingsParams>,
-) -> Result<(BackgroundSelfHealPassResult, bool), crate::coordination::errors::CoordinationError> {
+) -> Result<PassOutcome, crate::coordination::errors::CoordinationError> {
     let prepare_launch_inputs =
         crate::daemon::coordination_runs::daemon_launch_resolver_for(state.teams_dir().clone());
     run_pass_with_launch_resolution(state, launch_settings, &mut |tool, commands| {
@@ -165,10 +182,16 @@ fn run_pass_with_launch_resolution(
         crate::session_scanner::cli_tool::CliTool,
         &mut crate::models::CliCommandSettings,
     ),
-) -> Result<(BackgroundSelfHealPassResult, bool), crate::coordination::errors::CoordinationError> {
+) -> Result<PassOutcome, crate::coordination::errors::CoordinationError> {
     let mut summary = state.run_background_self_heal_core_pass()?;
     let Some(launch_settings) = launch_settings else {
-        return Ok((summary, true));
+        return Ok((
+            summary,
+            PassSignals {
+                awaiting_settings: true,
+                ..PassSignals::default()
+            },
+        ));
     };
 
     let mut cli_commands = launch_settings.cli_commands;
@@ -179,7 +202,13 @@ fn run_pass_with_launch_resolution(
     )?;
     summary.team_errors += effort.team_errors;
     summary.members_effort_resumed += effort.members_effort_resumed;
-    Ok((summary, false))
+    Ok((
+        summary,
+        PassSignals {
+            awaiting_settings: false,
+            effort_skipped_busy: effort.skipped_busy,
+        },
+    ))
 }
 
 fn emit_awaiting_settings() {
@@ -188,6 +217,19 @@ fn emit_awaiting_settings() {
         "coordination",
         "effort.sweep.awaiting_settings",
         Some("Daemon effort sweep is awaiting app launch settings".to_string()),
+        Map::new(),
+    );
+}
+
+/// A cycle whose effort sweep never ran because another operation owned the
+/// orchestrator. Reported once per daemon run, like the absent-settings skip:
+/// a sweep that silently does not fire is what the forensics could not see.
+fn emit_effort_sweep_skipped_busy() {
+    taurhaus_lib::logging::emit_global(
+        "info",
+        "coordination",
+        "effort.sweep.skipped_busy",
+        Some("Daemon effort sweep skipped a cycle: the orchestrator was busy".to_string()),
         Map::new(),
     );
 }
@@ -585,6 +627,69 @@ mod tests {
         assert_eq!(resolutions, 0, "idle teams must not probe launch bases");
     }
 
+    // Regression: d19ce6a8 limited daemon sweeps to recorded launch failures,
+    // so an assignment first seen while the app was not scanning tasks never
+    // started its owed effort switch.
+    #[test]
+    fn effort_sweep_starts_a_new_assignment_without_an_app_trigger() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let state = state_with_runtime(temp.path().to_path_buf(), runtime.clone());
+        state
+            .with_orchestrator(|orchestrator| {
+                orchestrator.create_team("effort-team", None)?;
+                orchestrator.add_member(
+                    "effort-team",
+                    member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
+                let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                builder.reasoning_effort = Some("low".to_string());
+                orchestrator.add_member("effort-team", builder)
+            })
+            .expect("seed team");
+        write_lead_credential(temp.path(), "effort-team");
+        runtime.set_pane_exists("%21", true);
+        runtime.set_pane_dead("%21", false);
+        runtime.set_pane_shell("%21", false);
+        runtime.set_pane_current_command("%21", Some("codex"));
+        runtime.set_pane_current_path("%21", Some("/tmp/app"));
+        runtime.set_pane_identity("%21", Some(2021), Some(1_755_000_021));
+        runtime.set_detected_runtime_session(
+            "%21",
+            CliTool::Codex,
+            Some("session-effort"),
+            Some("/tmp/effort.jsonl"),
+        );
+        MemberRuntimeStore::update(temp.path(), "effort-team", "builder", |record| {
+            record.pane_id = Some("%21".to_string());
+            record.pane_pid = Some(2021);
+            record.pane_start_time = Some(1_755_000_021);
+            record.health = HealthState::Healthy;
+            record.session_id = Some("session-effort".to_string());
+            record.applied_effort = Some("low".to_string());
+            record.effort_resume_failure = None;
+        })
+        .expect("seed running member");
+        assign_task(temp.path());
+
+        let (summary, signals) = run_pass_with_launch_resolution(
+            &state,
+            Some(settings(1, "claude --resume")),
+            &mut |_, _| {},
+        )
+        .expect("daemon sweep");
+
+        assert_eq!(signals, super::PassSignals::default());
+        assert_eq!(summary.members_effort_resumed, 1);
+        assert_eq!(
+            MemberRuntimeStore::load(temp.path(), "effort-team", "builder")
+                .expect("runtime record")
+                .applied_effort
+                .as_deref(),
+            Some("high")
+        );
+    }
+
     // Regression: 25293092 let the background effort path render from stock
     // defaults, moving members launched through account-pinning aliases such
     // as `claude2` onto another account. No pushed snapshot means no render;
@@ -626,9 +731,9 @@ mod tests {
             .iter()
             .filter(|call| matches!(call, RuntimeCall::SendKeys { .. }))
             .count();
-        let (_summary, awaiting) = run_pass_with_launch_resolution(&state, None, &mut |_, _| {})
+        let (_summary, signals) = run_pass_with_launch_resolution(&state, None, &mut |_, _| {})
             .expect("config-free self-heal pass");
-        assert!(awaiting);
+        assert!(signals.awaiting_settings);
         assert_eq!(
             runtime
                 .calls()
@@ -651,11 +756,11 @@ mod tests {
         let pushed = settings(9, "claude2 --resume");
         let mut pushed = pushed;
         pushed.cli_commands.codex.resume = "codex2 resume --last".to_string();
-        let (summary, awaiting) =
+        let (summary, signals) =
             run_pass_with_launch_resolution(&state, Some(pushed), &mut |_, _| {})
                 .expect("effort retry pass");
 
-        assert!(!awaiting);
+        assert!(!signals.awaiting_settings);
         assert_eq!(summary.members_effort_resumed, 1);
         let rendered = runtime
             .calls()
@@ -667,5 +772,48 @@ mod tests {
             .rfind(|keys| keys.contains("codex2"))
             .expect("pushed base reached the launch renderer");
         assert!(rendered.contains("session-effort"), "{rendered}");
+    }
+
+    // Regression: ada4cbc6 flattened a cycle whose orchestrator was owned by
+    // another operation into a zeroed summary, so a sweep that never ran read
+    // exactly like a sweep that found no teams. Every coordination RPC takes
+    // the same mutex, so that skip is normal and has to be visible.
+    #[test]
+    fn a_contended_cycle_reports_its_skipped_effort_sweep() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let state = state(temp.path().to_path_buf());
+
+        let signals = state
+            .with_orchestrator(|_| {
+                // The pass runs while this closure owns the orchestrator, the
+                // way a coordination command owns it for its whole lifetime.
+                run_pass_with_launch_resolution(
+                    &state,
+                    Some(settings(1, "claude --resume")),
+                    &mut |_, _| {},
+                )
+                .map(|(_summary, signals)| signals)
+            })
+            .expect("contended pass");
+
+        assert!(
+            signals.effort_skipped_busy,
+            "a cycle that never ran its sweep must say so"
+        );
+        assert!(!signals.awaiting_settings);
+    }
+
+    #[test]
+    fn the_busy_effort_sweep_skip_is_a_canonical_record() {
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let event_rx = install_log_tap(temp.path());
+
+        super::emit_effort_sweep_skipped_busy();
+        let skipped = receive_event(&event_rx, "effort.sweep.skipped_busy");
+        crate::commands::logging::clear_test_tap();
+
+        assert_eq!(skipped["component"], "coordination");
+        assert_eq!(skipped["level"], "INFO");
     }
 }

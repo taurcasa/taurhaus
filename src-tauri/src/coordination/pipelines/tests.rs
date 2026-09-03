@@ -4644,43 +4644,16 @@ fn add_agent_onboarding_entry_uses_immediate_policy() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn effort_pass_scope_table_pins_retry_and_budget_contract() {
+fn effort_attempt_budget_is_shared_by_every_pass_scope() {
     let cases = [
-        (
-            "task change starts a switch",
-            EffortPassScope::TaskChanged,
-            0,
-            true,
-        ),
-        (
-            "self-heal does not start a switch",
-            EffortPassScope::RetryPending,
-            0,
-            false,
-        ),
-        (
-            "self-heal retries a failed switch",
-            EffortPassScope::RetryPending,
-            1,
-            true,
-        ),
-        (
-            "the third failure spends the budget",
-            EffortPassScope::TaskChanged,
-            3,
-            false,
-        ),
-        (
-            "self-heal also honors the spent budget",
-            EffortPassScope::RetryPending,
-            3,
-            false,
-        ),
+        ("a new switch is allowed", 0, true),
+        ("a failed switch is retried", 1, true),
+        ("the third failure spends the budget", 3, false),
     ];
 
-    for (name, scope, failed_attempts, expected) in cases {
+    for (name, failed_attempts, expected) in cases {
         assert_eq!(
-            super::effort::attempt_is_allowed(scope, failed_attempts),
+            super::effort::attempt_is_allowed(failed_attempts),
             expected,
             "{name}"
         );
@@ -4806,6 +4779,21 @@ fn write_mesh_task(root: &TempDir, task_id: &str, status: &str, level: &str, why
         .expect("serialize mesh task"),
     )
     .expect("write mesh task");
+}
+
+fn block_mesh_task(root: &TempDir, task_id: &str, blocker_id: &str) {
+    let path = root
+        .path()
+        .join("tasks/effort-team")
+        .join(format!("{task_id}.json"));
+    let mut task: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).expect("read mesh task")).expect("parse mesh task");
+    task["blockedBy"] = serde_json::json!([blocker_id]);
+    fs::write(
+        path,
+        serde_json::to_vec_pretty(&task).expect("serialize blocked mesh task"),
+    )
+    .expect("write blocked mesh task");
 }
 
 fn hold_mesh_assignment(root: &TempDir, task_id: &str) {
@@ -5172,6 +5160,404 @@ fn without_a_held_projection_the_highest_open_requested_effort_wins() {
     assert_eq!(record.applied_effort.as_deref(), Some("high"));
 }
 
+// Policy pin: blocked mesh task records are outside the open candidate set, so
+// they cannot outrank lower-effort work that is actually in progress.
+#[test]
+fn a_blocked_high_assignment_does_not_anchor_over_in_progress_low_work() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("medium".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("41", "Active mechanical work")),
+        "low",
+        "the active task is mechanical",
+    );
+    write_mesh_task(&root, "41", "in_progress", "low", "mechanical work");
+    write_mesh_task(&root, "62", "blocked", "high", "risky when unblocked");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("effort pass");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("low"));
+}
+
+// Regression: 2e2b52f0 treated mesh's append-only `blockedBy` history as live
+// blocking even after the blocker completed, so active high-effort work could
+// be silently run at a lower pending task's level.
+#[test]
+fn completed_blocker_history_does_not_disqualify_in_progress_high_work() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("medium".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("62", "Risky active work")),
+        "high",
+        "the migration is irreversible",
+    );
+    write_mesh_task(&root, "41", "pending", "low", "mechanical follow-up");
+    write_mesh_task(&root, "61", "completed", "low", "finished prerequisite");
+    write_mesh_task(&root, "62", "in_progress", "high", "risky active work");
+    // Effort policy intentionally ignores append-only `blockedBy` history;
+    // the task's current status is the eligibility authority.
+    block_mesh_task(&root, "62", "61");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("effort pass");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+}
+
+// Regression: 9e288c56 let the operational-snapshot compatibility fallback
+// override a blocked mesh task's authoritative status, so the widened daemon
+// sweep could relaunch a live member whose only work was explicitly stood down.
+#[test]
+fn a_background_sweep_does_not_relaunch_blocked_only_work() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime);
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("low".to_string());
+    })
+    .expect("seed applied effort");
+    write_mesh_task(&root, "62", "blocked", "high", "risky when unblocked");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("62", "Risky blocked work")),
+        "high",
+        "risky when unblocked",
+    );
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::BackgroundSweep,
+        )
+        .expect("effort pass");
+
+    assert!(resumed.is_empty(), "blocked work must not start a switch");
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("low"));
+}
+
+// Regression: 4344edb4 let liveness adopt a hand-restarted session id while
+// retaining the previous session's applied effort, suppressing every later
+// sweep even though the foreign session could be running another level.
+#[test]
+fn adopting_a_foreign_session_clears_applied_effort_and_the_sweep_refires() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime.clone());
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("high".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("42", "Risky active work")),
+        "high",
+        "the migration is irreversible",
+    );
+    write_mesh_task(
+        &root,
+        "42",
+        "in_progress",
+        "high",
+        "the migration is irreversible",
+    );
+    runtime.set_detected_runtime_session(
+        "%21",
+        CliTool::Codex,
+        Some("hand-restarted-session"),
+        Some("/tmp/hand-restarted-session.jsonl"),
+    );
+
+    orchestrator
+        .reconcile_team_liveness("effort-team")
+        .expect("liveness reconcile");
+
+    let adopted =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(
+        adopted.session_id.as_deref(),
+        Some("hand-restarted-session")
+    );
+    assert_eq!(
+        adopted.applied_effort, None,
+        "a session taurhaus did not launch has unknown applied effort"
+    );
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::BackgroundSweep,
+        )
+        .expect("daemon-style sweep");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+}
+
+// Regression: 51b1b3be treated the first session-id capture after taurhaus's
+// own launch as a foreign adoption, cleared the level that launch applied, and
+// made the background sweep relaunch an already-correct member.
+#[test]
+fn capturing_the_session_id_after_our_launch_preserves_applied_effort() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime.clone());
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.session_id = None;
+        record.jsonl_path = None;
+        record.applied_effort = Some("high".to_string());
+    })
+    .expect("seed launch record without captured session id");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("42", "Risky active work")),
+        "high",
+        "the migration is irreversible",
+    );
+    write_mesh_task(
+        &root,
+        "42",
+        "in_progress",
+        "high",
+        "the migration is irreversible",
+    );
+    runtime.set_detected_runtime_session(
+        "%21",
+        CliTool::Codex,
+        Some("launched-session"),
+        Some("/tmp/launched-session.jsonl"),
+    );
+
+    orchestrator
+        .reconcile_team_liveness("effort-team")
+        .expect("liveness reconcile");
+
+    let captured =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(captured.session_id.as_deref(), Some("launched-session"));
+    assert_eq!(
+        captured.applied_effort.as_deref(),
+        Some("high"),
+        "the first identity capture belongs to the level taurhaus launched"
+    );
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::BackgroundSweep,
+        )
+        .expect("daemon-style sweep");
+
+    assert!(resumed.is_empty(), "the correct session must not relaunch");
+}
+
+// Regression: f02b0b1d required a recorded session id before an adopted one
+// counted as foreign, so a member hand-restarted after liveness had already
+// cleared that id kept asserting the dead session's level and the sweep stayed
+// suppressed.
+#[test]
+fn adopting_a_session_after_an_offline_pass_clears_applied_effort() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime.clone());
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("high".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("42", "Risky active work")),
+        "high",
+        "the migration is irreversible",
+    );
+    write_mesh_task(
+        &root,
+        "42",
+        "in_progress",
+        "high",
+        "the migration is irreversible",
+    );
+
+    // The member's session exits: liveness sees a bare shell and clears the
+    // session id while the level it applied stays recorded.
+    runtime.set_pane_current_command("%21", Some("zsh"));
+    orchestrator
+        .reconcile_team_liveness("effort-team")
+        .expect("offline liveness reconcile");
+    let offline =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(offline.health, HealthState::SessionDead);
+    assert_eq!(offline.session_id, None);
+
+    // The operator restarts `codex` by hand in the same pane.
+    runtime.set_pane_current_command("%21", Some("codex"));
+    runtime.set_detected_runtime_session(
+        "%21",
+        CliTool::Codex,
+        Some("hand-restarted-session"),
+        Some("/tmp/hand-restarted-session.jsonl"),
+    );
+
+    orchestrator
+        .reconcile_team_liveness("effort-team")
+        .expect("liveness reconcile");
+
+    let adopted =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(
+        adopted.session_id.as_deref(),
+        Some("hand-restarted-session")
+    );
+    assert_eq!(
+        adopted.applied_effort, None,
+        "a session that appeared on a dead record is not one taurhaus launched"
+    );
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::BackgroundSweep,
+        )
+        .expect("daemon-style sweep");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+}
+
+// Regression (round 7): the hand-restarted CLI can become visible BEFORE its
+// session identity is detectable. The first reconcile then promoted the dead
+// record to Healthy with no id, and the id arriving one pass later was not
+// classified as foreign — the stale applied level survived and the sweep
+// stayed suppressed. Reviving a dead record with no detectable id is itself
+// the foreign adoption; the level clears at promotion time.
+#[test]
+fn a_hand_restart_seen_before_its_identity_still_clears_applied_effort() {
+    let root = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let (teams_dir, mut orchestrator) = canonical_effort_team(&root, runtime.clone());
+    seed_running_canonical_codex_member(&teams_dir, &mut orchestrator);
+    MemberRuntimeStore::update(&teams_dir, "effort-team", "builder", |record| {
+        record.applied_effort = Some("high".to_string());
+    })
+    .expect("seed applied effort");
+    write_member_snapshot_at(
+        &teams_dir,
+        "builder",
+        Some(("42", "Risky active work")),
+        "high",
+        "the migration is irreversible",
+    );
+    write_mesh_task(
+        &root,
+        "42",
+        "in_progress",
+        "high",
+        "the migration is irreversible",
+    );
+
+    // Session exits; liveness marks the record dead and clears the id.
+    runtime.set_pane_current_command("%21", Some("zsh"));
+    orchestrator
+        .reconcile_team_liveness("effort-team")
+        .expect("offline liveness reconcile");
+
+    // Pass 1: the hand-restarted CLI is visible, but its identity is not yet
+    // detectable (no registry entry written) — detection returns no id.
+    runtime.set_pane_current_command("%21", Some("codex"));
+    runtime.set_detected_runtime_session("%21", CliTool::Codex, None, None);
+    orchestrator
+        .reconcile_team_liveness("effort-team")
+        .expect("pre-identity liveness reconcile");
+    let revived =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(revived.health, HealthState::Healthy);
+    assert_eq!(
+        revived.applied_effort, None,
+        "a dead record revived with no detectable id is a foreign session"
+    );
+
+    // Pass 2: the identity lands; the record must not resurrect the level.
+    runtime.set_detected_runtime_session(
+        "%21",
+        CliTool::Codex,
+        Some("late-identity-session"),
+        Some("/tmp/late-identity-session.jsonl"),
+    );
+    orchestrator
+        .reconcile_team_liveness("effort-team")
+        .expect("post-identity liveness reconcile");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::BackgroundSweep,
+        )
+        .expect("daemon-style sweep");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record =
+        MemberRuntimeStore::load(&teams_dir, "effort-team", "builder").expect("runtime record");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+}
+
 #[test]
 fn pending_effort_carries_the_held_task_requested_and_applied_identity() {
     let root = TempDir::new().expect("tempdir");
@@ -5288,7 +5674,7 @@ fn a_launch_records_the_effort_the_session_actually_runs_at() {
     // level the launch put into effect rather than from nothing.
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let mut orchestrator = effort_team(&tmp, runtime, CliTool::Codex, Some("Low"));
+    let mut orchestrator = effort_team(&tmp, runtime, CliTool::Codex, Some("low"));
     mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
 
     let report = orchestrator
@@ -5305,6 +5691,173 @@ fn a_launch_records_the_effort_the_session_actually_runs_at() {
 
     let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
     assert_eq!(record.applied_effort.as_deref(), Some("low"));
+}
+
+#[test]
+fn a_case_mismatched_configured_effort_rejected_by_the_renderer_is_not_recorded() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime, CliTool::Codex, Some("Low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+
+    let report = orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("resume report");
+    assert!(report.resumed, "resume should succeed: {report:?}");
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort, None,
+        "the renderer dropped the invalid case spelling, so the applied level is unknown"
+    );
+}
+
+#[test]
+fn an_invalid_requested_effort_is_not_recorded_as_applied() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime, CliTool::Codex, Some("not-an-effort-level"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+
+    let report = orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("resume report");
+    assert!(report.resumed, "resume should succeed: {report:?}");
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(record.applied_effort, None);
+}
+
+// Regression: f9716c83 committed `applied_effort = None` for a level the
+// renderer dropped, while the same successful launch cleared the attempt
+// budget. With ada4cbc6's widened sweep, a level the member's model does not
+// accept therefore stopped and resumed the member on every 30s cycle, forever:
+// nothing recorded an attempt and nothing bounded the next pass.
+#[test]
+fn an_effort_the_model_rejects_is_refused_within_the_attempt_budget() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    // `gpt-5.6-luna` publishes efforts up to `max`, so an `ultra` assignment is
+    // a level the launch renderer will refuse to write into the command.
+    let mut config = TeamConfigStore::load(tmp.path(), "effort-team").expect("team config");
+    config
+        .members
+        .iter_mut()
+        .find(|member| member.name == "builder")
+        .expect("builder member")
+        .model = Some("gpt-5.6-luna".to_string());
+    TeamConfigStore::save(tmp.path(), "effort-team", &config).expect("save team config");
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
+    assign_task(&tmp, "builder", "ultra", "the migration is irreversible");
+
+    let before = codex_launch_attempts(&runtime);
+    for _ in 0..6 {
+        orchestrator
+            .apply_pending_task_effort(
+                "effort-team",
+                &CliCommandSettings::default(),
+                "new_window",
+                EffortPassScope::BackgroundSweep,
+            )
+            .expect("background sweep");
+    }
+
+    assert!(
+        codex_launch_attempts(&runtime) - before <= 3,
+        "a level the rendered command cannot carry must not relaunch the member \
+         more than the attempt budget allows"
+    );
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("low"),
+        "the member keeps the level its session actually runs at"
+    );
+    let failure = record
+        .effort_resume_failure
+        .expect("the refused switch is recorded so the sweep converges");
+    assert_eq!(failure.level, "ultra");
+    assert_eq!(failure.attempts, 3);
+    assert_eq!(failure.reason.as_deref(), Some("budget_exhausted"));
+}
+
+// Regression: 25293092 committed a requested effort even when the launch
+// renderer dropped it in favor of the operator's effort-pinning base command,
+// making the runtime record disagree with the session it described.
+#[test]
+fn a_pinning_resume_base_does_not_claim_the_ignored_requested_effort() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut cli_commands = CliCommandSettings::default();
+    cli_commands.codex.resume =
+        "codex resume --last -c model_reasoning_effort=\"low\" --yolo".to_string();
+    let mut orchestrator =
+        seed_running_codex_member(&tmp, runtime.clone(), &CliCommandSettings::default());
+    MemberRuntimeStore::update(tmp.path(), "effort-team", "builder", |record| {
+        record.health = HealthState::SessionDead;
+    })
+    .expect("stop member before operator resume");
+
+    let report = orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: Some("high".to_string()),
+            },
+            &cli_commands,
+        )
+        .expect("resume report");
+    assert!(report.resumed, "resume should succeed: {report:?}");
+
+    let launch = runtime
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys),
+            _ => None,
+        })
+        .rfind(|keys| keys.contains("codex resume"))
+        .expect("resume command");
+    assert!(
+        launch.contains("model_reasoning_effort=\\\"low\\\"")
+            || launch.contains("model_reasoning_effort=\"low\"")
+    );
+    assert!(
+        !launch.contains("model_reasoning_effort=\\\"high\\\"")
+            && !launch.contains("model_reasoning_effort=\"high\"")
+    );
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("low"),
+        "applied effort comes from the rendered command, not the request"
+    );
 }
 
 #[test]
@@ -6210,6 +6763,42 @@ fn a_pin_the_rewrite_cannot_read_leaves_the_member_running() {
     );
     let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
     assert_eq!(record.health, HealthState::Healthy);
+}
+
+// Regression: 4463736e reported a base-pinned Codex level as the first
+// `model_reasoning_effort` override in the command, while Codex applies the
+// last. A base — here one an alias expands to — carrying two overrides ran at
+// one level and had the other committed as applied.
+#[test]
+fn a_base_pinning_two_levels_records_the_one_the_launch_runs_at() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut cli_commands = CliCommandSettings::default();
+    cli_commands.codex.fresh = "codex2 -c model_reasoning_effort=\"high\"".to_string();
+    cli_commands.resolved_bases.insert(
+        (CliTool::Codex, crate::daemon::protocol::LaunchMode::Fresh),
+        ResolvedBase {
+            command: concat!(
+                "codex -c model_reasoning_effort=\"low\" ",
+                "-c model_reasoning_effort=\"high\""
+            )
+            .to_string(),
+            expansions: vec![AliasExpansion {
+                name: "codex2".to_string(),
+                body: "codex -c model_reasoning_effort=\"low\"".to_string(),
+            }],
+            opaque_head: None,
+        },
+    );
+
+    let _orchestrator = seed_running_codex_member(&tmp, runtime, &cli_commands);
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("high"),
+        "the record has to name the override the launched command actually applies"
+    );
 }
 
 // Regression: word_spans split on whitespace alone, so a quoted assignment

@@ -186,6 +186,14 @@ impl LaunchNote {
 pub struct RenderedLaunch {
     pub command: String,
     pub notes: Vec<LaunchNote>,
+    /// The reasoning effort this render wrote into the command, if any.
+    ///
+    /// The renderer is the only authority on whether a requested level reached
+    /// the command, so it reports the verdict rather than leaving callers to
+    /// reconstruct it from note shapes. `None` means the request was dropped —
+    /// or never made. A level the *base* already pins is not this render's
+    /// doing and is read back from the base by the caller that cares.
+    pub applied_effort: Option<String>,
 }
 
 impl LaunchSpec<'_> {
@@ -286,6 +294,7 @@ impl LaunchSpec<'_> {
             }
         }
 
+        let mut applied_effort = None;
         match self.tool {
             CliTool::Codex => {
                 if let Some(effort) = requested_effort {
@@ -297,6 +306,7 @@ impl LaunchSpec<'_> {
                             });
                         } else {
                             append_flag(&mut command, flag, &format!("{key}=\"{effort}\""));
+                            applied_effort = Some(effort.to_string());
                         }
                     } else {
                         notes.push(LaunchNote::CapabilityMissing {
@@ -307,7 +317,7 @@ impl LaunchSpec<'_> {
                 }
             }
             CliTool::Claude => {
-                render_argument_effort(
+                applied_effort = render_argument_effort(
                     &mut command,
                     &mut notes,
                     self.base,
@@ -358,7 +368,7 @@ impl LaunchSpec<'_> {
                 }
             }
             CliTool::Agy => {
-                render_argument_effort(
+                applied_effort = render_argument_effort(
                     &mut command,
                     &mut notes,
                     self.base,
@@ -367,7 +377,7 @@ impl LaunchSpec<'_> {
                 );
             }
             CliTool::Grok => {
-                render_argument_effort(
+                applied_effort = render_argument_effort(
                     &mut command,
                     &mut notes,
                     self.base,
@@ -418,7 +428,11 @@ impl LaunchSpec<'_> {
             (None, None) => {}
         }
 
-        RenderedLaunch { command, notes }
+        RenderedLaunch {
+            command,
+            notes,
+            applied_effort,
+        }
     }
 }
 
@@ -600,23 +614,23 @@ fn resolve_model_selection(
     }
 }
 
+/// Render a plain `--flag value` effort argument, returning the level the
+/// command ended up carrying because of this render.
 fn render_argument_effort(
     command: &mut String,
     notes: &mut Vec<LaunchNote>,
     base: &str,
     requested_effort: Option<&str>,
     capabilities: CliCapabilities,
-) {
+) -> Option<String> {
     let aliases = capabilities.effort_flag_aliases;
-    let Some(effort) = requested_effort else {
-        return;
-    };
+    let effort = requested_effort?;
     let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag else {
         notes.push(LaunchNote::CapabilityMissing {
             capability: LaunchCapability::Effort,
             found: effort.to_string(),
         });
-        return;
+        return None;
     };
     let flags = std::iter::once(flag)
         .chain(aliases.iter().copied())
@@ -626,9 +640,10 @@ fn render_argument_effort(
             found: found.to_string(),
             reason: EffortIgnoreReason::BaseOverride,
         });
-    } else {
-        append_flag(command, flag, effort);
+        return None;
     }
+    append_flag(command, flag, effort);
+    Some(effort.to_string())
 }
 
 fn append_flag(command: &mut String, flag: &str, value: &str) {
@@ -1038,6 +1053,75 @@ mod tests {
         );
     }
 
+    // Regression: f9716c83 rebuilt the "did the requested level reach the
+    // command" verdict outside the renderer, from note shapes plus an
+    // independent base scan, so a flag spelling added to one path alone would
+    // let a runtime record claim a level the command never carried. The
+    // renderer reports what it wrote, for every harness that carries a level.
+    #[test]
+    fn the_render_reports_the_effort_it_wrote_into_the_command() {
+        for entry in crate::session_scanner::cli_tool::all() {
+            let Some(effort_flag) = entry.capabilities.effort_flag else {
+                continue;
+            };
+            if !entry.capabilities.catalog {
+                continue;
+            }
+
+            let appended = LaunchSpec {
+                tool: entry.tool,
+                mode: LaunchMode::Fresh,
+                base: entry.name,
+                model: ModelSpec {
+                    model: None,
+                    reasoning_effort: Some("high".to_string()),
+                },
+                codex_bypass_hook_trust: false,
+                codex_notify_executable: None,
+                account_dir: None,
+                selector: None,
+                team: None,
+            }
+            .render();
+            assert_eq!(
+                appended.applied_effort.as_deref(),
+                Some("high"),
+                "{} must report the level it appended: {}",
+                entry.name,
+                appended.command
+            );
+
+            // A base that pins its own level: the renderer keeps that value
+            // and reports that this render wrote none.
+            let pinned_base = match effort_flag {
+                EffortFlag::Config { flag, key } => {
+                    format!("{} {flag} {key}=\"low\"", entry.name)
+                }
+                EffortFlag::Argument { flag } => format!("{} {flag} low", entry.name),
+            };
+            let pinned = LaunchSpec {
+                tool: entry.tool,
+                mode: LaunchMode::Fresh,
+                base: &pinned_base,
+                model: ModelSpec {
+                    model: None,
+                    reasoning_effort: Some("high".to_string()),
+                },
+                codex_bypass_hook_trust: false,
+                codex_notify_executable: None,
+                account_dir: None,
+                selector: None,
+                team: None,
+            }
+            .render();
+            assert_eq!(
+                pinned.applied_effort, None,
+                "{} must not claim a level its base overrode: {}",
+                entry.name, pinned.command
+            );
+        }
+    }
+
     // Regression: a79d392 validated model-less effort against the catalog
     // default, and the review fix then treated the catalog as an allowlist;
     // a declared effort must render whenever it is in Codex's vocabulary,
@@ -1083,6 +1167,10 @@ mod tests {
         }
         .render();
         assert_eq!(invalid.command, "codex --yolo -m 'gpt-5.7-nova'");
+        assert_eq!(
+            invalid.applied_effort, None,
+            "a level the renderer refused is never reported as written"
+        );
         assert_eq!(
             invalid.notes,
             vec![LaunchNote::EffortIgnored {

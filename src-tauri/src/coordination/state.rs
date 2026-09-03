@@ -42,6 +42,9 @@ pub(crate) struct BackgroundEffortRetryPassResult {
     pub teams_scanned: usize,
     pub team_errors: usize,
     pub members_effort_resumed: usize,
+    /// The whole cycle was skipped because another operation owned the
+    /// orchestrator. Zero counters otherwise read as "no teams".
+    pub skipped_busy: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -298,7 +301,7 @@ impl CoordinationState {
         Ok(summary)
     }
 
-    /// Retry only assignment-effort relaunches that already failed.
+    /// Start owed assignment-effort relaunches and retry recorded failures.
     ///
     /// The daemon caller supplies the app's pushed settings and resolves a
     /// pane-shell base only when the unchanged effort state machine has found a
@@ -309,57 +312,62 @@ impl CoordinationState {
         tmux_layout: &str,
         resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
     ) -> Result<BackgroundEffortRetryPassResult, CoordinationError> {
-        let team_names = TeamConfigStore::list(&self.teams_dir)?;
-        let mut summary = BackgroundEffortRetryPassResult::default();
-        let mut orchestrator = self.build_background_orchestrator()?;
+        Ok(self
+            .try_with_orchestrator(|orchestrator| {
+                let team_names = TeamConfigStore::list(&self.teams_dir)?;
+                let mut summary = BackgroundEffortRetryPassResult::default();
 
-        for team_name in team_names {
-            summary.teams_scanned += 1;
-            // Retries only. A Codex effort switch is started by the task event
-            // that made the assignment visible (`apply_task_effort_for_project`);
-            // this sweep exists so one that failed there — a pane that would
-            // not come down, a launch that did not land — is picked up again
-            // rather than left pending until the next assignment.
-            match orchestrator.apply_pending_task_effort_outcome(
-                &team_name,
-                cli_commands,
-                tmux_layout,
-                crate::coordination::task_effort::EffortPassScope::RetryPending,
-                resolve_launch_base,
-            ) {
-                Ok(outcome) => {
-                    summary.members_effort_resumed += outcome.switched.len();
-                    if !outcome.failed.is_empty() || !outcome.skipped_teams.is_empty() {
-                        summary.team_errors += 1;
-                        for (member, reason) in outcome.failed {
+                for team_name in team_names {
+                    summary.teams_scanned += 1;
+                    // The task event remains the earliest trigger, while this bounded
+                    // sweep also starts a switch whose edge the app never observed.
+                    match orchestrator.apply_pending_task_effort_outcome(
+                        &team_name,
+                        cli_commands,
+                        tmux_layout,
+                        crate::coordination::task_effort::EffortPassScope::BackgroundSweep,
+                        resolve_launch_base,
+                    ) {
+                        Ok(outcome) => {
+                            summary.members_effort_resumed += outcome.switched.len();
+                            if !outcome.failed.is_empty() || !outcome.skipped_teams.is_empty() {
+                                summary.team_errors += 1;
+                                for (member, reason) in outcome.failed {
+                                    tracing::warn!(
+                                        team = %team_name,
+                                        member = %member,
+                                        error = %reason,
+                                        "background task-effort member failed"
+                                    );
+                                }
+                                for (skipped_team, reason) in outcome.skipped_teams {
+                                    tracing::warn!(
+                                        team = %skipped_team,
+                                        error = %reason,
+                                        "background task-effort team was skipped"
+                                    );
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            summary.team_errors += 1;
                             tracing::warn!(
                                 team = %team_name,
-                                member = %member,
-                                error = %reason,
-                                "background task-effort member failed"
-                            );
-                        }
-                        for (skipped_team, reason) in outcome.skipped_teams {
-                            tracing::warn!(
-                                team = %skipped_team,
-                                error = %reason,
-                                "background task-effort team was skipped"
+                                error = %err,
+                                "background task-effort pass failed"
                             );
                         }
                     }
                 }
-                Err(err) => {
-                    summary.team_errors += 1;
-                    tracing::warn!(
-                        team = %team_name,
-                        error = %err,
-                        "background task-effort pass failed"
-                    );
-                }
-            }
-        }
 
-        Ok(summary)
+                Ok(summary)
+            })?
+            // A cycle that never ran is not a cycle that found nothing: the
+            // caller reports the skip rather than a zeroed summary.
+            .unwrap_or(BackgroundEffortRetryPassResult {
+                skipped_busy: true,
+                ..BackgroundEffortRetryPassResult::default()
+            }))
     }
 
     /// Put a pending assignment effort into force for every member working in
@@ -997,6 +1005,43 @@ mod tests {
         );
     }
 
+    // Regression: ada4cbc6 widened the background effort sweep without taking
+    // the process orchestrator mutex, allowing it to overlap the task-edge
+    // pass's stop-and-resume sequence for the same member.
+    #[test]
+    fn background_effort_pass_skips_while_the_orchestrator_is_owned() {
+        let tmp = TempDir::new().expect("tempdir");
+        let counter = Arc::new(AtomicUsize::new(0));
+        let state = CoordinationState::with_components(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            fake_factory_with_counter(counter.clone()),
+        );
+        let _orchestrator_guard = state.orchestrator.lock().expect("state mutex");
+
+        let summary = state
+            .run_background_effort_retry_pass_with_launch_resolution(
+                &mut CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+                &mut |_, _| {},
+            )
+            .expect("busy background pass is skipped");
+
+        assert_eq!(
+            summary,
+            BackgroundEffortRetryPassResult {
+                skipped_busy: true,
+                ..BackgroundEffortRetryPassResult::default()
+            },
+            "a contended cycle does no work and says so"
+        );
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            0,
+            "the busy pass must not build an unlocked orchestrator"
+        );
+    }
+
     #[test]
     fn startup_state_creation_is_non_blocking_even_if_backend_unavailable() {
         let calls = Arc::new(AtomicUsize::new(0));
@@ -1470,12 +1515,10 @@ mod tests {
         assert!(outcome.skipped_teams[0].1.contains("failed to parse"));
     }
 
-    // Regression: 2529309 started every effort switch from the 30 s self-heal
-    // pass, so a Codex member could read a whole assignment at its previous
-    // level before the timer came round. The switch belongs on the task event
-    // that made the assignment visible; the timer only retries one that failed.
+    // Regression: d19ce6a8 limited the background pass to recorded failures,
+    // so a missed app task edge left mesh's notice gate waiting indefinitely.
     #[test]
-    fn the_background_pass_starts_no_switch_of_its_own() {
+    fn the_background_pass_starts_a_switch_without_a_recorded_failure() {
         let tmp = TempDir::new().expect("tempdir");
         let runtime = Arc::new(RecordingCoordinationRuntime::default());
         runtime.set_detected_runtime_session(
@@ -1540,8 +1583,8 @@ mod tests {
             .expect("background pass succeeds");
 
         assert_eq!(
-            summary.members_effort_resumed, 0,
-            "a switch nothing has attempted yet is the task event's to start"
+            summary.members_effort_resumed, 1,
+            "the daemon sweep closes a gate whose app task edge was missed"
         );
         let record = crate::coordination::stores::MemberRuntimeStore::load(
             tmp.path(),
@@ -1549,7 +1592,7 @@ mod tests {
             "builder",
         )
         .expect("runtime record");
-        assert_eq!(record.applied_effort.as_deref(), Some("low"));
+        assert_eq!(record.applied_effort.as_deref(), Some("high"));
     }
 
     // Regression: bb32cbb8 used the tempdir itself as the teams root, so

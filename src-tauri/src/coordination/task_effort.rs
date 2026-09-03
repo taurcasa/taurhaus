@@ -45,17 +45,15 @@ pub fn active_task_effort(snapshot: &OperationalContextSnapshot) -> Option<Assig
 
 /// What a run of the effort pass is allowed to start.
 ///
-/// A relaunch takes a session down, so the pass that starts one has to be the
-/// event that made the assignment visible — not a timer, which would let a
-/// member work at the wrong level for a whole interval and then stop it
-/// mid-turn. The timer's job is only to pick up a switch that already tried and
-/// failed.
+/// A relaunch takes a session down, so both task changes and the bounded daemon
+/// sweep share the same attempt budget. The sweep closes task-scan starvation
+/// when the app is not present to emit the edge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffortPassScope {
     /// A task event: start any switch the member owes.
     TaskChanged,
-    /// A background sweep: retry only a switch already recorded as failed.
-    RetryPending,
+    /// A background sweep: start an owed switch or retry a recorded failure.
+    BackgroundSweep,
 }
 
 /// Whether this harness changes effort by being relaunched.
@@ -74,7 +72,14 @@ pub fn relaunches_for_effort(tool: CliTool) -> bool {
 /// relaunch that has to put an assignment's level into force rewrites the
 /// pinned value rather than appending beside it.
 pub fn base_pins_effort(tool: CliTool, base: &str) -> bool {
-    effort_key(tool).is_some_and(|key| command_contains_flag(base, key))
+    let capabilities = spec(tool).capabilities;
+    match capabilities.effort_flag {
+        Some(EffortFlag::Config { key, .. }) => command_contains_flag(base, key),
+        Some(EffortFlag::Argument { flag }) => std::iter::once(flag)
+            .chain(capabilities.effort_flag_aliases.iter().copied())
+            .any(|flag| command_contains_flag(base, flag)),
+        None => false,
+    }
 }
 
 /// The same base command with the effort it pins replaced by `level`.
@@ -84,9 +89,12 @@ pub fn base_pins_effort(tool: CliTool, base: &str) -> bool {
 /// could take over, which is the one shape a relaunch cannot make carry the
 /// level.
 pub fn base_with_effort(tool: CliTool, base: &str, level: &str) -> Option<String> {
-    match spec(tool).capabilities.effort_flag? {
+    let capabilities = spec(tool).capabilities;
+    match capabilities.effort_flag? {
         EffortFlag::Config { key, .. } => config_base_with_effort(base, key, level),
-        EffortFlag::Argument { flag } => argument_base_with_effort(base, flag, level),
+        EffortFlag::Argument { flag } => {
+            argument_base_with_effort(base, flag, capabilities.effort_flag_aliases, level)
+        }
     }
 }
 
@@ -109,15 +117,21 @@ fn config_base_with_effort(base: &str, key: &str, level: &str) -> Option<String>
 }
 
 /// Rewrite a plain `--flag value` / `--flag=value` effort argument.
-fn argument_base_with_effort(base: &str, flag: &str, level: &str) -> Option<String> {
+fn argument_base_with_effort(
+    base: &str,
+    primary_flag: &str,
+    aliases: &[&str],
+    level: &str,
+) -> Option<String> {
     let mut tokens: Vec<String> = base.split_whitespace().map(ToString::to_string).collect();
     let mut rewrote = false;
     for index in 0..tokens.len() {
         let bare = tokens[index].trim_start_matches(['\'', '"']).to_string();
-        if bare.starts_with(&format!("{flag}=")) {
+        let accepted_flags = || std::iter::once(primary_flag).chain(aliases.iter().copied());
+        if let Some(flag) = accepted_flags().find(|flag| bare.starts_with(&format!("{flag}="))) {
             tokens[index] = format!("{flag}={level}");
             rewrote = true;
-        } else if bare == flag {
+        } else if accepted_flags().any(|flag| bare == flag) {
             // `--effort high`: the level is the token after the flag.
             if index + 1 >= tokens.len() {
                 return None;
@@ -187,34 +201,37 @@ fn read_config_value(rest: &str) -> Option<(usize, String)> {
 ///
 /// The relaunch checks its own rewrite with this before it stops anything: a
 /// member is only taken down for a command that demonstrably carries the level.
+/// The runtime record's applied level is read back here too, so this has to
+/// answer with the assignment the harness ends up on: config overrides are
+/// applied in the order they are given, so a key assigned twice takes the last
+/// value — reporting the first would record a level the session is not running
+/// at.
 pub fn pinned_base_effort(tool: CliTool, base: &str) -> Option<String> {
-    match spec(tool).capabilities.effort_flag? {
+    let capabilities = spec(tool).capabilities;
+    match capabilities.effort_flag? {
         EffortFlag::Config { key, .. } => config_assignment_spans(base, key)
             .into_iter()
+            .rev()
             .find_map(|(_, value)| trimmed(Some(value.trim_matches(['\'', '"'])))),
         EffortFlag::Argument { flag } => {
             let tokens: Vec<&str> = base.split_whitespace().collect();
-            for (index, token) in tokens.iter().enumerate() {
-                let bare = token.trim_matches(['\'', '"']);
-                if let Some(value) = bare.strip_prefix(&format!("{flag}=")) {
-                    return trimmed(Some(value.trim_matches(['\'', '"'])));
-                }
-                if bare == flag {
-                    return tokens
-                        .get(index + 1)
-                        .and_then(|value| trimmed(Some(value.trim_matches(['\'', '"']))));
+            for flag in
+                std::iter::once(flag).chain(capabilities.effort_flag_aliases.iter().copied())
+            {
+                for (index, token) in tokens.iter().enumerate() {
+                    let bare = token.trim_matches(['\'', '"']);
+                    if let Some(value) = bare.strip_prefix(&format!("{flag}=")) {
+                        return trimmed(Some(value.trim_matches(['\'', '"'])));
+                    }
+                    if bare == flag {
+                        return tokens
+                            .get(index + 1)
+                            .and_then(|value| trimmed(Some(value.trim_matches(['\'', '"']))));
+                    }
                 }
             }
             None
         }
-    }
-}
-
-/// The token a harness's base command pins its effort with.
-fn effort_key(tool: CliTool) -> Option<&'static str> {
-    match spec(tool).capabilities.effort_flag? {
-        EffortFlag::Argument { flag } => Some(flag),
-        EffortFlag::Config { key, .. } => Some(key),
     }
 }
 
@@ -508,6 +525,33 @@ mod tests {
         );
     }
 
+    // Regression: 4463736e read a config pin with `find_map`, reporting the
+    // first `model_reasoning_effort` override in the base while Codex applies
+    // the last one — so a base pinning two levels ran at one and recorded the
+    // other.
+    #[test]
+    fn a_base_pinning_two_levels_reads_back_as_the_override_that_wins() {
+        let tool = resume_with_flag_tool();
+        let base = concat!(
+            "codex resume --last -c model_reasoning_effort=\"low\" ",
+            "-c model_reasoning_effort=\"high\" --yolo"
+        );
+
+        assert!(base_pins_effort(tool, base));
+        assert_eq!(
+            pinned_base_effort(tool, base).as_deref(),
+            Some("high"),
+            "the later config override is the one the harness applies"
+        );
+
+        let rewritten = base_with_effort(tool, base, "medium").expect("the pin is rewritable");
+        assert_eq!(
+            pinned_base_effort(tool, &rewritten).as_deref(),
+            Some("medium"),
+            "every pin is rewritten, so the winning one carries the new level"
+        );
+    }
+
     // Regression: 0abb2e4 rewrote a pinned effort by splitting the base on
     // whitespace, so the spaced form Codex accepts inside one quoted argument
     // — `-c 'model_reasoning_effort = "low"'` — had its bare `=` token
@@ -590,6 +634,25 @@ mod tests {
         assert_eq!(
             base_with_effort(tool, "claude --effort=low", "high").as_deref(),
             Some("claude --effort=high")
+        );
+    }
+
+    // Regression: f9716c83 derived the applied level with an alias-blind base
+    // check, so a rendered launch could drop the request while the runtime
+    // record still claimed that requested level.
+    #[test]
+    fn an_effort_flag_alias_is_recognized_as_a_pinned_base() {
+        let base = "grok --reasoning-effort high --always-approve";
+
+        assert!(base_pins_effort(CliTool::Grok, base));
+        assert_eq!(
+            pinned_base_effort(CliTool::Grok, base).as_deref(),
+            Some("high")
+        );
+        assert_eq!(
+            base_with_effort(CliTool::Grok, base, "low").as_deref(),
+            Some("grok --reasoning-effort low --always-approve"),
+            "an accepted alias must be rewritable wherever it is recognized as a pin"
         );
     }
 

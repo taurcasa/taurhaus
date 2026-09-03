@@ -24,7 +24,7 @@ use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::session_scanner::control::validate_command_override;
 use crate::session_scanner::launch::{
     base_command, redact_command_for_logging, shell_escape, LaunchNote, LaunchSpec, ModelSpec,
-    TeamContext,
+    RenderedLaunch, TeamContext,
 };
 use taurhaus_lib::session_scanner::launch_base::LaunchAccountResult;
 
@@ -48,6 +48,7 @@ pub(super) struct MemberActivationRuntimeState {
     pub(super) mesh_joined: bool,
     pub(super) member_added: bool,
     pub(super) launch_account: Option<LaunchAccountResult>,
+    pub(super) applied_effort: Option<String>,
 }
 
 pub(super) type PendingRuntimeState = MemberActivationRuntimeState;
@@ -67,6 +68,7 @@ pub(super) struct RuntimeCommitPatch {
     pub(super) attached_at: Option<Option<chrono::DateTime<Utc>>>,
     pub(super) health: Option<HealthState>,
     pub(super) launch_account: Option<Option<LaunchAccountResult>>,
+    pub(super) applied_effort: Option<Option<String>>,
 }
 
 impl RuntimeCommitPatch {
@@ -81,6 +83,7 @@ impl RuntimeCommitPatch {
             attached_at: Some(state.attached_at),
             health: state.health,
             launch_account: Some(state.launch_account.clone()),
+            applied_effort: Some(state.applied_effort.clone()),
         }
     }
 
@@ -99,6 +102,7 @@ impl RuntimeCommitPatch {
             attached_at: Some(Some(attached_at)),
             health: Some(health),
             launch_account: Some(state.launch_account.clone()),
+            applied_effort: Some(state.applied_effort.clone()),
         }
     }
 }
@@ -283,6 +287,7 @@ pub(super) fn run_member_session_phase(
             send_launch_command_with_retry(runtime, pane_id, launch.command.as_str())?;
             let account = launch.account_result();
             runtime_state.launch_account = (!account.is_empty()).then_some(account);
+            runtime_state.applied_effort = launch.applied_effort.clone();
             Ok(DetectedRuntimeSession::default())
         }
         MemberSessionPhase::CaptureOnly => {
@@ -627,10 +632,32 @@ pub fn render_team_launch_command(
     .map(|result| result.command)
 }
 
+/// The reasoning effort a rendered launch command actually carries.
+///
+/// `LaunchSpec::render` is the authority on whether a requested level reached
+/// the command, and it reports that verdict itself. A level the operator's own
+/// base pins is not the render's doing, so it is read back from the base — the
+/// module that owns that parsing. The runtime record and the effort pass's
+/// pre-check both read this one function, so neither can disagree with the
+/// command that was launched.
+pub(super) fn launched_effort(
+    rendered: &RenderedLaunch,
+    cli_tool: CliTool,
+    base: &str,
+) -> Option<String> {
+    rendered
+        .applied_effort
+        .clone()
+        .or_else(|| crate::coordination::task_effort::pinned_base_effort(cli_tool, base))
+        .map(|level| level.trim().to_ascii_lowercase())
+        .filter(|level| !level.is_empty())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct TeamLaunchResult {
     pub(super) command: String,
     pub(super) account: LaunchAccountResult,
+    pub(super) applied_effort: Option<String>,
 }
 
 impl TeamLaunchResult {
@@ -742,6 +769,7 @@ pub(super) fn render_team_launch(
     }
     .render();
     validate_command_override(&rendered.command).map_err(CoordinationError::Validation)?;
+    let applied_effort = launched_effort(&rendered, cli_tool, base.as_ref());
 
     let account = LaunchAccountResult::for_opaque_head(
         resolved_base.and_then(|resolved| resolved.opaque_head.as_deref()),
@@ -856,6 +884,7 @@ pub(super) fn render_team_launch(
     Ok(TeamLaunchResult {
         command: rendered.command,
         account,
+        applied_effort,
     })
 }
 

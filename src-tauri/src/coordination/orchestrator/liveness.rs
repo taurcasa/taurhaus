@@ -460,6 +460,7 @@ impl CoordinationOrchestrator {
                 }
             }
 
+            let mut adopted_runtime_session = false;
             if spec(member.cli_tool).capabilities.runtime_session_capture {
                 if let Some(pane_id) = runtime.pane_id.as_deref() {
                     match self
@@ -474,6 +475,19 @@ impl CoordinationOrchestrator {
                                     runtime.session_id.clone()
                                 };
                             let session_id_changed = next_session_id != runtime.session_id;
+                            // A session appearing where the record has none is
+                            // taurhaus's own staged first capture only while
+                            // that record is still healthy from the launch that
+                            // committed the level. Once liveness has marked the
+                            // record dead it also cleared the session id, so a
+                            // session found afterwards is one nothing here
+                            // launched — a hand-restart running at whatever its
+                            // config says. `applied_effort` must stop asserting
+                            // the dead session's level, or the next pass reads
+                            // the member as already switched.
+                            let adopted_foreign_session = session_id_changed
+                                && (runtime.session_id.is_some()
+                                    || runtime.health == HealthState::SessionDead);
                             let next_jsonl_path = if session_id_changed
                                 || detected.jsonl_path.is_some()
                                 || runtime.jsonl_path.is_none()
@@ -485,6 +499,10 @@ impl CoordinationOrchestrator {
                             if session_id_changed || next_jsonl_path != runtime.jsonl_path {
                                 runtime.session_id = next_session_id;
                                 runtime.jsonl_path = next_jsonl_path;
+                                if adopted_foreign_session {
+                                    runtime.applied_effort = None;
+                                    adopted_runtime_session = true;
+                                }
                                 runtime_changed = true;
                             }
                         }
@@ -505,6 +523,19 @@ impl CoordinationOrchestrator {
                 continue;
             }
 
+            // Reviving a dead record whose session identity is not yet
+            // detectable is still a foreign adoption: taurhaus-committed
+            // launches write Healthy plus their capture state at commit time,
+            // so dead -> Healthy only ever happens for a session nothing here
+            // launched. Clearing the level NOW closes the race where the id
+            // becomes detectable one pass later, after health already reads
+            // Healthy, and the stale applied level would otherwise satisfy the
+            // effort sweep forever.
+            if runtime.health == HealthState::SessionDead && runtime.session_id.is_none() {
+                runtime.applied_effort = None;
+                adopted_runtime_session = true;
+            }
+
             runtime.health = HealthState::Healthy;
             runtime.last_seen_at = Some(Utc::now());
             let guard = acquire_team_lock(&self.teams_dir, team_name)?;
@@ -523,6 +554,9 @@ impl CoordinationOrchestrator {
                     }
                     current.session_id = runtime.session_id.clone();
                     current.jsonl_path = runtime.jsonl_path.clone();
+                    if adopted_runtime_session {
+                        current.applied_effort = None;
+                    }
                     current.daemon_pid = runtime.daemon_pid;
                     current.health = runtime.health;
                     current.last_seen_at = runtime.last_seen_at;

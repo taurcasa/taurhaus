@@ -541,6 +541,14 @@ pub(crate) fn is_resumable_task_status(status: &str) -> bool {
     matches!(status.trim(), "pending" | "in_progress")
 }
 
+/// Whether an assignment remains open but cannot currently be worked.
+///
+/// Kept beside the resumable and deadline gates so mesh's task-status
+/// vocabulary has one owner rather than being re-derived by effort policy.
+pub(crate) fn is_blocked_task_status(status: &str) -> bool {
+    status.trim() == "blocked"
+}
+
 /// The narrower gate the deadline pass applies: deadlines run only after work
 /// has started. A sibling of `is_resumable_task_status`, owned here so the
 /// status vocabulary never gets re-derived in a consumer.

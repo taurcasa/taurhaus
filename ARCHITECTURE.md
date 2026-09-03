@@ -193,7 +193,7 @@ Logging is structured and machine-first:
   - coordination step lifecycle: `coordination.step.started/completed/failed`
   - member runtime writes: `coordination.runtime.commit_skipped` (a compare-and-commit whose dependencies moved, with `changed_fields`), `coordination.runtime.record_skipped` (an unreadable record, deduplicated per member and reason), `coordination.runtime_store.io_failed`, `coordination.store.lock_unsupported`
   - assignment effort: `effort.resume.started/completed/failed` (`coordination/task_effort.rs`), including the single `failed` record carrying `reason: budget_exhausted` once the three attempts for a task and level are spent
-  - daemon background coordination: `self_heal.pass.completed/failed` and the bounded once-per-process `effort.sweep.awaiting_settings`
+  - daemon background coordination: `self_heal.pass.completed/failed` and the bounded once-per-process `effort.sweep.awaiting_settings` / `effort.sweep.skipped_busy` (the sweep did not run: no pushed launch settings, or another operation owned the orchestrator)
   - coordination audit stream: `coordination.audit.*`
   - project mutation and reseed outcomes: `projects.*`, `projects.reseed.degraded`
   - watch/index activity: `watch.batch.flushed`, `watch.git_status.*`, `search.file_index.*`
