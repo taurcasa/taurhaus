@@ -619,7 +619,7 @@ fn account_switch_moves_the_codex_hook_to_the_selected_home() {
     reconcile_account_switch_hooks_at(
         CliTool::Codex,
         &work,
-        &[personal.clone()],
+        std::slice::from_ref(&personal),
         Some(true),
         true,
         &exe,
@@ -647,7 +647,7 @@ fn account_switch_moves_the_enabled_grok_hook_to_the_selected_home() {
     reconcile_account_switch_hooks_at(
         CliTool::Grok,
         &work,
-        &[personal.clone()],
+        std::slice::from_ref(&personal),
         Some(true),
         true,
         &exe,
