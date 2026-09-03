@@ -23,38 +23,65 @@ pub struct ClaudeSourceIndex {
     pub sessions: HashMap<String, PathBuf>,
     /// Team source key (team name) -> one or more project paths.
     pub teams: HashMap<String, Vec<PathBuf>>,
+    /// Account-scoped task roots to scan. The default root remains first.
+    pub task_roots: Vec<PathBuf>,
 }
 
 /// Build Claude source index using default user directories and live sessions.
 pub fn build_claude_source_index() -> ClaudeSourceIndex {
-    let tasks_base = PlatformPaths::claude_dir().join("tasks");
     let Some(native_tool) = crate::session_scanner::cli_tool::native_inbox_tool() else {
         tracing::warn!("Claude source index disabled: no native-inbox harness is registered");
         return ClaudeSourceIndex::default();
     };
-    let projects_base = PlatformPaths::tool_session_root(native_tool);
-    let teams_base = PlatformPaths::teams_dir();
     // Continuity read: live sessions only add session id -> project path
     // mappings (merged with offline discovery); a degraded scan keeps the last
     // good snapshot instead of dropping them, nothing is bound to it.
     let (live_sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
 
-    build_claude_source_index_in(&live_sessions, &tasks_base, &projects_base, &teams_base)
+    build_claude_source_index_for_account_roots(&live_sessions, native_tool)
 }
 
 /// Build Claude source index using caller-provided live sessions.
 pub fn build_claude_source_index_with_live_sessions(
     live_sessions: &[RuntimeSession],
 ) -> ClaudeSourceIndex {
-    let tasks_base = PlatformPaths::claude_dir().join("tasks");
     let Some(native_tool) = crate::session_scanner::cli_tool::native_inbox_tool() else {
         tracing::warn!("Claude source index disabled: no native-inbox harness is registered");
         return ClaudeSourceIndex::default();
     };
-    let projects_base = PlatformPaths::tool_session_root(native_tool);
-    let teams_base = PlatformPaths::teams_dir();
+    build_claude_source_index_for_account_roots(live_sessions, native_tool)
+}
 
-    build_claude_source_index_in(live_sessions, &tasks_base, &projects_base, &teams_base)
+fn build_claude_source_index_for_account_roots(
+    live_sessions: &[RuntimeSession],
+    native_tool: crate::session_scanner::cli_tool::CliTool,
+) -> ClaudeSourceIndex {
+    let default_teams = PlatformPaths::teams_dir();
+    let registry = crate::coordination::stores::TeamRootRegistry::new(default_teams.clone());
+    let (roots, registered) = match (registry.roots(), registry.registered()) {
+        (Ok(roots), Ok(registered)) => (roots, registered),
+        (Err(error), _) | (_, Err(error)) => {
+            tracing::warn!(error = %error, "Claude source index could not read team-root registry");
+            return build_claude_source_index_in(
+                live_sessions,
+                &PlatformPaths::claude_dir().join("tasks"),
+                &PlatformPaths::tool_session_root(native_tool),
+                &default_teams,
+            );
+        }
+    };
+    let source_roots = roots
+        .iter()
+        .map(|teams_dir| {
+            let account_dir = teams_dir.parent().unwrap_or(teams_dir);
+            (
+                account_dir.join("tasks"),
+                account_dir.join("projects"),
+                teams_dir.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    build_claude_source_index_in_roots(live_sessions, &source_roots, &default_teams, &registered)
 }
 
 /// Build Claude source index from injectable inputs (testable variant).
@@ -70,7 +97,43 @@ pub fn build_claude_source_index_in(
     merge_offline_session_map(projects_base, &mut sessions);
     let teams = build_team_map(tasks_base, teams_base);
 
-    ClaudeSourceIndex { sessions, teams }
+    ClaudeSourceIndex {
+        sessions,
+        teams,
+        task_roots: vec![tasks_base.to_path_buf()],
+    }
+}
+
+fn build_claude_source_index_in_roots(
+    live_sessions: &[RuntimeSession],
+    roots: &[(PathBuf, PathBuf, PathBuf)],
+    default_teams: &Path,
+    registered: &std::collections::BTreeMap<String, PathBuf>,
+) -> ClaudeSourceIndex {
+    let mut sessions = HashMap::new();
+    let mut teams = HashMap::new();
+    let mut task_roots = Vec::new();
+    merge_live_session_map(live_sessions, &mut sessions);
+    for (tasks_base, projects_base, teams_base) in roots {
+        merge_offline_session_map(projects_base, &mut sessions);
+        if !task_roots.contains(tasks_base) {
+            task_roots.push(tasks_base.clone());
+        }
+        for (team_name, projects) in build_team_map(tasks_base, teams_base) {
+            let authoritative = registered
+                .get(&team_name)
+                .map(PathBuf::as_path)
+                .unwrap_or(default_teams);
+            if authoritative == teams_base {
+                teams.insert(team_name, projects);
+            }
+        }
+    }
+    ClaudeSourceIndex {
+        sessions,
+        teams,
+        task_roots,
+    }
 }
 
 fn merge_live_session_map(
@@ -346,6 +409,45 @@ mod tests {
                 PathBuf::from("/projects/b"),
                 PathBuf::from("/projects/c"),
             ])
+        );
+    }
+
+    #[test]
+    fn index_combines_authoritative_team_sources_from_each_account_root() {
+        let tmp = TempDir::new().unwrap();
+        let default = tmp.path().join("default");
+        let work = tmp.path().join("work");
+        let default_teams = default.join("teams");
+        let work_teams = work.join("teams");
+        for account in [&default, &work] {
+            fs::create_dir_all(account.join("tasks/work-team")).unwrap();
+            fs::create_dir_all(account.join("projects")).unwrap();
+        }
+        fs::create_dir_all(work_teams.join("work-team")).unwrap();
+        write_file(
+            &work_teams.join("work-team/config.json"),
+            r#"{"name":"work-team","members":[{"projectPath":"/projects/work"}]}"#,
+        );
+        let registered =
+            std::collections::BTreeMap::from([("work-team".to_string(), work_teams.clone())]);
+        let roots = vec![
+            (
+                default.join("tasks"),
+                default.join("projects"),
+                default_teams.clone(),
+            ),
+            (work.join("tasks"), work.join("projects"), work_teams),
+        ];
+
+        let index = build_claude_source_index_in_roots(&[], &roots, &default_teams, &registered);
+
+        assert_eq!(
+            index.task_roots,
+            vec![roots[0].0.clone(), roots[1].0.clone()]
+        );
+        assert_eq!(
+            index.teams["work-team"],
+            vec![PathBuf::from("/projects/work")]
         );
     }
 

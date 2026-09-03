@@ -13,7 +13,9 @@
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::RuntimeSession;
-use crate::task_scanner::claude_index::{build_claude_source_index_in, ClaudeSourceIndex};
+use crate::task_scanner::claude_index::{
+    build_claude_source_index_in, build_claude_source_index_with_live_sessions, ClaudeSourceIndex,
+};
 use crate::task_scanner::types::{ScanOutcome, TaskStatus, UnifiedTask};
 use std::fs;
 use std::path::Path;
@@ -136,17 +138,7 @@ fn metadata_u32(metadata: Option<&serde_json::Value>, key: &str) -> Option<u32> 
 
 /// Get tasks for a project from Claude Code's task storage.
 pub fn get_tasks(project_path: &str, sessions: &[&RuntimeSession]) -> ScanOutcome {
-    let tasks_base = PlatformPaths::claude_dir().join("tasks");
-    let projects_base = PlatformPaths::tool_session_root(CliTool::Claude);
-    let teams_base = PlatformPaths::teams_dir();
-
-    get_tasks_in(
-        project_path,
-        sessions,
-        &tasks_base,
-        &projects_base,
-        &teams_base,
-    )
+    get_tasks_with_index(project_path, sessions, None)
 }
 
 /// Get tasks for a project with an optional pre-built source index.
@@ -159,13 +151,25 @@ pub fn get_tasks_with_index(
     let projects_base = PlatformPaths::tool_session_root(CliTool::Claude);
     let teams_base = PlatformPaths::teams_dir();
 
+    let live_sessions = sessions
+        .iter()
+        .map(|session| (*session).clone())
+        .collect::<Vec<_>>();
+    let built_index;
+    let index = match prebuilt_index {
+        Some(index) => index,
+        None => {
+            built_index = build_claude_source_index_with_live_sessions(&live_sessions);
+            &built_index
+        }
+    };
     get_tasks_in_with_index(
         project_path,
         sessions,
         &tasks_base,
         &projects_base,
         &teams_base,
-        prebuilt_index,
+        Some(index),
     )
 }
 
@@ -195,19 +199,6 @@ pub fn get_tasks_in_with_index(
     teams_base: &Path,
     prebuilt_index: Option<&ClaudeSourceIndex>,
 ) -> ScanOutcome {
-    if !tasks_base.exists() {
-        return ScanOutcome::Unavailable(format!(
-            "Claude tasks base does not exist: {}",
-            tasks_base.display()
-        ));
-    }
-    if !tasks_base.is_dir() {
-        return ScanOutcome::Unavailable(format!(
-            "Claude tasks base is not a directory: {}",
-            tasks_base.display()
-        ));
-    }
-
     let live_sessions: Vec<RuntimeSession> = sessions.iter().map(|s| (*s).clone()).collect();
     let built_index;
     let index = match prebuilt_index {
@@ -218,8 +209,25 @@ pub fn get_tasks_in_with_index(
             &built_index
         }
     };
+    let task_roots = if index.task_roots.is_empty() {
+        vec![tasks_base.to_path_buf()]
+    } else {
+        index.task_roots.clone()
+    };
+    if !task_roots.iter().any(|root| root.is_dir()) {
+        return ScanOutcome::Unavailable(format!(
+            "Claude tasks base does not exist: {}",
+            tasks_base.display()
+        ));
+    }
+    if tasks_base.exists() && !tasks_base.is_dir() && task_roots.len() == 1 {
+        return ScanOutcome::Unavailable(format!(
+            "Claude tasks base is not a directory: {}",
+            tasks_base.display()
+        ));
+    }
 
-    let scan = scan_all_task_directories(project_path, tasks_base, index);
+    let scan = scan_all_task_directories(project_path, &task_roots, index);
     if !scan.tasks.is_empty() {
         return ScanOutcome::Data(scan.tasks);
     }
@@ -235,16 +243,45 @@ pub fn get_tasks_in_with_index(
 
 fn scan_all_task_directories(
     project_path: &str,
-    tasks_base: &Path,
+    task_roots: &[std::path::PathBuf],
     index: &ClaudeSourceIndex,
 ) -> ClaudeScanOutcome {
     let mut outcome = ClaudeScanOutcome::default();
     let project_key = crate::provider::path::normalize_project_path(project_path);
+    for tasks_base in task_roots {
+        if !tasks_base.exists() {
+            continue;
+        }
+        scan_task_root(tasks_base, &project_key, index, &mut outcome);
+    }
+
+    outcome.tasks.sort_by(|a, b| {
+        a.session_id
+            .cmp(&b.session_id)
+            .then_with(|| {
+                let a_num: Option<u32> = a.id.parse().ok();
+                let b_num: Option<u32> = b.id.parse().ok();
+                match (a_num, b_num) {
+                    (Some(a), Some(b)) => a.cmp(&b),
+                    _ => a.id.cmp(&b.id),
+                }
+            })
+            .then_with(|| a.subject.cmp(&b.subject))
+    });
+    outcome
+}
+
+fn scan_task_root(
+    tasks_base: &Path,
+    project_key: &str,
+    index: &ClaudeSourceIndex,
+    outcome: &mut ClaudeScanOutcome,
+) {
     let entries = match fs::read_dir(tasks_base) {
         Ok(entries) => entries,
         Err(e) => {
             outcome.record_error(format!("Failed to read tasks base: {e}"));
-            return outcome;
+            return;
         }
     };
 
@@ -270,7 +307,7 @@ fn scan_all_task_directories(
             continue;
         };
 
-        if !source_matches_project(source_key, &project_key, index) {
+        if !source_matches_project(source_key, project_key, index) {
             continue;
         }
 
@@ -285,22 +322,6 @@ fn scan_all_task_directories(
         }
         outcome.tasks.extend(parsed.tasks);
     }
-
-    outcome.tasks.sort_by(|a, b| {
-        a.session_id
-            .cmp(&b.session_id)
-            .then_with(|| {
-                let a_num: Option<u32> = a.id.parse().ok();
-                let b_num: Option<u32> = b.id.parse().ok();
-                match (a_num, b_num) {
-                    (Some(a), Some(b)) => a.cmp(&b),
-                    _ => a.id.cmp(&b.id),
-                }
-            })
-            .then_with(|| a.subject.cmp(&b.subject))
-    });
-
-    outcome
 }
 
 fn source_matches_project(source_key: &str, project_key: &str, index: &ClaudeSourceIndex) -> bool {
@@ -445,6 +466,7 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::Write;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn write_task(dir: &Path, filename: &str, content: &str) {
@@ -460,6 +482,41 @@ mod tests {
             .and_then(|n| n.to_str())
             .unwrap_or("test-source");
         parse_task_directory(dir, source_key).tasks
+    }
+
+    #[test]
+    fn prebuilt_index_scans_the_task_root_that_owns_a_registered_team() {
+        let tmp = TempDir::new().unwrap();
+        let default_tasks = tmp.path().join("default/tasks");
+        let account_tasks = tmp.path().join("work/tasks");
+        let team_tasks = account_tasks.join("work-team");
+        fs::create_dir_all(&team_tasks).unwrap();
+        write_task(
+            &team_tasks,
+            "1.json",
+            r#"{"id":"1","subject":"Account-root task","status":"pending"}"#,
+        );
+        let mut index = ClaudeSourceIndex::default();
+        index.task_roots = vec![default_tasks.clone(), account_tasks];
+        index.teams.insert(
+            "work-team".to_string(),
+            vec![PathBuf::from("/projects/work")],
+        );
+
+        let outcome = get_tasks_in_with_index(
+            "/projects/work",
+            &[],
+            &default_tasks,
+            &tmp.path().join("default/projects"),
+            &tmp.path().join("default/teams"),
+            Some(&index),
+        );
+
+        let ScanOutcome::Data(tasks) = outcome else {
+            panic!("registered task root should remain available");
+        };
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].subject, "Account-root task");
     }
 
     #[test]
