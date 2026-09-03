@@ -25,7 +25,7 @@ type BackendFactory = dyn Fn(BackendKind, &Path) -> Result<Arc<dyn CoordinationB
     + Send
     + Sync;
 type RuntimeFactory = dyn Fn() -> Arc<dyn CoordinationRuntime> + Send + Sync;
-type ProjectEffortTeamSelection = (Vec<String>, Vec<(String, String)>);
+type ProjectEffortTeamSelection = (Vec<(PathBuf, String)>, Vec<(String, String)>);
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BackgroundSelfHealPassResult {
@@ -318,7 +318,9 @@ impl CoordinationState {
         &self,
         team_name: &str,
     ) -> Result<TeamSelfHealResult, CoordinationError> {
-        self.with_orchestrator(|orchestrator| orchestrator.trigger_team_self_heal(team_name))
+        self.with_team_orchestrator(team_name, |orchestrator| {
+            orchestrator.trigger_team_self_heal(team_name)
+        })
     }
 
     /// One deadline pass over every team, independent of app self-heal work.
@@ -332,17 +334,17 @@ impl CoordinationState {
         &self,
         now: DateTime<Utc>,
     ) -> Result<BackgroundDeadlinePassResult, CoordinationError> {
-        let team_names = TeamConfigStore::list(&self.teams_dir)?;
         let mut summary = BackgroundDeadlinePassResult::default();
-        let mut orchestrator = self.build_background_orchestrator()?;
-
-        for team_name in team_names {
-            summary.teams_scanned += 1;
-            match crate::coordination::task_deadline_pass::apply_task_deadlines(
-                &mut orchestrator,
-                &team_name,
-                now,
-            ) {
+        let mut teams_by_root = group_team_locations(self.team_locations()?);
+        for teams_dir in self.teams_roots()? {
+            let mut orchestrator = self.build_background_orchestrator_for_root(&teams_dir)?;
+            for team_name in teams_by_root.remove(&teams_dir).unwrap_or_default() {
+                summary.teams_scanned += 1;
+                match crate::coordination::task_deadline_pass::apply_task_deadlines(
+                    &mut orchestrator,
+                    &team_name,
+                    now,
+                ) {
                 Ok(outcome) => {
                     summary.team_errors += outcome.failures.len();
                     for (member, reason) in outcome.failures {
@@ -362,6 +364,7 @@ impl CoordinationState {
                         "background task-deadline pass failed"
                     );
                 }
+                }
             }
         }
 
@@ -372,13 +375,13 @@ impl CoordinationState {
     pub(crate) fn run_background_self_heal_core_pass(
         &self,
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
-        let team_names = TeamConfigStore::list(&self.teams_dir)?;
         let mut summary = BackgroundSelfHealPassResult::default();
-        let mut orchestrator = self.build_background_orchestrator()?;
-
-        for team_name in team_names {
-            summary.teams_scanned += 1;
-            match orchestrator.trigger_team_self_heal(&team_name) {
+        let mut teams_by_root = group_team_locations(self.team_locations()?);
+        for teams_dir in self.teams_roots()? {
+            let mut orchestrator = self.build_background_orchestrator_for_root(&teams_dir)?;
+            for team_name in teams_by_root.remove(&teams_dir).unwrap_or_default() {
+                summary.teams_scanned += 1;
+                match orchestrator.trigger_team_self_heal(&team_name) {
                 Ok(result) => apply_self_heal_result(&mut summary, &result),
                 Err(err) => {
                     summary.team_errors += 1;
@@ -387,6 +390,7 @@ impl CoordinationState {
                         error = %err,
                         "background coordination self-heal failed"
                     );
+                }
                 }
             }
         }
@@ -405,13 +409,19 @@ impl CoordinationState {
         tmux_layout: &str,
         resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
     ) -> Result<BackgroundEffortRetryPassResult, CoordinationError> {
-        Ok(self
-            .try_with_orchestrator(|orchestrator| {
-                let team_names = TeamConfigStore::list(&self.teams_dir)?;
-                let mut summary = BackgroundEffortRetryPassResult::default();
-
+        let mut teams_by_root = std::collections::BTreeMap::<PathBuf, Vec<String>>::new();
+        for root in self.teams_roots()? {
+            teams_by_root.entry(root).or_default();
+        }
+        for (root, team_name) in self.team_locations()? {
+            teams_by_root.entry(root).or_default().push(team_name);
+        }
+        let mut summary = BackgroundEffortRetryPassResult::default();
+        for (root, team_names) in teams_by_root {
+            let result = self.try_with_root_orchestrator(&root, |orchestrator| {
+                let mut root_summary = BackgroundEffortRetryPassResult::default();
                 for team_name in team_names {
-                    summary.teams_scanned += 1;
+                    root_summary.teams_scanned += 1;
                     // The task event remains the earliest trigger, while this bounded
                     // sweep also starts a switch whose edge the app never observed.
                     match orchestrator.apply_pending_task_effort_outcome(
@@ -422,9 +432,9 @@ impl CoordinationState {
                         resolve_launch_base,
                     ) {
                         Ok(outcome) => {
-                            summary.members_effort_resumed += outcome.switched.len();
+                            root_summary.members_effort_resumed += outcome.switched.len();
                             if !outcome.failed.is_empty() || !outcome.skipped_teams.is_empty() {
-                                summary.team_errors += 1;
+                                root_summary.team_errors += 1;
                                 for (member, reason) in outcome.failed {
                                     tracing::warn!(
                                         team = %team_name,
@@ -443,7 +453,7 @@ impl CoordinationState {
                             }
                         }
                         Err(err) => {
-                            summary.team_errors += 1;
+                            root_summary.team_errors += 1;
                             tracing::warn!(
                                 team = %team_name,
                                 error = %err,
@@ -453,14 +463,18 @@ impl CoordinationState {
                     }
                 }
 
-                Ok(summary)
-            })?
-            // A cycle that never ran is not a cycle that found nothing: the
-            // caller reports the skip rather than a zeroed summary.
-            .unwrap_or(BackgroundEffortRetryPassResult {
-                skipped_busy: true,
-                ..BackgroundEffortRetryPassResult::default()
-            }))
+                Ok(root_summary)
+            })?;
+            match result {
+                Some(root_summary) => {
+                    summary.teams_scanned += root_summary.teams_scanned;
+                    summary.team_errors += root_summary.team_errors;
+                    summary.members_effort_resumed += root_summary.members_effort_resumed;
+                }
+                None => summary.skipped_busy = true,
+            }
+        }
+        Ok(summary)
     }
 
     /// Put a pending assignment effort into force for every member working in
@@ -507,25 +521,26 @@ impl CoordinationState {
         if teams.is_empty() {
             return Ok(outcome);
         }
-        self.with_orchestrator(|orchestrator| {
-            for team_name in teams {
-                match orchestrator.apply_pending_task_effort_outcome(
+        for (teams_dir, team_name) in teams {
+            let result = self.with_root_orchestrator(&teams_dir, |orchestrator| {
+                orchestrator.apply_pending_task_effort_outcome(
                     &team_name,
                     cli_commands,
                     tmux_layout,
                     crate::coordination::task_effort::EffortPassScope::TaskChanged,
                     resolve_launch_base,
-                ) {
-                    Ok(team_outcome) => {
-                        outcome.switched.extend(team_outcome.switched);
-                        outcome.failed.extend(team_outcome.failed);
-                        outcome.skipped_teams.extend(team_outcome.skipped_teams);
-                    }
-                    Err(err) => outcome.skipped_teams.push((team_name, err.to_string())),
+                )
+            });
+            match result {
+                Ok(team_outcome) => {
+                    outcome.switched.extend(team_outcome.switched);
+                    outcome.failed.extend(team_outcome.failed);
+                    outcome.skipped_teams.extend(team_outcome.skipped_teams);
                 }
+                Err(err) => outcome.skipped_teams.push((team_name, err.to_string())),
             }
-            Ok(outcome)
-        })
+        }
+        Ok(outcome)
     }
 
     fn project_effort_teams(
@@ -535,8 +550,8 @@ impl CoordinationState {
         let wanted = crate::provider::path::normalize_project_path(project_path);
         let mut teams = Vec::new();
         let mut skipped = Vec::new();
-        for team_name in TeamConfigStore::list(&self.teams_dir)? {
-            let config = match TeamConfigStore::load(&self.teams_dir, &team_name) {
+        for (teams_dir, team_name) in self.team_locations()? {
+            let config = match TeamConfigStore::load(&teams_dir, &team_name) {
                 Ok(config) => config,
                 Err(err) => {
                     skipped.push((team_name, err.to_string()));
@@ -548,7 +563,7 @@ impl CoordinationState {
                     &member.project_path.to_string_lossy(),
                 ) == wanted
             }) {
-                teams.push(team_name);
+                teams.push((teams_dir, team_name));
             }
         }
         Ok((teams, skipped))
@@ -598,16 +613,72 @@ impl CoordinationState {
         Ok(orchestrator)
     }
 
-    fn build_background_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
+    fn build_background_orchestrator_for_root(
+        &self,
+        teams_dir: &Path,
+    ) -> Result<CoordinationOrchestrator, CoordinationError> {
         let kind = self.backend_selector.select_floor();
-        let backend = (self.backend_factory)(kind, &self.teams_dir)?;
+        let backend = (self.backend_factory)(kind, teams_dir)?;
         let runtime = (self.runtime_factory)();
         let mut orchestrator =
-            CoordinationOrchestrator::new_with_runtime(self.teams_dir.clone(), backend, runtime);
-        orchestrator.claude_backend =
-            Some(Arc::new(ClaudeNativeBackend::new(self.teams_dir.clone())));
+            CoordinationOrchestrator::new_with_runtime(teams_dir.to_path_buf(), backend, runtime);
+        orchestrator.claude_backend = Some(Arc::new(ClaudeNativeBackend::new(
+            teams_dir.to_path_buf(),
+        )));
         Ok(orchestrator)
     }
+
+    fn try_with_root_orchestrator<R, F>(
+        &self,
+        teams_dir: &Path,
+        op: F,
+    ) -> Result<Option<R>, CoordinationError>
+    where
+        F: FnOnce(&mut CoordinationOrchestrator) -> Result<R, CoordinationError>,
+    {
+        if teams_dir == self.teams_dir {
+            return self.try_with_orchestrator(op);
+        }
+        let slot = {
+            let mut roots = self.root_orchestrators.lock().map_err(|_| {
+                CoordinationError::StoreError(
+                    "coordination root-orchestrator map mutex poisoned".to_string(),
+                )
+            })?;
+            roots
+                .entry(teams_dir.to_path_buf())
+                .or_insert_with(|| Arc::new(Mutex::new(None)))
+                .clone()
+        };
+        let mut guard = match slot.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => return Ok(None),
+            Err(TryLockError::Poisoned(_)) => {
+                return Err(CoordinationError::StoreError(
+                    "coordination root mutex poisoned".to_string(),
+                ));
+            }
+        };
+        if guard.is_none() {
+            *guard = Some(self.build_orchestrator_for_root(teams_dir)?);
+        }
+        let orchestrator = guard.as_mut().ok_or_else(|| {
+            CoordinationError::StoreError(
+                "coordination orchestrator missing after initialization".to_string(),
+            )
+        })?;
+        op(orchestrator).map(Some)
+    }
+}
+
+fn group_team_locations(
+    locations: Vec<(PathBuf, String)>,
+) -> std::collections::BTreeMap<PathBuf, Vec<String>> {
+    let mut grouped = std::collections::BTreeMap::<PathBuf, Vec<String>>::new();
+    for (root, team_name) in locations {
+        grouped.entry(root).or_default().push(team_name);
+    }
+    grouped
 }
 
 fn ensure_startup_claude_compact_hook(
@@ -843,6 +914,31 @@ mod tests {
             state.team_locations().expect("locations"),
             vec![(default_root, "legacy-team".to_string()), (work_root, "work-team".to_string())]
         );
+    }
+
+    #[test]
+    fn background_pass_scans_default_and_registered_team_roots() {
+        let temp = TempDir::new().expect("tempdir");
+        let default_root = temp.path().join("default").join("teams");
+        let work_root = temp.path().join("work").join("teams");
+        save_team_fixture(&default_root, "legacy-team", Vec::new());
+        save_team_fixture(&work_root, "work-team", Vec::new());
+        let state = CoordinationState::with_components(
+            default_root,
+            BackendSelector::m0(),
+            fake_factory_with_counter(Arc::new(AtomicUsize::new(0))),
+        );
+        state
+            .team_root_registry()
+            .set("work-team", &work_root)
+            .expect("register work team");
+
+        let result = state
+            .run_background_self_heal_core_pass()
+            .expect("self-heal pass");
+
+        assert_eq!(result.teams_scanned, 2);
+        assert_eq!(result.teams_skipped, 2);
     }
 
     fn write_lead_credential(teams_dir: &std::path::Path, team_name: &str) {
