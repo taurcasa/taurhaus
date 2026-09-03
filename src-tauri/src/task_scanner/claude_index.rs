@@ -65,9 +65,9 @@ fn build_claude_source_index_for_account_roots(
 ) -> ClaudeSourceIndex {
     let default_teams = PlatformPaths::teams_dir();
     let registry = crate::coordination::stores::TeamRootRegistry::new(default_teams.clone());
-    let (roots, registered) = match (registry.roots(), registry.registered()) {
-        (Ok(roots), Ok(registered)) => (roots, registered),
-        (Err(error), _) | (_, Err(error)) => {
+    let registered = match registry.registered() {
+        Ok(registered) => registered,
+        Err(error) => {
             tracing::warn!(error = %error, "Claude source index could not read team-root registry");
             return build_claude_source_index_in(
                 live_sessions,
@@ -77,18 +77,39 @@ fn build_claude_source_index_for_account_roots(
             );
         }
     };
+    let mut roots = vec![default_teams.clone()];
+    for root in registered.values() {
+        if !roots.iter().any(|existing| {
+            crate::coordination::stores::team_roots::same_teams_root(existing, root)
+        }) {
+            roots.push(root.clone());
+        }
+    }
     let source_roots = roots
         .iter()
         .map(|teams_dir| {
             let account_dir = teams_dir.parent().unwrap_or(teams_dir);
             (
                 account_dir.join("tasks"),
-                account_dir.join("projects"),
+                projects_root_in(account_dir, native_tool),
                 teams_dir.clone(),
             )
         })
         .collect::<Vec<_>>();
     build_claude_source_index_in_roots(live_sessions, &source_roots, &default_teams, &registered)
+}
+
+fn projects_root_in(
+    account_dir: &Path,
+    tool: crate::session_scanner::cli_tool::CliTool,
+) -> PathBuf {
+    crate::session_scanner::cli_tool::spec(tool)
+        .projects_subdir
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .fold(account_dir.to_path_buf(), |root, segment| {
+            root.join(segment)
+        })
 }
 
 /// Build Claude source index from injectable inputs (testable variant).
@@ -426,6 +447,15 @@ mod tests {
                 PathBuf::from("/projects/b"),
                 PathBuf::from("/projects/c"),
             ])
+        );
+    }
+
+    #[test]
+    fn account_project_roots_follow_the_tool_registry_subdirectory() {
+        let account = Path::new("/accounts/agy");
+        assert_eq!(
+            projects_root_in(account, CliTool::Agy),
+            account.join("antigravity-cli/conversations")
         );
     }
 

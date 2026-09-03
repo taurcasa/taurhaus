@@ -158,7 +158,7 @@ impl BackgroundScheduler {
 struct PassSignals {
     /// The app has not pushed launch settings, so no command can be rendered.
     awaiting_settings: bool,
-    /// Another operation owned the orchestrator for the whole cycle.
+    /// Another operation owned at least one root's orchestrator during the cycle.
     effort_skipped_busy: bool,
 }
 
@@ -221,15 +221,17 @@ fn emit_awaiting_settings() {
     );
 }
 
-/// A cycle whose effort sweep never ran because another operation owned the
-/// orchestrator. Reported once per daemon run, like the absent-settings skip:
-/// a sweep that silently does not fire is what the forensics could not see.
+/// A cycle where at least one root's effort sweep was skipped because another
+/// operation owned that root's orchestrator. Reported once per daemon run.
 fn emit_effort_sweep_skipped_busy() {
     taurhaus_lib::logging::emit_global(
         "info",
         "coordination",
         "effort.sweep.skipped_busy",
-        Some("Daemon effort sweep skipped a cycle: the orchestrator was busy".to_string()),
+        Some(
+            "Daemon effort sweep skipped at least one team root: its orchestrator was busy"
+                .to_string(),
+        ),
         Map::new(),
     );
 }

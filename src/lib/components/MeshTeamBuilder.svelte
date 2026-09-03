@@ -2272,7 +2272,7 @@
                   data-testid="mesh-builder-lead-card"
                 >
                   <span
-                    class="absolute inset-y-0 left-0 w-1.5 {memberAccentTone(normalizedTeam.lead.tool, 'lead')}"
+                    class="absolute inset-y-0 left-0 w-1.5 rounded-l-[20px] {memberAccentTone(normalizedTeam.lead.tool, 'lead')}"
                     aria-hidden="true"
                   ></span>
 
@@ -2424,7 +2424,7 @@
                   data-testid={`mesh-builder-agent-card-${agent.id}`}
                 >
                   <span
-                    class="absolute inset-y-0 left-0 w-1.5 {memberAccentTone(agent.tool)}"
+                    class="absolute inset-y-0 left-0 w-1.5 rounded-l-[20px] {memberAccentTone(agent.tool)}"
                     aria-hidden="true"
                   ></span>
 

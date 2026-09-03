@@ -45,6 +45,7 @@ use serde::{Deserialize, Serialize};
 /// live-presence reconciliation, and active-project mappings) into the daemon.
 /// v23: member launch intents carry stable account ids and the daemon owns the
 /// accept-then-poll selector-account switch operation.
+/// v24: per-team root authority and Claude team account switching.
 pub const PROTOCOL_VERSION: u32 = 24;
 
 // ---------------------------------------------------------------------------
