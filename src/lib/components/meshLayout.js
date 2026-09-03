@@ -16,7 +16,7 @@ function normalizeMember(member, fallbackId) {
   }
 }
 
-export function hasOpaqueAccountNote(member) {
+function hasOpaqueAccountNote(member) {
   return member?.accountApplied === false
     && member?.accountNote === 'opaque_base_command'
     && String(member?.accountNoteDetail ?? '').trim().length > 0
