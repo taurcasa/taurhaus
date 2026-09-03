@@ -1538,7 +1538,9 @@ fn maybe_ensure_compact_hooks_for_team<T>(
 /// whether it belongs there. Every mutation that can add the first grok member
 /// or remove the last one calls this; a failure is logged and the current
 /// installation is left alone rather than failing the mutation the user asked
-/// for.
+/// for. The account-home sweep runs last and is authoritative: it is the only
+/// reconciler that visits a *non-default* account home once the last member
+/// launching from it is gone, and no launch of that tool follows to do it.
 fn reconcile_global_harness_hooks(app: &AppHandle) {
     let (Some(state), Some(db)) = (
         app.try_state::<CoordinationState>(),
@@ -1565,6 +1567,10 @@ fn reconcile_global_harness_hooks(app: &AppHandle) {
             fields,
         );
     }
+    crate::commands::terminal_settings::reconcile_managed_account_hooks_for_roster(
+        state.teams_dir(),
+        terminal.harness.grok_hooks,
+    );
 }
 
 fn emit_initialize_pipeline_result(team_name: &str, result: &IpcResult<InitializeReport>) {

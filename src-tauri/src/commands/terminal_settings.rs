@@ -604,20 +604,139 @@ pub(crate) fn reconcile_managed_account_hooks_for_launch(
         &match compact_hook_executable() {
             Ok(executable) => executable,
             Err(error) => {
-                log_managed_account_hook_degraded(&error);
+                log_managed_account_hook_degraded(
+                    &error,
+                    "Managed launch continued without compact-hook trust",
+                );
                 return false;
             }
         },
     ) {
         Ok(trusted) => trusted,
         Err(error) => {
-            log_managed_account_hook_degraded(&error);
+            log_managed_account_hook_degraded(
+                &error,
+                "Managed launch continued without compact-hook trust",
+            );
             false
         }
     }
 }
 
-fn log_managed_account_hook_degraded(error: &CoordinationError) {
+/// Every hook-capable tool's account homes, reconciled against the whole
+/// roster instead of one launch.
+///
+/// The launch reconciler is the only other place that sees account-scoped
+/// homes, and a launch is exactly what never happens again once the last
+/// member using one is gone: disbanding the only team on `~/.codex-work` left
+/// the taurhaus hook in that home forever. Removal only — installing stays
+/// with the launch that knows which account it is about to use.
+pub(crate) fn reconcile_managed_account_hooks_for_roster(
+    teams_dir: &std::path::Path,
+    grok_enabled: bool,
+) -> bool {
+    let tools = crate::session_scanner::cli_tool::all()
+        .iter()
+        .map(|spec| spec.tool)
+        .filter(|tool| hook_reconciled_tool(*tool))
+        .collect::<Vec<_>>();
+    let mut cli_commands = crate::models::CliCommandSettings::default();
+    crate::commands::accounts::apply_team_account_selector_dirs(
+        &mut cli_commands,
+        tools.iter().copied(),
+    );
+    crate::commands::accounts::apply_team_managed_accounts(&mut cli_commands, tools);
+    let executable = match compact_hook_executable() {
+        Ok(executable) => executable,
+        Err(error) => {
+            log_managed_account_hook_degraded(&error, "Account homes were left unreconciled");
+            return false;
+        }
+    };
+    match reconcile_managed_account_hooks_for_roster_at(
+        teams_dir,
+        &cli_commands,
+        CliVersions::current().codex_compaction_hooks_support(),
+        grok_enabled,
+        &executable,
+    ) {
+        Ok(changed) => changed,
+        Err(error) => {
+            log_managed_account_hook_degraded(&error, "Account homes were left unreconciled");
+            false
+        }
+    }
+}
+
+fn collect_managed_hook_homes_for_roster(
+    teams_dir: &std::path::Path,
+    cli_commands: &crate::models::CliCommandSettings,
+) -> Result<std::collections::HashMap<CliTool, ManagedHookHomes>, CoordinationError> {
+    // Every hook-capable tool gets an entry even when no member runs it: a
+    // roster with no Codex member left is the case whose homes must be swept.
+    let mut homes = crate::session_scanner::cli_tool::all()
+        .iter()
+        .map(|spec| spec.tool)
+        .filter(|tool| hook_reconciled_tool(*tool))
+        .map(|tool| (tool, ManagedHookHomes::default()))
+        .collect::<std::collections::HashMap<_, _>>();
+    for team_name in crate::coordination::stores::TeamConfigStore::list(teams_dir)? {
+        let config = crate::coordination::stores::TeamConfigStore::load(teams_dir, &team_name)?;
+        for member in config.members {
+            if !hook_reconciled_tool(member.cli_tool) {
+                continue;
+            }
+            homes
+                .entry(member.cli_tool)
+                .or_default()
+                .record(roster_member_hook_home(
+                    teams_dir,
+                    &team_name,
+                    &member,
+                    cli_commands,
+                ));
+        }
+    }
+    Ok(homes)
+}
+
+fn reconcile_managed_account_hooks_for_roster_at(
+    teams_dir: &std::path::Path,
+    cli_commands: &crate::models::CliCommandSettings,
+    codex_hooks_supported: Option<bool>,
+    grok_enabled: bool,
+    taurhaus_exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    let homes = collect_managed_hook_homes_for_roster(teams_dir, cli_commands)?;
+    let mut changed = false;
+    for (tool, tool_homes) in &homes {
+        if tool_homes.unresolved_member {
+            continue;
+        }
+        let delivery = crate::session_scanner::cli_tool::spec(*tool)
+            .capabilities
+            .compaction_delivery;
+        for home in known_managed_homes(cli_commands, *tool)
+            .iter()
+            .filter(|home| !tool_homes.needed.contains(*home))
+        {
+            changed |= match delivery {
+                CompactionDelivery::HookStdout => reconcile_codex_hook_at_with_support(
+                    home,
+                    false,
+                    codex_hooks_supported,
+                    taurhaus_exe,
+                )?,
+                CompactionDelivery::MeshInbox => {
+                    reconcile_grok_hooks_at(home, grok_enabled, false, taurhaus_exe)?
+                }
+            };
+        }
+    }
+    Ok(changed)
+}
+
+fn log_managed_account_hook_degraded(error: &CoordinationError, message: &str) {
     tracing::warn!(error = %error, "managed account hook reconciliation degraded");
     let mut fields = serde_json::Map::new();
     fields.insert(
@@ -628,7 +747,7 @@ fn log_managed_account_hook_degraded(error: &CoordinationError) {
         "warn",
         "coordination",
         "compaction.codex_hook.degraded",
-        Some("Managed launch continued without compact-hook trust".to_string()),
+        Some(message.to_string()),
         fields,
     );
 }
