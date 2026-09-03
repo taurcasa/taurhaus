@@ -901,6 +901,7 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
     // by every store write signature); until it lands, every new wrapper
     // around a teams-dir write MUST be added here.
     let markers = [
+        ".team_root_registry()",
         "quarantine_foreign_member(",
         "export_activity_snapshots_for_sessions(",
         "publish_initialize_snapshot(",
