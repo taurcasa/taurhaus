@@ -2083,7 +2083,7 @@ fn managed_claude_team_launch_uses_the_selected_team_root() {
     );
     commands.account_selector_dirs.insert(
         "CLAUDE_CONFIG_DIR".to_string(),
-        std::path::PathBuf::from("/accounts/claude-default"),
+        std::path::PathBuf::from("/accounts/claude-work"),
     );
 
     let result = render_team_launch(
@@ -2105,6 +2105,52 @@ fn managed_claude_team_launch_uses_the_selected_team_root() {
         .starts_with("CLAUDE_CONFIG_DIR='/accounts/claude-work'"));
     assert_eq!(result.account.account_applied, Some(true));
     assert_eq!(result.account.account_id.as_deref(), Some("claude-work"));
+}
+
+#[test]
+fn managed_claude_team_launch_rejects_a_member_account_outside_the_team_root() {
+    // Regression: 18810949 removed the mixed-account Claude guard without
+    // pinning hot-added members to the registry-resolved team account.
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.managed_accounts.insert(
+        CliTool::Claude,
+        vec![
+            crate::models::ManagedLaunchAccount {
+                id: "claude-team".to_string(),
+                label: "Team".to_string(),
+                dir: std::path::PathBuf::from("/accounts/claude-team"),
+                logged_in: true,
+                is_default: false,
+            },
+            crate::models::ManagedLaunchAccount {
+                id: "claude-other".to_string(),
+                label: "Other".to_string(),
+                dir: std::path::PathBuf::from("/accounts/claude-other"),
+                logged_in: true,
+                is_default: false,
+            },
+        ],
+    );
+    commands.account_selector_dirs.insert(
+        "CLAUDE_CONFIG_DIR".to_string(),
+        std::path::PathBuf::from("/accounts/claude-team"),
+    );
+
+    let error = render_team_launch(
+        &commands,
+        CliTool::Claude,
+        "opus",
+        None,
+        "architecture-final",
+        "reviewer",
+        MemberRole::Agent,
+        false,
+        None,
+        Some("claude-other"),
+    )
+    .expect_err("mixed-account Claude member must be rejected");
+
+    assert!(error.to_string().contains("one team account"), "{error}");
 }
 
 #[test]

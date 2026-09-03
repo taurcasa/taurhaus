@@ -754,6 +754,29 @@ pub(super) fn render_team_launch(
                 .flatten()
         })
         .map(|dir| to_launch_namespace(&dir));
+    if capabilities.team_config_namespace {
+        let requested_account = requested_account_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .and_then(|requested| {
+                cli_commands
+                    .managed_accounts
+                    .get(&cli_tool)
+                    .into_iter()
+                    .flatten()
+                    .find(|account| account.id == requested && account.logged_in)
+            });
+        if let (Some(team_dir), Some(requested_account)) =
+            (default_team_config_dir.as_ref(), requested_account)
+        {
+            if to_launch_namespace(&requested_account.dir) != *team_dir {
+                return Err(CoordinationError::Validation(
+                    "a Claude team must use one team account; member account does not match the team root"
+                        .to_string(),
+                ));
+            }
+        }
+    }
     let (team_config_dir, mut account) = managed_member_account(
         cli_commands,
         cli_tool,
