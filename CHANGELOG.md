@@ -6,6 +6,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-03
+
+### Added
+
+- **Accounts overhaul** — account selection is one system instead of scattered surfaces. The **Accounts home** (#127) is a Settings-style takeover with per-tool account rows: health, identity, pin/team relationships, and always-visible usage meters; the sidebar footer carries a compact worst-window usage readout whose hover opens a zero-navigation usage board. One shared **account picker** (extracted from `AccountChooser`, behavior preserved) appears at every start/resume surface — optional everywhere, forced nowhere — with scope-aware remember labels, an add-account flow, and alias **Convert to pins**. The frontend never re-derives launch precedence; every preview comes from the backend resolver.
+- **Team accounts and mid-flight switching** (#129, protocol 23; #130, protocol 24) — Codex and Grok members carry per-member accounts through the daemon pipelines; Claude teams carry their account **root**: created on a chosen account and movable to another one while work is in flight. A switch is move-then-commit — team state is copied and verified in the target root before the registry flips, and a failed move leaves the team loadable from exactly one root. The lead receives a **switch handoff manifest** naming the previous account and each member's transcript location as an entry point, so a resumed team knows where it came from. Compaction hooks follow the account home through a two-phase reconciliation. Zero migration: existing teams behave identically with no registry entry.
+- **Task ledger** (mesh 0.2.28, #122) — the task record is the authoritative state container: journaled mutations, assignment tokens accepted only on accept/start, stage-presence guards, sequenced rulings, artifacts on the record, and a completion packet delivered to lead, assigner, and blocked-task owners.
+- **Seam leases** (mesh 0.2.27) — work seams are leased, not raced: automation only hands back ready seams, waiters enqueue instead of stealing, an unknown pane is never steal evidence, and waiting members are not nudged while the seam is held.
+- **Notification hygiene** (mesh 0.2.26) — nudges read lifecycle-stage authority, notices carry identity, `(taskId, kind)` supersession collapses status spam, and authored messages are append-only with an in-write tripwire.
+- **Role catalog v2** (#119) — roles encode work-kind ceremony classes with the shared delivery standard and portable contracts; catalog revisions reconcile into existing teams.
+
+### Changed
+
+- **Daemon routing complete** (protocols 20–22: #120, #121, #125) — the `stop_member` wire surface is retired into one roster run registry; the self-heal and effort background passes execute in the daemon (launch settings pushed as a versioned in-memory snapshot — never defaulted, never persisted); and the writer boundary lands: the app process never mutates team state, enforced by a boundary assertion with a justified allowlist. Protocol 24 extends the same boundary to the team-root registry — app-side code cannot even construct it.
+- **Reasoning-effort reliability** (#128) — the daemon sweep starts owed effort switches instead of only retrying failures, the launch render is the single authority for what effort actually applied, the attempt budget clears only when the requested level lands, and a hand-restarted session is adopted as foreign and re-evaluated. Closes the field hole where a GPT member's configured reasoning level silently failed to apply after session restarts.
+
+### Fixed
+
+- **WSL-side hooks path authority** (#123) — one path authority ends the literal `C:\` directory class on Windows.
+- **Daemon test-listener flake class** (#126) — suites keep the bound listener across handoff and honestly run in parallel.
+- **Closed template manifest + Fable 5.1 catalog** (#124) — packaged templates are a sealed manifest; the model catalog labels the Fable alias as Fable 5.1.
+
+### Tooling
+
+- `just install-windows` restarts the daemon against a proven-listening TCP probe, kills only its own PID, and keeps its restart log; `just provision-worktree` seeds gitignored build resources and shares a lane-wide cargo target.
+
 ## [0.8.10] - 2026-09-02
 
 ### Changed
