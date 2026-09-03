@@ -617,16 +617,18 @@ fn account_switch_moves_the_codex_hook_to_the_selected_home() {
         .expect("seed personal hook");
 
     reconcile_account_switch_hooks_at(
-        &temp.path().join("teams"),
-        "switching-team",
-        crate::session_scanner::cli_tool::CliTool::Codex,
-        CompactionDelivery::HookStdout,
+        AccountSwitchHookContext {
+            teams_dir: &temp.path().join("teams"),
+            team_name: "switching-team",
+            cli_tool: crate::session_scanner::cli_tool::CliTool::Codex,
+            delivery: CompactionDelivery::HookStdout,
+            accounts: &[],
+            codex_hooks_supported: Some(true),
+            grok_enabled: true,
+            taurhaus_exe: &exe,
+        },
         &work,
         std::slice::from_ref(&personal),
-        &[],
-        Some(true),
-        true,
-        &exe,
     )
     .expect("move hook");
 
@@ -649,16 +651,18 @@ fn account_switch_moves_the_enabled_grok_hook_to_the_selected_home() {
     reconcile_grok_hooks_at(&personal, true, true, &exe).expect("seed personal hook");
 
     reconcile_account_switch_hooks_at(
-        &temp.path().join("teams"),
-        "switching-team",
-        crate::session_scanner::cli_tool::CliTool::Grok,
-        CompactionDelivery::MeshInbox,
+        AccountSwitchHookContext {
+            teams_dir: &temp.path().join("teams"),
+            team_name: "switching-team",
+            cli_tool: crate::session_scanner::cli_tool::CliTool::Grok,
+            delivery: CompactionDelivery::MeshInbox,
+            accounts: &[],
+            codex_hooks_supported: Some(true),
+            grok_enabled: true,
+            taurhaus_exe: &exe,
+        },
         &work,
         std::slice::from_ref(&personal),
-        &[],
-        Some(true),
-        true,
-        &exe,
     )
     .expect("move hook");
 
@@ -752,8 +756,10 @@ fn managed_launch_installs_the_enabled_grok_hook_in_the_selected_home() {
 // allowing a switch intent to resurrect a setting the operator disabled.
 #[test]
 fn disabled_grok_hook_setting_survives_the_daemon_settings_payload() {
-    let mut commands = crate::models::CliCommandSettings::default();
-    commands.grok_hooks_enabled = Some(false);
+    let commands = crate::models::CliCommandSettings {
+        grok_hooks_enabled: Some(false),
+        ..Default::default()
+    };
 
     let wire = serde_json::to_string(&commands).expect("serialize daemon launch settings");
     let decoded: crate::models::CliCommandSettings =
@@ -798,16 +804,18 @@ fn account_switch_keeps_the_previous_hook_when_another_team_uses_that_home() {
     ];
 
     reconcile_account_switch_hooks_at(
-        &teams_dir,
-        "team-a",
-        CliTool::Codex,
-        CompactionDelivery::HookStdout,
+        AccountSwitchHookContext {
+            teams_dir: &teams_dir,
+            team_name: "team-a",
+            cli_tool: CliTool::Codex,
+            delivery: CompactionDelivery::HookStdout,
+            accounts: &accounts,
+            codex_hooks_supported: Some(true),
+            grok_enabled: true,
+            taurhaus_exe: &exe,
+        },
         &work,
         std::slice::from_ref(&personal),
-        &accounts,
-        Some(true),
-        true,
-        &exe,
     )
     .expect("move one team");
 

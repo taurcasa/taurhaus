@@ -656,63 +656,75 @@ pub(crate) fn reconcile_account_switch_hooks(
         return Ok(false);
     }
     reconcile_account_switch_hooks_at(
-        teams_dir,
-        team_name,
-        cli_tool,
-        capabilities.compaction_delivery,
+        AccountSwitchHookContext {
+            teams_dir,
+            team_name,
+            cli_tool,
+            delivery: capabilities.compaction_delivery,
+            accounts,
+            codex_hooks_supported: CliVersions::current().codex_compaction_hooks_support(),
+            grok_enabled,
+            taurhaus_exe: &compact_hook_executable()?,
+        },
         target_home,
         previous_homes,
-        accounts,
-        CliVersions::current().codex_compaction_hooks_support(),
-        grok_enabled,
-        &compact_hook_executable()?,
     )
 }
 
-fn reconcile_account_switch_hooks_at(
-    teams_dir: &std::path::Path,
-    team_name: &str,
+struct AccountSwitchHookContext<'a> {
+    teams_dir: &'a std::path::Path,
+    team_name: &'a str,
     cli_tool: CliTool,
     delivery: CompactionDelivery,
-    target_home: &std::path::Path,
-    previous_homes: &[std::path::PathBuf],
-    accounts: &[crate::models::ManagedLaunchAccount],
+    accounts: &'a [crate::models::ManagedLaunchAccount],
     codex_hooks_supported: Option<bool>,
     grok_enabled: bool,
-    taurhaus_exe: &std::path::Path,
+    taurhaus_exe: &'a std::path::Path,
+}
+
+fn reconcile_account_switch_hooks_at(
+    context: AccountSwitchHookContext<'_>,
+    target_home: &std::path::Path,
+    previous_homes: &[std::path::PathBuf],
 ) -> Result<bool, CoordinationError> {
-    let mut changed = match delivery {
+    let mut changed = match context.delivery {
         CompactionDelivery::HookStdout => reconcile_codex_hook_at_with_support(
             target_home,
             true,
-            codex_hooks_supported,
-            taurhaus_exe,
+            context.codex_hooks_supported,
+            context.taurhaus_exe,
         )?,
-        CompactionDelivery::MeshInbox => {
-            reconcile_grok_hooks_at(target_home, grok_enabled, true, taurhaus_exe)?
-        }
+        CompactionDelivery::MeshInbox => reconcile_grok_hooks_at(
+            target_home,
+            context.grok_enabled,
+            true,
+            context.taurhaus_exe,
+        )?,
     };
     for previous_home in previous_homes {
         if previous_home == target_home {
             continue;
         }
         let keep_installed = managed_home_needed_after_switch(
-            teams_dir,
-            team_name,
-            cli_tool,
+            context.teams_dir,
+            context.team_name,
+            context.cli_tool,
             previous_home,
-            accounts,
+            context.accounts,
         )?;
-        changed |= match delivery {
+        changed |= match context.delivery {
             CompactionDelivery::HookStdout => reconcile_codex_hook_at_with_support(
                 previous_home,
                 keep_installed,
-                codex_hooks_supported,
-                taurhaus_exe,
+                context.codex_hooks_supported,
+                context.taurhaus_exe,
             )?,
-            CompactionDelivery::MeshInbox => {
-                reconcile_grok_hooks_at(previous_home, grok_enabled, keep_installed, taurhaus_exe)?
-            }
+            CompactionDelivery::MeshInbox => reconcile_grok_hooks_at(
+                previous_home,
+                context.grok_enabled,
+                keep_installed,
+                context.taurhaus_exe,
+            )?,
         };
     }
     Ok(changed)
