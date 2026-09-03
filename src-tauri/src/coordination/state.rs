@@ -288,6 +288,18 @@ impl CoordinationState {
         op(orchestrator)
     }
 
+    pub(crate) fn try_with_team_orchestrator<R, F>(
+        &self,
+        team_name: &str,
+        op: F,
+    ) -> Result<Option<R>, CoordinationError>
+    where
+        F: FnOnce(&mut CoordinationOrchestrator) -> Result<R, CoordinationError>,
+    {
+        let teams_dir = self.team_teams_dir(team_name)?;
+        self.try_with_root_orchestrator(&teams_dir, op)
+    }
+
     /// Run an operation only when the process-wide orchestrator is immediately
     /// available. `None` means another operation currently owns the mutex.
     pub fn try_with_orchestrator<R, F>(&self, op: F) -> Result<Option<R>, CoordinationError>

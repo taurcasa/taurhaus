@@ -69,16 +69,46 @@ pub(crate) fn publish_operational_snapshots(
     Ok(CoordinationPublishOperationalSnapshotsResult { published, skipped })
 }
 
+pub(crate) fn publish_operational_snapshots_for_state(
+    state: &CoordinationState,
+    params: CoordinationPublishOperationalSnapshotsParams,
+) -> Result<CoordinationPublishOperationalSnapshotsResult, CoordinationError> {
+    let mut by_root = std::collections::BTreeMap::<
+        std::path::PathBuf,
+        Vec<crate::daemon::protocol::CoordinationOperationalSnapshotPublication>,
+    >::new();
+    for publication in params.publications {
+        let root = state.team_teams_dir(&publication.snapshot.team_name)?;
+        by_root.entry(root).or_default().push(publication);
+    }
+    let mut result = CoordinationPublishOperationalSnapshotsResult {
+        published: 0,
+        skipped: 0,
+    };
+    for (root, publications) in by_root {
+        let root_result = publish_operational_snapshots(
+            &root,
+            CoordinationPublishOperationalSnapshotsParams { publications },
+        )?;
+        result.published += root_result.published;
+        result.skipped += root_result.skipped;
+    }
+    Ok(result)
+}
+
 pub(crate) fn reconcile_live_presence(
     state: &CoordinationState,
     params: CoordinationReconcileLivePresenceParams,
 ) -> Result<CoordinationReconcileLivePresenceResult, CoordinationError> {
-    let Some(mut reconciled_offline_members) = state.try_with_orchestrator(|orchestrator| {
+    let Some(mut reconciled_offline_members) = state.try_with_team_orchestrator(
+        &params.team_name,
+        |orchestrator| {
         orchestrator.reconcile_team_presence_for_live_status_with_runtime_sessions(
             &params.team_name,
             &params.runtime_sessions,
         )
-    })?
+    },
+    )?
     else {
         return Ok(CoordinationReconcileLivePresenceResult {
             outcome: CoordinationReconcileLivePresenceOutcome::Skipped,
@@ -102,6 +132,24 @@ pub(crate) fn set_active_project_team(
             ActiveProjectTeamStore::set_active_team(teams_dir, &params.project_path, &team_name)?
         }
         None => ActiveProjectTeamStore::clear_project(teams_dir, &params.project_path)?,
+    }
+    Ok(CoordinationSetActiveProjectTeamResult {})
+}
+
+pub(crate) fn set_active_project_team_for_state(
+    state: &CoordinationState,
+    params: CoordinationSetActiveProjectTeamParams,
+) -> Result<CoordinationSetActiveProjectTeamResult, CoordinationError> {
+    match params.team_name {
+        Some(team_name) => {
+            let root = state.team_teams_dir(&team_name)?;
+            ActiveProjectTeamStore::set_active_team(&root, &params.project_path, &team_name)?;
+        }
+        None => {
+            for root in state.teams_roots()? {
+                ActiveProjectTeamStore::clear_project(&root, &params.project_path)?;
+            }
+        }
     }
     Ok(CoordinationSetActiveProjectTeamResult {})
 }
@@ -165,6 +213,57 @@ mod tests {
             },
         )
         .expect("save team");
+    }
+
+    #[test]
+    fn snapshot_intent_resolves_each_team_through_the_root_registry() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let default_root = temp.path().join("default").join("teams");
+        let work_root = temp.path().join("work").join("teams");
+        save_team(&work_root);
+        let state = CoordinationState::with_components(
+            default_root,
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+        );
+        state
+            .team_root_registry()
+            .set("architecture-final", &work_root)
+            .expect("register team");
+        let snapshot = OperationalContextSnapshot {
+            version: 1,
+            team_name: "architecture-final".to_string(),
+            member_name: "builder".to_string(),
+            updated_at: Utc::now(),
+            task: OperationalTaskSnapshot::default(),
+            assignment_footer: OperationalAssignmentFooterSnapshot::default(),
+            ownership: OperationalOwnershipSnapshot::default(),
+            working_set: OperationalWorkingSetSnapshot {
+                project_path: "/work/taurhaus".to_string(),
+                focal_files: Vec::new(),
+            },
+        };
+
+        publish_operational_snapshots_for_state(
+            &state,
+            CoordinationPublishOperationalSnapshotsParams {
+                publications: vec![CoordinationOperationalSnapshotPublication {
+                    snapshot,
+                    task_state_changed_at: None,
+                }],
+            },
+        )
+        .expect("publish");
+
+        assert!(OperationalContextSnapshotStore::load(
+            &work_root,
+            "architecture-final",
+            "builder"
+        )
+        .expect("load")
+        .is_some());
     }
 
     // Regression: d593f81b counted a snapshot dropped by the newer-wins guard

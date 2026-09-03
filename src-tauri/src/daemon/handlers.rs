@@ -288,7 +288,7 @@ fn handle_coordination_publish_operational_snapshots(
         Ok(params) => params,
         Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
     };
-    match crate::daemon::state_writes::publish_operational_snapshots(state.teams_dir(), params) {
+    match crate::daemon::state_writes::publish_operational_snapshots_for_state(state, params) {
         Ok(result) => DaemonResponse::ok(id, result),
         Err(error) => DaemonResponse::err(id, "SNAPSHOT_PUBLICATION_FAILED", error.to_string()),
     }
@@ -320,7 +320,7 @@ fn handle_coordination_set_active_project_team(
         Ok(params) => params,
         Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
     };
-    match crate::daemon::state_writes::set_active_project_team(state.teams_dir(), params) {
+    match crate::daemon::state_writes::set_active_project_team_for_state(state, params) {
         Ok(result) => DaemonResponse::ok(id, result),
         Err(error) => {
             DaemonResponse::err(id, "ACTIVE_PROJECT_TEAM_UPDATE_FAILED", error.to_string())
