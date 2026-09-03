@@ -191,7 +191,13 @@ pub struct ClaudeCompactionSignalSource;
 
 impl CompactionSignalSource for ClaudeCompactionSignalSource {
     fn install(&self, config_dir: &Path, taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
-        ensure_source_installed(config_dir, CLAUDE_SETTINGS_FILENAME, taurhaus_exe, None)
+        ensure_source_installed(
+            config_dir,
+            CLAUDE_SETTINGS_FILENAME,
+            taurhaus_exe,
+            None,
+            Some(config_dir),
+        )
     }
 
     fn remove(&self, config_dir: &Path) -> Result<bool, CoordinationError> {
@@ -214,6 +220,7 @@ impl CompactionSignalSource for CodexCompactionSignalSource {
             CODEX_HOOKS_FILENAME,
             taurhaus_exe,
             Some(CODEX_ADDITIONAL_CONTEXT_LIMIT),
+            None,
         )
     }
 
@@ -1128,12 +1135,18 @@ fn ensure_source_installed(
     settings_filename: &str,
     taurhaus_exe: &Path,
     additional_context_limit: Option<u64>,
+    taurhaus_claude_dir: Option<&Path>,
 ) -> Result<bool, CoordinationError> {
     let hooks_dir = config_dir.join("hooks");
     fs::create_dir_all(&hooks_dir)?;
     let runtime = detect_hook_runtime(config_dir);
     let script_path = hooks_dir.join(platform_hook_filename(runtime));
-    let script_changed = write_hook_script(&script_path, taurhaus_exe, runtime)?;
+    let script_changed = write_hook_script_with_claude_dir(
+        &script_path,
+        taurhaus_exe,
+        runtime,
+        taurhaus_claude_dir,
+    )?;
     let executable_changed = write_hook_executable_record(&hooks_dir, taurhaus_exe, runtime)?;
     let settings_changed = ensure_settings_hook_entry(
         &config_dir.join(settings_filename),
@@ -1283,7 +1296,17 @@ fn write_hook_script(
     taurhaus_exe: &Path,
     runtime: HookRuntime,
 ) -> Result<bool, CoordinationError> {
-    let script_body = render_hook_script(taurhaus_exe, runtime)?;
+    write_hook_script_with_claude_dir(script_path, taurhaus_exe, runtime, None)
+}
+
+fn write_hook_script_with_claude_dir(
+    script_path: &Path,
+    taurhaus_exe: &Path,
+    runtime: HookRuntime,
+    taurhaus_claude_dir: Option<&Path>,
+) -> Result<bool, CoordinationError> {
+    let script_body =
+        render_hook_script_with_claude_dir(taurhaus_exe, runtime, taurhaus_claude_dir)?;
     let changed = fs::read(script_path)
         .map(|current| current != script_body.as_bytes())
         .unwrap_or(true);
@@ -1304,13 +1327,36 @@ fn render_hook_script(
     taurhaus_exe: &Path,
     runtime: HookRuntime,
 ) -> Result<String, CoordinationError> {
+    render_hook_script_with_claude_dir(taurhaus_exe, runtime, None)
+}
+
+fn render_hook_script_with_claude_dir(
+    taurhaus_exe: &Path,
+    runtime: HookRuntime,
+    taurhaus_claude_dir: Option<&Path>,
+) -> Result<String, CoordinationError> {
     let executable = runtime_path_string(taurhaus_exe, runtime)?;
+    let claude_dir = taurhaus_claude_dir
+        .map(|path| runtime_path_string(path, runtime))
+        .transpose()?;
     Ok(match runtime {
-        HookRuntime::Windows => {
-            format!("@echo off\r\n\"{}\" --compact-hook\r\n", executable)
-        }
+        HookRuntime::Windows => claude_dir.map_or_else(
+            || format!("@echo off\r\n\"{}\" --compact-hook\r\n", executable),
+            |claude_dir| {
+                format!(
+                    "@echo off\r\nset \"TAURHAUS_CLAUDE_DIR={}\"\r\n\"{}\" --compact-hook\r\n",
+                    claude_dir, executable
+                )
+            },
+        ),
         HookRuntime::Posix => format!(
-            "#!/usr/bin/env bash\nset -euo pipefail\nexec {} --compact-hook\n",
+            "#!/usr/bin/env bash\nset -euo pipefail\n{}exec {} --compact-hook\n",
+            claude_dir
+                .map(|claude_dir| format!(
+                    "TAURHAUS_CLAUDE_DIR={} ",
+                    shell_quote_string(&claude_dir)
+                ))
+                .unwrap_or_default(),
             shell_quote_string(&executable)
         ),
     })
@@ -2559,6 +2605,11 @@ mod tests {
             .join("hooks")
             .join(platform_hook_filename(HookRuntime::Posix));
         assert!(script_path.exists());
+        let script = fs::read_to_string(&script_path).expect("script exists");
+        assert!(script.contains(&format!(
+            "TAURHAUS_CLAUDE_DIR={}",
+            shell_quote_string(&tmp.path().display().to_string())
+        )));
         let settings_raw =
             fs::read_to_string(tmp.path().join("settings.json")).expect("settings exists");
         let settings: Value = serde_json::from_str(&settings_raw).expect("settings parses");
