@@ -436,7 +436,10 @@ impl CoordinationOrchestrator {
             return false;
         }
         self.clear_team_daemon_skip_state(team_name, &operator_name);
-        match self.runtime.spawn_team_daemon(team_name, &operator_name) {
+        match self
+            .runtime
+            .spawn_team_daemon_at_root(team_name, &operator_name, &self.teams_dir)
+        {
             Ok(pid) => {
                 tracing::info!(
                     team = %team_name,
@@ -498,7 +501,10 @@ impl CoordinationOrchestrator {
             return Ok((false, Some(format!("team daemon skipped: {detail}"))));
         }
         self.clear_team_daemon_skip_state(team_name, &operator_name);
-        match self.runtime.spawn_team_daemon(team_name, &operator_name) {
+        match self
+            .runtime
+            .spawn_team_daemon_at_root(team_name, &operator_name, &self.teams_dir)
+        {
             Ok(pid) => {
                 tracing::info!(
                     team = %team_name,

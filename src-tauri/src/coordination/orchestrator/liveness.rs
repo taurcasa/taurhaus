@@ -430,10 +430,12 @@ impl CoordinationOrchestrator {
                     }
                 } else if daemon_needs_restart || runtime.daemon_pid.is_none() {
                     if let Some(pane_id) = pane_id {
-                        match self
-                            .runtime
-                            .spawn_mesh_daemon(pane_id, team_name, &member_name)
-                        {
+                        match self.runtime.spawn_mesh_daemon_at_root(
+                            pane_id,
+                            team_name,
+                            &member_name,
+                            &self.teams_dir,
+                        ) {
                             Ok(pid) => {
                                 runtime.daemon_pid = Some(pid);
                                 runtime_changed = true;

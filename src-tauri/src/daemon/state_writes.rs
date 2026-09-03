@@ -121,6 +121,7 @@ pub(crate) fn reconcile_live_presence(
     })
 }
 
+#[cfg(test)]
 pub(crate) fn set_active_project_team(
     teams_dir: &Path,
     params: CoordinationSetActiveProjectTeamParams,

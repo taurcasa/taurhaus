@@ -7,8 +7,8 @@ use crate::session_scanner::cli_tool::CliTool;
 use super::process::{
     delete_pid_file_if_present, find_existing_mesh_daemon_pids_system,
     is_process_running_by_pid_system, process_matches_team_daemon,
-    process_uses_current_mesh_binary, read_pid_file, resolve_mesh_cli_claude_dir_arg,
-    resolve_mesh_daemon_pid_path, resolve_team_daemon_pid_path, run_mesh, run_system_command,
+    process_uses_current_mesh_binary, read_pid_file, resolve_mesh_daemon_pid_path,
+    resolve_team_daemon_pid_path, run_mesh, run_system_command,
     spawn_mesh_daemon_command_and_resolve_pid, spawn_system_command, terminate_pid_invocation,
     validated_mesh_daemon_pid_file_by_member, validated_team_daemon_pid_file,
     wait_for_team_daemon_pid_file,
@@ -250,6 +250,21 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         team_name: &str,
         member_name: &str,
     ) -> Result<u32, CoordinationError> {
+        self.spawn_mesh_daemon_at_root(
+            pane_id,
+            team_name,
+            member_name,
+            &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        )
+    }
+
+    fn spawn_mesh_daemon_at_root(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+        teams_dir: &std::path::Path,
+    ) -> Result<u32, CoordinationError> {
         let mut args = vec![
             "daemon".to_string(),
             "--pane".to_string(),
@@ -259,21 +274,25 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
             "--name".to_string(),
             member_name.to_string(),
         ];
-        if let Some(claude_dir) = resolve_mesh_cli_claude_dir_arg() {
+        if let Some(claude_dir) = teams_dir.parent() {
             args.push("--claude-dir".to_string());
-            args.push(claude_dir);
+            args.push(super::process::mesh_cli_claude_dir_arg_from_path(
+                claude_dir,
+            ));
         }
         let args_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-        let invocation =
-            super::mesh_command_invocation_for_member(&args_refs, team_name, member_name);
-        let daemon_pid_path = resolve_mesh_daemon_pid_path(team_name, member_name);
-        if daemon_pid_path.is_none() {
-            tracing::warn!(
-                team = %team_name,
-                member = %member_name,
-                "unable to resolve mesh daemon pid path; falling back to launcher pid"
-            );
-        }
+        let invocation = super::process::mesh_command_invocation_for_member_at(
+            &args_refs,
+            team_name,
+            member_name,
+            teams_dir,
+        );
+        let daemon_pid_path = Some(
+            teams_dir
+                .join(team_name)
+                .join("daemons")
+                .join(format!("{member_name}.pid")),
+        );
         spawn_mesh_daemon_command_and_resolve_pid(
             &invocation,
             daemon_pid_path.as_deref(),
@@ -288,7 +307,20 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         team_name: &str,
         operator_name: &str,
     ) -> Result<u32, CoordinationError> {
-        let daemon_pid_path = resolve_team_daemon_pid_path(team_name);
+        self.spawn_team_daemon_at_root(
+            team_name,
+            operator_name,
+            &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        )
+    }
+
+    fn spawn_team_daemon_at_root(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+        teams_dir: &std::path::Path,
+    ) -> Result<u32, CoordinationError> {
+        let daemon_pid_path = Some(teams_dir.join(team_name).join("daemons").join("team.pid"));
         if let Some(pid_path) = daemon_pid_path.as_deref() {
             if let Some(pid) = validated_team_daemon_pid_file(pid_path, team_name, true)? {
                 return Ok(pid);
@@ -313,9 +345,11 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
             "--name".to_string(),
             operator_name.to_string(),
         ];
-        if let Some(claude_dir) = resolve_mesh_cli_claude_dir_arg() {
+        if let Some(claude_dir) = teams_dir.parent() {
             args.push("--claude-dir".to_string());
-            args.push(claude_dir);
+            args.push(super::process::mesh_cli_claude_dir_arg_from_path(
+                claude_dir,
+            ));
         }
         let args_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
         let invocation =

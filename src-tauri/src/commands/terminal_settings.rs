@@ -406,6 +406,7 @@ pub(crate) fn reconcile_grok_hooks_for_roots_at(
     reconcile_grok_hooks_at(grok_home, enabled, has_managed_grok, taurhaus_exe)
 }
 
+#[cfg(test)]
 pub(crate) fn reconcile_grok_hooks_for_roster_at(
     teams_dir: &std::path::Path,
     grok_home: &std::path::Path,
@@ -741,6 +742,7 @@ fn collect_managed_hook_homes_for_roots(
     Ok(combined)
 }
 
+#[cfg(test)]
 fn reconcile_managed_account_hooks_for_roster_at(
     teams_dir: &std::path::Path,
     cli_commands: &crate::models::CliCommandSettings,

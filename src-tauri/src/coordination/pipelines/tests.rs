@@ -1770,6 +1770,7 @@ fn join_mesh_if_required_skips_non_lead_claude_and_joins_required_members() {
         MemberRole::Agent,
         CliTool::Claude,
         "opus",
+        &std::path::PathBuf::from("/accounts/claude-work/teams"),
     )
     .expect("claude join result");
     let codex_joined = join_mesh_if_required(
@@ -1780,6 +1781,7 @@ fn join_mesh_if_required_skips_non_lead_claude_and_joins_required_members() {
         MemberRole::Agent,
         CliTool::Codex,
         "gpt-5.6-sol",
+        &std::path::PathBuf::from("/accounts/claude-work/teams"),
     )
     .expect("codex join result");
 
@@ -1821,6 +1823,7 @@ fn start_member_daemon_if_required_replaces_stale_pid_for_resume_policy() {
         "builder",
         "%11",
         CliTool::Codex,
+        &std::path::PathBuf::from("/accounts/claude-work/teams"),
         MemberDaemonStartPolicy::ReplaceStalePid {
             previous_daemon_pid: Some(55),
         },

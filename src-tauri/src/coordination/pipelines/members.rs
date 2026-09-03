@@ -1039,6 +1039,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             prepared.member.role,
             prepared.member.cli_tool,
             &prepared.activation_context.member.model,
+            &self.orchestrator.teams_dir,
         ) {
             Ok(joined) => {
                 self.runtime_state.mesh_joined = joined;
@@ -1120,6 +1121,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 &prepared.member.name,
                 pane_id,
                 prepared.member.cli_tool,
+                &self.orchestrator.teams_dir,
                 MemberDaemonStartPolicy::StartFresh,
                 None,
             )
@@ -1351,6 +1353,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             member_name,
             pane_id,
             cli_tool,
+            &self.orchestrator.teams_dir,
             policy,
             Some(&mut self.warnings),
         )? {

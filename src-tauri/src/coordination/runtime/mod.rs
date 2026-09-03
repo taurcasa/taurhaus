@@ -21,10 +21,9 @@ mod recording;
 mod system;
 mod tmux;
 
-pub(crate) use process::{
-    apply_background_command_settings, mesh_command_invocation_for_member,
-    resolve_mesh_cli_claude_dir_arg,
-};
+#[cfg(test)]
+pub(crate) use process::resolve_mesh_cli_claude_dir_arg;
+pub(crate) use process::{apply_background_command_settings, mesh_command_invocation_for_member};
 pub use recording::{RecordingCoordinationRuntime, RuntimeCall};
 /// Test seam used by the scanner tests; the integration-test shim crates
 /// compile this module too and do not use it.
@@ -132,6 +131,16 @@ pub trait CoordinationRuntime: Send + Sync {
         member_name: &str,
     ) -> Result<u32, CoordinationError>;
 
+    fn spawn_mesh_daemon_at_root(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+        _teams_dir: &std::path::Path,
+    ) -> Result<u32, CoordinationError> {
+        self.spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
     fn spawn_team_daemon(
         &self,
         _team_name: &str,
@@ -140,6 +149,15 @@ pub trait CoordinationRuntime: Send + Sync {
         Err(CoordinationError::Backend(
             "team daemon start not implemented".to_string(),
         ))
+    }
+
+    fn spawn_team_daemon_at_root(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+        _teams_dir: &std::path::Path,
+    ) -> Result<u32, CoordinationError> {
+        self.spawn_team_daemon(team_name, operator_name)
     }
 
     fn find_existing_mesh_daemon_pids(

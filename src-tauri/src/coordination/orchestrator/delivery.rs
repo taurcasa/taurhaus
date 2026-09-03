@@ -303,10 +303,12 @@ impl CoordinationOrchestrator {
             return WakeDisposition::Adopted { pid };
         }
 
-        match self
-            .runtime
-            .spawn_mesh_daemon(&pane_id, team_name, member_name)
-        {
+        match self.runtime.spawn_mesh_daemon_at_root(
+            &pane_id,
+            team_name,
+            member_name,
+            &self.teams_dir,
+        ) {
             Ok(pid) => WakeDisposition::Spawned { pid },
             Err(err) => {
                 tracing::warn!(

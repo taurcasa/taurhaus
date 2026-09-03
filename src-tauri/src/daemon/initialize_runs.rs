@@ -68,7 +68,14 @@ impl InitializeTeamService {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let mut cli_commands = params.cli_commands;
                     prepare_launch_inputs(&params.request, &mut cli_commands);
-                    execute_initialize_pipeline(
+                    let previous_root = state.team_teams_dir(&params.request.team_name)?;
+                    let target_root =
+                        selected_team_root(&params.request, &cli_commands, state.teams_dir())?;
+                    pin_team_root_selector(&params.request, &target_root, &mut cli_commands)?;
+                    state
+                        .team_root_registry()
+                        .set(&params.request.team_name, &target_root)?;
+                    let execution = execute_initialize_pipeline(
                         state.as_ref(),
                         &params.request,
                         &cli_commands,
@@ -77,13 +84,28 @@ impl InitializeTeamService {
                             emit_initialize_step_log(&params.request.team_name, &progress);
                             let _ = registry.record_step(&run_id_for_task, progress);
                         }),
-                    )
+                    );
+                    match execution {
+                        Ok(report) if report.failed_step.is_none() => Ok((report, target_root)),
+                        Ok(report) => {
+                            state
+                                .team_root_registry()
+                                .set(&params.request.team_name, &previous_root)?;
+                            Ok((report, target_root))
+                        }
+                        Err(error) => {
+                            state
+                                .team_root_registry()
+                                .set(&params.request.team_name, &previous_root)?;
+                            Err(error)
+                        }
+                    }
                 }));
                 match result {
-                    Ok(Ok(report)) => {
+                    Ok(Ok((report, target_root))) => {
                         let finalize = if report.failed_step.is_none() {
                             finalize_initialize_state(
-                                state.teams_dir(),
+                                &target_root,
                                 &report.team_name,
                                 &params.operational_snapshots,
                             )
@@ -144,6 +166,85 @@ impl InitializeTeamService {
     }
 }
 
+fn selected_team_root(
+    request: &crate::coordination::requests::InitializeTeamRequest,
+    cli_commands: &CliCommandSettings,
+    default_teams_dir: &Path,
+) -> Result<std::path::PathBuf, crate::coordination::errors::CoordinationError> {
+    let mut requested = std::collections::BTreeSet::new();
+    let mut root_tool = None;
+    for member in std::iter::once(&request.lead).chain(request.agents.iter()) {
+        let Ok(tool) = CliTool::from_alias(&member.cli_tool) else {
+            continue;
+        };
+        if !crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .team_config_namespace
+        {
+            continue;
+        }
+        root_tool = Some(tool);
+        if let Some(account_id) = member
+            .account_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            requested.insert(account_id.to_string());
+        }
+    }
+    if requested.len() > 1 {
+        return Err(crate::coordination::errors::CoordinationError::Validation(
+            "a Claude team must use one team account".to_string(),
+        ));
+    }
+    let Some(account_id) = requested.into_iter().next() else {
+        return Ok(default_teams_dir.to_path_buf());
+    };
+    let tool = root_tool.expect("a requested team account has a namespace tool");
+    let account = cli_commands
+        .managed_accounts
+        .get(&tool)
+        .into_iter()
+        .flatten()
+        .find(|account| account.id == account_id && account.logged_in)
+        .ok_or_else(|| {
+            crate::coordination::errors::CoordinationError::Validation(format!(
+                "account '{account_id}' is unavailable or signed out"
+            ))
+        })?;
+    Ok(account.dir.join("teams"))
+}
+
+fn pin_team_root_selector(
+    request: &crate::coordination::requests::InitializeTeamRequest,
+    teams_dir: &Path,
+    cli_commands: &mut CliCommandSettings,
+) -> Result<(), crate::coordination::errors::CoordinationError> {
+    let Some(account_dir) = teams_dir.parent() else {
+        return Err(crate::coordination::errors::CoordinationError::Validation(
+            format!(
+                "team root '{}' has no account directory",
+                teams_dir.display()
+            ),
+        ));
+    };
+    for member in std::iter::once(&request.lead).chain(request.agents.iter()) {
+        let Ok(tool) = CliTool::from_alias(&member.cli_tool) else {
+            continue;
+        };
+        let capabilities = crate::session_scanner::cli_tool::spec(tool).capabilities;
+        if capabilities.team_config_namespace {
+            if let Some(selector) = capabilities.account_selector {
+                cli_commands
+                    .account_selector_dirs
+                    .insert(selector.to_string(), account_dir.to_path_buf());
+            }
+        }
+    }
+    Ok(())
+}
+
 fn finalize_initialize_state(
     teams_dir: &Path,
     team_name: &str,
@@ -180,7 +281,7 @@ pub(crate) fn execute_initialize_pipeline(
     tmux_layout: &str,
     mut emit: Option<&mut dyn FnMut(StepProgress)>,
 ) -> Result<InitializeReport, crate::coordination::errors::CoordinationError> {
-    state.with_orchestrator(|orchestrator| {
+    state.with_team_orchestrator(&request.team_name, |orchestrator| {
         orchestrator.initialize_team_with_cli_commands_and_layout_and_progress(
             request,
             cli_commands,
@@ -409,6 +510,80 @@ mod tests {
         assert!(runtime.calls().iter().any(|call| matches!(
             call,
             RuntimeCall::JoinMesh { team_name, .. } if team_name == "daemon-init"
+        )));
+    }
+
+    #[test]
+    fn initialize_places_a_claude_team_in_the_selected_account_root() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let default_teams = temp.path().join("default/teams");
+        let work_account = temp.path().join("claude-work");
+        let work_teams = work_account.join("teams");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_mesh_join_teams_dir(&work_teams);
+        let runtime_for_factory = runtime.clone();
+        let state = Arc::new(CoordinationState::with_components_and_runtime(
+            default_teams.clone(),
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+            Arc::new(move || runtime_for_factory.clone() as Arc<dyn CoordinationRuntime>),
+        ));
+        let service = InitializeTeamService::with_state_and_prepare(
+            state.clone(),
+            CoordinationRunRegistry::default(),
+            Arc::new(move |_request, commands| {
+                commands.managed_accounts.insert(
+                    crate::session_scanner::cli_tool::CliTool::Claude,
+                    vec![crate::models::ManagedLaunchAccount {
+                        id: "claude-work".to_string(),
+                        label: "Work".to_string(),
+                        dir: work_account.clone(),
+                        logged_in: true,
+                        is_default: false,
+                    }],
+                );
+            }),
+        );
+        let mut params = initialize_params(temp.path());
+        params.request.lead.cli_tool = "claude".to_string();
+        params.request.lead.model = "opus".to_string();
+        params.request.lead.account_id = Some("claude-work".to_string());
+
+        let run_id = service.start(params).expect("daemon worker starts");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let status = service.status(&run_id).expect("run remains registered");
+            if status.outcome != InitializeRunOutcome::Running {
+                assert!(
+                    matches!(status.outcome, InitializeRunOutcome::Completed { .. }),
+                    "{status:?}"
+                );
+                break;
+            }
+            assert!(Instant::now() < deadline, "daemon initialize timed out");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        assert!(TeamConfigStore::load(&work_teams, "daemon-init").is_ok());
+        assert!(!default_teams.join("daemon-init").exists());
+        assert_eq!(
+            state
+                .team_teams_dir("daemon-init")
+                .expect("registered root"),
+            work_teams
+        );
+        assert!(runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::JoinMesh { claude_dir, .. }
+                if claude_dir == &temp.path().join("claude-work").display().to_string()
+        )));
+        assert!(runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::SpawnDaemonAtRoot { member_name, claude_dir, .. }
+                if member_name == "builder"
+                    && claude_dir == &temp.path().join("claude-work").display().to_string()
         )));
     }
 

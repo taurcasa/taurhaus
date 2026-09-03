@@ -40,9 +40,19 @@ pub enum RuntimeCall {
         team_name: String,
         member_name: String,
     },
+    SpawnDaemonAtRoot {
+        team_name: String,
+        member_name: String,
+        claude_dir: String,
+    },
     SpawnTeamDaemon {
         team_name: String,
         operator_name: String,
+    },
+    SpawnTeamDaemonAtRoot {
+        team_name: String,
+        operator_name: String,
+        claude_dir: String,
     },
     FindDaemon {
         pane_id: String,
@@ -516,6 +526,25 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         Ok(pid)
     }
 
+    fn spawn_mesh_daemon_at_root(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+        teams_dir: &std::path::Path,
+    ) -> Result<u32, CoordinationError> {
+        self.push_call(RuntimeCall::SpawnDaemonAtRoot {
+            team_name: team_name.to_string(),
+            member_name: member_name.to_string(),
+            claude_dir: teams_dir
+                .parent()
+                .unwrap_or(teams_dir)
+                .display()
+                .to_string(),
+        });
+        self.spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
     fn spawn_team_daemon(
         &self,
         team_name: &str,
@@ -527,6 +556,24 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         });
         let pid = self.pid_counter.fetch_add(1, Ordering::SeqCst) + 10000;
         Ok(pid)
+    }
+
+    fn spawn_team_daemon_at_root(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+        teams_dir: &std::path::Path,
+    ) -> Result<u32, CoordinationError> {
+        self.push_call(RuntimeCall::SpawnTeamDaemonAtRoot {
+            team_name: team_name.to_string(),
+            operator_name: operator_name.to_string(),
+            claude_dir: teams_dir
+                .parent()
+                .unwrap_or(teams_dir)
+                .display()
+                .to_string(),
+        });
+        self.spawn_team_daemon(team_name, operator_name)
     }
 
     fn find_existing_mesh_daemon_pids(

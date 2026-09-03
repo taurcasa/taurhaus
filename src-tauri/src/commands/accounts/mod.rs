@@ -329,6 +329,7 @@ pub fn list_account_relationships(
     result
 }
 
+#[cfg(test)]
 pub(crate) fn account_relationships_impl(
     db: &DbState,
     teams_dir: &Path,
