@@ -708,6 +708,60 @@ fn managed_launch_installs_the_codex_hook_in_the_selected_home() {
     assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&work));
 }
 
+// Regression: 0bc79ceb also pinned managed Grok members to a selected
+// GROK_HOME without installing the inbox-delivery hook in that home.
+#[test]
+fn managed_launch_installs_the_enabled_grok_hook_in_the_selected_home() {
+    use crate::models::ManagedLaunchAccount;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = temp.path().join("teams");
+    let work = temp.path().join("grok-work");
+    let exe = temp.path().join("taurhaus-daemon");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.managed_accounts.insert(
+        crate::session_scanner::cli_tool::CliTool::Grok,
+        vec![ManagedLaunchAccount {
+            id: "grok-work".to_string(),
+            label: "Work".to_string(),
+            dir: work.clone(),
+            logged_in: true,
+            is_default: false,
+        }],
+    );
+
+    reconcile_managed_account_hooks_for_launch_at(
+        &teams_dir,
+        &[(
+            crate::session_scanner::cli_tool::CliTool::Grok,
+            Some("grok-work".to_string()),
+        )],
+        &commands,
+        Some(true),
+        true,
+        &exe,
+    )
+    .expect("reconcile selected home");
+
+    assert!(crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&work));
+}
+
+// Regression: 96f69205 inferred Grok enablement from leftover hook files,
+// allowing a switch intent to resurrect a setting the operator disabled.
+#[test]
+fn disabled_grok_hook_setting_survives_the_daemon_settings_payload() {
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.grok_hooks_enabled = Some(false);
+
+    let wire = serde_json::to_string(&commands).expect("serialize daemon launch settings");
+    let decoded: crate::models::CliCommandSettings =
+        serde_json::from_str(&wire).expect("deserialize daemon launch settings");
+
+    assert_eq!(decoded.grok_hooks_enabled, Some(false));
+}
+
 // Regression: 96f69205 removed the hook from the switching team's previous
 // home without checking another team's members that still launch there.
 #[test]

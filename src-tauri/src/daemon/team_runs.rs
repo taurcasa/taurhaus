@@ -1106,4 +1106,133 @@ mod tests {
             .to_string()
             .contains("mixed-account Claude teams are impossible"));
     }
+
+    // Regression: 2f0d7c7e treated the requested config id as proof that the
+    // member launched on it, so a signed-in retry after launch fallback was
+    // rejected as redundant.
+    #[test]
+    fn switch_team_account_retries_when_runtime_says_the_member_fell_back() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let (state, _backend, _runtime) = state(temp.path());
+        initialize_team(state.as_ref(), temp.path());
+        let mut config = TeamConfigStore::load(temp.path(), "arch").expect("config");
+        for member in &mut config.members {
+            if member.role == crate::coordination::domain::MemberRole::Lead {
+                member.cli_tool = CliTool::Claude;
+            } else {
+                member.account_id = Some("work".to_string());
+            }
+        }
+        TeamConfigStore::save(temp.path(), "arch", &config).expect("seed requested account");
+        MemberRuntimeStore::update(temp.path(), "arch", "builder", |runtime| {
+            runtime.launch_account.account_id = Some("personal".to_string());
+            runtime.launch_account.account_label = Some("Personal".to_string());
+            runtime.launch_account.account_applied = Some(false);
+            runtime.launch_account.fallback_from = Some("Work".to_string());
+        })
+        .expect("seed fallback runtime");
+        let mut commands = CliCommandSettings::default();
+        commands.managed_accounts.insert(
+            CliTool::Codex,
+            vec![
+                ManagedLaunchAccount {
+                    id: "personal".to_string(),
+                    label: "Personal".to_string(),
+                    dir: temp.path().join("codex-personal"),
+                    logged_in: true,
+                    is_default: true,
+                },
+                ManagedLaunchAccount {
+                    id: "work".to_string(),
+                    label: "Work".to_string(),
+                    dir: temp.path().join("codex-work"),
+                    logged_in: true,
+                    is_default: false,
+                },
+            ],
+        );
+
+        let report = super::execute_switch_team_account(
+            state.as_ref(),
+            &SwitchTeamAccountRequest {
+                team_name: "arch".to_string(),
+                cli_tool: CliTool::Codex,
+                account_id: "work".to_string(),
+            },
+            &commands,
+            "new_window",
+        )
+        .expect("runtime fallback is not already on the target");
+
+        assert_eq!(report.switched_members, ["builder"]);
+    }
+
+    // Regression: 0bc79ceb sent an all-Codex lead both its member notice and
+    // the lead's whole-team handoff map for one switch.
+    #[test]
+    fn switched_tool_lead_receives_only_the_team_handoff_map() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let (state, backend, _runtime) = state(temp.path());
+        initialize_team(state.as_ref(), temp.path());
+        let mut config = TeamConfigStore::load(temp.path(), "arch").expect("config");
+        for member in &mut config.members {
+            member.cli_tool = CliTool::Codex;
+            member.account_id = Some("personal".to_string());
+            MemberRuntimeStore::update(temp.path(), "arch", &member.name, |runtime| {
+                runtime.launch_account.account_id = Some("personal".to_string());
+                runtime.launch_account.account_label = Some("Personal".to_string());
+                runtime.launch_account.account_applied = Some(true);
+            })
+            .expect("seed runtime account");
+        }
+        TeamConfigStore::save(temp.path(), "arch", &config).expect("seed member accounts");
+        let mut commands = CliCommandSettings::default();
+        commands.managed_accounts.insert(
+            CliTool::Codex,
+            vec![
+                ManagedLaunchAccount {
+                    id: "personal".to_string(),
+                    label: "Personal".to_string(),
+                    dir: temp.path().join("codex-personal"),
+                    logged_in: true,
+                    is_default: true,
+                },
+                ManagedLaunchAccount {
+                    id: "work".to_string(),
+                    label: "Work".to_string(),
+                    dir: temp.path().join("codex-work"),
+                    logged_in: true,
+                    is_default: false,
+                },
+            ],
+        );
+
+        super::execute_switch_team_account(
+            state.as_ref(),
+            &SwitchTeamAccountRequest {
+                team_name: "arch".to_string(),
+                cli_tool: CliTool::Codex,
+                account_id: "work".to_string(),
+            },
+            &commands,
+            "new_window",
+        )
+        .expect("switch account");
+
+        let lead_switch_notices = backend
+            .delivered_requests()
+            .into_iter()
+            .filter(|request| match request {
+                crate::coordination::requests::DeliveryRequest::OperatorNotice(notice) => {
+                    notice.member_name == "team-lead"
+                        && notice
+                            .message
+                            .to_ascii_lowercase()
+                            .contains("account switch complete")
+                }
+                _ => false,
+            })
+            .count();
+        assert_eq!(lead_switch_notices, 1);
+    }
 }
