@@ -920,6 +920,8 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
     // (a witness type constructible only in daemon/hook entry points, taken
     // by every store write signature); until it lands, every new wrapper
     // around a teams-dir write MUST be added here.
+    // Regression: 1d85421a renamed the activity-export writer wrapper without
+    // updating this marker, silently dropping its daemon-boundary coverage.
     let markers = [
         ".team_root_registry()",
         "TeamRootRegistry::new(",
