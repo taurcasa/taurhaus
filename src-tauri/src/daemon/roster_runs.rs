@@ -233,10 +233,9 @@ fn execute_disband_team(
     state: &CoordinationState,
     request: &DisbandTeamRequest,
 ) -> Result<DisbandTeamReport, CoordinationError> {
-    let result = state
-        .with_team_orchestrator(&request.team_name, |orchestrator| {
-            orchestrator.disband_team(&request.team_name, None)
-        })?;
+    let result = state.with_team_orchestrator(&request.team_name, |orchestrator| {
+        orchestrator.disband_team(&request.team_name, None)
+    })?;
     let teams_dir = state.team_teams_dir(&result.team_name)?;
     ActiveProjectTeamStore::clear_team(&teams_dir, &result.team_name)?;
     let message = if result.already_disbanded {

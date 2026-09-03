@@ -2978,16 +2978,16 @@ fn project_mesh_snapshot_discovers_a_team_in_its_registered_account_root() {
         .expect("register account root");
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
 
-    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
-        &state,
-        "proj-web".to_string(),
-        &lookup,
-    )
-    .expect("snapshot should discover registered root");
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should discover registered root");
 
     assert_eq!(snapshot.team_name.as_deref(), Some("architecture-final"));
     assert_eq!(
-        snapshot.team_status.as_ref().map(|status| status.members.len()),
+        snapshot
+            .team_status
+            .as_ref()
+            .map(|status| status.members.len()),
         Some(3)
     );
 }
@@ -3014,12 +3014,9 @@ fn live_team_status_loads_a_team_from_its_registered_account_root() {
         .set("architecture-final", &account_teams)
         .expect("register account root");
 
-    let status = coordination_get_live_team_status_impl(
-        &state,
-        None,
-        "architecture-final".to_string(),
-    )
-    .expect("status should load registered root");
+    let status =
+        coordination_get_live_team_status_impl(&state, None, "architecture-final".to_string())
+            .expect("status should load registered root");
 
     assert_eq!(status.team_name, "architecture-final");
     assert_eq!(status.members.len(), 3);

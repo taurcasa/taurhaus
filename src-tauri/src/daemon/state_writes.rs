@@ -100,15 +100,13 @@ pub(crate) fn reconcile_live_presence(
     state: &CoordinationState,
     params: CoordinationReconcileLivePresenceParams,
 ) -> Result<CoordinationReconcileLivePresenceResult, CoordinationError> {
-    let Some(mut reconciled_offline_members) = state.try_with_team_orchestrator(
-        &params.team_name,
-        |orchestrator| {
-        orchestrator.reconcile_team_presence_for_live_status_with_runtime_sessions(
-            &params.team_name,
-            &params.runtime_sessions,
-        )
-    },
-    )?
+    let Some(mut reconciled_offline_members) =
+        state.try_with_team_orchestrator(&params.team_name, |orchestrator| {
+            orchestrator.reconcile_team_presence_for_live_status_with_runtime_sessions(
+                &params.team_name,
+                &params.runtime_sessions,
+            )
+        })?
     else {
         return Ok(CoordinationReconcileLivePresenceResult {
             outcome: CoordinationReconcileLivePresenceOutcome::Skipped,
@@ -257,13 +255,11 @@ mod tests {
         )
         .expect("publish");
 
-        assert!(OperationalContextSnapshotStore::load(
-            &work_root,
-            "architecture-final",
-            "builder"
-        )
-        .expect("load")
-        .is_some());
+        assert!(
+            OperationalContextSnapshotStore::load(&work_root, "architecture-final", "builder")
+                .expect("load")
+                .is_some()
+        );
     }
 
     // Regression: d593f81b counted a snapshot dropped by the newer-wins guard

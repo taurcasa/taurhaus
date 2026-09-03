@@ -75,11 +75,7 @@ impl TeamRootRegistry {
 
     /// Daemon-owned commit of one team authority. Pointing at the default root
     /// removes the entry, preserving the zero-migration representation.
-    pub(crate) fn set(
-        &self,
-        team_name: &str,
-        teams_dir: &Path,
-    ) -> Result<(), CoordinationError> {
+    pub(crate) fn set(&self, team_name: &str, teams_dir: &Path) -> Result<(), CoordinationError> {
         let registry_dir = self.registry_dir();
         fs::create_dir_all(&registry_dir)?;
         let lock_path = registry_dir.join(REGISTRY_LOCK_FILENAME);
@@ -152,9 +148,18 @@ mod tests {
         let default_teams_dir = temp.path().join("default-account").join("teams");
         let registry = TeamRootRegistry::new(default_teams_dir.clone());
 
-        assert_eq!(registry.resolve("legacy-team").expect("resolve"), default_teams_dir);
-        assert_eq!(registry.roots().expect("roots"), vec![default_teams_dir.clone()]);
-        assert!(!registry.path().exists(), "a read must not migrate or write state");
+        assert_eq!(
+            registry.resolve("legacy-team").expect("resolve"),
+            default_teams_dir
+        );
+        assert_eq!(
+            registry.roots().expect("roots"),
+            vec![default_teams_dir.clone()]
+        );
+        assert!(
+            !registry.path().exists(),
+            "a read must not migrate or write state"
+        );
     }
 
     #[test]
@@ -164,11 +169,21 @@ mod tests {
         let work_teams_dir = temp.path().join("work-account").join("teams");
         let registry = TeamRootRegistry::new(default_teams_dir.clone());
 
-        registry.set("work-team", &work_teams_dir).expect("set work team");
-        registry.set("other-work-team", &work_teams_dir).expect("set second work team");
+        registry
+            .set("work-team", &work_teams_dir)
+            .expect("set work team");
+        registry
+            .set("other-work-team", &work_teams_dir)
+            .expect("set second work team");
 
-        assert_eq!(registry.resolve("work-team").expect("resolve"), work_teams_dir);
-        assert_eq!(registry.resolve("legacy-team").expect("resolve"), default_teams_dir);
+        assert_eq!(
+            registry.resolve("work-team").expect("resolve"),
+            work_teams_dir
+        );
+        assert_eq!(
+            registry.resolve("legacy-team").expect("resolve"),
+            default_teams_dir
+        );
         assert_eq!(
             registry.roots().expect("roots"),
             vec![default_teams_dir, work_teams_dir]

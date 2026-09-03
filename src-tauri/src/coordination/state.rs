@@ -204,9 +204,7 @@ impl CoordinationState {
         let mut locations = Vec::new();
         for root in self.teams_roots()? {
             for team_name in TeamConfigStore::list(&root)? {
-                let authoritative = registered
-                    .get(&team_name)
-                    .unwrap_or(&self.teams_dir);
+                let authoritative = registered.get(&team_name).unwrap_or(&self.teams_dir);
                 if authoritative == &root {
                     locations.push((root.clone(), team_name));
                 }
@@ -357,25 +355,25 @@ impl CoordinationState {
                     &team_name,
                     now,
                 ) {
-                Ok(outcome) => {
-                    summary.team_errors += outcome.failures.len();
-                    for (member, reason) in outcome.failures {
+                    Ok(outcome) => {
+                        summary.team_errors += outcome.failures.len();
+                        for (member, reason) in outcome.failures {
+                            tracing::warn!(
+                                team = %team_name,
+                                member = %member,
+                                error = %reason,
+                                "background task-deadline member failed"
+                            );
+                        }
+                    }
+                    Err(err) => {
+                        summary.team_errors += 1;
                         tracing::warn!(
                             team = %team_name,
-                            member = %member,
-                            error = %reason,
-                            "background task-deadline member failed"
+                            error = %err,
+                            "background task-deadline pass failed"
                         );
                     }
-                }
-                Err(err) => {
-                    summary.team_errors += 1;
-                    tracing::warn!(
-                        team = %team_name,
-                        error = %err,
-                        "background task-deadline pass failed"
-                    );
-                }
                 }
             }
         }
@@ -394,15 +392,15 @@ impl CoordinationState {
             for team_name in teams_by_root.remove(&teams_dir).unwrap_or_default() {
                 summary.teams_scanned += 1;
                 match orchestrator.trigger_team_self_heal(&team_name) {
-                Ok(result) => apply_self_heal_result(&mut summary, &result),
-                Err(err) => {
-                    summary.team_errors += 1;
-                    tracing::warn!(
-                        team = %team_name,
-                        error = %err,
-                        "background coordination self-heal failed"
-                    );
-                }
+                    Ok(result) => apply_self_heal_result(&mut summary, &result),
+                    Err(err) => {
+                        summary.team_errors += 1;
+                        tracing::warn!(
+                            team = %team_name,
+                            error = %err,
+                            "background coordination self-heal failed"
+                        );
+                    }
                 }
             }
         }
@@ -634,9 +632,8 @@ impl CoordinationState {
         let runtime = (self.runtime_factory)();
         let mut orchestrator =
             CoordinationOrchestrator::new_with_runtime(teams_dir.to_path_buf(), backend, runtime);
-        orchestrator.claude_backend = Some(Arc::new(ClaudeNativeBackend::new(
-            teams_dir.to_path_buf(),
-        )));
+        orchestrator.claude_backend =
+            Some(Arc::new(ClaudeNativeBackend::new(teams_dir.to_path_buf())));
         Ok(orchestrator)
     }
 
@@ -817,7 +814,10 @@ mod tests {
             fake_factory_with_counter(Arc::new(AtomicUsize::new(0))),
         );
 
-        assert_eq!(state.team_teams_dir("legacy-team").expect("resolve"), teams_dir);
+        assert_eq!(
+            state.team_teams_dir("legacy-team").expect("resolve"),
+            teams_dir
+        );
         assert!(!state.team_root_registry().path().exists());
     }
 
@@ -924,7 +924,10 @@ mod tests {
 
         assert_eq!(
             state.team_locations().expect("locations"),
-            vec![(default_root, "legacy-team".to_string()), (work_root, "work-team".to_string())]
+            vec![
+                (default_root, "legacy-team".to_string()),
+                (work_root, "work-team".to_string())
+            ]
         );
     }
 
