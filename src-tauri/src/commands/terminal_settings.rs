@@ -450,28 +450,79 @@ fn resolved_managed_home(
     })
 }
 
+/// What one launched tool's hook reconciliation has to know: the account homes
+/// a member still launches from, and whether some member could not be resolved
+/// to one at all. An unresolved member suppresses removal for that tool, the
+/// same conservative answer `managed_home_needed_after_switch` gives — a
+/// momentary detection gap is missing evidence, not proof that an installed
+/// hook is obsolete.
+#[derive(Default)]
+struct ManagedHookHomes {
+    needed: std::collections::BTreeSet<std::path::PathBuf>,
+    unresolved_member: bool,
+}
+
+impl ManagedHookHomes {
+    fn record(&mut self, home: Option<std::path::PathBuf>) {
+        match home {
+            Some(home) => {
+                self.needed.insert(home);
+            }
+            None => self.unresolved_member = true,
+        }
+    }
+}
+
+fn hook_reconciled_tool(cli_tool: CliTool) -> bool {
+    let capabilities = crate::session_scanner::cli_tool::spec(cli_tool).capabilities;
+    capabilities.compaction_hook && capabilities.session_root != SessionRoot::AppManagedClaudeDir
+}
+
+/// Every account home taurhaus may have written this tool's hook into: the
+/// detected accounts plus the selector directory `resolved_managed_home` falls
+/// back to. Reconciliation walks all of them so a home the roster left behind
+/// gets the hook taken away, not just the homes that still need it.
+fn known_managed_homes(
+    cli_commands: &crate::models::CliCommandSettings,
+    cli_tool: CliTool,
+) -> std::collections::BTreeSet<std::path::PathBuf> {
+    let mut homes = cli_commands
+        .managed_accounts
+        .get(&cli_tool)
+        .into_iter()
+        .flatten()
+        .map(|account| account.dir.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    if let Some(dir) = crate::session_scanner::cli_tool::spec(cli_tool)
+        .capabilities
+        .account_selector
+        .and_then(|selector| cli_commands.account_selector_dirs.get(selector))
+    {
+        homes.insert(dir.clone());
+    }
+    homes
+}
+
 fn collect_managed_hook_homes_for_launch(
     teams_dir: &std::path::Path,
     launch_members: &[(CliTool, Option<String>)],
     cli_commands: &crate::models::CliCommandSettings,
-) -> Result<
-    std::collections::HashMap<CliTool, std::collections::BTreeSet<std::path::PathBuf>>,
-    CoordinationError,
-> {
+) -> Result<std::collections::HashMap<CliTool, ManagedHookHomes>, CoordinationError> {
     let launched_tools = launch_members
         .iter()
         .map(|(tool, _)| *tool)
         .collect::<std::collections::HashSet<_>>();
-    let mut homes =
-        std::collections::HashMap::<CliTool, std::collections::BTreeSet<std::path::PathBuf>>::new();
+    let mut homes = std::collections::HashMap::<CliTool, ManagedHookHomes>::new();
     for (tool, account_id) in launch_members {
-        let capabilities = crate::session_scanner::cli_tool::spec(*tool).capabilities;
-        if capabilities.compaction_hook
-            && capabilities.session_root != SessionRoot::AppManagedClaudeDir
-        {
-            if let Some(home) = resolved_managed_home(cli_commands, *tool, account_id.as_deref()) {
-                homes.entry(*tool).or_default().insert(home);
-            }
+        if hook_reconciled_tool(*tool) {
+            homes
+                .entry(*tool)
+                .or_default()
+                .record(resolved_managed_home(
+                    cli_commands,
+                    *tool,
+                    account_id.as_deref(),
+                ));
         }
     }
     for team_name in crate::coordination::stores::TeamConfigStore::list(teams_dir)? {
@@ -480,17 +531,15 @@ fn collect_managed_hook_homes_for_launch(
             if !launched_tools.contains(&member.cli_tool) {
                 continue;
             }
-            let capabilities = crate::session_scanner::cli_tool::spec(member.cli_tool).capabilities;
-            if capabilities.compaction_hook
-                && capabilities.session_root != SessionRoot::AppManagedClaudeDir
-            {
-                if let Some(home) = resolved_managed_home(
-                    cli_commands,
-                    member.cli_tool,
-                    member.account_id.as_deref(),
-                ) {
-                    homes.entry(member.cli_tool).or_default().insert(home);
-                }
+            if hook_reconciled_tool(member.cli_tool) {
+                homes
+                    .entry(member.cli_tool)
+                    .or_default()
+                    .record(resolved_managed_home(
+                        cli_commands,
+                        member.cli_tool,
+                        member.account_id.as_deref(),
+                    ));
             }
         }
     }
@@ -553,20 +602,31 @@ fn reconcile_managed_account_hooks_for_launch_at(
         let delivery = crate::session_scanner::cli_tool::spec(*tool)
             .capabilities
             .compaction_delivery;
-        for home in tool_homes {
-            match delivery {
-                CompactionDelivery::HookStdout => {
-                    reconcile_codex_hook_at_with_support(
-                        home,
-                        true,
-                        codex_hooks_supported,
-                        taurhaus_exe,
-                    )?;
-                }
-                CompactionDelivery::MeshInbox => {
-                    reconcile_grok_hooks_at(home, grok_enabled, true, taurhaus_exe)?;
-                }
+        let reconcile = |home: &std::path::Path, needed: bool| match delivery {
+            CompactionDelivery::HookStdout => reconcile_codex_hook_at_with_support(
+                home,
+                needed,
+                codex_hooks_supported,
+                taurhaus_exe,
+            ),
+            CompactionDelivery::MeshInbox => {
+                reconcile_grok_hooks_at(home, grok_enabled, needed, taurhaus_exe)
             }
+        };
+        for home in &tool_homes.needed {
+            reconcile(home, true)?;
+        }
+        // The launch is the only reconciler that sees account-scoped homes, so
+        // it owns removal there too: startup and the roster reconcilers only
+        // ever visit the tool's default home.
+        if tool_homes.unresolved_member {
+            continue;
+        }
+        for home in known_managed_homes(cli_commands, *tool)
+            .iter()
+            .filter(|home| !tool_homes.needed.contains(*home))
+        {
+            reconcile(home, false)?;
         }
     }
     let codex_launch_homes = launch_members

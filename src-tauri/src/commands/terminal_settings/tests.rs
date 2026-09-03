@@ -211,6 +211,23 @@ fn write_team(teams_dir: &std::path::Path, team_name: &str, cli_tool: &str) {
     .expect("write team config");
 }
 
+fn write_team_with_account(
+    teams_dir: &std::path::Path,
+    team_name: &str,
+    cli_tool: &str,
+    account_id: &str,
+) {
+    let dir = teams_dir.join(team_name);
+    std::fs::create_dir_all(&dir).expect("team dir");
+    std::fs::write(
+        dir.join("config.json"),
+        format!(
+            r#"{{"name":"{team_name}","createdAt":1772399806546,"members":[{{"name":"builder","agentType":"general-purpose","cli_tool":"{cli_tool}","cwd":"/tmp/project","accountId":"{account_id}"}}]}}"#
+        ),
+    )
+    .expect("write team config");
+}
+
 #[test]
 fn the_first_grok_team_installs_the_hook_and_the_last_removal_takes_it_away() {
     // Regression: commit c1005ec reconciled the global grok hook only at startup
@@ -347,9 +364,13 @@ fn an_unknown_agy_version_leaves_an_installed_hook_alone() {
     assert!(agy_hooks_installed_at(&root));
 }
 
-/// Managed launches reconcile hooks in the selected account homes on the daemon
-/// host. Startup separately owns roster-wide removal after the last managed
-/// member goes away.
+/// Managed launches reconcile hooks in every account home the daemon host knows
+/// for a launched tool — installing where a member still launches, removing
+/// where none does. Startup and the roster reconcilers only ever visit each
+/// tool's *default* home, so they cannot stand in for that; the removal contract
+/// itself is pinned by `a_launch_removes_the_codex_hook_no_roster_member_still_needs`
+/// and its Grok twin. This module only pins that each site is wired to the
+/// account-home reconciler in the first place.
 mod managed_launch_sites {
     /// The five `#[tauri::command]` entry points in `commands/coordination.rs`
     /// that launch or resume a managed pane.
@@ -669,4 +690,171 @@ fn account_switch_keeps_the_previous_hook_when_another_team_uses_that_home() {
 
     assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&work));
     assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&personal));
+}
+
+// Regression: 59ff36ee replaced the two-way launch reconciliation with an
+// install-only pass over the resolved account homes. The launch could no longer
+// uninstall anything, and every remaining remover is default-home-only, so a
+// hook taurhaus wrote into a non-default CODEX_HOME outlived the team that
+// needed it and kept invoking the daemon from the user's own sessions there.
+#[test]
+fn a_launch_removes_the_codex_hook_no_roster_member_still_needs() {
+    use crate::models::ManagedLaunchAccount;
+    use crate::session_scanner::cli_tool::CliTool;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = temp.path().join("teams");
+    let personal = temp.path().join("codex-personal");
+    let work = temp.path().join("codex-work");
+    let exe = temp.path().join("taurhaus-daemon");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    // The surviving team runs on Personal; the Work home is what a disbanded
+    // team left behind.
+    write_team_with_account(&teams_dir, "team-b", "codex", "personal");
+    reconcile_codex_hook_at_with_support(&personal, true, Some(true), &exe)
+        .expect("seed the live home");
+    reconcile_codex_hook_at_with_support(&work, true, Some(true), &exe)
+        .expect("seed the disbanded team's home");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.managed_accounts.insert(
+        CliTool::Codex,
+        vec![
+            ManagedLaunchAccount {
+                id: "personal".to_string(),
+                label: "Personal".to_string(),
+                dir: personal.clone(),
+                logged_in: true,
+                is_default: true,
+            },
+            ManagedLaunchAccount {
+                id: "work".to_string(),
+                label: "Work".to_string(),
+                dir: work.clone(),
+                logged_in: true,
+                is_default: false,
+            },
+        ],
+    );
+
+    reconcile_managed_account_hooks_for_launch_at(
+        &teams_dir,
+        &[(CliTool::Codex, Some("personal".to_string()))],
+        &commands,
+        Some(true),
+        true,
+        &exe,
+    )
+    .expect("reconcile every known account home");
+
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&personal));
+    assert!(!crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&work));
+}
+
+// Regression: 59ff36ee left the Grok arm of the launch reconciler install-only
+// too, so an account home no roster member launches from kept the taurhaus
+// inbox-delivery hook forever.
+#[test]
+fn a_launch_removes_the_grok_hook_no_roster_member_still_needs() {
+    use crate::models::ManagedLaunchAccount;
+    use crate::session_scanner::cli_tool::CliTool;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = temp.path().join("teams");
+    let personal = temp.path().join("grok-personal");
+    let work = temp.path().join("grok-work");
+    let exe = temp.path().join("taurhaus-daemon");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    write_team_with_account(&teams_dir, "team-b", "grok", "personal");
+    reconcile_grok_hooks_at(&personal, true, true, &exe).expect("seed the live home");
+    reconcile_grok_hooks_at(&work, true, true, &exe).expect("seed the disbanded team's home");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.managed_accounts.insert(
+        CliTool::Grok,
+        vec![
+            ManagedLaunchAccount {
+                id: "personal".to_string(),
+                label: "Personal".to_string(),
+                dir: personal.clone(),
+                logged_in: true,
+                is_default: true,
+            },
+            ManagedLaunchAccount {
+                id: "work".to_string(),
+                label: "Work".to_string(),
+                dir: work.clone(),
+                logged_in: true,
+                is_default: false,
+            },
+        ],
+    );
+
+    reconcile_managed_account_hooks_for_launch_at(
+        &teams_dir,
+        &[(CliTool::Grok, Some("personal".to_string()))],
+        &commands,
+        Some(true),
+        true,
+        &exe,
+    )
+    .expect("reconcile every known account home");
+
+    assert!(crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&personal));
+    assert!(!crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&work));
+}
+
+// Regression: 59ff36ee's install-only pass had no removal to guard, so nothing
+// pinned the conservative arm the switch reconciler already honours
+// (`managed_home_needed_after_switch` answers "still needed" for a member whose
+// home cannot be resolved). A member pinned to an account detection no longer
+// lists is missing evidence, not proof that an installed hook is obsolete.
+#[test]
+fn an_unresolvable_roster_member_keeps_every_account_hook_installed() {
+    use crate::models::ManagedLaunchAccount;
+    use crate::session_scanner::cli_tool::CliTool;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = temp.path().join("teams");
+    let work = temp.path().join("codex-work");
+    let archive = temp.path().join("codex-archive");
+    let exe = temp.path().join("taurhaus-daemon");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    write_team_with_account(&teams_dir, "team-b", "codex", "vanished");
+    reconcile_codex_hook_at_with_support(&archive, true, Some(true), &exe)
+        .expect("seed the home the unresolvable member may still be using");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.managed_accounts.insert(
+        CliTool::Codex,
+        vec![
+            ManagedLaunchAccount {
+                id: "work".to_string(),
+                label: "Work".to_string(),
+                dir: work.clone(),
+                logged_in: true,
+                is_default: false,
+            },
+            ManagedLaunchAccount {
+                id: "archive".to_string(),
+                label: "Archive".to_string(),
+                dir: archive.clone(),
+                logged_in: true,
+                is_default: false,
+            },
+        ],
+    );
+
+    reconcile_managed_account_hooks_for_launch_at(
+        &teams_dir,
+        &[(CliTool::Codex, Some("work".to_string()))],
+        &commands,
+        Some(true),
+        true,
+        &exe,
+    )
+    .expect("reconcile with an unresolvable roster member");
+
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&work));
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&archive));
 }
