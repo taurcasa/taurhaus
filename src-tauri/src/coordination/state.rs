@@ -16,6 +16,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::{CoordinationOrchestrator, TeamSelfHealResult};
 use crate::coordination::pipelines::EffortPassOutcome;
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
+use crate::coordination::stores::team_roots::same_teams_root;
 use crate::coordination::stores::{TeamConfigStore, TeamRootRegistry};
 use crate::models::CliCommandSettings;
 use crate::provider::platform_paths::PlatformPaths;
@@ -248,7 +249,7 @@ impl CoordinationState {
     where
         F: FnOnce(&mut CoordinationOrchestrator) -> Result<R, CoordinationError>,
     {
-        if teams_dir == self.teams_dir {
+        if same_teams_root(teams_dir, &self.teams_dir) {
             return self.with_orchestrator(op);
         }
         let slot = {
@@ -642,7 +643,7 @@ impl CoordinationState {
     where
         F: FnOnce(&mut CoordinationOrchestrator) -> Result<R, CoordinationError>,
     {
-        if teams_dir == self.teams_dir {
+        if same_teams_root(teams_dir, &self.teams_dir) {
             return self.try_with_orchestrator(op);
         }
         let slot = {

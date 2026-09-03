@@ -20,6 +20,11 @@ const REGISTRY_FILENAME: &str = "team-roots.json";
 const REGISTRY_LOCK_FILENAME: &str = "team-roots.lock";
 const REGISTRY_TMP_FILENAME: &str = "team-roots.json.tmp";
 
+pub(crate) fn same_teams_root(left: &Path, right: &Path) -> bool {
+    crate::provider::path::normalize_project_path(&left.to_string_lossy())
+        == crate::provider::path::normalize_project_path(&right.to_string_lossy())
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TeamRootRegistryState {
@@ -66,11 +71,17 @@ impl TeamRootRegistry {
 
     pub fn roots(&self) -> Result<Vec<PathBuf>, CoordinationError> {
         let state = self.load()?;
-        let mut additional = state.teams.into_values().collect::<BTreeSet<_>>();
-        additional.remove(&self.default_teams_dir);
+        let additional = state.teams.into_values().collect::<BTreeSet<_>>();
         let mut roots = Vec::with_capacity(additional.len() + 1);
         roots.push(self.default_teams_dir.clone());
-        roots.extend(additional);
+        for root in additional {
+            if !roots
+                .iter()
+                .any(|existing| same_teams_root(existing, &root))
+            {
+                roots.push(root);
+            }
+        }
         Ok(roots)
     }
 
@@ -86,7 +97,7 @@ impl TeamRootRegistry {
                 let authoritative = registered
                     .get(&team_name)
                     .unwrap_or(&self.default_teams_dir);
-                if authoritative == &root {
+                if same_teams_root(authoritative, &root) {
                     locations.push((root.clone(), team_name));
                 }
             }
@@ -110,7 +121,7 @@ impl TeamRootRegistry {
 
         let mut state = self.load()?;
         state.schema_version = schema_version();
-        if teams_dir == self.default_teams_dir {
+        if same_teams_root(teams_dir, &self.default_teams_dir) {
             state.teams.remove(team_name);
         } else {
             state
@@ -161,7 +172,17 @@ impl TeamRootRegistry {
 
 #[cfg(test)]
 mod tests {
-    use super::TeamRootRegistry;
+    use super::{same_teams_root, TeamRootRegistry};
+
+    #[test]
+    fn root_identity_normalizes_equivalent_wsl_unc_spellings() {
+        // Regression: 18810949 compared team roots as raw PathBuf values,
+        // allowing WSL UNC aliases for one directory to create two authorities.
+        assert!(same_teams_root(
+            std::path::Path::new(r"\\wsl$\Ubuntu\home\user\.claude\teams"),
+            std::path::Path::new(r"\\wsl.localhost\Ubuntu\home\user\.claude\teams"),
+        ));
+    }
 
     #[test]
     fn missing_registry_is_a_byte_identical_default_root_lookup() {

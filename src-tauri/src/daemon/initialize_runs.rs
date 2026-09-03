@@ -190,7 +190,7 @@ fn ensure_team_name_available_at_root(
     target_root: &Path,
 ) -> Result<(), crate::coordination::errors::CoordinationError> {
     for root in state.team_root_registry().roots()? {
-        if root == target_root {
+        if crate::coordination::stores::team_roots::same_teams_root(&root, target_root) {
             continue;
         }
         match crate::coordination::stores::TeamConfigStore::load(&root, team_name) {
