@@ -390,13 +390,14 @@ mod managed_launch_sites {
     };
     use crate::session_scanner::cli_tool::{spec, CliTool};
 
-    /// The four `#[tauri::command]` entry points in `commands/coordination.rs`
+    /// The five `#[tauri::command]` entry points in `commands/coordination.rs`
     /// that launch or resume a managed pane.
-    const LAUNCH_SITES: [&str; 4] = [
+    const LAUNCH_SITES: [&str; 5] = [
         "coordination_initialize_team",
         "coordination_add_agent",
         "coordination_resume_member",
         "coordination_resume_team",
+        "coordination_switch_team_account",
     ];
 
     /// A host running two teams: one with a live Codex member that owns the

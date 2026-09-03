@@ -19,6 +19,7 @@ pub(crate) enum CoordinationRunKind {
     AddAgent,
     ResumeMember,
     ResumeTeam,
+    SwitchTeamAccount,
     Reonboard,
     CreateTeam,
     DisbandTeam,
@@ -34,6 +35,7 @@ impl CoordinationRunKind {
             Self::AddAgent => "add",
             Self::ResumeMember => "resume",
             Self::ResumeTeam => "team-resume",
+            Self::SwitchTeamAccount => "account-switch",
             Self::Reonboard => "reonboard",
             Self::CreateTeam => "create",
             Self::DisbandTeam => "disband",
@@ -49,6 +51,7 @@ impl CoordinationRunKind {
             Self::AddAgent => "add_agent",
             Self::ResumeMember => "resume_member",
             Self::ResumeTeam => "resume_team",
+            Self::SwitchTeamAccount => "switch_team_account",
             Self::Reonboard => "reonboard",
             Self::CreateTeam => "create_team",
             Self::DisbandTeam => "disband_team",
@@ -65,6 +68,10 @@ impl CoordinationRunKind {
                 | (Self::AddAgent, CoordinationRunReport::AddAgent(_))
                 | (Self::ResumeMember, CoordinationRunReport::ResumeMember(_))
                 | (Self::ResumeTeam, CoordinationRunReport::ResumeTeam(_))
+                | (
+                    Self::SwitchTeamAccount,
+                    CoordinationRunReport::SwitchTeamAccount(_)
+                )
                 | (Self::Reonboard, CoordinationRunReport::Reonboard(_))
                 | (Self::CreateTeam, CoordinationRunReport::CreateTeam)
                 | (Self::DisbandTeam, CoordinationRunReport::DisbandTeam(_))
@@ -84,6 +91,7 @@ pub(crate) enum CoordinationRunReport {
     AddAgent(AddAgentReport),
     ResumeMember(ResumeAgentReport),
     ResumeTeam(ResumeTeamReport),
+    SwitchTeamAccount(crate::coordination::requests::SwitchTeamAccountReport),
     Reonboard(DeliveryResult),
     CreateTeam,
     DisbandTeam(DisbandTeamReport),

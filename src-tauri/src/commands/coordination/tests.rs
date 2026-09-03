@@ -1004,6 +1004,72 @@ fn reonboard_daemon_client_uses_its_run_status_method() {
 }
 
 #[test]
+fn switch_team_account_daemon_client_uses_accept_then_poll() {
+    let params = protocol::CoordinationSwitchTeamAccountParams {
+        request: crate::coordination::requests::SwitchTeamAccountRequest {
+            team_name: "arch".to_string(),
+            cli_tool: CliTool::Codex,
+            account_id: "work".to_string(),
+        },
+        cli_commands: CliCommandSettings::default(),
+        tmux_layout: "new_window".to_string(),
+    };
+    let report = crate::coordination::requests::SwitchTeamAccountReport {
+        team_name: "arch".to_string(),
+        cli_tool: CliTool::Codex,
+        account_id: "work".to_string(),
+        account_label: "Work".to_string(),
+        switched_members: vec!["builder".to_string()],
+        handoff_manifest_count: 2,
+        resume: crate::coordination::requests::ResumeTeamReport {
+            team_name: "arch".to_string(),
+            resumed: true,
+            total_members: 1,
+            resumed_members: vec!["builder".to_string()],
+            failed_members: Vec::new(),
+            warnings: Vec::new(),
+            started_team_daemon: true,
+            team_daemon_warning: None,
+        },
+    };
+    let mut responses = std::collections::VecDeque::from([
+        serde_json::to_value(protocol::CoordinationSwitchTeamAccountAccepted {
+            run_id: "account-switch-test".to_string(),
+        })
+        .expect("accepted payload"),
+        serde_json::to_value(protocol::CoordinationSwitchTeamAccountStatus {
+            run_id: "account-switch-test".to_string(),
+            outcome: protocol::CoordinationSwitchTeamAccountOutcome::Completed {
+                report: report.clone(),
+            },
+        })
+        .expect("status payload"),
+    ]);
+    let mut methods = Vec::new();
+
+    let switched = switch_team_account_through_daemon_with(
+        params,
+        std::time::Duration::ZERO,
+        |method, _params| {
+            methods.push(method.to_string());
+            responses.pop_front().ok_or_else(|| {
+                CoordinationDaemonCallError::Transport("unexpected daemon call".to_string())
+            })
+        },
+    )
+    .expect("account switch completes");
+
+    assert_eq!(switched, report);
+    assert_eq!(
+        methods,
+        [
+            protocol::method::COORDINATION_SWITCH_TEAM_ACCOUNT,
+            protocol::method::COORDINATION_SWITCH_TEAM_ACCOUNT_STATUS,
+        ]
+    );
+}
+
+#[test]
 fn roster_daemon_clients_use_their_distinct_run_status_methods() {
     let create_params = protocol::CoordinationCreateTeamParams {
         request: crate::coordination::requests::CreateTeamRequest {

@@ -545,6 +545,60 @@ fn resume_team_through_daemon_with(
     }
 }
 
+fn switch_team_account_through_daemon(
+    app: &tauri::AppHandle,
+    daemon: &crate::provider::daemon_client::DaemonProvider,
+    params: crate::daemon::protocol::CoordinationSwitchTeamAccountParams,
+) -> Result<crate::coordination::requests::SwitchTeamAccountReport, String> {
+    switch_team_account_through_daemon_with(
+        params,
+        COORDINATION_DAEMON_POLL_INTERVAL,
+        |method, params| call_coordination_daemon(app, daemon, method, params),
+    )
+}
+
+fn switch_team_account_through_daemon_with(
+    params: crate::daemon::protocol::CoordinationSwitchTeamAccountParams,
+    poll_interval: std::time::Duration,
+    mut call: impl FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, CoordinationDaemonCallError>,
+) -> Result<crate::coordination::requests::SwitchTeamAccountReport, String> {
+    let accepted: crate::daemon::protocol::CoordinationSwitchTeamAccountAccepted =
+        serde_json::from_value(
+            call(
+                crate::daemon::protocol::method::COORDINATION_SWITCH_TEAM_ACCOUNT,
+                serde_json::to_value(&params).map_err(|error| error.to_string())?,
+            )
+            .map_err(CoordinationDaemonCallError::into_message)?,
+        )
+        .map_err(|error| error.to_string())?;
+    let mut first_poll_error_at = None;
+    loop {
+        let status_value = poll_coordination_status(
+            &mut call,
+            crate::daemon::protocol::method::COORDINATION_SWITCH_TEAM_ACCOUNT_STATUS,
+            &accepted.run_id,
+            poll_interval,
+            &mut first_poll_error_at,
+        )?;
+        let status: crate::daemon::protocol::CoordinationSwitchTeamAccountStatus =
+            serde_json::from_value(status_value).map_err(|error| error.to_string())?;
+        match status.outcome {
+            crate::daemon::protocol::CoordinationSwitchTeamAccountOutcome::Running => {
+                std::thread::sleep(poll_interval);
+            }
+            crate::daemon::protocol::CoordinationSwitchTeamAccountOutcome::Completed { report } => {
+                return Ok(report);
+            }
+            crate::daemon::protocol::CoordinationSwitchTeamAccountOutcome::Failed { error } => {
+                return Err(error);
+            }
+        }
+    }
+}
+
 fn reonboard_through_daemon(
     app: &tauri::AppHandle,
     daemon: &crate::provider::daemon_client::DaemonProvider,
@@ -1118,6 +1172,42 @@ pub async fn coordination_resume_team(
         );
     }
     emit_resume_team_pipeline_result(&requested_team_name, &result);
+    span.finish_result(&result);
+    result
+}
+
+#[tauri::command]
+pub async fn coordination_switch_team_account(
+    app: AppHandle,
+    request: SwitchTeamAccountRequest,
+) -> IpcResult<SwitchTeamAccountReport> {
+    let span = IpcCommandSpan::start("coordination_switch_team_account");
+    let app_for_task = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        validate_non_empty("team_name", &request.team_name)?;
+        validate_non_empty("account_id", &request.account_id)?;
+        let db = app_for_task.state::<DbState>();
+        let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
+        let params = crate::daemon::protocol::CoordinationSwitchTeamAccountParams {
+            request: map_switch_team_account_request_to_contract(&request),
+            cli_commands,
+            tmux_layout,
+        };
+        let provider = app_for_task.state::<ProviderState>();
+        let daemon = provider
+            .daemon
+            .as_ref()
+            .ok_or_else(|| "switching a team account requires the taurhaus daemon".to_string())?;
+        switch_team_account_through_daemon(&app_for_task, daemon, params)
+            .map(map_switch_team_account_report_from_contract)
+            .ipc()
+    })
+    .await
+    .unwrap_or_else(|err| {
+        Err(IpcError::internal(format!(
+            "failed to join account-switch task: {err}"
+        )))
+    });
     span.finish_result(&result);
     result
 }

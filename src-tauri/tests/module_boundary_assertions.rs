@@ -920,6 +920,7 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         "prune_state_if_session_mismatch(",
         "record_delivery_at(",
         "TeamConfigStore::save(",
+        "AccountSwitchManifestStore::append(",
         "TeamConfigStore::clear_member_pane_binding(",
         "TeamConfigStore::delete(",
         "MeshInboxStore::append(",

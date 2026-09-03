@@ -40,6 +40,7 @@ fn coordination_modules_are_visible_from_crate_root() {
         capabilities: None,
         model: None,
         reasoning_effort: None,
+        account_id: None,
         project_path: PathBuf::from("/tmp/taurhaus"),
         cli_tool: taurhaus_lib::session_scanner::cli_tool::CliTool::Codex,
         extra: Default::default(),

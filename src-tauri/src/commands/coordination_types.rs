@@ -122,6 +122,15 @@ pub struct ResumeTeamRequest {
     pub team_name: String,
 }
 
+/// IPC request for switching every selector-capable member of one harness.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchTeamAccountRequest {
+    pub team_name: String,
+    pub cli_tool: crate::session_scanner::cli_tool::CliTool,
+    pub account_id: String,
+}
+
 /// IPC response for hot-add operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -174,6 +183,19 @@ pub struct ResumeTeamReport {
     pub warnings: Vec<String>,
     pub started_team_daemon: bool,
     pub team_daemon_warning: Option<String>,
+}
+
+/// IPC response for the stop/rewrite/resume account switch operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchTeamAccountReport {
+    pub team_name: String,
+    pub cli_tool: crate::session_scanner::cli_tool::CliTool,
+    pub account_id: String,
+    pub account_label: String,
+    pub switched_members: Vec<String>,
+    pub handoff_manifest_count: usize,
+    pub resume: ResumeTeamReport,
 }
 
 /// IPC response for runtime member removal with teardown diagnostics.

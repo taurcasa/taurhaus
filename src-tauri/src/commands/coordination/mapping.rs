@@ -138,6 +138,16 @@ pub(super) fn map_resume_team_request_to_contract(
     }
 }
 
+pub(super) fn map_switch_team_account_request_to_contract(
+    request: &SwitchTeamAccountRequest,
+) -> contracts::SwitchTeamAccountRequest {
+    contracts::SwitchTeamAccountRequest {
+        team_name: request.team_name.clone(),
+        cli_tool: request.cli_tool,
+        account_id: request.account_id.clone(),
+    }
+}
+
 pub(super) fn map_reonboard_request_to_contract(
     request: &ReonboardRequest,
 ) -> contracts::ReonboardRequest {
@@ -253,6 +263,20 @@ pub(super) fn map_resume_team_report_from_contract(
         warnings: report.warnings,
         started_team_daemon: report.started_team_daemon,
         team_daemon_warning: report.team_daemon_warning,
+    }
+}
+
+pub(super) fn map_switch_team_account_report_from_contract(
+    report: contracts::SwitchTeamAccountReport,
+) -> SwitchTeamAccountReport {
+    SwitchTeamAccountReport {
+        team_name: report.team_name,
+        cli_tool: report.cli_tool,
+        account_id: report.account_id,
+        account_label: report.account_label,
+        switched_members: report.switched_members,
+        handoff_manifest_count: report.handoff_manifest_count,
+        resume: map_resume_team_report_from_contract(report.resume),
     }
 }
 

@@ -128,6 +128,9 @@ pub mod method {
     pub const COORDINATION_RESUME_MEMBER_STATUS: &str = "coordination.resume_member_status";
     pub const COORDINATION_RESUME_TEAM: &str = "coordination.resume_team";
     pub const COORDINATION_RESUME_TEAM_STATUS: &str = "coordination.resume_team_status";
+    pub const COORDINATION_SWITCH_TEAM_ACCOUNT: &str = "coordination.switch_team_account";
+    pub const COORDINATION_SWITCH_TEAM_ACCOUNT_STATUS: &str =
+        "coordination.switch_team_account_status";
     pub const COORDINATION_REONBOARD: &str = "coordination.reonboard";
     pub const COORDINATION_REONBOARD_STATUS: &str = "coordination.reonboard_status";
     pub const COORDINATION_CREATE_TEAM: &str = "coordination.create_team";
@@ -393,6 +396,48 @@ pub struct CoordinationResumeTeamStatus {
     pub run_id: String,
     pub steps: Vec<crate::coordination::requests::ResumeTeamProgress>,
     pub outcome: CoordinationResumeTeamOutcome,
+}
+
+/// Self-contained selector-account switch intent. The daemon re-resolves the
+/// credential-free account snapshot before it stops any member.
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationSwitchTeamAccountParams {
+    pub request: crate::coordination::requests::SwitchTeamAccountRequest,
+    pub cli_commands: crate::models::CliCommandSettings,
+    pub tmux_layout: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationSwitchTeamAccountAccepted {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationSwitchTeamAccountStatusParams {
+    pub run_id: String,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum CoordinationSwitchTeamAccountOutcome {
+    Running,
+    Completed {
+        report: crate::coordination::requests::SwitchTeamAccountReport,
+    },
+    Failed {
+        error: String,
+    },
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoordinationSwitchTeamAccountStatus {
+    pub run_id: String,
+    pub outcome: CoordinationSwitchTeamAccountOutcome,
 }
 
 /// Self-contained reonboard intent. Launch settings travel with every
@@ -1680,6 +1725,30 @@ mod tests {
         assert_eq!(
             method::COORDINATION_RESUME_MEMBER,
             "coordination.resume_member"
+        );
+    }
+
+    #[test]
+    fn coordination_switch_team_account_contract_roundtrips() {
+        let params = CoordinationSwitchTeamAccountParams {
+            request: crate::coordination::requests::SwitchTeamAccountRequest {
+                team_name: "arch".to_string(),
+                cli_tool: crate::session_scanner::cli_tool::CliTool::Codex,
+                account_id: "work".to_string(),
+            },
+            cli_commands: crate::models::CliCommandSettings::default(),
+            tmux_layout: "new_window".to_string(),
+        };
+        let decoded: CoordinationSwitchTeamAccountParams =
+            serde_json::from_str(&serde_json::to_string(&params).unwrap()).unwrap();
+        assert_eq!(decoded, params);
+        assert_eq!(
+            method::COORDINATION_SWITCH_TEAM_ACCOUNT,
+            "coordination.switch_team_account"
+        );
+        assert_eq!(
+            method::COORDINATION_SWITCH_TEAM_ACCOUNT_STATUS,
+            "coordination.switch_team_account_status"
         );
     }
 

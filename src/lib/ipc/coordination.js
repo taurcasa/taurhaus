@@ -87,6 +87,31 @@ export function coordinationResumeTeam(teamName) {
   })).then((report) => normalizeResumeTeamReport(report))
 }
 
+export function coordinationSwitchTeamAccount(teamName, cliTool, accountId) {
+  return invokeOrMock(
+    'coordination_switch_team_account',
+    { request: { teamName, cliTool, accountId } },
+    () => ({
+      teamName,
+      cliTool,
+      accountId,
+      accountLabel: accountId,
+      switchedMembers: [],
+      handoffManifestCount: 1,
+      resume: {
+        teamName,
+        resumed: true,
+        totalMembers: 0,
+        resumedMembers: [],
+        failedMembers: [],
+        warnings: [],
+        startedTeamDaemon: false,
+        teamDaemonWarning: null,
+      },
+    })
+  )
+}
+
 export function coordinationPreflightCheck(request) {
   return invokeOrMock('coordination_preflight_check', { request }, () => ({
     canInitialize: true,

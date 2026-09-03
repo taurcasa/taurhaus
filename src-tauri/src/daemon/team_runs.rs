@@ -16,6 +16,8 @@ use crate::daemon::coordination_runs::{
 use crate::daemon::protocol::{
     CoordinationReonboardOutcome, CoordinationReonboardParams, CoordinationReonboardStatus,
     CoordinationResumeTeamOutcome, CoordinationResumeTeamParams, CoordinationResumeTeamStatus,
+    CoordinationSwitchTeamAccountOutcome, CoordinationSwitchTeamAccountParams,
+    CoordinationSwitchTeamAccountStatus,
 };
 use crate::models::CliCommandSettings;
 
@@ -177,6 +179,62 @@ impl TeamOperationsService {
         finish_spawn(self, run_id, spawn_result, "reonboard")
     }
 
+    pub(crate) fn start_switch_team_account(
+        &self,
+        params: CoordinationSwitchTeamAccountParams,
+    ) -> Result<String, String> {
+        let run_id = self.registry.start(CoordinationRunKind::SwitchTeamAccount);
+        let run_id_for_task = run_id.clone();
+        let registry = self.registry.clone();
+        let state = self.state.clone();
+        let prepare_launch_inputs = self.prepare_resume_team_launch_inputs.clone();
+        let spawn_result = std::thread::Builder::new()
+            .name(format!(
+                "coordination-account-switch-{}",
+                run_id
+                    .rsplit('_')
+                    .next()
+                    .and_then(|tail| tail.get(..8))
+                    .unwrap_or(run_id.as_str())
+            ))
+            .spawn(move || {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let mut cli_commands = params.cli_commands;
+                    prepare_launch_inputs(
+                        &crate::coordination::requests::ResumeTeamRequest {
+                            team_name: params.request.team_name.clone(),
+                        },
+                        &mut cli_commands,
+                    )?;
+                    execute_switch_team_account(
+                        state.as_ref(),
+                        &params.request,
+                        &cli_commands,
+                        &params.tmux_layout,
+                    )
+                    .map_err(|error| error.to_string())
+                }));
+                match result {
+                    Ok(Ok(report)) => {
+                        let _ = registry.complete(
+                            &run_id_for_task,
+                            CoordinationRunReport::SwitchTeamAccount(report),
+                        );
+                    }
+                    Ok(Err(error)) => {
+                        let _ = registry.fail(&run_id_for_task, error);
+                    }
+                    Err(_) => {
+                        let _ = registry.fail(
+                            &run_id_for_task,
+                            "account-switch worker panicked".to_string(),
+                        );
+                    }
+                }
+            });
+        finish_spawn(self, run_id, spawn_result, "account-switch")
+    }
+
     pub(crate) fn resume_team_status(&self, run_id: &str) -> Option<CoordinationResumeTeamStatus> {
         let status = self.registry.status(run_id)?;
         if status.kind != CoordinationRunKind::ResumeTeam {
@@ -211,6 +269,28 @@ impl TeamOperationsService {
             RunOutcome::Completed { .. } => return None,
         };
         Some(CoordinationReonboardStatus {
+            run_id: status.run_id,
+            outcome,
+        })
+    }
+
+    pub(crate) fn switch_team_account_status(
+        &self,
+        run_id: &str,
+    ) -> Option<CoordinationSwitchTeamAccountStatus> {
+        let status = self.registry.status(run_id)?;
+        if status.kind != CoordinationRunKind::SwitchTeamAccount {
+            return None;
+        }
+        let outcome = match status.outcome {
+            RunOutcome::Running => CoordinationSwitchTeamAccountOutcome::Running,
+            RunOutcome::Completed {
+                report: CoordinationRunReport::SwitchTeamAccount(report),
+            } => CoordinationSwitchTeamAccountOutcome::Completed { report },
+            RunOutcome::Failed { error } => CoordinationSwitchTeamAccountOutcome::Failed { error },
+            RunOutcome::Completed { .. } => return None,
+        };
+        Some(CoordinationSwitchTeamAccountStatus {
             run_id: status.run_id,
             outcome,
         })
@@ -255,6 +335,191 @@ fn prepare_resume_team_launch_inputs(
     .unwrap_or(false);
     prepare_daemon_launch_inputs_for_tools(teams_dir, has_managed_codex, tools, commands);
     Ok(())
+}
+
+pub(crate) fn execute_switch_team_account(
+    state: &CoordinationState,
+    request: &crate::coordination::requests::SwitchTeamAccountRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
+) -> Result<
+    crate::coordination::requests::SwitchTeamAccountReport,
+    crate::coordination::errors::CoordinationError,
+> {
+    use crate::coordination::errors::CoordinationError;
+    use crate::coordination::requests::{AccountSwitchHandoffManifest, SwitchTeamAccountReport};
+    use crate::coordination::stores::{
+        AccountSwitchManifestStore, MemberRuntimeStore, TeamConfigStore,
+    };
+
+    crate::coordination::validation::validate_team_name(&request.team_name)?;
+    let capabilities = crate::session_scanner::cli_tool::spec(request.cli_tool).capabilities;
+    if capabilities.team_config_namespace {
+        return Err(CoordinationError::Validation(
+            "Claude accounts belong to the whole team; mixed-account Claude teams are impossible"
+                .to_string(),
+        ));
+    }
+    if capabilities.account_selector.is_none() {
+        return Err(CoordinationError::Validation(format!(
+            "{} does not support account switching",
+            request.cli_tool
+        )));
+    }
+    let requested_account_id = request.account_id.trim();
+    if requested_account_id.is_empty() {
+        return Err(CoordinationError::Validation(
+            "account id must not be empty".to_string(),
+        ));
+    }
+    let target = cli_commands
+        .managed_accounts
+        .get(&request.cli_tool)
+        .and_then(|accounts| {
+            accounts
+                .iter()
+                .find(|account| account.id == requested_account_id && account.logged_in)
+        })
+        .ok_or_else(|| {
+            CoordinationError::Validation(format!(
+                "account '{requested_account_id}' is unavailable or signed out"
+            ))
+        })?
+        .clone();
+
+    state.with_orchestrator(|orchestrator| {
+        let mut config = TeamConfigStore::load(state.teams_dir(), &request.team_name)?;
+        let switched_members = config
+            .members
+            .iter()
+            .filter(|member| member.cli_tool == request.cli_tool)
+            .map(|member| member.name.clone())
+            .collect::<Vec<_>>();
+        if switched_members.is_empty() {
+            return Err(CoordinationError::Validation(format!(
+                "team '{}' has no {} members",
+                request.team_name, request.cli_tool
+            )));
+        }
+
+        let handoffs = switched_members
+            .iter()
+            .map(|member_name| {
+                let member = config
+                    .members
+                    .iter()
+                    .find(|member| member.name == *member_name)
+                    .expect("switched member came from config");
+                let runtime = MemberRuntimeStore::load(
+                    state.teams_dir(),
+                    &request.team_name,
+                    member_name,
+                )
+                .ok();
+                account_switch_handoff(member, runtime.as_ref())
+            })
+            .collect::<Vec<_>>();
+
+        orchestrator.stop_team_daemon_best_effort(&request.team_name);
+        for member in &config.members {
+            orchestrator
+                .stop_member_for_account_switch(&request.team_name, member)
+                .map_err(CoordinationError::Backend)?;
+        }
+
+        for member in &mut config.members {
+            if member.cli_tool == request.cli_tool {
+                member.account_id = Some(target.id.clone());
+            }
+        }
+        let manifest = AccountSwitchHandoffManifest {
+            switched_at: chrono::Utc::now(),
+            cli_tool: request.cli_tool,
+            account_id: target.id.clone(),
+            account_label: target.label.clone(),
+            members: handoffs.clone(),
+        };
+        let handoff_manifest_count = AccountSwitchManifestStore::append(
+            state.teams_dir(),
+            &request.team_name,
+            manifest,
+        )?;
+        TeamConfigStore::save(state.teams_dir(), &request.team_name, &config)?;
+
+        let resume = orchestrator.resume_team_with_cli_commands_and_layout(
+            &crate::coordination::requests::ResumeTeamRequest {
+                team_name: request.team_name.clone(),
+            },
+            cli_commands,
+            tmux_layout,
+        )?;
+        for handoff in &handoffs {
+            if !resume.resumed_members.contains(&handoff.member_name) {
+                continue;
+            }
+            let previous_label = handoff
+                .previous_account_label
+                .as_deref()
+                .or(handoff.previous_account_id.as_deref())
+                .unwrap_or("Default");
+            let transcript = handoff.transcript_path.as_deref().unwrap_or("unavailable");
+            let message = format!(
+                "[taurhaus] Account switch complete: {previous_label} → {}.\nPrevious session: {}.\nPrevious transcript: {transcript}.\n{}\nThe transcript remains in its original location; this handoff only points to it. Rebuild task context with `mesh task get ID` before continuing.",
+                target.label,
+                handoff.session_id.as_deref().unwrap_or("unavailable"),
+                handoff.last_activity_line,
+            );
+            if let Err(error) = orchestrator.deliver_message(DeliveryRequest::operator_notice(
+                OperatorNoticeDelivery {
+                    member_name: handoff.member_name.clone(),
+                    team_name: request.team_name.clone(),
+                    message,
+                    sender_name: None,
+                    operational_context: None,
+                },
+            )) {
+                tracing::warn!(
+                    team = %request.team_name,
+                    member = %handoff.member_name,
+                    error = %error,
+                    "failed to deliver account-switch onboarding"
+                );
+            }
+        }
+
+        Ok(SwitchTeamAccountReport {
+            team_name: request.team_name.clone(),
+            cli_tool: request.cli_tool,
+            account_id: target.id,
+            account_label: target.label,
+            switched_members,
+            handoff_manifest_count,
+            resume,
+        })
+    })
+}
+
+fn account_switch_handoff(
+    member: &crate::coordination::domain::Member,
+    runtime: Option<&crate::coordination::stores::MemberRuntimeRecord>,
+) -> crate::coordination::requests::AccountSwitchMemberHandoff {
+    let last_activity = runtime
+        .and_then(|runtime| runtime.last_seen_at.or(runtime.attached_at))
+        .map(|timestamp| timestamp.to_rfc3339())
+        .unwrap_or_else(|| "unknown".to_string());
+    crate::coordination::requests::AccountSwitchMemberHandoff {
+        member_name: member.name.clone(),
+        previous_account_id: runtime
+            .and_then(|runtime| runtime.launch_account.account_id.clone())
+            .or_else(|| member.account_id.clone()),
+        previous_account_label: runtime
+            .and_then(|runtime| runtime.launch_account.account_label.clone()),
+        session_id: runtime.and_then(|runtime| runtime.session_id.clone()),
+        transcript_path: runtime
+            .and_then(|runtime| runtime.jsonl_path.as_ref())
+            .map(|path| path.display().to_string()),
+        last_activity_line: format!("Last activity: {last_activity}"),
+    }
 }
 
 pub(crate) fn execute_reonboard_pipeline(
@@ -368,16 +633,21 @@ mod tests {
     use crate::coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
     use crate::coordination::requests::{
         AgentDefinition, InitializeTeamRequest, LeadMode, MemberActivationStage, StepStatus,
+        SwitchTeamAccountRequest,
     };
     use crate::coordination::runtime::{CoordinationRuntime, RecordingCoordinationRuntime};
     use crate::coordination::state::CoordinationState;
-    use crate::coordination::stores::{MemberRuntimeStore, OperationalContextSnapshotStore};
+    use crate::coordination::stores::{
+        AccountSwitchManifestStore, MemberRuntimeStore, OperationalContextSnapshotStore,
+        TeamConfigStore,
+    };
     use crate::daemon::coordination_runs::CoordinationRunRegistry;
     use crate::daemon::protocol::{
         CoordinationReonboardOutcome, CoordinationReonboardParams, CoordinationResumeTeamOutcome,
         CoordinationResumeTeamParams,
     };
-    use crate::models::CliCommandSettings;
+    use crate::models::{CliCommandSettings, ManagedLaunchAccount};
+    use crate::session_scanner::cli_tool::CliTool;
 
     fn agent(name: &str, project: &std::path::Path) -> AgentDefinition {
         AgentDefinition {
@@ -580,5 +850,123 @@ mod tests {
                 .focal_files,
             ["src/current.rs"]
         );
+    }
+
+    #[test]
+    fn switch_team_account_stops_rewrites_resumes_and_accumulates_pointer_handoffs() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let (state, backend, _runtime) = state(temp.path());
+        initialize_team(state.as_ref(), temp.path());
+
+        let mut config = TeamConfigStore::load(temp.path(), "arch").expect("config");
+        for member in &mut config.members {
+            member.account_id = Some("personal".to_string());
+        }
+        TeamConfigStore::save(temp.path(), "arch", &config).expect("seed member accounts");
+        for member_name in ["team-lead", "builder"] {
+            MemberRuntimeStore::update(temp.path(), "arch", member_name, |runtime| {
+                runtime.session_id = Some(format!("session-{member_name}"));
+                runtime.jsonl_path = Some(temp.path().join(format!("{member_name}.jsonl")));
+                runtime.last_seen_at = Some(chrono::Utc::now());
+                runtime.launch_account.account_id = Some("personal".to_string());
+                runtime.launch_account.account_label = Some("Personal".to_string());
+                runtime.launch_account.account_applied = Some(true);
+            })
+            .expect("seed runtime identity");
+        }
+        let mut commands = CliCommandSettings::default();
+        commands.managed_accounts.insert(
+            CliTool::Codex,
+            vec![ManagedLaunchAccount {
+                id: "work".to_string(),
+                label: "Work".to_string(),
+                dir: temp.path().join("codex-work"),
+                logged_in: true,
+                is_default: false,
+            }],
+        );
+
+        let report = super::execute_switch_team_account(
+            state.as_ref(),
+            &SwitchTeamAccountRequest {
+                team_name: "arch".to_string(),
+                cli_tool: CliTool::Codex,
+                account_id: "work".to_string(),
+            },
+            &commands,
+            "new_window",
+        )
+        .expect("switch account");
+
+        assert_eq!(report.account_label, "Work");
+        assert_eq!(report.switched_members, ["team-lead", "builder"]);
+        assert_eq!(report.handoff_manifest_count, 1);
+        let config = TeamConfigStore::load(temp.path(), "arch").expect("updated config");
+        assert!(config
+            .members
+            .iter()
+            .all(|member| member.account_id.as_deref() == Some("work")));
+        let manifests =
+            AccountSwitchManifestStore::load(temp.path(), "arch").expect("persisted manifests");
+        assert_eq!(manifests.len(), 1);
+        assert_eq!(
+            manifests[0].members[0].previous_account_label.as_deref(),
+            Some("Personal")
+        );
+        assert!(manifests[0].members[0]
+            .transcript_path
+            .as_deref()
+            .expect("pointer")
+            .ends_with("team-lead.jsonl"));
+        assert!(manifests[0].members[0]
+            .last_activity_line
+            .starts_with("Last activity: "));
+        assert!(report.resume.resumed);
+        let notices = backend.delivered_requests();
+        assert!(notices.iter().any(|request| matches!(
+            request,
+            crate::coordination::requests::DeliveryRequest::OperatorNotice(notice)
+                if notice.message.contains("Account switch complete")
+                    && notice.message.contains("Previous transcript:")
+        )));
+
+        let second = super::execute_switch_team_account(
+            state.as_ref(),
+            &SwitchTeamAccountRequest {
+                team_name: "arch".to_string(),
+                cli_tool: CliTool::Codex,
+                account_id: "work".to_string(),
+            },
+            &commands,
+            "new_window",
+        )
+        .expect("second switch appends another handoff");
+        assert_eq!(second.handoff_manifest_count, 2);
+        assert_eq!(
+            AccountSwitchManifestStore::load(temp.path(), "arch")
+                .expect("persisted manifests")
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn switch_team_account_rejects_per_member_claude_selection() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let (state, _backend, _runtime) = state(temp.path());
+        let error = super::execute_switch_team_account(
+            state.as_ref(),
+            &SwitchTeamAccountRequest {
+                team_name: "arch".to_string(),
+                cli_tool: CliTool::Claude,
+                account_id: "claude-work".to_string(),
+            },
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect_err("Claude has one account namespace per team");
+        assert!(error
+            .to_string()
+            .contains("mixed-account Claude teams are impossible"));
     }
 }
