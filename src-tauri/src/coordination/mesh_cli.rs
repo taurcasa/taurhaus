@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::OnceLock;
 
 const COORDINATION_WSL_DISTRO_ENV: &str = "TAURHAUS_WSL_DISTRO";
 
@@ -249,11 +250,34 @@ pub fn resolve_wsl_distro_for_coordination(explicit_distro: Option<&str>) -> Opt
         return None;
     }
 
-    choose_wsl_distro_for_coordination(
+    resolve_wsl_distro_with_detection(
         explicit_distro,
         preferred_wsl_distro_for_coordination().as_deref(),
-        resolve_default_wsl_distro().as_deref(),
+        default_wsl_distro_cached,
     )
+}
+
+// Detection spawns `wsl.exe --list --quiet`; hot-path callers construct a
+// `TeamRootRegistry` per task scan and per IPC request, so detection must stay
+// behind the cheaper sources and never run eagerly.
+fn resolve_wsl_distro_with_detection(
+    explicit_distro: Option<&str>,
+    preferred_distro: Option<&str>,
+    detect_default: impl FnOnce() -> Option<String>,
+) -> Option<String> {
+    choose_wsl_distro_for_coordination(explicit_distro, preferred_distro, None)
+        .or_else(|| choose_wsl_distro_for_coordination(None, None, detect_default().as_deref()))
+}
+
+// Caches only a successful detection: a transient `wsl.exe` failure keeps being
+// retried instead of pinning a run-long `None`.
+fn default_wsl_distro_cached() -> Option<String> {
+    static DETECTED_DEFAULT: OnceLock<String> = OnceLock::new();
+    if let Some(cached) = DETECTED_DEFAULT.get() {
+        return Some(cached.clone());
+    }
+    let detected = resolve_default_wsl_distro()?;
+    Some(DETECTED_DEFAULT.get_or_init(|| detected).clone())
 }
 
 fn resolve_default_wsl_distro() -> Option<String> {
@@ -388,6 +412,36 @@ mod tests {
         );
         assert_eq!(
             choose_wsl_distro_for_coordination(None, None, Some("Ubuntu")),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn detection_is_not_consulted_when_a_cheaper_source_answers() {
+        assert_eq!(
+            resolve_wsl_distro_with_detection(Some("Debian"), None, || panic!(
+                "explicit distro must not trigger detection"
+            )),
+            Some("Debian".to_string())
+        );
+        assert_eq!(
+            resolve_wsl_distro_with_detection(None, Some("Ubuntu"), || panic!(
+                "preferred distro must not trigger detection"
+            )),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn detection_answers_only_when_no_cheaper_source_does() {
+        assert_eq!(
+            resolve_wsl_distro_with_detection(None, None, || Some("Ubuntu".to_string())),
+            Some("Ubuntu".to_string())
+        );
+        assert_eq!(
+            resolve_wsl_distro_with_detection(Some("  "), Some("native"), || Some(
+                "Ubuntu".to_string()
+            )),
             Some("Ubuntu".to_string())
         );
     }

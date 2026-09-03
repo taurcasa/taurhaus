@@ -22,6 +22,7 @@ use tauri::State;
 
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
+use crate::coordination::stores::team_roots::same_teams_root;
 use crate::daemon::protocol;
 use crate::db::queries;
 use crate::errors::{sanitize_error, AppError, CommandResultExt, IpcResult, SanitizeErr};
@@ -367,10 +368,10 @@ pub(crate) fn account_relationships_across_roots_impl(
             let account_dir = teams_dir.parent().unwrap_or(&teams_dir);
             let account_id = detected_accounts
                 .iter()
-                .find(|account| same_normalized_path(&account.dir, account_dir))
+                .find(|account| same_teams_root(&account.dir, account_dir))
                 .map(|account| account.id.clone())
                 .or_else(|| {
-                    (teams_dir == default_teams_dir)
+                    same_teams_root(&teams_dir, default_teams_dir)
                         .then(|| registry_home_account_id.map(str::to_string))
                         .flatten()
                 });
@@ -385,11 +386,6 @@ pub(crate) fn account_relationships_across_roots_impl(
         detected_accounts,
         Some((&registered, default_teams_dir)),
     )
-}
-
-fn same_normalized_path(left: &Path, right: &Path) -> bool {
-    crate::provider::path::normalize_project_path(&left.to_string_lossy())
-        == crate::provider::path::normalize_project_path(&right.to_string_lossy())
 }
 
 fn account_relationships_for_roots_impl(
@@ -556,7 +552,7 @@ fn scan_team_account_relationships(
                 .get(&team_name)
                 .map(PathBuf::as_path)
                 .unwrap_or(default_teams_dir);
-            if !crate::coordination::stores::team_roots::same_teams_root(authoritative, teams_dir) {
+            if !same_teams_root(authoritative, teams_dir) {
                 continue;
             }
         }
