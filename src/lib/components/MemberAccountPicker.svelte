@@ -19,6 +19,10 @@
   const canSelect = $derived(
     Boolean(descriptor?.capabilities?.accountSelection) && !isTeamAccount
   )
+  // What a managed launch actually resolves (`managed_member_account`): the
+  // member's own choice, else the tool's registry home — never the app-launch
+  // `defaultAccountId`. The row label and the popover's entry point both read
+  // this, so opening the picker and confirming without moving is a no-op.
   const selected = $derived(
     isTeamAccount
       ? accounts.find((account) => account.is_default && account.logged_in) ?? null
@@ -74,7 +78,7 @@
           {accounts}
           {defaultAccountId}
           {degraded}
-          preselectedAccountId={accountId ?? defaultAccountId}
+          preselectedAccountId={selected?.id ?? null}
           {dark}
           skin="popover"
           showRemember={false}

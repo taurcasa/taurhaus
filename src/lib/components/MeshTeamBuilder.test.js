@@ -986,6 +986,34 @@ describe('MeshTeamBuilder', () => {
     )
   })
 
+  // Regression: 95848682 fixed the row label to mirror the registry home but
+  // left the popover preselecting the app-launch global default, which
+  // `managed_member_account` never consults. The row said Personal while the
+  // picker opened on Work, so confirming without moving pinned Work.
+  it('opens the member account popover on the account the row names', async () => {
+    renderBuilder({
+      teamConfig: sampleRosterConfig(),
+      accountStates: {
+        codex: {
+          accounts: [
+            { id: 'personal', label: 'Personal', logged_in: true, is_default: true },
+            { id: 'work', label: 'Work', logged_in: true, is_default: false },
+          ],
+          defaultAccountId: 'work',
+        },
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-agent-edit-toggle-agent-codex-1'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-member-account-agent-codex-1'))
+
+    expect(screen.getByTestId('account-option-personal')).toHaveAttribute(
+      'data-preselected',
+      'true'
+    )
+    expect(screen.getByTestId('account-option-work')).toHaveAttribute('data-preselected', 'false')
+  })
+
   it('waits for the exit animation before removing an agent card', async () => {
     vi.useFakeTimers()
     const onRemoveAgent = vi.fn()
