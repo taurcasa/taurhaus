@@ -43,6 +43,8 @@ use serde::{Deserialize, Serialize};
 /// the task-arrival effort intent.
 /// v22: moved the final desktop-owned team-state writes (task snapshots,
 /// live-presence reconciliation, and active-project mappings) into the daemon.
+/// v23: member launch intents carry stable account ids and the daemon owns the
+/// accept-then-poll selector-account switch operation.
 pub const PROTOCOL_VERSION: u32 = 23;
 
 // ---------------------------------------------------------------------------
