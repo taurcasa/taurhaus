@@ -858,3 +858,104 @@ fn an_unresolvable_roster_member_keeps_every_account_hook_installed() {
     assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&work));
     assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&archive));
 }
+
+/// A member runtime record that says the session is alive and names the
+/// account home its launch actually used.
+fn live_runtime_record(
+    member_name: &str,
+    account_id: &str,
+) -> crate::coordination::stores::MemberRuntimeRecord {
+    crate::coordination::stores::MemberRuntimeRecord {
+        schema_version: 3,
+        member_name: member_name.to_string(),
+        cli_tool: None,
+        project_path: None,
+        pane_id: Some("%1".to_string()),
+        pane_pid: None,
+        pane_start_time: None,
+        session_id: Some(format!("session-{member_name}")),
+        jsonl_path: None,
+        daemon_pid: None,
+        health: crate::coordination::domain::HealthState::Healthy,
+        delivery_lease: None,
+        attached_at: None,
+        last_seen_at: None,
+        applied_effort: None,
+        effort_resume_failure: None,
+        launch_account: taurhaus_lib::session_scanner::launch_base::LaunchAccountResult {
+            account_applied: Some(true),
+            account_id: Some(account_id.to_string()),
+            ..Default::default()
+        },
+        extra: Default::default(),
+    }
+}
+
+// Regression: 30bc9b90 re-derived every roster member's hook home from its
+// configured account id plus current detection, so a member already running in
+// Work was reassigned to the detected default the moment Work stopped
+// reporting `logged_in`, and the next same-tool launch removed the hook the
+// live Work session still needs.
+#[test]
+fn a_live_runtime_keeps_the_hook_in_the_home_it_launched_from() {
+    use crate::coordination::stores::MemberRuntimeStore;
+    use crate::models::ManagedLaunchAccount;
+    use crate::session_scanner::cli_tool::CliTool;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = temp.path().join("teams");
+    let personal = temp.path().join("codex-personal");
+    let work = temp.path().join("codex-work");
+    let exe = temp.path().join("taurhaus-daemon");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    write_team_with_account(&teams_dir, "team-a", "codex", "work");
+    write_team_with_account(&teams_dir, "team-b", "codex", "personal");
+    MemberRuntimeStore::save(
+        &teams_dir,
+        "team-a",
+        "builder",
+        &live_runtime_record("builder", "work"),
+    )
+    .expect("seed the live Work session");
+    reconcile_codex_hook_at_with_support(&personal, true, Some(true), &exe)
+        .expect("seed the default home");
+    reconcile_codex_hook_at_with_support(&work, true, Some(true), &exe)
+        .expect("seed the live session's home");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.managed_accounts.insert(
+        CliTool::Codex,
+        vec![
+            ManagedLaunchAccount {
+                id: "personal".to_string(),
+                label: "Personal".to_string(),
+                dir: personal.clone(),
+                logged_in: true,
+                is_default: true,
+            },
+            ManagedLaunchAccount {
+                id: "work".to_string(),
+                label: "Work".to_string(),
+                dir: work.clone(),
+                logged_in: false,
+                is_default: false,
+            },
+        ],
+    );
+
+    reconcile_managed_account_hooks_for_launch_at(
+        &teams_dir,
+        &[(CliTool::Codex, Some("personal".to_string()))],
+        &commands,
+        Some(true),
+        true,
+        &exe,
+    )
+    .expect("reconcile while a live session runs in a signed-out account");
+
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&personal));
+    assert!(
+        crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&work),
+        "a live runtime that launched in Work still needs its hook"
+    );
+}

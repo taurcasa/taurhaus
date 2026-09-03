@@ -503,6 +503,49 @@ fn known_managed_homes(
     homes
 }
 
+/// The account home a live runtime record says this member actually launched
+/// from. `MemberRuntimeRecord.launch_account` is the launch authority: config
+/// plus current detection only describes where the *next* launch would go, and
+/// re-deriving a running member from them reassigns it the moment its account
+/// stops reporting `logged_in`. `Some(None)` means a live record names an
+/// account detection cannot place — missing evidence, which suppresses removal
+/// exactly like an unresolvable configured member.
+fn live_launch_home(
+    teams_dir: &std::path::Path,
+    team_name: &str,
+    member: &crate::coordination::domain::Member,
+    cli_commands: &crate::models::CliCommandSettings,
+) -> Option<Option<std::path::PathBuf>> {
+    let runtime =
+        crate::coordination::stores::MemberRuntimeStore::load(teams_dir, team_name, &member.name)
+            .ok()?;
+    if runtime.health == crate::coordination::domain::HealthState::SessionDead {
+        return None;
+    }
+    let account_id = runtime.launch_account.account_id?;
+    Some(
+        cli_commands
+            .managed_accounts
+            .get(&member.cli_tool)
+            .into_iter()
+            .flatten()
+            .find(|account| account.id == account_id)
+            .map(|account| account.dir.clone()),
+    )
+}
+
+fn roster_member_hook_home(
+    teams_dir: &std::path::Path,
+    team_name: &str,
+    member: &crate::coordination::domain::Member,
+    cli_commands: &crate::models::CliCommandSettings,
+) -> Option<std::path::PathBuf> {
+    match live_launch_home(teams_dir, team_name, member, cli_commands) {
+        Some(live) => live,
+        None => resolved_managed_home(cli_commands, member.cli_tool, member.account_id.as_deref()),
+    }
+}
+
 fn collect_managed_hook_homes_for_launch(
     teams_dir: &std::path::Path,
     launch_members: &[(CliTool, Option<String>)],
@@ -535,10 +578,11 @@ fn collect_managed_hook_homes_for_launch(
                 homes
                     .entry(member.cli_tool)
                     .or_default()
-                    .record(resolved_managed_home(
+                    .record(roster_member_hook_home(
+                        teams_dir,
+                        &team_name,
+                        &member,
                         cli_commands,
-                        member.cli_tool,
-                        member.account_id.as_deref(),
                     ));
             }
         }
