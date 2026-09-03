@@ -294,6 +294,7 @@ pub(super) fn resolve_mesh_daemon_pid_path_at(
         .join(format!("{member_name}.pid"))
 }
 
+#[cfg(test)]
 pub(super) fn resolve_team_daemon_pid_path(team_name: &str) -> Option<PathBuf> {
     resolve_host_claude_dir()
         .map(|claude_dir| resolve_team_daemon_pid_path_at(&claude_dir.join("teams"), team_name))

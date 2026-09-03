@@ -317,6 +317,7 @@ fn finalize_initialize_state(
     crate::coordination::stores::active_project::sync_team_from_config(teams_dir, team_name)
 }
 
+#[cfg(test)]
 pub(crate) fn execute_initialize_pipeline(
     state: &CoordinationState,
     request: &crate::coordination::requests::InitializeTeamRequest,
