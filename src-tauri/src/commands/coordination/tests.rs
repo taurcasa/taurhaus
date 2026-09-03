@@ -2956,6 +2956,76 @@ fn project_mesh_snapshot_returns_null_team_when_project_has_no_match() {
 }
 
 #[test]
+fn project_mesh_snapshot_discovers_a_team_in_its_registered_account_root() {
+    let tmp = TempDir::new().expect("tempdir");
+    let default_teams = tmp.path().join("default/teams");
+    let account_teams = tmp.path().join("account-b/teams");
+    let account_state = test_state(account_teams.clone());
+    initialize_team_pipeline_test_fixture(
+        &account_state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize account-root team");
+
+    let state = test_state(default_teams);
+    state
+        .team_root_registry()
+        .set("architecture-final", &account_teams)
+        .expect("register account root");
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        "proj-web".to_string(),
+        &lookup,
+    )
+    .expect("snapshot should discover registered root");
+
+    assert_eq!(snapshot.team_name.as_deref(), Some("architecture-final"));
+    assert_eq!(
+        snapshot.team_status.as_ref().map(|status| status.members.len()),
+        Some(3)
+    );
+}
+
+#[test]
+fn live_team_status_loads_a_team_from_its_registered_account_root() {
+    let tmp = TempDir::new().expect("tempdir");
+    let default_teams = tmp.path().join("default/teams");
+    let account_teams = tmp.path().join("account-b/teams");
+    let account_state = test_state(account_teams.clone());
+    initialize_team_pipeline_test_fixture(
+        &account_state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize account-root team");
+
+    let state = test_state(default_teams);
+    state
+        .team_root_registry()
+        .set("architecture-final", &account_teams)
+        .expect("register account root");
+
+    let status = coordination_get_live_team_status_impl(
+        &state,
+        None,
+        "architecture-final".to_string(),
+    )
+    .expect("status should load registered root");
+
+    assert_eq!(status.team_name, "architecture-final");
+    assert_eq!(status.members.len(), 3);
+}
+
+#[test]
 fn project_mesh_snapshot_classifies_active_when_all_members_are_live() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
