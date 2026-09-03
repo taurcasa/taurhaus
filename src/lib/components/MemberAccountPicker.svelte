@@ -47,7 +47,7 @@
   }
 </script>
 
-<div class="relative space-y-1">
+<div class="space-y-1">
   <span class="text-[10px] text-zinc-500">Account</span>
   {#if canSelect}
     <button
@@ -61,7 +61,7 @@
       <span aria-hidden="true">⌄</span>
     </button>
     {#if open}
-      <div class="absolute right-0 z-40 mt-1 min-w-[22rem]">
+      <div class="absolute left-3 right-3 z-40 mt-1">
         <AccountPicker
           {tool}
           {accounts}
