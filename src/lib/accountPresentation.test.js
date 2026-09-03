@@ -386,6 +386,28 @@ describe('accountOriginSentence', () => {
   })
 })
 
+describe('baseCommandSelection usability', () => {
+  // Regression: round-10 review — a signed-out selector account was presented
+  // as effective and offered for pin conversion, though the backend resolver
+  // rejects it and falls through to a usable choice.
+  it('marks a signed-out selector account unusable', () => {
+    const selection = baseCommandSelection(
+      [{ command: 'CLAUDE_CONFIG_DIR=/home/u/.claude-old claude', selectorValue: '/home/u/.claude-old', expansions: [] }],
+      [{ id: 'old', dir: '/home/u/.claude-old', logged_in: false }]
+    )
+    expect(selection.account?.id).toBe('old')
+    expect(selection.usable).toBe(false)
+  })
+
+  it('marks a signed-in selector account usable', () => {
+    const selection = baseCommandSelection(
+      [{ command: 'CLAUDE_CONFIG_DIR=/home/u/.claude-work claude', selectorValue: '/home/u/.claude-work', expansions: [] }],
+      [{ id: 'work', dir: '/home/u/.claude-work', logged_in: true }]
+    )
+    expect(selection.usable).toBe(true)
+  })
+})
+
 describe('baseCommandSelection', () => {
   const accounts = [
     { id: 'work', display_name: 'work', dir: '/home/user/.claude-work' },
@@ -443,6 +465,7 @@ describe('baseCommandSelection', () => {
     expect(baseCommandSelection(undefined, accounts)).toEqual({
       opaqueHead: null,
       account: null,
+      usable: false,
       alias: null,
       command: null,
     })

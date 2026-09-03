@@ -560,6 +560,7 @@ function normalizeResolvedBase(raw) {
       .filter((expansion) => expansion.name),
     opaqueHead: opaqueHead == null ? null : String(opaqueHead),
     selectorValue: selectorValue == null ? null : String(selectorValue),
+    modes: Array.isArray(base.modes) ? base.modes.map(String) : [],
   }
   delete normalized.opaque_head
   delete normalized.selector_value

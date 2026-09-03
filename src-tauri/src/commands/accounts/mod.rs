@@ -110,6 +110,11 @@ pub struct ResolvedLaunchBase {
     pub base: ResolvedBase,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selector_value: Option<String>,
+    /// Which launch modes use this command. Distinct commands per mode mean
+    /// the resolver can select different accounts per mode; ambient relevance
+    /// must judge each mode, not the first selector found anywhere.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modes: Vec<String>,
 }
 
 /// The transcript that owns a project's history, and whether the lookup ran.
@@ -180,20 +185,30 @@ pub(crate) fn resolve_launch_bases_impl(
     }
     let commands = crate::commands::terminal_settings::load_terminal_settings(db).cli_commands;
     let mut seen = std::collections::HashSet::new();
-    let bases = [
-        protocol::LaunchMode::Fresh,
-        protocol::LaunchMode::Continue,
-        protocol::LaunchMode::Resume,
-    ]
-    .into_iter()
-    .map(|mode| crate::session_scanner::launch::base_command(&commands, tool, mode))
-    .filter(|base| seen.insert(base.to_string()))
-    .collect::<Vec<_>>();
+    let mut base_modes: Vec<(String, Vec<String>)> = Vec::new();
+    for (mode, name) in [
+        (protocol::LaunchMode::Fresh, "fresh"),
+        (protocol::LaunchMode::Continue, "continue"),
+        (protocol::LaunchMode::Resume, "resume"),
+    ] {
+        let base = crate::session_scanner::launch::base_command(&commands, tool, mode);
+        if seen.insert(base.to_string()) {
+            base_modes.push((base.to_string(), vec![name.to_string()]));
+        } else if let Some((_, modes)) = base_modes.iter_mut().find(|(b, _)| *b == base) {
+            modes.push(name.to_string());
+        }
+    }
+    let bases: Vec<&str> = base_modes.iter().map(|(base, _)| base.as_str()).collect();
     resolve_bases_threading_force(&bases, force, |base, force| {
         resolve_launch_base_with_force_tracked(provider, tool, base, force)
     })
     .into_iter()
-    .map(|base| resolved_launch_base(base, tool))
+    .zip(base_modes.into_iter().map(|(_, modes)| modes))
+    .map(|(base, modes)| {
+        let mut resolved = resolved_launch_base(base, tool);
+        resolved.modes = modes;
+        resolved
+    })
     .collect()
 }
 
@@ -207,6 +222,7 @@ fn resolved_launch_base(base: ResolvedBase, tool: CliTool) -> ResolvedLaunchBase
     ResolvedLaunchBase {
         base,
         selector_value,
+        modes: Vec::new(),
     }
 }
 

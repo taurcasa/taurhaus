@@ -291,7 +291,7 @@
               {opaqueBaseNotice(selection.opaqueHead, descriptor.id)}
             </p>
           </aside>
-        {:else if selection}
+        {:else if selection && selection.usable}
           <aside class="rounded-lg border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2.5" data-testid="account-alias-{descriptor.id}">
             <div class="flex items-center justify-between gap-4">
               <p class="text-[10px] leading-relaxed {t.textSecondary}">
@@ -299,6 +299,12 @@
               </p>
               <button class="shrink-0 text-[10px] font-semibold text-amber-500" onclick={() => convertAlias(descriptor.id, selection.account)}>Convert to pins</button>
             </div>
+          </aside>
+        {:else if selection}
+          <aside class="rounded-lg border border-rose-500/20 bg-rose-500/[0.05] px-3 py-2.5" data-testid="account-alias-signed-out-{descriptor.id}">
+            <p class="text-[10px] leading-relaxed {t.textSecondary}">
+              Base command <strong>{selection.alias?.name ?? selection.command}</strong> names {selection.account.display_name ?? selection.account.label}, which is signed out — launches fall through to another account. Sign it in below or update the command; pinning is offered once it can run.
+            </p>
           </aside>
         {/if}
       </section>

@@ -216,12 +216,20 @@
       (account) => account.id === persistedDefaultAccountId(tool.id) && account.logged_in
     )
     if (chosen) return { account: chosen, origin: 'default' }
-    if (selection.account) {
+    if (selection.account && selection.usable) {
       return {
         account: selection.account,
         origin: selection.alias
           ? `from your launch command \"${selection.alias.name}\" (alias for ${selection.alias.body})`
           : `from your launch command \"${selection.command}\"`,
+      }
+    }
+    if (selection.account && !selection.usable) {
+      // The resolver rejects a signed-out selector account and falls through;
+      // say so instead of presenting the dead selector as effective.
+      return {
+        account: configured,
+        origin: `default config directory (your launch command names ${selection.account.display_name ?? selection.account.label}, which is signed out)`,
       }
     }
     return { account: configured, origin: 'default config directory' }

@@ -37,11 +37,16 @@ export function baseCommandSelection(bases, accounts = []) {
     return {
       opaqueHead,
       account,
+      // What the selector NAMES is not always what resolution lands on: the
+      // backend rejects a signed-out selector account and falls through to a
+      // usable choice, so consumers must never present or pin an unusable one
+      // as effective.
+      usable: Boolean(account.logged_in),
       alias: base.expansions?.[0] ?? null,
       command: base.command ?? '',
     }
   }
-  return { opaqueHead, account: null, alias: null, command: null }
+  return { opaqueHead, account: null, usable: false, alias: null, command: null }
 }
 
 function relationshipList(relationships, camel, snake) {
@@ -66,14 +71,28 @@ function isDefaultDirectory(account) {
  * is one nothing detected — the resolver stops there with no account rather
  * than falling on to the default directory.
  */
-function baseCommandSelector(state) {
+const AMBIENT_LAUNCH_MODES = ['fresh', 'continue', 'resume']
+
+/**
+ * Per launch mode, what that mode's command selects — `undefined` when the
+ * mode's command carries no selector at all. Distinct commands per mode can
+ * resolve to different accounts, so relevance must judge each mode; the first
+ * selector found anywhere answers for launches it does not govern.
+ */
+function selectorsByMode(state) {
   const bases = Array.isArray(state?.resolvedBases) ? state.resolvedBases : []
+  const byMode = {}
   for (const base of bases) {
     const value = String(base?.selectorValue ?? base?.selector_value ?? '')
-    if (!value) continue
-    return { account: accountForSelectorValue(value, state?.accounts ?? []) }
+    const modes = Array.isArray(base?.modes) && base.modes.length ? base.modes : AMBIENT_LAUNCH_MODES
+    for (const mode of modes) {
+      if (mode in byMode) continue
+      byMode[mode] = value
+        ? { account: accountForSelectorValue(value, state?.accounts ?? []) }
+        : undefined
+    }
   }
-  return null
+  return byMode
 }
 
 /**
@@ -99,10 +118,16 @@ function defaultDirectorySuperseded(account, state) {
     return true
   }
 
-  const selector = baseCommandSelector(state)
-  if (!selector) return false
-  if (!selector.account) return true
-  return Boolean(selector.account.logged_in) && selector.account.id !== account?.id
+  // Superseded only when EVERY launch mode resolves away from the default
+  // directory: a mode without a selector (or whose selector names a signed-out
+  // account the resolver falls past) still lands here.
+  const byMode = selectorsByMode(state)
+  return AMBIENT_LAUNCH_MODES.every((mode) => {
+    const selector = byMode[mode]
+    if (!selector) return false
+    if (!selector.account) return true
+    return Boolean(selector.account.logged_in) && selector.account.id !== account?.id
+  })
 }
 
 /**

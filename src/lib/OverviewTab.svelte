@@ -9,7 +9,7 @@
   import { getSessionsForProject } from './sessionStore.svelte.js'
   import {
     accountState,
-    effectiveAccount,
+    previewAccount,
     loggedInAccounts,
     refreshAccounts,
     refreshUsage,
@@ -43,6 +43,29 @@
   const projectSessions = $derived.by(() => getSessionsForProject(selectedProject?.path ?? ''))
 
   const t = $derived(themeTokens(dark))
+
+  // The chip preselects and explains from the AUTHORITATIVE launch preview
+  // (resolve_launch_account), never from a frontend re-derivation of
+  // precedence: the preview owns base-command selectors, usability, and
+  // fallback order. Keyed per tool; re-resolved when the project or the
+  // accounts generation changes (previewAccount's cache key carries both).
+  let chipPreviews = $state({})
+  $effect(() => {
+    const project = selectedProject
+    const tools = accountTools
+    if (!project?.id || !tools.length) {
+      chipPreviews = {}
+      return
+    }
+    for (const tool of tools) {
+      const generation = accountState(tool.id).generation
+      void previewAccount(project, tool.id, { visible: true, mode: 'fresh' }).then((preview) => {
+        if (!preview) return
+        if (selectedProject?.id !== project.id) return
+        chipPreviews = { ...chipPreviews, [tool.id]: { ...preview, generation } }
+      })
+    }
+  })
 
   const accountTools = $derived(
     registryTools().filter(
@@ -195,14 +218,14 @@
     {/if}
     {#each accountTools as tool (tool.id)}
       {@const state = accountState(tool.id)}
-      {@const effective = effectiveAccount(selectedProject, tool.id)}
+      {@const preview = chipPreviews[tool.id] ?? null}
       <AccountChip
         tool={tool.id}
         accounts={state.accounts}
-        selectedAccountId={effective.account?.id ?? null}
+        selectedAccountId={preview?.accountId ?? null}
         defaultAccountId={state.defaultAccountId}
         degraded={state.degraded}
-        origin={effective.origin}
+        origin={preview?.origin ?? null}
         projectName={selectedProject?.name ?? ''}
         {dark}
         onSelect={(accountId) => handleAccountSelect(tool.id, accountId)}
