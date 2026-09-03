@@ -434,18 +434,19 @@ pub(crate) fn execute_switch_team_account(
             .map(|member| member.name.clone())
             .unwrap_or_else(|| "team-lead".to_string());
 
-        let handoffs = switched_members
+        // Every member this operation will stop is snapshotted, not only the
+        // ones whose account changes: the switch stops and resumes the whole
+        // team, so a member of another tool loses its conversation too and has
+        // nothing left to point at once the manifest omits it. Only the
+        // requested tool's members have their `account_id` rewritten below.
+        let handoffs = config
+            .members
             .iter()
-            .map(|member_name| {
-                let member = config
-                    .members
-                    .iter()
-                    .find(|member| member.name == *member_name)
-                    .expect("switched member came from config");
+            .map(|member| {
                 let runtime = MemberRuntimeStore::load(
                     state.teams_dir(),
                     &request.team_name,
-                    member_name,
+                    &member.name,
                 )
                 .ok();
                 account_switch_handoff(member, runtime.as_ref())
@@ -538,12 +539,23 @@ pub(crate) fn execute_switch_team_account(
                 .or(handoff.previous_account_id.as_deref())
                 .unwrap_or("Default");
             let transcript = handoff.transcript_path.as_deref().unwrap_or("unavailable");
-            let message = format!(
-                "[taurhaus] Account switch complete: {previous_label} → {}.\nPrevious session: {}.\nPrevious transcript: {transcript}.\n{}\nThe transcript remains in its original location; this handoff only points to it. Rebuild task context with `mesh task get ID` before continuing.",
-                target.label,
-                handoff.session_id.as_deref().unwrap_or("unavailable"),
-                handoff.last_activity_line,
-            );
+            let session = handoff.session_id.as_deref().unwrap_or("unavailable");
+            // A member of another tool was restarted by this switch without
+            // changing account; telling it its account moved would be false.
+            let message = if switched_members.contains(&handoff.member_name) {
+                format!(
+                    "[taurhaus] Account switch complete: {previous_label} → {}.\nPrevious session: {session}.\nPrevious transcript: {transcript}.\n{}\nThe transcript remains in its original location; this handoff only points to it. Rebuild task context with `mesh task get ID` before continuing.",
+                    target.label,
+                    handoff.last_activity_line,
+                )
+            } else {
+                format!(
+                    "[taurhaus] Team restarted for a {} account switch to {}; your own account is unchanged.\nPrevious session: {session}.\nPrevious transcript: {transcript}.\n{}\nThe transcript remains in its original location; this handoff only points to it. Rebuild task context with `mesh task get ID` before continuing.",
+                    request.cli_tool,
+                    target.label,
+                    handoff.last_activity_line,
+                )
+            };
             if let Err(error) = orchestrator.deliver_message(DeliveryRequest::operator_notice(
                 OperatorNoticeDelivery {
                     member_name: handoff.member_name.clone(),
@@ -562,8 +574,12 @@ pub(crate) fn execute_switch_team_account(
             }
         }
         if resume.resumed_members.contains(&lead_name) {
+            // Only the switched members moved account, so only their previous
+            // accounts belong in the "X → Y" line; the entry list below is the
+            // whole team, because the whole team was restarted.
             let previous_accounts = handoffs
                 .iter()
+                .filter(|handoff| switched_members.contains(&handoff.member_name))
                 .map(|handoff| {
                     handoff
                         .previous_account_label
@@ -579,8 +595,13 @@ pub(crate) fn execute_switch_team_account(
                 .iter()
                 .map(|handoff| {
                     format!(
-                        "- {}: previous session {}; transcript {} ({})",
+                        "- {}{}: previous session {}; transcript {} ({})",
                         handoff.member_name,
+                        if switched_members.contains(&handoff.member_name) {
+                            ""
+                        } else {
+                            " (restarted, account unchanged)"
+                        },
                         handoff.session_id.as_deref().unwrap_or("unavailable"),
                         handoff.transcript_path.as_deref().unwrap_or("unavailable"),
                         handoff.last_activity_line,
@@ -1040,16 +1061,23 @@ mod tests {
         let manifests =
             AccountSwitchManifestStore::load(temp.path(), "arch").expect("persisted manifests");
         assert_eq!(manifests.len(), 1);
+        // The manifest covers every member the switch stopped, so the switched
+        // one is found by name rather than by position.
+        let builder_handoff = manifests[0]
+            .members
+            .iter()
+            .find(|handoff| handoff.member_name == "builder")
+            .expect("the switched member is in the manifest");
         assert_eq!(
-            manifests[0].members[0].previous_account_label.as_deref(),
+            builder_handoff.previous_account_label.as_deref(),
             Some("Personal")
         );
-        assert!(manifests[0].members[0]
+        assert!(builder_handoff
             .transcript_path
             .as_deref()
             .expect("pointer")
             .ends_with("builder.jsonl"));
-        assert!(manifests[0].members[0]
+        assert!(builder_handoff
             .last_activity_line
             .starts_with("Last activity: "));
         assert!(report.resume.resumed);
@@ -1168,6 +1196,108 @@ mod tests {
         .expect("runtime fallback is not already on the target");
 
         assert_eq!(report.switched_members, ["builder"]);
+    }
+
+    // Regression: 922287e6 filtered the handoff snapshot to the switched tool
+    // while stopping and resuming every member, so a Claude lead and any other
+    // non-switched member lost their session pointers entirely — stopped,
+    // replaced, and absent from the persisted manifest.
+    #[test]
+    fn switch_team_account_snapshots_and_onboards_every_restarted_member() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let (state, backend, _runtime) = state(temp.path());
+        initialize_team(state.as_ref(), temp.path());
+
+        let mut config = TeamConfigStore::load(temp.path(), "arch").expect("config");
+        for member in &mut config.members {
+            if member.role == crate::coordination::domain::MemberRole::Lead {
+                member.cli_tool = CliTool::Claude;
+            } else {
+                member.account_id = Some("personal".to_string());
+            }
+        }
+        let mut scribe = config
+            .members
+            .iter()
+            .find(|member| member.name == "builder")
+            .expect("builder")
+            .clone();
+        scribe.name = "scribe".to_string();
+        scribe.cli_tool = CliTool::Claude;
+        scribe.account_id = None;
+        config.members.push(scribe);
+        TeamConfigStore::save(temp.path(), "arch", &config).expect("seed the mixed roster");
+        for member_name in ["team-lead", "builder"] {
+            MemberRuntimeStore::update(temp.path(), "arch", member_name, |runtime| {
+                runtime.session_id = Some(format!("session-{member_name}"));
+                runtime.jsonl_path = Some(temp.path().join(format!("{member_name}.jsonl")));
+                runtime.last_seen_at = Some(chrono::Utc::now());
+            })
+            .expect("seed runtime identity");
+        }
+        let mut scribe_runtime =
+            MemberRuntimeStore::load(temp.path(), "arch", "builder").expect("runtime seed");
+        scribe_runtime.member_name = "scribe".to_string();
+        scribe_runtime.session_id = Some("session-scribe".to_string());
+        scribe_runtime.jsonl_path = Some(temp.path().join("scribe.jsonl"));
+        MemberRuntimeStore::save(temp.path(), "arch", "scribe", &scribe_runtime)
+            .expect("seed the second Claude member");
+        let mut commands = CliCommandSettings::default();
+        commands.managed_accounts.insert(
+            CliTool::Codex,
+            vec![ManagedLaunchAccount {
+                id: "work".to_string(),
+                label: "Work".to_string(),
+                dir: temp.path().join("codex-work"),
+                logged_in: true,
+                is_default: false,
+            }],
+        );
+
+        let report = super::execute_switch_team_account(
+            state.as_ref(),
+            &SwitchTeamAccountRequest {
+                team_name: "arch".to_string(),
+                cli_tool: CliTool::Codex,
+                account_id: "work".to_string(),
+            },
+            &commands,
+            "new_window",
+        )
+        .expect("switch account");
+
+        assert_eq!(report.switched_members, ["builder"]);
+        let manifests =
+            AccountSwitchManifestStore::load(temp.path(), "arch").expect("persisted manifests");
+        let handoff = |member_name: &str| {
+            manifests[0]
+                .members
+                .iter()
+                .find(|handoff| handoff.member_name == member_name)
+                .unwrap_or_else(|| {
+                    panic!("{member_name} was stopped, so it belongs in the manifest")
+                })
+                .clone()
+        };
+        assert!(handoff("team-lead")
+            .transcript_path
+            .as_deref()
+            .expect("the stopped lead keeps a pointer")
+            .ends_with("team-lead.jsonl"));
+        assert_eq!(
+            handoff("scribe").session_id.as_deref(),
+            Some("session-scribe")
+        );
+        let scribe_inbox =
+            MeshInboxStore::load(temp.path(), "arch", "scribe").expect("restarted member inbox");
+        assert!(
+            scribe_inbox.iter().any(|notice| {
+                notice.text.contains("scribe.jsonl")
+                    && notice.text.contains("account is unchanged")
+                    && notice.text.contains("mesh task get")
+            }),
+            "a restarted member of another tool must be told where its previous session went"
+        );
     }
 
     // Regression: 0bc79ceb sent an all-Codex lead both its member notice and
