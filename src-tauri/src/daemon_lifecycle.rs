@@ -1558,11 +1558,20 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                                 wsl_distro.as_deref(),
                                 crate::daemon::launcher::is_native_daemon(),
                             );
-                            crate::coordination::activity_export::enrich_sessions_with_team_membership(
-                                app.state::<crate::coordination::state::CoordinationState>()
-                                    .teams_dir(),
-                                &mut sessions,
-                            );
+                            match app
+                                .state::<crate::coordination::state::CoordinationState>()
+                                .team_locations()
+                            {
+                                Ok(team_locations) => {
+                                    crate::coordination::activity_export::enrich_sessions_with_team_locations(
+                                        &team_locations,
+                                        &mut sessions,
+                                    );
+                                }
+                                Err(error) => {
+                                    tracing::warn!(error = %error, "failed to resolve team roots for session enrichment");
+                                }
+                            }
 
                             emit_frontend_event(
                                 &app,
@@ -1940,11 +1949,20 @@ fn emit_current_session_snapshot(
         wsl_distro,
         crate::daemon::launcher::is_native_daemon(),
     );
-    crate::coordination::activity_export::enrich_sessions_with_team_membership(
-        app.state::<crate::coordination::state::CoordinationState>()
-            .teams_dir(),
-        &mut sessions,
-    );
+    match app
+        .state::<crate::coordination::state::CoordinationState>()
+        .team_locations()
+    {
+        Ok(team_locations) => {
+            crate::coordination::activity_export::enrich_sessions_with_team_locations(
+                &team_locations,
+                &mut sessions,
+            );
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to resolve team roots for session enrichment");
+        }
+    }
 
     emit_frontend_event(
         app,

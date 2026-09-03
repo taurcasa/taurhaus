@@ -129,7 +129,7 @@ fn launch_cli_session_with_delegate_impl(
 
     if matches!(mode, LaunchMode::Continue | LaunchMode::Resume) {
         if let Some(coordination_state) = coordination_state {
-            match find_unique_team_member_match(coordination_state.teams_dir(), &linux_path, tool) {
+            match find_unique_team_member_match(coordination_state, &linux_path, tool) {
                 TeamMemberMatchResult::Unique(target) => {
                     let mut delegated_fields = Map::new();
                     delegated_fields.insert(

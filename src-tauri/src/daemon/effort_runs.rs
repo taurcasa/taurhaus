@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use crate::coordination::state::CoordinationState;
 use crate::daemon::coordination_runs::{
-    daemon_launch_resolver_for, CoordinationRunKind, CoordinationRunRegistry,
-    CoordinationRunReport, PrepareLaunchInputs, RunOutcome,
+    daemon_launch_resolver, CoordinationRunKind, CoordinationRunRegistry, CoordinationRunReport,
+    PrepareLaunchInputs, RunOutcome,
 };
 use crate::daemon::protocol::{
     CoordinationApplyTaskEffortOutcome, CoordinationApplyTaskEffortParams,
@@ -24,7 +24,7 @@ impl EffortOperationsService {
         state: Arc<CoordinationState>,
         registry: CoordinationRunRegistry,
     ) -> Self {
-        let prepare_launch_inputs = daemon_launch_resolver_for(state.teams_dir().clone());
+        let prepare_launch_inputs = daemon_launch_resolver();
         Self::with_state_and_prepare(state, registry, prepare_launch_inputs)
     }
 
@@ -59,7 +59,7 @@ impl EffortOperationsService {
                             &params.project_path,
                             &mut cli_commands,
                             &params.tmux_layout,
-                            &mut |tool, commands| prepare_launch_inputs(tool, commands),
+                            &mut |root, tool, commands| prepare_launch_inputs(root, tool, commands),
                         )
                         .map(|outcome| CoordinationApplyTaskEffortReport {
                             switched: outcome.switched,
@@ -140,8 +140,11 @@ mod tests {
             Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
         ));
         let registry = CoordinationRunRegistry::with_ttl(Duration::from_secs(60));
-        let service =
-            EffortOperationsService::with_state_and_prepare(state, registry, Arc::new(|_, _| {}));
+        let service = EffortOperationsService::with_state_and_prepare(
+            state,
+            registry,
+            Arc::new(|_, _, _| {}),
+        );
 
         let run_id = service
             .start(CoordinationApplyTaskEffortParams {

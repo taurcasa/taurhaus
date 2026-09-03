@@ -241,8 +241,22 @@ mod commands {
             Ok(false)
         }
 
+        pub fn reconcile_grok_hooks_for_roots(
+            _teams_roots: &[std::path::PathBuf],
+            _enabled: bool,
+        ) -> Result<bool, CoordinationError> {
+            Ok(false)
+        }
+
         pub fn reconcile_managed_account_hooks_for_roster(
             _teams_dir: &std::path::Path,
+            _grok_enabled: bool,
+        ) -> bool {
+            false
+        }
+
+        pub fn reconcile_managed_account_hooks_for_roots(
+            _teams_roots: &[std::path::PathBuf],
             _grok_enabled: bool,
         ) -> bool {
             false

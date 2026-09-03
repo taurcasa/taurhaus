@@ -909,13 +909,31 @@ describe('MeshTeamBuilder', () => {
     expect(agentCard).not.toHaveClass('mesh-builder-roster-entry')
   })
 
-  it('uses the shared account picker for Codex members and a truth chip for Claude', async () => {
+  it('uses the shared account picker for member and team accounts', async () => {
+    const onUpdateLead = vi.fn()
     const onUpdateAgent = vi.fn()
     renderBuilder({
-      teamConfig: sampleRosterConfig(),
+      teamConfig: {
+        ...sampleRosterConfig(),
+        agents: [
+          ...sampleRosterConfig().agents,
+          {
+            id: 'agent-claude-1',
+            name: 'reviewer-1',
+            roleId: 'agent-claude',
+            roleName: 'Claude Reviewer',
+            tool: 'claude',
+            model: 'claude-opus-4.6',
+            projectId: '/projects/taurhaus',
+          },
+        ],
+      },
       accountStates: {
         claude: {
-          accounts: [{ id: 'claude-default', label: 'Claude Default', logged_in: true, is_default: true }],
+          accounts: [
+            { id: 'claude-default', label: 'Claude Default', logged_in: true, is_default: true },
+            { id: 'claude-work', label: 'Claude Work', logged_in: true, is_default: false },
+          ],
           defaultAccountId: 'claude-default',
         },
         codex: {
@@ -926,6 +944,7 @@ describe('MeshTeamBuilder', () => {
           defaultAccountId: 'personal',
         },
       },
+      onUpdateLead,
       onUpdateAgent,
     })
 
@@ -935,6 +954,11 @@ describe('MeshTeamBuilder', () => {
     expect(screen.getByTestId('mesh-builder-member-account-lead')).toHaveTextContent(
       'Team account · Claude Default'
     )
+    await fireEvent.click(screen.getByTestId('mesh-builder-member-account-lead'))
+    await fireEvent.click(screen.getByTestId('account-option-claude-work'))
+    expect(onUpdateLead).toHaveBeenCalledWith({ accountId: 'claude-work' })
+    expect(onUpdateAgent).toHaveBeenCalledWith('agent-claude-1', { accountId: 'claude-work' })
+
     await fireEvent.click(screen.getByTestId('mesh-builder-member-account-agent-codex-1'))
     await fireEvent.click(screen.getByTestId('account-option-work'))
     expect(onUpdateAgent).toHaveBeenCalledWith('agent-codex-1', { accountId: 'work' })
@@ -942,7 +966,7 @@ describe('MeshTeamBuilder', () => {
 
   // Regression: 0bc79ceb made the Claude team truth chip prefer the app-launch
   // global default even though managed teams still launch from the registry home.
-  it('names the registry-home Claude account in the team truth chip', async () => {
+  it('names the registry-home Claude account in the team picker', async () => {
     renderBuilder({
       teamConfig: sampleRosterConfig(),
       accountStates: {

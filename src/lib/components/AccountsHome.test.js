@@ -169,7 +169,7 @@ describe('AccountsHome', () => {
     expect(onOpenProject).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }))
   })
 
-  it('offers deliberate team account switching only for selector-based harnesses', async () => {
+  it('offers deliberate team account switching for account-selectable harnesses', async () => {
     const accountStates = states()
     accountStates.codex.accounts = [
       account('codex-personal', { dir: '/home/user/.codex-personal' }),
@@ -196,7 +196,25 @@ describe('AccountsHome', () => {
       'codex',
       'codex-work'
     )
-    expect(within(screen.getByTestId('account-row-work')).queryByText('Switch…')).toBeNull()
+    expect(within(screen.getByTestId('account-row-work')).getByText('Switch…')).toBeInTheDocument()
+  })
+
+  // Regression: 0bc79ceb hid team switches for team-scoped account namespaces,
+  // leaving protocol 24's Claude team-root move with no user entry point.
+  it('switches a Claude team to another account root', async () => {
+    const accountStates = states()
+
+    render(AccountsHome, { props: { states: accountStates, projects: [] } })
+
+    const work = screen.getByTestId('account-row-work')
+    await fireEvent.click(within(work).getByRole('button', { name: 'Switch wave-a account' }))
+    await fireEvent.click(screen.getByTestId('account-option-personal'))
+
+    expect(coordinationSwitchTeamAccount).toHaveBeenCalledWith(
+      'wave-a',
+      'claude',
+      'personal'
+    )
   })
 
   // Regression: 0bc79ceb left the account picker interactive while the

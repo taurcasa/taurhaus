@@ -158,7 +158,12 @@ taurhaus's Antigravity hook and identity reads, which gives tests a disposable
 root. The agy CLI does not honour it, and the registry deliberately declares no
 account selector for Antigravity.
 
-Team inboxes always live under the single `PlatformPaths::teams_dir()`, so team members run on the default config dir.
+Team inboxes live under the team's registry-resolved teams root. The daemon
+stores registry values in its Linux-native path form; Windows app readers
+convert registered values to WSL UNC paths at the registry boundary, while the
+daemon reads the stored value unchanged. Claude members run with that root's
+parent as `CLAUDE_CONFIG_DIR`; Codex and Grok continue to select accounts per
+member.
 
 ## Common Pitfalls
 

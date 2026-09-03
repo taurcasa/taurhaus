@@ -6,7 +6,7 @@ use crate::commands::projects::DbState;
 use crate::commands::runtime_snapshot::{
     daemon_runtime_session_snapshot, RuntimeSnapshotFreshness,
 };
-use crate::coordination::activity_export::enrich_sessions_with_team_membership;
+use crate::coordination::activity_export::enrich_sessions_with_team_locations;
 
 /// How a session list was obtained — the difference between "these are the
 /// sessions" and "these are the sessions I last saw".
@@ -85,11 +85,11 @@ pub(super) fn list_cli_sessions_impl(
         degraded,
         "list_cli_sessions: fallback scan"
     );
-    enrich_sessions_with_team_membership(
-        app.state::<crate::coordination::state::CoordinationState>()
-            .teams_dir(),
-        &mut fallback,
-    );
+    let team_locations = app
+        .state::<crate::coordination::state::CoordinationState>()
+        .team_locations()
+        .map_err(|error| error.to_string())?;
+    enrich_sessions_with_team_locations(&team_locations, &mut fallback);
     // Continuity read: a degraded scan returns the last good snapshot so the
     // list does not blank out. It is not an observation, so it must not write
     // project activity — promotion only runs on a healthy scan.

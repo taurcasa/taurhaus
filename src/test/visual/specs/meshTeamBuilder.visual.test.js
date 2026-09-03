@@ -25,6 +25,18 @@ describe('MeshTeamBuilder visual coverage', () => {
     for (const label of scenario.expected.labels) {
       expect(screen.queryAllByText(label).length).toBeGreaterThan(0)
     }
+    if (scenario.expected.accountPickerMember) {
+      const picker = screen.getByTestId(
+        `mesh-builder-account-picker-${scenario.expected.accountPickerMember}`
+      )
+      expect(picker).toBeInTheDocument()
+      const card = picker.closest('article')
+      const pickerBounds = picker.getBoundingClientRect()
+      const cardBounds = card.getBoundingClientRect()
+      expect(getComputedStyle(card).overflow).toBe('visible')
+      expect(pickerBounds.left).toBeGreaterThanOrEqual(cardBounds.left)
+      expect(pickerBounds.right).toBeLessThanOrEqual(cardBounds.right)
+    }
 
     const screenshotPath = await captureVisual(`meshTeamBuilder/${scenario.name}.png`)
     const artifact = await commands.readVisualArtifact(screenshotPath)

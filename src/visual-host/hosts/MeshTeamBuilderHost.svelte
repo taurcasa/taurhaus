@@ -58,6 +58,13 @@
       document.querySelector(`button[aria-label="${label}"]`)?.click()
       await tick()
     }
+
+    if (scenario?.accountPickerMember) {
+      document
+        .querySelector(`[data-testid="mesh-builder-member-account-${scenario.accountPickerMember}"]`)
+        ?.click()
+      await tick()
+    }
   })
 </script>
 

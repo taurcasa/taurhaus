@@ -25,19 +25,24 @@ fn mesh_command_invocation(args: &[&str]) -> CommandInvocation {
     mesh_cli::mesh_command_invocation(args)
 }
 
-pub(crate) fn mesh_command_invocation_for_member(
+pub(crate) fn mesh_command_invocation_for_member_at(
     args: &[&str],
     team_name: &str,
     member_name: &str,
+    teams_dir: &Path,
 ) -> CommandInvocation {
     mesh_cli::mesh_command_invocation_with_env(
         args,
-        &mesh_member_control_env(team_name, member_name),
+        &mesh_member_control_env_at(team_name, member_name, teams_dir),
     )
 }
 
-fn mesh_member_control_env(team_name: &str, member_name: &str) -> Vec<(String, String)> {
-    resolve_mesh_control_token(team_name, member_name)
+fn mesh_member_control_env_at(
+    team_name: &str,
+    member_name: &str,
+    teams_dir: &Path,
+) -> Vec<(String, String)> {
+    resolve_mesh_control_token_at(teams_dir, team_name, member_name)
         .map(|token| vec![(MESH_CONTROL_TOKEN_ENV.to_string(), token)])
         .unwrap_or_default()
 }
@@ -274,24 +279,32 @@ pub(super) fn find_existing_mesh_daemon_pids_system(
 
 pub(super) fn resolve_mesh_daemon_pid_path(team_name: &str, member_name: &str) -> Option<PathBuf> {
     resolve_host_claude_dir().map(|claude_dir| {
-        claude_dir
-            .join("teams")
-            .join(team_name)
-            .join("daemons")
-            .join(format!("{member_name}.pid"))
+        resolve_mesh_daemon_pid_path_at(&claude_dir.join("teams"), team_name, member_name)
     })
 }
 
+pub(super) fn resolve_mesh_daemon_pid_path_at(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+) -> PathBuf {
+    teams_dir
+        .join(team_name)
+        .join("daemons")
+        .join(format!("{member_name}.pid"))
+}
+
+#[cfg(test)]
 pub(super) fn resolve_team_daemon_pid_path(team_name: &str) -> Option<PathBuf> {
-    resolve_host_claude_dir().map(|claude_dir| {
-        claude_dir
-            .join("teams")
-            .join(team_name)
-            .join("daemons")
-            .join("team.pid")
-    })
+    resolve_host_claude_dir()
+        .map(|claude_dir| resolve_team_daemon_pid_path_at(&claude_dir.join("teams"), team_name))
 }
 
+pub(super) fn resolve_team_daemon_pid_path_at(teams_dir: &Path, team_name: &str) -> PathBuf {
+    teams_dir.join(team_name).join("daemons").join("team.pid")
+}
+
+#[cfg(test)]
 fn resolve_mesh_control_credential_path(team_name: &str, member_name: &str) -> Option<PathBuf> {
     resolve_host_claude_dir().map(|claude_dir| {
         claude_dir
@@ -310,8 +323,16 @@ struct MeshControlCredential {
     token: String,
 }
 
-pub(crate) fn resolve_mesh_control_token(team_name: &str, member_name: &str) -> Option<String> {
-    let path = resolve_mesh_control_credential_path(team_name, member_name)?;
+pub(crate) fn resolve_mesh_control_token_at(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+) -> Option<String> {
+    let path = teams_dir
+        .join(team_name)
+        .join("state")
+        .join("control_auth")
+        .join(format!("{member_name}.json"));
     let raw = fs::read_to_string(path).ok()?;
     let credential: MeshControlCredential = serde_json::from_str(&raw).ok()?;
     if credential.name != member_name || credential.token.trim().is_empty() {
@@ -324,11 +345,12 @@ fn resolve_host_claude_dir() -> Option<PathBuf> {
     Some(PlatformPaths::claude_dir())
 }
 
+#[cfg(test)]
 pub(crate) fn resolve_mesh_cli_claude_dir_arg() -> Option<String> {
     resolve_host_claude_dir().map(|path| mesh_cli_claude_dir_arg_from_path(&path))
 }
 
-fn mesh_cli_claude_dir_arg_from_path(path: &Path) -> String {
+pub(crate) fn mesh_cli_claude_dir_arg_from_path(path: &Path) -> String {
     let raw = path.to_string_lossy().to_string();
     #[cfg(target_os = "windows")]
     {

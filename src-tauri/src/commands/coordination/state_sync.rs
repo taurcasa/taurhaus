@@ -12,12 +12,14 @@ pub(super) fn sync_member_snapshot_after_change(
     let conn =
         db.0.lock()
             .map_err(|_| CoordinationError::StoreError("db mutex poisoned".to_string()))?;
-    sync_member_snapshot(state.teams_dir(), &conn, team_name, member_name)
+    let teams_dir = state.team_teams_dir(team_name)?;
+    sync_member_snapshot(&teams_dir, &conn, team_name, member_name)
 }
 
 pub(super) fn sync_active_team_projects_after_change(
     state: &CoordinationState,
     team_name: &str,
 ) -> Result<(), CoordinationError> {
-    crate::coordination::stores::active_project::sync_team_from_config(state.teams_dir(), team_name)
+    let teams_dir = state.team_teams_dir(team_name)?;
+    crate::coordination::stores::active_project::sync_team_from_config(&teams_dir, team_name)
 }

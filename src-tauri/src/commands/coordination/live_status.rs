@@ -34,6 +34,9 @@ pub(super) fn coordination_get_live_team_status_impl(
     provider: Option<&ProviderState>,
     team_name: String,
 ) -> Result<LiveTeamStatus, String> {
+    let teams_dir = state
+        .team_teams_dir(&team_name)
+        .map_err(super::map_coordination_error)?;
     if let Some(provider) = provider {
         let snapshot_outcome = daemon_runtime_session_snapshot(provider)?;
         if let Some(snapshot) = snapshot_outcome.snapshot {
@@ -44,13 +47,13 @@ pub(super) fn coordination_get_live_team_status_impl(
                 snapshot.runtime_sessions.clone(),
             );
             let roster = get_team_roster_with_runtime_sessions(
-                state.teams_dir(),
+                &teams_dir,
                 &team_name,
                 &snapshot.runtime_sessions,
             )
             .map_err(super::map_coordination_error)?;
             let roster = apply_reconciled_offline_members(
-                state.teams_dir(),
+                &teams_dir,
                 &team_name,
                 roster,
                 &reconciled_offline_members,
@@ -64,7 +67,7 @@ pub(super) fn coordination_get_live_team_status_impl(
                     live_agent_status_from_roster(
                         member,
                         lead_project_path.as_deref(),
-                        state.teams_dir(),
+                        &teams_dir,
                         &team_name,
                     )
                 })
@@ -88,7 +91,7 @@ pub(super) fn coordination_get_live_team_status_impl(
     if let Some(provider) = provider {
         let _ = reconcile_live_presence_through_daemon(state, provider, &team_name, Vec::new());
     }
-    let roster = get_team_roster_with_attachments(state.teams_dir(), &team_name)
+    let roster = get_team_roster_with_attachments(&teams_dir, &team_name)
         .map_err(super::map_coordination_error)?;
     let lead_name = roster_lead_name(&roster);
     let lead_project_path = roster_lead_project_path(&roster);
@@ -98,7 +101,7 @@ pub(super) fn coordination_get_live_team_status_impl(
             live_agent_status_from_roster(
                 member,
                 lead_project_path.as_deref(),
-                state.teams_dir(),
+                &teams_dir,
                 &team_name,
             )
         })
@@ -212,7 +215,7 @@ fn coordination_get_project_mesh_snapshot_with_availability(
 ) -> Result<ProjectMeshSnapshotResponse, String> {
     super::validate_non_empty("project_path", &project_path)?;
     let project_path = crate::provider::path::normalize_project_path(project_path.trim());
-    let mut discovery = discover_team_for_project_path(state.teams_dir(), &project_path)
+    let mut discovery = discover_team_for_project_path_in_state(state, &project_path)
         .map_err(super::map_coordination_error)?;
     if let Some(team_name) = discovery.mapping_update.take() {
         if let Err(error) =
@@ -226,9 +229,12 @@ fn coordination_get_project_mesh_snapshot_with_availability(
     }
 
     let team_status = if let Some(team_name) = discovery.team_name.as_deref() {
+        let teams_dir = state
+            .team_teams_dir(team_name)
+            .map_err(super::map_coordination_error)?;
         Some(
-            get_team_roster_with_attachments(state.teams_dir(), team_name)
-                .map(|roster| map_fast_team_snapshot(roster, state.teams_dir(), team_name))
+            get_team_roster_with_attachments(&teams_dir, team_name)
+                .map(|roster| map_fast_team_snapshot(roster, &teams_dir, team_name))
                 .map_err(super::map_coordination_error)?,
         )
     } else {
@@ -295,61 +301,57 @@ struct ProjectDiscoveryCandidate {
     created_at_ms: i64,
 }
 
-fn discover_team_for_project_path(
-    teams_dir: &Path,
+fn discover_team_for_project_path_in_state(
+    state: &CoordinationState,
     project_path: &str,
 ) -> Result<ProjectPathDiscovery, CoordinationError> {
-    if !teams_dir.exists() {
-        return Ok(ProjectPathDiscovery::default());
-    }
-
-    let active_team_name = ActiveProjectTeamStore::load_active_team(teams_dir, project_path)?;
-    let had_active_mapping = active_team_name.is_some();
-    if let Some(active_team_name) = active_team_name {
-        match TeamConfigStore::load(teams_dir, &active_team_name) {
-            Ok(config) if config_references_project(&config, project_path) => {
+    let mut had_active_mapping = false;
+    for teams_dir in state.teams_roots()? {
+        let Some(active_team_name) =
+            ActiveProjectTeamStore::load_active_team(&teams_dir, project_path)?
+        else {
+            continue;
+        };
+        had_active_mapping = true;
+        if !crate::coordination::stores::team_roots::same_teams_root(
+            &state.team_teams_dir(&active_team_name)?,
+            &teams_dir,
+        ) {
+            continue;
+        }
+        if let Ok(config) = TeamConfigStore::load(&teams_dir, &active_team_name) {
+            if config_references_project(&config, project_path) {
                 return Ok(ProjectPathDiscovery {
                     team_name: Some(config.name),
                     warnings: Vec::new(),
                     mapping_update: None,
                 });
             }
-            Ok(_) | Err(_) => {}
         }
     }
 
     let mut candidates = Vec::new();
     let mut warnings = Vec::new();
-    for listed_team in TeamConfigStore::list(teams_dir)? {
-        match TeamConfigStore::load(teams_dir, &listed_team) {
-            Ok(config) => {
-                if !config_references_project(&config, project_path) {
-                    continue;
-                }
-
-                match build_project_discovery_candidate(teams_dir, &config) {
+    for (teams_dir, team_name) in state.team_locations()? {
+        match TeamConfigStore::load(&teams_dir, &team_name) {
+            Ok(config) if config_references_project(&config, project_path) => {
+                match build_project_discovery_candidate(&teams_dir, &config) {
                     Ok(candidate) => candidates.push(candidate),
                     Err(err) => warnings.push(format!(
-                        "skipped team folder '{listed_team}' due to candidate discovery error: {err}"
+                        "skipped team folder '{team_name}' due to candidate discovery error: {err}"
                     )),
                 }
             }
-            Err(CoordinationError::NotFound(_)) => {}
-            Err(CoordinationError::StoreError(_)) => {
-                warnings.push(format!(
-                    "skipped team folder '{listed_team}' because config is missing or invalid"
-                ));
-            }
-            Err(CoordinationError::Io(err)) => {
-                warnings.push(format!(
-                    "skipped team folder '{listed_team}' due to IO error: {err}"
-                ));
-            }
-            Err(other) => {
-                warnings.push(format!(
-                    "skipped team folder '{listed_team}' due to discovery error: {other}"
-                ));
-            }
+            Ok(_) | Err(CoordinationError::NotFound(_)) => {}
+            Err(CoordinationError::StoreError(_)) => warnings.push(format!(
+                "skipped team folder '{team_name}' because config is missing or invalid"
+            )),
+            Err(CoordinationError::Io(err)) => warnings.push(format!(
+                "skipped team folder '{team_name}' due to IO error: {err}"
+            )),
+            Err(other) => warnings.push(format!(
+                "skipped team folder '{team_name}' due to discovery error: {other}"
+            )),
         }
     }
 
@@ -359,7 +361,6 @@ fn discover_team_for_project_path(
         .map(|candidate| candidate.team_name);
     let mapping_update = (had_active_mapping || team_name.is_some()).then(|| team_name.clone());
     warnings.sort();
-
     Ok(ProjectPathDiscovery {
         team_name,
         warnings,
@@ -452,8 +453,8 @@ fn set_active_project_team_through_daemon(
 ) -> Result<(), String> {
     #[cfg(test)]
     if provider.is_none() {
-        return crate::daemon::state_writes::set_active_project_team(
-            _state.teams_dir(),
+        return crate::daemon::state_writes::set_active_project_team_for_state(
+            _state,
             crate::daemon::protocol::CoordinationSetActiveProjectTeamParams {
                 project_path: project_path.to_string(),
                 team_name,

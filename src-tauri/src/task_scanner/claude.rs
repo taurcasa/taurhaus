@@ -13,7 +13,10 @@
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::RuntimeSession;
-use crate::task_scanner::claude_index::{build_claude_source_index_in, ClaudeSourceIndex};
+use crate::task_scanner::claude_index::{
+    build_claude_source_index_in, build_claude_source_index_with_live_sessions, ClaudeSourceIndex,
+    ClaudeTaskRoot,
+};
 use crate::task_scanner::types::{ScanOutcome, TaskStatus, UnifiedTask};
 use std::fs;
 use std::path::Path;
@@ -136,17 +139,7 @@ fn metadata_u32(metadata: Option<&serde_json::Value>, key: &str) -> Option<u32> 
 
 /// Get tasks for a project from Claude Code's task storage.
 pub fn get_tasks(project_path: &str, sessions: &[&RuntimeSession]) -> ScanOutcome {
-    let tasks_base = PlatformPaths::claude_dir().join("tasks");
-    let projects_base = PlatformPaths::tool_session_root(CliTool::Claude);
-    let teams_base = PlatformPaths::teams_dir();
-
-    get_tasks_in(
-        project_path,
-        sessions,
-        &tasks_base,
-        &projects_base,
-        &teams_base,
-    )
+    get_tasks_with_index(project_path, sessions, None)
 }
 
 /// Get tasks for a project with an optional pre-built source index.
@@ -159,13 +152,25 @@ pub fn get_tasks_with_index(
     let projects_base = PlatformPaths::tool_session_root(CliTool::Claude);
     let teams_base = PlatformPaths::teams_dir();
 
+    let live_sessions = sessions
+        .iter()
+        .map(|session| (*session).clone())
+        .collect::<Vec<_>>();
+    let built_index;
+    let index = match prebuilt_index {
+        Some(index) => index,
+        None => {
+            built_index = build_claude_source_index_with_live_sessions(&live_sessions);
+            &built_index
+        }
+    };
     get_tasks_in_with_index(
         project_path,
         sessions,
         &tasks_base,
         &projects_base,
         &teams_base,
-        prebuilt_index,
+        Some(index),
     )
 }
 
@@ -195,19 +200,6 @@ pub fn get_tasks_in_with_index(
     teams_base: &Path,
     prebuilt_index: Option<&ClaudeSourceIndex>,
 ) -> ScanOutcome {
-    if !tasks_base.exists() {
-        return ScanOutcome::Unavailable(format!(
-            "Claude tasks base does not exist: {}",
-            tasks_base.display()
-        ));
-    }
-    if !tasks_base.is_dir() {
-        return ScanOutcome::Unavailable(format!(
-            "Claude tasks base is not a directory: {}",
-            tasks_base.display()
-        ));
-    }
-
     let live_sessions: Vec<RuntimeSession> = sessions.iter().map(|s| (*s).clone()).collect();
     let built_index;
     let index = match prebuilt_index {
@@ -218,8 +210,28 @@ pub fn get_tasks_in_with_index(
             &built_index
         }
     };
+    let task_roots = if index.task_roots.is_empty() {
+        vec![ClaudeTaskRoot {
+            path: tasks_base.to_path_buf(),
+            authoritative_teams: index.teams.keys().cloned().collect(),
+        }]
+    } else {
+        index.task_roots.clone()
+    };
+    if tasks_base.exists() && !tasks_base.is_dir() {
+        return ScanOutcome::Unavailable(format!(
+            "Claude tasks base is not a directory: {}",
+            tasks_base.display()
+        ));
+    }
+    if !task_roots.iter().any(|root| root.path.is_dir()) {
+        return ScanOutcome::Unavailable(format!(
+            "Claude tasks base does not exist: {}",
+            tasks_base.display()
+        ));
+    }
 
-    let scan = scan_all_task_directories(project_path, tasks_base, index);
+    let scan = scan_all_task_directories(project_path, &task_roots, index);
     if !scan.tasks.is_empty() {
         return ScanOutcome::Data(scan.tasks);
     }
@@ -235,16 +247,45 @@ pub fn get_tasks_in_with_index(
 
 fn scan_all_task_directories(
     project_path: &str,
-    tasks_base: &Path,
+    task_roots: &[ClaudeTaskRoot],
     index: &ClaudeSourceIndex,
 ) -> ClaudeScanOutcome {
     let mut outcome = ClaudeScanOutcome::default();
     let project_key = crate::provider::path::normalize_project_path(project_path);
-    let entries = match fs::read_dir(tasks_base) {
+    for task_root in task_roots {
+        if !task_root.path.exists() {
+            continue;
+        }
+        scan_task_root(task_root, &project_key, index, &mut outcome);
+    }
+
+    outcome.tasks.sort_by(|a, b| {
+        a.session_id
+            .cmp(&b.session_id)
+            .then_with(|| {
+                let a_num: Option<u32> = a.id.parse().ok();
+                let b_num: Option<u32> = b.id.parse().ok();
+                match (a_num, b_num) {
+                    (Some(a), Some(b)) => a.cmp(&b),
+                    _ => a.id.cmp(&b.id),
+                }
+            })
+            .then_with(|| a.subject.cmp(&b.subject))
+    });
+    outcome
+}
+
+fn scan_task_root(
+    task_root: &ClaudeTaskRoot,
+    project_key: &str,
+    index: &ClaudeSourceIndex,
+    outcome: &mut ClaudeScanOutcome,
+) {
+    let entries = match fs::read_dir(&task_root.path) {
         Ok(entries) => entries,
         Err(e) => {
             outcome.record_error(format!("Failed to read tasks base: {e}"));
-            return outcome;
+            return;
         }
     };
 
@@ -270,7 +311,13 @@ fn scan_all_task_directories(
             continue;
         };
 
-        if !source_matches_project(source_key, &project_key, index) {
+        if index.teams.contains_key(source_key)
+            && !task_root.authoritative_teams.contains(source_key)
+        {
+            continue;
+        }
+
+        if !source_matches_project(source_key, project_key, index) {
             continue;
         }
 
@@ -285,22 +332,6 @@ fn scan_all_task_directories(
         }
         outcome.tasks.extend(parsed.tasks);
     }
-
-    outcome.tasks.sort_by(|a, b| {
-        a.session_id
-            .cmp(&b.session_id)
-            .then_with(|| {
-                let a_num: Option<u32> = a.id.parse().ok();
-                let b_num: Option<u32> = b.id.parse().ok();
-                match (a_num, b_num) {
-                    (Some(a), Some(b)) => a.cmp(&b),
-                    _ => a.id.cmp(&b.id),
-                }
-            })
-            .then_with(|| a.subject.cmp(&b.subject))
-    });
-
-    outcome
 }
 
 fn source_matches_project(source_key: &str, project_key: &str, index: &ClaudeSourceIndex) -> bool {
@@ -443,8 +474,10 @@ fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<Uni
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
     use std::fs::File;
     use std::io::Write;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn write_task(dir: &Path, filename: &str, content: &str) {
@@ -460,6 +493,107 @@ mod tests {
             .and_then(|n| n.to_str())
             .unwrap_or("test-source");
         parse_task_directory(dir, source_key).tasks
+    }
+
+    #[test]
+    fn prebuilt_index_scans_the_task_root_that_owns_a_registered_team() {
+        let tmp = TempDir::new().unwrap();
+        let default_tasks = tmp.path().join("default/tasks");
+        let account_tasks = tmp.path().join("work/tasks");
+        let team_tasks = account_tasks.join("work-team");
+        fs::create_dir_all(&team_tasks).unwrap();
+        write_task(
+            &team_tasks,
+            "1.json",
+            r#"{"id":"1","subject":"Account-root task","status":"pending"}"#,
+        );
+        let mut index = ClaudeSourceIndex {
+            task_roots: vec![
+                ClaudeTaskRoot {
+                    path: default_tasks.clone(),
+                    authoritative_teams: BTreeSet::new(),
+                },
+                ClaudeTaskRoot {
+                    path: account_tasks,
+                    authoritative_teams: BTreeSet::from(["work-team".to_string()]),
+                },
+            ],
+            ..Default::default()
+        };
+        index.teams.insert(
+            "work-team".to_string(),
+            vec![PathBuf::from("/projects/work")],
+        );
+
+        let outcome = get_tasks_in_with_index(
+            "/projects/work",
+            &[],
+            &default_tasks,
+            &tmp.path().join("default/projects"),
+            &tmp.path().join("default/teams"),
+            Some(&index),
+        );
+
+        let ScanOutcome::Data(tasks) = outcome else {
+            panic!("registered task root should remain available");
+        };
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].subject, "Account-root task");
+    }
+
+    #[test]
+    fn registered_team_tasks_are_scanned_only_from_the_authoritative_root() {
+        // Regression: 21b63ff scanned every account's same-named team task
+        // directory after resolving the team itself to just one authoritative root.
+        let tmp = TempDir::new().unwrap();
+        let default_tasks = tmp.path().join("default/tasks");
+        let account_tasks = tmp.path().join("work/tasks");
+        for task_root in [&default_tasks, &account_tasks] {
+            fs::create_dir_all(task_root.join("work-team")).unwrap();
+        }
+        write_task(
+            &default_tasks.join("work-team"),
+            "1.json",
+            r#"{"id":"1","subject":"Stale default-root task","status":"pending"}"#,
+        );
+        write_task(
+            &account_tasks.join("work-team"),
+            "1.json",
+            r#"{"id":"1","subject":"Authoritative work-root task","status":"pending"}"#,
+        );
+
+        let mut index = ClaudeSourceIndex {
+            task_roots: vec![
+                ClaudeTaskRoot {
+                    path: default_tasks.clone(),
+                    authoritative_teams: BTreeSet::new(),
+                },
+                ClaudeTaskRoot {
+                    path: account_tasks,
+                    authoritative_teams: BTreeSet::from(["work-team".to_string()]),
+                },
+            ],
+            ..Default::default()
+        };
+        index.teams.insert(
+            "work-team".to_string(),
+            vec![PathBuf::from("/projects/work")],
+        );
+
+        let outcome = get_tasks_in_with_index(
+            "/projects/work",
+            &[],
+            &default_tasks,
+            &tmp.path().join("default/projects"),
+            &tmp.path().join("default/teams"),
+            Some(&index),
+        );
+
+        let ScanOutcome::Data(tasks) = outcome else {
+            panic!("authoritative task root should remain available");
+        };
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].subject, "Authoritative work-root task");
     }
 
     #[test]
@@ -1009,6 +1143,33 @@ mod tests {
             &teams_base,
         );
         assert!(matches!(outcome, ScanOutcome::Unavailable(_)));
+    }
+
+    #[test]
+    fn default_tasks_base_file_reports_not_a_directory() {
+        // Regression: 4ca848a checked whether any task root was a directory
+        // first, making the historical default-root file diagnostic unreachable.
+        let tmp = TempDir::new().unwrap();
+        let tasks_base = tmp.path().join("tasks");
+        let projects_base = tmp.path().join("projects");
+        let teams_base = tmp.path().join("teams");
+        fs::write(&tasks_base, "not a directory").unwrap();
+
+        let outcome = get_tasks_in(
+            "/home/user/projects/myapp",
+            &[],
+            &tasks_base,
+            &projects_base,
+            &teams_base,
+        );
+
+        assert_eq!(
+            outcome,
+            ScanOutcome::Unavailable(format!(
+                "Claude tasks base is not a directory: {}",
+                tasks_base.display()
+            ))
+        );
     }
 
     #[test]

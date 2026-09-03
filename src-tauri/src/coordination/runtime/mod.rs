@@ -22,8 +22,8 @@ mod system;
 mod tmux;
 
 pub(crate) use process::{
-    apply_background_command_settings, mesh_command_invocation_for_member,
-    resolve_mesh_cli_claude_dir_arg,
+    apply_background_command_settings, mesh_cli_claude_dir_arg_from_path,
+    mesh_command_invocation_for_member_at,
 };
 pub use recording::{RecordingCoordinationRuntime, RuntimeCall};
 /// Test seam used by the scanner tests; the integration-test shim crates
@@ -132,6 +132,16 @@ pub trait CoordinationRuntime: Send + Sync {
         member_name: &str,
     ) -> Result<u32, CoordinationError>;
 
+    fn spawn_mesh_daemon_at_root(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+        _teams_dir: &std::path::Path,
+    ) -> Result<u32, CoordinationError> {
+        self.spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
     fn spawn_team_daemon(
         &self,
         _team_name: &str,
@@ -140,6 +150,15 @@ pub trait CoordinationRuntime: Send + Sync {
         Err(CoordinationError::Backend(
             "team daemon start not implemented".to_string(),
         ))
+    }
+
+    fn spawn_team_daemon_at_root(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+        _teams_dir: &std::path::Path,
+    ) -> Result<u32, CoordinationError> {
+        self.spawn_team_daemon(team_name, operator_name)
     }
 
     fn find_existing_mesh_daemon_pids(
@@ -157,6 +176,15 @@ pub trait CoordinationRuntime: Send + Sync {
         _member_name: &str,
     ) -> Result<Option<u32>, CoordinationError> {
         Ok(None)
+    }
+
+    fn find_existing_mesh_daemon_pid_by_member_at_root(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        _teams_dir: &Path,
+    ) -> Result<Option<u32>, CoordinationError> {
+        self.find_existing_mesh_daemon_pid_by_member(team_name, member_name)
     }
 
     fn pane_belongs_to_project(
@@ -193,6 +221,14 @@ pub trait CoordinationRuntime: Send + Sync {
         Ok(true)
     }
 
+    fn team_daemon_uses_current_binary_at_root(
+        &self,
+        team_name: &str,
+        _teams_dir: &Path,
+    ) -> Result<bool, CoordinationError> {
+        self.team_daemon_uses_current_binary(team_name)
+    }
+
     fn clear_mesh_daemon_pid_file(
         &self,
         _team_name: &str,
@@ -201,8 +237,25 @@ pub trait CoordinationRuntime: Send + Sync {
         Ok(())
     }
 
+    fn clear_mesh_daemon_pid_file_at_root(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        _teams_dir: &Path,
+    ) -> Result<(), CoordinationError> {
+        self.clear_mesh_daemon_pid_file(team_name, member_name)
+    }
+
     fn stop_team_daemon(&self, _team_name: &str) -> Result<(), CoordinationError> {
         Ok(())
+    }
+
+    fn stop_team_daemon_at_root(
+        &self,
+        team_name: &str,
+        _teams_dir: &Path,
+    ) -> Result<(), CoordinationError> {
+        self.stop_team_daemon(team_name)
     }
 }
 
@@ -376,7 +429,9 @@ pub fn quarantine_foreign_member(
             }
         }
     }
-    if let Err(error) = runtime.clear_mesh_daemon_pid_file(team_name, member_name) {
+    if let Err(error) =
+        runtime.clear_mesh_daemon_pid_file_at_root(team_name, member_name, teams_dir)
+    {
         tracing::warn!(
             team = %team_name,
             member = %member_name,

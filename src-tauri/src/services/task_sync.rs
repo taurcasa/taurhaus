@@ -198,8 +198,23 @@ fn persist_task_scan_with_generation_and_publisher<P>(
         scan_generation,
     );
 
-    let prepared = match crate::coordination::operational_context::prepare_project_task_snapshots(
-        operational_teams_dir,
+    let team_locations = match crate::coordination::stores::TeamRootRegistry::new(
+        operational_teams_dir.to_path_buf(),
+    )
+    .team_locations()
+    {
+        Ok(team_locations) => team_locations,
+        Err(err) => {
+            tracing::warn!(
+                project_path = %normalized_path,
+                error = %err,
+                "failed to resolve team roots after task persistence"
+            );
+            return;
+        }
+    };
+    let prepared = match crate::coordination::operational_context::prepare_project_task_snapshots_for_team_locations(
+        &team_locations,
         conn,
         normalized_path,
     ) {

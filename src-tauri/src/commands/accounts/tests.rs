@@ -122,6 +122,93 @@ fn account_relationships_reverse_index_pins_last_use_and_default_root_teams() {
 }
 
 #[test]
+fn claude_team_relationship_follows_the_registered_team_root() {
+    let (db, _tmp) = db_with_project("p1");
+    let roots = TempDir::new().expect("account roots");
+    let default_account = roots.path().join("claude-default");
+    let alternate_account = roots.path().join("claude-work");
+    let default_teams = default_account.join("teams");
+    let alternate_teams = alternate_account.join("teams");
+    let team_dir = alternate_teams.join("wave-b");
+    std::fs::create_dir_all(&team_dir).expect("team dir");
+    std::fs::write(
+        team_dir.join("config.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "name": "wave-b",
+            "createdAt": 1_772_399_806_546_i64,
+            "members": [{
+                "name": "lead",
+                "cliTool": "claude",
+                "model": "claude-opus-4-6",
+                "project_path": "/home/user/projects/test-project"
+            }]
+        }))
+        .expect("team json"),
+    )
+    .expect("write team");
+    crate::coordination::stores::TeamRootRegistry::new(default_teams.clone())
+        .set("wave-b", &alternate_teams)
+        .expect("register team root");
+    let accounts = vec![
+        Account {
+            tool: CliTool::Claude,
+            id: "claude-default".to_string(),
+            dir: default_account,
+            identity: AccountIdentity {
+                id: "claude-default".to_string(),
+                label: "Default".to_string(),
+                display_name: None,
+                organization: None,
+                plan: None,
+                logged_in: true,
+                usage_capable: true,
+                credential_expires_at: None,
+            },
+            is_default: true,
+            is_process_default: true,
+            usage: None,
+        },
+        Account {
+            tool: CliTool::Claude,
+            id: "claude-work".to_string(),
+            dir: alternate_account,
+            identity: AccountIdentity {
+                id: "claude-work".to_string(),
+                label: "Work".to_string(),
+                display_name: None,
+                organization: None,
+                plan: None,
+                logged_in: true,
+                usage_capable: true,
+                credential_expires_at: None,
+            },
+            is_default: false,
+            is_process_default: false,
+            usage: None,
+        },
+    ];
+
+    let index = account_relationships_across_roots_impl(
+        &db,
+        &default_teams,
+        CliTool::Claude,
+        Some("claude-default"),
+        &accounts,
+    )
+    .expect("relationships");
+
+    assert_eq!(index.by_account["claude-work"].teams[0].name, "wave-b");
+    assert!(
+        index
+            .by_account
+            .get("claude-default")
+            .map(|entry| entry.teams.is_empty())
+            .unwrap_or(true),
+        "the default account must not claim a registered alternate-root team"
+    );
+}
+
+#[test]
 fn team_links_name_their_project_without_an_account_memory_row() {
     // Regression: 971d964 built the path index out of project_tool_accounts
     // rows alone, so a team whose project had never remembered an account came

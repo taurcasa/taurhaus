@@ -7,8 +7,8 @@ use crate::session_scanner::cli_tool::CliTool;
 use super::process::{
     delete_pid_file_if_present, find_existing_mesh_daemon_pids_system,
     is_process_running_by_pid_system, process_matches_team_daemon,
-    process_uses_current_mesh_binary, read_pid_file, resolve_mesh_cli_claude_dir_arg,
-    resolve_mesh_daemon_pid_path, resolve_team_daemon_pid_path, run_mesh, run_system_command,
+    process_uses_current_mesh_binary, read_pid_file, resolve_mesh_daemon_pid_path_at,
+    resolve_team_daemon_pid_path_at, run_mesh, run_system_command,
     spawn_mesh_daemon_command_and_resolve_pid, spawn_system_command, terminate_pid_invocation,
     validated_mesh_daemon_pid_file_by_member, validated_team_daemon_pid_file,
     wait_for_team_daemon_pid_file,
@@ -250,6 +250,21 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         team_name: &str,
         member_name: &str,
     ) -> Result<u32, CoordinationError> {
+        self.spawn_mesh_daemon_at_root(
+            pane_id,
+            team_name,
+            member_name,
+            &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        )
+    }
+
+    fn spawn_mesh_daemon_at_root(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+        teams_dir: &std::path::Path,
+    ) -> Result<u32, CoordinationError> {
         let mut args = vec![
             "daemon".to_string(),
             "--pane".to_string(),
@@ -259,21 +274,25 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
             "--name".to_string(),
             member_name.to_string(),
         ];
-        if let Some(claude_dir) = resolve_mesh_cli_claude_dir_arg() {
+        if let Some(claude_dir) = teams_dir.parent() {
             args.push("--claude-dir".to_string());
-            args.push(claude_dir);
+            args.push(super::process::mesh_cli_claude_dir_arg_from_path(
+                claude_dir,
+            ));
         }
         let args_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-        let invocation =
-            super::mesh_command_invocation_for_member(&args_refs, team_name, member_name);
-        let daemon_pid_path = resolve_mesh_daemon_pid_path(team_name, member_name);
-        if daemon_pid_path.is_none() {
-            tracing::warn!(
-                team = %team_name,
-                member = %member_name,
-                "unable to resolve mesh daemon pid path; falling back to launcher pid"
-            );
-        }
+        let invocation = super::process::mesh_command_invocation_for_member_at(
+            &args_refs,
+            team_name,
+            member_name,
+            teams_dir,
+        );
+        let daemon_pid_path = Some(
+            teams_dir
+                .join(team_name)
+                .join("daemons")
+                .join(format!("{member_name}.pid")),
+        );
         spawn_mesh_daemon_command_and_resolve_pid(
             &invocation,
             daemon_pid_path.as_deref(),
@@ -288,7 +307,20 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         team_name: &str,
         operator_name: &str,
     ) -> Result<u32, CoordinationError> {
-        let daemon_pid_path = resolve_team_daemon_pid_path(team_name);
+        self.spawn_team_daemon_at_root(
+            team_name,
+            operator_name,
+            &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        )
+    }
+
+    fn spawn_team_daemon_at_root(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+        teams_dir: &std::path::Path,
+    ) -> Result<u32, CoordinationError> {
+        let daemon_pid_path = Some(teams_dir.join(team_name).join("daemons").join("team.pid"));
         if let Some(pid_path) = daemon_pid_path.as_deref() {
             if let Some(pid) = validated_team_daemon_pid_file(pid_path, team_name, true)? {
                 return Ok(pid);
@@ -313,13 +345,19 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
             "--name".to_string(),
             operator_name.to_string(),
         ];
-        if let Some(claude_dir) = resolve_mesh_cli_claude_dir_arg() {
+        if let Some(claude_dir) = teams_dir.parent() {
             args.push("--claude-dir".to_string());
-            args.push(claude_dir);
+            args.push(super::process::mesh_cli_claude_dir_arg_from_path(
+                claude_dir,
+            ));
         }
         let args_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-        let invocation =
-            super::mesh_command_invocation_for_member(&args_refs, team_name, operator_name);
+        let invocation = super::mesh_command_invocation_for_member_at(
+            &args_refs,
+            team_name,
+            operator_name,
+            teams_dir,
+        );
         let mut child = spawn_system_command(&invocation)?;
 
         let Some(pid_path) = daemon_pid_path.as_deref() else {
@@ -377,9 +415,20 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         team_name: &str,
         member_name: &str,
     ) -> Result<Option<u32>, CoordinationError> {
-        let Some(pid_path) = resolve_mesh_daemon_pid_path(team_name, member_name) else {
-            return Ok(None);
-        };
+        self.find_existing_mesh_daemon_pid_by_member_at_root(
+            team_name,
+            member_name,
+            &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        )
+    }
+
+    fn find_existing_mesh_daemon_pid_by_member_at_root(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        teams_dir: &std::path::Path,
+    ) -> Result<Option<u32>, CoordinationError> {
+        let pid_path = resolve_mesh_daemon_pid_path_at(teams_dir, team_name, member_name);
         validated_mesh_daemon_pid_file_by_member(&pid_path, team_name, member_name)
     }
 
@@ -506,9 +555,18 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
     }
 
     fn team_daemon_uses_current_binary(&self, team_name: &str) -> Result<bool, CoordinationError> {
-        let Some(pid_path) = resolve_team_daemon_pid_path(team_name) else {
-            return Ok(true);
-        };
+        self.team_daemon_uses_current_binary_at_root(
+            team_name,
+            &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        )
+    }
+
+    fn team_daemon_uses_current_binary_at_root(
+        &self,
+        team_name: &str,
+        teams_dir: &std::path::Path,
+    ) -> Result<bool, CoordinationError> {
+        let pid_path = resolve_team_daemon_pid_path_at(teams_dir, team_name);
         let Some(pid) = read_pid_file(&pid_path) else {
             return Ok(true);
         };
@@ -526,24 +584,50 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         team_name: &str,
         member_name: &str,
     ) -> Result<(), CoordinationError> {
-        delete_pid_file_if_present(resolve_mesh_daemon_pid_path(team_name, member_name).as_deref())
+        self.clear_mesh_daemon_pid_file_at_root(
+            team_name,
+            member_name,
+            &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        )
+    }
+
+    fn clear_mesh_daemon_pid_file_at_root(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        teams_dir: &std::path::Path,
+    ) -> Result<(), CoordinationError> {
+        delete_pid_file_if_present(Some(&resolve_mesh_daemon_pid_path_at(
+            teams_dir,
+            team_name,
+            member_name,
+        )))
     }
 
     fn stop_team_daemon(&self, team_name: &str) -> Result<(), CoordinationError> {
-        let pid_path = resolve_team_daemon_pid_path(team_name);
-        if let Some(pid_path) = pid_path.as_deref() {
-            if let Some(pid) = read_pid_file(pid_path) {
-                if is_process_running_by_pid_system(pid)? {
-                    if !process_matches_team_daemon(pid, team_name)? {
-                        return Err(CoordinationError::Backend(format!(
-                            "refusing to stop pid {pid}: process is not the expected mesh team daemon for {team_name}"
-                        )));
-                    }
-                    self.terminate_process_by_pid(pid)?;
+        self.stop_team_daemon_at_root(
+            team_name,
+            &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        )
+    }
+
+    fn stop_team_daemon_at_root(
+        &self,
+        team_name: &str,
+        teams_dir: &std::path::Path,
+    ) -> Result<(), CoordinationError> {
+        let pid_path = resolve_team_daemon_pid_path_at(teams_dir, team_name);
+        if let Some(pid) = read_pid_file(&pid_path) {
+            if is_process_running_by_pid_system(pid)? {
+                if !process_matches_team_daemon(pid, team_name)? {
+                    return Err(CoordinationError::Backend(format!(
+                        "refusing to stop pid {pid}: process is not the expected mesh team daemon for {team_name}"
+                    )));
                 }
+                self.terminate_process_by_pid(pid)?;
             }
         }
-        delete_pid_file_if_present(pid_path.as_deref())
+        delete_pid_file_if_present(Some(&pid_path))
     }
 }
 
@@ -591,6 +675,18 @@ fn non_empty(raw: &str) -> Option<String> {
 mod tests {
     use super::*;
     use std::cell::Cell;
+    use std::fs;
+
+    #[cfg(target_os = "linux")]
+    struct OwnedChild(std::process::Child);
+
+    #[cfg(target_os = "linux")]
+    impl Drop for OwnedChild {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
 
     thread_local! {
         /// Scans the installed script has served on this thread.
@@ -632,6 +728,46 @@ mod tests {
         assert_eq!(pane.current_command.as_deref(), Some("claude"));
         assert_eq!(pane.current_path, Some(PathBuf::from("/tmp/taurhaus")));
         assert!(!pane.is_dead);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn team_daemon_stop_reads_the_pid_file_written_under_the_selected_root() {
+        // Regression: 18810949 rooted team-daemon spawn while stop still read
+        // the process-wide default root, leaving selected-account daemons alive.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = temp.path().join("work-account/teams");
+        let pid_path = teams_dir.join("arch/daemons/team.pid");
+        fs::create_dir_all(pid_path.parent().expect("pid parent")).expect("pid directory");
+
+        // This is a test-owned inert process whose argv matches mesh's team-daemon
+        // contract. It never invokes the real mesh CLI and the guard always reaps it.
+        let child = std::process::Command::new("bash")
+            .args([
+                "-c",
+                "exec -a mesh python3 -c 'import time; time.sleep(30)' team-daemon start --team arch",
+            ])
+            .spawn()
+            .expect("spawn inert team daemon fixture");
+        let mut child = OwnedChild(child);
+        fs::write(&pid_path, child.0.id().to_string()).expect("write selected-root pid");
+
+        SystemCoordinationRuntime
+            .stop_team_daemon_at_root("arch", &teams_dir)
+            .expect("stop selected-root daemon");
+
+        assert!(!pid_path.exists(), "the selected-root pid file is removed");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        loop {
+            if child.0.try_wait().expect("poll child").is_some() {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the selected-root daemon process should stop"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 
     #[test]

@@ -15,7 +15,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::reinjection::CompactionReinjectionService;
 use crate::coordination::stores::{
     record_delivery_at, CompactionDeliveryResult, MemberCompactionStore, MemberRuntimeStore,
-    OperationalContextSnapshotStore, TeamConfigStore,
+    OperationalContextSnapshotStore, TeamConfigStore, TeamRootRegistry,
 };
 use crate::provider::path;
 use crate::provider::platform_paths::PlatformPaths;
@@ -112,6 +112,7 @@ pub struct CompactHookSpecificOutput {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HookMemberMatch {
+    teams_dir: PathBuf,
     team_name: String,
     member: Member,
 }
@@ -191,7 +192,19 @@ pub struct ClaudeCompactionSignalSource;
 
 impl CompactionSignalSource for ClaudeCompactionSignalSource {
     fn install(&self, config_dir: &Path, taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
-        ensure_source_installed(config_dir, CLAUDE_SETTINGS_FILENAME, taurhaus_exe, None)
+        let default_config_dir = PlatformPaths::claude_dir();
+        let pinned_config_dir = (!crate::coordination::stores::team_roots::same_teams_root(
+            config_dir,
+            &default_config_dir,
+        ))
+        .then_some(config_dir);
+        ensure_source_installed(
+            config_dir,
+            CLAUDE_SETTINGS_FILENAME,
+            taurhaus_exe,
+            None,
+            pinned_config_dir,
+        )
     }
 
     fn remove(&self, config_dir: &Path) -> Result<bool, CoordinationError> {
@@ -214,6 +227,7 @@ impl CompactionSignalSource for CodexCompactionSignalSource {
             CODEX_HOOKS_FILENAME,
             taurhaus_exe,
             Some(CODEX_ADDITIONAL_CONTEXT_LIMIT),
+            None,
         )
     }
 
@@ -470,7 +484,12 @@ pub fn handle_compact_hook(
         .compaction_hook_compat_import
     {
         emit_compaction_hook_compat_import(tool);
-        if compat_import_duplicate(teams_dir, &matched, &payload.session_id, Utc::now())? {
+        if compat_import_duplicate(
+            &matched.teams_dir,
+            &matched,
+            &payload.session_id,
+            Utc::now(),
+        )? {
             emit_compact_hook_skipped(
                 &payload,
                 Some(&matched),
@@ -490,11 +509,14 @@ pub fn handle_compact_hook(
         Utc::now()
     };
 
-    let Some(snapshot) =
-        OperationalContextSnapshotStore::load(teams_dir, &matched.team_name, &matched.member.name)?
+    let Some(snapshot) = OperationalContextSnapshotStore::load(
+        &matched.teams_dir,
+        &matched.team_name,
+        &matched.member.name,
+    )?
     else {
         record_delivery_at(
-            teams_dir,
+            &matched.teams_dir,
             &matched.team_name,
             &matched.member.name,
             tool,
@@ -523,7 +545,7 @@ pub fn handle_compact_hook(
 
     if !CompactionReinjectionService::snapshot_has_resumable_task(&snapshot) {
         record_delivery_at(
-            teams_dir,
+            &matched.teams_dir,
             &matched.team_name,
             &matched.member.name,
             tool,
@@ -550,7 +572,8 @@ pub fn handle_compact_hook(
         return Ok(CompactHookResponse::default());
     }
 
-    let card = CompactionReinjectionService::compose(teams_dir, &matched.member, &snapshot);
+    let card =
+        CompactionReinjectionService::compose(&matched.teams_dir, &matched.member, &snapshot);
     let additional_context = CompactionReinjectionService::render_additional_context_text(&card)
         .map_err(|err| {
             emit_compact_hook_failed(
@@ -572,14 +595,14 @@ pub fn handle_compact_hook(
     // before the delivery is recorded — the hook answer would go nowhere.
     if delivery == CompactionDelivery::MeshInbox {
         if let Err(error) = CompactionReinjectionService::deliver_to_inbox(
-            teams_dir,
+            &matched.teams_dir,
             &matched.team_name,
             &matched.member.name,
             &card,
             Utc::now(),
         ) {
             let _ = record_delivery_at(
-                teams_dir,
+                &matched.teams_dir,
                 &matched.team_name,
                 &matched.member.name,
                 tool,
@@ -601,7 +624,7 @@ pub fn handle_compact_hook(
     }
 
     record_delivery_at(
-        teams_dir,
+        &matched.teams_dir,
         &matched.team_name,
         &matched.member.name,
         tool,
@@ -646,6 +669,16 @@ pub fn ensure_compact_hook_installed(
     };
 
     ClaudeCompactionSignalSource.install(claude_dir, taurhaus_exe)
+}
+
+pub fn remove_compact_hook(teams_dir: &Path) -> Result<bool, CoordinationError> {
+    let Some(claude_dir) = teams_dir.parent() else {
+        return Err(CoordinationError::Validation(format!(
+            "team directory '{}' has no parent Claude dir",
+            teams_dir.display()
+        )));
+    };
+    ClaudeCompactionSignalSource.remove(claude_dir)
 }
 
 pub fn ensure_codex_compact_hook_installed(taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
@@ -711,6 +744,10 @@ pub fn any_managed_codex_member(teams_dir: &Path) -> Result<bool, CoordinationEr
     any_managed_member(teams_dir, CliTool::Codex)
 }
 
+pub fn any_managed_claude_member(teams_dir: &Path) -> Result<bool, CoordinationError> {
+    any_managed_member(teams_dir, CliTool::Claude)
+}
+
 pub fn any_managed_grok_member(teams_dir: &Path) -> Result<bool, CoordinationError> {
     any_managed_member(teams_dir, CliTool::Grok)
 }
@@ -747,8 +784,10 @@ fn resolve_member_match(
 ) -> Result<Result<HookMemberMatch, CompactHookSkipReason>, CoordinationError> {
     let mut candidates = Vec::new();
 
-    for team_name in TeamConfigStore::list(teams_dir)? {
-        let config = match TeamConfigStore::load(teams_dir, &team_name) {
+    for (team_teams_dir, team_name) in
+        TeamRootRegistry::new(teams_dir.to_path_buf()).team_locations()?
+    {
+        let config = match TeamConfigStore::load(&team_teams_dir, &team_name) {
             Ok(config) => config,
             Err(err) => {
                 tracing::warn!(
@@ -764,11 +803,13 @@ fn resolve_member_match(
             if member.cli_tool != tool {
                 continue;
             }
-            let runtime_session_id = MemberRuntimeStore::load(teams_dir, &team_name, &member.name)
-                .ok()
-                .and_then(|runtime| runtime.session_id);
+            let runtime_session_id =
+                MemberRuntimeStore::load(&team_teams_dir, &team_name, &member.name)
+                    .ok()
+                    .and_then(|runtime| runtime.session_id);
             candidates.push((
                 HookMemberMatch {
+                    teams_dir: team_teams_dir.clone(),
                     team_name: team_name.clone(),
                     member,
                 },
@@ -1114,12 +1155,18 @@ fn ensure_source_installed(
     settings_filename: &str,
     taurhaus_exe: &Path,
     additional_context_limit: Option<u64>,
+    taurhaus_claude_dir: Option<&Path>,
 ) -> Result<bool, CoordinationError> {
     let hooks_dir = config_dir.join("hooks");
     fs::create_dir_all(&hooks_dir)?;
     let runtime = detect_hook_runtime(config_dir);
     let script_path = hooks_dir.join(platform_hook_filename(runtime));
-    let script_changed = write_hook_script(&script_path, taurhaus_exe, runtime)?;
+    let script_changed = write_hook_script_with_claude_dir(
+        &script_path,
+        taurhaus_exe,
+        runtime,
+        taurhaus_claude_dir,
+    )?;
     let executable_changed = write_hook_executable_record(&hooks_dir, taurhaus_exe, runtime)?;
     let settings_changed = ensure_settings_hook_entry(
         &config_dir.join(settings_filename),
@@ -1269,7 +1316,17 @@ fn write_hook_script(
     taurhaus_exe: &Path,
     runtime: HookRuntime,
 ) -> Result<bool, CoordinationError> {
-    let script_body = render_hook_script(taurhaus_exe, runtime)?;
+    write_hook_script_with_claude_dir(script_path, taurhaus_exe, runtime, None)
+}
+
+fn write_hook_script_with_claude_dir(
+    script_path: &Path,
+    taurhaus_exe: &Path,
+    runtime: HookRuntime,
+    taurhaus_claude_dir: Option<&Path>,
+) -> Result<bool, CoordinationError> {
+    let script_body =
+        render_hook_script_with_claude_dir(taurhaus_exe, runtime, taurhaus_claude_dir)?;
     let changed = fs::read(script_path)
         .map(|current| current != script_body.as_bytes())
         .unwrap_or(true);
@@ -1290,13 +1347,36 @@ fn render_hook_script(
     taurhaus_exe: &Path,
     runtime: HookRuntime,
 ) -> Result<String, CoordinationError> {
+    render_hook_script_with_claude_dir(taurhaus_exe, runtime, None)
+}
+
+fn render_hook_script_with_claude_dir(
+    taurhaus_exe: &Path,
+    runtime: HookRuntime,
+    taurhaus_claude_dir: Option<&Path>,
+) -> Result<String, CoordinationError> {
     let executable = runtime_path_string(taurhaus_exe, runtime)?;
+    let claude_dir = taurhaus_claude_dir
+        .map(|path| runtime_path_string(path, runtime))
+        .transpose()?;
     Ok(match runtime {
-        HookRuntime::Windows => {
-            format!("@echo off\r\n\"{}\" --compact-hook\r\n", executable)
-        }
+        HookRuntime::Windows => claude_dir.map_or_else(
+            || format!("@echo off\r\n\"{}\" --compact-hook\r\n", executable),
+            |claude_dir| {
+                format!(
+                    "@echo off\r\nset \"TAURHAUS_CLAUDE_DIR={}\"\r\n\"{}\" --compact-hook\r\n",
+                    claude_dir, executable
+                )
+            },
+        ),
         HookRuntime::Posix => format!(
-            "#!/usr/bin/env bash\nset -euo pipefail\nexec {} --compact-hook\n",
+            "#!/usr/bin/env bash\nset -euo pipefail\n{}exec {} --compact-hook\n",
+            claude_dir
+                .map(|claude_dir| format!(
+                    "TAURHAUS_CLAUDE_DIR={} ",
+                    shell_quote_string(&claude_dir)
+                ))
+                .unwrap_or_default(),
             shell_quote_string(&executable)
         ),
     })
@@ -2362,6 +2442,52 @@ mod tests {
     }
 
     #[test]
+    fn codex_compact_hook_resolves_member_under_registered_team_root() {
+        // Regression: 18810949 introduced selected Claude team roots without
+        // teaching the global Codex hook to resolve members outside the default root.
+        let guard = acquire_env_test_guard();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let default_claude_dir = tmp.path().join("default-claude");
+        let default_teams_dir = default_claude_dir.join("teams");
+        let work_teams_dir = tmp.path().join("work-claude").join("teams");
+        guard.set_override(&default_claude_dir);
+
+        crate::coordination::stores::TeamRootRegistry::new(default_teams_dir.clone())
+            .set("work-team", &work_teams_dir)
+            .expect("register work team root");
+
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let mut member = sample_member(&project);
+        member.name = "codex-architect".to_string();
+        member.cli_tool = CliTool::Codex;
+        write_team_fixture(&work_teams_dir, "work-team", &member, "codex-session");
+        write_snapshot_fixture(&work_teams_dir, "work-team", &member.name);
+
+        let response = handle_compact_hook(
+            &json!({
+                "hook_event_name": "SessionStart",
+                "session_id": "codex-session",
+                "source": "compact",
+                "cwd": &project,
+                "transcript_path": project.join(
+                    ".codex/sessions/2026/09/03/rollout-2026-09-03T10-00-00-codex-session.jsonl"
+                ),
+            })
+            .to_string(),
+            &default_teams_dir,
+        )
+        .expect("Codex hook should resolve the registered-root member");
+
+        assert!(response.hook_specific_output.is_some());
+        assert!(
+            MemberCompactionStore::load(&work_teams_dir, "work-team", &member.name)
+                .expect("load work-root delivery state")
+                .is_some()
+        );
+    }
+
+    #[test]
     fn cwd_match_normalizes_wsl_unc_and_linux_project_paths() {
         // Regression: 0b87699b used filesystem canonicalization for hook matching,
         // which cannot equate the app's WSL UNC path with Claude's Linux cwd.
@@ -2545,6 +2671,11 @@ mod tests {
             .join("hooks")
             .join(platform_hook_filename(HookRuntime::Posix));
         assert!(script_path.exists());
+        let script = fs::read_to_string(&script_path).expect("script exists");
+        assert!(script.contains(&format!(
+            "TAURHAUS_CLAUDE_DIR={}",
+            shell_quote_string(&tmp.path().display().to_string())
+        )));
         let settings_raw =
             fs::read_to_string(tmp.path().join("settings.json")).expect("settings exists");
         let settings: Value = serde_json::from_str(&settings_raw).expect("settings parses");
@@ -2563,6 +2694,30 @@ mod tests {
                 "bash {}",
                 shell_quote_string(&script_path.display().to_string())
             )
+        );
+    }
+
+    #[test]
+    fn default_root_hook_script_keeps_the_unpinned_historical_bytes() {
+        // Regression: a4fd2cf2 pinned every Claude hook script, rewriting the
+        // default-root script even though its resolution behavior was unchanged.
+        let guard = acquire_env_test_guard();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let claude_dir = tmp.path().join("claude");
+        let teams_dir = claude_dir.join("teams");
+        guard.set_override(&claude_dir);
+        fs::create_dir_all(&teams_dir).expect("teams dir");
+        let exe_path = tmp.path().join("taurhaus");
+        fs::write(&exe_path, b"binary").expect("exe path");
+
+        ensure_compact_hook_installed(&teams_dir, &exe_path).expect("install default hook");
+
+        let script_path = claude_dir
+            .join("hooks")
+            .join(platform_hook_filename(HookRuntime::Posix));
+        assert_eq!(
+            fs::read_to_string(script_path).expect("script"),
+            render_hook_script(&exe_path, HookRuntime::Posix).expect("historical script")
         );
     }
 

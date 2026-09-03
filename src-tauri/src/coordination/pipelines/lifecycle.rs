@@ -56,10 +56,11 @@ impl CoordinationOrchestrator {
             }
         }
 
-        if let Err(err) = self
-            .runtime
-            .clear_mesh_daemon_pid_file(&request.team_name, &request.agent.name)
-        {
+        if let Err(err) = self.runtime.clear_mesh_daemon_pid_file_at_root(
+            &request.team_name,
+            &request.agent.name,
+            &self.teams_dir,
+        ) {
             tracing::warn!(
                 team = %request.team_name,
                 member = %request.agent.name,
@@ -152,10 +153,11 @@ impl CoordinationOrchestrator {
             }
         }
 
-        if let Err(err) = self
-            .runtime
-            .clear_mesh_daemon_pid_file(&request.team_name, &request.member_name)
-        {
+        if let Err(err) = self.runtime.clear_mesh_daemon_pid_file_at_root(
+            &request.team_name,
+            &request.member_name,
+            &self.teams_dir,
+        ) {
             tracing::warn!(
                 team = %request.team_name,
                 member = %request.member_name,

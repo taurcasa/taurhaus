@@ -2153,12 +2153,6 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
     // A launch emits into the process-global sink; hold the log guard so it
     // never lands in the file another test is reading.
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
-    // The JoinMesh assertion re-reads process-global TAURHAUS_CLAUDE_DIR via
-    // resolve_mesh_cli_claude_dir_arg; sibling tests mutate that variable
-    // under the shared env guard, so this reader must hold it too or the
-    // value can change between the recorded call and the assertion (this
-    // race failed a lane gate as a phantom coordination failure).
-    let _env_guard = taurhaus_lib::test_support::acquire_env_test_guard();
     let tmp = TempDir::new().expect("temp teams dir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     runtime.set_pane_exists("%9", false);
@@ -2249,9 +2243,42 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
         project_id: "/tmp/project".to_string(),
         member_type: "general-purpose".to_string(),
         model: "gpt-5.6-sol".to_string(),
-        claude_dir: crate::coordination::runtime::resolve_mesh_cli_claude_dir_arg()
-            .expect("Claude config dir"),
+        claude_dir: crate::session_scanner::accounts::to_launch_namespace(
+            tmp.path().parent().expect("Claude config dir"),
+        )
+        .to_string_lossy()
+        .into_owned(),
     }));
+}
+
+#[test]
+fn generic_resume_match_searches_registered_team_roots() {
+    let tmp = TempDir::new().expect("temp roots");
+    let default_teams = tmp.path().join("default/teams");
+    let work_teams = tmp.path().join("work/teams");
+    save_team_member(
+        &work_teams,
+        "work-team",
+        "developer",
+        "/tmp/work-project",
+        CliTool::Codex,
+    );
+    let state = test_coordination_state(
+        &default_teams,
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    state
+        .team_root_registry()
+        .set("work-team", &work_teams)
+        .expect("register work root");
+
+    assert_eq!(
+        find_unique_team_member_match(&state, "/tmp/work-project", CliTool::Codex),
+        TeamMemberMatchResult::Unique(TeamMemberMatch {
+            team_name: "work-team".to_string(),
+            member_name: "developer".to_string(),
+        })
+    );
 }
 
 #[test]

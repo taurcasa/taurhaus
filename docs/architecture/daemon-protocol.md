@@ -4,7 +4,7 @@ The daemon is a companion process that handles filesystem access, process scanni
 
 ![Daemon Protocol](../images/daemon-protocol.jpg)
 
-> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 55 callable methods (56 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 23; the tables below are authoritative.
+> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 55 callable methods (56 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 24; the tables below are authoritative.
 
 ## Why a daemon
 
@@ -22,7 +22,7 @@ On every platform the daemon process hosts the single session hub: the app reads
 | Transport | TCP |
 | Default address | `127.0.0.1:17233` ([authoritative source](../../src-tauri/src/daemon/server.rs)) |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 23 (current) |
+| Protocol version | 24 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication
@@ -241,14 +241,14 @@ Member-operation workers use the same process-local registry and 10-minute termi
 
 Team-resume and reonboard workers share the same daemon-local `CoordinationState`, run registry, and terminal retention as the earlier coordination operations. The desktop polls team-resume progress and re-emits the existing `coordination-resume-team-progress` event unchanged.
 
-### Team account switching (protocol 23)
+### Team account switching (protocol 23–24)
 
 | Method | Params | Result | Description |
 |--------|--------|--------|-------------|
-| `coordination.switch_team_account` | `{ request: { team_name, cli_tool, account_id }, cli_commands, tmux_layout }` | `{ run_id }` | Starts a selector-account switch after validating the detected, signed-in account. The daemon rebuilds the credential-free account snapshot host-side, records the accumulating handoff manifest, tears down the team, rewrites matching member assignments, resumes through the existing pipeline, and delivers switch onboarding. |
+| `coordination.switch_team_account` | `{ request: { team_name, cli_tool, account_id }, cli_commands, tmux_layout }` | `{ run_id }` | Starts an account switch after validating the detected, signed-in account. Selector-based members are rewritten in place. A Claude switch stops the team, writes the handoff manifest, moves team state to the selected account root, commits the root registry only after verification, and resumes from the new root. |
 | `coordination.switch_team_account_status` | `{ run_id }` | `{ run_id, outcome }` | Returns the structured switch report or terminal error. |
 
-Only selector-based member accounts are supported: Codex (`CODEX_HOME`) and Grok (`GROK_HOME`). Claude remains team-root-scoped, so mixed Claude accounts and Claude switching are rejected. Transcript files stay in place; the manifest records their paths as optional entry points and never migrates their contents.
+Codex (`CODEX_HOME`) and Grok (`GROK_HOME`) remain member-scoped selectors. Claude (`CLAUDE_CONFIG_DIR`) is team-root-scoped: one registry entry selects the root for the whole team, so mixed Claude accounts remain impossible. Transcript files stay in place; the manifest records their paths as optional entry points and never migrates their contents.
 
 ### Coordination roster operations (protocol 19)
 

@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
@@ -6,9 +7,12 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 
 use crate::coordination::activity_export::{
-    enrich_runtime_sessions_with_team_membership, enrich_sessions_with_team_membership,
-    export_activity_snapshots_for_sessions,
+    enrich_runtime_sessions_with_team_locations, enrich_sessions_with_team_locations,
+    export_activity_snapshots_for_team_locations,
 };
+#[cfg(test)]
+use crate::coordination::stores::TeamConfigStore;
+use crate::coordination::stores::TeamRootRegistry;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::tmux::{self, TmuxFocus};
@@ -239,7 +243,17 @@ struct CycleDecision {
 /// Run one scanner cycle: scan, then enrich with team membership and probe
 /// tmux for the focused client. A degraded scan produces an inert cycle: no
 /// tmux probe, and the hub keeps its last known focus.
+#[cfg(test)]
 fn scan_cycle(teams_dir: &Path) -> ScanCycle {
+    let team_locations = TeamConfigStore::list(teams_dir)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|team_name| (teams_dir.to_path_buf(), team_name))
+        .collect::<Vec<_>>();
+    scan_cycle_for_team_locations(&team_locations)
+}
+
+fn scan_cycle_for_team_locations(team_locations: &[(std::path::PathBuf, String)]) -> ScanCycle {
     let (mut display_sessions, mut runtime_sessions, degraded) =
         crate::session_scanner::scan_sessions_for_authoritative_snapshot();
     if degraded {
@@ -256,8 +270,8 @@ fn scan_cycle(teams_dir: &Path) -> ScanCycle {
 
     let account_observations =
         crate::session_scanner::accounts::observe_live_session_accounts(&runtime_sessions);
-    enrich_sessions_with_team_membership(teams_dir, &mut display_sessions);
-    enrich_runtime_sessions_with_team_membership(teams_dir, &mut runtime_sessions);
+    enrich_sessions_with_team_locations(team_locations, &mut display_sessions);
+    enrich_runtime_sessions_with_team_locations(team_locations, &mut runtime_sessions);
     let clients = tmux::list_clients();
     let focus = tmux::focus_from_clients(&clients);
     let focus_project_path = focus
@@ -360,8 +374,16 @@ fn scanner_loop(hub: std::sync::Weak<SessionActivityHub>, stop: Arc<ScannerStop>
                 return;
             };
             let loop_started_at = Instant::now();
-            let teams_dir = PlatformPaths::teams_dir();
-            let cycle = scan_cycle(&teams_dir);
+            let default_teams_dir = PlatformPaths::teams_dir();
+            let registry = TeamRootRegistry::new(default_teams_dir);
+            let team_locations = match registry.team_locations() {
+                Ok(team_locations) => team_locations,
+                Err(error) => {
+                    tracing::warn!(error = %error, "failed to resolve team roots for session activity");
+                    Vec::new()
+                }
+            };
+            let cycle = scan_cycle_for_team_locations(&team_locations);
 
             let decision = hub.commit_cycle(
                 cycle,
@@ -370,8 +392,8 @@ fn scanner_loop(hub: std::sync::Weak<SessionActivityHub>, stop: Arc<ScannerStop>
                 loop_started_at,
             );
             if decision.export_due {
-                let export_stats = export_activity_snapshots_for_sessions(
-                    &teams_dir,
+                let export_stats = export_activity_snapshots_for_team_locations(
+                    &team_locations,
                     &hub.snapshot().sessions,
                     Utc::now(),
                 );

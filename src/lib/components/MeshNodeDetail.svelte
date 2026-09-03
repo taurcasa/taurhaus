@@ -104,7 +104,6 @@
     normalizedContext === 'runtime' &&
       Boolean(exhaustedAccountReason) &&
       Boolean(toolDescriptor?.capabilities?.accountSelection) &&
-      !toolDescriptor?.capabilities?.teamConfigNamespace &&
       detectedAccounts.some((account) => account.logged_in && account.id !== accountId) &&
       typeof actions?.onSwitchAccount === 'function'
   )

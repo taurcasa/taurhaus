@@ -253,6 +253,24 @@ fn the_first_grok_team_installs_the_hook_and_the_last_removal_takes_it_away() {
 }
 
 #[test]
+fn hook_reconciliation_sees_members_in_every_team_root() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let default_teams = tmp.path().join("default/teams");
+    let work_teams = tmp.path().join("work/teams");
+    let grok_home = tmp.path().join("grok-home");
+    let exe = tmp.path().join("taurhaus");
+    std::fs::create_dir_all(&default_teams).expect("default teams");
+    std::fs::create_dir_all(&work_teams).expect("work teams");
+    std::fs::write(&exe, b"fixture").expect("executable fixture");
+    write_team(&work_teams, "grok-team", "grok");
+
+    reconcile_grok_hooks_for_roots_at(&[default_teams, work_teams], &grok_home, true, &exe)
+        .expect("multi-root reconciliation");
+
+    assert!(crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&grok_home));
+}
+
+#[test]
 fn a_grok_team_whose_config_cannot_be_parsed_never_uninstalls_the_hook() {
     // Regression: commit c1005ec logged and swallowed each failed per-team
     // config load during managed-member discovery and answered `false`, so a
@@ -486,12 +504,12 @@ mod managed_launch_sites {
         let mutation_reconciler = function_body(&source, "reconcile_global_harness_hooks");
         assert!(
             mutation_reconciler
-                .contains("terminal_settings::reconcile_managed_account_hooks_for_roster("),
+                .contains("terminal_settings::reconcile_managed_account_hooks_for_roots("),
             "a roster mutation must sweep every account home, not just the default one"
         );
         assert!(
             startup_orchestration_source()
-                .contains("terminal_settings::reconcile_managed_account_hooks_for_roster("),
+                .contains("terminal_settings::reconcile_managed_account_hooks_for_roots("),
             "startup must sweep the account homes an older build left behind"
         );
     }

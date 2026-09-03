@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
@@ -376,6 +376,7 @@ pub(super) fn should_use_mesh_sidecar(agent: &AgentSetupConfig) -> Result<bool, 
     )?))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn join_mesh_if_required(
     runtime: &dyn CoordinationRuntime,
     team_name: &str,
@@ -384,6 +385,7 @@ pub(super) fn join_mesh_if_required(
     role: MemberRole,
     cli_tool: CliTool,
     model: &str,
+    teams_dir: &Path,
 ) -> Result<bool, CoordinationError> {
     if spec(cli_tool).capabilities.native_inbox_poller && role != MemberRole::Lead {
         return Ok(false);
@@ -394,7 +396,9 @@ pub(super) fn join_mesh_if_required(
     } else {
         "general-purpose"
     };
-    let claude_dir = crate::coordination::runtime::resolve_mesh_cli_claude_dir_arg()
+    let claude_dir = teams_dir
+        .parent()
+        .map(crate::session_scanner::accounts::to_launch_namespace)
         .ok_or_else(|| CoordinationError::Backend("Claude config directory unavailable".into()))?;
     runtime.join_mesh(
         team_name,
@@ -402,17 +406,19 @@ pub(super) fn join_mesh_if_required(
         project_id,
         member_type,
         model,
-        claude_dir.as_str(),
+        &claude_dir.to_string_lossy(),
     )?;
     Ok(true)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn start_member_daemon_if_required(
     runtime: &dyn CoordinationRuntime,
     team_name: &str,
     member_name: &str,
     pane_id: &str,
     cli_tool: CliTool,
+    teams_dir: &Path,
     policy: MemberDaemonStartPolicy,
     warnings: Option<&mut Vec<String>>,
 ) -> Result<Option<u32>, CoordinationError> {
@@ -431,7 +437,7 @@ pub(super) fn start_member_daemon_if_required(
         }
     }
 
-    let pid = runtime.spawn_mesh_daemon(pane_id, team_name, member_name)?;
+    let pid = runtime.spawn_mesh_daemon_at_root(pane_id, team_name, member_name, teams_dir)?;
     tracing::info!(
         team = %team_name,
         member = %member_name,
@@ -738,22 +744,39 @@ pub(super) fn render_team_launch(
         model.reasoning_effort = reasoning_effort.map(str::to_string);
     }
     let capabilities = spec(cli_tool).capabilities;
-    if capabilities.team_config_namespace && requested_account_id.is_some() {
-        return Err(CoordinationError::Validation(
-            "Claude account selection belongs to the whole team; mixed-account Claude members are impossible"
-                .to_string(),
-        ));
-    }
     let default_team_config_dir = capabilities
-        .team_config_namespace
-        .then(|| configured_default_dir(cli_tool))
-        .flatten()
+        .account_selector
+        .and_then(|selector| cli_commands.account_selector_dirs.get(selector).cloned())
         .or_else(|| {
             capabilities
-                .account_selector
-                .and_then(|selector| cli_commands.account_selector_dirs.get(selector).cloned())
+                .team_config_namespace
+                .then(|| configured_default_dir(cli_tool))
+                .flatten()
         })
         .map(|dir| to_launch_namespace(&dir));
+    if capabilities.team_config_namespace {
+        let requested_account = requested_account_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .and_then(|requested| {
+                cli_commands
+                    .managed_accounts
+                    .get(&cli_tool)
+                    .into_iter()
+                    .flatten()
+                    .find(|account| account.id == requested && account.logged_in)
+            });
+        if let (Some(team_dir), Some(requested_account)) =
+            (default_team_config_dir.as_ref(), requested_account)
+        {
+            if to_launch_namespace(&requested_account.dir) != *team_dir {
+                return Err(CoordinationError::Validation(
+                    "a Claude team must use one team account; member account does not match the team root"
+                        .to_string(),
+                ));
+            }
+        }
+    }
     let (team_config_dir, mut account) = managed_member_account(
         cli_commands,
         cli_tool,

@@ -255,7 +255,7 @@ The builder's catalog hand-off (`onBrowseCatalog`) opens `TemplateBrowserPanel` 
 
 Codex and Grok roster rows use the shared account picker beside `ModelSelect`. The saved roster keeps the provider's stable account id; the launch renderer resolves its directory from fresh detection and pins the harness selector. If detection cannot supply the requested account, launch continues on today's default home and the Mesh node says `was … → now …` with `not guaranteed` truth rather than pretending the request applied.
 
-Claude rows show a noninteractive `Team account` truth chip. Claude's account owns the team namespace, so per-member Claude choices and mixed-account Claude teams remain invalid. The current process-wide `teams_dir` authority does not yet support moving one team between Claude roots; Claude account switching is rejected rather than partially migrating its state.
+Claude rows use the same picker slot with a `Team account` label. A Claude selection applies to every Claude member because the account owns the team namespace, so per-member Claude choices and mixed-account Claude teams remain invalid. Switching that picker moves the whole team's state through the daemon-owned root registry; transcripts stay in their original external locations.
 
 ## Composition And Validation
 

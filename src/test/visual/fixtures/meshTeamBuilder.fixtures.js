@@ -50,6 +50,7 @@ function createScenario({
   pinnedRoleIds = [],
   expandCatalogAfterMount = false,
   expandedMemberNames = [],
+  accountPickerMember = null,
   expected,
 } = {}) {
   return {
@@ -66,6 +67,7 @@ function createScenario({
     pinnedRoleIds,
     expandCatalogAfterMount,
     expandedMemberNames,
+    accountPickerMember,
     expected,
   }
 }
@@ -202,6 +204,13 @@ const accountStates = {
         label: 'team@example.com',
         logged_in: true,
         is_default: true,
+      },
+      {
+        id: 'claude-work',
+        display_name: 'Work',
+        label: 'claude-work@example.com',
+        logged_in: true,
+        is_default: false,
       },
     ],
     defaultAccountId: 'claude-team',
@@ -393,8 +402,46 @@ const roster_builder_ready_state = createScenario({
   },
 })
 
+const claude_roster_picker_light = createScenario({
+  name: 'claude_roster_picker_light',
+  theme: 'light',
+  teamName: 'account-routed-team',
+  teamConfig: partialRoster,
+  roleTemplates,
+  presets,
+  availableProjects,
+  accountStates,
+  expandedMemberNames: ['lead'],
+  accountPickerMember: 'lead',
+  expected: {
+    labels: ['Team account · Team Pro', 'Work'],
+    catalogCollapsed: 'false',
+    accountPickerMember: 'lead',
+  },
+})
+
+const claude_roster_picker_dark = createScenario({
+  name: 'claude_roster_picker_dark',
+  theme: 'dark',
+  teamName: 'account-routed-team',
+  teamConfig: partialRoster,
+  roleTemplates,
+  presets,
+  availableProjects,
+  accountStates,
+  expandedMemberNames: ['lead'],
+  accountPickerMember: 'lead',
+  expected: {
+    labels: ['Team account · Team Pro', 'Work'],
+    catalogCollapsed: 'false',
+    accountPickerMember: 'lead',
+  },
+})
+
 export const meshTeamBuilderScenarios = [
   roster_builder_empty_state,
   roster_builder_partial_state,
   roster_builder_ready_state,
+  claude_roster_picker_light,
+  claude_roster_picker_dark,
 ]

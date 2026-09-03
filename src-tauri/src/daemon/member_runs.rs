@@ -36,16 +36,22 @@ impl MemberOperationsService {
         state: Arc<CoordinationState>,
         registry: CoordinationRunRegistry,
     ) -> Self {
-        let add_teams_dir = state.teams_dir().clone();
-        let resume_teams_dir = add_teams_dir.clone();
+        let add_state = state.clone();
+        let resume_state = state.clone();
         Self::with_state_and_prepare(
             state,
             registry,
             Arc::new(move |request, commands| {
-                prepare_add_launch_inputs(&add_teams_dir, request, commands)
+                let teams_dir = add_state
+                    .team_teams_dir(&request.team_name)
+                    .map_err(|error| error.to_string())?;
+                prepare_add_launch_inputs(&teams_dir, request, commands)
             }),
             Arc::new(move |request, commands| {
-                prepare_resume_launch_inputs(&resume_teams_dir, request, commands)
+                let teams_dir = resume_state
+                    .team_teams_dir(&request.team_name)
+                    .map_err(|error| error.to_string())?;
+                prepare_resume_launch_inputs(&teams_dir, request, commands)
             }),
         )
     }
@@ -95,8 +101,11 @@ impl MemberOperationsService {
                         let _ = registry.record_step(&run_id_for_task, event.progress);
                     }
                     if report.failed_step.is_none() {
+                        let teams_dir = state
+                            .team_teams_dir(&report.team_name)
+                            .map_err(|error| error.to_string())?;
                         finalize_member_state(
-                            state.teams_dir(),
+                            &teams_dir,
                             &report.team_name,
                             &report.member_name,
                             params.operational_snapshot.as_ref(),
@@ -155,8 +164,11 @@ impl MemberOperationsService {
                         }),
                     )
                     .map_err(|error| error.to_string())?;
+                    let teams_dir = state
+                        .team_teams_dir(&report.team_name)
+                        .map_err(|error| error.to_string())?;
                     finalize_member_state(
-                        state.teams_dir(),
+                        &teams_dir,
                         &report.team_name,
                         &report.member_name,
                         params.operational_snapshot.as_ref(),
@@ -309,7 +321,7 @@ pub(crate) fn execute_add_agent_pipeline(
     cli_commands: &CliCommandSettings,
     tmux_layout: &str,
 ) -> Result<AddAgentReport, crate::coordination::errors::CoordinationError> {
-    state.with_orchestrator(|orchestrator| {
+    state.with_team_orchestrator(&request.team_name, |orchestrator| {
         orchestrator.add_agent_to_team_with_cli_commands_and_layout(
             request,
             cli_commands,
@@ -325,7 +337,7 @@ pub(crate) fn execute_resume_member_pipeline(
     tmux_layout: &str,
     mut emit: Option<&mut dyn FnMut(ResumeMemberProgress)>,
 ) -> Result<ResumeAgentReport, crate::coordination::errors::CoordinationError> {
-    state.with_orchestrator(|orchestrator| {
+    state.with_team_orchestrator(&request.team_name, |orchestrator| {
         orchestrator.resume_member_with_cli_commands_and_layout_and_progress(
             request,
             cli_commands,
@@ -355,7 +367,7 @@ pub(crate) fn execute_resume_team_pipeline(
     crate::coordination::requests::ResumeTeamReport,
     crate::coordination::errors::CoordinationError,
 > {
-    state.with_orchestrator(|orchestrator| {
+    state.with_team_orchestrator(&request.team_name, |orchestrator| {
         orchestrator.resume_team_with_cli_commands_and_layout_and_progress(
             request,
             cli_commands,

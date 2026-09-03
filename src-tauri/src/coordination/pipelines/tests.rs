@@ -1259,10 +1259,6 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
 
 #[test]
 fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() {
-    // This test resolves the Claude config dir, which TAURHAUS_CLAUDE_DIR
-    // moves: hold the shared env guard so a concurrent env-mutating test
-    // cannot race the resolution.
-    let _env = taurhaus_lib::test_support::acquire_env_test_guard();
     let initialize_tmp = TempDir::new().expect("tempdir");
     let initialize_backend = Arc::new(FakeBackend::default());
     let initialize_runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -1329,8 +1325,10 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
             ..
         } if member_type == "lead"
             && model == "claude-opus-4-6"
-            && claude_dir == &crate::coordination::runtime::resolve_mesh_cli_claude_dir_arg()
-                .expect("Claude config dir")
+            && claude_dir == &crate::session_scanner::accounts::to_launch_namespace(
+                initialize_tmp.path().parent().expect("Claude config dir")
+            )
+            .to_string_lossy()
     ));
     assert!(
         initialize_claude_calls
@@ -1770,6 +1768,7 @@ fn join_mesh_if_required_skips_non_lead_claude_and_joins_required_members() {
         MemberRole::Agent,
         CliTool::Claude,
         "opus",
+        &std::path::PathBuf::from("/accounts/claude-work/teams"),
     )
     .expect("claude join result");
     let codex_joined = join_mesh_if_required(
@@ -1780,6 +1779,7 @@ fn join_mesh_if_required_skips_non_lead_claude_and_joins_required_members() {
         MemberRole::Agent,
         CliTool::Codex,
         "gpt-5.6-sol",
+        &std::path::PathBuf::from("/accounts/claude-work/teams"),
     )
     .expect("codex join result");
 
@@ -1821,6 +1821,7 @@ fn start_member_daemon_if_required_replaces_stale_pid_for_resume_policy() {
         "builder",
         "%11",
         CliTool::Codex,
+        &std::path::PathBuf::from("/accounts/claude-work/teams"),
         MemberDaemonStartPolicy::ReplaceStalePid {
             previous_daemon_pid: Some(55),
         },
@@ -2065,6 +2066,91 @@ fn managed_codex_member_launch_resolves_its_persisted_account_id() {
     assert_eq!(result.account.account_id.as_deref(), Some("codex-work"));
     assert_eq!(result.account.account_label.as_deref(), Some("Work"));
     assert_eq!(result.account.fallback_from, None);
+}
+
+#[test]
+fn managed_claude_team_launch_uses_the_selected_team_root() {
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.managed_accounts.insert(
+        CliTool::Claude,
+        vec![crate::models::ManagedLaunchAccount {
+            id: "claude-work".to_string(),
+            label: "Work".to_string(),
+            dir: std::path::PathBuf::from("/accounts/claude-work"),
+            logged_in: true,
+            is_default: false,
+        }],
+    );
+    commands.account_selector_dirs.insert(
+        "CLAUDE_CONFIG_DIR".to_string(),
+        std::path::PathBuf::from("/accounts/claude-work"),
+    );
+
+    let result = render_team_launch(
+        &commands,
+        CliTool::Claude,
+        "opus",
+        None,
+        "architecture-final",
+        "team-lead",
+        MemberRole::Lead,
+        false,
+        None,
+        Some("claude-work"),
+    )
+    .expect("team-scoped Claude account");
+
+    assert!(result
+        .command
+        .starts_with("CLAUDE_CONFIG_DIR='/accounts/claude-work'"));
+    assert_eq!(result.account.account_applied, Some(true));
+    assert_eq!(result.account.account_id.as_deref(), Some("claude-work"));
+}
+
+#[test]
+fn managed_claude_team_launch_rejects_a_member_account_outside_the_team_root() {
+    // Regression: 18810949 removed the mixed-account Claude guard without
+    // pinning hot-added members to the registry-resolved team account.
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.managed_accounts.insert(
+        CliTool::Claude,
+        vec![
+            crate::models::ManagedLaunchAccount {
+                id: "claude-team".to_string(),
+                label: "Team".to_string(),
+                dir: std::path::PathBuf::from("/accounts/claude-team"),
+                logged_in: true,
+                is_default: false,
+            },
+            crate::models::ManagedLaunchAccount {
+                id: "claude-other".to_string(),
+                label: "Other".to_string(),
+                dir: std::path::PathBuf::from("/accounts/claude-other"),
+                logged_in: true,
+                is_default: false,
+            },
+        ],
+    );
+    commands.account_selector_dirs.insert(
+        "CLAUDE_CONFIG_DIR".to_string(),
+        std::path::PathBuf::from("/accounts/claude-team"),
+    );
+
+    let error = render_team_launch(
+        &commands,
+        CliTool::Claude,
+        "opus",
+        None,
+        "architecture-final",
+        "reviewer",
+        MemberRole::Agent,
+        false,
+        None,
+        Some("claude-other"),
+    )
+    .expect_err("mixed-account Claude member must be rejected");
+
+    assert!(error.to_string().contains("one team account"), "{error}");
 }
 
 #[test]

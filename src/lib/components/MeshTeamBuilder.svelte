@@ -27,6 +27,7 @@
     defaultToolForRole,
     toolAccent,
     toolCounts,
+    toolDescriptor,
     toolLabel,
     tools,
   } from '../toolRegistry.js'
@@ -311,6 +312,18 @@
     )
   )
   const agents = $derived(Array.isArray(normalizedTeam.agents) ? normalizedTeam.agents : [])
+
+  function updateTeamAccount(accountId) {
+    const update = { accountId }
+    if (toolDescriptor(normalizeTool(normalizedTeam.lead?.tool))?.capabilities?.teamConfigNamespace) {
+      onUpdateLead(update)
+    }
+    for (const agent of agents) {
+      if (toolDescriptor(normalizeTool(agent.tool))?.capabilities?.teamConfigNamespace) {
+        onUpdateAgent(agent.id, update)
+      }
+    }
+  }
   const availableProjectOptions = $derived.by(() =>
     (availableProjects ?? [])
       .map((project) => normalizeProjectOption(project, { stringLabel: 'raw', objectFallbackLabel: 'raw' }))
@@ -2255,11 +2268,11 @@
             >
               {#if normalizedTeam.lead}
                 <article
-                  class="relative overflow-hidden rounded-[20px] border px-3 py-3 shadow-sm {teamCardTone(normalizedTeam.lead.tool, 'lead')} {isRosterMemberEntering(`lead:${normalizedTeam.lead.id}`) ? 'content-enter mesh-builder-roster-entry' : ''}"
+                  class="relative overflow-visible rounded-[20px] border px-3 py-3 shadow-sm {teamCardTone(normalizedTeam.lead.tool, 'lead')} {isRosterMemberEntering(`lead:${normalizedTeam.lead.id}`) ? 'content-enter mesh-builder-roster-entry' : ''}"
                   data-testid="mesh-builder-lead-card"
                 >
                   <span
-                    class="absolute inset-y-0 left-0 w-1.5 {memberAccentTone(normalizedTeam.lead.tool, 'lead')}"
+                    class="absolute inset-y-0 left-0 w-1.5 rounded-l-[20px] {memberAccentTone(normalizedTeam.lead.tool, 'lead')}"
                     aria-hidden="true"
                   ></span>
 
@@ -2350,6 +2363,7 @@
                         degraded={accountsFor(normalizedTeam.lead.tool).degraded ?? false}
                         {dark}
                         onchange={(next) => onUpdateLead(next)}
+                        onTeamAccountChange={updateTeamAccount}
                       />
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Project</span>
@@ -2406,11 +2420,11 @@
             >
               {#each agents as agent (agent.id)}
                 <article
-                  class="relative overflow-hidden rounded-[20px] border px-3 py-3 shadow-sm {teamCardTone(agent.tool)} {isRosterMemberEntering(`agent:${agent.id}`) ? 'content-enter mesh-builder-roster-entry' : ''} {isAgentRemoving(agent.id) ? 'mesh-builder-roster-exit' : ''}"
+                  class="relative overflow-visible rounded-[20px] border px-3 py-3 shadow-sm {teamCardTone(agent.tool)} {isRosterMemberEntering(`agent:${agent.id}`) ? 'content-enter mesh-builder-roster-entry' : ''} {isAgentRemoving(agent.id) ? 'mesh-builder-roster-exit' : ''}"
                   data-testid={`mesh-builder-agent-card-${agent.id}`}
                 >
                   <span
-                    class="absolute inset-y-0 left-0 w-1.5 {memberAccentTone(agent.tool)}"
+                    class="absolute inset-y-0 left-0 w-1.5 rounded-l-[20px] {memberAccentTone(agent.tool)}"
                     aria-hidden="true"
                   ></span>
 
@@ -2498,6 +2512,7 @@
                         degraded={accountsFor(agent.tool).degraded ?? false}
                         {dark}
                         onchange={(next) => onUpdateAgent(agent.id, next)}
+                        onTeamAccountChange={updateTeamAccount}
                       />
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Project</span>

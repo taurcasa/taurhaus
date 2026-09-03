@@ -32,6 +32,10 @@ pub(super) fn run_startup_orchestration(
         tracing::warn!(error = %error, "startup Codex compaction reconciliation failed");
     }
     #[cfg(feature = "mesh-bridged-backend")]
+    if let Err(error) = reconcile_startup_claude_compaction(app.handle()) {
+        tracing::warn!(error = %error, "startup Claude compaction reconciliation failed");
+    }
+    #[cfg(feature = "mesh-bridged-backend")]
     if let Err(error) = reconcile_startup_agy_hooks(app.handle()) {
         tracing::warn!(error = %error, "startup Antigravity hook reconciliation failed");
     }
@@ -88,12 +92,25 @@ pub(super) fn run_startup_orchestration(
 #[cfg(feature = "mesh-bridged-backend")]
 fn reconcile_startup_codex_compaction(app: &tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<crate::coordination::state::CoordinationState>();
-    let has_managed_codex =
-        crate::coordination::compact_hook::any_managed_codex_member(state.teams_dir())
-            .map_err(|error| error.to_string())?;
+    let mut has_managed_codex = false;
+    for teams_dir in state.teams_roots().map_err(|error| error.to_string())? {
+        has_managed_codex |=
+            crate::coordination::compact_hook::any_managed_codex_member(&teams_dir)
+                .map_err(|error| error.to_string())?;
+    }
     crate::commands::terminal_settings::reconcile_codex_hook(has_managed_codex)
         .map(|_| ())
         .map_err(|error| error.to_string())
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn reconcile_startup_claude_compaction(app: &tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<crate::coordination::state::CoordinationState>();
+    for teams_dir in state.teams_roots().map_err(|error| error.to_string())? {
+        crate::coordination::state::ensure_startup_claude_compact_hook(&teams_dir)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
@@ -110,8 +127,9 @@ fn reconcile_startup_grok_hooks(app: &tauri::AppHandle) -> Result<(), String> {
     let db = app.state::<crate::commands::projects::DbState>();
     let terminal = crate::commands::terminal_settings::load_terminal_settings(&db);
     let state = app.state::<crate::coordination::state::CoordinationState>();
-    crate::commands::terminal_settings::reconcile_grok_hooks_for_roster(
-        state.teams_dir(),
+    let roots = state.teams_roots().map_err(|error| error.to_string())?;
+    crate::commands::terminal_settings::reconcile_grok_hooks_for_roots(
+        &roots,
         terminal.harness.grok_hooks,
     )
     .map(|_| ())
@@ -128,8 +146,11 @@ fn reconcile_startup_account_homes(app: &tauri::AppHandle) {
     let db = app.state::<crate::commands::projects::DbState>();
     let terminal = crate::commands::terminal_settings::load_terminal_settings(&db);
     let state = app.state::<crate::coordination::state::CoordinationState>();
-    crate::commands::terminal_settings::reconcile_managed_account_hooks_for_roster(
-        state.teams_dir(),
+    let Ok(roots) = state.teams_roots() else {
+        return;
+    };
+    crate::commands::terminal_settings::reconcile_managed_account_hooks_for_roots(
+        &roots,
         terminal.harness.grok_hooks,
     );
 }

@@ -45,7 +45,8 @@ use serde::{Deserialize, Serialize};
 /// live-presence reconciliation, and active-project mappings) into the daemon.
 /// v23: member launch intents carry stable account ids and the daemon owns the
 /// accept-then-poll selector-account switch operation.
-pub const PROTOCOL_VERSION: u32 = 23;
+/// v24: per-team root authority and Claude team account switching.
+pub const PROTOCOL_VERSION: u32 = 24;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -1517,7 +1518,7 @@ mod tests {
     // edit here, in ARCHITECTURE.md, and in docs/architecture/daemon-protocol.md.
     #[test]
     fn protocol_version_is_pinned() {
-        assert_eq!(PROTOCOL_VERSION, 23);
+        assert_eq!(PROTOCOL_VERSION, 24);
     }
 
     #[test]
@@ -2123,6 +2124,12 @@ mod tests {
     fn protocol_version_excludes_daemons_without_member_accounts() {
         let last_protocol_without_member_accounts = 22;
         assert!(PROTOCOL_VERSION > last_protocol_without_member_accounts);
+    }
+
+    #[test]
+    fn protocol_version_excludes_daemons_without_per_team_root_authority() {
+        let last_protocol_without_per_team_root_authority = 23;
+        assert!(PROTOCOL_VERSION > last_protocol_without_per_team_root_authority);
     }
 
     #[test]

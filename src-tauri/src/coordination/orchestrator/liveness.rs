@@ -430,10 +430,12 @@ impl CoordinationOrchestrator {
                     }
                 } else if daemon_needs_restart || runtime.daemon_pid.is_none() {
                     if let Some(pane_id) = pane_id {
-                        match self
-                            .runtime
-                            .spawn_mesh_daemon(pane_id, team_name, &member_name)
-                        {
+                        match self.runtime.spawn_mesh_daemon_at_root(
+                            pane_id,
+                            team_name,
+                            &member_name,
+                            &self.teams_dir,
+                        ) {
                             Ok(pid) => {
                                 runtime.daemon_pid = Some(pid);
                                 runtime_changed = true;
@@ -607,8 +609,9 @@ impl CoordinationOrchestrator {
         validate_team_name(team_name)?;
 
         let initial_status = self.get_team_status_fast(team_name)?;
-        let team_daemon_binary_drifted =
-            !self.runtime.team_daemon_uses_current_binary(team_name)?;
+        let team_daemon_binary_drifted = !self
+            .runtime
+            .team_daemon_uses_current_binary_at_root(team_name, &self.teams_dir)?;
         let runtime_candidate_found = team_is_self_heal_candidate(&initial_status.members_runtime)
             || team_daemon_binary_drifted;
         if !runtime_candidate_found {

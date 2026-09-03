@@ -43,7 +43,7 @@ impl RosterOperationsService {
     ) -> Result<String, String> {
         self.start_operation(CoordinationRunKind::CreateTeam, "create", move |state| {
             state
-                .with_orchestrator(|orchestrator| {
+                .with_team_orchestrator(&params.request.team_name, |orchestrator| {
                     orchestrator
                         .create_team(&params.request.team_name, None)
                         .map(|_| ())
@@ -85,8 +85,11 @@ impl RosterOperationsService {
             move |state| {
                 let report = execute_remove_member(state.as_ref(), &params.request)
                     .map_err(|error| error.to_string())?;
+                let teams_dir = state
+                    .team_teams_dir(&report.team_name)
+                    .map_err(|error| error.to_string())?;
                 crate::coordination::stores::active_project::sync_team_from_config(
-                    state.teams_dir(),
+                    &teams_dir,
                     &report.team_name,
                 )
                 .map_err(|error| error.to_string())?;
@@ -230,9 +233,14 @@ fn execute_disband_team(
     state: &CoordinationState,
     request: &DisbandTeamRequest,
 ) -> Result<DisbandTeamReport, CoordinationError> {
-    let result = state
-        .with_orchestrator(|orchestrator| orchestrator.disband_team(&request.team_name, None))?;
-    ActiveProjectTeamStore::clear_team(state.teams_dir(), &result.team_name)?;
+    let teams_dir = state.team_teams_dir(&request.team_name)?;
+    let result = state.with_team_orchestrator(&request.team_name, |orchestrator| {
+        orchestrator.disband_team(&request.team_name, None)
+    })?;
+    state
+        .team_root_registry()
+        .set(&result.team_name, state.teams_dir())?;
+    ActiveProjectTeamStore::clear_team(&teams_dir, &result.team_name)?;
     let message = if result.already_disbanded {
         "team already disbanded"
     } else {
@@ -256,7 +264,7 @@ fn execute_add_member(
             request.backend_kind.trim()
         ))
     })?;
-    state.with_orchestrator(|orchestrator| {
+    state.with_team_orchestrator(&request.team_name, |orchestrator| {
         let team_status = orchestrator.get_team_status(&request.team_name)?;
         let project_path = resolve_member_project_path(
             &team_status.config.members,
@@ -327,7 +335,7 @@ fn execute_remove_member(
     request: &RemoveMemberRequest,
 ) -> Result<StopMemberReport, CoordinationError> {
     state
-        .with_orchestrator(|orchestrator| {
+        .with_team_orchestrator(&request.team_name, |orchestrator| {
             orchestrator.remove_member(&request.team_name, &request.member_name, None)
         })
         .map(StopMemberReport::from_remove_member_result)
@@ -597,5 +605,54 @@ mod tests {
         assert!(runtime.calls().contains(&RuntimeCall::StopTeamDaemon {
             team_name: "arch".to_string(),
         }));
+    }
+
+    #[test]
+    fn disband_clears_registered_team_root_authority() {
+        // Regression: 681843b2 routed disband through the registered root but
+        // left that routing row behind after deleting the team directory.
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let default_teams = temp.path().join("default/teams");
+        let work_teams = temp.path().join("work/teams");
+        let (service, _runtime) = service(&default_teams);
+        service
+            .state
+            .team_root_registry()
+            .set("arch", &work_teams)
+            .expect("register work root");
+
+        let create_id = service
+            .start_create_team(CoordinationCreateTeamParams {
+                request: CreateTeamRequest {
+                    team_name: "arch".to_string(),
+                },
+            })
+            .expect("create worker starts");
+        let created = wait_until(
+            || service.create_team_status(&create_id),
+            |status| status.outcome == CoordinationCreateTeamOutcome::Running,
+        );
+        assert_eq!(created.outcome, CoordinationCreateTeamOutcome::Completed);
+        assert!(TeamConfigStore::load(&work_teams, "arch").is_ok());
+
+        let run_id = service
+            .start_disband_team(CoordinationDisbandTeamParams {
+                request: DisbandTeamRequest {
+                    team_name: "arch".to_string(),
+                },
+            })
+            .expect("disband worker starts");
+        let disbanded = wait_until(
+            || service.disband_team_status(&run_id),
+            |status| status.outcome == CoordinationDisbandTeamOutcome::Running,
+        );
+        assert!(matches!(
+            disbanded.outcome,
+            CoordinationDisbandTeamOutcome::Completed { .. }
+        ));
+        assert_eq!(
+            service.state.team_teams_dir("arch").expect("resolve root"),
+            default_teams
+        );
     }
 }

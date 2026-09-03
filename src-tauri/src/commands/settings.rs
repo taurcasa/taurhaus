@@ -134,8 +134,15 @@ fn reconcile_grok_hooks_setting(app: &tauri::AppHandle, settings: &Settings) {
     let Some(state) = app.try_state::<crate::coordination::state::CoordinationState>() else {
         return;
     };
-    if let Err(error) = crate::commands::terminal_settings::reconcile_grok_hooks_for_roster(
-        state.teams_dir(),
+    let teams_roots = match state.teams_roots() {
+        Ok(roots) => roots,
+        Err(error) => {
+            tracing::warn!(error = %error, "Team-root discovery failed during hook reconciliation");
+            return;
+        }
+    };
+    if let Err(error) = crate::commands::terminal_settings::reconcile_grok_hooks_for_roots(
+        &teams_roots,
         settings.terminal.harness.grok_hooks,
     ) {
         tracing::warn!(error = %error, "Grok compaction hook reconciliation failed");

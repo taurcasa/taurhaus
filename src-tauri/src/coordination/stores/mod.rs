@@ -9,6 +9,7 @@ pub mod lock;
 pub mod mesh_task;
 pub mod operational;
 pub mod runtime;
+pub mod team_roots;
 
 #[allow(unused_imports)]
 pub use account_switch::AccountSwitchManifestStore;
@@ -32,3 +33,4 @@ pub use runtime::{
     EffortResumeFailure, MemberRuntimeRecord, MemberRuntimeSnapshot, MemberRuntimeStore,
     RuntimeCommitOutcome,
 };
+pub use team_roots::TeamRootRegistry;
