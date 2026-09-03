@@ -86,6 +86,43 @@ describe('MeshNodeDetail', () => {
     expect(onSwitchAccount).toHaveBeenCalledWith('personal')
   })
 
+  // Regression: 0bc79ceb kept the member picker live throughout the team-wide
+  // switch, allowing a second click to queue another full stop/resume cycle.
+  it('blocks duplicate exhausted-account switches while the team restart is pending', async () => {
+    let finishSwitch
+    const onSwitchAccount = vi.fn(
+      () => new Promise((resolve) => { finishSwitch = resolve })
+    )
+    accountFixtures.byTool.codex = {
+      accounts: [
+        {
+          id: 'work',
+          display_name: 'Work',
+          logged_in: true,
+          usage: { windows: [{ used_percentage: 100 }] },
+        },
+        { id: 'personal', display_name: 'Personal', logged_in: true },
+      ],
+    }
+
+    renderDetail({
+      node: { tool: 'codex', accountId: 'work', accountLabel: 'Work' },
+      actions: { onSwitchAccount },
+    })
+    await fireEvent.click(screen.getByRole('button', { name: 'Switch exhausted account' }))
+    const option = screen.getByTestId('account-option-personal')
+    expect(screen.getByText('Switches every Codex member and restarts the team.')).toBeInTheDocument()
+    await fireEvent.click(option)
+    await fireEvent.click(option)
+
+    expect(onSwitchAccount).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('mesh-account-switch-pending')).toHaveTextContent(
+      'Switching the team account'
+    )
+
+    finishSwitch()
+  })
+
   it('shows the member account truth in runtime configuration', () => {
     render(MeshNodeDetail, {
       props: {

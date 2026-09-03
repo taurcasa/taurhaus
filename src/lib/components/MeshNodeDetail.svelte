@@ -109,6 +109,7 @@
       typeof actions?.onSwitchAccount === 'function'
   )
   let accountPickerOpen = $state(false)
+  let switchingAccount = $state(false)
   const accountHeadroom = $derived.by(() => {
     const readings = (detectedAccount?.usage?.windows ?? [])
       .map((window) => Number(window?.used_percentage ?? window?.usedPercentage))
@@ -458,9 +459,15 @@
     if (typeof handler === 'function') handler()
   }
 
-  function switchAccount(nextAccountId) {
+  async function switchAccount(nextAccountId) {
+    if (switchingAccount) return
     accountPickerOpen = false
-    actions?.onSwitchAccount?.(nextAccountId)
+    switchingAccount = true
+    try {
+      await actions?.onSwitchAccount?.(nextAccountId)
+    } finally {
+      switchingAccount = false
+    }
   }
 
   function updateDraft(patch) {
@@ -831,8 +838,15 @@
           {/if}
         </div>
 
-        {#if accountPickerOpen}
+        {#if switchingAccount}
+          <p class="mt-3 text-[12px] opacity-70" role="status" data-testid="mesh-account-switch-pending">
+            Switching the team account… This restarts the whole team.
+          </p>
+        {:else if accountPickerOpen}
           <div class="mt-3">
+            <p class="mb-2 text-[11px] opacity-70">
+              Switches every {toolLabel} member and restarts the team.
+            </p>
             <AccountPicker
               {tool}
               accounts={detectedAccounts}
