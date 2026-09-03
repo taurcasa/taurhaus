@@ -72,11 +72,14 @@ impl InitializeTeamService {
                     let target_root =
                         selected_team_root(&params.request, &cli_commands, state.teams_dir())?;
                     pin_team_root_selector(&params.request, &target_root, &mut cli_commands)?;
-                    state
-                        .team_root_registry()
-                        .set(&params.request.team_name, &target_root)?;
-                    let execution = execute_initialize_pipeline(
+                    ensure_team_name_available_at_root(
                         state.as_ref(),
+                        &params.request.team_name,
+                        &target_root,
+                    )?;
+                    let execution = execute_initialize_pipeline_at_root(
+                        state.as_ref(),
+                        &target_root,
                         &params.request,
                         &cli_commands,
                         &params.tmux_layout,
@@ -86,19 +89,34 @@ impl InitializeTeamService {
                         }),
                     );
                     match execution {
-                        Ok(report) if report.failed_step.is_none() => Ok((report, target_root)),
-                        Ok(report) => {
-                            state
+                        Ok(report) if report.failed_step.is_none() => {
+                            if let Err(error) = state
                                 .team_root_registry()
-                                .set(&params.request.team_name, &previous_root)?;
+                                .set(&params.request.team_name, &target_root)
+                            {
+                                if let Err(cleanup_error) =
+                                    state.with_root_orchestrator(&target_root, |orchestrator| {
+                                        orchestrator
+                                            .disband_team(&params.request.team_name, None)
+                                            .map(|_| ())
+                                    })
+                                {
+                                    tracing::warn!(
+                                        team = %params.request.team_name,
+                                        root = %target_root.display(),
+                                        error = %cleanup_error,
+                                        "failed to clean up team after registry commit failure"
+                                    );
+                                }
+                                state
+                                    .team_root_registry()
+                                    .set(&params.request.team_name, &previous_root)?;
+                                return Err(error);
+                            }
                             Ok((report, target_root))
                         }
-                        Err(error) => {
-                            state
-                                .team_root_registry()
-                                .set(&params.request.team_name, &previous_root)?;
-                            Err(error)
-                        }
+                        Ok(report) => Ok((report, target_root)),
+                        Err(error) => Err(error),
                     }
                 }));
                 match result {
@@ -164,6 +182,31 @@ impl InitializeTeamService {
             outcome,
         })
     }
+}
+
+fn ensure_team_name_available_at_root(
+    state: &CoordinationState,
+    team_name: &str,
+    target_root: &Path,
+) -> Result<(), crate::coordination::errors::CoordinationError> {
+    for root in state.team_root_registry().roots()? {
+        if root == target_root {
+            continue;
+        }
+        match crate::coordination::stores::TeamConfigStore::load(&root, team_name) {
+            Ok(_) => {
+                return Err(crate::coordination::errors::CoordinationError::Conflict(
+                    format!(
+                        "team '{team_name}' already exists under another account root ({})",
+                        root.display()
+                    ),
+                ));
+            }
+            Err(crate::coordination::errors::CoordinationError::NotFound(_)) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
 }
 
 fn selected_team_root(
@@ -279,9 +322,21 @@ pub(crate) fn execute_initialize_pipeline(
     request: &crate::coordination::requests::InitializeTeamRequest,
     cli_commands: &CliCommandSettings,
     tmux_layout: &str,
+    emit: Option<&mut dyn FnMut(StepProgress)>,
+) -> Result<InitializeReport, crate::coordination::errors::CoordinationError> {
+    let teams_dir = state.team_teams_dir(&request.team_name)?;
+    execute_initialize_pipeline_at_root(state, &teams_dir, request, cli_commands, tmux_layout, emit)
+}
+
+fn execute_initialize_pipeline_at_root(
+    state: &CoordinationState,
+    teams_dir: &Path,
+    request: &crate::coordination::requests::InitializeTeamRequest,
+    cli_commands: &CliCommandSettings,
+    tmux_layout: &str,
     mut emit: Option<&mut dyn FnMut(StepProgress)>,
 ) -> Result<InitializeReport, crate::coordination::errors::CoordinationError> {
-    state.with_team_orchestrator(&request.team_name, |orchestrator| {
+    state.with_root_orchestrator(teams_dir, |orchestrator| {
         orchestrator.initialize_team_with_cli_commands_and_layout_and_progress(
             request,
             cli_commands,
@@ -585,6 +640,75 @@ mod tests {
                 if member_name == "builder"
                     && claude_dir == &temp.path().join("claude-work").display().to_string()
         )));
+    }
+
+    #[test]
+    fn initialize_rejects_a_same_named_team_in_another_root() {
+        // Regression: 18810949 committed selected-root authority before create,
+        // allowing a new team to shadow a same-named default-root team.
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let default_teams = temp.path().join("default/teams");
+        let work_account = temp.path().join("claude-work");
+        let work_teams = work_account.join("teams");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_mesh_join_teams_dir(&work_teams);
+        let runtime_for_factory = runtime.clone();
+        let state = Arc::new(CoordinationState::with_components_and_runtime(
+            default_teams.clone(),
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+            Arc::new(move || runtime_for_factory.clone() as Arc<dyn CoordinationRuntime>),
+        ));
+        state
+            .with_root_orchestrator(&default_teams, |orchestrator| {
+                orchestrator.create_team("daemon-init", None).map(|_| ())
+            })
+            .expect("seed default-root team");
+
+        let service = InitializeTeamService::with_state_and_prepare(
+            state.clone(),
+            CoordinationRunRegistry::default(),
+            Arc::new(move |_request, commands| {
+                commands.managed_accounts.insert(
+                    crate::session_scanner::cli_tool::CliTool::Claude,
+                    vec![crate::models::ManagedLaunchAccount {
+                        id: "claude-work".to_string(),
+                        label: "Work".to_string(),
+                        dir: work_account.clone(),
+                        logged_in: true,
+                        is_default: false,
+                    }],
+                );
+            }),
+        );
+        let mut params = initialize_params(temp.path());
+        params.request.lead.cli_tool = "claude".to_string();
+        params.request.lead.model = "opus".to_string();
+        params.request.lead.account_id = Some("claude-work".to_string());
+
+        let run_id = service.start(params).expect("daemon worker starts");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let status = loop {
+            let status = service.status(&run_id).expect("run remains registered");
+            if status.outcome != InitializeRunOutcome::Running {
+                break status;
+            }
+            assert!(Instant::now() < deadline, "daemon initialize timed out");
+            std::thread::sleep(Duration::from_millis(5));
+        };
+
+        let InitializeRunOutcome::Failed { error } = status.outcome else {
+            panic!("same-named cross-root initialize should fail: {status:?}");
+        };
+        assert!(error.contains("already exists"), "{error}");
+        assert!(TeamConfigStore::load(&default_teams, "daemon-init").is_ok());
+        assert!(!work_teams.join("daemon-init").exists());
+        assert_eq!(
+            state.team_teams_dir("daemon-init").expect("root authority"),
+            default_teams
+        );
     }
 
     // Regression: 3f8b44ae unconditionally published the pre-pipeline snapshot,
