@@ -86,6 +86,33 @@ describe('MeshNodeDetail', () => {
     expect(onSwitchAccount).toHaveBeenCalledWith('personal')
   })
 
+  // Regression: 0bc79ceb duplicated the old daemon rejection in the runtime
+  // UI, hiding protocol 24's team-wide Claude account move when usage ran out.
+  it('offers an exhausted Claude member a team-root account switch', async () => {
+    const onSwitchAccount = vi.fn()
+    accountFixtures.byTool.claude = {
+      accounts: [
+        {
+          id: 'work',
+          display_name: 'Work',
+          logged_in: true,
+          usage: { windows: [{ used_percentage: 100, resets_at: Math.floor(Date.now() / 1000) + 3600 }] },
+        },
+        { id: 'personal', display_name: 'Personal', logged_in: true },
+      ],
+    }
+
+    renderDetail({
+      node: { tool: 'claude', accountId: 'work', accountLabel: 'Work' },
+      actions: { onSwitchAccount },
+    })
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Switch exhausted account' }))
+    await fireEvent.click(screen.getByTestId('account-option-personal'))
+
+    expect(onSwitchAccount).toHaveBeenCalledWith('personal')
+  })
+
   // Regression: 0bc79ceb kept the member picker live throughout the team-wide
   // switch, allowing a second click to queue another full stop/resume cycle.
   it('blocks duplicate exhausted-account switches while the team restart is pending', async () => {

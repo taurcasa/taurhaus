@@ -308,7 +308,7 @@
               onRemovePin={(project) => removePin(descriptor.id, project)}
               {onOpenProject}
               {onOpenTeam}
-              onSwitchTeamAccount={descriptor.capabilities.accountSelection && !descriptor.capabilities.teamConfigNamespace
+              onSwitchTeamAccount={descriptor.capabilities.accountSelection
                 ? (team) => startTeamSwitch(descriptor.id, account, team)
                 : null}
               onSetDefault={() => setGlobalDefault(descriptor.id, account.id)}
