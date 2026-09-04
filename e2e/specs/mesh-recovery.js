@@ -9,9 +9,13 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { registerCreatedTeam, forgetCreatedTeam, isOwnedTeam, ownedTeams, clearOwnedTeams } from '../helpers/teamRegistry.js'
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
+import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { assertTmuxIsolation } from '../helpers/laneTmux.js'
@@ -21,9 +25,41 @@ let mainApp = false
 let tier2Enabled = false
 let tier2SkipReason = 'Mesh prerequisites unavailable'
 let originalSettings = null
-const createdTeamNames = new Set()
 const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 let tmuxPaneSnapshot = { available: false, paneIds: [], reason: 'snapshot not captured' }
+const wrapperDir = join(process.env.TAURHAUS_DATA_DIR, 'mesh-recovery-wrapper')
+const wrapperPaths = Object.fromEntries(
+  ['claude', 'codex', 'agy', 'grok'].map((tool) => [tool, join(wrapperDir, tool)])
+)
+
+function prepareHarnessWrapper() {
+  // Regression: 430e09ee let this recovery suite inherit operator CLI commands,
+  // making resume invoke a real or unavailable harness instead of an isolated fixture.
+  mkdirSync(wrapperDir, { recursive: true })
+  const source = `#!/usr/bin/env node
+const shutdown = () => process.exit(0)
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)
+setInterval(() => {}, 60_000)
+`
+  for (const path of Object.values(wrapperPaths)) {
+    writeFileSync(path, source, 'utf8')
+    chmodSync(path, 0o755)
+  }
+}
+
+function withHarnessWrapper(settings) {
+  const updated = canonicalizeSettings(structuredClone(settings))
+  updated.terminal.tmux_layout = 'new_window'
+  for (const tool of ['claude', 'codex', 'agy', 'grok']) {
+    updated.terminal.cli_commands[tool] = {
+      continue_cmd: wrapperPaths[tool],
+      fresh: wrapperPaths[tool],
+      resume: wrapperPaths[tool],
+    }
+  }
+  return updated
+}
 
 function tmux(args) {
   assertTmuxIsolation(process.env)
@@ -173,8 +209,7 @@ async function disbandRuntimeTeamIfSafe() {
 
   const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
   const teamName = (await runtimeTitle.isExisting()) ? (await runtimeTitle.getText()).trim() : ''
-  const isRecoveryTeam = teamName.startsWith('e2e-mesh-recovery-')
-  if (!createdTeamNames.has(teamName) && !isRecoveryTeam) {
+  if (!isOwnedTeam(teamName)) {
     tier2SkipReason = `Refusing to disband runtime team not created by this spec: ${teamName || 'unknown'}`
     return false
   }
@@ -192,11 +227,11 @@ async function disbandRuntimeTeamIfSafe() {
     { ...WAIT_LONG, timeoutMsg: 'Mesh did not leave runtime mode after disband' }
   )
 
-  createdTeamNames.delete(teamName)
+  forgetCreatedTeam(teamName)
   return true
 }
 
-async function ensureSetupMode() {
+async function ensureSetupMode(teamName) {
   await openMeshTab()
 
   if (await hasVisibleTestId('mesh-mode-runtime')) {
@@ -204,10 +239,10 @@ async function ensureSetupMode() {
     if (!disbanded) return false
   }
 
-  if (await hasVisibleTestId('mesh-mode-setup')) return true
-
   if (await hasVisibleTestId('mesh-mode-empty')) {
-    await clickTestId('mesh-builder-team-name-display')
+    // Regression: 17e0f9d1 clicked into the inline editor without dispatching
+    // the input event required to move the builder from empty to setup mode.
+    await setInlineBuilderTeamName(teamName)
   }
 
   if (await hasVisibleTestId('mesh-availability-blocking')) return false
@@ -217,53 +252,9 @@ async function ensureSetupMode() {
     { ...WAIT_LONG, timeoutMsg: 'Mesh did not enter setup mode' }
   )
 
+  await setInlineBuilderTeamName(teamName)
+
   return true
-}
-
-async function setTeamName(teamName) {
-  const inlineInput = await $('[data-testid="mesh-builder-team-name-input"]')
-  if (await inlineInput.isExisting()) {
-    await inlineInput.waitForExist({ timeout: WAIT_MEDIUM.timeout })
-    await inlineInput.clearValue()
-    await inlineInput.setValue(teamName)
-    await browser.waitUntil(
-      async () => (await inlineInput.getValue()) === teamName,
-      { ...WAIT_MEDIUM, timeoutMsg: 'Inline mesh builder team name did not update' }
-    )
-    return
-  }
-
-  const inlineDisplay = await $('[data-testid="mesh-builder-team-name-display"]')
-  if (await inlineDisplay.isExisting()) {
-    await inlineDisplay.click()
-    const openedInput = await $('[data-testid="mesh-builder-team-name-input"]')
-    await openedInput.waitForExist({ timeout: WAIT_MEDIUM.timeout })
-    await openedInput.clearValue()
-    await openedInput.setValue(teamName)
-    await browser.waitUntil(
-      async () => (await openedInput.getValue()) === teamName,
-      { ...WAIT_MEDIUM, timeoutMsg: 'Inline mesh builder team name did not update' }
-    )
-    return
-  }
-
-  await clickTestId('mesh-action-customize')
-  await browser.waitUntil(
-    async () => await hasTestId('team-customizer-panel'),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not open' }
-  )
-
-  const teamNameInput = await $('[data-testid="team-customizer-name-input"]')
-  await teamNameInput.waitForExist({ timeout: WAIT_MEDIUM.timeout })
-  await teamNameInput.clearValue()
-  await teamNameInput.setValue(teamName)
-
-  await clickTestId('team-customizer-save')
-
-  await browser.waitUntil(
-    async () => !(await hasTestId('team-customizer-panel')),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not close after apply' }
-  )
 }
 
 async function selectFirstNonEmptyOption(selector) {
@@ -486,11 +477,9 @@ async function getRuntimeUiState() {
 }
 
 async function initializeRuntimeTeam() {
-  const setupReady = await ensureSetupMode()
-  if (!setupReady) return null
-
   const teamName = `e2e-mesh-recovery-${uniqueSuffix}`
-  await setTeamName(teamName)
+  const setupReady = await ensureSetupMode(teamName)
+  if (!setupReady) return null
 
   if (!(await hasTestId('mesh-builder-lead-card'))) {
     const selectedLead = await clickFirstBuilderRole('mesh-builder-role-section-leads')
@@ -547,7 +536,7 @@ async function initializeRuntimeTeam() {
     throw new Error(`Mesh error after initialize: ${await (await $('[data-testid="mesh-error"]')).getText()}`)
   }
 
-  createdTeamNames.add(teamName)
+  registerCreatedTeam(teamName)
   await waitForRuntimeTitle(teamName)
 
   const projectPath = await getTeamProjectPath(teamName)
@@ -576,6 +565,21 @@ function killPanes(paneIds) {
   for (const paneId of paneIds) {
     killPane(paneId)
   }
+}
+
+function keepTmuxSessionAlive(paneId) {
+  const sessionName = tmux(['display-message', '-p', '-t', paneId, '#{session_name}'])
+  return tmux([
+    'new-window',
+    '-d',
+    '-P',
+    '-F',
+    '#{pane_id}',
+    '-t',
+    sessionName,
+    '-n',
+    `e2e-recovery-keeper-${uniqueSuffix}`,
+  ])
 }
 
 async function ensureRuntimeIsActive(teamName) {
@@ -712,6 +716,7 @@ describe('Mesh Recovery', function () {
   before(async function () {
     assertTmuxIsolation(process.env)
     tmuxPaneSnapshot = snapshotTmuxPanes()
+    prepareHarnessWrapper()
 
     await waitForAppReady()
     mainApp = await ensureMainApp()
@@ -722,6 +727,7 @@ describe('Mesh Recovery', function () {
 
     await waitForProjectsLoaded()
     originalSettings = canonicalizeSettings(await getSettings())
+    await updateSettings(withHarnessWrapper(originalSettings))
 
     const availability = await invokeTauri('coordination_get_feature_availability')
     if (!availability.ok) {
@@ -748,11 +754,11 @@ describe('Mesh Recovery', function () {
       await updateSettings(canonicalizeSettings(originalSettings)).catch(() => {})
     }
 
-    for (const teamName of createdTeamNames) {
+    for (const teamName of ownedTeams()) {
       if (!teamName.startsWith('e2e-')) continue
       await invokeTauriWithTimeout('coordination_disband_team', { teamName }, 2_500)
     }
-    createdTeamNames.clear()
+    clearOwnedTeams()
 
     const tmuxCleanup = cleanupNewTmuxPanes(tmuxPaneSnapshot)
     if (!tmuxCleanup.attempted) {
@@ -760,6 +766,8 @@ describe('Mesh Recovery', function () {
     } else if (tmuxCleanup.failed.length > 0) {
       console.warn(`[e2e] mesh-recovery tmux cleanup failures: ${JSON.stringify(tmuxCleanup.failed)}`)
     }
+
+    rmSync(wrapperDir, { recursive: true, force: true })
   })
 
   it('shows cold-resume controls after a full team stop and reload', async function () {
@@ -776,6 +784,12 @@ describe('Mesh Recovery', function () {
     expect(teamName).toBeTruthy()
     expect(projectPath).toBeTruthy()
     expect(paneIds.length).toBeGreaterThan(0)
+
+    // Regression: 430e09ee removed every pane from the isolated tmux session,
+    // so tmux destroyed the resume target before the cold-start action ran.
+    const keeperPaneId = keepTmuxSessionAlive(paneIds[0])
+    expect(keeperPaneId).toMatch(/^%\d+$/)
+    expect(paneIds).not.toContain(keeperPaneId)
 
     killPanes(paneIds)
     await waitForOfflineMemberCount(teamName, paneIds.length, 25_000)

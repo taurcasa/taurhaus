@@ -71,7 +71,8 @@
       return
     }
 
-    if (!prevOpen || rendered || closing) return
+    // Keep this effect dependent on `open` alone; reading rendered/closing here cancels the exit timer.
+    if (!prevOpen) return
 
     closing = true
     rendered = true

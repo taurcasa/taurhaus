@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use ignore::gitignore::Gitignore;
@@ -382,84 +382,6 @@ pub(crate) fn reconcile_pruned_tree_watches_for_event(
     Ok(changed.then_some(watched_dirs.len()))
 }
 
-fn reconcile_shared_pruned_tree_watches_for_event(
-    watcher: &mut RecommendedWatcher,
-    shared_refcounts: &mut HashMap<PathBuf, usize>,
-    watched_dirs: &mut HashSet<PathBuf>,
-    project_root: &Path,
-    gitignore: &Gitignore,
-    event: &Event,
-) -> Result<Option<usize>, notify::Error> {
-    match event.kind {
-        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {}
-        _ => return Ok(None),
-    }
-
-    if event.paths.iter().any(|path| {
-        path.file_name()
-            .map(|name| name.to_string_lossy())
-            .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
-    }) {
-        let count = reconcile_shared_pruned_tree_watches(
-            watcher,
-            shared_refcounts,
-            watched_dirs,
-            project_root,
-            gitignore,
-        )?;
-        return Ok(Some(count));
-    }
-
-    let mut changed = false;
-
-    if matches!(event.kind, EventKind::Remove(_)) {
-        for path in &event.paths {
-            let removed_dirs = watched_dirs
-                .iter()
-                .filter(|watched| *watched == path || watched.starts_with(path))
-                .cloned()
-                .collect::<Vec<_>>();
-            if removed_dirs.is_empty() {
-                continue;
-            }
-            changed = true;
-            for removed in removed_dirs {
-                if let Some(refcount) = shared_refcounts.get_mut(&removed) {
-                    if *refcount <= 1 {
-                        shared_refcounts.remove(&removed);
-                        let _ = watcher.unwatch(&removed);
-                    } else {
-                        *refcount -= 1;
-                    }
-                }
-                watched_dirs.remove(&removed);
-            }
-        }
-    } else {
-        for path in &event.paths {
-            if !path.is_dir() {
-                continue;
-            }
-            if !should_watch_directory_path(project_root, path, gitignore) {
-                continue;
-            }
-            let before = watched_dirs.len();
-            let _ = reconcile_shared_pruned_tree_watches(
-                watcher,
-                shared_refcounts,
-                watched_dirs,
-                project_root,
-                gitignore,
-            )?;
-            if watched_dirs.len() != before {
-                changed = true;
-            }
-        }
-    }
-
-    Ok(changed.then_some(watched_dirs.len()))
-}
-
 /// Shared classification output for a single notify event.
 ///
 /// This captures domain-level watch semantics while keeping transport emission
@@ -760,8 +682,152 @@ fn handle_shared_tree_notify_event(
         &event,
     );
     for context in contexts {
-        handle_notify_event(&context, event.clone());
+        emit_classified_notify_event(&context, &event);
+
+        if event_may_change_watched_directories(&context.watched_dirs, &event) {
+            schedule_deferred_reconcile(context.clone());
+        }
     }
+}
+
+/// Coalescing bookkeeping for deferred watch-topology reconciliation, keyed by
+/// project id. A qualifying event bumps the project's generation; a worker
+/// runs full-tree passes until the generation it started from is still
+/// current, so an event burst collapses into at most two passes and at most
+/// one reconcile thread exists per project at a time.
+#[derive(Default)]
+struct DeferredReconcileLedger {
+    generation: HashMap<String, u64>,
+    running: HashSet<String>,
+}
+
+impl DeferredReconcileLedger {
+    /// Record a qualifying event. Returns true when the caller must start a
+    /// worker (none is running for this project).
+    fn note_event(&mut self, project_id: &str) -> bool {
+        *self.generation.entry(project_id.to_string()).or_insert(0) += 1;
+        self.running.insert(project_id.to_string())
+    }
+
+    fn current_generation(&self, project_id: &str) -> u64 {
+        self.generation.get(project_id).copied().unwrap_or(0)
+    }
+
+    /// A worker finished a pass it started at `generation`. Returns true when
+    /// the worker may stop (no newer event arrived meanwhile).
+    fn finish_pass(&mut self, project_id: &str, generation: u64) -> bool {
+        if self.current_generation(project_id) == generation {
+            self.generation.remove(project_id);
+            self.running.remove(project_id);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+static DEFERRED_RECONCILES: LazyLock<Mutex<DeferredReconcileLedger>> =
+    LazyLock::new(|| Mutex::new(DeferredReconcileLedger::default()));
+
+fn schedule_deferred_reconcile(context: NotifyEventContext) {
+    let must_start = DEFERRED_RECONCILES
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .note_event(&context.project_id);
+    if !must_start {
+        return;
+    }
+
+    let project_id = context.project_id.clone();
+    let spawn = std::thread::Builder::new()
+        .name("taurhaus-watch-reconcile".to_string())
+        .spawn(move || run_deferred_reconciles(&context));
+    if let Err(error) = spawn {
+        // Never panic inside the notify callback: a refused thread is logged
+        // and this project's running flag is released so the next qualifying
+        // event retries the spawn.
+        tracing::warn!(
+            %error,
+            project_id,
+            "watch reconcile thread spawn failed; deferring to the next event"
+        );
+        let mut ledger = DEFERRED_RECONCILES
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        ledger.running.remove(&project_id);
+    }
+}
+
+fn run_deferred_reconciles(context: &NotifyEventContext) {
+    loop {
+        let generation = DEFERRED_RECONCILES
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .current_generation(&context.project_id);
+
+        if let Some(count) = reconcile_watch_dirs_full(context) {
+            if count > 0 {
+                emit_watch_local_reconciled(
+                    &context.project_id,
+                    &context.project_root,
+                    count,
+                    "deferred",
+                );
+            }
+        }
+
+        if DEFERRED_RECONCILES
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .finish_pass(&context.project_id, generation)
+        {
+            break;
+        }
+    }
+}
+
+/// One full desired-vs-actual reconcile pass for a project's watch tree. The
+/// gitignore matcher is cloned under a narrow guard so the notify callback's
+/// next classification never waits behind the tree walk.
+fn reconcile_watch_dirs_full(context: &NotifyEventContext) -> Option<usize> {
+    let gitignore = {
+        let gis = context
+            .gitignores
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        gis.get(&context.project_id)?.clone()
+    };
+
+    let mut watcher_guard = context
+        .watcher
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let watcher = watcher_guard.as_mut()?;
+    let mut watched_dirs = context
+        .watched_dirs
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+
+    let count = if let Some(refcounts) = context.watch_refcounts.as_ref() {
+        let mut refcounts = refcounts.lock().unwrap_or_else(|error| error.into_inner());
+        reconcile_shared_pruned_tree_watches(
+            watcher,
+            &mut refcounts,
+            &mut watched_dirs,
+            &context.project_root,
+            &gitignore,
+        )
+        .ok()?
+    } else {
+        reconcile_pruned_tree_watches(
+            watcher,
+            &mut watched_dirs,
+            &context.project_root,
+            &gitignore,
+        )
+        .ok()?
+    };
+    Some(count)
 }
 
 fn handle_shared_file_notify_event(
@@ -1069,32 +1135,14 @@ impl ProjectWatcher {
     }
 }
 
-/// Process a single notify event and emit classified WatchEvents.
-fn handle_notify_event(context: &NotifyEventContext, event: Event) {
-    if let Some(reason) = reconcile_watch_dirs_for_event(
-        &context.project_id,
-        &context.project_root,
-        &context.gitignores,
-        &context.watcher,
-        &context.watched_dirs,
-        context.watch_refcounts.as_ref(),
-        &event,
-    ) {
-        emit_watch_local_reconciled(
-            &context.project_id,
-            &context.project_root,
-            reason.1,
-            reason.0,
-        );
-    }
-
+fn emit_classified_notify_event(context: &NotifyEventContext, event: &Event) {
     let classified = classify_notify_event(
         &context.project_id,
         &context.project_root,
         GIT_DEBOUNCE_SECS,
         &context.debounce,
         &context.gitignores,
-        &event,
+        event,
         false,
     );
 
@@ -1145,57 +1193,41 @@ fn handle_notify_event(context: &NotifyEventContext, event: Event) {
     }
 }
 
-fn reconcile_watch_dirs_for_event(
-    project_id: &str,
-    project_root: &Path,
-    gitignores: &Arc<Mutex<HashMap<String, Gitignore>>>,
-    watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
+fn event_may_change_watched_directories(
     watched_dirs: &Arc<Mutex<HashSet<PathBuf>>>,
-    watch_refcounts: Option<&Arc<Mutex<HashMap<PathBuf, usize>>>>,
     event: &Event,
-) -> Option<(&'static str, usize)> {
-    let gis = gitignores.lock().unwrap_or_else(|error| error.into_inner());
-    let gitignore = gis.get(project_id)?;
-    let mut watcher = watcher.lock().unwrap_or_else(|error| error.into_inner());
-    let watcher = watcher.as_mut()?;
-    let mut watched_dirs = watched_dirs
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    let before = watched_dirs.len();
-    let count = if let Some(refcounts) = watch_refcounts {
-        let mut refcounts = refcounts.lock().unwrap_or_else(|error| error.into_inner());
-        reconcile_shared_pruned_tree_watches_for_event(
-            watcher,
-            &mut refcounts,
-            &mut watched_dirs,
-            project_root,
-            gitignore,
-            event,
-        )
-        .ok()??
-    } else {
-        reconcile_pruned_tree_watches_for_event(
-            watcher,
-            &mut watched_dirs,
-            project_root,
-            gitignore,
-            event,
-        )
-        .ok()??
-    };
-    if count == before {
-        return None;
-    }
-    let reason = if event.paths.iter().any(|path| {
+) -> bool {
+    if event.paths.iter().any(|path| {
         path.file_name()
             .map(|name| name.to_string_lossy())
             .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
     }) {
-        "gitignore_changed"
-    } else {
-        "directory_topology_changed"
-    };
-    Some((reason, count))
+        return true;
+    }
+
+    if !matches!(
+        event.kind,
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+    ) {
+        return false;
+    }
+
+    if event.paths.iter().any(|path| path.is_dir()) {
+        return true;
+    }
+
+    if !matches!(event.kind, EventKind::Remove(_)) {
+        return false;
+    }
+
+    let watched_dirs = watched_dirs
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    event.paths.iter().any(|path| {
+        watched_dirs
+            .iter()
+            .any(|watched| watched == path || watched.starts_with(path))
+    })
 }
 
 #[cfg(test)]
@@ -1447,6 +1479,146 @@ mod tests {
         assert!(shared_refcounts.is_empty());
     }
 
+    // --- Deferred reconcile scheduling ---
+
+    #[test]
+    fn ledger_coalesces_event_bursts_into_bounded_passes() {
+        let mut ledger = DeferredReconcileLedger::default();
+
+        // First event starts a worker; the burst that follows does not.
+        assert!(ledger.note_event("p1"));
+        assert!(!ledger.note_event("p1"));
+        assert!(!ledger.note_event("p1"));
+
+        // A pass started before the burst finished must run again...
+        let stale_generation = 1;
+        assert!(!ledger.finish_pass("p1", stale_generation));
+        // ...and the pass that saw the final generation may stop.
+        let current = ledger.current_generation("p1");
+        assert!(ledger.finish_pass("p1", current));
+
+        // After stopping, the next event starts a fresh worker.
+        assert!(ledger.note_event("p1"));
+    }
+
+    #[test]
+    fn ledger_tracks_projects_independently() {
+        let mut ledger = DeferredReconcileLedger::default();
+        assert!(ledger.note_event("p1"));
+        assert!(ledger.note_event("p2"));
+        let g1 = ledger.current_generation("p1");
+        assert!(ledger.finish_pass("p1", g1));
+        // p2's worker is unaffected by p1 finishing.
+        assert!(!ledger.note_event("p2"));
+    }
+
+    #[test]
+    fn directory_topology_gate_matches_only_watch_changing_events() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let real_dir = dir.path().join("new-crate");
+        std::fs::create_dir(&real_dir).unwrap();
+        let plain_file = dir.path().join("notes.txt");
+        std::fs::write(&plain_file, "x").unwrap();
+
+        let watched: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(
+            [dir.path().join("src"), dir.path().join("src/deep")]
+                .into_iter()
+                .collect(),
+        ));
+
+        let event = |kind: EventKind, path: &Path| Event {
+            kind,
+            paths: vec![path.to_path_buf()],
+            attrs: Default::default(),
+        };
+        let create = EventKind::Create(notify::event::CreateKind::Any);
+        let remove = EventKind::Remove(notify::event::RemoveKind::Any);
+        let access = EventKind::Access(notify::event::AccessKind::Any);
+
+        // A created directory can need a new watch.
+        assert!(event_may_change_watched_directories(
+            &watched,
+            &event(create, &real_dir)
+        ));
+        // Ignore-file edits reshape the desired tree by name alone.
+        assert!(event_may_change_watched_directories(
+            &watched,
+            &event(create, &dir.path().join(".gitignore"))
+        ));
+        // Removing a watched dir, or an ancestor of one, drops watches.
+        assert!(event_may_change_watched_directories(
+            &watched,
+            &event(remove, &dir.path().join("src/deep"))
+        ));
+        assert!(event_may_change_watched_directories(
+            &watched,
+            &event(remove, &dir.path().join("src"))
+        ));
+        // Plain-file churn and non-mutating kinds never reconcile.
+        assert!(!event_may_change_watched_directories(
+            &watched,
+            &event(create, &plain_file)
+        ));
+        assert!(!event_may_change_watched_directories(
+            &watched,
+            &event(access, &real_dir)
+        ));
+        assert!(!event_may_change_watched_directories(
+            &watched,
+            &event(remove, &dir.path().join("unrelated"))
+        ));
+    }
+
+    #[test]
+    fn deferred_reconcile_installs_the_watch_for_a_new_directory() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let new_dir = root.join("fresh-module");
+        std::fs::create_dir(&new_dir).unwrap();
+
+        let watcher = RecommendedWatcher::new(
+            |_| {},
+            Config::default().with_poll_interval(Duration::from_secs(2)),
+        )
+        .unwrap();
+        let (tx, _rx) = mpsc::channel();
+        let gitignores: Arc<Mutex<HashMap<String, Gitignore>>> = Arc::new(Mutex::new(
+            [("deferred-p".to_string(), build_gitignore(&root))]
+                .into_iter()
+                .collect(),
+        ));
+        let context = NotifyEventContext {
+            tx,
+            project_id: "deferred-p".to_string(),
+            project_root: root.clone(),
+            debounce: Arc::new(Mutex::new(HashMap::new())),
+            gitignores,
+            watcher: Arc::new(Mutex::new(Some(watcher))),
+            watched_dirs: Arc::new(Mutex::new(HashSet::new())),
+            watch_refcounts: Some(Arc::new(Mutex::new(HashMap::new()))),
+        };
+
+        schedule_deferred_reconcile(context.clone());
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            {
+                let watched = context
+                    .watched_dirs
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                if watched.contains(&new_dir) {
+                    break;
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "deferred reconcile never installed the watch for {new_dir:?}"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
     // --- Debounce logic test ---
 
     #[test]
@@ -1468,8 +1640,8 @@ mod tests {
         let gis = empty_gitignores();
         let context =
             test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
-        handle_notify_event(&context, event1.clone());
-        handle_notify_event(&context, event1);
+        emit_classified_notify_event(&context, &event1);
+        emit_classified_notify_event(&context, &event1);
 
         // Should only receive one event (second is debounced)
         let first = rx.try_recv();
@@ -1496,7 +1668,7 @@ mod tests {
 
         let context =
             test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
-        handle_notify_event(&context, event);
+        emit_classified_notify_event(&context, &event);
 
         let received = rx.try_recv().unwrap();
         match received {
@@ -1526,7 +1698,7 @@ mod tests {
 
         let context =
             test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
-        handle_notify_event(&context, event);
+        emit_classified_notify_event(&context, &event);
 
         let received = rx.try_recv().unwrap();
         match received {
@@ -1554,7 +1726,7 @@ mod tests {
 
         let context =
             test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
-        handle_notify_event(&context, event);
+        emit_classified_notify_event(&context, &event);
 
         assert!(rx.try_recv().is_err(), "Access events should be ignored");
     }
@@ -1596,7 +1768,7 @@ mod tests {
         };
         let context =
             test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
-        handle_notify_event(&context, event);
+        emit_classified_notify_event(&context, &event);
         assert!(
             rx.try_recv().is_err(),
             "gitignored output/ file should not emit event"
@@ -1612,7 +1784,7 @@ mod tests {
         };
         let context =
             test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
-        handle_notify_event(&context, event);
+        emit_classified_notify_event(&context, &event);
         assert!(
             rx.try_recv().is_err(),
             "gitignored *.log file should not emit event"
@@ -1628,7 +1800,7 @@ mod tests {
         };
         let context =
             test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
-        handle_notify_event(&context, event);
+        emit_classified_notify_event(&context, &event);
         assert!(
             rx.try_recv().is_err(),
             "gitignored db-wal file should not emit event"
@@ -1644,7 +1816,7 @@ mod tests {
         };
         let context =
             test_notify_context(&tx, "p1", &root, &debounce, &gis, &watcher, &watched_dirs);
-        handle_notify_event(&context, event);
+        emit_classified_notify_event(&context, &event);
         let received = rx.try_recv();
         assert!(
             received.is_ok(),
@@ -1849,7 +2021,7 @@ mod tests {
             &watcher,
             &watched_dirs,
         );
-        handle_notify_event(&context, event);
+        emit_classified_notify_event(&context, &event);
 
         let lines = wait_for_lines(&log_path, 1);
         let dropped: serde_json::Value = serde_json::from_str(&lines[0]).expect("json");

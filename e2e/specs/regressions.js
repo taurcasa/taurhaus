@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { selectProjectByName, switchToTab, waitForProjectsLoaded } from '../helpers/navigation.js'
+import { clickTestId, selectProjectByName, switchToTab, waitForProjectsLoaded } from '../helpers/navigation.js'
 import { TAURHAUS_CLAUDE_DIR, TAURHAUS_PROJECT_PATH } from '../helpers/platform.js'
 import { POLL, WAIT_MEDIUM } from '../helpers/timing.js'
 import { ensureAttachedTmuxSession, killTmuxPane, openTmuxWindow } from '../helpers/tmux.js'
@@ -21,7 +21,7 @@ const REGRESSION_TEAM = `event-pipeline-team-${REGRESSION_STAMP}`
 const TASK_SUBJECT = `Regression task ${REGRESSION_STAMP}`
 const README_MARKER = `event-pipeline-readme-${REGRESSION_STAMP}`
 
-function writeRegressionTask(teamName, projectPath, subject) {
+function prepareRegressionTaskSource(teamName, projectPath) {
   const teamDir = join(TAURHAUS_CLAUDE_DIR, 'teams', teamName)
   const tasksDir = join(TAURHAUS_CLAUDE_DIR, 'tasks', teamName)
   mkdirSync(teamDir, { recursive: true })
@@ -31,13 +31,18 @@ function writeRegressionTask(teamName, projectPath, subject) {
     JSON.stringify(
       {
         name: teamName,
-        members: [{ projectPath }],
+        createdAt: Date.now(),
+        members: [{ name: 'team-lead', role: 'lead', projectPath }],
       },
       null,
       2
     ),
     'utf8'
   )
+}
+
+function writeRegressionTask(teamName, subject) {
+  const tasksDir = join(TAURHAUS_CLAUDE_DIR, 'tasks', teamName)
   writeFileSync(
     join(tasksDir, '1.json'),
     JSON.stringify(
@@ -75,12 +80,10 @@ describe('Regressions', () => {
     // no matching <style> block because it was scoped to Shell.svelte).
     // Fix: moved animation to app.css as a global rule.
     //
-    // IMPORTANT: content-enter must ONLY be on the {#key} wrapper div
-    // (Shell.svelte), NOT on elements inside individual tabs. Chromium
-    // replays CSS animations when toggling display:none (class:hidden),
-    // and the transform property forces GPU compositor layer creation.
-    // For tabs with large Shiki-highlighted content (thousands of spans),
-    // this causes multi-second freezes on every tab switch.
+    // IMPORTANT: content-enter must not be on a tab's root content element.
+    // Chromium replays that animation when toggling display:none (class:hidden),
+    // and the transform property forces GPU compositor layer creation for the
+    // whole tab. Nested keyed data-reveal animations added in f7255601 are safe.
 
     it('main content wrapper has content-enter class', async function () {
       if (!mainApp) return this.skip()
@@ -111,17 +114,6 @@ describe('Regressions', () => {
       expect(animationName).toBe('content-enter')
     })
 
-    it('tab internals do NOT have content-enter class', async function () {
-      if (!mainApp) return this.skip()
-
-      // content-enter must only exist once (on the {#key} wrapper).
-      // If any tab component also has it, the animation replays on every
-      // tab switch, causing GPU compositor thrashing with large content.
-      const count = await browser.execute(() => {
-        return document.querySelectorAll('.content-enter').length
-      })
-      expect(count).toBe(1) // Only the wrapper
-    })
   })
 
   describe('DirectoryBrowser overflow (commit 284bd54 regression)', () => {
@@ -369,10 +361,22 @@ describe('Regressions', () => {
     it('refreshes the active task board after a live Claude task file appears', async function () {
       if (!mainApp) return this.skip()
 
+      // Regression: f173a922 reconciled new directories from inside the shared
+      // notify callback, blocking delivery before a new team's task could scan.
       await selectProjectByName('taurhaus')
       await switchToTab('tasks')
-
-      writeRegressionTask(REGRESSION_TEAM, TAURHAUS_PROJECT_PATH, TASK_SUBJECT)
+      // Regression: f9c1e893a assumed entering Tasks reset the persisted subtab,
+      // so the sealed session-management group left this assertion on History.
+      await clickTestId('sub-tab-active')
+      await browser.waitUntil(
+        async () => {
+          const activeSubTab = await $('[data-testid="sub-tab-active"]')
+          return (await activeSubTab.getAttribute('aria-selected')) === 'true'
+        },
+        { ...WAIT_MEDIUM, timeoutMsg: 'Active task board subtab did not become selected' }
+      )
+      prepareRegressionTaskSource(REGRESSION_TEAM, TAURHAUS_PROJECT_PATH)
+      writeRegressionTask(REGRESSION_TEAM, TASK_SUBJECT)
 
       await browser.waitUntil(
         async () => {
@@ -391,6 +395,54 @@ describe('Regressions', () => {
           .join('\n')
       })
       expect(taskText).toContain(TASK_SUBJECT)
+    })
+  })
+
+  describe('tab roots carry no entry animation (commit 768cdec regression, scope reduced)', () => {
+    it('no tabpanel direct child has the content-enter class', async function () {
+      if (!mainApp) return this.skip()
+
+      // Regression lineage, stated honestly:
+      // - 768cdec / 04ea54d1: content-enter inside tab internals replays on
+      //   every tab switch (Chromium restarts CSS animations when class:hidden
+      //   toggles display) — removed, and the old test pinned a GLOBAL count
+      //   of exactly one content-enter (the Shell {#key} wrapper).
+      // - f7255601 (2026-03) deliberately reintroduced nested reveal
+      //   animations inside tab views, so the global-count invariant no longer
+      //   describes the product. This test now guards ONLY the structural
+      //   half: tab panel ROOTS never animate (the original mistake's shape).
+      //   The nested-replay exposure f7255601 accepted is a recorded product
+      //   decision, not covered here — if that decision is reversed, restore
+      //   the global-count assertion alongside this one.
+      const tabNames = ['overview', 'tasks', 'mesh', 'git', 'files']
+      for (const tabName of tabNames) {
+        await clickTestId(`tab-${tabName}`)
+        await browser.waitUntil(
+          async () => await browser.execute((name) => {
+            const panel = document.querySelector(`#shell-panel-${name}`)
+            return panel && panel.children.length > 0
+          }, tabName),
+          { ...WAIT_MEDIUM, timeoutMsg: `Tab root for "${tabName}" did not mount` }
+        )
+      }
+
+      const inspection = await browser.execute(() => {
+        const wrapper = document.querySelector('[data-testid="content-wrapper"]')
+        if (!wrapper) return { mountedPanelIds: [], rootOffenders: ['content-wrapper-missing'] }
+        const panels = wrapper.querySelectorAll(':scope > [role="tabpanel"]')
+        return {
+          mountedPanelIds: Array.from(panels)
+            .filter((panel) => panel.children.length > 0)
+            .map((panel) => panel.id),
+          rootOffenders: Array.from(panels).flatMap((panel) =>
+            Array.from(panel.children)
+              .filter((child) => child.classList.contains('content-enter'))
+              .map((child) => `${panel.id}:${child.tagName.toLowerCase()}`)
+          ),
+        }
+      })
+      expect(inspection.mountedPanelIds).toEqual(tabNames.map((name) => `shell-panel-${name}`))
+      expect(inspection.rootOffenders).toEqual([])
     })
   })
 })

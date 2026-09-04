@@ -8,8 +8,9 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
-import { WAIT_SHORT, WAIT_MEDIUM } from '../helpers/timing.js'
+import { waitForProjectsLoaded, fastClick, clickTestId } from '../helpers/navigation.js'
+import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
+import { WAIT_SHORT, WAIT_MEDIUM, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 import {
@@ -171,6 +172,38 @@ async function hasTestId(testId) {
   return await (await $(`[data-testid="${testId}"]`)).isExisting()
 }
 
+async function readRuntimeTeamName() {
+  return await browser.execute(() => {
+    return document.querySelector('[data-testid="mesh-runtime-title"]')?.textContent?.trim() ?? ''
+  })
+}
+
+async function clickLastTestId(testId) {
+  const elements = await $$(`[data-testid="${testId}"]`)
+  const element = elements.at(-1)
+  if (!element) return false
+  await element.scrollIntoView().catch(() => {})
+  await element.click()
+  return true
+}
+
+async function isConfirmDialogOpen() {
+  return await browser.execute(() => {
+    const dialogs = Array.from(document.querySelectorAll('[data-testid="confirm-dialog"]'))
+    return dialogs.some((dialog) => dialog instanceof HTMLDialogElement && dialog.open)
+  })
+}
+
+async function clickOpenConfirmDialog() {
+  const selector = 'dialog[open][data-testid="confirm-dialog"] [data-testid="confirm-dialog-confirm"]'
+  const confirm = await $(selector)
+  if (!(await confirm.isExisting()) || !(await confirm.isEnabled())) {
+    throw new Error('Open confirmation action was unavailable')
+  }
+  const clicked = await fastClick(selector)
+  if (!clicked) throw new Error('Open confirmation action was unavailable')
+}
+
 function skipRuntimeTest(testContext, reason) {
   blockedReason = reason
   console.log(`[e2e] runtime lane skipped: ${reason}`)
@@ -257,16 +290,34 @@ async function openMeshTab() {
 async function disbandRuntimeTeamIfE2E() {
   if (!(await hasTestId('mesh-mode-runtime'))) return true
 
-  const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
-  const teamName = (await runtimeTitle.isExisting()) ? (await runtimeTitle.getText()).trim() : ''
+  if (await hasTestId('mesh-node-detail-close')) {
+    await clickLastTestId('mesh-node-detail-close')
+  }
+  if (!(await closeSlideOverIfOpen())) {
+    blockedReason = 'Could not close active slideover before disband'
+    return false
+  }
+
+  // Regression: acd3c5aa weakened the cleanup guard by searching the DOM for
+  // an expected value instead of validating the rendered runtime team name.
+  const teamName = await readRuntimeTeamName()
   if (!createdTeamNames.has(teamName)) {
     blockedReason = `Refusing to disband runtime team not created by this spec: ${teamName || 'unknown'}`
     return false
   }
 
-  await clickTestId('mesh-runtime-disband')
-  if (await hasTestId('confirm-dialog-confirm')) {
-    await clickTestId('confirm-dialog-confirm')
+  await clickLastTestId('mesh-runtime-more-toggle')
+  await browser.waitUntil(
+    async () => await hasTestId('mesh-runtime-disband'),
+    { ...WAIT_SHORT, timeoutMsg: 'Disband action did not appear' }
+  )
+  await clickLastTestId('mesh-runtime-disband')
+  const confirmAppeared = await browser.waitUntil(
+    async () => await isConfirmDialogOpen(),
+    { ...WAIT_SHORT, timeoutMsg: 'Disband confirmation did not appear' }
+  ).then(() => true).catch(() => false)
+  if (confirmAppeared) {
+    await clickOpenConfirmDialog()
   }
 
   await browser.waitUntil(
@@ -331,7 +382,7 @@ async function ensureSetupMode(testContext) {
   }
 
   if (await hasTestId('mesh-mode-empty')) {
-    await clickTestId('mesh-builder-team-name-display')
+    await setInlineBuilderTeamName()
   }
 
   await browser.waitUntil(
@@ -346,8 +397,7 @@ async function ensureRuntimeMode(testContext) {
   if (!(await ensureMeshAvailable(testContext))) return null
 
   if (await hasTestId('mesh-mode-runtime')) {
-    const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
-    const existingTeamName = (await runtimeTitle.isExisting()) ? (await runtimeTitle.getText()).trim() : ''
+    const existingTeamName = await readRuntimeTeamName()
     if (!createdTeamNames.has(existingTeamName)) {
       skipRuntimeTest(testContext, `Refusing to reuse runtime team not created by this spec: ${existingTeamName || 'unknown'}`)
       return null
@@ -355,31 +405,21 @@ async function ensureRuntimeMode(testContext) {
     return existingTeamName
   }
 
-  try {
-    if (!(await ensureSetupMode(testContext))) return null
-  } catch (error) {
-    skipRuntimeTest(testContext, error?.message || 'Mesh did not enter setup mode')
-    return null
+  if (!(await ensureSetupMode(testContext))) return null
+
+  if (!(await hasTestId('mesh-builder-lead-card'))) {
+    const leadRoleId = await findLeadRoleId()
+    await clickTestId(`mesh-builder-role-${leadRoleId}`)
+    await browser.waitUntil(
+      async () => await hasTestId('mesh-builder-lead-card'),
+      { ...WAIT_SHORT, timeoutMsg: 'Lead role was not assigned from the inline catalog' }
+    )
   }
 
   const teamName = nextId('e2e-template-ui-team')
-  await clickTestId('mesh-action-customize')
-  await browser.waitUntil(
-    async () => await hasTestId('team-customizer-panel'),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not open' }
-  )
-
-  if (!(await setActiveSlideOverInputValue('team-customizer-name-input', teamName))) {
-    throw new Error('Team customizer name input missing')
-  }
-  if (!(await clickActiveSlideOverTestId('team-customizer-save'))) {
-    throw new Error('Team customizer save missing')
-  }
-
-  await browser.waitUntil(
-    async () => !(await hasTestId('team-customizer-panel')),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not close' }
-  )
+  // Regression: acd3c5aa drove the unused MeshActionBar customizer contract;
+  // the roster builder owns team-name editing inline.
+  await setInlineBuilderTeamName(teamName)
   createdTeamNames.add(teamName)
 
   const initializeButton = await $('[data-testid="mesh-action-initialize"]')
@@ -411,13 +451,15 @@ async function ensureRuntimeMode(testContext) {
     return null
   }
 
-  const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
-  if (!(await runtimeTitle.isExisting())) {
-    skipRuntimeTest(testContext, 'Mesh runtime title missing after initialization')
-    return null
-  }
-
-  const runtimeTeamName = (await runtimeTitle.getText()).trim()
+  // Regression: acd3c5aa converted runtime-title selector drift into a skip;
+  // a missing or incorrect runtime title must fail the workflow loudly.
+  await browser.waitUntil(
+    async () => {
+      return await readRuntimeTeamName() === teamName
+    },
+    { ...WAIT_MODE, timeoutMsg: `Mesh runtime title did not resolve to ${teamName}` }
+  )
+  const runtimeTeamName = await readRuntimeTeamName()
   if (!runtimeTeamName.startsWith('e2e-')) {
     skipRuntimeTest(testContext, `Expected e2e runtime team, got: ${runtimeTeamName || '<empty>'}`)
     return null
@@ -429,7 +471,9 @@ async function ensureRuntimeMode(testContext) {
 async function openTemplateBrowser(testContext) {
   if (!(await ensureEmptyMode(testContext))) return false
 
-  await clickTestId('mesh-template-browse-catalog')
+  // Regression: 14793e0a repurposed mesh-template-browse-catalog to focus the
+  // inline role search; the browser restored by bed5024c has its own action.
+  await clickTestId('mesh-template-open-browser')
   await browser.waitUntil(
     async () => await hasTestId('template-browser-panel'),
     { ...WAIT_MEDIUM, timeoutMsg: 'Template browser did not open' }
@@ -467,9 +511,44 @@ describe('Template CRUD UI', () => {
   })
 
   describe('non-runtime lane', () => {
-    // Known-stale since 17e0f9d: Browse catalog became Focus search and
-    // TemplateBrowserPanel currently has no render site. Keep skipped until the UI returns.
-    it.skip('creates a custom role via UI', async function () {
+    it('keeps built-in roles protected (no edit/delete)', async function () {
+    if (!mainApp) return this.skip()
+
+    try {
+      if (!(await openTemplateBrowser(this))) return
+
+      await clickActiveSlideOverTestId('catalog-tab-roles')
+      const summaries = await invokeOrThrow('templates_list_roles_full')
+      const builtInIds = (summaries ?? [])
+        .filter((entry) => String(getField(entry, 'source', 'source')).toLowerCase() === 'built_in')
+        .map((entry) => getField(entry, 'roleId', 'role_id'))
+        .filter(Boolean)
+
+      expect(builtInIds.length).toBeGreaterThan(0)
+
+      const roleCards = await $$('[data-testid^="role-template-card-"]')
+      let foundProtected = false
+      for (const card of roleCards) {
+        const testId = await card.getAttribute('data-testid')
+        if (!testId) continue
+        const roleId = String(testId).replace(/^role-template-card-/, '')
+        if (!builtInIds.includes(roleId)) continue
+        const hasUse = await (await $(`[data-testid="role-use-${roleId}"]`)).isExisting()
+        const hasInspect = await (await $(`[data-testid="role-inspect-${roleId}"]`)).isExisting()
+        const hasDelete = await (await $(`[data-testid="role-delete-${roleId}"]`)).isExisting()
+        if (hasUse && hasInspect && !hasDelete) {
+          foundProtected = true
+          break
+        }
+      }
+
+      expect(foundProtected).toBe(true)
+    } finally {
+      await closeSlideOverIfOpen()
+    }
+  })
+
+    it('creates a custom role via UI', async function () {
     if (!mainApp) return this.skip()
 
     const roleId = nextId('e2e-role-ui-create')
@@ -553,18 +632,14 @@ describe('Template CRUD UI', () => {
       }
       await bestEffortFlushPending()
 
-      const persisted = await browser.waitUntil(
+      await browser.waitUntil(
         async () => {
           const lookup = await invokeTauri('templates_get_role', { roleId })
           if (!lookup?.ok || !lookup?.result) return false
           return String(lookup.result.instructions ?? '').includes('Role instructions v2')
         },
         { ...WAIT_MODE, timeoutMsg: 'Role edit was not persisted' }
-      ).then(() => true).catch(() => false)
-      if (!persisted) {
-        skipNonRuntimeTest(this, 'Role edit persistence did not settle in time')
-        return
-      }
+      )
 
       await clickActiveSlideOverTestId('catalog-tab-roles')
 
@@ -576,8 +651,7 @@ describe('Template CRUD UI', () => {
           (await clickActiveSlideOverTestId(`role-inspect-${roleId}`)) ||
           (await clickActiveSlideOverTestId(`role-template-card-${roleId}`))
         if (!openedDetail) {
-          skipNonRuntimeTest(this, `Role inspect trigger missing for ${roleId}`)
-          return
+          throw new Error(`Role inspect trigger missing for ${roleId}`)
         }
       }
 
@@ -614,7 +688,7 @@ describe('Template CRUD UI', () => {
       let confirmAppeared = false
       try {
         await browser.waitUntil(
-          async () => await hasTestId('confirm-dialog-confirm'),
+          async () => await isConfirmDialogOpen(),
           { ...WAIT_SHORT, timeoutMsg: 'Role delete confirmation did not appear' }
         )
         confirmAppeared = true
@@ -622,7 +696,7 @@ describe('Template CRUD UI', () => {
         confirmAppeared = false
       }
       if (confirmAppeared) {
-        await clickTestId('confirm-dialog-confirm')
+        await clickOpenConfirmDialog()
       }
 
       await browser.waitUntil(
@@ -634,41 +708,6 @@ describe('Template CRUD UI', () => {
       await bestEffortDeleteRole(roleId)
       await bestEffortFlushPending()
     }
-  })
-
-    it('keeps built-in roles protected (no edit/delete)', async function () {
-    if (!mainApp) return this.skip()
-    if (!(await openTemplateBrowser(this))) return
-
-    await clickActiveSlideOverTestId('catalog-tab-roles')
-    const summaries = await invokeOrThrow('templates_list_roles_full')
-    const builtInIds = (summaries ?? [])
-      .filter((entry) => String(getField(entry, 'source', 'source')).toLowerCase() === 'built_in')
-      .map((entry) => getField(entry, 'roleId', 'role_id'))
-      .filter(Boolean)
-
-    if (builtInIds.length === 0) {
-      skipNonRuntimeTest(this, 'No built-in roles reported by template catalog')
-      return
-    }
-
-    const roleCards = await $$('[data-testid^="role-template-card-"]')
-    let foundProtected = false
-    for (const card of roleCards) {
-      const testId = await card.getAttribute('data-testid')
-      if (!testId) continue
-      const roleId = String(testId).replace(/^role-template-card-/, '')
-      if (!builtInIds.includes(roleId)) continue
-      const hasUse = await (await $(`[data-testid="role-use-${roleId}"]`)).isExisting()
-      const hasInspect = await (await $(`[data-testid="role-inspect-${roleId}"]`)).isExisting()
-      const hasDelete = await (await $(`[data-testid="role-delete-${roleId}"]`)).isExisting()
-      if (hasUse && hasInspect && !hasDelete) {
-        foundProtected = true
-        break
-      }
-    }
-
-    expect(foundProtected).toBe(true)
   })
 
     it('creates a preset via UI and deletes a preset via UI', async function () {
@@ -697,8 +736,7 @@ describe('Template CRUD UI', () => {
 
       const openedPresetsTab = await clickActiveSlideOverTestId('catalog-tab-presets')
       if (!openedPresetsTab) {
-        skipNonRuntimeTest(this, 'Preset tab toggle unavailable in active slideover')
-        return
+        throw new Error('Preset tab toggle unavailable in active slideover')
       }
       await browser.waitUntil(
         async () => await hasActiveSlideOverTestId('template-preset-create'),
@@ -721,15 +759,18 @@ describe('Template CRUD UI', () => {
         async () => await (await $(`[data-testid="template-browser-preset-${createdPresetId}"]`)).isExisting(),
         { ...WAIT_MEDIUM, timeoutMsg: 'Created preset did not appear in preset list' }
       )
-      await closeSlideOverIfOpen()
+      await browser.waitUntil(
+        async () => !(await hasTestId('team-customizer-panel')),
+        { ...WAIT_MEDIUM, timeoutMsg: 'Preset customizer did not close after save' }
+      )
 
       await clickActiveSlideOverTestId('catalog-tab-presets')
       await clickActiveSlideOverTestId(`template-preset-delete-${presetIdToDelete}`)
       await browser.waitUntil(
-        async () => await hasTestId('confirm-dialog-confirm'),
+        async () => await isConfirmDialogOpen(),
         { ...WAIT_SHORT, timeoutMsg: 'Preset delete confirmation did not appear' }
       )
-      await clickTestId('confirm-dialog-confirm')
+      await clickOpenConfirmDialog()
 
       await browser.waitUntil(
         async () => !(await (await $(`[data-testid="template-browser-preset-${presetIdToDelete}"]`)).isExisting()),
@@ -746,6 +787,16 @@ describe('Template CRUD UI', () => {
   })
 
   describe('runtime lane', () => {
+    it('enters setup mode through the inline team-name edit', async function () {
+    if (!mainApp) return this.skip()
+
+    // Regression: 17e0f9d1 changed the empty-state control to an inline editor,
+    // but the runtime setup helper still treated clicking its display as a transition.
+    if (!(await ensureEmptyMode(this))) return
+    await ensureSetupMode(this)
+    expect(await hasTestId('mesh-mode-setup')).toBe(true)
+    })
+
     it('supports role-aware Add Agent autofill and unlock', async function () {
     if (!mainApp) return this.skip()
 
@@ -768,14 +819,52 @@ describe('Template CRUD UI', () => {
       const runtimeTeam = await ensureRuntimeMode(this)
       if (!runtimeTeam) return
 
-      await clickTestId('mesh-runtime-add-agent')
-      await browser.waitUntil(
-        async () => await hasTestId('mesh-add-agent-form'),
-        { ...WAIT_MEDIUM, timeoutMsg: 'Add agent form did not open' }
-      )
+      // Regression: 430e09ee removed the duplicate Add Agent action; active
+      // teams expose the same flow through the runtime primary action.
+      //
+      // Diagnosed under full-suite load (app log shows ZERO IPC after the
+      // click): the 2s live-team-status poll re-renders the runtime view, so
+      // a single click can land on a just-replaced (stale) button element and
+      // vanish — standalone runs re-render less and never hit it. The open is
+      // therefore click-until-open (idempotent: the click opens one slide-over
+      // and the form check runs first), which survives any re-render timing.
+      // NOTE for future readers: the spec's own cleanup disbands the team
+      // AFTER a failure and BEFORE artifact capture, so a "Team disbanded"
+      // banner in failure.png is usually the cleanup, not the cause — check
+      // the app log for who issued the disband.
+      try {
+        await browser.waitUntil(
+          async () => {
+            if (await hasTestId('mesh-add-agent-form')) return true
+            await clickTestId('mesh-runtime-primary-action')
+            return await hasTestId('mesh-add-agent-form')
+          },
+          { ...WAIT_XLONG, timeoutMsg: 'Add agent form did not open' }
+        )
+      } catch (error) {
+        // A dead-session self-heal disband inside the window is legitimate
+        // product behavior in tier-1 (members run unauthenticated and die
+        // fast): rebuild the runtime team once; a second loss fails loudly.
+        if (await hasTestId('mesh-mode-runtime')) throw error
+        const rebuiltTeam = await ensureRuntimeMode(this)
+        if (!rebuiltTeam) return
+        await browser.waitUntil(
+          async () => {
+            if (await hasTestId('mesh-add-agent-form')) return true
+            await clickTestId('mesh-runtime-primary-action')
+            return await hasTestId('mesh-add-agent-form')
+          },
+          { ...WAIT_XLONG, timeoutMsg: 'Add agent form did not open after team rebuild' }
+        )
+      }
 
-      const roleSelect = await $('[data-testid="mesh-add-agent-role-select"]')
-      await roleSelect.selectByAttribute('value', roleId)
+      // Regression: 372511aa replaced the runtime role select with the shared
+      // role catalog, so role-aware coverage must choose its catalog card.
+      await browser.waitUntil(
+        async () => await hasActiveSlideOverTestId(`mesh-add-agent-role-card-${roleId}`),
+        { ...WAIT_MEDIUM, timeoutMsg: 'Created runtime role did not appear in the catalog' }
+      )
+      await clickActiveSlideOverTestId(`mesh-add-agent-role-card-${roleId}`)
 
       await browser.waitUntil(
         async () => {
@@ -828,16 +917,18 @@ describe('Template CRUD UI', () => {
       const runtimeTeam = await ensureRuntimeMode(this)
       if (!runtimeTeam) return
 
-      const firstAgentNode = (await $$('[data-testid="mesh-node-agent"]'))[0]
-      if (!firstAgentNode) return this.skip()
+      // Regression: acd3c5aa initialized a lead-only fixture but silently
+      // skipped capture coverage unless an agent node happened to exist.
+      const firstRuntimeNode = (await $$('[data-testid="mesh-node-lead"], [data-testid="mesh-node-agent"]'))[0]
+      if (!firstRuntimeNode) throw new Error('Runtime node missing after initialization')
 
-      await firstAgentNode.click()
+      await firstRuntimeNode.click()
       await browser.waitUntil(
         async () => await hasTestId('mesh-node-detail-capture'),
         { ...WAIT_MEDIUM, timeoutMsg: 'Runtime node detail capture button did not appear' }
       )
 
-      await clickTestId('mesh-node-detail-capture')
+      await clickLastTestId('mesh-node-detail-capture')
       await browser.waitUntil(
         async () => await hasTestId('mesh-capture-role-form'),
         { ...WAIT_MEDIUM, timeoutMsg: 'Capture role dialog did not open' }
@@ -866,6 +957,7 @@ describe('Template CRUD UI', () => {
       }
 
       if (!(await openTemplateBrowser(this))) return
+      await clickActiveSlideOverTestId('catalog-tab-roles')
       expect(await (await $(`[data-testid="role-template-card-${capturedRoleId}"]`)).isExisting()).toBe(true)
     } finally {
       await disbandRuntimeTeamIfE2E()
@@ -876,6 +968,8 @@ describe('Template CRUD UI', () => {
   })
 
   after(async () => {
+    const slideOverClosed = await closeSlideOverIfOpen()
+
     for (const teamName of createdTeamNames) {
       if (!teamName.startsWith('e2e-')) continue
       await invokeTauriWithTimeout('coordination_disband_team', { teamName }, 2_500)
@@ -891,6 +985,10 @@ describe('Template CRUD UI', () => {
 
     if (blockedReason) {
       console.log(`[e2e] template crud ui skipped/limited due to mesh prerequisites or safety guard: ${blockedReason}`)
+    }
+
+    if (!slideOverClosed) {
+      throw new Error('Template CRUD UI left an active slideover open during teardown')
     }
   })
 })

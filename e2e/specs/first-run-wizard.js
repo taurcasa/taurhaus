@@ -20,8 +20,9 @@ describe('First-run wizard', () => {
     await getStarted.click()
 
     const daemonStep = await $('[data-testid="wizard-step-2"]')
-    await daemonStep.waitForExist({ timeout: 5_000 })
-    expect(await daemonStep.isDisplayed()).toBe(true)
+    // Regression: c3d5ea841 asserted display immediately after DOM insertion,
+    // racing the wizard transition under full-suite load.
+    await daemonStep.waitForDisplayed({ timeout: 5_000 })
 
     await browser.waitUntil(
       async () => {
@@ -123,11 +124,10 @@ describe('First-run wizard', () => {
 
     await registerButton.click()
 
+    // Regression: c3d5ea841 stopped waiting as soon as step 5 appeared, then
+    // disconnected the observer before the asynchronous completion step rendered.
     await browser.waitUntil(
       async () => {
-        const progressStep = await $('[data-testid="wizard-step-5"]')
-        if (await progressStep.isExisting()) return true
-
         const completionStep = await $('[data-testid="wizard-step-6"]')
         if (await completionStep.isExisting()) return true
 
