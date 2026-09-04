@@ -63,6 +63,35 @@ exactly one thing: shown-ness.
 | Add-project surface | Takeover (both concepts ruled it; argued from interaction cost — the rail stays watchable during scan-triage, the scan list gets panel height). Three workflows survive as segmented control. |
 | Settings sections | Sentence-case 12px titles (both agreed); card language kept. |
 
+## Refinement: the pulled-row bridge (operator request, post-#132)
+
+The scoops stopped implying and the material now actually continues: a
+bridge carries the pulled row's panel surface across the 6px frame gutter
+into the main panel — one unbroken material, the way the titlebar's manila
+tab meets the content panel. Mechanics (a scroll container cannot paint a
+child across its clipped axis, so the bridge lives outside the rail; the
+strip tracks the row via the rail's scroll timeline on the compositor, JS
+fallback elsewhere) are documented in `src/lib/sidebarBridge.js` and the
+bridge section of `app.css`. The row itself is untouched: its rail-edge
+scoops become the flare the bridge strip aligns with, and the strip fillets
+into the panel with radius-6 scoops. The bridge clips on exactly the lines
+the list clips the row, and exists only in the pulled state.
+
+**Footer-key ruling**: the pulled footer key does NOT bridge. The footer
+arrangement (ruling B above) deliberately keeps the key cluster
+bottom-left, so the key's material never reaches the rail's right edge — a
+bridge would fabricate contact across rail chrome (sibling keys, the
+daemon readout), and the open surface's connection to the panel is already
+stated by the titlebar tab carrying the takeover label in panel material.
+A second umbilical would say shown-ness twice. The key stays material-only.
+
+**Scrollbar lane**: where an engine's scrollbars take layout space, the
+pulled row stops short of the rail edge and an in-rail cover strip
+restores the flush-edge law, with the thumb travelling above the material
+like an overlay scrollbar. Modern Chromium/Edge/WebView2 and WebKitGTK all
+render overlay scrollbars (no space taken), so this path is dormant
+robustness, exercised by tests rather than production.
+
 ## Fixed constraints (unchanged from the brief)
 
 Aesthetic overhaul only: no feature changes, no IPC changes. Activity

@@ -34,12 +34,10 @@
  */
 
 /** The rail scoops' radius: the strip extends this far beyond the row so its
- * edges align with the scoop flare tips and the silhouette stays continuous. */
+ * edges align with the scoop flare tips and the silhouette stays continuous.
+ * (The panel-side fillet radius is 6 — tangent-exact across the 6px gutter,
+ * on the house 6/8/999 grid — and lives in the .sidebar-bridge-scoop CSS.) */
 export const BRIDGE_FLARE_PX = 8
-
-/** Panel-side fillet radius — tangent-exact across the 6px frame gutter and
- * on the house 6/8/999 radius grid. */
-export const BRIDGE_SCOOP_PX = 6
 
 /** The rail's 1px border, covered by the bridge so no hairline survives. */
 export const RAIL_BORDER_PX = 1
