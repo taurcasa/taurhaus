@@ -213,6 +213,16 @@
   --sidebar-pulled-mark-stale-light: #3b82f6;
   --sidebar-pulled-dirty-dark: #fbbf24;
   --sidebar-pulled-dirty-light: #d97706;
+
+  /* The bridge's panel-hairline cover: the panel surface FLATTENED against
+     the frame base (#0a2e2b). The surface itself is translucent, so painting
+     it again on top of the panel would double-composite — visibly brighter
+     in light mode — while these opaque equivalents land within one RGB step
+     of the panel's rendered pixels:
+       dark:  0.96·(9,14,17)  + 0.04·(10,46,43) ≈ (9,15,18)
+       light: 0.94·(255,255,255) + 0.06·(11,50,47) ≈ (240,243,243) */
+  --sidebar-bridge-cover-dark: #090f12;
+  --sidebar-bridge-cover-light: #f0f3f3;
   --rail-key-ring-dark: rgba(255, 255, 255, 0.16);
   --rail-key-ring-light: rgba(19, 78, 74, 0.16);
 
@@ -276,6 +286,7 @@
   --sidebar-pulled-ink-soft: var(--sidebar-pulled-ink-soft-light);
   --sidebar-pulled-mark-stale: var(--sidebar-pulled-mark-stale-light);
   --sidebar-pulled-dirty: var(--sidebar-pulled-dirty-light);
+  --sidebar-bridge-cover: var(--sidebar-bridge-cover-light);
   --rail-key-ring: var(--rail-key-ring-light);
 }
 
@@ -303,6 +314,7 @@ html.dark {
   --sidebar-pulled-ink-soft: var(--sidebar-pulled-ink-soft-dark);
   --sidebar-pulled-mark-stale: var(--sidebar-pulled-mark-stale-dark);
   --sidebar-pulled-dirty: var(--sidebar-pulled-dirty-dark);
+  --sidebar-bridge-cover: var(--sidebar-bridge-cover-dark);
   --rail-key-ring: var(--rail-key-ring-dark);
 }
 
@@ -597,13 +609,34 @@ body {
   display: block;
 }
 
+/* No inner-highlight edge here: the strip's top sits at the flare tips,
+   8px above the row's own highlighted edge, and a second bright line
+   jumping levels across the scoop curve reads as a glint, not an edge. The
+   silhouette's edge treatment stays where it shipped — on the row. */
 .sidebar-bridge-strip {
   position: absolute;
   left: 0;
   right: 0;
   background-color: var(--shell-panel-bg);
-  box-shadow: inset 0 1px 0 var(--shell-panel-inner-highlight);
   will-change: transform;
+}
+
+/* In the gutter box the translucent material stops at the panel's edge; the
+   final 2px belong to the opaque cover that blanks the panel's border +
+   inset ring along the material's contact span (strip plus fillet tips).
+   Opaque because the panel surface is translucent and would double-composite
+   over itself — the token is the flattened equivalent. */
+.sidebar-bridge-clip .sidebar-bridge-strip {
+  right: 2px;
+}
+
+.sidebar-bridge-cover {
+  position: absolute;
+  right: -2px;
+  width: 2px;
+  top: -6px;
+  bottom: -6px;
+  background-color: var(--sidebar-bridge-cover);
 }
 
 @supports (animation-timeline: --rail-scroll) {

@@ -76,9 +76,10 @@ describe('Sidebar pulled-row bridge — show/hide', () => {
     const bridge = screen.getByTestId('sidebar-bridge')
     await waitFor(() => expect(bridge).toHaveAttribute('data-bridge-active'))
 
-    // The clip box spans rail border → panel edge, sized to the list viewport.
+    // The clip box spans rail border → panel edge + 2px hairline cover,
+    // sized to the list viewport.
     expect(bridge.style.left).toBe('257px')
-    expect(bridge.style.width).toBe('7px')
+    expect(bridge.style.width).toBe('9px')
     expect(bridge.style.top).toBe('92px')
     expect(bridge.style.height).toBe('498px')
 

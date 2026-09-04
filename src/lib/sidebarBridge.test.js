@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BRIDGE_FLARE_PX,
   BRIDGE_MAX_LANE_PX,
+  BRIDGE_PANEL_COVER_PX,
   BRIDGE_PANEL_GAP_PX,
   RAIL_BORDER_PX,
   bridgeFrame,
@@ -70,17 +71,19 @@ describe('bridgeFrame — show/hide', () => {
 })
 
 describe('bridgeFrame — gutter wrapper and strip', () => {
-  it('spans from the rail border to the panel edge, clipped to the list viewport', () => {
+  it('spans the rail border, the gutter, and the panel hairline cover, clipped to the list viewport', () => {
     const { wrapper } = frame()
     expect(wrapper.left).toBe(railRect.right - RAIL_BORDER_PX)
-    expect(wrapper.width).toBe(panelLeft - (railRect.right - RAIL_BORDER_PX))
+    expect(wrapper.width).toBe(
+      panelLeft + BRIDGE_PANEL_COVER_PX - (railRect.right - RAIL_BORDER_PX)
+    )
     expect(wrapper.top).toBe(listRect.top)
     expect(wrapper.height).toBe(listRect.height)
   })
 
   it('falls back to the frame-gap token when the panel cannot be measured', () => {
     const { wrapper } = frame({ panelLeft: null })
-    expect(wrapper.width).toBe(BRIDGE_PANEL_GAP_PX + RAIL_BORDER_PX)
+    expect(wrapper.width).toBe(BRIDGE_PANEL_GAP_PX + RAIL_BORDER_PX + BRIDGE_PANEL_COVER_PX)
   })
 
   it('flares the strip beyond the row to meet the rail scoop tips', () => {

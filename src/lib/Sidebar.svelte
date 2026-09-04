@@ -1056,6 +1056,7 @@
     <div class="sidebar-bridge-strip" bind:this={bridgeStripEl}>
       <span class="sidebar-bridge-scoop sidebar-bridge-scoop-top"></span>
       <span class="sidebar-bridge-scoop sidebar-bridge-scoop-bottom"></span>
+      <span class="sidebar-bridge-cover"></span>
     </div>
   </div>
 

@@ -44,6 +44,13 @@ export const BRIDGE_SCOOP_PX = 6
 /** The rail's 1px border, covered by the bridge so no hairline survives. */
 export const RAIL_BORDER_PX = 1
 
+/** How far the bridge reaches past the panel's edge to cover the panel's
+ * own 1px border plus its 1px inset ring — the hairline pair that would
+ * otherwise cross the neck. The cover is painted opaque (see the token in
+ * app.css): the panel surface is translucent, and layering it twice
+ * brightens light mode visibly. */
+export const BRIDGE_PANEL_COVER_PX = 2
+
 /** Fallback gutter width when the main panel cannot be measured — the Shell
  * body's `gap-1.5`. */
 export const BRIDGE_PANEL_GAP_PX = 6
@@ -120,7 +127,9 @@ export function bridgeFrame({
     active: true,
     wrapper: {
       left: railInnerRight,
-      width: resolvedPanelLeft - railInnerRight,
+      // Reaches past the panel edge so the strip's opaque cover can blank
+      // the panel's border + inset ring along the material's contact span.
+      width: resolvedPanelLeft + BRIDGE_PANEL_COVER_PX - railInnerRight,
       top: listRect.top,
       height: listRect.height,
     },
