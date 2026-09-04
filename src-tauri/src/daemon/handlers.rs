@@ -1277,9 +1277,8 @@ mod tests {
     use crate::session_scanner::cli_tool::CliTool;
     use tempfile::TempDir;
 
-    // Regression: 13111833 repeated one lock-and-full-read per terminal task
-    // on every task RPC and stamped completion with scan time, inflating wall
-    // time whenever the app had been closed after the task state changed.
+    // Regression: ba4e6e02 tested a hand-built task timestamp that the Claude
+    // parser could never produce, so real completions were still stamped at scan time.
     #[test]
     fn terminal_task_observation_is_deduplicated_and_uses_state_change_time() {
         use std::collections::BTreeSet;
@@ -1289,6 +1288,24 @@ mod tests {
         let root = TempDir::new().expect("root");
         let account_dir = root.path().join("account");
         let teams_dir = account_dir.join("teams");
+        let task_path = account_dir.join("tasks/routing-team/42.json");
+        std::fs::create_dir_all(task_path.parent().expect("task directory"))
+            .expect("create task directory");
+        std::fs::write(
+            &task_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "id": "42",
+                "subject": "Finish telemetry",
+                "status": "completed",
+                "owner": "builder",
+                "metadata": {
+                    "completed_at": "2026-09-04T10:30:00Z",
+                    "rulings": [{"kind": "verdict", "value": "accepted"}]
+                }
+            }))
+            .expect("serialize task"),
+        )
+        .expect("write task");
         crate::coordination::stores::telemetry::record_launch_rendered(
             &teams_dir,
             "routing-team",
@@ -1306,29 +1323,14 @@ mod tests {
             }],
             ..Default::default()
         };
+        let parsed = crate::task_scanner::claude::parse_task_file(
+            &task_path,
+            Some("routing-team".to_string()),
+        )
+        .expect("parse task")
+        .expect("non-deleted task");
         let result = crate::task_scanner::TaskResult {
-            tasks: vec![crate::task_scanner::UnifiedTask {
-                id: "42".to_string(),
-                source_key: "routing-team".to_string(),
-                subject: "Finish telemetry".to_string(),
-                description: None,
-                active_form: None,
-                status: crate::task_scanner::TaskStatus::Completed,
-                source: CliTool::Claude,
-                blocks: Vec::new(),
-                blocked_by: Vec::new(),
-                owner: Some("builder".to_string()),
-                session_id: Some("routing-team".to_string()),
-                state_changed_at: Some("2026-09-04T10:30:00Z".to_string()),
-                updated_at: Some("2026-09-04T10:45:00Z".to_string()),
-                archived_at: None,
-                last_status: None,
-                archived_reason: None,
-                effort: None,
-                effort_why: None,
-                deadline_minutes: None,
-                has_review_ruling: true,
-            }],
+            tasks: vec![parsed],
             errors: Vec::new(),
             source_outcomes: Vec::new(),
         };

@@ -466,6 +466,12 @@ pub fn parse_task_file(
     let effort_why = metadata_string(raw.metadata.as_ref(), &["effort_why", "effortWhy"]);
     let deadline_minutes = metadata_u32(raw.metadata.as_ref(), "deadline_minutes");
     let has_review_ruling = metadata_has_review_ruling(raw.metadata.as_ref());
+    let completed_at = metadata_string(raw.metadata.as_ref(), &["completed_at"]);
+    let updated_at = fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .map(chrono::DateTime::<chrono::Utc>::from)
+        .map(|timestamp| timestamp.to_rfc3339());
     Ok(Some(UnifiedTask {
         id: raw.id,
         source_key: task_source_key.clone(),
@@ -478,8 +484,8 @@ pub fn parse_task_file(
         blocked_by: raw.blocked_by,
         owner: raw.owner,
         session_id: Some(task_source_key),
-        state_changed_at: None,
-        updated_at: None,
+        state_changed_at: completed_at,
+        updated_at,
         archived_at: None,
         last_status: None,
         archived_reason: None,
