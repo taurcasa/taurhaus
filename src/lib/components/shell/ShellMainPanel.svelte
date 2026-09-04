@@ -79,7 +79,10 @@
   const projectLoadBannerMessage = $derived(describeProjectLoadBanner(projectLoadIssues))
 </script>
 
-<main class="shell-main-surface shell-main-panel flex-1 {t.textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden">
+<!-- data-shell-main-panel anchors the sidebar bridge's edge measurement
+     (Sidebar.svelte measureBridgePanelLeft); it must stay on whichever
+     element paints the panel's left edge if this markup is ever wrapped. -->
+<main data-shell-main-panel class="shell-main-surface shell-main-panel flex-1 {t.textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden">
   {#if (daemonStatus === 'busy' || daemonStatus === 'reconnecting' || daemonStatus === 'disconnected' || daemonStatus === 'failed') && !settingsOpen}
     <div
       class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-brand-500/10 border-b border-brand-500/20' : 'bg-brand-50 border-b border-brand-200'}"

@@ -50,7 +50,7 @@ async function renderScenario(scenario) {
   return {
     rail: document.querySelector('aside'),
     list: document.querySelector('[data-testid="sidebar-project-scroll"]'),
-    panel: document.querySelector('main.shell-main-panel'),
+    panel: document.querySelector('[data-shell-main-panel]'),
     bridge: document.querySelector('[data-testid="sidebar-bridge"]'),
     lane: document.querySelector('[data-testid="sidebar-bridge-lane"]'),
     row: document.querySelector('.sidebar-row-pulled'),

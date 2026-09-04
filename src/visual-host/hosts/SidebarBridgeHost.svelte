@@ -66,7 +66,7 @@
       {dark}
       actions={{}}
     />
-    <main class="shell-main-surface shell-main-panel flex-1 {t.textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden">
+    <main data-shell-main-panel class="shell-main-surface shell-main-panel flex-1 {t.textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden">
       <div class="flex-1 flex items-center justify-center">
         <p class="text-[13px] {t.textTertiary}">
           {scenario?.selectedProject && !surfaceProps.settingsOpen ? scenario.selectedProject.name : 'Select a project'}

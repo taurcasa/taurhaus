@@ -192,13 +192,14 @@
   })
 
   /**
-   * The main panel's left edge, measured from the Shell body (the aside and
-   * the `<main>` panel are siblings there). The bridge host mirrors that
-   * structure; where no panel exists the geometry falls back to the frame
-   * gap token.
+   * The main panel's left edge, anchored on the data-shell-main-panel
+   * attribute ShellMainPanel carries (the bridge host mirrors it). The
+   * attribute, not the tag, is the contract: a wrapper around the panel
+   * would silently break a structural `:scope > main` lookup. Where no
+   * panel exists the geometry falls back to the frame gap token.
    */
   function measureBridgePanelLeft() {
-    const panel = asideEl?.parentElement?.querySelector(':scope > main')
+    const panel = asideEl?.parentElement?.querySelector('[data-shell-main-panel]')
     return panel ? panel.getBoundingClientRect().left : null
   }
 

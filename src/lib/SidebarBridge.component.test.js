@@ -37,13 +37,16 @@ import Sidebar from './Sidebar.svelte'
 const RAIL = { left: 6, top: 46, right: 258, bottom: 634, width: 252, height: 588 }
 const LIST = { left: 7, top: 92, right: 257, bottom: 590, width: 250, height: 498 }
 
-function mockLayout({ rowRight = 257 } = {}) {
+function mockLayout({ rowRight = 257, panelLeft = null } = {}) {
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function () {
     if (this.classList?.contains('sidebar-row-pulled')) {
       return { left: 13, top: 200, right: rowRight, bottom: 236, width: rowRight - 13, height: 36 }
     }
     if (this.dataset?.testid === 'sidebar-project-scroll') return { ...LIST }
     if (this.tagName === 'ASIDE') return { ...RAIL }
+    if (panelLeft !== null && this.hasAttribute?.('data-shell-main-panel')) {
+      return { left: panelLeft, top: 46, right: 960, bottom: 634, width: 960 - panelLeft, height: 588 }
+    }
     return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }
   })
 }
@@ -90,6 +93,26 @@ describe('Sidebar pulled-row bridge — show/hide', () => {
 
     // Flush row: no scrollbar lane to cover.
     expect(screen.getByTestId('sidebar-bridge-lane')).not.toHaveAttribute('data-bridge-active')
+  })
+
+  it('measures the panel edge through its data-shell-main-panel anchor', async () => {
+    // Every other test exercises the gap-token fallback (no panel sibling);
+    // this one proves the measured path: a panel anchored by attribute at
+    // x 270 stretches the clip box to 270 + the 2px hairline cover.
+    mockLayout({ panelLeft: 270 })
+    const projects = makeProjects(3)
+    const { rerender } = render(Sidebar, { props: { projects, selectedProject: null } })
+
+    const rail = document.querySelector('aside')
+    const panel = document.createElement('main')
+    panel.setAttribute('data-shell-main-panel', '')
+    rail.parentElement.appendChild(panel)
+
+    await rerender({ projects, selectedProject: projects[1] })
+    const bridge = screen.getByTestId('sidebar-bridge')
+    await waitFor(() => expect(bridge).toHaveAttribute('data-bridge-active'))
+    expect(bridge.style.left).toBe('257px')
+    expect(bridge.style.width).toBe('15px')
   })
 
   it('shows no bridge when nothing is selected', async () => {
