@@ -967,6 +967,7 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         "commit_status_if_unchanged(",
         "append_task_telemetry(",
         "append_task_telemetry_fail_soft(",
+        "attribute_latest_launch_to_task(",
         "record_completion_observed(",
         "record_launch_rendered(",
         "record_effort_switch(",

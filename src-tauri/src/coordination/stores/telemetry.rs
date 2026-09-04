@@ -3,6 +3,7 @@
 //! These records are observations only. Callers use the fail-soft wrapper so
 //! storage trouble cannot change a launch, effort, deadline, or task outcome.
 
+use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Error, ErrorKind, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -21,6 +22,7 @@ use std::os::unix::fs::OpenOptionsExt;
 const UNATTRIBUTED_SIDECAR: &str = "_unattributed";
 const MAX_SIDECAR_BYTES: u64 = 8 * 1_048_576;
 static WRITE_FAILURE_REPORTED: AtomicBool = AtomicBool::new(false);
+static OVERSIZE_READ_REPORTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -83,7 +85,11 @@ pub fn append_task_telemetry(
     let path = task_telemetry_path(teams_dir, team_name, task_id)?;
     let mut file = open_sidecar(&path)?;
     file.lock_exclusive()?;
-    append_locked(&mut file, event)?;
+    if task_id.is_none() {
+        rewrite_unattributed_locked(&mut file, &path, event)?;
+    } else {
+        append_locked(&mut file, event)?;
+    }
     FileExt::unlock(&file)
 }
 
@@ -103,7 +109,7 @@ pub fn record_completion_observed(
             return Ok(());
         };
         file.lock_exclusive()?;
-        let Some(events) = read_locked_task_telemetry(&mut file)? else {
+        let Some(events) = read_locked_task_telemetry(&mut file, &path)? else {
             FileExt::unlock(&file)?;
             return Ok(());
         };
@@ -341,8 +347,11 @@ fn open_existing_sidecar(path: &Path) -> std::io::Result<Option<File>> {
 
 fn read_locked_task_telemetry(
     file: &mut File,
+    path: &Path,
 ) -> std::io::Result<Option<Vec<RoutingTelemetryEvent>>> {
-    if file.metadata()?.len() > MAX_SIDECAR_BYTES {
+    let size = file.metadata()?.len();
+    if size > MAX_SIDECAR_BYTES {
+        report_oversize_read(path, size);
         return Ok(None);
     }
     file.seek(SeekFrom::Start(0))?;
@@ -353,6 +362,39 @@ fn read_locked_task_telemetry(
             .filter_map(|line| serde_json::from_str(&line).ok())
             .collect(),
     ))
+}
+
+fn rewrite_unattributed_locked(
+    file: &mut File,
+    path: &Path,
+    event: &RoutingTelemetryEvent,
+) -> std::io::Result<()> {
+    let mut events = read_locked_task_telemetry(file, path)?.unwrap_or_default();
+    events.push(event.clone());
+    let mut latest_by_member = BTreeMap::<String, (DateTime<Utc>, RoutingTelemetryEvent)>::new();
+    for event in events {
+        let RoutingTelemetryEvent::LaunchRendered {
+            timestamp, member, ..
+        } = &event
+        else {
+            continue;
+        };
+        let replace = latest_by_member
+            .get(member)
+            .is_none_or(|(current, _)| timestamp > current);
+        if replace {
+            latest_by_member.insert(member.clone(), (*timestamp, event));
+        }
+    }
+
+    file.set_len(0)?;
+    file.seek(SeekFrom::Start(0))?;
+    for (_, event) in latest_by_member.into_values() {
+        let mut payload = serde_json::to_vec(&event).map_err(Error::other)?;
+        payload.push(b'\n');
+        file.write_all(&payload)?;
+    }
+    file.sync_data()
 }
 
 fn append_locked(file: &mut File, event: &RoutingTelemetryEvent) -> std::io::Result<()> {
@@ -379,6 +421,7 @@ pub fn read_task_telemetry(path: &Path) -> Vec<RoutingTelemetryEvent> {
         return Vec::new();
     };
     if metadata.len() > MAX_SIDECAR_BYTES {
+        report_oversize_read(path, metadata.len());
         return Vec::new();
     }
     let Ok(file) = File::open(path) else {
@@ -389,6 +432,17 @@ pub fn read_task_telemetry(path: &Path) -> Vec<RoutingTelemetryEvent> {
         .map_while(Result::ok)
         .filter_map(|line| serde_json::from_str(&line).ok())
         .collect()
+}
+
+fn report_oversize_read(path: &Path, size: u64) {
+    if !OVERSIZE_READ_REPORTED.swap(true, Ordering::Relaxed) {
+        tracing::warn!(
+            path = %path.display(),
+            size,
+            max_size = MAX_SIDECAR_BYTES,
+            "oversized routing telemetry sidecar skipped"
+        );
+    }
 }
 
 pub fn task_telemetry_path(
@@ -479,6 +533,88 @@ mod tests {
 
         let path = teams_dir.join("routing-team/state/telemetry/_unattributed.jsonl");
         assert_eq!(read_task_telemetry(&path), vec![event]);
+    }
+
+    // Regression: 13111833 appended every task-less render forever, which
+    // eventually crossed the tolerant reader's cap and hid all attribution.
+    #[test]
+    fn unattributed_sidecar_keeps_only_the_newest_launch_per_member() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let teams_dir = root.path().join("teams");
+        for (member, hour, model) in [
+            ("builder", 9, "gpt-5.6-luna"),
+            ("reviewer", 10, "opus"),
+            ("builder", 11, "gpt-5.6-sol"),
+        ] {
+            append_task_telemetry(
+                &teams_dir,
+                "routing-team",
+                None,
+                &RoutingTelemetryEvent::LaunchRendered {
+                    timestamp: Utc.with_ymd_and_hms(2026, 9, 4, hour, 0, 0).unwrap(),
+                    task_id: None,
+                    member: member.to_string(),
+                    role: "developer".to_string(),
+                    tool: "codex".to_string(),
+                    model: Some(model.to_string()),
+                    applied_effort: None,
+                    capability_tier: Some("strong".to_string()),
+                    tier_rank: Some(0),
+                },
+            )
+            .expect("append unattributed launch");
+        }
+
+        let events = read_task_telemetry(
+            &teams_dir.join("routing-team/state/telemetry/_unattributed.jsonl"),
+        );
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            RoutingTelemetryEvent::LaunchRendered {
+                member,
+                model: Some(model),
+                ..
+            } if member == "builder" && model == "gpt-5.6-sol"
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            RoutingTelemetryEvent::LaunchRendered {
+                member,
+                model: Some(model),
+                ..
+            } if member == "reviewer" && model == "opus"
+        )));
+    }
+
+    #[test]
+    fn oversized_unattributed_sidecar_is_replaced_by_the_current_launch() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let teams_dir = root.path().join("teams");
+        let path = teams_dir.join("routing-team/state/telemetry/_unattributed.jsonl");
+        std::fs::create_dir_all(path.parent().expect("telemetry dir"))
+            .expect("create telemetry dir");
+        let file = std::fs::File::create(&path).expect("create oversized sidecar");
+        file.set_len(super::MAX_SIDECAR_BYTES + 1)
+            .expect("extend oversized sidecar");
+        drop(file);
+        let event = RoutingTelemetryEvent::LaunchRendered {
+            timestamp: Utc.with_ymd_and_hms(2026, 9, 4, 11, 0, 0).unwrap(),
+            task_id: None,
+            member: "builder".to_string(),
+            role: "developer".to_string(),
+            tool: "codex".to_string(),
+            model: Some("gpt-5.6-sol".to_string()),
+            applied_effort: None,
+            capability_tier: Some("strong".to_string()),
+            tier_rank: Some(0),
+        };
+
+        append_task_telemetry(&teams_dir, "routing-team", None, &event)
+            .expect("replace oversized unattributed launch");
+
+        assert_eq!(read_task_telemetry(&path), vec![event]);
+        assert!(std::fs::metadata(path).expect("sidecar metadata").len() < 1024);
     }
 
     // Regression: c9c6c49b searched only `_unattributed.jsonl`, so a member's
