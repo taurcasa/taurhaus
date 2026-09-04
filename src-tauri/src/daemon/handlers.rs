@@ -18,11 +18,14 @@ struct ProjectTaskScanCache {
     claude_index: ClaudeSourceIndex,
 }
 
+#[cfg(feature = "mesh-bridged-backend")]
+type TerminalObservationKey = (std::path::PathBuf, String, String, String, bool);
+
 #[derive(Debug, Default)]
 pub(crate) struct ProjectTaskScanCacheState {
     cache: Mutex<Option<ProjectTaskScanCache>>,
     #[cfg(feature = "mesh-bridged-backend")]
-    terminal_observations: Mutex<HashSet<(std::path::PathBuf, String, String, String, bool)>>,
+    terminal_observations: Mutex<HashSet<TerminalObservationKey>>,
 }
 
 /// Dispatch a request to the appropriate handler.
