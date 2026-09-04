@@ -111,8 +111,16 @@
 
   {#each sidebarRows.slice(sidebarWindow.start, sidebarWindow.end) as row (row.key)}
     {#if row.type === 'header'}
-      <div class="px-3.5 pt-8 pb-1.5">
-        <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/35">{row.group.label}</span>
+      <!-- Drawer guide card: a sentence-case tab chip sitting on a hairline
+           that runs to the rail edge, carrying the group's project count.
+           Fixed 42px tall — the virtualized layout counts on it. -->
+      <div class="h-[42px] flex items-end pl-1 -mr-1.5" data-testid="sidebar-group-header">
+        <div class="flex-1 flex items-end border-b border-white/[0.07]">
+          <span class="sidebar-guide-tab">
+            <span>{row.group.label}</span>
+            <span class="sidebar-guide-count">{row.group.items.length}</span>
+          </span>
+        </div>
       </div>
     {:else}
       {@const project = row.project}

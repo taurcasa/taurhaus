@@ -335,9 +335,29 @@ describe('Sidebar component branches', () => {
     render(Sidebar, { props: { projects } })
 
     await waitFor(() => {
-      expect(screen.getByText('RECENT')).toBeInTheDocument()
+      expect(screen.getByText('Recent')).toBeInTheDocument()
       expect(screen.getByText('Recent Project')).toBeInTheDocument()
     })
+  })
+
+  it('renders group headers as guide cards with sentence-case labels and counts', async () => {
+    const projects = makeProjects(4) // one project per activity group
+
+    render(Sidebar, { props: { projects } })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('project-item').length).toBe(4)
+    })
+
+    const headers = screen.getAllByTestId('sidebar-group-header')
+    expect(headers.length).toBe(4)
+    // Sentence case — the 10px ALL-CAPS register dies in the list.
+    expect(headers[0]).toHaveTextContent('Active')
+    expect(headers[0].textContent).not.toContain('ACTIVE')
+    // Each guide card carries the group's project count.
+    for (const header of headers) {
+      expect(header.querySelector('.sidebar-guide-count')).toHaveTextContent('1')
+    }
   })
 
   it('renders non-default branches on a second line and hides default branches', async () => {

@@ -386,7 +386,7 @@ const groupHeaders_dark = createScenario({
     },
   },
   expected: {
-    labels: ['ACTIVE', 'RECENT', 'STALE', 'DORMANT', 'Active Workstream', 'Recent Handoff', 'Stale Cleanup', 'Dormant Archive'],
+    labels: ['Active', 'Recent', 'Stale', 'Dormant', 'Active Workstream', 'Recent Handoff', 'Stale Cleanup', 'Dormant Archive'],
     selectedProjectName: 'Active Workstream',
   },
 })
