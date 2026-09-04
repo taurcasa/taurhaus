@@ -6,6 +6,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-04
+
+### Added
+
+- **Sidebar unification — the drawer** (#132): one visual language for the whole
+  rail, built on a single device — whatever the main panel is showing is
+  rendered in the panel's own surface material. The selected project row pulls
+  out of the teal drawer as a folder tab (edge scoops, panel-legible marks);
+  when a utility surface opens, its footer key pulls instead and the selection
+  honestly demotes to a quiet held state. Group headers become drawer guide
+  cards carrying project counts; every interactive control on the rail shares
+  one tone ramp, geometry grid, and badge grammar (outline = count, filled =
+  act-on-me); tool marks and utility icons split into two strict registers.
+- **Projects takeover** (#132): the add-project modal is gone — Projects joins
+  Settings and Accounts as a main-panel takeover behind one shared 48px doorway
+  header (key echo, labeled back, Esc hint), so the sidebar stays watchable
+  while scanning and registering projects, and all three footer keys speak the
+  same open/close language. Scan, manual-path, and create workflows survive as
+  a segmented control; Esc guards protect in-flight scans and half-typed input.
+- The accounts magnitude badge now speaks a sentence to assistive tech, and
+  selecting a project always brings it into view even when a utility surface
+  is open.
+
+- **Seamless pulled row** (#133): the selected project's material now flows
+  unbroken across the frame gutter into the main panel — one continuous
+  surface, tracked at compositor precision during scroll, verified
+  hairline-free on the Windows engine, and honestly absent while the list
+  loads, errors, or a utility surface holds the panel.
+
+### Fixed
+
+- **Settings saves failed in 0.9.0** (#131): the settings document round-tripped
+  the backend-owned terminal contract with frontend-normalized keys the backend
+  could not deserialize, so every save was rejected. Saves no longer send the
+  backend-owned contract at all.
+- **Slide-overs stayed mounted after closing** (#134): saving a role could
+  leave the exited panel occupying the app, trapping tab navigation until a
+  reload. Panels now unmount after their exit animation.
+- **Project file-watching kept up under directory churn** (#134): watch-tree
+  reconciliation moved off the notify hot path into a bounded, coalescing
+  worker — a burst of directory changes collapses into at most two passes,
+  and the task board reliably refreshes when new task files appear.
+- Tier-1 e2e suite runs end to end again: the settings failure had truncated
+  every run since Wave A, hiding later-spec breakage; the first-spec startup
+  race is fixed by waiting for the state the assertion is about.
+
+
 ## [0.9.0] - 2026-09-03
 
 ### Added
