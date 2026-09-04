@@ -153,11 +153,13 @@ async function bestEffortFlushPending() {
 }
 
 async function setInputValue(testId, value) {
+  // Regression: c810d1a3 split clear/set across WebDriver commands, allowing
+  // a Svelte rerender to discard required role-editor field updates.
   const input = await $(selector(testId))
   await input.waitForExist(WAIT_MEDIUM)
-  await input.click()
-  await input.clearValue()
-  await input.setValue(value)
+  const dispatched = await setReactiveInputValue(testId, value)
+  if (!dispatched) throw new Error(`Role editor input ${testId} was unavailable`)
+  expect(await input.getValue()).toBe(value)
 }
 
 async function setCatalogSearch(value) {

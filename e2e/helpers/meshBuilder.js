@@ -4,8 +4,14 @@ import { WAIT_SHORT } from './timing.js'
 export async function setReactiveInputValue(testId, value) {
   return await browser.execute(({ testId, value }) => {
     const input = document.querySelector(`[data-testid="${testId}"]`)
-    if (!(input instanceof HTMLInputElement)) return false
-    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    const prototype =
+      input instanceof HTMLInputElement
+        ? HTMLInputElement.prototype
+        : input instanceof HTMLTextAreaElement
+          ? HTMLTextAreaElement.prototype
+          : null
+    if (!prototype) return false
+    const valueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set
     valueSetter?.call(input, String(value ?? ''))
     input.dispatchEvent(new Event('input', { bubbles: true }))
     return true
