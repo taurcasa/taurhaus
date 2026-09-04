@@ -14,10 +14,11 @@ function optionalTrimmedStringList(value) {
 
 function normalizeCapabilityPolicy(value) {
   if (!value || typeof value !== 'object') return null
+  // Absent enum fields are OMITTED, never nulled: the backend deserializes
+  // modelSelection/minimumCapability as optional enums and rejects null
+  // (the settings round-trip regression class, 5c6b2681).
   const normalized = {
     ...value,
-    modelSelection: value.modelSelection ?? value.model_selection ?? null,
-    minimumCapability: value.minimumCapability ?? value.minimum_capability ?? null,
     allowedModels: optionalTrimmedStringList(value.allowedModels ?? value.allowed_models) ?? [],
     effortBand: optionalTrimmedStringList(value.effortBand ?? value.effort_band) ?? [],
   }
@@ -25,6 +26,12 @@ function normalizeCapabilityPolicy(value) {
   delete normalized.minimum_capability
   delete normalized.allowed_models
   delete normalized.effort_band
+  delete normalized.modelSelection
+  delete normalized.minimumCapability
+  const modelSelection = value.modelSelection ?? value.model_selection
+  if (modelSelection != null) normalized.modelSelection = modelSelection
+  const minimumCapability = value.minimumCapability ?? value.minimum_capability
+  if (minimumCapability != null) normalized.minimumCapability = minimumCapability
   return normalized
 }
 

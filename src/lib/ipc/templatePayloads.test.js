@@ -120,19 +120,26 @@ describe('templatePayloads normalizeRoleTemplateInput', () => {
   })
 
   // Regression: commit 2268fa09 duplicated the backend's implicit fixed default
-  // in both frontend normalizers instead of preserving an absent selection.
-  it('does not invent a capability policy model selection', () => {
-    expect(normalizeRoleTemplateResponse({
+  // in both frontend normalizers instead of preserving an absent selection —
+  // and the first fix preserved absence as `modelSelection: null`, a shape the
+  // backend's optional enum rejects on the way back (the settings round-trip
+  // class, 5c6b2681). Absence must be an OMITTED key in both directions.
+  it('omits an absent capability policy model selection entirely', () => {
+    const response = normalizeRoleTemplateResponse({
       role_id: 'developer-codex',
       name: 'Developer',
       capability_policy: { minimum_capability: 'strong' },
-    }).capabilityPolicy.modelSelection).toBeNull()
+    }).capabilityPolicy
+    expect('modelSelection' in response).toBe(false)
+    expect(response.minimumCapability).toBe('strong')
 
-    expect(normalizeRoleTemplateInput({
+    const input = normalizeRoleTemplateInput({
       roleId: 'developer-codex',
       name: 'Developer',
       capabilityPolicy: { minimumCapability: 'strong' },
-    }).capabilityPolicy.modelSelection).toBeNull()
+    }).capabilityPolicy
+    expect('modelSelection' in input).toBe(false)
+    expect(input.minimumCapability).toBe('strong')
   })
 
   // Regression: commits ff40911 and 5d2ce27 kept model and effort in one string,

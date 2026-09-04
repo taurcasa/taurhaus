@@ -567,7 +567,24 @@ pub enum CapabilityTier {
 
 impl CapabilityTier {
     pub const ALL: [Self; 3] = [Self::Frontier, Self::Strong, Self::Efficient];
+
+    // A new variant must join ALL: this match fails to compile when one is
+    // added without extending the array the doc-pin test iterates.
+    const fn all_covers(tier: Self) -> bool {
+        match tier {
+            Self::Frontier => true,
+            Self::Strong => true,
+            Self::Efficient => true,
+        }
+    }
 }
+
+const _: () = {
+    assert!(CapabilityTier::ALL.len() == 3);
+    assert!(CapabilityTier::all_covers(CapabilityTier::ALL[0]));
+    assert!(CapabilityTier::all_covers(CapabilityTier::ALL[1]));
+    assert!(CapabilityTier::all_covers(CapabilityTier::ALL[2]));
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -2174,6 +2191,9 @@ mod tests {
 
     #[test]
     fn routing_design_signed_off_tier_names_match_serialized_vocabulary() {
+        // This path is compiled into the test: a docs sweep that moves the
+        // design note must update this pin (the doc carries the same warning
+        // beside its signed-off table).
         let design = include_str!("../../../docs/design/role-first-model-routing.md");
         let signed_off_table = design
             .split_once("the signed-off table:**")

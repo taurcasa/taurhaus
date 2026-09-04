@@ -194,22 +194,33 @@ default until each gate passes**.
 
 ### Stage 0 — declare the status quo (schema groundwork)
 
-**Ships:** `model_selection: fixed` made explicit on every role;
+**Ships:** `model_selection` semantics declared — an absent
+`capability_policy` block means `fixed`, today's behavior, and no bundled
+role declares the block (bundled-template edits carry a
+`BUILTIN_CATALOG_REVISION` migration cost Stage 0 has no reason to pay);
 capability-policy fields (`minimum_capability`, `allowed_models`, effort band)
 added to the role schema as carried-but-unenforced data; `capability_tier`
 field on ModelCatalog entries, tier assignments authored by the operator.
 
 **Prerequisites:** 0.9.1 released (no schema churn mid-release); role catalog
 v2 and template git storage (shipped); catalog tier assignments reviewed by
-the operator — tiers are human-owned policy, not inferred. **Reviewed
-2026-09-04; the signed-off table:**
+the operator — tiers are human-owned policy, not inferred. **Reviewed 2026-09-04.** A doc-pin test compiles this file's path (see
+`routing_design_signed_off_tier_names_match_serialized_vocabulary`), so moving
+this document requires updating that pin. **Here is the signed-off table:**
 
 | Tier | Models (rank within tier, highest first) |
 |---|---|
 | `frontier` | `fable` (Fable 5.1) |
-| `strong` | `gpt-5.6-sol` · `opus` (Opus 5) · `claude-opus-4-6`/`-thinking` (agy) · `gemini-3.1-pro-high` · `grok-4.6` · `gpt-5.5` |
+| `strong` | `gpt-5.6-sol` · `opus` (Opus 5) · `claude-opus-4-6`/`-thinking` (agy)† · `gemini-3.1-pro-high` · `grok-4.6` · `gpt-5.5`† |
 | `efficient` | `gpt-5.6-luna` (preferred for batch/volume work — speed and throughput over peak intelligence) · `gpt-5.4` · `gpt-5.4-mini` · `gemini-3.x-flash-*` · `gemini-3.1-pro-low` · `gpt-oss-120b-medium` · `grok-4.5` |
-| *untiered* | `gpt-5.6-terra` (no current place — see rule below) · deprecated entries (`sonnet`, `haiku`; replacement pointers make them unroutable anyway) |
+| *untiered* | `gpt-5.6-terra` (no current place — see rule below) · every deprecated entry (`sonnet`, `haiku`, and the ids marked † above via the precedence rule) |
+
+† Deprecated in the shipped catalog. **Precedence rule the code implements:
+a catalog entry marked deprecated is untiered regardless of the row it
+appears in here** — the row records where the model WOULD sit, deprecation
+makes it unroutable, and its replacement pointer names the routable
+successor. (`gpt-5.4`/`gpt-5.4-mini` in the efficient row are likewise
+deprecated and therefore untiered in the carried data.)
 
 Three rules the review produced:
 
