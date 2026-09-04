@@ -565,6 +565,10 @@ pub enum CapabilityTier {
     Efficient,
 }
 
+impl CapabilityTier {
+    pub const ALL: [Self; 3] = [Self::Frontier, Self::Strong, Self::Efficient];
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCatalog {
@@ -2165,6 +2169,34 @@ mod tests {
             assert_eq!(entry.capability_tier, tier, "{id} tier");
             assert_eq!(entry.tier_rank, rank, "{id} rank");
         }
+    }
+
+    #[test]
+    fn routing_design_signed_off_tier_names_match_serialized_vocabulary() {
+        let design = include_str!("../../../docs/design/role-first-model-routing.md");
+        let signed_off_table = design
+            .split_once("2026-09-04; the signed-off table:**")
+            .expect("Stage-0 signed-off table marker")
+            .1
+            .split_once("Three rules the review produced:")
+            .expect("end of Stage-0 signed-off table")
+            .0;
+        let documented = signed_off_table
+            .lines()
+            .filter_map(|line| line.strip_prefix("| `"))
+            .filter_map(|line| line.split_once('`').map(|(tier, _)| tier))
+            .collect::<Vec<_>>();
+        let serialized = CapabilityTier::ALL
+            .iter()
+            .map(|tier| {
+                serde_json::to_string(tier)
+                    .expect("serialize capability tier")
+                    .trim_matches('"')
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(documented, serialized);
     }
 
     #[test]
