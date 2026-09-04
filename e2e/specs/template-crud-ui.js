@@ -488,6 +488,43 @@ describe('Template CRUD UI', () => {
   })
 
   describe('non-runtime lane', () => {
+    it('keeps built-in roles protected (no edit/delete)', async function () {
+    if (!mainApp) return this.skip()
+
+    try {
+      if (!(await openTemplateBrowser(this))) return
+
+      await clickActiveSlideOverTestId('catalog-tab-roles')
+      const summaries = await invokeOrThrow('templates_list_roles_full')
+      const builtInIds = (summaries ?? [])
+        .filter((entry) => String(getField(entry, 'source', 'source')).toLowerCase() === 'built_in')
+        .map((entry) => getField(entry, 'roleId', 'role_id'))
+        .filter(Boolean)
+
+      expect(builtInIds.length).toBeGreaterThan(0)
+
+      const roleCards = await $$('[data-testid^="role-template-card-"]')
+      let foundProtected = false
+      for (const card of roleCards) {
+        const testId = await card.getAttribute('data-testid')
+        if (!testId) continue
+        const roleId = String(testId).replace(/^role-template-card-/, '')
+        if (!builtInIds.includes(roleId)) continue
+        const hasUse = await (await $(`[data-testid="role-use-${roleId}"]`)).isExisting()
+        const hasInspect = await (await $(`[data-testid="role-inspect-${roleId}"]`)).isExisting()
+        const hasDelete = await (await $(`[data-testid="role-delete-${roleId}"]`)).isExisting()
+        if (hasUse && hasInspect && !hasDelete) {
+          foundProtected = true
+          break
+        }
+      }
+
+      expect(foundProtected).toBe(true)
+    } finally {
+      await closeSlideOverIfOpen()
+    }
+  })
+
     // Known-stale since 17e0f9d: Browse catalog became Focus search and
     // TemplateBrowserPanel currently has no render site. Keep skipped until the UI returns.
     it.skip('creates a custom role via UI', async function () {
@@ -655,41 +692,6 @@ describe('Template CRUD UI', () => {
       await bestEffortDeleteRole(roleId)
       await bestEffortFlushPending()
     }
-  })
-
-    it('keeps built-in roles protected (no edit/delete)', async function () {
-    if (!mainApp) return this.skip()
-    if (!(await openTemplateBrowser(this))) return
-
-    await clickActiveSlideOverTestId('catalog-tab-roles')
-    const summaries = await invokeOrThrow('templates_list_roles_full')
-    const builtInIds = (summaries ?? [])
-      .filter((entry) => String(getField(entry, 'source', 'source')).toLowerCase() === 'built_in')
-      .map((entry) => getField(entry, 'roleId', 'role_id'))
-      .filter(Boolean)
-
-    if (builtInIds.length === 0) {
-      skipNonRuntimeTest(this, 'No built-in roles reported by template catalog')
-      return
-    }
-
-    const roleCards = await $$('[data-testid^="role-template-card-"]')
-    let foundProtected = false
-    for (const card of roleCards) {
-      const testId = await card.getAttribute('data-testid')
-      if (!testId) continue
-      const roleId = String(testId).replace(/^role-template-card-/, '')
-      if (!builtInIds.includes(roleId)) continue
-      const hasUse = await (await $(`[data-testid="role-use-${roleId}"]`)).isExisting()
-      const hasInspect = await (await $(`[data-testid="role-inspect-${roleId}"]`)).isExisting()
-      const hasDelete = await (await $(`[data-testid="role-delete-${roleId}"]`)).isExisting()
-      if (hasUse && hasInspect && !hasDelete) {
-        foundProtected = true
-        break
-      }
-    }
-
-    expect(foundProtected).toBe(true)
   })
 
     it('creates a preset via UI and deletes a preset via UI', async function () {
