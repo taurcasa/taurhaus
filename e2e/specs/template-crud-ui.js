@@ -171,6 +171,25 @@ async function hasTestId(testId) {
   return await (await $(`[data-testid="${testId}"]`)).isExisting()
 }
 
+async function setInlineBuilderTeamName(value = '') {
+  await clickTestId('mesh-builder-team-name-display')
+  const teamNameInput = await $('[data-testid="mesh-builder-team-name-input"]')
+  await browser.waitUntil(
+    async () => await teamNameInput.isExisting(),
+    { ...WAIT_SHORT, timeoutMsg: 'Inline team name input did not appear' }
+  )
+  const currentTeamName = String(await teamNameInput.getValue()).trim()
+  const dispatched = await browser.execute((nextValue) => {
+    const input = document.querySelector('[data-testid="mesh-builder-team-name-input"]')
+    if (!(input instanceof HTMLInputElement)) return false
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    valueSetter?.call(input, nextValue)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    return true
+  }, value || currentTeamName || 'e2e-template-ui-team')
+  if (!dispatched) throw new Error('Inline team name input was unavailable')
+}
+
 async function isConfirmDialogOpen() {
   return await browser.execute(() => {
     const dialogs = Array.from(document.querySelectorAll('[data-testid="confirm-dialog"]'))
@@ -350,22 +369,7 @@ async function ensureSetupMode(testContext) {
   }
 
   if (await hasTestId('mesh-mode-empty')) {
-    await clickTestId('mesh-builder-team-name-display')
-    const teamNameInput = await $('[data-testid="mesh-builder-team-name-input"]')
-    await browser.waitUntil(
-      async () => await teamNameInput.isExisting(),
-      { ...WAIT_SHORT, timeoutMsg: 'Inline team name input did not appear' }
-    )
-    const currentTeamName = String(await teamNameInput.getValue()).trim()
-    const dispatched = await browser.execute((value) => {
-      const input = document.querySelector('[data-testid="mesh-builder-team-name-input"]')
-      if (!(input instanceof HTMLInputElement)) return false
-      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-      valueSetter?.call(input, value)
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      return true
-    }, currentTeamName || 'e2e-template-ui-team')
-    if (!dispatched) throw new Error('Inline team name input was unavailable')
+    await setInlineBuilderTeamName()
   }
 
   await browser.waitUntil(
@@ -396,24 +400,19 @@ async function ensureRuntimeMode(testContext) {
     return null
   }
 
+  if (!(await hasTestId('mesh-builder-lead-card'))) {
+    const leadRoleId = await findLeadRoleId()
+    await clickTestId(`mesh-builder-role-${leadRoleId}`)
+    await browser.waitUntil(
+      async () => await hasTestId('mesh-builder-lead-card'),
+      { ...WAIT_SHORT, timeoutMsg: 'Lead role was not assigned from the inline catalog' }
+    )
+  }
+
   const teamName = nextId('e2e-template-ui-team')
-  await clickTestId('mesh-action-customize')
-  await browser.waitUntil(
-    async () => await hasTestId('team-customizer-panel'),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not open' }
-  )
-
-  if (!(await setActiveSlideOverInputValue('team-customizer-name-input', teamName))) {
-    throw new Error('Team customizer name input missing')
-  }
-  if (!(await clickActiveSlideOverTestId('team-customizer-save'))) {
-    throw new Error('Team customizer save missing')
-  }
-
-  await browser.waitUntil(
-    async () => !(await hasTestId('team-customizer-panel')),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not close' }
-  )
+  // Regression: acd3c5aa drove the unused MeshActionBar customizer contract;
+  // the roster builder owns team-name editing inline.
+  await setInlineBuilderTeamName(teamName)
   createdTeamNames.add(teamName)
 
   const initializeButton = await $('[data-testid="mesh-action-initialize"]')
