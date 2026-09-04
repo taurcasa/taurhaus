@@ -59,7 +59,9 @@ describe('Sidebar visual coverage', () => {
 
     const selectedRow = screen.getByText(scenario.expected.selectedProjectName).closest('button')
     expect(selectedRow).toBeTruthy()
-    expect(selectedRow.className).toContain('bg-white/[0.08]')
+    // With no utility surface open the selected row wears the pulled
+    // panel material (held rows are covered by their own scenarios).
+    expect(selectedRow.className).toContain('sidebar-row-pulled')
 
     const screenshotPath = `sidebar/${scenario.name}.png`
     const screenshotResult = await captureVisualBase64(screenshotPath, { clip: viewportClip })

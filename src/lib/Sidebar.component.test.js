@@ -145,6 +145,34 @@ describe('Sidebar component branches', () => {
     expect(onToggleAccounts).toHaveBeenCalled()
   })
 
+  it('pulls the selected row, and demotes it to held while a utility surface is open', async () => {
+    const projects = makeProjects(2)
+    const { rerender } = render(Sidebar, {
+      props: { projects, selectedProject: projects[0] },
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('project-item').length).toBe(2)
+    })
+
+    // Pulled: the selected row is made of the panel material, carries the
+    // edge scoops, and keeps its selection handle.
+    const pulled = screen.getAllByTestId('project-item')[0]
+    expect(pulled.className).toContain('sidebar-row-pulled')
+    expect(within(pulled).getByTestId('sidebar-selection-indicator')).toBeInTheDocument()
+    expect(pulled.querySelector('.sidebar-row-scoop-top')).toBeTruthy()
+    expect(pulled.querySelector('.sidebar-row-scoop-bottom')).toBeTruthy()
+
+    // Held: a utility surface occupies the panel, so the row demotes to the
+    // quiet fill — no panel material, no scoops, but the handle survives.
+    await rerender({ projects, selectedProject: projects[0], settingsOpen: true })
+    const held = screen.getAllByTestId('project-item')[0]
+    expect(held.className).not.toContain('sidebar-row-pulled')
+    expect(held.className).toContain('bg-white/[0.06]')
+    expect(within(held).getByTestId('sidebar-selection-indicator')).toBeInTheDocument()
+    expect(held.querySelector('.sidebar-row-scoop-top')).toBeFalsy()
+  })
+
   it('arranges the footer as a key cluster left and the daemon readout right', () => {
     render(Sidebar, { props: { projects: makeProjects(1), daemonStatus: 'connected' } })
 

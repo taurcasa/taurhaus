@@ -461,8 +461,9 @@ body {
 
 .sidebar-row-pulled {
   background-color: var(--shell-panel-bg);
-  /* Reach the rail's right edge through the list container's 6px padding. */
-  margin-right: -6px;
+  /* Reach the rail's right edge through the list container's 6px padding —
+     the row is w-full, so the reach is written as width, not margin. */
+  width: calc(100% + 6px);
   border-radius: 6px 0 0 6px;
   box-shadow: inset 0 1px 0 var(--shell-panel-inner-highlight);
 }

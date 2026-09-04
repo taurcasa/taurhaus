@@ -111,6 +111,10 @@
       : 'bg-warning-400 text-brand-950'
   )
 
+  // While a utility surface occupies the main panel, its footer key wears the
+  // pulled material instead — and the selected row demotes to "held".
+  const utilityOpen = $derived(settingsOpen || accountsOpen || projectsOpen)
+
   function showHoverCard(project, sessions, el) {
     clearTimeout(hoverTimeout)
     if (hoverCard) {
@@ -825,6 +829,7 @@
       {sidebarWindow}
       {selectedProject}
       {foregroundProjectId}
+      {utilityOpen}
       {dark}
       ctxMenuProjectId={ctxMenu?.project?.id ?? null}
       {getSessionsForProject}
