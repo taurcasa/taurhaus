@@ -182,6 +182,40 @@
   --shell-frame-noise-opacity-dark: 0.02;
   --shell-frame-noise-opacity-light: 0.018;
 
+  /* Sidebar rail — the tone ramp. One ramp for every interactive white on
+     brand-950: idle .30 → signaled idle .55 → hover .60 over a .05 fill →
+     open = pulled material (see the drawer language below). Keyboard focus is
+     the filter's brand-500/70 ring, rail-wide.
+
+     Geometry grid (expressed through standard utilities, listed here as the
+     one place the numbers live): 28px control hits (w-7) · 16px utility
+     glyphs at stroke 1.5 (w-4) · 14px mark boxes/badges/pills · 12px tool
+     marks · 36px project rows · 44px rail footer · 48px doorway header
+     (h-12) · radii 6/8/999 only · surface widths 640 reading / 1024 board. */
+  --color-rail-idle: rgba(255, 255, 255, 0.3);
+  --color-rail-signal: rgba(255, 255, 255, 0.55);
+  --color-rail-hover: rgba(255, 255, 255, 0.6);
+  --color-rail-hit-hover: rgba(255, 255, 255, 0.05);
+
+  /* Utility surface widths — 640 holds a reading column (Projects, Settings),
+     1024 holds the Accounts board. The rule is the token, not one number. */
+  --container-surface-reading: 640px;
+  --container-surface-board: 1024px;
+
+  /* Sidebar drawer language — ink and marks on pulled material. "Pulled"
+     means made of the main panel's own surface, so these follow the app
+     theme even though the rail itself never leaves brand-950. */
+  --sidebar-pulled-ink-dark: #f4f4f5;
+  --sidebar-pulled-ink-light: #18181b;
+  --sidebar-pulled-ink-soft-dark: #71717a;
+  --sidebar-pulled-ink-soft-light: #a1a1aa;
+  --sidebar-pulled-mark-stale-dark: #93c5fd;
+  --sidebar-pulled-mark-stale-light: #3b82f6;
+  --sidebar-pulled-dirty-dark: #fbbf24;
+  --sidebar-pulled-dirty-light: #d97706;
+  --rail-key-ring-dark: rgba(255, 255, 255, 0.16);
+  --rail-key-ring-light: rgba(19, 78, 74, 0.16);
+
   /* Sidebar team session visuals */
   --sidebar-team-icon-active-dark: #86EFAC;
   --sidebar-team-icon-idle-dark: #FCD34D;
@@ -238,6 +272,11 @@
   --sidebar-team-count-idle-border: var(--sidebar-team-count-idle-border-light);
   --sidebar-team-stack-ring: var(--sidebar-team-stack-ring-light);
   --sidebar-team-logo-ring: var(--sidebar-team-logo-ring-light);
+  --sidebar-pulled-ink: var(--sidebar-pulled-ink-light);
+  --sidebar-pulled-ink-soft: var(--sidebar-pulled-ink-soft-light);
+  --sidebar-pulled-mark-stale: var(--sidebar-pulled-mark-stale-light);
+  --sidebar-pulled-dirty: var(--sidebar-pulled-dirty-light);
+  --rail-key-ring: var(--rail-key-ring-light);
 }
 
 html.dark {
@@ -260,6 +299,11 @@ html.dark {
   --sidebar-team-count-idle-border: var(--sidebar-team-count-idle-border-dark);
   --sidebar-team-stack-ring: var(--sidebar-team-stack-ring-dark);
   --sidebar-team-logo-ring: var(--sidebar-team-logo-ring-dark);
+  --sidebar-pulled-ink: var(--sidebar-pulled-ink-dark);
+  --sidebar-pulled-ink-soft: var(--sidebar-pulled-ink-soft-dark);
+  --sidebar-pulled-mark-stale: var(--sidebar-pulled-mark-stale-dark);
+  --sidebar-pulled-dirty: var(--sidebar-pulled-dirty-dark);
+  --rail-key-ring: var(--rail-key-ring-dark);
 }
 
 html, body, #app {
@@ -408,6 +452,129 @@ body {
   border-color: rgba(96, 165, 250, 0.28);
 }
 
+/* ── Sidebar drawer language ──────────────────────────────────────────── */
+/* The sidebar is the drawer; the one thing the main panel is currently
+   showing is rendered in the panel's own surface material — "pulled". At
+   most one element on the rail wears this material at a time: the selected
+   project row, or, while a utility surface occupies the panel, that
+   surface's footer key (the row then demotes to the quiet "held" state). */
+
+.sidebar-row-pulled {
+  background-color: var(--shell-panel-bg);
+  /* Reach the rail's right edge through the list container's 6px padding. */
+  margin-right: -6px;
+  border-radius: 6px 0 0 6px;
+  box-shadow: inset 0 1px 0 var(--shell-panel-inner-highlight);
+}
+
+.sidebar-row-pulled .sidebar-row-name {
+  color: var(--sidebar-pulled-ink);
+  font-weight: 600;
+}
+
+.sidebar-row-pulled .sidebar-branch-line {
+  color: var(--sidebar-pulled-ink-soft);
+}
+
+/* Tool marks flip to the panel-legible activity family; shape stays the
+   identity, color stays the activity — only the legibility target changes. */
+.sidebar-row-pulled .session-pill-active {
+  color: var(--sidebar-team-icon-active);
+}
+
+.sidebar-row-pulled .session-pill-idle {
+  color: var(--sidebar-team-icon-idle);
+}
+
+.sidebar-row-pulled .session-pill-stale {
+  color: var(--sidebar-pulled-mark-stale);
+}
+
+.sidebar-row-pulled .sidebar-dirty-dot {
+  background-color: var(--sidebar-pulled-dirty);
+}
+
+/* The tmux-foreground edge lines run to the rail edge on a pulled row. */
+.sidebar-row-pulled .sidebar-foreground-lines {
+  right: 0;
+}
+
+/* Edge scoops: concave corners where the pulled row meets the rail edge,
+   implying continuation into the main panel. The titlebar's manila tab cuts
+   this corner with an opaque nested quarter-circle (`shell-frame-fill` +
+   rounded-bl-full) over the uniform frame; rows sit between neighbours that
+   carry their own hover/selection fills, so here the corner is painted as a
+   transparent radial gradient instead — the same shape, see-through
+   everywhere except the panel-material sliver. */
+.sidebar-row-scoop {
+  position: absolute;
+  right: 0;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.sidebar-row-scoop-top {
+  top: -8px;
+  background: radial-gradient(circle 8px at 0 0, transparent 7.5px, var(--shell-panel-bg) 8px);
+}
+
+.sidebar-row-scoop-bottom {
+  bottom: -8px;
+  background: radial-gradient(circle 8px at 0 100%, transparent 7.5px, var(--shell-panel-bg) 8px);
+}
+
+/* Footer key wearing the pulled material — the open state of a utility key. */
+.rail-key-pulled {
+  background-color: var(--shell-panel-bg);
+  color: var(--sidebar-pulled-ink);
+  box-shadow:
+    inset 0 1px 0 var(--shell-panel-inner-highlight),
+    0 0 0 1px var(--rail-key-ring);
+}
+
+/* Guide-card group headers — a drawer guide card: sentence-case tab chip
+   sitting on a hairline, carrying the group's project count. */
+.sidebar-guide-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 19px;
+  padding-inline: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.sidebar-guide-count {
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.34);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Rail badge grammar — the filled magnitude pill (act on me). Geometry
+   matches the outline count pill: 14px tall, 10px tabular-nums. The caller
+   supplies the tone (danger/warning) as utility classes. */
+.rail-badge {
+  min-width: 14px;
+  height: 14px;
+  padding-inline: 4px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Command Center — sidebar workflow run badge.
    A project whose session is running Claude Code workflows right now. Quiet
    teal so it reads as one more piece of row metadata, not an alert. */
@@ -425,6 +592,14 @@ body {
   font-weight: 600;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+}
+
+/* On light pulled material the quiet teal restates itself in panel-legible
+   tones; the dark panel reads the rail tones as-is. */
+html:not(.dark) .sidebar-row-pulled .sidebar-workflow-badge {
+  border-color: rgba(13, 148, 136, 0.45);
+  background: rgba(13, 148, 136, 0.12);
+  color: var(--color-brand-600);
 }
 
 @keyframes session-pill-breathe {
