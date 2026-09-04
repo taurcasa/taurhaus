@@ -212,7 +212,7 @@ pub enum ModelSelection {
     Adaptive,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CapabilityPolicy {
     #[serde(default, alias = "model_selection")]

@@ -622,11 +622,13 @@ fn push_capability_policy_frontmatter(
     frontmatter: &mut Vec<String>,
     policy: Option<&CapabilityPolicy>,
 ) {
-    let Some(policy) = policy else {
+    let Some(policy) = policy.filter(|policy| *policy != &CapabilityPolicy::default()) else {
+        return;
+    };
+    let Ok(serialized) = serde_norway::to_string(policy) else {
         return;
     };
     frontmatter.push("capability_policy:".to_string());
-    let serialized = serde_norway::to_string(policy).expect("serialize capability policy");
     frontmatter.extend(serialized.lines().map(|line| format!("  {line}")));
 }
 
@@ -1269,7 +1271,11 @@ fn slugify_identifier(value: &str) -> String {
 }
 
 fn push_compiled_section_losses(role: &RoleTemplate, lossy: &mut Vec<String>) {
-    if role.capability_policy.is_some() {
+    if role
+        .capability_policy
+        .as_ref()
+        .is_some_and(|policy| policy != &CapabilityPolicy::default())
+    {
         lossy.push("capability_policy".to_string());
     }
     if role.focus_area.is_some() {
@@ -2027,5 +2033,27 @@ Review carefully and summarize the tradeoffs.
         assert!(instruction_only
             .lossy_fields
             .contains(&"capability_policy".to_string()));
+    }
+
+    #[test]
+    fn default_capability_policy_does_not_change_export_surfaces() {
+        // Regression: commit 2268fa09 emitted the implicit fixed policy into
+        // agent frontmatter and reported it as lossy in instruction-only exports.
+        let role_without_policy = sample_role();
+        let mut role_with_default_policy = role_without_policy.clone();
+        role_with_default_policy.capability_policy = Some(CapabilityPolicy::default());
+
+        for format in [
+            RoleExportFormat::ClaudeAgent,
+            RoleExportFormat::CopilotAgent,
+            RoleExportFormat::AgentsMd,
+            RoleExportFormat::GeminiMd,
+        ] {
+            assert_eq!(
+                export_role(&role_with_default_policy, format),
+                export_role(&role_without_policy, format),
+                "{format:?}"
+            );
+        }
     }
 }
