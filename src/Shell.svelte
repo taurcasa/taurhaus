@@ -229,10 +229,21 @@
     logger: console,
   })
 
+  /** Selecting a project always shows it: any utility surface occupying the
+   * main panel closes, so a sidebar click never changes selection invisibly
+   * behind a takeover. */
+  function selectProjectAndShow(project) {
+    settingsOpen = false
+    accountsOpen = false
+    projectsOpen = false
+    requestedAddTool = null
+    return projectController.selectProject(project)
+  }
+
   let projectContextValue = $state({
     projects: [],
     selectedProject: null,
-    selectProject: (project) => projectController.selectProject(project),
+    selectProject: (project) => selectProjectAndShow(project),
     navigateToCommit: (hash) => navigationController.navigateToCommit(hash),
     navigateToFile: (path, lineNumber) => navigationController.navigateToFile(path, lineNumber),
     navigateToCommitRange: (after, before) => navigationController.navigateToCommitRange(after, before),
@@ -244,11 +255,21 @@
     daemonStatus: null,
     launchSession: (tool, options) => handleOverviewLaunchSession(tool, options),
     openTerminal: () => handleOverviewOpenTerminal(),
+    // Open-only entry points (Overview quick action, sidebar empty state):
+    // asking to manage projects from elsewhere always lands on the surface.
     openManageProjects: () => {
       settingsOpen = false
       accountsOpen = false
       requestedAddTool = null
       projectsOpen = true
+    },
+    // The footer key is a toggle like its two siblings — a pulled key must
+    // never be a dead control.
+    toggleProjects: () => {
+      settingsOpen = false
+      accountsOpen = false
+      requestedAddTool = null
+      projectsOpen = !projectsOpen
     },
     toggleSettings: () => {
       accountsOpen = false

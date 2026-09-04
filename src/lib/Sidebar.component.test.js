@@ -111,7 +111,7 @@ describe('Sidebar component branches', () => {
 
   it('fires selection and footer actions', async () => {
     const onSelectProject = vi.fn()
-    const onAddProject = vi.fn()
+    const onToggleProjects = vi.fn()
     const onToggleSettings = vi.fn()
     const onToggleAccounts = vi.fn()
     const projects = makeProjects(3)
@@ -121,7 +121,7 @@ describe('Sidebar component branches', () => {
         projects,
         actions: {
           onSelectProject,
-          onAddProject,
+          onToggleProjects,
           onToggleSettings,
           onToggleAccounts,
         },
@@ -135,8 +135,10 @@ describe('Sidebar component branches', () => {
     await fireEvent.click(screen.getAllByTestId('project-item')[0])
     expect(onSelectProject).toHaveBeenCalledWith(expect.objectContaining({ id: projects[0].id }))
 
+    // The footer key is a toggle; the open-only onAddProject path is the
+    // empty-state scan action, covered by the states test above.
     await fireEvent.click(screen.getByTestId('manage-projects-btn'))
-    expect(onAddProject).toHaveBeenCalled()
+    expect(onToggleProjects).toHaveBeenCalled()
 
     await fireEvent.click(screen.getByTestId('settings-toggle'))
     expect(onToggleSettings).toHaveBeenCalled()

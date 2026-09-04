@@ -321,9 +321,16 @@
     showHoverCard(project, sessions, el)
   }
 
+  /** Open-only path — the empty-state scan action always lands on the surface. */
   function handleOpenManageProjects() {
     actions?.onAddProject?.()
     sessionContext?.openManageProjects?.()
+  }
+
+  /** The footer key toggles, like its Accounts and Settings siblings. */
+  function handleToggleProjects() {
+    actions?.onToggleProjects?.()
+    sessionContext?.toggleProjects?.()
   }
 
   function handleToggleSettings() {
@@ -857,16 +864,18 @@
   <div class="h-[44px] flex items-center gap-1 px-3 border-t border-white/[0.06]">
     <button
       class="w-7 h-7 flex items-center justify-center rounded-md transition-colors {projectsKeyTone} {railKeyFocus}"
-      aria-label="Manage projects"
+      aria-label="Projects"
+      aria-expanded={projectsOpen}
       title="Projects"
       data-testid="manage-projects-btn"
-      onclick={handleOpenManageProjects}
+      onclick={handleToggleProjects}
     >
       <svg class="w-4 h-4" fill="none" viewBox={RAIL_ICONS.projects.viewBox} stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d={RAIL_ICONS.projects.path}/></svg>
     </button>
     <button
       class="relative w-7 h-7 flex items-center justify-center rounded-md transition-colors {accountsKeyTone} {railKeyFocus}"
       aria-label="Accounts"
+      aria-expanded={accountsOpen}
       title="Accounts (Ctrl+Shift+A)"
       onclick={handleToggleAccounts}
       onmouseenter={showAccountsBoard}
@@ -883,6 +892,7 @@
     <button
       class="w-7 h-7 flex items-center justify-center rounded-md transition-colors {settingsKeyTone} {railKeyFocus}"
       aria-label="Settings"
+      aria-expanded={settingsOpen}
       title="Settings"
       onclick={handleToggleSettings}
       data-testid="settings-toggle"
