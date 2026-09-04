@@ -146,6 +146,46 @@ describe('Sidebar pulled-row bridge — show/hide', () => {
     expect(lane.querySelector('.sidebar-bridge-strip').style.top).toBe('100px')
   })
 
+  it('hides the bridge while the list is reloading', async () => {
+    // Regression: loadProjects flips sidebarLoading with projects and
+    // selectedProject untouched, replacing the rows with the skeleton; the
+    // strip must not keep painting across the gutter beside it.
+    const projects = makeProjects(3)
+    const { rerender } = render(Sidebar, {
+      props: { projects, selectedProject: projects[1] },
+    })
+    const bridge = screen.getByTestId('sidebar-bridge')
+    await waitFor(() => expect(bridge).toHaveAttribute('data-bridge-active'))
+
+    await rerender({ projects, selectedProject: projects[1], sidebarLoading: true })
+    await waitFor(() => {
+      expect(screen.getByTestId('sidebar-skeleton')).toBeInTheDocument()
+      expect(bridge).not.toHaveAttribute('data-bridge-active')
+    })
+  })
+
+  it('hides the bridge while the list shows its error state', async () => {
+    // Regression: the error branch is sticky until a retry; a bridge left
+    // floating beside it would paint material next to empty rail for good.
+    const projects = makeProjects(3)
+    const { rerender } = render(Sidebar, {
+      props: { projects, selectedProject: projects[1] },
+    })
+    const bridge = screen.getByTestId('sidebar-bridge')
+    await waitFor(() => expect(bridge).toHaveAttribute('data-bridge-active'))
+
+    await rerender({
+      projects,
+      selectedProject: projects[1],
+      sidebarError: 'Could not load projects',
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('sidebar-error')).toBeInTheDocument()
+      expect(bridge).not.toHaveAttribute('data-bridge-active')
+      expect(screen.getByTestId('sidebar-bridge-lane')).not.toHaveAttribute('data-bridge-active')
+    })
+  })
+
   it('drops the bridge when the selection is cleared', async () => {
     const projects = makeProjects(3)
     const { rerender } = render(Sidebar, {

@@ -139,6 +139,18 @@
   // pulled material instead — and the selected row demotes to "held".
   const utilityOpen = $derived(settingsOpen || accountsOpen || projectsOpen)
 
+  // Whether the rail can currently be showing a pulled row at all. This
+  // mirrors the template's list branches — the loading skeleton, the error
+  // state, and the empty list render no rows — plus the drawer law (a
+  // utility surface demotes the row to held). The bridge's existence keys
+  // off this, so a list reload or error hides it in the same flush that
+  // removes the rows; the DOM query in updateBridge covers what remains
+  // (filter with no matches, a virtualized row out of its window).
+  const bridgePossible = $derived(
+    !sidebarLoading && !sidebarError && !utilityOpen
+      && Boolean(selectedProject) && projects.length > 0
+  )
+
   function showHoverCard(project, sessions, el) {
     clearTimeout(hoverTimeout)
     if (hoverCard) {
@@ -229,12 +241,19 @@
   /**
    * One measurement pass: find the pulled row in the DOM (`held` renders no
    * `.sidebar-row-pulled`, so a utility surface hides the bridge by
-   * construction) and lay the bridge over the gutter. The row's rect is the
-   * source of truth — the virtualizer's offsets assume 36px rows while a
-   * branch-line row renders 50px.
+   * construction) and lay the bridge over the gutter. `bridgePossible`
+   * gates existence first — the loading/error/empty branches replace the
+   * rows without touching the selection, and a stale strip must never keep
+   * painting across the gutter. The row's rect is the source of truth —
+   * the virtualizer's offsets assume 36px rows while a branch-line row
+   * renders 50px.
    */
   function updateBridge() {
     if (!bridgeClipEl || !bridgeStripEl) return
+    if (!bridgePossible) {
+      applyBridgeFrame({ active: false })
+      return
+    }
     applyBridgeFrame(bridgeFrame({
       rowRect: projectListEl?.querySelector('.sidebar-row-pulled')?.getBoundingClientRect() ?? null,
       railRect: asideEl?.getBoundingClientRect() ?? null,
@@ -246,18 +265,19 @@
     }))
   }
 
-  // Remeasure after every flush that can move or replace the pulled row:
-  // selection, the utility surfaces (held state), list content and grouping,
-  // the virtual window, the measured viewport, and scroll (the strip base is
-  // scroll-invariant, but a scroll can mount/unmount the row through the
-  // virtual window). The aside/list element refs are tracked so the first
-  // pass runs on mount.
+  // Remeasure after every flush that can move, replace, or forbid the
+  // pulled row: the existence gate (loading/error/empty/utility/selection
+  // cleared), the selected identity (which row wears the class), list
+  // content and grouping, the virtual window (which reads the scroll offset
+  // only while virtualized — exactly when scrolling can mount/unmount the
+  // row; the strip base itself is scroll-invariant, and the compositor or
+  // the scroll handler owns the per-frame translation), and the measured
+  // viewport. The element refs are tracked so the first pass runs on mount.
   $effect(() => {
+    void bridgePossible
+    void selectedProject
     void sidebarRows
     void sidebarWindow
-    void selectedProject
-    void utilityOpen
-    void projectListScrollTop
     void projectListViewportHeight
     void asideEl
     void projectListEl
