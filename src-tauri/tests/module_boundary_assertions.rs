@@ -805,7 +805,7 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         ),
         (
             "src/coordination/routing_report.rs",
-            "read-only routing report enumerates registry-authoritative team roots",
+            "read-only routing report: trips registry-construction and telemetry-read markers while never writing; its test fixtures seed sidecars only through the daemon-owned append surface",
         ),
         (
             "src/coordination/orchestrator/delivery.rs",

@@ -60,7 +60,7 @@ impl TranscriptParser for ClaudeTranscriptParser {
 }
 
 /// Maximum file size to parse (1 MB). Skip larger files as a safety measure.
-const MAX_FILE_SIZE: u64 = 1_024 * 1_024;
+pub const MAX_FILE_SIZE: u64 = 1_024 * 1_024;
 
 #[derive(Debug, Default)]
 struct ClaudeScanOutcome {
@@ -466,7 +466,11 @@ pub fn parse_task_file(
     let effort_why = metadata_string(raw.metadata.as_ref(), &["effort_why", "effortWhy"]);
     let deadline_minutes = metadata_u32(raw.metadata.as_ref(), "deadline_minutes");
     let has_review_ruling = metadata_has_review_ruling(raw.metadata.as_ref());
-    let completed_at = metadata_string(raw.metadata.as_ref(), &["completed_at"]);
+    // completed_at only means "state changed" for a task that actually
+    // reached a terminal state; a stale leftover value on a reopened task
+    // must not masquerade as a state-change timestamp.
+    let completed_at = metadata_string(raw.metadata.as_ref(), &["completed_at"])
+        .filter(|_| matches!(status, TaskStatus::Completed | TaskStatus::Stale));
     let updated_at = fs::metadata(path)
         .and_then(|metadata| metadata.modified())
         .ok()

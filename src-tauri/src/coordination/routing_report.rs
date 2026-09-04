@@ -71,12 +71,23 @@ pub fn render_routing_report(
         }
     }
 
+    let total_accepted: usize = role_rows.values().map(|stats| stats.accepted.len()).sum();
     let mut output = format!(
         "Routing telemetry: last {days} days\n\
-         Wall-time is the Stage 1 cost proxy; tokens are not collected.\n\n\
-         Accepted remains 0 until the mesh ledger writes metadata.rulings.\n\n\
-         Role/model\n\
-         role | model | tasks_touched | accepted | completed_unruled | relaunches | effort_switches | nudges | staled | median_wall_time\n"
+         Wall-time is the Stage 1 cost proxy; tokens are not collected.\n\n"
+    );
+    if total_accepted == 0 {
+        // Accurate condition, printed only while it holds: rulings ARE
+        // recordable today (`mesh task ruling`, mesh >= 0.2.28) — none has
+        // been recorded in this window yet.
+        output.push_str(
+            "Accepted counts only tasks whose ledger record carries metadata.rulings \
+             (`mesh task ruling`); none are recorded in this window yet.\n\n",
+        );
+    }
+    output.push_str(
+        "Role/model\n\
+         role | model | tasks_touched | accepted | completed_unruled | relaunches | effort_switches | nudges | staled | median_wall_time\n",
     );
     for ((role, model), stats) in &role_rows {
         push_row(&mut output, Some(role), model, stats);
@@ -404,9 +415,9 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains("Wall-time is the Stage 1 cost proxy; tokens are not collected."));
-        assert!(
-            report.contains("Accepted remains 0 until the mesh ledger writes metadata.rulings.")
-        );
+        // The zero-accepted hint must NEVER print beside a non-zero accepted
+        // column (this fixture records a ruling).
+        assert!(!report.contains("none are recorded in this window yet"));
         assert!(
             report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s")
         );
@@ -420,6 +431,18 @@ mod tests {
     // Regression: c9c6c49b could not attribute a reused member launch that
     // lived under an earlier task, so the report dropped the later task's
     // acceptance and nudge when its sidecar contained no launch of its own.
+    #[test]
+    fn zero_accepted_windows_print_the_rulings_hint() {
+        let teams = tempfile::TempDir::new().expect("teams root");
+        let report = render_routing_report(
+            teams.path(),
+            30,
+            Utc.with_ymd_and_hms(2026, 9, 4, 12, 0, 0).unwrap(),
+        )
+        .expect("render report");
+        assert!(report.contains("none are recorded in this window yet"));
+    }
+
     #[test]
     fn report_includes_a_later_task_attributed_from_an_earlier_task_launch() {
         let root = tempfile::tempdir().expect("tempdir");

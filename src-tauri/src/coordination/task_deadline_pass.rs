@@ -55,6 +55,11 @@ pub(crate) fn apply_task_deadlines(
     Ok(outcome)
 }
 
+// Cost bound stated: this re-parses the team's task files each pass, but the
+// completion writer dedupes per (status, ruling) under flock and only appends
+// to sidecars telemetry already opened, so passes after the first observation
+// are read-only. A last-pass mtime skip was considered and rejected as state
+// for negligible gain at team-sized task counts.
 fn observe_terminal_tasks(teams_dir: &Path, team_name: &str, now: DateTime<Utc>) {
     let Some(tasks_dir) =
         taurhaus_lib::task_scanner::claude_index::ClaudeSourceIndex::team_tasks_dir(
@@ -73,7 +78,7 @@ fn observe_terminal_tasks(teams_dir: &Path, team_name: &str, now: DateTime<Utc>)
         let Ok(metadata) = fs::metadata(&path) else {
             continue;
         };
-        if metadata.len() > 1_048_576 {
+        if metadata.len() > taurhaus_lib::task_scanner::claude::MAX_FILE_SIZE {
             continue;
         }
         let Ok(Some(task)) =

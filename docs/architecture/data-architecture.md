@@ -126,8 +126,11 @@ time from first render to the terminal state-change timestamp. Acceptance follow
 4 exactly: only ledger status `completed` with a sequenced review ruling counts.
 A bare completed status is `completed_unruled`, never accepted. Tokens are not
 collected in Stage 1; the report header identifies wall-time as the cost proxy.
-Until mesh writes `metadata.rulings`, `accepted` remains zero and completed
-records appear under `completed_unruled`.
+Rulings are recordable today (`mesh task ruling`, mesh >= 0.2.28); a window
+whose ledger records carry none reports `accepted` = 0 with completions under
+`completed_unruled`. A task sidecar holding events but no `launch_rendered`
+(possible for pre-telemetry teams) is omitted from the per-role table — a
+thin first-wave report is expected, not a bug.
 
 ### 3. External Tool Data Taurhaus Observes But Does Not Own
 

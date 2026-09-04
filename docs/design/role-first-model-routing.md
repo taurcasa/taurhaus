@@ -261,8 +261,8 @@ collected in this stage because harness surfaces differ; wall-time is the
 explicit cost proxy.
 
 **Prerequisites:** Stage 0 fields (attribution); W-B task ledger completion
-packets (shipped), with review rulings still pending in mesh; the box-score
-human-cost events (shipped in the retro program).
+packets and review rulings (both shipped — `mesh task ruling`, mesh >= 0.2.28);
+the box-score human-cost events (shipped in the retro program).
 
 **Exit gate:** after one real team wave (the operator's field test qualifies),
 the report renders a filled table for that wave with no hand-collection.
