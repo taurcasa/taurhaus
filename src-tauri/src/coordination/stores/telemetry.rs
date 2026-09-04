@@ -70,6 +70,8 @@ pub enum RoutingTelemetryEvent {
     },
     CompletionObserved {
         timestamp: DateTime<Utc>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        observed_at: Option<DateTime<Utc>>,
         task_id: String,
         status: String,
         has_review_ruling: bool,
@@ -102,6 +104,7 @@ pub fn record_completion_observed(
     task_id: &str,
     status: &str,
     has_review_ruling: bool,
+    completion_at: DateTime<Utc>,
 ) {
     let result = (|| -> std::io::Result<()> {
         let path = task_telemetry_path(teams_dir, team_name, Some(task_id))?;
@@ -127,7 +130,8 @@ pub fn record_completion_observed(
             append_locked(
                 &mut file,
                 &RoutingTelemetryEvent::CompletionObserved {
-                    timestamp: Utc::now(),
+                    timestamp: completion_at,
+                    observed_at: Some(Utc::now()),
                     task_id: task_id.to_string(),
                     status: status.to_string(),
                     has_review_ruling,
@@ -727,9 +731,31 @@ mod tests {
             Some("high"),
         );
 
-        record_completion_observed(&teams_dir, "routing-team", "42", "completed", false);
-        record_completion_observed(&teams_dir, "routing-team", "42", "completed", false);
-        record_completion_observed(&teams_dir, "routing-team", "42", "completed", true);
+        let completed_at = Utc.with_ymd_and_hms(2026, 9, 4, 10, 30, 0).unwrap();
+        record_completion_observed(
+            &teams_dir,
+            "routing-team",
+            "42",
+            "completed",
+            false,
+            completed_at,
+        );
+        record_completion_observed(
+            &teams_dir,
+            "routing-team",
+            "42",
+            "completed",
+            false,
+            completed_at,
+        );
+        record_completion_observed(
+            &teams_dir,
+            "routing-team",
+            "42",
+            "completed",
+            true,
+            completed_at,
+        );
 
         let path = teams_dir.join("routing-team/state/telemetry/42.jsonl");
         let events = read_task_telemetry(&path);
@@ -752,7 +778,14 @@ mod tests {
         let teams_dir = root.path().join("teams");
         let absent = teams_dir.join("routing-team/state/telemetry/old-task.jsonl");
 
-        record_completion_observed(&teams_dir, "routing-team", "old-task", "completed", true);
+        record_completion_observed(
+            &teams_dir,
+            "routing-team",
+            "old-task",
+            "completed",
+            true,
+            Utc::now(),
+        );
         assert!(!absent.exists(), "historical tasks must not gain sidecars");
 
         let oversized = teams_dir.join("routing-team/state/telemetry/large-task.jsonl");
@@ -763,7 +796,14 @@ mod tests {
             .expect("extend oversized sidecar");
         let before = file.metadata().expect("oversized metadata").len();
 
-        record_completion_observed(&teams_dir, "routing-team", "large-task", "completed", true);
+        record_completion_observed(
+            &teams_dir,
+            "routing-team",
+            "large-task",
+            "completed",
+            true,
+            Utc::now(),
+        );
 
         assert_eq!(
             std::fs::metadata(&oversized)

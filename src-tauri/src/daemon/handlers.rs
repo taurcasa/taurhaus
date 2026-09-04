@@ -1220,6 +1220,16 @@ fn record_terminal_task_observations(
             &task.id,
             &task.status.to_string(),
             task.has_review_ruling,
+            task.state_changed_at
+                .as_deref()
+                .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+                .or_else(|| {
+                    task.updated_at
+                        .as_deref()
+                        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+                })
+                .map(|value| value.with_timezone(&chrono::Utc))
+                .unwrap_or_else(chrono::Utc::now),
         );
         recorded += 1;
     }
@@ -1270,9 +1280,10 @@ mod tests {
     use tempfile::TempDir;
 
     // Regression: 13111833 repeated one lock-and-full-read per terminal task
-    // on every task RPC, even after that exact terminal state was observed.
+    // on every task RPC and stamped completion with scan time, inflating wall
+    // time whenever the app had been closed after the task state changed.
     #[test]
-    fn terminal_task_observation_is_process_deduplicated() {
+    fn terminal_task_observation_is_deduplicated_and_uses_state_change_time() {
         use std::collections::BTreeSet;
 
         use crate::task_scanner::claude_index::ClaudeTaskRoot;
@@ -1310,8 +1321,8 @@ mod tests {
                 blocked_by: Vec::new(),
                 owner: Some("builder".to_string()),
                 session_id: Some("routing-team".to_string()),
-                state_changed_at: None,
-                updated_at: None,
+                state_changed_at: Some("2026-09-04T10:30:00Z".to_string()),
+                updated_at: Some("2026-09-04T10:45:00Z".to_string()),
                 archived_at: None,
                 last_status: None,
                 archived_reason: None,
@@ -1338,6 +1349,20 @@ mod tests {
             crate::coordination::stores::telemetry::read_task_telemetry(&path).len(),
             2,
             "one render plus one terminal observation"
+        );
+        let events = crate::coordination::stores::telemetry::read_task_telemetry(&path);
+        assert!(matches!(
+            events.last(),
+            Some(crate::coordination::stores::telemetry::RoutingTelemetryEvent::CompletionObserved {
+                timestamp,
+                ..
+            }) if timestamp.to_rfc3339() == "2026-09-04T10:30:00+00:00"
+        ));
+        assert!(
+            std::fs::read_to_string(path)
+                .expect("read telemetry JSONL")
+                .contains("\"observed_at\":"),
+            "scan time remains separately observable"
         );
     }
 

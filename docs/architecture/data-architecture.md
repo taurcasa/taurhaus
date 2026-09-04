@@ -105,7 +105,9 @@ warning. The event vocabulary is:
 - `nudge_sent` and `task_staled`: the already-committed deadline action and its
   deadline fields.
 - `completion_observed`: a terminal status seen by the daemon task scanner and
-  whether that parsed ledger record carried a review ruling.
+  whether that parsed ledger record carried a review ruling. Its `timestamp`
+  is the task's state-change time (falling back to task update time, then scan
+  time); `observed_at` separately records when the daemon scan saw it.
 
 The operational snapshot normally identifies the one task held by a member at
 the launch seam. When it does not, the rendered launch is retained in
@@ -120,7 +122,7 @@ registered team roots, tolerantly reads the sidecars, and rejoins every task to
 the current mesh ledger record. It prints per `(role, model)` rows and a
 per-model rollup with tasks touched, accepted, completed-but-unruled,
 relaunches, completed effort switches, nudges, stale actions, and median elapsed
-time from first render to completion observation. Acceptance follows Amendment
+time from first render to the terminal state-change timestamp. Acceptance follows Amendment
 4 exactly: only ledger status `completed` with a sequenced review ruling counts.
 A bare completed status is `completed_unruled`, never accepted. Tokens are not
 collected in Stage 1; the report header identifies wall-time as the cost proxy.

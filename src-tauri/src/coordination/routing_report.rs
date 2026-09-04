@@ -322,6 +322,7 @@ mod tests {
                 "\"capability_tier\":\"strong\",\"tier_rank\":0}}\n",
                 "not-json\n",
                 "{{\"event\":\"completion_observed\",\"timestamp\":\"{completed_at}\",",
+                "\"observed_at\":\"2026-09-04T11:00:00Z\",",
                 "\"task_id\":\"{task_id}\",\"status\":\"completed\",",
                 "\"has_review_ruling\":{ruled}}}\n"
             ),
@@ -407,8 +408,12 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains("Wall-time is the Stage 1 cost proxy; tokens are not collected."));
-        assert!(report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0"));
-        assert!(report.contains("test-developer | gpt-5.6-luna | 1 | 0 | 1"));
+        assert!(report.contains(
+            "rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+        ));
+        assert!(report.contains(
+            "test-developer | gpt-5.6-luna | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 5m 00s"
+        ));
         assert!(report.contains("gpt-5.6-sol | 1 | 1 | 0"));
         assert!(report.contains("gpt-5.6-luna | 1 | 0 | 1"));
     }
@@ -457,6 +462,7 @@ mod tests {
             },
             crate::coordination::stores::telemetry::RoutingTelemetryEvent::CompletionObserved {
                 timestamp: now,
+                observed_at: Some(now),
                 task_id: "task-b".to_string(),
                 status: "completed".to_string(),
                 has_review_ruling: true,
