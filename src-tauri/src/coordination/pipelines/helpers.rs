@@ -942,8 +942,8 @@ pub(super) fn record_context_launch_telemetry(
         &context.team_name,
         &context.member.name,
     ) {
-        Ok(Some(snapshot)) if !snapshot.task.id.trim().is_empty() => snapshot.task.id,
-        Ok(_) => return,
+        Ok(Some(snapshot)) if !snapshot.task.id.trim().is_empty() => Some(snapshot.task.id),
+        Ok(_) => None,
         Err(error) => {
             tracing::warn!(
                 team = %context.team_name,
@@ -951,7 +951,7 @@ pub(super) fn record_context_launch_telemetry(
                 error = %error,
                 "routing telemetry could not attribute a rendered launch"
             );
-            return;
+            None
         }
     };
     let fallback_role = match context.member.role {
@@ -961,7 +961,7 @@ pub(super) fn record_context_launch_telemetry(
     crate::coordination::stores::telemetry::record_launch_rendered(
         teams_dir,
         &context.team_name,
-        Some(&task_id),
+        task_id.as_deref(),
         &context.member.name,
         context.member.role_id.as_deref().unwrap_or(fallback_role),
         context.member.cli_tool,

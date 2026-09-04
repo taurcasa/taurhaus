@@ -22,7 +22,7 @@ struct ReportStats {
 
 #[derive(Debug)]
 struct LedgerVerdict {
-    completed: bool,
+    terminal: bool,
     has_review_ruling: bool,
 }
 
@@ -185,10 +185,10 @@ fn accumulate_task(
 fn mark_task(stats: &mut ReportStats, task_key: &str, ledger: Option<&LedgerVerdict>) {
     stats.tasks.insert(task_key.to_string());
     match ledger {
-        Some(ledger) if ledger.completed && ledger.has_review_ruling => {
+        Some(ledger) if ledger.terminal && ledger.has_review_ruling => {
             stats.accepted.insert(task_key.to_string());
         }
-        Some(ledger) if ledger.completed => {
+        Some(ledger) if ledger.terminal => {
             stats.completed_unruled.insert(task_key.to_string());
         }
         _ => {}
@@ -226,25 +226,15 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
     if metadata.len() > 1_048_576 {
         return None;
     }
-    let task: serde_json::Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+    let task =
+        crate::task_scanner::claude::parse_task_file(&path, Some(team_name.to_string())).ok()??;
     Some(LedgerVerdict {
-        completed: task.get("status").and_then(serde_json::Value::as_str) == Some("completed"),
-        has_review_ruling: ledger_has_review_ruling(task.get("metadata")),
+        terminal: matches!(
+            task.status,
+            crate::task_scanner::TaskStatus::Completed | crate::task_scanner::TaskStatus::Stale
+        ),
+        has_review_ruling: task.has_review_ruling,
     })
-}
-
-fn ledger_has_review_ruling(metadata: Option<&serde_json::Value>) -> bool {
-    metadata
-        .and_then(|metadata| metadata.get("rulings"))
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|rulings| {
-            rulings.iter().any(|ruling| {
-                matches!(
-                    ruling.get("kind").and_then(serde_json::Value::as_str),
-                    Some("verdict" | "score" | "ruling")
-                )
-            })
-        })
 }
 
 fn event_timestamp(event: &RoutingTelemetryEvent) -> DateTime<Utc> {
@@ -379,13 +369,29 @@ mod tests {
             &root.path().join("personal/tasks/accepted-team/41.json"),
             serde_json::json!({
                 "id": "41",
+                "subject": "Accepted task",
+                "description": null,
+                "activeForm": null,
                 "status": "completed",
+                "blocks": [],
+                "blockedBy": [],
+                "owner": "builder",
                 "metadata": {"rulings": [{"kind": "verdict", "value": "accepted"}]}
             }),
         );
         write_json(
             &root.path().join("work/tasks/unruled-team/42.json"),
-            serde_json::json!({"id": "42", "status": "completed", "metadata": {}}),
+            serde_json::json!({
+                "id": "42",
+                "subject": "Unruled task",
+                "description": null,
+                "activeForm": null,
+                "status": "completed",
+                "blocks": [],
+                "blockedBy": [],
+                "owner": "builder",
+                "metadata": {}
+            }),
         );
 
         let report = render_routing_report(
@@ -400,5 +406,50 @@ mod tests {
         assert!(report.contains("test-developer | gpt-5.6-luna | 1 | 0 | 1"));
         assert!(report.contains("gpt-5.6-sol | 1 | 1 | 0"));
         assert!(report.contains("gpt-5.6-luna | 1 | 0 | 1"));
+    }
+
+    // Regression: a9fea658 re-derived only the literal `completed` status,
+    // so the scanner's other terminal ledger state disappeared from both
+    // acceptance buckets even though completion telemetry had been recorded.
+    #[test]
+    fn stale_ledger_tasks_are_terminal_and_keep_the_scanners_ruling_parser() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let default_teams = root.path().join("personal/teams");
+        write_json(
+            &default_teams.join("routing-team/config.json"),
+            serde_json::json!({"name": "routing-team", "members": []}),
+        );
+        write_sidecar(
+            &default_teams,
+            "routing-team",
+            "43",
+            "rust-developer",
+            "gpt-5.6-sol",
+            "2026-09-03T10:10:00Z",
+            false,
+        );
+        write_json(
+            &root.path().join("personal/tasks/routing-team/43.json"),
+            serde_json::json!({
+                "id": "43",
+                "subject": "Timed out after review",
+                "description": null,
+                "activeForm": null,
+                "status": "stale",
+                "blocks": [],
+                "blockedBy": [],
+                "owner": "builder",
+                "metadata": {"rulings": [{"kind": "score", "value": 8}]}
+            }),
+        );
+
+        let report = render_routing_report(
+            &default_teams,
+            30,
+            Utc.with_ymd_and_hms(2026, 9, 4, 12, 0, 0).unwrap(),
+        )
+        .expect("render report");
+
+        assert!(report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0"));
     }
 }

@@ -4,7 +4,7 @@
 //! storage trouble cannot change a launch, effort, deadline, or task outcome.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Error, ErrorKind, Write};
+use std::io::{BufRead, BufReader, Error, ErrorKind, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -90,9 +90,15 @@ pub fn record_completion_observed(
 ) {
     let result = (|| -> std::io::Result<()> {
         let path = task_telemetry_path(teams_dir, team_name, Some(task_id))?;
-        let mut file = open_sidecar(&path)?;
+        let Some(mut file) = open_existing_sidecar(&path)? else {
+            return Ok(());
+        };
         file.lock_exclusive()?;
-        let duplicate = read_task_telemetry(&path).iter().any(|event| {
+        let Some(events) = read_locked_task_telemetry(&mut file)? else {
+            FileExt::unlock(&file)?;
+            return Ok(());
+        };
+        let duplicate = events.iter().any(|event| {
             matches!(
                 event,
                 RoutingTelemetryEvent::CompletionObserved {
@@ -114,6 +120,81 @@ pub fn record_completion_observed(
             )?;
         }
         FileExt::unlock(&file)
+    })();
+    if let Err(error) = result {
+        report_write_failure(team_name, Some(task_id), &error);
+    }
+}
+
+/// Attribute the latest rendered launch observed for `member` when a
+/// daemon-owned operational snapshot first names a task. The render fields
+/// remain authoritative; the new timestamp marks when ownership was observed.
+pub fn attribute_latest_launch_to_task(
+    teams_dir: &Path,
+    team_name: &str,
+    task_id: &str,
+    member: &str,
+) {
+    let result = (|| -> std::io::Result<()> {
+        let task_path = task_telemetry_path(teams_dir, team_name, Some(task_id))?;
+        if read_task_telemetry(&task_path).iter().any(|event| {
+            matches!(
+                event,
+                RoutingTelemetryEvent::LaunchRendered {
+                    member: launched_member,
+                    ..
+                } if launched_member == member
+            )
+        }) {
+            return Ok(());
+        }
+
+        let unattributed_path = task_telemetry_path(teams_dir, team_name, None)?;
+        let latest = read_task_telemetry(&unattributed_path)
+            .into_iter()
+            .filter_map(|event| match event {
+                RoutingTelemetryEvent::LaunchRendered {
+                    timestamp,
+                    member: launched_member,
+                    role,
+                    tool,
+                    model,
+                    applied_effort,
+                    capability_tier,
+                    tier_rank,
+                    ..
+                } if launched_member == member => Some((
+                    timestamp,
+                    role,
+                    tool,
+                    model,
+                    applied_effort,
+                    capability_tier,
+                    tier_rank,
+                )),
+                _ => None,
+            })
+            .max_by_key(|(timestamp, ..)| *timestamp);
+        let Some((_, role, tool, model, applied_effort, capability_tier, tier_rank)) = latest
+        else {
+            return Ok(());
+        };
+        append_task_telemetry(
+            teams_dir,
+            team_name,
+            Some(task_id),
+            &RoutingTelemetryEvent::LaunchRendered {
+                timestamp: Utc::now(),
+                task_id: Some(task_id.to_string()),
+                member: member.to_string(),
+                role,
+                tool,
+                model,
+                applied_effort,
+                capability_tier,
+                tier_rank,
+            },
+        )
     })();
     if let Err(error) = result {
         report_write_failure(team_name, Some(task_id), &error);
@@ -229,6 +310,30 @@ fn open_sidecar(path: &Path) -> std::io::Result<File> {
     #[cfg(unix)]
     options.mode(0o600);
     options.open(path)
+}
+
+fn open_existing_sidecar(path: &Path) -> std::io::Result<Option<File>> {
+    match OpenOptions::new().append(true).read(true).open(path) {
+        Ok(file) => Ok(Some(file)),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn read_locked_task_telemetry(
+    file: &mut File,
+) -> std::io::Result<Option<Vec<RoutingTelemetryEvent>>> {
+    if file.metadata()?.len() > MAX_SIDECAR_BYTES {
+        return Ok(None);
+    }
+    file.seek(SeekFrom::Start(0))?;
+    Ok(Some(
+        BufReader::new(file)
+            .lines()
+            .map_while(Result::ok)
+            .filter_map(|line| serde_json::from_str(&line).ok())
+            .collect(),
+    ))
 }
 
 fn append_locked(file: &mut File, event: &RoutingTelemetryEvent) -> std::io::Result<()> {
@@ -362,13 +467,24 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let teams_dir = root.path().join("teams");
 
+        record_launch_rendered(
+            &teams_dir,
+            "routing-team",
+            Some("42"),
+            "builder",
+            "rust-developer",
+            crate::session_scanner::cli_tool::CliTool::Codex,
+            Some("gpt-5.6-sol"),
+            Some("high"),
+        );
+
         record_completion_observed(&teams_dir, "routing-team", "42", "completed", false);
         record_completion_observed(&teams_dir, "routing-team", "42", "completed", false);
         record_completion_observed(&teams_dir, "routing-team", "42", "completed", true);
 
         let path = teams_dir.join("routing-team/state/telemetry/42.jsonl");
         let events = read_task_telemetry(&path);
-        assert_eq!(events.len(), 2);
+        assert_eq!(events.len(), 3);
         assert!(matches!(
             events.last(),
             Some(RoutingTelemetryEvent::CompletionObserved {
@@ -376,6 +492,37 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    // Regression: 13111833 created a sidecar for every historical terminal
+    // task and treated an oversized sidecar as empty, making repeated scans
+    // append forever after the reader's safety cap was crossed.
+    #[test]
+    fn completion_observation_requires_existing_bounded_telemetry() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let teams_dir = root.path().join("teams");
+        let absent = teams_dir.join("routing-team/state/telemetry/old-task.jsonl");
+
+        record_completion_observed(&teams_dir, "routing-team", "old-task", "completed", true);
+        assert!(!absent.exists(), "historical tasks must not gain sidecars");
+
+        let oversized = teams_dir.join("routing-team/state/telemetry/large-task.jsonl");
+        std::fs::create_dir_all(oversized.parent().expect("telemetry dir"))
+            .expect("create telemetry dir");
+        let file = std::fs::File::create(&oversized).expect("create oversized sidecar");
+        file.set_len(super::MAX_SIDECAR_BYTES + 1)
+            .expect("extend oversized sidecar");
+        let before = file.metadata().expect("oversized metadata").len();
+
+        record_completion_observed(&teams_dir, "routing-team", "large-task", "completed", true);
+
+        assert_eq!(
+            std::fs::metadata(&oversized)
+                .expect("oversized metadata after observation")
+                .len(),
+            before,
+            "oversized telemetry must not be appended"
+        );
     }
 
     #[test]

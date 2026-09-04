@@ -440,7 +440,10 @@ fn parse_task_directory(dir: &Path, source_key: &str) -> DirectoryParseOutcome {
 ///
 /// Returns `Ok(None)` for deleted tasks (status: "deleted") so they are
 /// silently excluded from the board without logging a warning.
-fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<UnifiedTask>, String> {
+pub(crate) fn parse_task_file(
+    path: &Path,
+    source_key: Option<String>,
+) -> Result<Option<UnifiedTask>, String> {
     let content = fs::read_to_string(path).map_err(|e| format!("Read error: {e}"))?;
     let raw: RawClaudeTask =
         serde_json::from_str(&content).map_err(|e| format!("Parse error: {e}"))?;

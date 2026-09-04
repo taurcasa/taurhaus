@@ -133,6 +133,10 @@ fn publish_snapshot(
         return Ok(false);
     }
 
+    let previous_task_id = current
+        .as_ref()
+        .map(|current| current.task.id.trim().to_string())
+        .unwrap_or_default();
     let mut candidate = snapshot.clone();
     if let Some(current) = current {
         candidate.version = current.version;
@@ -154,6 +158,16 @@ fn publish_snapshot(
     }
 
     OperationalContextSnapshotStore::save_locked(&guard, teams_dir, &candidate)?;
+    drop(guard);
+    let task_id = candidate.task.id.trim();
+    if !task_id.is_empty() && previous_task_id != task_id {
+        crate::coordination::stores::telemetry::attribute_latest_launch_to_task(
+            teams_dir,
+            &candidate.team_name,
+            task_id,
+            &candidate.member_name,
+        );
+    }
     Ok(true)
 }
 

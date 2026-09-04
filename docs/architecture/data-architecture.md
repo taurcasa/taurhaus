@@ -105,10 +105,12 @@ partially written line is skipped. The event vocabulary is:
   whether that parsed ledger record carried a review ruling.
 
 The operational snapshot normally identifies the one task held by a member at
-the launch seam. Taurhaus does not guess if that attribution is unavailable:
-an attributable task uses its own sidecar; a genuinely unattributed rendered
-launch uses `_unattributed.jsonl` with `task_id: null` and is excluded from
-task-level report rows.
+the launch seam. When it does not, the rendered launch is retained in
+`_unattributed.jsonl` with `task_id: null`. If a later daemon-owned snapshot
+first names a task for that running member, taurhaus copies the member's latest
+render-authoritative launch fields into the task sidecar at that attribution
+time. Thus a launch-once member's later work appears in the report without
+inventing a requested model or requiring another relaunch.
 
 `just routing-report [DAYS]` (30 days by default) enumerates the default and all
 registered team roots, tolerantly reads the sidecars, and rejoins every task to

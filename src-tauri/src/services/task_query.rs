@@ -325,6 +325,9 @@ pub(crate) fn persisted_to_unified(
         effort: t.effort,
         effort_why: t.effort_why,
         deadline_minutes: t.deadline_minutes,
+        // SQLite does not persist ledger metadata. This rehydrated path is
+        // presentation-only; terminal telemetry consumes the fresh scanner
+        // result before persistence in daemon/handlers.rs.
         has_review_ruling: false,
     }
 }
