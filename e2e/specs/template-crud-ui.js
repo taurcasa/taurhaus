@@ -744,7 +744,10 @@ describe('Template CRUD UI', () => {
         async () => await (await $(`[data-testid="template-browser-preset-${createdPresetId}"]`)).isExisting(),
         { ...WAIT_MEDIUM, timeoutMsg: 'Created preset did not appear in preset list' }
       )
-      await closeSlideOverIfOpen()
+      await browser.waitUntil(
+        async () => !(await hasTestId('team-customizer-panel')),
+        { ...WAIT_MEDIUM, timeoutMsg: 'Preset customizer did not close after save' }
+      )
 
       await clickActiveSlideOverTestId('catalog-tab-presets')
       await clickActiveSlideOverTestId(`template-preset-delete-${presetIdToDelete}`)
