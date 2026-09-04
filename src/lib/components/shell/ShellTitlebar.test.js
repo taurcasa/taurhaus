@@ -33,6 +33,19 @@ describe('ShellTitlebar', () => {
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 
+  it('replaces project tabs with the Projects takeover label', () => {
+    render(ShellTitlebar, {
+      props: {
+        dark: true,
+        activeTab: 'overview',
+        projectsOpen: true,
+      },
+    })
+
+    expect(screen.getByText('Projects')).toBeInTheDocument()
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+  })
+
   it('supports arrow-key navigation between tabs', async () => {
     const onSwitchTab = vi.fn()
 
