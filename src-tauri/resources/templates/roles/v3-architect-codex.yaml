@@ -13,6 +13,9 @@ defaults:
   reasoning_effort: high
   default_name_pattern: "architect-{n}"
 
+capability_policy:
+  model_selection: fixed
+
 instructions: |
   MODEL SLOT
   Candidates: Fable 5.1 (preferred) or GPT-5.6 Sol (fallback). The preset-pinned role_id stays v3-architect-codex for compatibility; switch the open slot by editing defaults.cli_tool, defaults.model, and defaults.reasoning_effort.

@@ -13,6 +13,9 @@ defaults:
   reasoning_effort: high
   default_name_pattern: design-{project}
 
+capability_policy:
+  model_selection: fixed
+
 instructions: |
   MODEL SLOT
   CREATIVE DIRECTION candidates: Fable 5.1 (preferred) or Antigravity via agy. Switch candidates by editing defaults.cli_tool, defaults.model, and defaults.reasoning_effort. This role owns direction and critique, not production UI implementation.

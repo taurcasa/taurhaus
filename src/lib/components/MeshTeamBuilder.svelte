@@ -1464,6 +1464,7 @@
       mode: normalizeOptionalDraftText(draft?.mode),
       inheritsFrom: normalizeOptionalDraftText(draft?.inheritsFrom),
       requiredArtifacts: normalizeDraftStringList(draft?.requiredArtifacts),
+      capabilityPolicy: source?.capabilityPolicy ?? source?.capability_policy ?? null,
       capabilities: Array.isArray(source?.capabilities) ? source.capabilities : [],
       provenance: source?.provenance ?? null,
       constraints: {

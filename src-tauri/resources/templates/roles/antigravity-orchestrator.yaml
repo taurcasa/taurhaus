@@ -13,6 +13,9 @@ defaults:
   reasoning_effort: null
   default_name_pattern: lead-{project}
 
+capability_policy:
+  model_selection: fixed
+
 instructions: |
   The Claude- and GPT-family orchestrator defaults are Fable 5.1 and GPT-5.6 Sol respectively. This Antigravity (agy) lane remains the alternative harness; do not silently substitute it for either decided default.
 

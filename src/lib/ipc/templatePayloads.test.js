@@ -96,6 +96,29 @@ describe('templatePayloads normalizeRoleTemplateInput', () => {
     }))
   })
 
+  it('round-trips carried capability policy without exposing editor behavior', () => {
+    const capabilityPolicy = {
+      modelSelection: 'adaptive',
+      minimumCapability: 'strong',
+      allowedModels: ['gpt-5.6-sol', 'opus'],
+      effortBand: ['medium', 'high'],
+    }
+    const response = normalizeRoleTemplateResponse({
+      role_id: 'developer-codex',
+      name: 'Developer',
+      capability_policy: {
+        model_selection: 'adaptive',
+        minimum_capability: 'strong',
+        allowed_models: ['gpt-5.6-sol', 'opus'],
+        effort_band: ['medium', 'high'],
+      },
+    })
+
+    expect(response.capabilityPolicy).toEqual(capabilityPolicy)
+    expect(response).not.toHaveProperty('capability_policy')
+    expect(normalizeRoleTemplateInput(response).capabilityPolicy).toEqual(capabilityPolicy)
+  })
+
   // Regression: commits ff40911 and 5d2ce27 kept model and effort in one string,
   // so the launcher stripped the suffix and ran the member at the user's global
   // effort. Saving a role must emit the split, canonical pair.

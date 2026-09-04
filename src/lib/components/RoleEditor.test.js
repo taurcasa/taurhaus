@@ -229,6 +229,33 @@ describe('RoleEditor', () => {
     )
   })
 
+  it('preserves carried capability policy when saving an existing role', async () => {
+    const onSave = vi.fn()
+    const capabilityPolicy = {
+      modelSelection: 'fixed',
+      minimumCapability: 'strong',
+      allowedModels: ['gpt-5.6-sol'],
+      effortBand: ['high'],
+    }
+    render(RoleEditor, {
+      props: {
+        open: true,
+        modelCatalog: TEST_MODEL_CATALOG,
+        role: {
+          roleId: 'reviewer',
+          name: 'Reviewer',
+          cliTool: 'codex',
+          model: 'gpt-5.6-sol',
+          capabilityPolicy,
+        },
+        onSave,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('role-editor-save'))
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ capabilityPolicy }))
+  })
+
   it('shows delete button only for existing custom roles', () => {
     const { rerender } = render(RoleEditor, {
       props: {

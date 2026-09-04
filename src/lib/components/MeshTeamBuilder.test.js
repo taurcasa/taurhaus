@@ -638,6 +638,10 @@ describe('MeshTeamBuilder', () => {
       mode: 'implementation',
       inheritsFrom: 'shared-codex-dev',
       requiredArtifacts: ['notes.md'],
+      capabilityPolicy: {
+        modelSelection: 'fixed',
+        minimumCapability: 'strong',
+      },
       defaults: {
         cliTool: 'codex',
         model: 'gpt-5.4 high',
@@ -699,6 +703,10 @@ describe('MeshTeamBuilder', () => {
         mode: 'review',
         inheritsFrom: 'shared-review-codex',
         requiredArtifacts: ['verification-notes.md'],
+        capabilityPolicy: {
+          modelSelection: 'fixed',
+          minimumCapability: 'strong',
+        },
         behavioralContract: expect.objectContaining({
           execution: ['Implement the scoped change.'],
         }),

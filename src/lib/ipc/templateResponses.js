@@ -11,6 +11,17 @@ function normalizeOptionalStringList(value) {
   return normalized.length > 0 ? normalized : null
 }
 
+function normalizeCapabilityPolicy(value) {
+  if (!value || typeof value !== 'object') return null
+  return withoutAliases({
+    ...value,
+    modelSelection: value.modelSelection ?? value.model_selection ?? 'fixed',
+    minimumCapability: value.minimumCapability ?? value.minimum_capability ?? null,
+    allowedModels: normalizeStringList(value.allowedModels ?? value.allowed_models),
+    effortBand: normalizeStringList(value.effortBand ?? value.effort_band),
+  }, ['model_selection', 'minimum_capability', 'allowed_models', 'effort_band'])
+}
+
 function optionalTrimmed(value) {
   const normalized = String(value ?? '').trim()
   return normalized.length > 0 ? normalized : null
@@ -174,6 +185,9 @@ export function normalizeRoleTemplateResponse(value) {
     cliTool: value.cliTool ?? value.cli_tool ?? value.defaults?.cliTool ?? value.defaults?.cli_tool ?? null,
     model: roleModelFields.model,
     reasoningEffort: roleModelFields.reasoningEffort,
+    capabilityPolicy: normalizeCapabilityPolicy(
+      value.capabilityPolicy ?? value.capability_policy
+    ),
     focusArea: value.focusArea ?? value.focus_area ?? '',
     contextSummary: value.contextSummary ?? value.context_summary ?? '',
     behaviorSummary: value.behaviorSummary ?? value.behavior_summary ?? '',
@@ -204,6 +218,7 @@ export function normalizeRoleTemplateResponse(value) {
     'role_id',
     'cli_tool',
     'reasoning_effort',
+    'capability_policy',
     'focus_area',
     'context_summary',
     'behavior_summary',

@@ -12,6 +12,22 @@ function optionalTrimmedStringList(value) {
   return normalized.length > 0 ? normalized : null
 }
 
+function normalizeCapabilityPolicy(value) {
+  if (!value || typeof value !== 'object') return null
+  const normalized = {
+    ...value,
+    modelSelection: value.modelSelection ?? value.model_selection ?? 'fixed',
+    minimumCapability: value.minimumCapability ?? value.minimum_capability ?? null,
+    allowedModels: optionalTrimmedStringList(value.allowedModels ?? value.allowed_models) ?? [],
+    effortBand: optionalTrimmedStringList(value.effortBand ?? value.effort_band) ?? [],
+  }
+  delete normalized.model_selection
+  delete normalized.minimum_capability
+  delete normalized.allowed_models
+  delete normalized.effort_band
+  return normalized
+}
+
 export function normalizeRoleTemplateInput(roleData) {
   const source =
     roleData && typeof roleData === 'object' && roleData.template
@@ -69,6 +85,9 @@ export function normalizeRoleTemplateInput(roleData) {
           (roleKind === 'lead' ? 'team-lead' : `${roleId || 'agent'}-{n}`)
       ),
     },
+    capabilityPolicy: normalizeCapabilityPolicy(
+      source.capabilityPolicy ?? source.capability_policy
+    ),
     instructions: String(source.instructions ?? '').trim(),
     focusArea: optionalTrimmedString(source.focusArea ?? source.focus_area),
     contextSummary: optionalTrimmedString(source.contextSummary ?? source.context_summary),
@@ -99,6 +118,7 @@ export function normalizeRoleTemplateInput(roleData) {
   }
   delete normalized.role_id
   delete normalized.reasoning_effort
+  delete normalized.capability_policy
   // serde aliases: a payload carrying both spellings is a duplicate field to
   // the backend, so the consumed snake_case spelling must not survive the spread.
   delete normalized.behavioral_contract

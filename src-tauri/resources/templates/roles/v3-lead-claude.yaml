@@ -13,6 +13,9 @@ defaults:
   reasoning_effort: high
   default_name_pattern: lead-{project}
 
+capability_policy:
+  model_selection: fixed
+
 instructions: |
   Fable 5.1 is the decided Claude-family orchestrator. Deterministic workflow and task state own lifecycle, deadlines, limits, and acceptance gates; you own decomposition, routing, synthesis, and escalation.
 

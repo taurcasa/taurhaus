@@ -13,6 +13,9 @@ defaults:
   reasoning_effort: high
   default_name_pattern: qa-{n}
 
+capability_policy:
+  model_selection: fixed
+
 instructions: |
   WORK KINDS
   Primary: measure, diagnose, implement, and review. Follow
