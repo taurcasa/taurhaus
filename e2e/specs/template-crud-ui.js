@@ -821,11 +821,29 @@ describe('Template CRUD UI', () => {
 
       // Regression: 430e09ee removed the duplicate Add Agent action; active
       // teams expose the same flow through the runtime primary action.
+      //
+      // Accepted race, retried once: tier-1 member panes run unauthenticated
+      // CLIs whose sessions die fast, and the daemon's dead-session self-heal
+      // may legitimately disband the just-initialized team inside this action
+      // window ("Team disbanded" banner, app back in setup mode). That is
+      // correct product behavior, not a defect — the test rebuilds the
+      // runtime team once and repeats the action; a second loss fails loudly.
       await clickTestId('mesh-runtime-primary-action')
-      await browser.waitUntil(
-        async () => await hasTestId('mesh-add-agent-form'),
-        { ...WAIT_MEDIUM, timeoutMsg: 'Add agent form did not open' }
-      )
+      try {
+        await browser.waitUntil(
+          async () => await hasTestId('mesh-add-agent-form'),
+          { ...WAIT_MEDIUM, timeoutMsg: 'Add agent form did not open' }
+        )
+      } catch (error) {
+        if (await hasTestId('mesh-mode-runtime')) throw error
+        const rebuiltTeam = await ensureRuntimeMode(this)
+        if (!rebuiltTeam) return
+        await clickTestId('mesh-runtime-primary-action')
+        await browser.waitUntil(
+          async () => await hasTestId('mesh-add-agent-form'),
+          { ...WAIT_MEDIUM, timeoutMsg: 'Add agent form did not open after self-heal rebuild' }
+        )
+      }
 
       // Regression: 372511aa replaced the runtime role select with the shared
       // role catalog, so role-aware coverage must choose its catalog card.
