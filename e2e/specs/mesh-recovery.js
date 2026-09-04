@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
+import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { assertTmuxIsolation } from '../helpers/laneTmux.js'
@@ -196,7 +197,7 @@ async function disbandRuntimeTeamIfSafe() {
   return true
 }
 
-async function ensureSetupMode() {
+async function ensureSetupMode(teamName) {
   await openMeshTab()
 
   if (await hasVisibleTestId('mesh-mode-runtime')) {
@@ -207,7 +208,9 @@ async function ensureSetupMode() {
   if (await hasVisibleTestId('mesh-mode-setup')) return true
 
   if (await hasVisibleTestId('mesh-mode-empty')) {
-    await clickTestId('mesh-builder-team-name-display')
+    // Regression: 17e0f9d1 clicked into the inline editor without dispatching
+    // the input event required to move the builder from empty to setup mode.
+    await setInlineBuilderTeamName(teamName)
   }
 
   if (await hasVisibleTestId('mesh-availability-blocking')) return false
@@ -218,52 +221,6 @@ async function ensureSetupMode() {
   )
 
   return true
-}
-
-async function setTeamName(teamName) {
-  const inlineInput = await $('[data-testid="mesh-builder-team-name-input"]')
-  if (await inlineInput.isExisting()) {
-    await inlineInput.waitForExist({ timeout: WAIT_MEDIUM.timeout })
-    await inlineInput.clearValue()
-    await inlineInput.setValue(teamName)
-    await browser.waitUntil(
-      async () => (await inlineInput.getValue()) === teamName,
-      { ...WAIT_MEDIUM, timeoutMsg: 'Inline mesh builder team name did not update' }
-    )
-    return
-  }
-
-  const inlineDisplay = await $('[data-testid="mesh-builder-team-name-display"]')
-  if (await inlineDisplay.isExisting()) {
-    await inlineDisplay.click()
-    const openedInput = await $('[data-testid="mesh-builder-team-name-input"]')
-    await openedInput.waitForExist({ timeout: WAIT_MEDIUM.timeout })
-    await openedInput.clearValue()
-    await openedInput.setValue(teamName)
-    await browser.waitUntil(
-      async () => (await openedInput.getValue()) === teamName,
-      { ...WAIT_MEDIUM, timeoutMsg: 'Inline mesh builder team name did not update' }
-    )
-    return
-  }
-
-  await clickTestId('mesh-action-customize')
-  await browser.waitUntil(
-    async () => await hasTestId('team-customizer-panel'),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not open' }
-  )
-
-  const teamNameInput = await $('[data-testid="team-customizer-name-input"]')
-  await teamNameInput.waitForExist({ timeout: WAIT_MEDIUM.timeout })
-  await teamNameInput.clearValue()
-  await teamNameInput.setValue(teamName)
-
-  await clickTestId('team-customizer-save')
-
-  await browser.waitUntil(
-    async () => !(await hasTestId('team-customizer-panel')),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not close after apply' }
-  )
 }
 
 async function selectFirstNonEmptyOption(selector) {
@@ -486,11 +443,9 @@ async function getRuntimeUiState() {
 }
 
 async function initializeRuntimeTeam() {
-  const setupReady = await ensureSetupMode()
-  if (!setupReady) return null
-
   const teamName = `e2e-mesh-recovery-${uniqueSuffix}`
-  await setTeamName(teamName)
+  const setupReady = await ensureSetupMode(teamName)
+  if (!setupReady) return null
 
   if (!(await hasTestId('mesh-builder-lead-card'))) {
     const selectedLead = await clickFirstBuilderRole('mesh-builder-role-section-leads')
