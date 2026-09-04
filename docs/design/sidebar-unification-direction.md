@@ -88,9 +88,14 @@ A second umbilical would say shown-ness twice. The key stays material-only.
 **Scrollbar lane**: where an engine's scrollbars take layout space, the
 pulled row stops short of the rail edge and an in-rail cover strip
 restores the flush-edge law, with the thumb travelling above the material
-like an overlay scrollbar. Modern Chromium/Edge/WebView2 and WebKitGTK all
-render overlay scrollbars (no space taken), so this path is dormant
-robustness, exercised by tests rather than production.
+like an overlay scrollbar. This path is LIVE on the release platform:
+`app.css` styles `::-webkit-scrollbar`, and in Blink on Windows any such
+rule forces a classic space-taking scrollbar — a probe on Windows Edge
+headless measures the 8px lane, and the photographed junction shows the
+thumb riding over continuous lane material. (Linux headless Chromium and
+WebKitGTK render overlay scrollbars, so only the forced-lane fixtures
+exercise it there; note that `just visual-shot` passes `--hide-scrollbars`,
+so real-scrollbar evidence needs a manual Edge run without that flag.)
 
 ## Fixed constraints (unchanged from the brief)
 

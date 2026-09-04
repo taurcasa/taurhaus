@@ -631,7 +631,16 @@ body {
    final 2px belong to the opaque cover that blanks the panel's border +
    inset ring along the material's contact span (strip plus fillet tips).
    Opaque because the panel surface is translucent and would double-composite
-   over itself — the token is the flattened equivalent. */
+   over itself — the token is the flattened equivalent.
+
+   Ruling — the cover (and the whole neck) omits --shell-panel-gradient, so
+   inside the panel's top wash band the material meets the panel with a
+   measured Δ of at most 3 RGB (green, light theme, topmost row, 1080p;
+   bridge_gradient_band_light pins it). Recorded as imperceptible rather
+   than compensated: the shipped titlebar tab junction — the device's own
+   reference — measures Δ16 at the same class of seam (uncovered border
+   hairline 222 against washed panel 251), and an exact fix would need a
+   scroll-synchronized gradient realignment on a 2px column. */
 .sidebar-bridge-clip .sidebar-bridge-strip {
   right: 2px;
 }

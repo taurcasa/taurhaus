@@ -133,6 +133,18 @@ export const sidebarBridgeScenarios = [
     expected: { bridge: true, lane: true, clippedTop: true },
   }),
   createScenario({
+    // Worst case for the 2px hairline cover: the FIRST row pulled, so the
+    // cover sits as high as it can inside the panel's top gradient band
+    // (light theme carries the strong wash). The cover token flattens the
+    // panel WITHOUT the gradient; this scenario keeps the residual on the
+    // screenshot record — the ruling lives beside the cover CSS.
+    name: 'bridge_gradient_band_light',
+    theme: 'light',
+    projects: shortList(),
+    selectedIndex: 0,
+    expected: { bridge: true, lane: false },
+  }),
+  createScenario({
     // Utility surface open: the row demotes to held and the footer key wears
     // the material — with no bridge for either (the footer-key ruling).
     name: 'bridge_held_settings_dark',

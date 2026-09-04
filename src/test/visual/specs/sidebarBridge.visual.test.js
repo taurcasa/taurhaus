@@ -20,11 +20,13 @@ function frame() {
 
 /**
  * Whether this engine's scrollbars take layout space. The product engine
- * (WebView2 on Windows) uses classic space-taking scrollbars — there the
- * in-rail lane cover appears when the list overflows. Linux HeadlessChrome
- * uses overlay scrollbars unconditionally (styling included), so the pulled
- * row stays flush and no lane exists to cover; the `just visual-shot` Edge
- * lane is where the lane is judged on product-faithful scrollbars.
+ * (WebView2 on Windows) uses classic space-taking scrollbars — a Windows
+ * Edge headless probe measures the 8px lane for app.css's styled
+ * scrollbar — so the in-rail lane cover is live on the release platform.
+ * Linux HeadlessChrome uses overlay scrollbars unconditionally (styling
+ * included), so here the pulled row stays flush and only the forced-lane
+ * scenarios exercise the cover. Real-scrollbar screenshots need a manual
+ * Edge run WITHOUT --hide-scrollbars (`just visual-shot` passes it).
  */
 function scrollbarTakesSpace() {
   const probe = document.createElement('div')
