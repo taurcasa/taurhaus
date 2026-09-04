@@ -2,7 +2,10 @@ import { vi } from 'vitest'
 
 // Imported from the submodule, so it is the real implementation: the `vi.mock`
 // below replaces `../../lib/ipc.js`, not the modules behind it.
-import { buildFrontendFallbackTerminalContract as actualFallbackTerminalContract } from '../../lib/ipc/system.js'
+import {
+  buildFrontendFallbackTerminalContract as actualFallbackTerminalContract,
+  settingsUpdatePayload as actualSettingsUpdatePayload,
+} from '../../lib/ipc/system.js'
 
 function createMockMap() {
   return {
@@ -56,6 +59,7 @@ function createMockMap() {
     launchAccountLogin: vi.fn(),
     revealDirectory: vi.fn(),
     buildFrontendFallbackTerminalContract: vi.fn(),
+    settingsUpdatePayload: vi.fn(),
     search: vi.fn(),
     getProjectTasks: vi.fn(),
     listWorkflowRuns: vi.fn(),
@@ -165,6 +169,10 @@ export function resetVisualIpcMocks(overrides = {}) {
   // A pure helper, not an IPC call: the visual lane wants the real contract.
   visualIpcMocks.buildFrontendFallbackTerminalContract.mockImplementation(
     (platform = 'linux') => actualFallbackTerminalContract(platform),
+  )
+  // Same: pure payload shaping, keep the real behavior.
+  visualIpcMocks.settingsUpdatePayload.mockImplementation((settings) =>
+    actualSettingsUpdatePayload(settings),
   )
   visualIpcMocks.navigateToSession.mockResolvedValue(undefined)
   visualIpcMocks.stopClaudeSession.mockResolvedValue(undefined)
