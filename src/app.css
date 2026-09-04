@@ -603,6 +603,23 @@ html:not(.dark) .sidebar-row-pulled .sidebar-workflow-badge {
   color: var(--color-brand-600);
 }
 
+/* The team-count pill's light fill is near-white — invisible on the light
+   panel material — so pulled rows restate it as a faint brand tint. */
+html:not(.dark) .sidebar-row-pulled .sidebar-session-team-count {
+  background: rgba(10, 46, 43, 0.06);
+  box-shadow: inset 0 1px 0 rgba(19, 78, 74, 0.06);
+}
+
+/* The stale team tone is info-300 in both themes — pale on white — so light
+   pulled rows deepen it the way the standalone stale mark already flips. */
+html:not(.dark) .sidebar-row-pulled .sidebar-session-team[data-activity='stale'] {
+  color: var(--color-info-500);
+}
+
+html:not(.dark) .sidebar-row-pulled .sidebar-session-team-stack[data-activity='stale'] .sidebar-session-team-count {
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
 @keyframes session-pill-breathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }

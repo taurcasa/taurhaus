@@ -1012,6 +1012,21 @@ const projects_open_key_dark = createScenario({
   compareAgainst: 'settings_open_held_dark',
 })
 
+const projects_open_key_light = createScenario({
+  name: 'projects_open_key_light',
+  theme: 'light',
+  projects: [activeClaudeProject, dormantCleanProject],
+  selectedProject: activeClaudeProject,
+  daemonStatus: 'connected',
+  props: { projectsOpen: true },
+  expected: {
+    labels: ['Active Claude Project', 'Connected'],
+    selectedProjectName: 'Active Claude Project',
+    rowState: 'held',
+  },
+  compareAgainst: 'projects_open_key_dark',
+})
+
 // The filled magnitude pill on the Accounts key: danger counts accounts
 // needing sign-in; warning carries the worst window's used percentage.
 const accounts_signal_danger_dark = createScenario({
@@ -1028,6 +1043,36 @@ const accounts_signal_danger_dark = createScenario({
   },
 })
 
+const accounts_signal_danger_light = createScenario({
+  name: 'accounts_signal_danger_light',
+  theme: 'light',
+  projects: [activeClaudeProject],
+  selectedProject: activeClaudeProject,
+  daemonStatus: 'connected',
+  accountSignal: { visible: true, tone: 'danger', magnitude: '1', account: null, tool: 'claude' },
+  expected: {
+    labels: ['Active Claude Project', 'Connected'],
+    selectedProjectName: 'Active Claude Project',
+    accountsBadge: '1',
+  },
+  compareAgainst: 'accounts_signal_danger_dark',
+})
+
+const accounts_signal_warning_dark = createScenario({
+  name: 'accounts_signal_warning_dark',
+  theme: 'dark',
+  projects: [activeClaudeProject],
+  selectedProject: activeClaudeProject,
+  daemonStatus: 'connected',
+  accountSignal: { visible: true, tone: 'warning', magnitude: '91', account: null, tool: 'claude' },
+  expected: {
+    labels: ['Active Claude Project', 'Connected'],
+    selectedProjectName: 'Active Claude Project',
+    accountsBadge: '91',
+  },
+  compareAgainst: 'accounts_signal_danger_dark',
+})
+
 const accounts_signal_warning_light = createScenario({
   name: 'accounts_signal_warning_light',
   theme: 'light',
@@ -1040,7 +1085,7 @@ const accounts_signal_warning_light = createScenario({
     selectedProjectName: 'Active Claude Project',
     accountsBadge: '91',
   },
-  compareAgainst: 'accounts_signal_danger_dark',
+  compareAgainst: 'accounts_signal_warning_dark',
 })
 
 export const sidebarScenarios = [
@@ -1059,7 +1104,10 @@ export const sidebarScenarios = [
   settings_open_held_dark,
   settings_open_held_light,
   projects_open_key_dark,
+  projects_open_key_light,
   accounts_signal_danger_dark,
+  accounts_signal_danger_light,
+  accounts_signal_warning_dark,
   accounts_signal_warning_light,
   team_rail_two_dark,
   team_rail_two_light,

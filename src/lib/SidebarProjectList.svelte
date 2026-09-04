@@ -139,7 +139,7 @@
         data-testid="project-item"
         data-project-id={project.id}
         class="w-full px-3 rounded-md text-left transition-all duration-75 cursor-pointer
-          focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:ring-inset
+          focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/70 focus-visible:ring-inset
           {secondaryBranch ? 'h-[50px] py-1.5' : 'h-[36px]'}
           {pulled
             ? 'sidebar-row-pulled'

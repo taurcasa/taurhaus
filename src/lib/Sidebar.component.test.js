@@ -243,7 +243,8 @@ describe('Sidebar component branches', () => {
     expect(screen.getByTestId('sidebar-filter').className).toContain('focus-visible:ring-1')
     expect(screen.getByTestId('sidebar-filter').className).toContain('focus-visible:ring-brand-500/70')
     expect(screen.getAllByTestId('project-item')[0].className).toContain('focus-visible:ring-1')
-    expect(screen.getAllByTestId('project-item')[0].className).toContain('focus-visible:ring-brand-500')
+    // The rail-wide focus law: rows share the filter's brand-500/70 ring.
+    expect(screen.getAllByTestId('project-item')[0].className).toContain('focus-visible:ring-brand-500/70')
   })
 
   it('renders a right-side foreground indicator when the project matches the foreground project id', async () => {
