@@ -13,9 +13,6 @@ defaults:
   reasoning_effort: high
   default_name_pattern: adversarial-reviewer-{n}
 
-capability_policy:
-  model_selection: fixed
-
 instructions: |
   MODEL SLOT
   Default: Opus 5. Candidate variant: GPT-5.6 Sol recall pass followed by Opus 5 verification. To trial the variant, edit defaults.cli_tool, defaults.model, and defaults.reasoning_effort; never make a finding merge-blocking until the Opus verification pass confirms it.

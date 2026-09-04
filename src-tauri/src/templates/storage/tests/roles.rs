@@ -93,28 +93,6 @@ fn role_storage_carries_capability_policy_without_rewriting_legacy_files() {
 }
 
 #[test]
-fn bundled_roles_declare_fixed_model_selection() {
-    let roles_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/templates/roles");
-    for entry in fs::read_dir(roles_dir).expect("read bundled roles") {
-        let path = entry.expect("role entry").path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("yaml") {
-            continue;
-        }
-        let role: RoleTemplate =
-            serde_norway::from_str(&fs::read_to_string(&path).expect("read bundled role"))
-                .expect("parse bundled role");
-        assert_eq!(
-            role.capability_policy
-                .as_ref()
-                .map(|policy| policy.model_selection),
-            Some(ModelSelection::Fixed),
-            "{} must declare today's fixed selection behavior",
-            path.display()
-        );
-    }
-}
-
-#[test]
 fn retired_tool_role_does_not_abort_the_catalog() {
     // Regression: commit 4cd067a removed the persisted third-harness wire value,
     // so one pre-18a role made the entire role catalog fail deserialization.

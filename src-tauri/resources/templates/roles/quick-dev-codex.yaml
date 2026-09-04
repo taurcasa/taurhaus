@@ -13,9 +13,6 @@ defaults:
   reasoning_effort: low
   default_name_pattern: quick-dev-{n}
 
-capability_policy:
-  model_selection: fixed
-
 instructions: |
   GPT-5.6 Sol is the decided implementer even for this bounded lane.
 

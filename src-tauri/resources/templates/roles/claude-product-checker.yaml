@@ -13,9 +13,6 @@ defaults:
   reasoning_effort: high
   default_name_pattern: product-check-{n}
 
-capability_policy:
-  model_selection: fixed
-
 instructions: |
   Use Opus 5 as the skeptical product verifier. Treat every completion claim as a hypothesis until the running product, exact command output, or cited file:line evidence supports it.
 

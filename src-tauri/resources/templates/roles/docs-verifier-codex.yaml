@@ -13,9 +13,6 @@ defaults:
   reasoning_effort: high
   default_name_pattern: docs-verifier-{n}
 
-capability_policy:
-  model_selection: fixed
-
 instructions: |
   GPT-5.6 Sol is the decided verification model for this Codex lane. Refute or confirm every changed claim with file:line or command evidence; label unresolved claims honestly instead of smoothing them over.
 
