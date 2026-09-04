@@ -636,6 +636,23 @@ _install-daemon-from-build:
             sleep 0.5
         fi
         echo "✓ Daemon stopped"
+        # Process exit does not free the listener under WSL mirrored
+        # networking — the socket can linger past the PID (seen holding the
+        # whole 0.9.1 restart window). Gate the restart on the port actually
+        # being free, not on the process being gone.
+        PORT_FREE=false
+        for i in $(seq 1 90); do
+            if ! (exec 3<>"/dev/tcp/127.0.0.1/$RESTART_PORT") 2>/dev/null; then
+                PORT_FREE=true
+                break
+            fi
+            exec 3>&- 3<&- || true
+            [ "$i" = 1 ] && echo "  · waiting for port $RESTART_PORT to be released…"
+            sleep 1
+        done
+        if [ "$PORT_FREE" != true ]; then
+            echo "⚠ Port $RESTART_PORT still held 90s after the daemon exited — something else may own it; refusing to start into a bind failure."
+        fi
         WAS_RUNNING=true
     fi
 
