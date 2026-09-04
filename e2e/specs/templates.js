@@ -183,7 +183,9 @@ async function requireTemplateSetup(testContext) {
 async function openTemplateCatalog(testContext) {
   if (!(await ensureEmptyMode(testContext))) return false
 
-  await clickTestId('mesh-template-browse-catalog')
+  // Regression: 14793e0a repurposed mesh-template-browse-catalog to focus the
+  // inline search; the browser restored by bed5024c has its own action.
+  await clickTestId('mesh-template-open-browser')
   await browser.waitUntil(
     async () => await hasTestId('template-browser-panel'),
     { ...WAIT_MEDIUM, timeoutMsg: 'Template browser did not open' }
