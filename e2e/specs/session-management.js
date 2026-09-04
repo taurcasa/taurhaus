@@ -360,11 +360,21 @@ async function clickSidebarIndicator() {
 }
 
 async function hoverTargetProject() {
+  // Regression: 430e09ee left the pointer on the row after opening its context
+  // menu, so moving to the same row did not reliably dispatch a fresh mouseenter.
   const item = await getTargetProjectItem()
-  await item.moveTo()
+  await browser.execute((el) => {
+    el.dispatchEvent(new MouseEvent('mouseleave'))
+  }, item)
+  await browser.execute((el) => {
+    el.dispatchEvent(new MouseEvent('mouseenter'))
+  }, item)
   await browser.waitUntil(
-    async () => (await $('[data-testid="hovercard"]')).isExisting(),
-    { timeout: 5_000, interval: POLL, timeoutMsg: 'Hover card did not appear' }
+    async () => {
+      const motion = await $('[data-testid="hovercard-motion"]')
+      return (await motion.isExisting()) && (await motion.getText()).includes('Codex is working now')
+    },
+    { timeout: 5_000, interval: POLL, timeoutMsg: 'Active Codex hover card did not appear' }
   )
 }
 
