@@ -13,12 +13,12 @@ import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timin
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 import { assertWorkerMeshAvailable } from '../helpers/workerEnv.js'
+import { registerCreatedTeam, forgetCreatedTeam, isOwnedTeam, ownedTeams, clearOwnedTeams } from '../helpers/teamRegistry.js'
 
 let mainApp = false
 let tier2Enabled = false
 let tier2SkipReason = 'Mesh prerequisites unavailable'
 let createdTeamName = null
-const createdTeamNames = new Set()
 let tmuxPaneSnapshot = { available: false, paneIds: [], reason: 'snapshot not captured' }
 const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 
@@ -86,10 +86,9 @@ async function disbandRuntimeTeamIfSafe() {
   if (!(await hasTestId('mesh-mode-runtime'))) return true
 
   // Regression: 3b65c760 only trusted teams created inside this spec, so the
-  // sealed mesh group could not clean up mesh-recovery's e2e-prefixed team.
-  const isSafeRuntimeTeam = (teamName) => {
-    return createdTeamNames.has(teamName) || teamName.startsWith('e2e-mesh-recovery-')
-  }
+  // sealed mesh group could not clean up mesh-recovery's team. Ownership now
+  // lives in the shared group registry instead of a naming-convention match.
+  const isSafeRuntimeTeam = (teamName) => isOwnedTeam(teamName)
   const safeTitleResolved = await browser.waitUntil(
     async () => {
       const teamName = await browser.execute(() => {
@@ -204,11 +203,11 @@ describe('Mesh Workflow', () => {
   })
 
   after(async () => {
-    for (const teamName of createdTeamNames) {
+    for (const teamName of ownedTeams()) {
       if (!teamName.startsWith('e2e-')) continue
       await invokeCoordinationWithTimeout('coordination_disband_team', { teamName }, 2_500)
     }
-    createdTeamNames.clear()
+    clearOwnedTeams()
     createdTeamName = null
 
     const tmuxCleanup = cleanupNewTmuxPanes(tmuxPaneSnapshot)
@@ -343,7 +342,7 @@ describe('Mesh Workflow', () => {
       const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
       expect(await runtimeTitle.isExisting()).toBe(true)
       createdTeamName = teamName
-      createdTeamNames.add(teamName)
+      registerCreatedTeam(teamName)
 
       // Regression: 430e09ee removed the duplicate Add Agent button; runtime
       // additions now begin from the primary action.
@@ -406,7 +405,7 @@ describe('Mesh Workflow', () => {
       )
 
       createdTeamName = null
-      createdTeamNames.delete(teamName)
+      forgetCreatedTeam(teamName)
     })
 
     it('skips tier 2 when mesh prerequisites are unavailable', async function () {

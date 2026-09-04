@@ -398,12 +398,22 @@ describe('Regressions', () => {
     })
   })
 
-  describe('content-enter mounted tab coverage (commit 768cdec regression)', () => {
-    it('tab roots do NOT have content-enter class', async function () {
+  describe('tab roots carry no entry animation (commit 768cdec regression, scope reduced)', () => {
+    it('no tabpanel direct child has the content-enter class', async function () {
       if (!mainApp) return this.skip()
 
-      // Regression: f7255601 added valid nested reveal animations, so a global
-      // class count no longer represented the original tab-root regression.
+      // Regression lineage, stated honestly:
+      // - 768cdec / 04ea54d1: content-enter inside tab internals replays on
+      //   every tab switch (Chromium restarts CSS animations when class:hidden
+      //   toggles display) — removed, and the old test pinned a GLOBAL count
+      //   of exactly one content-enter (the Shell {#key} wrapper).
+      // - f7255601 (2026-03) deliberately reintroduced nested reveal
+      //   animations inside tab views, so the global-count invariant no longer
+      //   describes the product. This test now guards ONLY the structural
+      //   half: tab panel ROOTS never animate (the original mistake's shape).
+      //   The nested-replay exposure f7255601 accepted is a recorded product
+      //   decision, not covered here — if that decision is reversed, restore
+      //   the global-count assertion alongside this one.
       const tabNames = ['overview', 'tasks', 'mesh', 'git', 'files']
       for (const tabName of tabNames) {
         await clickTestId(`tab-${tabName}`)

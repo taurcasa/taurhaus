@@ -9,6 +9,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { registerCreatedTeam, forgetCreatedTeam, isOwnedTeam, ownedTeams, clearOwnedTeams } from '../helpers/teamRegistry.js'
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -24,7 +25,6 @@ let mainApp = false
 let tier2Enabled = false
 let tier2SkipReason = 'Mesh prerequisites unavailable'
 let originalSettings = null
-const createdTeamNames = new Set()
 const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 let tmuxPaneSnapshot = { available: false, paneIds: [], reason: 'snapshot not captured' }
 const wrapperDir = join(process.env.TAURHAUS_DATA_DIR, 'mesh-recovery-wrapper')
@@ -209,8 +209,7 @@ async function disbandRuntimeTeamIfSafe() {
 
   const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
   const teamName = (await runtimeTitle.isExisting()) ? (await runtimeTitle.getText()).trim() : ''
-  const isRecoveryTeam = teamName.startsWith('e2e-mesh-recovery-')
-  if (!createdTeamNames.has(teamName) && !isRecoveryTeam) {
+  if (!isOwnedTeam(teamName)) {
     tier2SkipReason = `Refusing to disband runtime team not created by this spec: ${teamName || 'unknown'}`
     return false
   }
@@ -228,7 +227,7 @@ async function disbandRuntimeTeamIfSafe() {
     { ...WAIT_LONG, timeoutMsg: 'Mesh did not leave runtime mode after disband' }
   )
 
-  createdTeamNames.delete(teamName)
+  forgetCreatedTeam(teamName)
   return true
 }
 
@@ -537,7 +536,7 @@ async function initializeRuntimeTeam() {
     throw new Error(`Mesh error after initialize: ${await (await $('[data-testid="mesh-error"]')).getText()}`)
   }
 
-  createdTeamNames.add(teamName)
+  registerCreatedTeam(teamName)
   await waitForRuntimeTitle(teamName)
 
   const projectPath = await getTeamProjectPath(teamName)
@@ -755,11 +754,11 @@ describe('Mesh Recovery', function () {
       await updateSettings(canonicalizeSettings(originalSettings)).catch(() => {})
     }
 
-    for (const teamName of createdTeamNames) {
+    for (const teamName of ownedTeams()) {
       if (!teamName.startsWith('e2e-')) continue
       await invokeTauriWithTimeout('coordination_disband_team', { teamName }, 2_500)
     }
-    createdTeamNames.clear()
+    clearOwnedTeams()
 
     const tmuxCleanup = cleanupNewTmuxPanes(tmuxPaneSnapshot)
     if (!tmuxCleanup.attempted) {
