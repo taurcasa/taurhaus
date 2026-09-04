@@ -230,11 +230,13 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
         return None;
     }
     let task =
-        crate::task_scanner::claude::parse_task_file(&path, Some(team_name.to_string())).ok()??;
+        taurhaus_lib::task_scanner::claude::parse_task_file(&path, Some(team_name.to_string()))
+            .ok()??;
     Some(LedgerVerdict {
         terminal: matches!(
             task.status,
-            crate::task_scanner::TaskStatus::Completed | crate::task_scanner::TaskStatus::Stale
+            taurhaus_lib::task_scanner::TaskStatus::Completed
+                | taurhaus_lib::task_scanner::TaskStatus::Stale
         ),
         has_review_ruling: task.has_review_ruling,
     })

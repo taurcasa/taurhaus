@@ -440,7 +440,7 @@ fn parse_task_directory(dir: &Path, source_key: &str) -> DirectoryParseOutcome {
 ///
 /// Returns `Ok(None)` for deleted tasks (status: "deleted") so they are
 /// silently excluded from the board without logging a warning.
-pub(crate) fn parse_task_file(
+pub fn parse_task_file(
     path: &Path,
     source_key: Option<String>,
 ) -> Result<Option<UnifiedTask>, String> {
