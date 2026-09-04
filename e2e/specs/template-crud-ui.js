@@ -351,6 +351,21 @@ async function ensureSetupMode(testContext) {
 
   if (await hasTestId('mesh-mode-empty')) {
     await clickTestId('mesh-builder-team-name-display')
+    const teamNameInput = await $('[data-testid="mesh-builder-team-name-input"]')
+    await browser.waitUntil(
+      async () => await teamNameInput.isExisting(),
+      { ...WAIT_SHORT, timeoutMsg: 'Inline team name input did not appear' }
+    )
+    const currentTeamName = String(await teamNameInput.getValue()).trim()
+    const dispatched = await browser.execute((value) => {
+      const input = document.querySelector('[data-testid="mesh-builder-team-name-input"]')
+      if (!(input instanceof HTMLInputElement)) return false
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      valueSetter?.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      return true
+    }, currentTeamName || 'e2e-template-ui-team')
+    if (!dispatched) throw new Error('Inline team name input was unavailable')
   }
 
   await browser.waitUntil(
@@ -770,6 +785,16 @@ describe('Template CRUD UI', () => {
   })
 
   describe('runtime lane', () => {
+    it('enters setup mode through the inline team-name edit', async function () {
+    if (!mainApp) return this.skip()
+
+    // Regression: 17e0f9d1 changed the empty-state control to an inline editor,
+    // but the runtime setup helper still treated clicking its display as a transition.
+    if (!(await ensureEmptyMode(this))) return
+    await ensureSetupMode(this)
+    expect(await hasTestId('mesh-mode-setup')).toBe(true)
+    })
+
     it('supports role-aware Add Agent autofill and unlock', async function () {
     if (!mainApp) return this.skip()
 
