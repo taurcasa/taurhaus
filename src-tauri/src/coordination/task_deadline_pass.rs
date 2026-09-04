@@ -57,7 +57,9 @@ pub(crate) fn apply_task_deadlines(
 
 fn observe_terminal_tasks(teams_dir: &Path, team_name: &str, now: DateTime<Utc>) {
     let Some(tasks_dir) =
-        crate::task_scanner::claude_index::ClaudeSourceIndex::team_tasks_dir(teams_dir, team_name)
+        taurhaus_lib::task_scanner::claude_index::ClaudeSourceIndex::team_tasks_dir(
+            teams_dir, team_name,
+        )
     else {
         return;
     };
@@ -75,7 +77,7 @@ fn observe_terminal_tasks(teams_dir: &Path, team_name: &str, now: DateTime<Utc>)
             continue;
         }
         let Ok(Some(task)) =
-            crate::task_scanner::claude::parse_task_file(&path, Some(team_name.to_string()))
+            taurhaus_lib::task_scanner::claude::parse_task_file(&path, Some(team_name.to_string()))
         else {
             continue;
         };
