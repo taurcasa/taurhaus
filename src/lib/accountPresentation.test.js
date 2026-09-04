@@ -61,7 +61,7 @@ describe('ambientAccountSignal', () => {
           relationships: { personal: { pinnedProjects: [{ id: 'p1' }] } },
         },
       ])
-    ).toMatchObject({ visible: true, tone: 'warning', magnitude: '87%', account: warning })
+    ).toMatchObject({ visible: true, tone: 'warning', magnitude: '87', account: warning })
   })
 
   // Regression: 462c18f treated the provider's `is_active` binding-limit flag
@@ -87,7 +87,7 @@ describe('ambientAccountSignal', () => {
           relationships: {},
         },
       ])
-    ).toMatchObject({ visible: true, tone: 'warning', magnitude: '92%' })
+    ).toMatchObject({ visible: true, tone: 'warning', magnitude: '92' })
   })
 
   it('uses Codex windows whose binding-limit flags are all false', () => {
@@ -110,7 +110,7 @@ describe('ambientAccountSignal', () => {
           relationships: {},
         },
       ])
-    ).toMatchObject({ visible: true, tone: 'warning', magnitude: '96%' })
+    ).toMatchObject({ visible: true, tone: 'warning', magnitude: '96' })
   })
 
   it('uses red for a relevant signed-out or unauthorized account', () => {
@@ -124,7 +124,25 @@ describe('ambientAccountSignal', () => {
       },
     ])
 
-    expect(result).toMatchObject({ visible: true, tone: 'danger', magnitude: 'Sign in' })
+    // The badge grammar is number-only: a filled danger pill counts the
+    // accounts needing action; the tone carries the severity, never a word.
+    expect(result).toMatchObject({ visible: true, tone: 'danger', magnitude: '1' })
+  })
+
+  it('counts every relevant account needing sign-in as the danger magnitude', () => {
+    const signedOutDefault = account({ id: 'work', logged_in: false, usage: null })
+    const signedOutPinned = account({ id: 'legacy', logged_in: false, usage: null })
+
+    expect(
+      ambientAccountSignal([
+        {
+          tool: 'claude',
+          defaultAccountId: 'work',
+          accounts: [signedOutDefault, signedOutPinned],
+          relationships: { legacy: { pinnedProjects: [{ id: 'p1' }] } },
+        },
+      ])
+    ).toMatchObject({ visible: true, tone: 'danger', magnitude: '2' })
   })
 
   it('ignores an unhealthy account nothing currently depends on', () => {
@@ -160,7 +178,7 @@ describe('ambientAccountSignal', () => {
           relationships: {},
         },
       ])
-    ).toMatchObject({ visible: true, tone: 'warning', magnitude: '86%' })
+    ).toMatchObject({ visible: true, tone: 'warning', magnitude: '86' })
   })
 
   // Regression: 462c18f made every default-directory account relevant on its
@@ -204,7 +222,7 @@ describe('ambientAccountSignal', () => {
           relationships: { legacy: { pinnedProjects: [{ id: 'p1' }] } },
         },
       ])
-    ).toMatchObject({ visible: true, tone: 'danger', magnitude: 'Sign in' })
+    ).toMatchObject({ visible: true, tone: 'danger', magnitude: '1' })
   })
 
   it('keeps the default directory relevant while the saved default is itself signed out', () => {
@@ -220,7 +238,7 @@ describe('ambientAccountSignal', () => {
           relationships: {},
         },
       ])
-    ).toMatchObject({ visible: true, tone: 'danger', magnitude: 'Sign in' })
+    ).toMatchObject({ visible: true, tone: 'danger', magnitude: '1' })
   })
 
   // Regression: 6556676e read supersession off the saved global default alone,
@@ -285,7 +303,7 @@ describe('ambientAccountSignal', () => {
           ],
         },
       ])
-    ).toMatchObject({ visible: true, tone: 'danger', magnitude: 'Sign in' })
+    ).toMatchObject({ visible: true, tone: 'danger', magnitude: '1' })
   })
 
   // Regression: 6556676e derived pin relevance from the relationship index
@@ -305,7 +323,7 @@ describe('ambientAccountSignal', () => {
           projectChoices: { p1: 'work' },
         },
       ])
-    ).toMatchObject({ visible: true, tone: 'danger', magnitude: 'Sign in' })
+    ).toMatchObject({ visible: true, tone: 'danger', magnitude: '1' })
   })
 
   it('drops a pin cleared during this run while the index still carries it', () => {
