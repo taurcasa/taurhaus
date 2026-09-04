@@ -96,6 +96,52 @@ describe('templatePayloads normalizeRoleTemplateInput', () => {
     }))
   })
 
+  it('round-trips carried capability policy without exposing editor behavior', () => {
+    const capabilityPolicy = {
+      modelSelection: 'adaptive',
+      minimumCapability: 'strong',
+      allowedModels: ['gpt-5.6-sol', 'opus'],
+      effortBand: ['medium', 'high'],
+    }
+    const response = normalizeRoleTemplateResponse({
+      role_id: 'developer-codex',
+      name: 'Developer',
+      capability_policy: {
+        model_selection: 'adaptive',
+        minimum_capability: 'strong',
+        allowed_models: ['gpt-5.6-sol', 'opus'],
+        effort_band: ['medium', 'high'],
+      },
+    })
+
+    expect(response.capabilityPolicy).toEqual(capabilityPolicy)
+    expect(response).not.toHaveProperty('capability_policy')
+    expect(normalizeRoleTemplateInput(response).capabilityPolicy).toEqual(capabilityPolicy)
+  })
+
+  // Regression: commit 2268fa09 duplicated the backend's implicit fixed default
+  // in both frontend normalizers instead of preserving an absent selection —
+  // and the first fix preserved absence as `modelSelection: null`, a shape the
+  // backend's optional enum rejects on the way back (the settings round-trip
+  // class, 5c6b2681). Absence must be an OMITTED key in both directions.
+  it('omits an absent capability policy model selection entirely', () => {
+    const response = normalizeRoleTemplateResponse({
+      role_id: 'developer-codex',
+      name: 'Developer',
+      capability_policy: { minimum_capability: 'strong' },
+    }).capabilityPolicy
+    expect('modelSelection' in response).toBe(false)
+    expect(response.minimumCapability).toBe('strong')
+
+    const input = normalizeRoleTemplateInput({
+      roleId: 'developer-codex',
+      name: 'Developer',
+      capabilityPolicy: { minimumCapability: 'strong' },
+    }).capabilityPolicy
+    expect('modelSelection' in input).toBe(false)
+    expect(input.minimumCapability).toBe('strong')
+  })
+
   // Regression: commits ff40911 and 5d2ce27 kept model and effort in one string,
   // so the launcher stripped the suffix and ran the member at the user's global
   // effort. Saving a role must emit the split, canonical pair.

@@ -94,6 +94,8 @@ fn model_entry(id: &str) -> ModelCatalogEntry {
         default_effort: Some("high".to_string()),
         deprecated: true,
         replacement: Some(format!("{id}-replacement")),
+        capability_tier: None,
+        tier_rank: None,
     }
 }
 

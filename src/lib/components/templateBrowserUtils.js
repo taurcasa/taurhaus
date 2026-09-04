@@ -60,6 +60,7 @@ export function normalizeRoleTemplate(value) {
     cliTool: String(value?.cliTool ?? value?.cli_tool ?? 'claude').toLowerCase(),
     model: value?.model ?? value?.defaults?.model ?? '',
     reasoningEffort: resolveRoleReasoningEffort(value),
+    capabilityPolicy: value?.capabilityPolicy ?? value?.capability_policy ?? null,
     focusArea: value?.focusArea ?? value?.focus_area ?? '',
     contextSummary: value?.contextSummary ?? value?.context_summary ?? '',
     behaviorSummary: value?.behaviorSummary ?? value?.behavior_summary ?? '',

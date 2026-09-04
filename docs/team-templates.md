@@ -160,7 +160,7 @@ Then support it with:
 
 The current template system remains structurally the same, but the role schema now explicitly carries both context-steering and workflow fields:
 
-- **Role template**: `defaults` (`cli_tool`, `model`, `reasoning_effort`, `default_name_pattern`), `focus_area`, `context_summary`, `behavior_summary`, `communication_style`, `quality_gates`, `definition_of_done`, `handoff_expectations`, `phase_scope`, `mode`, `inherits_from`, `required_artifacts`, `runtime_compact_summary`, instructions, behavioral contract, capabilities (optional — empty is allowed), constraints, and optional import provenance
+- **Role template**: `defaults` (`cli_tool`, `model`, `reasoning_effort`, `default_name_pattern`), optional `capability_policy` (`model_selection`, `minimum_capability`, `allowed_models`, `effort_band`; carried but unenforced in this release), `focus_area`, `context_summary`, `behavior_summary`, `communication_style`, `quality_gates`, `definition_of_done`, `handoff_expectations`, `phase_scope`, `mode`, `inherits_from`, `required_artifacts`, `runtime_compact_summary`, instructions, behavioral contract, capabilities (optional — empty is allowed), constraints, and optional import provenance
 - **Team preset**: one lead role plus agent slots and preset-specific overrides. A preset can also pin the lead itself with `lead_overrides` (`model`, `reasoning_effort`); composition applies it on top of the lead role's defaults, and the advanced preset editor writes it when you edit the lead card.
 - **Composition**: resolved roster produced from the selected lead and slots
 
@@ -296,7 +296,7 @@ Imported roles persist provenance metadata:
 - import timestamp
 - `non_roundtrippable_fields` for lossy conversions
 
-For Taurhaus-authored Claude and Copilot exports, the adapter round-trips the extended role fields through compiled Markdown sections. That means `communication_style`, `quality_gates`, `definition_of_done`, `handoff_expectations`, `phase_scope`, `mode`, `inherits_from`, and `required_artifacts` survive export/import when the file came from Taurhaus. Instruction-only exports such as `AGENTS.md` and `GEMINI.md` remain intentionally lossy and record that downgrade in provenance.
+For Taurhaus-authored Claude and Copilot exports, the adapter round-trips the extended role fields through compiled Markdown sections. That means `communication_style`, `quality_gates`, `definition_of_done`, `handoff_expectations`, `phase_scope`, `mode`, `inherits_from`, and `required_artifacts` survive export/import when the file came from Taurhaus. A non-default `capability_policy` round-trips through Claude and Copilot frontmatter; instruction-only exports such as `AGENTS.md` and `GEMINI.md` cannot represent it, remain intentionally lossy, and record that downgrade in provenance.
 
 One field never survives a non-YAML export: `defaults.reasoning_effort` has no representation in Claude or Copilot frontmatter, so it is recorded as lossy for every format except YAML.
 

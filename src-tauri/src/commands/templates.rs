@@ -583,6 +583,7 @@ mod tests {
                 reasoning_effort: None,
                 default_name_pattern: "export-{n}".to_string(),
             },
+            capability_policy: None,
             instructions: "Ship the requested change with tests first.".to_string(),
             focus_area: Some("Backend export pipelines".to_string()),
             context_summary: Some(

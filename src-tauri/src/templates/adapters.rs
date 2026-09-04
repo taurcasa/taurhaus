@@ -6,7 +6,7 @@ use crate::models::ModelCatalog;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::launch::ModelSpec;
 use crate::templates::types::{
-    BehavioralContract, ProjectBinding, RoleConstraints, RoleKind, RoleTemplate,
+    BehavioralContract, CapabilityPolicy, ProjectBinding, RoleConstraints, RoleKind, RoleTemplate,
 };
 
 /// Canonical field mapping for Taurhaus role import/export adapters.
@@ -41,6 +41,14 @@ pub const ROLE_FIELD_MAPPINGS: &[RoleFieldMappingRow] = &[
         instruction_only: "Not represented",
         export_mapping: "Not exported; external agent frontmatter has no effort field",
         import_fidelity: "Lossy for all non-YAML formats",
+    },
+    RoleFieldMappingRow {
+        taurhaus_field: "capability_policy",
+        claude_agent: "frontmatter.capability_policy",
+        copilot_agent: "frontmatter.capability_policy",
+        instruction_only: "Not represented",
+        export_mapping: "Namespaced policy data in agent frontmatter; omitted when absent",
+        import_fidelity: "Lossless for YAML and Claude/Copilot; lossy for instruction-only formats",
     },
     RoleFieldMappingRow {
         taurhaus_field: "instructions",
@@ -202,6 +210,8 @@ pub struct RoleParsedFields {
     #[serde(default)]
     pub tools: Vec<String>,
     pub prompt_body: Option<String>,
+    #[serde(default)]
+    pub capability_policy: Option<CapabilityPolicy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -290,6 +300,8 @@ struct ClaudeAgentFrontmatter {
     model: Option<String>,
     #[serde(default)]
     tools: Option<StringListOrScalar>,
+    #[serde(default, alias = "capabilityPolicy")]
+    capability_policy: Option<CapabilityPolicy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
@@ -297,6 +309,8 @@ struct CopilotAgentFrontmatter {
     name: Option<String>,
     description: Option<String>,
     model: Option<String>,
+    #[serde(default, alias = "capabilityPolicy")]
+    capability_policy: Option<CapabilityPolicy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -393,6 +407,7 @@ fn import_claude_agent_at(
         frontmatter.model,
         None,
         frontmatter.tools.unwrap_or_default().into_vec(),
+        frontmatter.capability_policy,
         CliTool::Claude,
     )
 }
@@ -418,6 +433,7 @@ fn import_copilot_agent_at(
         frontmatter.model,
         frontmatter.description,
         Vec::new(),
+        frontmatter.capability_policy,
         CliTool::Codex,
     )
 }
@@ -432,6 +448,7 @@ fn build_imported_role(
     imported_model: Option<String>,
     imported_description: Option<String>,
     imported_tools: Vec<String>,
+    capability_policy: Option<CapabilityPolicy>,
     cli_tool: CliTool,
 ) -> Result<ImportedRoleTemplate, RoleImportError> {
     let parsed_body = parse_compiled_prompt_body(body);
@@ -471,6 +488,7 @@ fn build_imported_role(
         description: imported_description,
         tools: imported_tools,
         prompt_body: Some(instructions.to_string()),
+        capability_policy: capability_policy.clone(),
     };
     let provenance = RoleProvenance {
         source_format: format,
@@ -503,6 +521,7 @@ fn build_imported_role(
                 reasoning_effort: model.reasoning_effort,
                 default_name_pattern: format!("{role_id}-{{n}}"),
             },
+            capability_policy,
             instructions: instructions.to_string(),
             focus_area: parsed_body.focus_area,
             context_summary,
@@ -575,6 +594,7 @@ fn render_claude_agent(role: &RoleTemplate, body: &str) -> String {
     if !tools.is_empty() {
         frontmatter.push(format!("tools: [{}]", tools.join(", ")));
     }
+    push_capability_policy_frontmatter(&mut frontmatter, role.capability_policy.as_ref());
     frontmatter.push("---".to_string());
 
     format!("{}\n\n{}", frontmatter.join("\n"), body)
@@ -586,15 +606,30 @@ fn render_copilot_agent(role: &RoleTemplate, body: &str) -> String {
         .as_deref()
         .or(role.context_summary.as_deref())
         .unwrap_or("Exported from Taurhaus role template.");
-    let frontmatter = [
+    let mut frontmatter = vec![
         "---".to_string(),
         format!("name: {}", yaml_scalar(&role.name)),
         format!("description: {}", yaml_scalar(description)),
         format!("model: {}", yaml_scalar(&role.defaults.model)),
-        "---".to_string(),
     ];
+    push_capability_policy_frontmatter(&mut frontmatter, role.capability_policy.as_ref());
+    frontmatter.push("---".to_string());
 
     format!("{}\n\n{}", frontmatter.join("\n"), body)
+}
+
+fn push_capability_policy_frontmatter(
+    frontmatter: &mut Vec<String>,
+    policy: Option<&CapabilityPolicy>,
+) {
+    let Some(policy) = policy.filter(|policy| *policy != &CapabilityPolicy::default()) else {
+        return;
+    };
+    let Ok(serialized) = serde_norway::to_string(policy) else {
+        return;
+    };
+    frontmatter.push("capability_policy:".to_string());
+    frontmatter.extend(serialized.lines().map(|line| format!("  {line}")));
 }
 
 fn render_agents_md(role: &RoleTemplate, lossy_fields: &[String]) -> String {
@@ -1236,6 +1271,13 @@ fn slugify_identifier(value: &str) -> String {
 }
 
 fn push_compiled_section_losses(role: &RoleTemplate, lossy: &mut Vec<String>) {
+    if role
+        .capability_policy
+        .as_ref()
+        .is_some_and(|policy| policy != &CapabilityPolicy::default())
+    {
+        lossy.push("capability_policy".to_string());
+    }
     if role.focus_area.is_some() {
         lossy.push("focus_area".to_string());
     }
@@ -1367,9 +1409,11 @@ pub(crate) fn yaml_scalar(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::CapabilityTier;
     use crate::session_scanner::cli_tool::CliTool;
     use crate::templates::types::{
-        BehavioralContract, RoleConstraints, RoleDefaults, TemplateKind, TemplateSchema,
+        BehavioralContract, ModelSelection, RoleConstraints, RoleDefaults, TemplateKind,
+        TemplateSchema,
     };
 
     // Regression: e17f3eb (PR 15) parsed the constraint tools through
@@ -1408,6 +1452,7 @@ mod tests {
                 reasoning_effort: None,
                 default_name_pattern: "worker-{n}".to_string(),
             },
+            capability_policy: None,
             instructions: "Do the primary assignment first.".to_string(),
             focus_area: Some("Architecture review".to_string()),
             context_summary: Some("Remembers why the architecture looks this way.".to_string()),
@@ -1664,6 +1709,7 @@ mod tests {
                 description: Some("Reviews code".to_string()),
                 tools: Vec::new(),
                 prompt_body: Some("Review aggressively.".to_string()),
+                capability_policy: None,
             },
             provenance,
         };
@@ -1946,5 +1992,68 @@ Review carefully and summarize the tradeoffs.
                 .and_then(|provenance| provenance.source_path.as_deref()),
             Some(".claude/agents/sample-role.md")
         );
+    }
+
+    #[test]
+    fn agent_adapters_round_trip_capability_policy_losslessly() {
+        let mut role = sample_role();
+        role.capability_policy = Some(CapabilityPolicy {
+            model_selection: ModelSelection::Adaptive,
+            minimum_capability: Some(CapabilityTier::Strong),
+            allowed_models: vec!["gpt-5.6-sol".to_string(), "opus".to_string()],
+            effort_band: vec!["medium".to_string(), "high".to_string()],
+        });
+
+        for format in [
+            RoleExportFormat::ClaudeAgent,
+            RoleExportFormat::CopilotAgent,
+        ] {
+            let exported = export_role(&role, format);
+            assert!(!exported
+                .lossy_fields
+                .contains(&"capability_policy".to_string()));
+
+            let imported = import_role_at(
+                format,
+                &exported.file_content,
+                Some("agent.md"),
+                chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 9, 4, 12, 0, 0)
+                    .single()
+                    .expect("valid timestamp"),
+            )
+            .expect("round-trip import should succeed");
+            assert_eq!(imported.template.capability_policy, role.capability_policy);
+            assert_eq!(
+                imported.import_source.parsed_fields.capability_policy,
+                role.capability_policy
+            );
+        }
+
+        let instruction_only = export_role(&role, RoleExportFormat::AgentsMd);
+        assert!(instruction_only
+            .lossy_fields
+            .contains(&"capability_policy".to_string()));
+    }
+
+    #[test]
+    fn default_capability_policy_does_not_change_export_surfaces() {
+        // Regression: commit 2268fa09 emitted the implicit fixed policy into
+        // agent frontmatter and reported it as lossy in instruction-only exports.
+        let role_without_policy = sample_role();
+        let mut role_with_default_policy = role_without_policy.clone();
+        role_with_default_policy.capability_policy = Some(CapabilityPolicy::default());
+
+        for format in [
+            RoleExportFormat::ClaudeAgent,
+            RoleExportFormat::CopilotAgent,
+            RoleExportFormat::AgentsMd,
+            RoleExportFormat::GeminiMd,
+        ] {
+            assert_eq!(
+                export_role(&role_with_default_policy, format),
+                export_role(&role_without_policy, format),
+                "{format:?}"
+            );
+        }
     }
 }

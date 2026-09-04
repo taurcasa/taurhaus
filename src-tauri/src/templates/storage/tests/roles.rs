@@ -1,5 +1,7 @@
 use super::*;
+use crate::models::CapabilityTier;
 use crate::templates::agent_definitions::{export_agent_definitions, GENERATED_MARKER};
+use crate::templates::types::{CapabilityPolicy, ModelSelection};
 
 #[test]
 fn list_roles_merges_sources_and_marks_read_only() {
@@ -45,6 +47,49 @@ fn get_role_prefers_user_override() {
     let role = store.get_role("dev").expect("get role");
     assert_eq!(role.source, TemplateSource::User);
     assert_eq!(role.template.instructions, "user override");
+}
+
+#[test]
+fn role_storage_carries_capability_policy_without_rewriting_legacy_files() {
+    let (_root, app_data, builtins) = setup_dirs();
+    seed_valid_catalog(&builtins);
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    store.ensure_directories().expect("ensure dirs");
+
+    let legacy_path = app_data.join("templates/roles/legacy.yaml");
+    let legacy_raw = agent_role_yaml("legacy", "legacy role");
+    write(&legacy_path, &legacy_raw);
+    let roles = store.list_roles().expect("list roles");
+    assert_eq!(
+        fs::read_to_string(&legacy_path).expect("read legacy role"),
+        legacy_raw
+    );
+    assert_eq!(
+        roles
+            .iter()
+            .find(|role| role.template.role_id == "legacy")
+            .expect("legacy role")
+            .template
+            .capability_policy,
+        None
+    );
+
+    let mut routed = parse_role(&agent_role_yaml("routed", "routed role"));
+    routed.capability_policy = Some(CapabilityPolicy {
+        model_selection: ModelSelection::Adaptive,
+        minimum_capability: Some(CapabilityTier::Strong),
+        allowed_models: vec!["gpt-5.6-sol".to_string()],
+        effort_band: vec!["medium".to_string(), "high".to_string()],
+    });
+    store.create_role(&routed).expect("create routed role");
+    assert_eq!(
+        store
+            .get_role("routed")
+            .expect("get routed role")
+            .template
+            .capability_policy,
+        routed.capability_policy
+    );
 }
 
 #[test]

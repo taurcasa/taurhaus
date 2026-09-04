@@ -121,6 +121,7 @@
 
   function handleSave() {
     if (!canSave) return
+    const capabilityPolicy = role?.capabilityPolicy ?? role?.capability_policy ?? null
     onSave({
       roleId,
       name,
@@ -131,7 +132,8 @@
       contextSummary: optionalValue(contextSummary),
       behaviorSummary: optionalValue(behaviorSummary),
       instructions,
-      behavioralContract: JSON.parse(JSON.stringify(behavioralContract))
+      behavioralContract: JSON.parse(JSON.stringify(behavioralContract)),
+      ...(capabilityPolicy ? { capabilityPolicy } : {}),
     })
   }
 

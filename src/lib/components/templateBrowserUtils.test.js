@@ -38,6 +38,11 @@ describe('templateBrowserUtils normalizeRoleTemplate', () => {
     }))
   })
 
+  it('carries capability policy through the editor view model', () => {
+    const policy = { modelSelection: 'fixed', minimumCapability: 'strong' }
+    expect(normalizeRoleTemplate({ capability_policy: policy }).capabilityPolicy).toEqual(policy)
+  })
+
   it('flattens backend behavioral contract objects into editor rule entries', () => {
     expect(normalizeRoleTemplate({
       roleId: 'mesh-expert',

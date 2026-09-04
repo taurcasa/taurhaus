@@ -4,6 +4,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::models::CapabilityTier;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::launch::ModelSpec;
 use crate::templates::adapters::RoleProvenance;
@@ -203,6 +204,35 @@ pub struct RoleConstraints {
     pub allowed_project_binding: ProjectBinding,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelSelection {
+    #[default]
+    Fixed,
+    Adaptive,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CapabilityPolicy {
+    #[serde(default, alias = "model_selection")]
+    pub model_selection: ModelSelection,
+    #[serde(
+        default,
+        alias = "minimum_capability",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub minimum_capability: Option<CapabilityTier>,
+    #[serde(
+        default,
+        alias = "allowed_models",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub allowed_models: Vec<String>,
+    #[serde(default, alias = "effort_band", skip_serializing_if = "Vec::is_empty")]
+    pub effort_band: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoleTemplate {
@@ -213,6 +243,12 @@ pub struct RoleTemplate {
     pub version: String,
     pub kind: RoleKind,
     pub defaults: RoleDefaults,
+    #[serde(
+        default,
+        alias = "capability_policy",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub capability_policy: Option<CapabilityPolicy>,
     pub instructions: String,
     #[serde(default, alias = "focus_area")]
     pub focus_area: Option<String>,
@@ -322,6 +358,18 @@ impl RoleTemplate {
             &mut errors,
         );
         validate_non_empty("instructions", &self.instructions, &mut errors);
+        if let Some(policy) = self.capability_policy.as_ref() {
+            validate_string_list(
+                "capability_policy.allowed_models",
+                &policy.allowed_models,
+                &mut errors,
+            );
+            validate_string_list(
+                "capability_policy.effort_band",
+                &policy.effort_band,
+                &mut errors,
+            );
+        }
         if let Some(focus_area) = self.focus_area.as_deref() {
             validate_non_empty("focus_area", focus_area, &mut errors);
         }
@@ -985,6 +1033,7 @@ mod tests {
                 reasoning_effort: None,
                 default_name_pattern: "dev-{n}".to_string(),
             },
+            capability_policy: None,
             instructions: "Execute scoped tasks.".to_string(),
             focus_area: Some("Implementation lane".to_string()),
             context_summary: Some(
@@ -1784,6 +1833,7 @@ mod tests {
                 reasoning_effort: None,
                 default_name_pattern: "lead-{project}".to_string(),
             },
+            capability_policy: None,
             instructions: "Lead".to_string(),
             focus_area: None,
             context_summary: None,
@@ -1826,6 +1876,7 @@ mod tests {
                 reasoning_effort: None,
                 default_name_pattern: "worker".to_string(),
             },
+            capability_policy: None,
             instructions: "Agent".to_string(),
             focus_area: None,
             context_summary: None,
@@ -2244,5 +2295,20 @@ mod tests {
                 .any(|entry| entry.contains("runtime_compact_summary must be between")),
             "expected runtime_compact_summary size validation error, got: {err}"
         );
+    }
+
+    #[test]
+    fn capability_policy_uses_fixed_as_the_compatible_default() {
+        let mut value = serde_json::to_value(sample_role_template()).expect("serialize role");
+        value["capabilityPolicy"] = serde_json::json!({
+            "minimumCapability": "strong",
+            "allowedModels": ["gpt-5.6-sol"],
+            "effortBand": ["medium", "high"]
+        });
+
+        let role = serde_json::from_value::<RoleTemplate>(value).expect("deserialize role");
+        let policy = role.capability_policy.expect("capability policy");
+        assert_eq!(policy.model_selection, ModelSelection::Fixed);
+        assert_eq!(policy.minimum_capability, Some(CapabilityTier::Strong));
     }
 }

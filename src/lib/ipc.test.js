@@ -954,7 +954,7 @@ describe('ipc module', () => {
           },
           modelCatalog: {
             claude: [{ id: 'opus', label: 'Opus 5', efforts: ['high'], defaultEffort: null, deprecated: false, replacement: null }],
-            codex: [{ id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', efforts: ['low', 'high'], defaultEffort: 'low', deprecated: false, replacement: null }],
+            codex: [{ id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', efforts: ['low', 'high'], defaultEffort: 'low', deprecated: false, replacement: null, capabilityTier: 'strong', tierRank: 0 }],
             agy: [{ id: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash (High)', efforts: [], defaultEffort: null, deprecated: false, replacement: null }],
           },
           cliVersions: {
@@ -992,7 +992,12 @@ describe('ipc module', () => {
         defaultEffort: 'low',
         deprecated: false,
         replacement: null,
+        capabilityTier: 'strong',
+        tierRank: 0,
       })
+      expect(result.terminal_contract.model_catalog.claude[0]).toEqual(
+        expect.objectContaining({ capabilityTier: null, tierRank: null })
+      )
       // Regression: 2cf41db exposed no per-tool version gate through the
       // platform contract, so native capability support could not be audited.
       // Regression: 4e9e2c5 shipped the Antigravity hook sink without a
