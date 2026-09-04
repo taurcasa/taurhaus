@@ -9,6 +9,8 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
@@ -25,6 +27,39 @@ let originalSettings = null
 const createdTeamNames = new Set()
 const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 let tmuxPaneSnapshot = { available: false, paneIds: [], reason: 'snapshot not captured' }
+const wrapperDir = join(process.env.TAURHAUS_DATA_DIR, 'mesh-recovery-wrapper')
+const wrapperPaths = Object.fromEntries(
+  ['claude', 'codex', 'agy', 'grok'].map((tool) => [tool, join(wrapperDir, tool)])
+)
+
+function prepareHarnessWrapper() {
+  // Regression: 430e09ee let this recovery suite inherit operator CLI commands,
+  // making resume invoke a real or unavailable harness instead of an isolated fixture.
+  mkdirSync(wrapperDir, { recursive: true })
+  const source = `#!/usr/bin/env node
+const shutdown = () => process.exit(0)
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)
+setInterval(() => {}, 60_000)
+`
+  for (const path of Object.values(wrapperPaths)) {
+    writeFileSync(path, source, 'utf8')
+    chmodSync(path, 0o755)
+  }
+}
+
+function withHarnessWrapper(settings) {
+  const updated = canonicalizeSettings(structuredClone(settings))
+  updated.terminal.tmux_layout = 'new_window'
+  for (const tool of ['claude', 'codex', 'agy', 'grok']) {
+    updated.terminal.cli_commands[tool] = {
+      continue_cmd: wrapperPaths[tool],
+      fresh: wrapperPaths[tool],
+      resume: wrapperPaths[tool],
+    }
+  }
+  return updated
+}
 
 function tmux(args) {
   assertTmuxIsolation(process.env)
@@ -667,6 +702,7 @@ describe('Mesh Recovery', function () {
   before(async function () {
     assertTmuxIsolation(process.env)
     tmuxPaneSnapshot = snapshotTmuxPanes()
+    prepareHarnessWrapper()
 
     await waitForAppReady()
     mainApp = await ensureMainApp()
@@ -677,6 +713,7 @@ describe('Mesh Recovery', function () {
 
     await waitForProjectsLoaded()
     originalSettings = canonicalizeSettings(await getSettings())
+    await updateSettings(withHarnessWrapper(originalSettings))
 
     const availability = await invokeTauri('coordination_get_feature_availability')
     if (!availability.ok) {
@@ -715,6 +752,8 @@ describe('Mesh Recovery', function () {
     } else if (tmuxCleanup.failed.length > 0) {
       console.warn(`[e2e] mesh-recovery tmux cleanup failures: ${JSON.stringify(tmuxCleanup.failed)}`)
     }
+
+    rmSync(wrapperDir, { recursive: true, force: true })
   })
 
   it('shows cold-resume controls after a full team stop and reload', async function () {
