@@ -2116,6 +2116,61 @@ mod tests {
         assert_eq!(mesh_task_status(&teams_dir), "in_progress");
     }
 
+    // Regression: 13111833 put completion observation only in the daemon task
+    // RPC handler, so native Linux/macOS scans never wrote terminal telemetry.
+    #[test]
+    fn deadline_pass_observes_terminal_tasks_without_task_rpc() {
+        let (_tmp, teams_dir, _runtime, _fake, state) = deadline_fixture();
+        let completed_at = DateTime::parse_from_rfc3339("2026-09-04T10:30:00Z")
+            .expect("completion timestamp")
+            .with_timezone(&Utc);
+        seed_deadline_task(&teams_dir, completed_at, None);
+        crate::coordination::stores::telemetry::record_launch_rendered(
+            &teams_dir,
+            "deadline-team",
+            Some("42"),
+            "builder",
+            "rust-developer",
+            CliTool::Codex,
+            Some("gpt-5.6-sol"),
+            Some("high"),
+        );
+        let task_path = teams_dir
+            .parent()
+            .expect("teams root parent")
+            .join("tasks/deadline-team/42.json");
+        let mut task: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&task_path).expect("read mesh task"))
+                .expect("parse mesh task");
+        task["status"] = serde_json::Value::String("completed".to_string());
+        task["metadata"] = serde_json::json!({
+            "completed_at": "2026-09-04T10:30:00Z",
+            "rulings": [{"kind": "verdict", "value": "accepted"}]
+        });
+        std::fs::write(
+            &task_path,
+            serde_json::to_vec_pretty(&task).expect("serialize completed task"),
+        )
+        .expect("write completed task");
+
+        state
+            .run_background_task_deadline_pass_at(completed_at + chrono::Duration::minutes(1))
+            .expect("deadline pass succeeds");
+
+        let events = crate::coordination::stores::telemetry::read_task_telemetry(
+            &teams_dir.join("deadline-team/state/telemetry/42.jsonl"),
+        );
+        assert!(events.iter().any(|event| matches!(
+            event,
+            crate::coordination::stores::telemetry::RoutingTelemetryEvent::CompletionObserved {
+                timestamp,
+                status,
+                has_review_ruling: true,
+                ..
+            } if *timestamp == completed_at && status == "completed"
+        )));
+    }
+
     #[test]
     fn deadline_pass_nudges_once_then_stales_once_without_stopping_the_session() {
         let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();

@@ -9,6 +9,7 @@
 //! surfaces and owns the one path mesh cannot take: relaunching a
 //! [`RuntimeEffort::ResumeWithFlag`] member with the effort flag.
 
+use crate::coordination::stores::telemetry::EffortSwitchOutcome;
 use crate::coordination::stores::OperationalContextSnapshot;
 use crate::session_scanner::cli_tool::{spec, CliTool, EffortFlag, RuntimeEffort};
 use crate::session_scanner::launch::command_contains_flag;
@@ -260,14 +261,18 @@ pub fn resume_effort_target(
 }
 
 /// Report that a member is being relaunched to reach an assignment's effort.
+#[allow(clippy::too_many_arguments)]
 pub fn emit_effort_resume(
+    teams_dir: &std::path::Path,
     event_name: &str,
+    outcome: EffortSwitchOutcome,
     team_name: &str,
     member_name: &str,
     task_id: &str,
     level: &str,
     previous: Option<&str>,
     failure: Option<&str>,
+    attempt: u32,
 ) {
     let mut fields = serde_json::Map::new();
     fields.insert(
@@ -305,10 +310,21 @@ pub fn emit_effort_resume(
         Some("Task-level effort resume".to_string()),
         fields,
     );
+    crate::coordination::stores::telemetry::record_effort_switch(
+        teams_dir,
+        team_name,
+        task_id,
+        member_name,
+        attempt,
+        previous,
+        level,
+        outcome,
+    );
 }
 
 /// Emit the one terminal failure after an effort switch spends its retry budget.
 pub fn emit_effort_budget_exhausted(
+    teams_dir: &std::path::Path,
     team_name: &str,
     member_name: &str,
     task_id: &str,
@@ -354,6 +370,16 @@ pub fn emit_effort_budget_exhausted(
         Some("Task-level effort resume budget exhausted".to_string()),
         fields,
     );
+    crate::coordination::stores::telemetry::record_effort_switch(
+        teams_dir,
+        team_name,
+        task_id,
+        member_name,
+        attempts,
+        previous,
+        level,
+        EffortSwitchOutcome::BudgetExhausted,
+    );
 }
 
 fn trimmed(value: Option<&str>) -> Option<String> {
@@ -374,6 +400,38 @@ mod tests {
     /// `--why`. Everything in this module reads a pair only that release
     /// writes.
     const ASSIGNMENT_EFFORT_MESH_VERSION: (u32, u32, u32) = (0, 2, 22);
+
+    // Regression: 13111833 derived persisted outcome vocabulary from the log
+    // event-name suffix, so a harmless log rename silently changed reports.
+    #[test]
+    fn effort_telemetry_uses_the_typed_outcome_not_the_log_event_name() {
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let root = tempfile::tempdir().expect("tempdir");
+
+        emit_effort_resume(
+            root.path(),
+            "effort.resume.renamed",
+            EffortSwitchOutcome::Completed,
+            "routing-team",
+            "builder",
+            "42",
+            "high",
+            Some("medium"),
+            None,
+            1,
+        );
+
+        let path = root.path().join("routing-team/state/telemetry/42.jsonl");
+        assert!(matches!(
+            crate::coordination::stores::telemetry::read_task_telemetry(&path).as_slice(),
+            [
+                crate::coordination::stores::telemetry::RoutingTelemetryEvent::EffortSwitch {
+                    outcome: EffortSwitchOutcome::Completed,
+                    ..
+                }
+            ]
+        ));
+    }
 
     // Regression: the W5b read-back shipped on top of bundled mesh 0.2.21,
     // whose `mesh task assign` has neither `--effort` nor `--why`, so the two

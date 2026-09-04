@@ -443,13 +443,16 @@ impl CoordinationOrchestrator {
                         pending.failed_attempts + 1,
                     );
                     task_effort::emit_effort_resume(
+                        &self.teams_dir,
                         "effort.resume.failed",
+                        crate::coordination::stores::telemetry::EffortSwitchOutcome::Failed,
                         team_name,
                         &member.name,
                         &pending.task_id,
                         &pending.requested,
                         pending.applied.as_deref(),
                         Some(reason),
+                        pending.failed_attempts + 1,
                     );
                     outcome
                         .failed
@@ -458,13 +461,16 @@ impl CoordinationOrchestrator {
                 }
             };
             task_effort::emit_effort_resume(
+                &self.teams_dir,
                 "effort.resume.started",
+                crate::coordination::stores::telemetry::EffortSwitchOutcome::Started,
                 team_name,
                 &member.name,
                 &pending.task_id,
                 &pending.requested,
                 pending.applied.as_deref(),
                 None,
+                pending.failed_attempts + 1,
             );
 
             // A relaunch that resumed a member whose session is still running
@@ -479,13 +485,16 @@ impl CoordinationOrchestrator {
                     pending.failed_attempts + 1,
                 );
                 task_effort::emit_effort_resume(
+                    &self.teams_dir,
                     "effort.resume.failed",
+                    crate::coordination::stores::telemetry::EffortSwitchOutcome::Failed,
                     team_name,
                     &member.name,
                     &pending.task_id,
                     &pending.requested,
                     pending.applied.as_deref(),
                     Some(&reason),
+                    pending.failed_attempts + 1,
                 );
                 outcome.failed.push((member.name.clone(), reason));
                 continue;
@@ -510,13 +519,16 @@ impl CoordinationOrchestrator {
                 None => {
                     outcome.switched.push(member.name.clone());
                     task_effort::emit_effort_resume(
+                        &self.teams_dir,
                         "effort.resume.completed",
+                        crate::coordination::stores::telemetry::EffortSwitchOutcome::Completed,
                         team_name,
                         &member.name,
                         &pending.task_id,
                         &pending.requested,
                         pending.applied.as_deref(),
                         None,
+                        pending.failed_attempts + 1,
                     );
                 }
                 Some(reason) => {
@@ -531,13 +543,16 @@ impl CoordinationOrchestrator {
                         pending.failed_attempts + 1,
                     );
                     task_effort::emit_effort_resume(
+                        &self.teams_dir,
                         "effort.resume.failed",
+                        crate::coordination::stores::telemetry::EffortSwitchOutcome::Failed,
                         team_name,
                         &member.name,
                         &pending.task_id,
                         &pending.requested,
                         pending.applied.as_deref(),
                         Some(&reason),
+                        pending.failed_attempts + 1,
                     );
                     outcome.failed.push((member.name.clone(), reason));
                 }
@@ -728,6 +743,7 @@ fn pending_member_effort_outcome(
             )?
         {
             task_effort::emit_effort_budget_exhausted(
+                &orchestrator.teams_dir,
                 team_name,
                 &member.name,
                 &assigned.task_id,
@@ -756,13 +772,16 @@ fn pending_member_effort_outcome(
             failed_attempts + 1,
         );
         task_effort::emit_effort_resume(
+            &orchestrator.teams_dir,
             "effort.resume.failed",
+            crate::coordination::stores::telemetry::EffortSwitchOutcome::Failed,
             team_name,
             &member.name,
             &assigned.task_id,
             &requested,
             runtime.applied_effort.as_deref(),
             Some("member has no recorded session to resume"),
+            failed_attempts + 1,
         );
         return Err("member has no recorded session to resume".to_string());
     }

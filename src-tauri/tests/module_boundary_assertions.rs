@@ -804,6 +804,10 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "shared newer-wins publisher is invoked by daemon services",
         ),
         (
+            "src/coordination/routing_report.rs",
+            "read-only routing report: trips registry-construction and telemetry-read markers while never writing; its test fixtures seed sidecars only through the daemon-owned append surface",
+        ),
+        (
             "src/coordination/orchestrator/delivery.rs",
             "daemon-hosted delivery records last-seen and daemon pid after send",
         ),
@@ -822,6 +826,10 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         (
             "src/coordination/pipelines/effort.rs",
             "daemon-hosted effort pipeline records applied effort transitions",
+        ),
+        (
+            "src/coordination/pipelines/helpers.rs",
+            "daemon-hosted managed launch seam records rendered launch telemetry",
         ),
         (
             "src/coordination/pipelines/lifecycle.rs",
@@ -856,12 +864,20 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "operational store implements its own locked write surface",
         ),
         (
+            "src/coordination/stores/telemetry.rs",
+            "routing telemetry store implements the daemon-only append surface",
+        ),
+        (
             "src/coordination/stores/runtime.rs",
             "runtime store prunes stale WSL-native compaction state during locked saves",
         ),
         (
             "src/coordination/task_deadline_pass.rs",
             "daemon deadline scheduler owns task and snapshot CAS writes",
+        ),
+        (
+            "src/coordination/task_effort.rs",
+            "daemon effort outcome emitter records effort-switch telemetry",
         ),
         (
             "src/commands/accounts/mod.rs",
@@ -878,6 +894,10 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         (
             "src/daemon/initialize_runs.rs",
             "daemon initialization finalizer publishes snapshots and mappings",
+        ),
+        (
+            "src/daemon/handlers.rs",
+            "daemon task scanner records terminal ledger observations",
         ),
         (
             "src/daemon/member_runs.rs",
@@ -945,6 +965,13 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         "TeamConfigStore::delete(",
         "MeshInboxStore::append(",
         "commit_status_if_unchanged(",
+        "append_task_telemetry(",
+        "append_task_telemetry_fail_soft(",
+        "attribute_latest_launch_to_task(",
+        "record_completion_observed(",
+        "record_launch_rendered(",
+        "record_effort_switch(",
+        "record_deadline_action(",
         "OperationalContextSnapshotStore::save(",
         "OperationalContextSnapshotStore::save_locked(",
         "OperationalContextSnapshotStore::commit_if_unchanged(",

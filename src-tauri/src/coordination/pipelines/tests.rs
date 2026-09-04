@@ -2546,6 +2546,87 @@ fn initialize_and_resume_leave_undeclared_effort_to_the_cli() {
     assert_eq!(initialize_command, "codex --yolo -m 'gpt-5.6-sol'");
 }
 
+// Regression: 13111833 dropped a rendered launch when the member had no task
+// in its operational snapshot yet, so a later assignment could never be
+// attributed and routing reports stayed empty for launch-once team waves.
+#[test]
+fn launch_then_task_snapshot_attributes_the_rendered_launch() {
+    use crate::coordination::stores::{
+        telemetry::{read_task_telemetry, RoutingTelemetryEvent},
+        OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,
+        OperationalOwnershipSnapshot, OperationalTaskSnapshot, OperationalWorkingSetSnapshot,
+    };
+
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = RecordingCoordinationRuntime::default();
+    let agent = setup_config("builder", "codex", "gpt-5.6-sol", "/tmp/project");
+    let context = MemberActivationContext::for_initialize_member(
+        "routing-team",
+        "team-lead",
+        &agent,
+        MemberRole::Agent,
+    )
+    .expect("initialize context");
+    let mut runtime_state = MemberActivationRuntimeState::default();
+
+    run_member_session_phase(
+        &runtime,
+        tmp.path(),
+        &context,
+        "%1",
+        MemberSessionPhase::LaunchOnly(&CliCommandSettings::default()),
+        &mut runtime_state,
+    )
+    .expect("launch member");
+
+    let unattributed = tmp
+        .path()
+        .join("routing-team/state/telemetry/_unattributed.jsonl");
+    assert!(matches!(
+        read_task_telemetry(&unattributed).as_slice(),
+        [RoutingTelemetryEvent::LaunchRendered {
+            task_id: None,
+            model: Some(model),
+            ..
+        }] if model == "gpt-5.6-sol"
+    ));
+
+    crate::coordination::operational_context::publish_member_operation_snapshot(
+        tmp.path(),
+        &OperationalContextSnapshot {
+            version: 1,
+            team_name: "routing-team".to_string(),
+            member_name: "builder".to_string(),
+            updated_at: Utc::now(),
+            task: OperationalTaskSnapshot {
+                id: "42".to_string(),
+                subject: "Implement routing telemetry".to_string(),
+                status: "in_progress".to_string(),
+                ..Default::default()
+            },
+            assignment_footer: OperationalAssignmentFooterSnapshot::default(),
+            ownership: OperationalOwnershipSnapshot::default(),
+            working_set: OperationalWorkingSetSnapshot {
+                project_path: "/tmp/project".to_string(),
+                focal_files: Vec::new(),
+            },
+        },
+        None,
+    )
+    .expect("publish task snapshot");
+
+    let attributed = tmp.path().join("routing-team/state/telemetry/42.jsonl");
+    assert!(matches!(
+        read_task_telemetry(&attributed).as_slice(),
+        [RoutingTelemetryEvent::LaunchRendered {
+            task_id: Some(task_id),
+            member,
+            model: Some(model),
+            ..
+        }] if task_id == "42" && member == "builder" && model == "gpt-5.6-sol"
+    ));
+}
+
 // Regression: ff40911 stripped the suffix and 5d2ce27 aliased gpt-5.3;
 // roles declaring "gpt-5.4 high" ran at the user's global xhigh.
 #[test]

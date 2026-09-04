@@ -880,6 +880,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         );
         if let Err(err) = run_member_session_phase(
             self.orchestrator.runtime.as_ref(),
+            &self.orchestrator.teams_dir,
             &prepared.activation_context,
             pane_id,
             MemberSessionPhase::LaunchOnly(self.cli_commands),
@@ -939,6 +940,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         );
         if let Err(err) = run_member_session_phase(
             self.orchestrator.runtime.as_ref(),
+            &self.orchestrator.teams_dir,
             &prepared.activation_context,
             pane_id,
             MemberSessionPhase::CaptureOnly,

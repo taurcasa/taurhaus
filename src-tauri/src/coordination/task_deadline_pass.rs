@@ -1,5 +1,6 @@
 //! Shared managed-task deadline policy driver.
 
+use std::fs;
 use std::path::Path;
 
 use chrono::{DateTime, Duration, Utc};
@@ -27,6 +28,7 @@ pub(crate) fn apply_task_deadlines(
     team_name: &str,
     now: Timestamp,
 ) -> Result<DeadlinePassOutcome, CoordinationError> {
+    observe_terminal_tasks(&orchestrator.teams_dir, team_name, now);
     let config = TeamConfigStore::load(&orchestrator.teams_dir, team_name)?;
     let sender_name = config
         .members
@@ -51,6 +53,66 @@ pub(crate) fn apply_task_deadlines(
     }
 
     Ok(outcome)
+}
+
+// Cost bound stated: this re-parses the team's task files each pass, but the
+// completion writer dedupes per (status, ruling) under flock and only appends
+// to sidecars telemetry already opened, so passes after the first observation
+// are read-only. A last-pass mtime skip was considered and rejected as state
+// for negligible gain at team-sized task counts.
+fn observe_terminal_tasks(teams_dir: &Path, team_name: &str, now: DateTime<Utc>) {
+    let Some(tasks_dir) =
+        taurhaus_lib::task_scanner::claude_index::ClaudeSourceIndex::team_tasks_dir(
+            teams_dir, team_name,
+        )
+    else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(tasks_dir) else {
+        return;
+    };
+    for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+        if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(metadata) = fs::metadata(&path) else {
+            continue;
+        };
+        if metadata.len() > taurhaus_lib::task_scanner::claude::MAX_FILE_SIZE {
+            continue;
+        }
+        let Ok(Some(task)) =
+            taurhaus_lib::task_scanner::claude::parse_task_file(&path, Some(team_name.to_string()))
+        else {
+            continue;
+        };
+        if !crate::coordination::operational_context::is_terminal_task_status(
+            &task.status.to_string(),
+        ) {
+            continue;
+        }
+        let completion_at = task
+            .state_changed_at
+            .as_deref()
+            .and_then(parse_timestamp)
+            .or_else(|| task.updated_at.as_deref().and_then(parse_timestamp))
+            .or_else(|| metadata.modified().ok().map(DateTime::<Utc>::from))
+            .unwrap_or(now);
+        crate::coordination::stores::telemetry::record_completion_observed(
+            teams_dir,
+            team_name,
+            &task.id,
+            &task.status.to_string(),
+            task.has_review_ruling,
+            completion_at,
+        );
+    }
+}
+
+fn parse_timestamp(value: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|timestamp| timestamp.with_timezone(&Utc))
 }
 
 fn apply_member_deadline(
@@ -152,6 +214,7 @@ fn apply_member_deadline(
     }
 
     emit_deadline_action(
+        &orchestrator.teams_dir,
         action,
         team_name,
         member_name,
@@ -162,6 +225,7 @@ fn apply_member_deadline(
 }
 
 fn emit_deadline_action(
+    teams_dir: &Path,
     action: DeadlineAction,
     team_name: &str,
     member_name: &str,
@@ -179,6 +243,14 @@ fn emit_deadline_action(
         event_name,
         Some(message.to_string()),
         deadline_event_fields(team_name, member_name, task_id, deadline_minutes),
+    );
+    crate::coordination::stores::telemetry::record_deadline_action(
+        teams_dir,
+        team_name,
+        task_id,
+        member_name,
+        deadline_minutes,
+        action == DeadlineAction::MarkStale,
     );
 }
 

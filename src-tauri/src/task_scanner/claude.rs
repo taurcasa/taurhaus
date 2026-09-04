@@ -60,7 +60,7 @@ impl TranscriptParser for ClaudeTranscriptParser {
 }
 
 /// Maximum file size to parse (1 MB). Skip larger files as a safety measure.
-const MAX_FILE_SIZE: u64 = 1_024 * 1_024;
+pub const MAX_FILE_SIZE: u64 = 1_024 * 1_024;
 
 #[derive(Debug, Default)]
 struct ClaudeScanOutcome {
@@ -135,6 +135,20 @@ fn metadata_u32(metadata: Option<&serde_json::Value>, key: &str) -> Option<u32> 
         .and_then(|value| u32::try_from(value).ok())
         .or_else(|| value.as_str()?.trim().parse::<u32>().ok())
         .filter(|value| *value > 0)
+}
+
+fn metadata_has_review_ruling(metadata: Option<&serde_json::Value>) -> bool {
+    metadata
+        .and_then(|metadata| metadata.get("rulings"))
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|rulings| {
+            rulings.iter().any(|ruling| {
+                matches!(
+                    ruling.get("kind").and_then(serde_json::Value::as_str),
+                    Some("verdict" | "score" | "ruling")
+                )
+            })
+        })
 }
 
 /// Get tasks for a project from Claude Code's task storage.
@@ -426,7 +440,10 @@ fn parse_task_directory(dir: &Path, source_key: &str) -> DirectoryParseOutcome {
 ///
 /// Returns `Ok(None)` for deleted tasks (status: "deleted") so they are
 /// silently excluded from the board without logging a warning.
-fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<UnifiedTask>, String> {
+pub fn parse_task_file(
+    path: &Path,
+    source_key: Option<String>,
+) -> Result<Option<UnifiedTask>, String> {
     let content = fs::read_to_string(path).map_err(|e| format!("Read error: {e}"))?;
     let raw: RawClaudeTask =
         serde_json::from_str(&content).map_err(|e| format!("Parse error: {e}"))?;
@@ -448,6 +465,17 @@ fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<Uni
         metadata_string(raw.metadata.as_ref(), &["effort"]).map(|level| level.to_ascii_lowercase());
     let effort_why = metadata_string(raw.metadata.as_ref(), &["effort_why", "effortWhy"]);
     let deadline_minutes = metadata_u32(raw.metadata.as_ref(), "deadline_minutes");
+    let has_review_ruling = metadata_has_review_ruling(raw.metadata.as_ref());
+    // completed_at only means "state changed" for a task that actually
+    // reached a terminal state; a stale leftover value on a reopened task
+    // must not masquerade as a state-change timestamp.
+    let completed_at = metadata_string(raw.metadata.as_ref(), &["completed_at"])
+        .filter(|_| matches!(status, TaskStatus::Completed | TaskStatus::Stale));
+    let updated_at = fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .map(chrono::DateTime::<chrono::Utc>::from)
+        .map(|timestamp| timestamp.to_rfc3339());
     Ok(Some(UnifiedTask {
         id: raw.id,
         source_key: task_source_key.clone(),
@@ -460,14 +488,15 @@ fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<Uni
         blocked_by: raw.blocked_by,
         owner: raw.owner,
         session_id: Some(task_source_key),
-        state_changed_at: None,
-        updated_at: None,
+        state_changed_at: completed_at,
+        updated_at,
         archived_at: None,
         last_status: None,
         archived_reason: None,
         effort,
         effort_why,
         deadline_minutes,
+        has_review_ruling,
     }))
 }
 
@@ -631,6 +660,31 @@ mod tests {
             Some("the migration is irreversible")
         );
         assert_eq!(tasks[0].deadline_minutes, Some(20));
+    }
+
+    #[test]
+    fn terminal_task_reports_whether_the_ledger_has_a_review_ruling() {
+        let tmp = TempDir::new().unwrap();
+        let task_dir = tmp.path().join("routing-team");
+        fs::create_dir_all(&task_dir).unwrap();
+        write_task(
+            &task_dir,
+            "42.json",
+            r#"{
+                "id": "42",
+                "subject": "Ship telemetry",
+                "status": "completed",
+                "owner": "builder",
+                "metadata": {
+                    "rulings": [
+                        {"seq": 1, "kind": "verdict", "value": "accepted", "by": "reviewer"}
+                    ]
+                }
+            }"#,
+        );
+
+        let tasks = parse_task_directory_for_test(&task_dir);
+        assert!(tasks[0].has_review_ruling);
     }
 
     #[test]

@@ -186,6 +186,9 @@ impl LaunchNote {
 pub struct RenderedLaunch {
     pub command: String,
     pub notes: Vec<LaunchNote>,
+    /// The model the rendered command selects, including a base-command
+    /// override that outranks the requested model.
+    pub applied_model: Option<String>,
     /// The reasoning effort this render wrote into the command, if any.
     ///
     /// The renderer is the only authority on whether a requested level reached
@@ -431,6 +434,7 @@ impl LaunchSpec<'_> {
         RenderedLaunch {
             command,
             notes,
+            applied_model: model_selection.effective_model,
             applied_effort,
         }
     }
@@ -1178,6 +1182,27 @@ mod tests {
                 reason: EffortIgnoreReason::Invalid,
             }]
         );
+    }
+
+    #[test]
+    fn rendered_launch_reports_the_model_the_command_actually_uses() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --model gpt-5.6-luna",
+            model: ModelSpec {
+                model: Some("gpt-5.6-sol".to_string()),
+                reasoning_effort: None,
+            },
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.applied_model.as_deref(), Some("gpt-5.6-luna"));
     }
 
     #[test]

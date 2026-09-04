@@ -1,3 +1,5 @@
+#[cfg(feature = "mesh-bridged-backend")]
+use std::collections::HashSet;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -16,9 +18,14 @@ struct ProjectTaskScanCache {
     claude_index: ClaudeSourceIndex,
 }
 
+#[cfg(feature = "mesh-bridged-backend")]
+type TerminalObservationKey = (std::path::PathBuf, String, String, String, bool);
+
 #[derive(Debug, Default)]
 pub(crate) struct ProjectTaskScanCacheState {
     cache: Mutex<Option<ProjectTaskScanCache>>,
+    #[cfg(feature = "mesh-bridged-backend")]
+    terminal_observations: Mutex<HashSet<TerminalObservationKey>>,
 }
 
 /// Dispatch a request to the appropriate handler.
@@ -1172,7 +1179,59 @@ pub(crate) fn handle_get_project_tasks(
         &project_sessions,
         Some(&claude_index),
     );
+    #[cfg(feature = "mesh-bridged-backend")]
+    record_terminal_task_observations(&result, &claude_index, project_task_scan_cache);
     DaemonResponse::ok(id, result)
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn record_terminal_task_observations(
+    result: &crate::task_scanner::TaskResult,
+    index: &ClaudeSourceIndex,
+    state: &ProjectTaskScanCacheState,
+) -> usize {
+    let mut recorded = 0;
+    for task in result.tasks.iter().filter(|task| {
+        crate::coordination::operational_context::is_terminal_task_status(&task.status.to_string())
+    }) {
+        let Some(teams_dir) = index.team_teams_dir(&task.source_key) else {
+            continue;
+        };
+        let key = (
+            teams_dir.clone(),
+            task.source_key.clone(),
+            task.id.clone(),
+            task.status.to_string(),
+            task.has_review_ruling,
+        );
+        if !state
+            .terminal_observations
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .insert(key)
+        {
+            continue;
+        }
+        crate::coordination::stores::telemetry::record_completion_observed(
+            &teams_dir,
+            &task.source_key,
+            &task.id,
+            &task.status.to_string(),
+            task.has_review_ruling,
+            task.state_changed_at
+                .as_deref()
+                .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+                .or_else(|| {
+                    task.updated_at
+                        .as_deref()
+                        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+                })
+                .map(|value| value.with_timezone(&chrono::Utc))
+                .unwrap_or_else(chrono::Utc::now),
+        );
+        recorded += 1;
+    }
+    recorded
 }
 
 fn load_project_task_scan_inputs(
@@ -1217,6 +1276,95 @@ mod tests {
     use crate::session_scanner::accounts::{install_detection_override, AccountScan};
     use crate::session_scanner::cli_tool::CliTool;
     use tempfile::TempDir;
+
+    // Regression: ba4e6e02 tested a hand-built task timestamp that the Claude
+    // parser could never produce, so real completions were still stamped at scan time.
+    #[test]
+    fn terminal_task_observation_is_deduplicated_and_uses_state_change_time() {
+        use std::collections::BTreeSet;
+
+        use crate::task_scanner::claude_index::ClaudeTaskRoot;
+
+        let root = TempDir::new().expect("root");
+        let account_dir = root.path().join("account");
+        let teams_dir = account_dir.join("teams");
+        let task_path = account_dir.join("tasks/routing-team/42.json");
+        std::fs::create_dir_all(task_path.parent().expect("task directory"))
+            .expect("create task directory");
+        std::fs::write(
+            &task_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "id": "42",
+                "subject": "Finish telemetry",
+                "status": "completed",
+                "owner": "builder",
+                "metadata": {
+                    "completed_at": "2026-09-04T10:30:00Z",
+                    "rulings": [{"kind": "verdict", "value": "accepted"}]
+                }
+            }))
+            .expect("serialize task"),
+        )
+        .expect("write task");
+        crate::coordination::stores::telemetry::record_launch_rendered(
+            &teams_dir,
+            "routing-team",
+            Some("42"),
+            "builder",
+            "rust-developer",
+            CliTool::Codex,
+            Some("gpt-5.6-sol"),
+            Some("high"),
+        );
+        let index = ClaudeSourceIndex {
+            task_roots: vec![ClaudeTaskRoot {
+                path: account_dir.join("tasks"),
+                authoritative_teams: BTreeSet::from(["routing-team".to_string()]),
+            }],
+            ..Default::default()
+        };
+        let parsed = crate::task_scanner::claude::parse_task_file(
+            &task_path,
+            Some("routing-team".to_string()),
+        )
+        .expect("parse task")
+        .expect("non-deleted task");
+        let result = crate::task_scanner::TaskResult {
+            tasks: vec![parsed],
+            errors: Vec::new(),
+            source_outcomes: Vec::new(),
+        };
+        let state = ProjectTaskScanCacheState::default();
+
+        assert_eq!(
+            record_terminal_task_observations(&result, &index, &state),
+            1
+        );
+        assert_eq!(
+            record_terminal_task_observations(&result, &index, &state),
+            0
+        );
+        let path = teams_dir.join("routing-team/state/telemetry/42.jsonl");
+        assert_eq!(
+            crate::coordination::stores::telemetry::read_task_telemetry(&path).len(),
+            2,
+            "one render plus one terminal observation"
+        );
+        let events = crate::coordination::stores::telemetry::read_task_telemetry(&path);
+        assert!(matches!(
+            events.last(),
+            Some(crate::coordination::stores::telemetry::RoutingTelemetryEvent::CompletionObserved {
+                timestamp,
+                ..
+            }) if timestamp.to_rfc3339() == "2026-09-04T10:30:00+00:00"
+        ));
+        assert!(
+            std::fs::read_to_string(path)
+                .expect("read telemetry JSONL")
+                .contains("\"observed_at\":"),
+            "scan time remains separately observable"
+        );
+    }
 
     // Regression: 760f776 answered `claude-project-transcript` from the config
     // dirs of successfully parsed accounts only. On Windows this handler is the

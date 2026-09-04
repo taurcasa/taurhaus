@@ -247,17 +247,22 @@ catalog.
 
 ### Stage 1 — telemetry: make cost-per-accepted-task measurable
 
-**Ships:** the task ledger records task characteristics (type, size class,
-blast-radius flag from the assignment contract), assigned role, the model +
-effort **actually launched** (read from `RenderedLaunch` — the single render
-authority, not the request), relaunches/retries, review verdicts, escalations,
-and human interventions; tokens/time where the harness exposes them (time as
-the proxy elsewhere). One reporting surface (a `just` recipe over the ledger)
-computes cost-per-accepted-task per (role, model).
+**Status: shipped when merged.**
 
-**Prerequisites:** Stage 0 fields (attribution); W-B task ledger with
-completion packets and rulings (shipped); the box-score human-cost events
-(shipped in the retro program).
+**Ships:** daemon/hook-only per-task telemetry sidecars record the model and
+effort **actually launched** (read from `RenderedLaunch` — the single render
+authority, not the request), effort-switch outcomes, deadline nudges/stale
+actions, and terminal task observations with ruling presence. One
+multi-team-root reporting surface (`just routing-report [DAYS]`) rejoins those
+observations to the current task ledger and reports per `(role, model)` plus a
+per-model rollup. Ledger completion with a review ruling is `accepted`; bare
+completion is reported separately as `completed_unruled`. Tokens are not
+collected in this stage because harness surfaces differ; wall-time is the
+explicit cost proxy.
+
+**Prerequisites:** Stage 0 fields (attribution); W-B task ledger completion
+packets and review rulings (both shipped — `mesh task ruling`, mesh >= 0.2.28);
+the box-score human-cost events (shipped in the retro program).
 
 **Exit gate:** after one real team wave (the operator's field test qualifies),
 the report renders a filled table for that wave with no hand-collection.
