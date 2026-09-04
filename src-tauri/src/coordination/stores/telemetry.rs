@@ -84,6 +84,17 @@ pub fn append_task_telemetry(
     task_id: Option<&str>,
     event: &RoutingTelemetryEvent,
 ) -> std::io::Result<()> {
+    if task_id.is_none()
+        && !matches!(
+            event,
+            RoutingTelemetryEvent::LaunchRendered { task_id: None, .. }
+        )
+    {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "only a task-less launch may use unattributed telemetry",
+        ));
+    }
     let path = task_telemetry_path(teams_dir, team_name, task_id)?;
     let mut file = open_sidecar(&path)?;
     file.lock_exclusive()?;
@@ -537,6 +548,31 @@ mod tests {
 
         let path = teams_dir.join("routing-team/state/telemetry/_unattributed.jsonl");
         assert_eq!(read_task_telemetry(&path), vec![event]);
+    }
+
+    // Regression: 13111833 routed every task-less event through a launch-only
+    // compactor, silently discarding non-launch events instead of rejecting them.
+    #[test]
+    fn unattributed_non_launch_event_is_rejected() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let teams_dir = root.path().join("teams");
+        let event = RoutingTelemetryEvent::NudgeSent {
+            timestamp: Utc.with_ymd_and_hms(2026, 9, 4, 10, 0, 0).unwrap(),
+            task_id: "42".to_string(),
+            member: "builder".to_string(),
+            deadline_minutes: 20,
+        };
+
+        let error = append_task_telemetry(&teams_dir, "routing-team", None, &event)
+            .expect_err("task-less non-launch event must be rejected");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(
+            !teams_dir
+                .join("routing-team/state/telemetry/_unattributed.jsonl")
+                .exists(),
+            "rejected events must not create a sidecar"
+        );
     }
 
     // Regression: 13111833 appended every task-less render forever, which
