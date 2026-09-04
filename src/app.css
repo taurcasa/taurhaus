@@ -645,10 +645,21 @@ body {
   background-color: var(--sidebar-bridge-cover);
 }
 
-@supports (animation-timeline: --rail-scroll) {
+/* Both properties, matching supportsScrollDrivenTracking(): the strips are
+   not the scroller's descendants, so without timeline-scope the animation's
+   timeline would never resolve while the JS fallback stood down. */
+@supports (animation-timeline: --rail-scroll) and (timeline-scope: --rail-scroll) {
   .sidebar-bridge-strip {
     animation: sidebar-bridge-follow auto linear both;
     animation-timeline: --rail-scroll;
+  }
+
+  /* When the driver runs in JS mode anyway (the fixture that exercises the
+     fallback), the CSS path must genuinely stand down: an animation beats
+     inline style, so leaving it live would silently measure the compositor
+     path instead of the handler's transforms. */
+  [data-bridge-tracking='js'] .sidebar-bridge-strip {
+    animation: none;
   }
 }
 

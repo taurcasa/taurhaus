@@ -148,12 +148,21 @@ let scrollTimelineOverride = null
  * Whether the engine can run the strip's -scrollTop translation on the
  * compositor via a scroll-driven animation. When it can't, the scroll handler
  * writes the transform instead.
+ *
+ * Both properties are required: the strips are not descendants of the
+ * scroller, so the timeline only reaches them through `timeline-scope` on
+ * the rail. An engine with `animation-timeline` but no `timeline-scope`
+ * would apply an animation whose timeline never resolves — while the JS
+ * fallback stood down — leaving a frozen strip beside the wrong row. The
+ * `@supports` block in app.css states the same two-property condition, so
+ * CSS and JS agree by construction.
  */
 export function supportsScrollDrivenTracking() {
   if (scrollTimelineOverride !== null) return scrollTimelineOverride
   return typeof CSS !== 'undefined'
     && typeof CSS.supports === 'function'
     && CSS.supports('animation-timeline', '--rail-scroll')
+    && CSS.supports('timeline-scope', '--rail-scroll')
 }
 
 /** Test hook: force the tracking mode (`true`/`false`), or `null` to detect. */

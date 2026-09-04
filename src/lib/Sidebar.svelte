@@ -909,6 +909,7 @@
 <aside
   bind:this={asideEl}
   class="sidebar-rail w-[252px] bg-brand-950 rounded-lg flex flex-col shrink-0 border border-white/[0.06] overflow-hidden"
+  data-bridge-tracking={bridgeUsesScrollTimeline ? 'timeline' : 'js'}
 >
 
   <!-- Filter -->

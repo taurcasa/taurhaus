@@ -140,6 +140,16 @@ describe('Pulled-row bridge — Shell body junction', () => {
     const { list, bridge, row } = await renderScenario(scenario)
     const strip = bridge.querySelector('.sidebar-bridge-strip')
 
+    // Prove which mechanism is under test: the fallback scenario must have
+    // the CSS animation genuinely standing down (an animation would beat
+    // the handler's inline transform and measure the compositor instead),
+    // and the default scenario must be riding the scroll timeline.
+    if (mode === 'js-fallback') {
+      expect(getComputedStyle(strip).animationName).toBe('none')
+    } else {
+      expect(getComputedStyle(strip).animationName).toBe('sidebar-bridge-follow')
+    }
+
     // Sample the strip-vs-row offset every frame across an animated scroll:
     // the two must move as one surface. (30 projects stay under the
     // virtualization threshold, so the row never unmounts mid-scroll.)
