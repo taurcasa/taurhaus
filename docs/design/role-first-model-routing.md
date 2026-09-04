@@ -345,6 +345,33 @@ should need editing. On-arrival checklist (a small-change lane):
    reviewer on a few contained lanes first; the tier is confirmed by observed
    work, and Stage-1 telemetry (once live) records the evidence.
 
+Intel as of 2026-09-04 (press, pre-availability — verify everything on the
+real CLI): it is **OpenAI GPT-6 Astra** — limited preview 2026-09-03, public
+release planned 2026-09-07, reaching Plus/Pro/Business "over coming days"
+with usage inside existing allowances; Codex is a first-class target
+("best model for software engineering to date"), so the small-change catalog
+path on the codex harness is the expected route. Specifics to confirm on
+arrival, added to the checklist above:
+
+- **Slug + variant**: no model identifier published yet; Pro-plan users get a
+  "GPT-6 Astra Pro" variant — confirm which slug the Codex CLI exposes to our
+  subscription and whether effort flags exist at all (none announced).
+- **Compaction interaction**: Astra claims cross-session context preservation
+  ("keeps notes across context windows without repeatedly compressing").
+  Verify what this does to Codex transcript shape and whether our
+  compact-hook reinjection still sees compaction events at all — do not
+  assume the shipped Codex behavior transfers.
+- **Usage windows**: confirm the usage endpoint reports Astra consumption in
+  the existing window vocabulary the poller reads.
+- **Security-role caveat**: the public version "rejects certain prompts in
+  sensitive areas" (it carries OpenAI's Critical cybersecurity designation);
+  a security-reviewer role routed to Astra may hit refusals legitimate work
+  shouldn't — test before wiring it into that role.
+- **Monitorability note**: its "recurrent depth" reasoning obscures the
+  chain of thought. That raises, not lowers, the value of cross-family
+  review: when a model's reasoning is less inspectable, decorrelated
+  checking is the remaining audit.
+
 ## What this preserves
 
 The operator's current safety property — high-impact work cannot be silently
