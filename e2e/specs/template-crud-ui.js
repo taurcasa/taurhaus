@@ -171,6 +171,25 @@ async function hasTestId(testId) {
   return await (await $(`[data-testid="${testId}"]`)).isExisting()
 }
 
+async function isConfirmDialogOpen() {
+  return await browser.execute(() => {
+    const dialogs = Array.from(document.querySelectorAll('[data-testid="confirm-dialog"]'))
+    return dialogs.some((dialog) => dialog instanceof HTMLDialogElement && dialog.open)
+  })
+}
+
+async function clickOpenConfirmDialog() {
+  const clicked = await browser.execute(() => {
+    const dialogs = Array.from(document.querySelectorAll('[data-testid="confirm-dialog"]'))
+    const dialog = dialogs.find((candidate) => candidate instanceof HTMLDialogElement && candidate.open)
+    const confirm = dialog?.querySelector('[data-testid="confirm-dialog-confirm"]')
+    if (!(confirm instanceof HTMLButtonElement)) return false
+    confirm.click()
+    return true
+  })
+  if (!clicked) throw new Error('Open confirmation action was unavailable')
+}
+
 function skipRuntimeTest(testContext, reason) {
   blockedReason = reason
   console.log(`[e2e] runtime lane skipped: ${reason}`)
@@ -616,7 +635,7 @@ describe('Template CRUD UI', () => {
       let confirmAppeared = false
       try {
         await browser.waitUntil(
-          async () => await hasTestId('confirm-dialog-confirm'),
+          async () => await isConfirmDialogOpen(),
           { ...WAIT_SHORT, timeoutMsg: 'Role delete confirmation did not appear' }
         )
         confirmAppeared = true
@@ -624,7 +643,7 @@ describe('Template CRUD UI', () => {
         confirmAppeared = false
       }
       if (confirmAppeared) {
-        await clickTestId('confirm-dialog-confirm')
+        await clickOpenConfirmDialog()
       }
 
       await browser.waitUntil(
@@ -728,10 +747,10 @@ describe('Template CRUD UI', () => {
       await clickActiveSlideOverTestId('catalog-tab-presets')
       await clickActiveSlideOverTestId(`template-preset-delete-${presetIdToDelete}`)
       await browser.waitUntil(
-        async () => await hasTestId('confirm-dialog-confirm'),
+        async () => await isConfirmDialogOpen(),
         { ...WAIT_SHORT, timeoutMsg: 'Preset delete confirmation did not appear' }
       )
-      await clickTestId('confirm-dialog-confirm')
+      await clickOpenConfirmDialog()
 
       await browser.waitUntil(
         async () => !(await (await $(`[data-testid="template-browser-preset-${presetIdToDelete}"]`)).isExisting()),
