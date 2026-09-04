@@ -234,6 +234,19 @@ export function ambientAccountSignal(states, now = Date.now()) {
   return { visible: false, tone: 'calm', magnitude: null, account: null }
 }
 
+/**
+ * The badge sentence for assistive tech: a filled pill is a bare number for
+ * the eye, so the tone and magnitude are spelled out for everyone else.
+ */
+export function ambientSignalDescription(signal) {
+  if (!signal?.visible || signal.magnitude == null) return null
+  if (signal.tone === 'danger') {
+    const count = Number(signal.magnitude)
+    return `${signal.magnitude} account${count === 1 ? '' : 's'} need${count === 1 ? 's' : ''} sign-in`
+  }
+  return `${signal.magnitude}% of the worst usage window used`
+}
+
 export function usageIsLastKnown(usage, now = Date.now()) {
   const observed = Date.parse(usage?.observed_at ?? usage?.observedAt ?? '')
   return Number.isFinite(observed) && now - observed > LAST_KNOWN_AFTER_MS

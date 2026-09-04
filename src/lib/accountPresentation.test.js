@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   accountOriginSentence,
   ambientAccountSignal,
+  ambientSignalDescription,
   baseCommandSelection,
   usageIsLastKnown,
 } from './accountPresentation.js'
@@ -127,6 +128,21 @@ describe('ambientAccountSignal', () => {
     // The badge grammar is number-only: a filled danger pill counts the
     // accounts needing action; the tone carries the severity, never a word.
     expect(result).toMatchObject({ visible: true, tone: 'danger', magnitude: '1' })
+  })
+
+  it('speaks the badge for assistive tech per magnitude kind', () => {
+    expect(
+      ambientSignalDescription({ visible: true, tone: 'danger', magnitude: '1' })
+    ).toBe('1 account needs sign-in')
+    expect(
+      ambientSignalDescription({ visible: true, tone: 'danger', magnitude: '2' })
+    ).toBe('2 accounts need sign-in')
+    expect(
+      ambientSignalDescription({ visible: true, tone: 'warning', magnitude: '91' })
+    ).toBe('91% of the worst usage window used')
+    expect(
+      ambientSignalDescription({ visible: false, tone: 'calm', magnitude: null })
+    ).toBe(null)
   })
 
   it('counts every relevant account needing sign-in as the danger magnitude', () => {

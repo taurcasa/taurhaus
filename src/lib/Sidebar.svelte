@@ -20,7 +20,7 @@
     rememberChoice,
     requestLaunch,
   } from './accounts.svelte.js'
-  import { ambientAccountSignal } from './accountPresentation.js'
+  import { ambientAccountSignal, ambientSignalDescription } from './accountPresentation.js'
   import {
     accountSubmenuApplies,
     buildAccountMenuChildren,
@@ -109,6 +109,16 @@
     accountSignal.tone === 'danger'
       ? 'bg-danger-500 text-white'
       : 'bg-warning-400 text-brand-950'
+  )
+  // The pill is a bare number for the eye; AT gets the sentence.
+  const accountSignalDescription = $derived(ambientSignalDescription(accountSignal))
+  const accountsKeyLabel = $derived(
+    accountSignalDescription ? `Accounts — ${accountSignalDescription}` : 'Accounts'
+  )
+  const accountsKeyTitle = $derived(
+    accountSignalDescription
+      ? `Accounts (Ctrl+Shift+A) — ${accountSignalDescription}`
+      : 'Accounts (Ctrl+Shift+A)'
   )
 
   // While a utility surface occupies the main panel, its footer key wears the
@@ -874,9 +884,9 @@
     </button>
     <button
       class="relative w-7 h-7 flex items-center justify-center rounded-md transition-colors {accountsKeyTone} {railKeyFocus}"
-      aria-label="Accounts"
+      aria-label={accountsKeyLabel}
       aria-expanded={accountsOpen}
-      title="Accounts (Ctrl+Shift+A)"
+      title={accountsKeyTitle}
       onclick={handleToggleAccounts}
       onmouseenter={showAccountsBoard}
       onmouseleave={scheduleAccountsBoardClose}
@@ -884,7 +894,12 @@
     >
       <svg class="h-4 w-4" fill="none" viewBox={RAIL_ICONS.accounts.viewBox} stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d={RAIL_ICONS.accounts.path}/></svg>
       {#if accountSignal.visible}
-        <span class="rail-badge absolute -right-1 -top-1 {accountBadgeTone}" data-testid="accounts-signal">
+        <span
+          class="rail-badge absolute -right-1 -top-1 {accountBadgeTone}"
+          data-testid="accounts-signal"
+          aria-label={accountSignalDescription}
+          title={accountSignalDescription}
+        >
           {accountSignal.magnitude}
         </span>
       {/if}
