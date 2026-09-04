@@ -1,3 +1,5 @@
+#[cfg(feature = "mesh-bridged-backend")]
+use std::collections::HashSet;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -19,6 +21,8 @@ struct ProjectTaskScanCache {
 #[derive(Debug, Default)]
 pub(crate) struct ProjectTaskScanCacheState {
     cache: Mutex<Option<ProjectTaskScanCache>>,
+    #[cfg(feature = "mesh-bridged-backend")]
+    terminal_observations: Mutex<HashSet<(std::path::PathBuf, String, String, String, bool)>>,
 }
 
 /// Dispatch a request to the appropriate handler.
@@ -1173,7 +1177,7 @@ pub(crate) fn handle_get_project_tasks(
         Some(&claude_index),
     );
     #[cfg(feature = "mesh-bridged-backend")]
-    record_terminal_task_observations(&result, &claude_index);
+    record_terminal_task_observations(&result, &claude_index, project_task_scan_cache);
     DaemonResponse::ok(id, result)
 }
 
@@ -1181,7 +1185,9 @@ pub(crate) fn handle_get_project_tasks(
 fn record_terminal_task_observations(
     result: &crate::task_scanner::TaskResult,
     index: &ClaudeSourceIndex,
-) {
+    state: &ProjectTaskScanCacheState,
+) -> usize {
+    let mut recorded = 0;
     for task in result.tasks.iter().filter(|task| {
         matches!(
             task.status,
@@ -1191,6 +1197,21 @@ fn record_terminal_task_observations(
         let Some(teams_dir) = index.team_teams_dir(&task.source_key) else {
             continue;
         };
+        let key = (
+            teams_dir.clone(),
+            task.source_key.clone(),
+            task.id.clone(),
+            task.status.to_string(),
+            task.has_review_ruling,
+        );
+        if !state
+            .terminal_observations
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .insert(key)
+        {
+            continue;
+        }
         crate::coordination::stores::telemetry::record_completion_observed(
             &teams_dir,
             &task.source_key,
@@ -1198,7 +1219,9 @@ fn record_terminal_task_observations(
             &task.status.to_string(),
             task.has_review_ruling,
         );
+        recorded += 1;
     }
+    recorded
 }
 
 fn load_project_task_scan_inputs(
@@ -1243,6 +1266,78 @@ mod tests {
     use crate::session_scanner::accounts::{install_detection_override, AccountScan};
     use crate::session_scanner::cli_tool::CliTool;
     use tempfile::TempDir;
+
+    // Regression: 13111833 repeated one lock-and-full-read per terminal task
+    // on every task RPC, even after that exact terminal state was observed.
+    #[test]
+    fn terminal_task_observation_is_process_deduplicated() {
+        use std::collections::BTreeSet;
+
+        use crate::task_scanner::claude_index::ClaudeTaskRoot;
+
+        let root = TempDir::new().expect("root");
+        let account_dir = root.path().join("account");
+        let teams_dir = account_dir.join("teams");
+        crate::coordination::stores::telemetry::record_launch_rendered(
+            &teams_dir,
+            "routing-team",
+            Some("42"),
+            "builder",
+            "rust-developer",
+            CliTool::Codex,
+            Some("gpt-5.6-sol"),
+            Some("high"),
+        );
+        let index = ClaudeSourceIndex {
+            task_roots: vec![ClaudeTaskRoot {
+                path: account_dir.join("tasks"),
+                authoritative_teams: BTreeSet::from(["routing-team".to_string()]),
+            }],
+            ..Default::default()
+        };
+        let result = crate::task_scanner::TaskResult {
+            tasks: vec![crate::task_scanner::UnifiedTask {
+                id: "42".to_string(),
+                source_key: "routing-team".to_string(),
+                subject: "Finish telemetry".to_string(),
+                description: None,
+                active_form: None,
+                status: crate::task_scanner::TaskStatus::Completed,
+                source: CliTool::Claude,
+                blocks: Vec::new(),
+                blocked_by: Vec::new(),
+                owner: Some("builder".to_string()),
+                session_id: Some("routing-team".to_string()),
+                state_changed_at: None,
+                updated_at: None,
+                archived_at: None,
+                last_status: None,
+                archived_reason: None,
+                effort: None,
+                effort_why: None,
+                deadline_minutes: None,
+                has_review_ruling: true,
+            }],
+            errors: Vec::new(),
+            source_outcomes: Vec::new(),
+        };
+        let state = ProjectTaskScanCacheState::default();
+
+        assert_eq!(
+            record_terminal_task_observations(&result, &index, &state),
+            1
+        );
+        assert_eq!(
+            record_terminal_task_observations(&result, &index, &state),
+            0
+        );
+        let path = teams_dir.join("routing-team/state/telemetry/42.jsonl");
+        assert_eq!(
+            crate::coordination::stores::telemetry::read_task_telemetry(&path).len(),
+            2,
+            "one render plus one terminal observation"
+        );
+    }
 
     // Regression: 760f776 answered `claude-project-transcript` from the config
     // dirs of successfully parsed accounts only. On Windows this handler is the
