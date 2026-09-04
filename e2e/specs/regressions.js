@@ -361,6 +361,8 @@ describe('Regressions', () => {
     it('refreshes the active task board after a live Claude task file appears', async function () {
       if (!mainApp) return this.skip()
 
+      // Regression: f173a922 reconciled new directories from inside the shared
+      // notify callback, blocking delivery before a new team's task could scan.
       await selectProjectByName('taurhaus')
       await switchToTab('tasks')
       prepareRegressionTaskSource(REGRESSION_TEAM, TAURHAUS_PROJECT_PATH)

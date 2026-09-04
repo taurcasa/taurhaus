@@ -760,7 +760,15 @@ fn handle_shared_tree_notify_event(
         &event,
     );
     for context in contexts {
-        handle_notify_event(&context, event.clone());
+        emit_classified_notify_event(&context, &event);
+
+        if event_may_change_watched_directories(&context.watched_dirs, &event) {
+            let reconcile_context = context.clone();
+            let reconcile_event = event.clone();
+            std::thread::spawn(move || {
+                reconcile_and_emit_watch_dirs(&reconcile_context, &reconcile_event);
+            });
+        }
     }
 }
 
@@ -1070,7 +1078,13 @@ impl ProjectWatcher {
 }
 
 /// Process a single notify event and emit classified WatchEvents.
+#[cfg(test)]
 fn handle_notify_event(context: &NotifyEventContext, event: Event) {
+    reconcile_and_emit_watch_dirs(context, &event);
+    emit_classified_notify_event(context, &event);
+}
+
+fn reconcile_and_emit_watch_dirs(context: &NotifyEventContext, event: &Event) {
     if let Some(reason) = reconcile_watch_dirs_for_event(
         &context.project_id,
         &context.project_root,
@@ -1078,7 +1092,7 @@ fn handle_notify_event(context: &NotifyEventContext, event: Event) {
         &context.watcher,
         &context.watched_dirs,
         context.watch_refcounts.as_ref(),
-        &event,
+        event,
     ) {
         emit_watch_local_reconciled(
             &context.project_id,
@@ -1087,14 +1101,16 @@ fn handle_notify_event(context: &NotifyEventContext, event: Event) {
             reason.0,
         );
     }
+}
 
+fn emit_classified_notify_event(context: &NotifyEventContext, event: &Event) {
     let classified = classify_notify_event(
         &context.project_id,
         &context.project_root,
         GIT_DEBOUNCE_SECS,
         &context.debounce,
         &context.gitignores,
-        &event,
+        event,
         false,
     );
 
@@ -1143,6 +1159,43 @@ fn handle_notify_event(context: &NotifyEventContext, event: Event) {
             "file_changed",
         );
     }
+}
+
+fn event_may_change_watched_directories(
+    watched_dirs: &Arc<Mutex<HashSet<PathBuf>>>,
+    event: &Event,
+) -> bool {
+    if event.paths.iter().any(|path| {
+        path.file_name()
+            .map(|name| name.to_string_lossy())
+            .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
+    }) {
+        return true;
+    }
+
+    if !matches!(
+        event.kind,
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+    ) {
+        return false;
+    }
+
+    if event.paths.iter().any(|path| path.is_dir()) {
+        return true;
+    }
+
+    if !matches!(event.kind, EventKind::Remove(_)) {
+        return false;
+    }
+
+    let watched_dirs = watched_dirs
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    event.paths.iter().any(|path| {
+        watched_dirs
+            .iter()
+            .any(|watched| watched == path || watched.starts_with(path))
+    })
 }
 
 fn reconcile_watch_dirs_for_event(
