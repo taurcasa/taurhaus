@@ -32,6 +32,11 @@
   const hoverRow      = $derived(dark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-50')
   const inputBg       = $derived(dark ? 'bg-zinc-800 border-zinc-700 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-900')
   const badgeBg       = $derived(dark ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-500')
+  const removeTone    = $derived(dark ? 'text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800' : 'text-zinc-300 hover:text-zinc-500 hover:bg-zinc-100')
+  const successTone   = $derived(dark ? 'bg-success-500/10 text-success-400' : 'bg-success-50 text-success-700')
+  const failureTone   = $derived(dark ? 'bg-warning-500/10 text-warning-200' : 'bg-warning-50 text-warning-900')
+  const failureDetailTone = $derived(dark ? 'text-warning-100/80' : 'text-warning-900/80')
+  const segmentIdleTone = $derived(dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100')
 
   // Activity dots (same as Shell sidebar)
   const dots = {
@@ -458,7 +463,7 @@
                 >Confirm?</button>
               {:else}
                 <button
-                  class="w-6 h-6 flex items-center justify-center rounded {dark ? 'text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800' : 'text-zinc-300 hover:text-zinc-500 hover:bg-zinc-100'} transition-colors shrink-0"
+                  class="w-6 h-6 flex items-center justify-center rounded {removeTone} transition-colors shrink-0"
                   onclick={() => startRemove(project.id)}
                   aria-label="Remove {project.name}"
                   data-testid="remove-{project.id}"
@@ -474,14 +479,14 @@
 
     <!-- Success message (inline, not a separate state) -->
     {#if addSuccess}
-      <div class="mb-3 px-3 py-2 rounded-md {dark ? 'bg-success-500/10 text-success-400' : 'bg-success-50 text-success-700'} text-[12px] flex items-center gap-2" data-testid="add-success">
+      <div class="mb-3 px-3 py-2 rounded-md {successTone} text-[12px] flex items-center gap-2" data-testid="add-success">
         <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
         {addSuccess}
       </div>
     {/if}
 
     {#if addFailureSummary}
-      <div class="mb-3 rounded-md border border-warning-500/30 {dark ? 'bg-warning-500/10 text-warning-200' : 'bg-warning-50 text-warning-900'} px-3 py-2 text-[12px]" data-testid="add-failure-summary">
+      <div class="mb-3 rounded-md border border-warning-500/30 {failureTone} px-3 py-2 text-[12px]" data-testid="add-failure-summary">
         <div class="flex items-start gap-2">
           <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning-500" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
           <div class="min-w-0 flex-1">
@@ -493,7 +498,7 @@
                   {#each addFailureDetails as failed}
                     <div class="rounded border border-white/10 px-2 py-1">
                       <div class="truncate font-mono text-[11px]">{failed.path}</div>
-                      <div class="mt-0.5 text-[11px] {dark ? 'text-warning-100/80' : 'text-warning-900/80'}">{failed.error}</div>
+                      <div class="mt-0.5 text-[11px] {failureDetailTone}">{failed.error}</div>
                     </div>
                   {/each}
                 </div>
@@ -541,17 +546,17 @@
 
         <div class="grid grid-cols-3 gap-2 mb-3">
           <button
-            class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === WORKFLOW_STATES.SCAN ? 'bg-brand-600 text-white border-brand-600' : dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
+            class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === WORKFLOW_STATES.SCAN ? 'bg-brand-600 text-white border-brand-600' : segmentIdleTone}"
             onclick={() => { transitionWorkflow(WORKFLOW_STATES.SCAN); if (discovered.length === 0 && !scanning) handleScan() }}
             data-testid="mode-scan"
           >Scan</button>
           <button
-            class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === WORKFLOW_STATES.MANUAL ? 'bg-brand-600 text-white border-brand-600' : dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
+            class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === WORKFLOW_STATES.MANUAL ? 'bg-brand-600 text-white border-brand-600' : segmentIdleTone}"
             onclick={() => { transitionWorkflow(WORKFLOW_STATES.MANUAL) }}
             data-testid="mode-manual"
           >Manual</button>
           <button
-            class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === WORKFLOW_STATES.CREATE ? 'bg-brand-600 text-white border-brand-600' : dark ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'}"
+            class="h-8 rounded-md text-[12px] font-medium border transition-colors {addMode === WORKFLOW_STATES.CREATE ? 'bg-brand-600 text-white border-brand-600' : segmentIdleTone}"
             onclick={() => { transitionWorkflow(WORKFLOW_STATES.CREATE) }}
             data-testid="mode-create"
           >Create new</button>
