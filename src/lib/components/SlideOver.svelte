@@ -71,7 +71,7 @@
       return
     }
 
-    if (!prevOpen || rendered || closing) return
+    if (!prevOpen) return
 
     closing = true
     rendered = true

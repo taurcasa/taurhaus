@@ -128,4 +128,21 @@ describe('SlideOver', () => {
     })
     trigger.remove()
   })
+
+  // Regression: 55d47709 introduced an exit timer whose effect cleanup
+  // cancelled the timer after its own closing-state update, leaving the modal
+  // root mounted forever and blocking interaction with the app underneath.
+  it('unmounts after the exit animation finishes', async () => {
+    const { rerender } = render(SlideOverHarness, {
+      props: {
+        open: true,
+      },
+    })
+
+    await rerender({ open: false })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('slideover-root')).not.toBeInTheDocument()
+    })
+  })
 })
