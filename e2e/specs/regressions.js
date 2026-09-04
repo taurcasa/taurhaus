@@ -75,12 +75,10 @@ describe('Regressions', () => {
     // no matching <style> block because it was scoped to Shell.svelte).
     // Fix: moved animation to app.css as a global rule.
     //
-    // IMPORTANT: content-enter must ONLY be on the {#key} wrapper div
-    // (Shell.svelte), NOT on elements inside individual tabs. Chromium
-    // replays CSS animations when toggling display:none (class:hidden),
-    // and the transform property forces GPU compositor layer creation.
-    // For tabs with large Shiki-highlighted content (thousands of spans),
-    // this causes multi-second freezes on every tab switch.
+    // IMPORTANT: content-enter must not be on a tab's root content element.
+    // Chromium replays that animation when toggling display:none (class:hidden),
+    // and the transform property forces GPU compositor layer creation for the
+    // whole tab. Nested keyed data-reveal animations added in f7255601 are safe.
 
     it('main content wrapper has content-enter class', async function () {
       if (!mainApp) return this.skip()
@@ -111,16 +109,22 @@ describe('Regressions', () => {
       expect(animationName).toBe('content-enter')
     })
 
-    it('tab internals do NOT have content-enter class', async function () {
+    it('tab roots do NOT have content-enter class', async function () {
       if (!mainApp) return this.skip()
 
-      // content-enter must only exist once (on the {#key} wrapper).
-      // If any tab component also has it, the animation replays on every
-      // tab switch, causing GPU compositor thrashing with large content.
-      const count = await browser.execute(() => {
-        return document.querySelectorAll('.content-enter').length
+      // Regression: f7255601 added valid nested reveal animations, so a global
+      // class count no longer represented the original tab-root regression.
+      const rootOffenders = await browser.execute(() => {
+        const wrapper = document.querySelector('[data-testid="content-wrapper"]')
+        if (!wrapper) return ['content-wrapper-missing']
+        const panels = wrapper.querySelectorAll(':scope > [role="tabpanel"]')
+        return Array.from(panels).flatMap((panel) =>
+          Array.from(panel.children)
+            .filter((child) => child.classList.contains('content-enter'))
+            .map((child) => `${panel.id}:${child.tagName.toLowerCase()}`)
+        )
       })
-      expect(count).toBe(1) // Only the wrapper
+      expect(rootOffenders).toEqual([])
     })
   })
 
