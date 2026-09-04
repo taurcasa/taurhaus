@@ -413,6 +413,84 @@ mod tests {
         assert!(report.contains("gpt-5.6-luna | 1 | 0 | 1"));
     }
 
+    // Regression: c9c6c49b could not attribute a reused member launch that
+    // lived under an earlier task, so the report dropped the later task's
+    // acceptance and nudge when its sidecar contained no launch of its own.
+    #[test]
+    fn report_includes_a_later_task_attributed_from_an_earlier_task_launch() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let default_teams = root.path().join("personal/teams");
+        write_json(
+            &default_teams.join("routing-team/config.json"),
+            serde_json::json!({"name": "routing-team", "members": []}),
+        );
+        crate::coordination::stores::telemetry::append_task_telemetry(
+            &default_teams,
+            "routing-team",
+            Some("task-a"),
+            &crate::coordination::stores::telemetry::RoutingTelemetryEvent::LaunchRendered {
+                timestamp: Utc.with_ymd_and_hms(2026, 7, 1, 10, 0, 0).unwrap(),
+                task_id: Some("task-a".to_string()),
+                member: "builder".to_string(),
+                role: "rust-developer".to_string(),
+                tool: "codex".to_string(),
+                model: Some("gpt-5.6-sol".to_string()),
+                applied_effort: Some("high".to_string()),
+                capability_tier: Some("strong".to_string()),
+                tier_rank: Some(0),
+            },
+        )
+        .expect("record task A launch");
+        crate::coordination::stores::telemetry::attribute_latest_launch_to_task(
+            &default_teams,
+            "routing-team",
+            "task-b",
+            "builder",
+        );
+        let now = Utc::now();
+        for event in [
+            crate::coordination::stores::telemetry::RoutingTelemetryEvent::NudgeSent {
+                timestamp: now,
+                task_id: "task-b".to_string(),
+                member: "builder".to_string(),
+                deadline_minutes: 20,
+            },
+            crate::coordination::stores::telemetry::RoutingTelemetryEvent::CompletionObserved {
+                timestamp: now,
+                task_id: "task-b".to_string(),
+                status: "completed".to_string(),
+                has_review_ruling: true,
+            },
+        ] {
+            crate::coordination::stores::telemetry::append_task_telemetry(
+                &default_teams,
+                "routing-team",
+                Some("task-b"),
+                &event,
+            )
+            .expect("record task B event");
+        }
+        write_json(
+            &root.path().join("personal/tasks/routing-team/task-b.json"),
+            serde_json::json!({
+                "id": "task-b",
+                "subject": "Later accepted task",
+                "description": null,
+                "activeForm": null,
+                "status": "completed",
+                "blocks": [],
+                "blockedBy": [],
+                "owner": "builder",
+                "metadata": {"rulings": [{"kind": "verdict", "value": "accepted"}]}
+            }),
+        );
+
+        let report = render_routing_report(&default_teams, 30, now + chrono::Duration::minutes(1))
+            .expect("render report");
+
+        assert!(report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 0 | 1 | 0"));
+    }
+
     // Regression: c9c6c49b treated the scanner's `stale` terminal state as
     // accepted-eligible, so a timed-out task with a ruling inflated accepted.
     #[test]

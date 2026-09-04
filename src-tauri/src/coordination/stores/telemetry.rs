@@ -158,9 +158,19 @@ pub fn attribute_latest_launch_to_task(
             return Ok(());
         }
 
-        let unattributed_path = task_telemetry_path(teams_dir, team_name, None)?;
-        let latest = read_task_telemetry(&unattributed_path)
-            .into_iter()
+        let telemetry_dir = task_path
+            .parent()
+            .expect("task telemetry path has a parent");
+        let entries = match fs::read_dir(telemetry_dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let latest = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("jsonl"))
+            .flat_map(|path| read_task_telemetry(&path))
             .filter_map(|event| match event {
                 RoutingTelemetryEvent::LaunchRendered {
                     timestamp,
@@ -413,9 +423,9 @@ mod tests {
     use chrono::{TimeZone, Utc};
 
     use super::{
-        append_task_telemetry, read_task_telemetry, record_completion_observed,
-        record_deadline_action, record_effort_switch, record_launch_rendered, EffortSwitchOutcome,
-        RoutingTelemetryEvent,
+        append_task_telemetry, attribute_latest_launch_to_task, read_task_telemetry,
+        record_completion_observed, record_deadline_action, record_effort_switch,
+        record_launch_rendered, EffortSwitchOutcome, RoutingTelemetryEvent,
     };
 
     #[test]
@@ -469,6 +479,100 @@ mod tests {
 
         let path = teams_dir.join("routing-team/state/telemetry/_unattributed.jsonl");
         assert_eq!(read_task_telemetry(&path), vec![event]);
+    }
+
+    // Regression: c9c6c49b searched only `_unattributed.jsonl`, so a member's
+    // later task vanished when its reusable launch had first named another task.
+    #[test]
+    fn attribution_finds_a_members_launch_recorded_under_an_earlier_task() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let teams_dir = root.path().join("teams");
+        let launched_at = Utc.with_ymd_and_hms(2026, 9, 4, 10, 0, 0).unwrap();
+        append_task_telemetry(
+            &teams_dir,
+            "routing-team",
+            Some("task-a"),
+            &RoutingTelemetryEvent::LaunchRendered {
+                timestamp: launched_at,
+                task_id: Some("task-a".to_string()),
+                member: "builder".to_string(),
+                role: "rust-developer".to_string(),
+                tool: "codex".to_string(),
+                model: Some("gpt-5.6-sol".to_string()),
+                applied_effort: Some("high".to_string()),
+                capability_tier: Some("strong".to_string()),
+                tier_rank: Some(0),
+            },
+        )
+        .expect("record task A launch");
+
+        attribute_latest_launch_to_task(
+            &teams_dir,
+            "routing-team",
+            "task-b",
+            "builder",
+        );
+
+        let attributed = read_task_telemetry(
+            &teams_dir.join("routing-team/state/telemetry/task-b.jsonl"),
+        );
+        assert!(matches!(
+            attributed.as_slice(),
+            [RoutingTelemetryEvent::LaunchRendered {
+                task_id: Some(task_id),
+                member,
+                model: Some(model),
+                ..
+            }] if task_id == "task-b" && member == "builder" && model == "gpt-5.6-sol"
+        ));
+    }
+
+    // Regression: c9c6c49b limited attribution to one sidecar, allowing an
+    // older render to win after the member relaunched on a different model.
+    #[test]
+    fn attribution_uses_the_newest_render_across_task_sidecars() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let teams_dir = root.path().join("teams");
+        for (task_id, hour, model) in [
+            ("task-a", 9, "gpt-5.6-luna"),
+            ("task-c", 10, "gpt-5.6-sol"),
+        ] {
+            append_task_telemetry(
+                &teams_dir,
+                "routing-team",
+                Some(task_id),
+                &RoutingTelemetryEvent::LaunchRendered {
+                    timestamp: Utc.with_ymd_and_hms(2026, 9, 4, hour, 0, 0).unwrap(),
+                    task_id: Some(task_id.to_string()),
+                    member: "builder".to_string(),
+                    role: "rust-developer".to_string(),
+                    tool: "codex".to_string(),
+                    model: Some(model.to_string()),
+                    applied_effort: Some("high".to_string()),
+                    capability_tier: Some("strong".to_string()),
+                    tier_rank: Some(0),
+                },
+            )
+            .expect("record rendered launch");
+        }
+
+        attribute_latest_launch_to_task(
+            &teams_dir,
+            "routing-team",
+            "task-b",
+            "builder",
+        );
+
+        assert!(matches!(
+            read_task_telemetry(
+                &teams_dir.join("routing-team/state/telemetry/task-b.jsonl")
+            )
+            .as_slice(),
+            [RoutingTelemetryEvent::LaunchRendered {
+                model: Some(model),
+                ..
+            }] if model == "gpt-5.6-sol"
+        ));
     }
 
     #[test]
