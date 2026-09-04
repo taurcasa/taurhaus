@@ -568,6 +568,21 @@ function killPanes(paneIds) {
   }
 }
 
+function keepTmuxSessionAlive(paneId) {
+  const sessionName = tmux(['display-message', '-p', '-t', paneId, '#{session_name}'])
+  return tmux([
+    'new-window',
+    '-d',
+    '-P',
+    '-F',
+    '#{pane_id}',
+    '-t',
+    sessionName,
+    '-n',
+    `e2e-recovery-keeper-${uniqueSuffix}`,
+  ])
+}
+
 async function ensureRuntimeIsActive(teamName) {
   const liveStatus = await getLiveTeamStatus(teamName)
   if (countOfflineMembers(liveStatus) > 0) {
@@ -770,6 +785,12 @@ describe('Mesh Recovery', function () {
     expect(teamName).toBeTruthy()
     expect(projectPath).toBeTruthy()
     expect(paneIds.length).toBeGreaterThan(0)
+
+    // Regression: 430e09ee removed every pane from the isolated tmux session,
+    // so tmux destroyed the resume target before the cold-start action ran.
+    const keeperPaneId = keepTmuxSessionAlive(paneIds[0])
+    expect(keeperPaneId).toMatch(/^%\d+$/)
+    expect(paneIds).not.toContain(keeperPaneId)
 
     killPanes(paneIds)
     await waitForOfflineMemberCount(teamName, paneIds.length, 25_000)
