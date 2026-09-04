@@ -811,7 +811,11 @@ fn model_catalog_entry(
     deprecated: bool,
     replacement: Option<&str>,
 ) -> ModelCatalogEntry {
-    let (capability_tier, tier_rank) = model_capability(id);
+    let (capability_tier, tier_rank) = if deprecated {
+        (None, None)
+    } else {
+        model_capability(id)
+    };
     ModelCatalogEntry {
         id: id.to_string(),
         label: label.to_string(),
@@ -2055,6 +2059,23 @@ mod tests {
     }
 
     #[test]
+    fn deprecated_model_catalog_entries_are_untiered() {
+        // Regression: commit 90625e7a assigned routing tiers to deprecated
+        // catalog entries, making replacement-only models routable.
+        for entry in ModelCatalog::default()
+            .claude
+            .into_iter()
+            .chain(ModelCatalog::default().codex)
+            .chain(ModelCatalog::default().agy)
+            .chain(ModelCatalog::default().grok)
+            .filter(|entry| entry.deprecated)
+        {
+            assert_eq!(entry.capability_tier, None, "{} tier", entry.id);
+            assert_eq!(entry.tier_rank, None, "{} rank", entry.id);
+        }
+    }
+
+    #[test]
     fn model_catalog_carries_signed_off_capability_tiers_and_ranks() {
         let expected = [
             (
@@ -2078,8 +2099,8 @@ mod tests {
             (
                 CliTool::Claude,
                 "claude-opus-4-6",
-                Some(CapabilityTier::Strong),
-                Some(2),
+                None,
+                None,
             ),
             (
                 CliTool::Agy,
@@ -2102,8 +2123,8 @@ mod tests {
             (
                 CliTool::Codex,
                 "gpt-5.5",
-                Some(CapabilityTier::Strong),
-                Some(5),
+                None,
+                None,
             ),
             (
                 CliTool::Codex,
@@ -2114,14 +2135,14 @@ mod tests {
             (
                 CliTool::Codex,
                 "gpt-5.4",
-                Some(CapabilityTier::Efficient),
-                Some(1),
+                None,
+                None,
             ),
             (
                 CliTool::Codex,
                 "gpt-5.4-mini",
-                Some(CapabilityTier::Efficient),
-                Some(2),
+                None,
+                None,
             ),
             (
                 CliTool::Agy,
@@ -2175,7 +2196,7 @@ mod tests {
     fn routing_design_signed_off_tier_names_match_serialized_vocabulary() {
         let design = include_str!("../../../docs/design/role-first-model-routing.md");
         let signed_off_table = design
-            .split_once("2026-09-04; the signed-off table:**")
+            .split_once("the signed-off table:**")
             .expect("Stage-0 signed-off table marker")
             .1
             .split_once("Three rules the review produced:")
