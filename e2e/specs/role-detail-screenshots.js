@@ -160,8 +160,18 @@ async function setInputValue(testId, value) {
 }
 
 async function setCatalogSearch(value) {
-  await setInputValue('mesh-builder-role-search', value)
-  await browser.pause(180)
+  // Regression: c810d1a3 used separate WebDriver clear/set calls across a
+  // reactive catalog update, leaving the live Svelte input blank in the
+  // first-run-wizard sealed group.
+  const dispatched = await browser.execute((nextValue) => {
+    const input = document.querySelector('[data-testid="mesh-builder-role-search"]')
+    if (!(input instanceof HTMLInputElement)) return false
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    valueSetter?.call(input, String(nextValue ?? ''))
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    return true
+  }, value)
+  if (!dispatched) throw new Error('Role catalog search input was unavailable')
 }
 
 async function openCatalogRole(roleId) {
@@ -291,7 +301,7 @@ async function createEditableCatalogRole() {
     await closeRoleDetail()
   }
 
-  await setCatalogSearch(roleName)
+  await setCatalogSearch(roleId)
   await browser.waitUntil(
     async () => await hasTestId(`mesh-builder-role-info-${roleId}`),
     { ...WAIT_LONG, timeoutMsg: `Custom role ${roleId} did not become searchable` }
