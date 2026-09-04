@@ -20,8 +20,9 @@ describe('First-run wizard', () => {
     await getStarted.click()
 
     const daemonStep = await $('[data-testid="wizard-step-2"]')
-    await daemonStep.waitForExist({ timeout: 5_000 })
-    expect(await daemonStep.isDisplayed()).toBe(true)
+    // Regression: c3d5ea841 asserted display immediately after DOM insertion,
+    // racing the wizard transition under full-suite load.
+    await daemonStep.waitForDisplayed({ timeout: 5_000 })
 
     await browser.waitUntil(
       async () => {
