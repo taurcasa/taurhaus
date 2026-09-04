@@ -6,6 +6,7 @@
     activeTab = 'overview',
     settingsOpen = false,
     accountsOpen = false,
+    projectsOpen = false,
     onSwitchTab = () => {},
     onToggleSearch = () => {},
     onSetDarkMode = () => {},
@@ -23,7 +24,9 @@
       : 'Search (Ctrl+K)'
   )
   const TAB_ORDER = ['overview', 'files', 'tasks', 'mesh', 'git']
-  const takeoverLabel = $derived(settingsOpen ? 'Settings' : accountsOpen ? 'Accounts' : null)
+  const takeoverLabel = $derived(
+    settingsOpen ? 'Settings' : accountsOpen ? 'Accounts' : projectsOpen ? 'Projects' : null
+  )
 
   let overviewTabEl = $state(null)
   let filesTabEl = $state(null)

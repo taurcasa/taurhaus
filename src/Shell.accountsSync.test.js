@@ -100,7 +100,7 @@ vi.mock('./lib/TaskBoard.svelte', () => ({ default: createMockComponent('tasks')
 vi.mock('./lib/GitTab.svelte', () => ({ default: createMockComponent('git') }))
 vi.mock('./lib/SearchOverlay.svelte', () => ({ default: createMockComponent('search') }))
 vi.mock('./lib/Settings.svelte', () => ({ default: createMockComponent('settings') }))
-vi.mock('./lib/AddProjectModal.svelte', () => ({ default: createMockComponent('add-project') }))
+vi.mock('./lib/ProjectsTakeover.svelte', () => ({ default: createMockComponent('projects-takeover') }))
 vi.mock('./lib/FirstRunWizard.svelte', () => ({ default: createMockComponent('first-run') }))
 vi.mock('./lib/components/MeshTab.svelte', () => ({ default: createMockComponent('mesh-tab') }))
 

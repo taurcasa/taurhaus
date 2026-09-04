@@ -1,5 +1,6 @@
 /**
- * Modal helpers for E2E tests — open/close Manage Projects modal.
+ * Projects-takeover helpers for E2E tests — open/close the Projects surface
+ * (the former Manage Projects modal, now a main-panel takeover).
  *
  * PERF: Uses browser.execute() for clicks and condition checks to minimize
  * WebDriver round-trips.
@@ -8,7 +9,7 @@
 import { WAIT_MEDIUM, WAIT_XLONG } from './timing.js'
 
 /**
- * Open the Manage Projects modal.
+ * Open the Projects takeover.
  */
 export async function openManageProjects() {
   await browser.execute(() => {
@@ -16,24 +17,24 @@ export async function openManageProjects() {
   })
   await browser.waitUntil(
     async () => browser.execute(() =>
-      document.querySelector('[data-testid="manage-projects-modal"]') !== null
+      document.querySelector('[data-testid="projects-takeover"]') !== null
     ),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Manage Projects modal did not open' }
+    { ...WAIT_MEDIUM, timeoutMsg: 'Projects takeover did not open' }
   )
 }
 
 /**
- * Close the currently open modal.
+ * Close the Projects takeover via its doorway back button.
  */
 export async function closeModal() {
   await browser.execute(() => {
-    document.querySelector('[data-testid="modal-close"]')?.click()
+    document.querySelector('[data-testid="projects-back"]')?.click()
   })
   await browser.waitUntil(
     async () => browser.execute(() =>
-      document.querySelector('[data-testid="manage-projects-modal"]') === null
+      document.querySelector('[data-testid="projects-takeover"]') === null
     ),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Modal did not close' }
+    { ...WAIT_MEDIUM, timeoutMsg: 'Projects takeover did not close' }
   )
 }
 

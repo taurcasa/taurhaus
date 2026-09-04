@@ -2,6 +2,7 @@
   import FilesTab from '../../FilesTab.svelte'
   import GitTab from '../../GitTab.svelte'
   import OverviewTab from '../../OverviewTab.svelte'
+  import ProjectsTakeover from '../../ProjectsTakeover.svelte'
   import Settings from '../../Settings.svelte'
   import AccountsHome from '../AccountsHome.svelte'
   import TaskBoard from '../../TaskBoard.svelte'
@@ -16,6 +17,7 @@
     codeThemeDark,
     settingsOpen = false,
     accountsOpen = false,
+    projectsOpen = false,
     accountStates = null,
     requestedAddTool = null,
     daemonStatus = null,
@@ -47,6 +49,9 @@
     taskPosition = $bindable(null),
     onCloseSettings = () => {},
     onCloseAccounts = () => {},
+    onCloseProjects = () => {},
+    onProjectsChanged = () => {},
+    onProjectCreated = () => {},
     onOpenAccounts = () => {},
     onOpenProject = () => {},
     onOpenTeam = () => {},
@@ -127,7 +132,7 @@
     </div>
   {/if}
 
-  {#if projectLoadIssues.length > 0 && !settingsOpen && !accountsOpen}
+  {#if projectLoadIssues.length > 0 && !settingsOpen && !accountsOpen && !projectsOpen}
     <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-red-500/10 border-b border-red-500/20' : 'bg-red-50 border-b border-red-200'}" role="status" aria-live="polite" data-testid="project-load-degraded-banner">
       <svg class="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
       <span class="text-[12px] {t.textSecondary} flex-1" data-testid="project-load-degraded-message">
@@ -146,7 +151,7 @@
     </div>
   {/if}
 
-  {#if shellNotice && !settingsOpen && !accountsOpen}
+  {#if shellNotice && !settingsOpen && !accountsOpen && !projectsOpen}
     <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" role="status" aria-live="polite" data-testid="shell-notice-banner">
       <svg class="w-4 h-4 text-warning-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
       <span class="text-[12px] {t.textSecondary} flex-1" data-testid="shell-notice-message">{shellNotice}</span>
@@ -158,7 +163,14 @@
     </div>
   {/if}
 
-  {#if accountsOpen}
+  {#if projectsOpen}
+    <ProjectsTakeover
+      {dark}
+      onClose={onCloseProjects}
+      {onProjectsChanged}
+      {onProjectCreated}
+    />
+  {:else if accountsOpen}
     <AccountsHome
       {dark}
       {projects}

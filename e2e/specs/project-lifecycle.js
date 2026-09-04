@@ -27,7 +27,7 @@ describe('Project Lifecycle', () => {
   describe('manage projects modal', () => {
     afterEach(async () => {
       // Close modal if it was left open by a failed test
-      const modal = await $('[data-testid="manage-projects-modal"]')
+      const modal = await $('[data-testid="projects-takeover"]')
       if (await modal.isExisting()) await closeModal()
     })
 
@@ -35,7 +35,7 @@ describe('Project Lifecycle', () => {
       if (!mainApp) return this.skip()
 
       await openManageProjects()
-      const modal = await $('[data-testid="manage-projects-modal"]')
+      const modal = await $('[data-testid="projects-takeover"]')
       expect(await modal.isExisting()).toBe(true)
     })
 
@@ -119,7 +119,7 @@ describe('Project Lifecycle', () => {
       await openManageProjects()
       await closeModal()
 
-      const modal = await $('[data-testid="manage-projects-modal"]')
+      const modal = await $('[data-testid="projects-takeover"]')
       expect(await modal.isExisting()).toBe(false)
 
       // Main content is visible again

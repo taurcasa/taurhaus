@@ -133,7 +133,7 @@ describe('Regressions', () => {
       if (!mainApp) return this.skip()
 
       // Open settings to find "Add Project" or navigate to a view with DirectoryBrowser
-      // The DirectoryBrowser appears in AddProjectModal and FirstRunWizard.
+      // The DirectoryBrowser appears in the Projects takeover and FirstRunWizard.
       // We can't easily trigger those in E2E without side effects, so we
       // verify the CSS rule exists in the stylesheet instead.
       const hasRule = await browser.execute(() => {
