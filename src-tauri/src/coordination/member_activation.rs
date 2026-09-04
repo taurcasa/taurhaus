@@ -54,6 +54,7 @@ pub struct LeadIdentity {
 pub struct MemberIdentity {
     pub name: String,
     pub role: MemberRole,
+    pub role_id: Option<String>,
     pub cli_tool: CliTool,
     pub model: String,
     pub reasoning_effort: Option<String>,
@@ -136,6 +137,7 @@ impl MemberActivationContext {
             member: MemberIdentity {
                 name: member.name.clone(),
                 role: member.role,
+                role_id: member.role_id.clone(),
                 cli_tool: member.cli_tool,
                 model: member
                     .model
@@ -166,6 +168,7 @@ fn member_identity_from_agent_setup(
     Ok(MemberIdentity {
         name: member.name.clone(),
         role,
+        role_id: member.role_id.clone(),
         cli_tool,
         model: declared
             .model

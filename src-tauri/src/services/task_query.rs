@@ -325,6 +325,7 @@ pub(crate) fn persisted_to_unified(
         effort: t.effort,
         effort_why: t.effort_why,
         deadline_minutes: t.deadline_minutes,
+        has_review_ruling: false,
     }
 }
 

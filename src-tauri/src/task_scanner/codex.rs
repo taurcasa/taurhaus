@@ -512,6 +512,7 @@ fn parse_plan_from_line(line: &str, source_key: &str) -> Result<Vec<UnifiedTask>
                 effort: None,
                 effort_why: None,
                 deadline_minutes: None,
+                has_review_ruling: false,
             })
         })
         .collect();

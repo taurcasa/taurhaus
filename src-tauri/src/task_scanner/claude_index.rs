@@ -34,6 +34,18 @@ pub struct ClaudeTaskRoot {
     pub authoritative_teams: BTreeSet<String>,
 }
 
+impl ClaudeSourceIndex {
+    /// Resolve a team from the task root the index already accepted as
+    /// authoritative. This adds no filesystem or mesh read to task scanning.
+    pub fn team_teams_dir(&self, team_name: &str) -> Option<PathBuf> {
+        self.task_roots
+            .iter()
+            .find(|root| root.authoritative_teams.contains(team_name))
+            .and_then(|root| root.path.parent())
+            .map(|account_dir| account_dir.join("teams"))
+    }
+}
+
 /// Build Claude source index using default user directories and live sessions.
 pub fn build_claude_source_index() -> ClaudeSourceIndex {
     let Some(native_tool) = crate::session_scanner::cli_tool::native_inbox_tool() else {
@@ -550,5 +562,22 @@ mod tests {
 
         let index = build_claude_source_index_in(&[], &tasks_base, &projects_base, &teams_base);
         assert!(!index.teams.contains_key("team-no-tasks"));
+    }
+
+    #[test]
+    fn index_exposes_the_already_scanned_authoritative_team_root() {
+        let index = ClaudeSourceIndex {
+            task_roots: vec![ClaudeTaskRoot {
+                path: PathBuf::from("/accounts/work/tasks"),
+                authoritative_teams: BTreeSet::from(["routing-team".to_string()]),
+            }],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            index.team_teams_dir("routing-team"),
+            Some(PathBuf::from("/accounts/work/teams"))
+        );
+        assert_eq!(index.team_teams_dir("unknown"), None);
     }
 }

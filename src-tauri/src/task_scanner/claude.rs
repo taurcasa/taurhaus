@@ -137,6 +137,20 @@ fn metadata_u32(metadata: Option<&serde_json::Value>, key: &str) -> Option<u32> 
         .filter(|value| *value > 0)
 }
 
+fn metadata_has_review_ruling(metadata: Option<&serde_json::Value>) -> bool {
+    metadata
+        .and_then(|metadata| metadata.get("rulings"))
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|rulings| {
+            rulings.iter().any(|ruling| {
+                matches!(
+                    ruling.get("kind").and_then(serde_json::Value::as_str),
+                    Some("verdict" | "score" | "ruling")
+                )
+            })
+        })
+}
+
 /// Get tasks for a project from Claude Code's task storage.
 pub fn get_tasks(project_path: &str, sessions: &[&RuntimeSession]) -> ScanOutcome {
     get_tasks_with_index(project_path, sessions, None)
@@ -448,6 +462,7 @@ fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<Uni
         metadata_string(raw.metadata.as_ref(), &["effort"]).map(|level| level.to_ascii_lowercase());
     let effort_why = metadata_string(raw.metadata.as_ref(), &["effort_why", "effortWhy"]);
     let deadline_minutes = metadata_u32(raw.metadata.as_ref(), "deadline_minutes");
+    let has_review_ruling = metadata_has_review_ruling(raw.metadata.as_ref());
     Ok(Some(UnifiedTask {
         id: raw.id,
         source_key: task_source_key.clone(),
@@ -468,6 +483,7 @@ fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<Uni
         effort,
         effort_why,
         deadline_minutes,
+        has_review_ruling,
     }))
 }
 
@@ -631,6 +647,31 @@ mod tests {
             Some("the migration is irreversible")
         );
         assert_eq!(tasks[0].deadline_minutes, Some(20));
+    }
+
+    #[test]
+    fn terminal_task_reports_whether_the_ledger_has_a_review_ruling() {
+        let tmp = TempDir::new().unwrap();
+        let task_dir = tmp.path().join("routing-team");
+        fs::create_dir_all(&task_dir).unwrap();
+        write_task(
+            &task_dir,
+            "42.json",
+            r#"{
+                "id": "42",
+                "subject": "Ship telemetry",
+                "status": "completed",
+                "owner": "builder",
+                "metadata": {
+                    "rulings": [
+                        {"seq": 1, "kind": "verdict", "value": "accepted", "by": "reviewer"}
+                    ]
+                }
+            }"#,
+        );
+
+        let tasks = parse_task_directory_for_test(&task_dir);
+        assert!(tasks[0].has_review_ruling);
     }
 
     #[test]

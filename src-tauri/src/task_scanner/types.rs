@@ -84,6 +84,10 @@ pub struct ScannedTask {
     /// Assignment deadline in minutes, read from mesh task metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deadline_minutes: Option<u32>,
+    /// True only when the mesh ledger metadata carries a sequenced review
+    /// ruling. A terminal status alone is not acceptance.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub has_review_ruling: bool,
 }
 
 /// Backward-compatible alias used by existing command/frontend code.

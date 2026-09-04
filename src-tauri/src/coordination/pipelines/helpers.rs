@@ -277,6 +277,7 @@ pub(super) fn build_resume_cli_launch_command(
 
 pub(super) fn run_member_session_phase(
     runtime: &dyn CoordinationRuntime,
+    teams_dir: &Path,
     context: &MemberActivationContext,
     pane_id: &str,
     phase: MemberSessionPhase<'_>,
@@ -285,6 +286,7 @@ pub(super) fn run_member_session_phase(
     match phase {
         MemberSessionPhase::LaunchOnly(cli_commands) => {
             let launch = build_member_activation_launch_command(context, cli_commands)?;
+            record_context_launch_telemetry(teams_dir, context, &launch);
             send_launch_command_with_retry(runtime, pane_id, launch.command.as_str())?;
             let account = launch.account_result();
             runtime_state.launch_account = (!account.is_empty()).then_some(account);
@@ -667,6 +669,7 @@ pub(super) fn launched_effort(
 pub(super) struct TeamLaunchResult {
     pub(super) command: String,
     pub(super) account: LaunchAccountResult,
+    pub(super) applied_model: Option<String>,
     pub(super) applied_effort: Option<String>,
 }
 
@@ -924,8 +927,47 @@ pub(super) fn render_team_launch(
     Ok(TeamLaunchResult {
         command: rendered.command,
         account,
+        applied_model: rendered.applied_model,
         applied_effort,
     })
+}
+
+pub(super) fn record_context_launch_telemetry(
+    teams_dir: &Path,
+    context: &MemberActivationContext,
+    launch: &TeamLaunchResult,
+) {
+    let task_id = match crate::coordination::stores::OperationalContextSnapshotStore::load(
+        teams_dir,
+        &context.team_name,
+        &context.member.name,
+    ) {
+        Ok(Some(snapshot)) if !snapshot.task.id.trim().is_empty() => snapshot.task.id,
+        Ok(_) => return,
+        Err(error) => {
+            tracing::warn!(
+                team = %context.team_name,
+                member = %context.member.name,
+                error = %error,
+                "routing telemetry could not attribute a rendered launch"
+            );
+            return;
+        }
+    };
+    let fallback_role = match context.member.role {
+        MemberRole::Lead => "lead",
+        MemberRole::Agent => "agent",
+    };
+    crate::coordination::stores::telemetry::record_launch_rendered(
+        teams_dir,
+        &context.team_name,
+        Some(&task_id),
+        &context.member.name,
+        context.member.role_id.as_deref().unwrap_or(fallback_role),
+        context.member.cli_tool,
+        launch.applied_model.as_deref(),
+        launch.applied_effort.as_deref(),
+    );
 }
 
 fn managed_member_account(

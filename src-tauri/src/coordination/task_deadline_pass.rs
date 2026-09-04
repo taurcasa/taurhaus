@@ -152,6 +152,7 @@ fn apply_member_deadline(
     }
 
     emit_deadline_action(
+        &orchestrator.teams_dir,
         action,
         team_name,
         member_name,
@@ -162,6 +163,7 @@ fn apply_member_deadline(
 }
 
 fn emit_deadline_action(
+    teams_dir: &Path,
     action: DeadlineAction,
     team_name: &str,
     member_name: &str,
@@ -179,6 +181,14 @@ fn emit_deadline_action(
         event_name,
         Some(message.to_string()),
         deadline_event_fields(team_name, member_name, task_id, deadline_minutes),
+    );
+    crate::coordination::stores::telemetry::record_deadline_action(
+        teams_dir,
+        team_name,
+        task_id,
+        member_name,
+        deadline_minutes,
+        action == DeadlineAction::MarkStale,
     );
 }
 

@@ -1172,7 +1172,33 @@ pub(crate) fn handle_get_project_tasks(
         &project_sessions,
         Some(&claude_index),
     );
+    #[cfg(feature = "mesh-bridged-backend")]
+    record_terminal_task_observations(&result, &claude_index);
     DaemonResponse::ok(id, result)
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn record_terminal_task_observations(
+    result: &crate::task_scanner::TaskResult,
+    index: &ClaudeSourceIndex,
+) {
+    for task in result.tasks.iter().filter(|task| {
+        matches!(
+            task.status,
+            crate::task_scanner::TaskStatus::Completed | crate::task_scanner::TaskStatus::Stale
+        )
+    }) {
+        let Some(teams_dir) = index.team_teams_dir(&task.source_key) else {
+            continue;
+        };
+        crate::coordination::stores::telemetry::record_completion_observed(
+            &teams_dir,
+            &task.source_key,
+            &task.id,
+            &task.status.to_string(),
+            task.has_review_ruling,
+        );
+    }
 }
 
 fn load_project_task_scan_inputs(

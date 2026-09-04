@@ -260,7 +260,9 @@ pub fn resume_effort_target(
 }
 
 /// Report that a member is being relaunched to reach an assignment's effort.
+#[allow(clippy::too_many_arguments)]
 pub fn emit_effort_resume(
+    teams_dir: &std::path::Path,
     event_name: &str,
     team_name: &str,
     member_name: &str,
@@ -268,6 +270,7 @@ pub fn emit_effort_resume(
     level: &str,
     previous: Option<&str>,
     failure: Option<&str>,
+    attempt: u32,
 ) {
     let mut fields = serde_json::Map::new();
     fields.insert(
@@ -305,10 +308,21 @@ pub fn emit_effort_resume(
         Some("Task-level effort resume".to_string()),
         fields,
     );
+    crate::coordination::stores::telemetry::record_effort_switch(
+        teams_dir,
+        team_name,
+        task_id,
+        member_name,
+        attempt,
+        previous,
+        level,
+        event_name.rsplit('.').next().unwrap_or(event_name),
+    );
 }
 
 /// Emit the one terminal failure after an effort switch spends its retry budget.
 pub fn emit_effort_budget_exhausted(
+    teams_dir: &std::path::Path,
     team_name: &str,
     member_name: &str,
     task_id: &str,
@@ -353,6 +367,16 @@ pub fn emit_effort_budget_exhausted(
         "effort.resume.failed",
         Some("Task-level effort resume budget exhausted".to_string()),
         fields,
+    );
+    crate::coordination::stores::telemetry::record_effort_switch(
+        teams_dir,
+        team_name,
+        task_id,
+        member_name,
+        attempts,
+        previous,
+        level,
+        "budget_exhausted",
     );
 }
 

@@ -10,6 +10,7 @@ pub mod mesh_task;
 pub mod operational;
 pub mod runtime;
 pub mod team_roots;
+pub mod telemetry;
 
 #[allow(unused_imports)]
 pub use account_switch::AccountSwitchManifestStore;

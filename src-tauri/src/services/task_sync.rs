@@ -710,6 +710,7 @@ mod tests {
                 effort: None,
                 effort_why: None,
                 deadline_minutes: None,
+                has_review_ruling: false,
             }],
             errors: vec![],
             source_outcomes: vec![crate::task_scanner::SourceScanOutcome {
@@ -735,6 +736,7 @@ mod tests {
                         effort: None,
                         effort_why: None,
                         deadline_minutes: None,
+                        has_review_ruling: false,
                     },
                 ]),
             }],
@@ -856,6 +858,7 @@ mod tests {
                 effort: None,
                 effort_why: None,
                 deadline_minutes: None,
+                has_review_ruling: false,
             }],
             errors: vec![],
             source_outcomes: vec![crate::task_scanner::SourceScanOutcome {
@@ -881,6 +884,7 @@ mod tests {
                         effort: None,
                         effort_why: None,
                         deadline_minutes: None,
+                        has_review_ruling: false,
                     },
                 ]),
             }],
