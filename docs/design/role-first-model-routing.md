@@ -318,6 +318,33 @@ ladder stays — this stage is allowed to never happen.
 
 ---
 
+## Pre-registered: Astra 6.0 arrival (expected September 2026)
+
+A second frontier-class model is rolling out. Its arrival is the first real
+test of the "catalog changes, roles don't" claim — no role file or preset
+should need editing. On-arrival checklist (a small-change lane):
+
+1. **Catalog entry** on the harness that serves it (expected: the codex
+   harness with a new model slug; if it needs a new CLI, it takes the full
+   "Add a new CLI tool" path instead and this stops being small).
+   Effort vocabulary confirmed against the real CLI, goldens extended.
+2. **Tier sign-off by the operator** — anticipated `frontier` beside
+   `fable`, but the rule stands: tiers are reviewed on the real model, never
+   pre-assigned.
+3. **What a second frontier model unlocks** (policy options, each its own
+   deliberate change, not automatic):
+   - *Frontier family diversity for altitude passes*: architecture-bearing
+     work implemented by Fable can take its altitude pass from Astra and
+     vice versa — closing the current same-family-at-the-top correlation gap.
+   - *Arbitration independence*: "disagreement between agents → top-tier
+     arbitrator" can require the arbitrator's family to differ from both
+     disputants.
+   - *Role de-overloading*: architect, lead, and final arbitrator no longer
+     have to be the same model because it's the only frontier one.
+4. **Field calibration before reliance**: run it as an implementer or
+   reviewer on a few contained lanes first; the tier is confirmed by observed
+   work, and Stage-1 telemetry (once live) records the evidence.
+
 ## What this preserves
 
 The operator's current safety property — high-impact work cannot be silently
