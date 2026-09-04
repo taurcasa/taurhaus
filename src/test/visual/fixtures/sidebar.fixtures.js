@@ -66,6 +66,10 @@ function createScenario({
   expected,
   compareAgainst = null,
   openContextMenu = false,
+  // Extra Sidebar props (settingsOpen/accountsOpen/projectsOpen for the
+  // utility-surface states) and a forced ambient account signal.
+  props = {},
+  accountSignal = null,
 }) {
   return {
     name,
@@ -74,9 +78,11 @@ function createScenario({
     selectedProject,
     daemonStatus,
     sessionStore,
-    expected,
+    expected: { rowState: 'pulled', ...expected },
     compareAgainst,
     openContextMenu,
+    props,
+    accountSignal,
   }
 }
 
@@ -913,6 +919,130 @@ const workflow_runs_light = createScenario({
   compareAgainst: 'workflow_runs_dark',
 })
 
+const groupHeaders_light = createScenario({
+  name: 'groupHeaders_light',
+  theme: 'light',
+  projects: groupedProjects,
+  selectedProject: groupedProjects[0],
+  daemonStatus: 'connected',
+  sessionStore: {
+    sessionsByProject: {
+      '/projects/group-active': [
+        createSession({ cli_tool: 'claude', state: 'active', tmux_window: '9', tmux_pane: '%91' }),
+      ],
+      '/projects/group-recent': [],
+      '/projects/group-stale': [],
+      '/projects/group-dormant': [],
+    },
+    sessionByProject: {
+      '/projects/group-active': createSession({ cli_tool: 'claude', state: 'active', tmux_window: '9', tmux_pane: '%91' }),
+    },
+  },
+  expected: {
+    labels: ['Active', 'Recent', 'Stale', 'Dormant', 'Active Workstream', 'Recent Handoff', 'Stale Cleanup', 'Dormant Archive'],
+    selectedProjectName: 'Active Workstream',
+  },
+  compareAgainst: 'groupHeaders_dark',
+})
+
+// While a utility surface occupies the panel its footer key pulls, and the
+// selected row demotes to held — the drawer's one-material-at-a-time rule.
+const settings_open_held_dark = createScenario({
+  name: 'settings_open_held_dark',
+  theme: 'dark',
+  projects: [activeClaudeProject, dormantCleanProject],
+  selectedProject: activeClaudeProject,
+  daemonStatus: 'connected',
+  sessionStore: {
+    sessionsByProject: {
+      '/projects/active-claude': [
+        createSession({ cli_tool: 'claude', state: 'active', tmux_window: '3', tmux_pane: '%31' }),
+      ],
+    },
+    sessionByProject: {
+      '/projects/active-claude': createSession({ cli_tool: 'claude', state: 'active', tmux_window: '3', tmux_pane: '%31' }),
+    },
+  },
+  props: { settingsOpen: true },
+  expected: {
+    labels: ['Active Claude Project', 'Connected'],
+    selectedProjectName: 'Active Claude Project',
+    rowState: 'held',
+  },
+  compareAgainst: 'active_claude_selected_dark',
+})
+
+const settings_open_held_light = createScenario({
+  name: 'settings_open_held_light',
+  theme: 'light',
+  projects: [activeClaudeProject, dormantCleanProject],
+  selectedProject: activeClaudeProject,
+  daemonStatus: 'connected',
+  sessionStore: {
+    sessionsByProject: {
+      '/projects/active-claude': [
+        createSession({ cli_tool: 'claude', state: 'active', tmux_window: '3', tmux_pane: '%31' }),
+      ],
+    },
+    sessionByProject: {
+      '/projects/active-claude': createSession({ cli_tool: 'claude', state: 'active', tmux_window: '3', tmux_pane: '%31' }),
+    },
+  },
+  props: { settingsOpen: true },
+  expected: {
+    labels: ['Active Claude Project', 'Connected'],
+    selectedProjectName: 'Active Claude Project',
+    rowState: 'held',
+  },
+  compareAgainst: 'settings_open_held_dark',
+})
+
+const projects_open_key_dark = createScenario({
+  name: 'projects_open_key_dark',
+  theme: 'dark',
+  projects: [activeClaudeProject, dormantCleanProject],
+  selectedProject: activeClaudeProject,
+  daemonStatus: 'connected',
+  props: { projectsOpen: true },
+  expected: {
+    labels: ['Active Claude Project', 'Connected'],
+    selectedProjectName: 'Active Claude Project',
+    rowState: 'held',
+  },
+  compareAgainst: 'settings_open_held_dark',
+})
+
+// The filled magnitude pill on the Accounts key: danger counts accounts
+// needing sign-in; warning carries the worst window's used percentage.
+const accounts_signal_danger_dark = createScenario({
+  name: 'accounts_signal_danger_dark',
+  theme: 'dark',
+  projects: [activeClaudeProject],
+  selectedProject: activeClaudeProject,
+  daemonStatus: 'connected',
+  accountSignal: { visible: true, tone: 'danger', magnitude: '1', account: null, tool: 'claude' },
+  expected: {
+    labels: ['Active Claude Project', 'Connected'],
+    selectedProjectName: 'Active Claude Project',
+    accountsBadge: '1',
+  },
+})
+
+const accounts_signal_warning_light = createScenario({
+  name: 'accounts_signal_warning_light',
+  theme: 'light',
+  projects: [activeClaudeProject],
+  selectedProject: activeClaudeProject,
+  daemonStatus: 'connected',
+  accountSignal: { visible: true, tone: 'warning', magnitude: '91', account: null, tool: 'claude' },
+  expected: {
+    labels: ['Active Claude Project', 'Connected'],
+    selectedProjectName: 'Active Claude Project',
+    accountsBadge: '91',
+  },
+  compareAgainst: 'accounts_signal_danger_dark',
+})
+
 export const sidebarScenarios = [
   launch_context_menu_dark,
   launch_context_menu_light,
@@ -925,6 +1055,12 @@ export const sidebarScenarios = [
   dormant_clean_dark,
   active_claude_selected_light,
   groupHeaders_dark,
+  groupHeaders_light,
+  settings_open_held_dark,
+  settings_open_held_light,
+  projects_open_key_dark,
+  accounts_signal_danger_dark,
+  accounts_signal_warning_light,
   team_rail_two_dark,
   team_rail_two_light,
   team_rail_three_light,
