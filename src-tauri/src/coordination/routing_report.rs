@@ -232,9 +232,8 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
     let task =
         taurhaus_lib::task_scanner::claude::parse_task_file(&path, Some(team_name.to_string()))
             .ok()??;
-    let terminal = crate::coordination::operational_context::is_terminal_task_status(
-        &task.status.to_string(),
-    );
+    let terminal =
+        crate::coordination::operational_context::is_terminal_task_status(&task.status.to_string());
     Some(LedgerVerdict {
         accepted_eligible: terminal
             && task.status == taurhaus_lib::task_scanner::TaskStatus::Completed,
@@ -408,12 +407,12 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains("Wall-time is the Stage 1 cost proxy; tokens are not collected."));
-        assert!(report.contains(
-            "rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
-        ));
-        assert!(report.contains(
-            "test-developer | gpt-5.6-luna | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 5m 00s"
-        ));
+        assert!(
+            report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s")
+        );
+        assert!(
+            report.contains("test-developer | gpt-5.6-luna | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 5m 00s")
+        );
         assert!(report.contains("gpt-5.6-sol | 1 | 1 | 0"));
         assert!(report.contains("gpt-5.6-luna | 1 | 0 | 1"));
     }
@@ -548,8 +547,8 @@ mod tests {
         )
         .expect("render report");
 
-        assert!(report.contains(
-            "rust-developer | gpt-5.6-sol | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 10m 00s"
-        ));
+        assert!(
+            report.contains("rust-developer | gpt-5.6-sol | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 10m 00s")
+        );
     }
 }

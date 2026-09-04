@@ -646,16 +646,10 @@ mod tests {
         )
         .expect("record task A launch");
 
-        attribute_latest_launch_to_task(
-            &teams_dir,
-            "routing-team",
-            "task-b",
-            "builder",
-        );
+        attribute_latest_launch_to_task(&teams_dir, "routing-team", "task-b", "builder");
 
-        let attributed = read_task_telemetry(
-            &teams_dir.join("routing-team/state/telemetry/task-b.jsonl"),
-        );
+        let attributed =
+            read_task_telemetry(&teams_dir.join("routing-team/state/telemetry/task-b.jsonl"));
         assert!(matches!(
             attributed.as_slice(),
             [RoutingTelemetryEvent::LaunchRendered {
@@ -673,10 +667,8 @@ mod tests {
     fn attribution_uses_the_newest_render_across_task_sidecars() {
         let root = tempfile::tempdir().expect("tempdir");
         let teams_dir = root.path().join("teams");
-        for (task_id, hour, model) in [
-            ("task-a", 9, "gpt-5.6-luna"),
-            ("task-c", 10, "gpt-5.6-sol"),
-        ] {
+        for (task_id, hour, model) in [("task-a", 9, "gpt-5.6-luna"), ("task-c", 10, "gpt-5.6-sol")]
+        {
             append_task_telemetry(
                 &teams_dir,
                 "routing-team",
@@ -696,12 +688,7 @@ mod tests {
             .expect("record rendered launch");
         }
 
-        attribute_latest_launch_to_task(
-            &teams_dir,
-            "routing-team",
-            "task-b",
-            "builder",
-        );
+        attribute_latest_launch_to_task(&teams_dir, "routing-team", "task-b", "builder");
 
         assert!(matches!(
             read_task_telemetry(
