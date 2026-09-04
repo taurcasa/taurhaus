@@ -145,6 +145,42 @@ describe('Sidebar component branches', () => {
     expect(onToggleAccounts).toHaveBeenCalled()
   })
 
+  it('arranges the footer as a key cluster left and the daemon readout right', () => {
+    render(Sidebar, { props: { projects: makeProjects(1), daemonStatus: 'connected' } })
+
+    const projectsKey = screen.getByTestId('manage-projects-btn')
+    const accountsKey = screen.getByTestId('accounts-toggle')
+    const settingsKey = screen.getByTestId('settings-toggle')
+    const daemon = screen.getByTestId('daemon-status')
+
+    // DOM order carries the arrangement: Projects · Accounts · Settings, then
+    // the daemon readout (pushed right, deliberately un-key-like).
+    expect(projectsKey.compareDocumentPosition(accountsKey) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(accountsKey.compareDocumentPosition(settingsKey) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(settingsKey.compareDocumentPosition(daemon) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    // The Projects key is the folder glyph, not a plus.
+    expect(projectsKey.querySelector('path')?.getAttribute('d')).toContain('2.25 12.75V12')
+  })
+
+  it('gives each footer key the same idle tone and a pulled open state', async () => {
+    const { rerender } = render(Sidebar, { props: { projects: makeProjects(1) } })
+
+    for (const testid of ['manage-projects-btn', 'accounts-toggle', 'settings-toggle']) {
+      expect(screen.getByTestId(testid).className).toContain('text-rail-idle')
+    }
+
+    await rerender({ projects: makeProjects(1), settingsOpen: true })
+    expect(screen.getByTestId('settings-toggle').className).toContain('rail-key-pulled')
+    expect(screen.getByTestId('manage-projects-btn').className).toContain('text-rail-idle')
+
+    await rerender({ projects: makeProjects(1), settingsOpen: false, projectsOpen: true })
+    expect(screen.getByTestId('manage-projects-btn').className).toContain('rail-key-pulled')
+
+    await rerender({ projects: makeProjects(1), projectsOpen: false, accountsOpen: true })
+    expect(screen.getByTestId('accounts-toggle').className).toContain('rail-key-pulled')
+  })
+
   // Regression: e28881d opened the Accounts usage board on pointer entry but
   // never closed it on pointer exit, leaving a sticky menu over the sidebar.
   it('closes the hover-opened accounts board after the leave grace', async () => {
