@@ -85,21 +85,26 @@ async function openMeshTab() {
 async function disbandRuntimeTeamIfSafe() {
   if (!(await hasTestId('mesh-mode-runtime'))) return true
 
+  // Regression: 3b65c760 only trusted teams created inside this spec, so the
+  // sealed mesh group could not clean up mesh-recovery's e2e-prefixed team.
+  const isSafeRuntimeTeam = (teamName) => {
+    return createdTeamNames.has(teamName) || teamName.startsWith('e2e-mesh-recovery-')
+  }
   await browser.waitUntil(
     async () => {
       const teamName = await browser.execute(() => {
         return document.querySelector('[data-testid="mesh-runtime-title"]')?.textContent?.trim() ?? ''
       })
-      return createdTeamNames.has(teamName)
+      return isSafeRuntimeTeam(teamName)
     },
-    { ...WAIT_MEDIUM, timeoutMsg: 'Runtime team title did not resolve to a team created by this spec' }
+    { ...WAIT_MEDIUM, timeoutMsg: 'Runtime team title did not resolve to a safe e2e team' }
   )
   const teamName = await browser.execute(() => {
     return document.querySelector('[data-testid="mesh-runtime-title"]')?.textContent?.trim() ?? ''
   })
 
-  if (!createdTeamNames.has(teamName)) {
-    tier2SkipReason = `Refusing to disband runtime team not created by this spec: ${teamName || 'unknown'}`
+  if (!isSafeRuntimeTeam(teamName)) {
+    tier2SkipReason = `Refusing to disband runtime team outside the sealed e2e group: ${teamName || 'unknown'}`
     return false
   }
 
