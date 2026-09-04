@@ -124,6 +124,21 @@ describe('AccountsHome', () => {
     expect(screen.queryByTestId('add-account-agy')).not.toBeInTheDocument()
   })
 
+  it('opens behind the shared doorway and closes on Escape', async () => {
+    const onClose = vi.fn()
+    render(AccountsHome, { props: { states: states(), projects: [], onClose } })
+
+    // Key echo: the doorway repeats the Accounts key that opened the surface.
+    const doorway = screen.getByTestId('surface-doorway')
+    expect(within(doorway).getByRole('heading', { name: 'Accounts' })).toBeInTheDocument()
+    expect(within(doorway).getByLabelText('Close accounts')).toHaveTextContent('Back')
+    expect(within(doorway).getByLabelText('Refresh account usage')).toBeInTheDocument()
+    expect(doorway.querySelector('kbd')).toHaveTextContent('Esc')
+
+    await fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalled()
+  })
+
   it('auto-expands unhealthy rows and exposes only home management actions', async () => {
     const onOpenProject = vi.fn()
     const onSignIn = vi.fn()

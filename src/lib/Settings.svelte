@@ -20,6 +20,8 @@
   import { themeTokens } from './themeTokens.js'
   import { tools, toolAccent } from './toolRegistry.js'
   import { getToolIcon } from './toolLogos.js'
+  import { RAIL_ICONS } from './railIcons.js'
+  import SurfaceDoorway from './components/SurfaceDoorway.svelte'
 
   let { dark = false, onClose = () => {}, onSettingsChanged = () => {}, codeThemeLight = DEFAULT_LIGHT_THEME, codeThemeDark = DEFAULT_DARK_THEME, onCodeThemeChanged = () => {}, onOpenAccounts = () => {} } = $props()
 
@@ -395,20 +397,14 @@
 </script>
 
 <div class="flex-1 overflow-y-auto" data-testid="settings-view">
-  <div class="max-w-[640px] mx-auto px-6 py-6">
-    <!-- Header -->
-    <div class="mb-6">
-      <button
-        class="text-[13px] {t.linkColor} transition-colors mb-3 flex items-center gap-1 {buttonFocusRing}"
-        onclick={onClose}
-        data-testid="settings-back"
-      >
-        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/></svg>
-        Back to projects
-      </button>
-      <h1 class="text-[20px] font-semibold {t.textPrimary}">Settings</h1>
-    </div>
-
+  <SurfaceDoorway
+    {dark}
+    title="Settings"
+    icon={RAIL_ICONS.settings}
+    backTestid="settings-back"
+    onBack={onClose}
+  />
+  <div class="max-w-surface-reading mx-auto px-6 py-6">
     {#if loading}
       <div class="space-y-4">
         {#each Array(3) as _}
@@ -433,7 +429,7 @@
 
         <!-- ═══ GENERAL ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-scanning">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">General</h2>
+          <h2 class="text-[12px] font-semibold {t.textPrimary} mb-3">General</h2>
 
           <!-- Scan directories -->
           <div class="mb-4">
@@ -595,7 +591,7 @@
 
         <!-- ═══ DISPLAY ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-display">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Display</h2>
+          <h2 class="text-[12px] font-semibold {t.textPrimary} mb-3">Display</h2>
 
           <p class="text-[13px] {t.textSecondary} mb-3">Syntax highlighting</p>
           <div class="space-y-3">
@@ -632,7 +628,7 @@
 
         <!-- ═══ TERMINAL & SESSIONS ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-terminal">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Terminal & Sessions</h2>
+          <h2 class="text-[12px] font-semibold {t.textPrimary} mb-3">Terminal & sessions</h2>
 
           <div class="space-y-3">
             <div class="flex items-center gap-3">
@@ -720,7 +716,7 @@
 
         <!-- ═══ CLI TOOLS ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-cli-tools">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">CLI Tools</h2>
+          <h2 class="text-[12px] font-semibold {t.textPrimary} mb-3">CLI tools</h2>
           <p class="text-[13px] {textTertiary} mb-2">Shell commands executed in tmux when launching sessions. The project directory is set automatically.</p>
           <p class="text-[12px] {textTertiary} mb-4">A resume command may carry <code class="font-mono">{'{session_id}'}</code>. taurhaus substitutes the resolved id already quoted, so leave the token bare — quoting it yourself produces a doubly quoted id the CLI cannot resume.</p>
 
@@ -784,7 +780,7 @@
         {#if accountTools.length}
           <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-accounts">
             <div class="mb-2 flex items-center justify-between gap-3">
-              <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor}">Accounts</h2>
+              <h2 class="text-[12px] font-semibold {t.textPrimary}">Accounts</h2>
               <button
                 type="button"
                 class="text-[11px] text-brand-500 hover:underline {buttonFocusRing}"
@@ -834,7 +830,7 @@
 
         <!-- ═══ MESH ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-mesh">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Mesh</h2>
+          <h2 class="text-[12px] font-semibold {t.textPrimary} mb-3">Mesh</h2>
           <div class="flex items-start gap-3">
             <input
               id="agy-hooks-toggle"
@@ -881,7 +877,7 @@
 
         <!-- ═══ SEARCH ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-index">
-          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Search</h2>
+          <h2 class="text-[12px] font-semibold {t.textPrimary} mb-3">Search</h2>
 
           {#if indexStatus}
             <div class="flex items-center gap-4 mb-3">

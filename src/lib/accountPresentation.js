@@ -186,6 +186,10 @@ function warningWindow(account, now) {
  * outrank quota pressure; otherwise the largest warning window supplies the
  * magnitude, so the button says how close the constraint is rather than merely
  * announcing that one exists.
+ *
+ * The magnitude is always a bare number — the badge grammar puts severity in
+ * the tone and never spells words. Danger counts the accounts needing action;
+ * warning is the worst window's used percentage.
  */
 export function ambientAccountSignal(states, now = Date.now()) {
   const relevant = (states ?? []).flatMap((state) =>
@@ -194,14 +198,14 @@ export function ambientAccountSignal(states, now = Date.now()) {
       .map((account) => ({ account, tool: state.tool }))
   )
 
-  const danger = relevant.find(({ account }) => accountDanger(account))
-  if (danger) {
+  const dangers = relevant.filter(({ account }) => accountDanger(account))
+  if (dangers.length > 0) {
     return {
       visible: true,
       tone: 'danger',
-      magnitude: 'Sign in',
-      account: danger.account,
-      tool: danger.tool,
+      magnitude: String(dangers.length),
+      account: dangers[0].account,
+      tool: dangers[0].tool,
     }
   }
 
@@ -220,7 +224,7 @@ export function ambientAccountSignal(states, now = Date.now()) {
       tone: 'warning',
       magnitude: `${Math.round(
         Number(worst.window.used_percentage ?? worst.window.usedPercentage)
-      )}%`,
+      )}`,
       account: worst.account,
       tool: worst.tool,
       window: worst.window,
@@ -228,6 +232,19 @@ export function ambientAccountSignal(states, now = Date.now()) {
   }
 
   return { visible: false, tone: 'calm', magnitude: null, account: null }
+}
+
+/**
+ * The badge sentence for assistive tech: a filled pill is a bare number for
+ * the eye, so the tone and magnitude are spelled out for everyone else.
+ */
+export function ambientSignalDescription(signal) {
+  if (!signal?.visible || signal.magnitude == null) return null
+  if (signal.tone === 'danger') {
+    const count = Number(signal.magnitude)
+    return `${signal.magnitude} account${count === 1 ? '' : 's'} need${count === 1 ? 's' : ''} sign-in`
+  }
+  return `${signal.magnitude}% of the worst usage window used`
 }
 
 export function usageIsLastKnown(usage, now = Date.now()) {

@@ -151,11 +151,11 @@ export async function ensureMainApp() {
  * in-page cleanup, minimizing WebDriver round-trips (~1-2 calls instead of ~15).
  */
 async function resetAppState() {
-  // Close search overlay and modal if they are open.
+  // Close search overlay and the Projects takeover if they are open.
   const searchOverlay = await $('[data-testid="search-overlay"]')
   if (await searchOverlay.isExisting()) await browser.keys('Escape')
-  const manageProjectsModal = await $('[data-testid="manage-projects-modal"]')
-  if (await manageProjectsModal.isExisting()) await browser.keys('Escape')
+  const projectsTakeover = await $('[data-testid="projects-takeover"]')
+  if (await projectsTakeover.isExisting()) await browser.keys('Escape')
 
   // Leave settings if needed.
   const settingsBack = await $('[data-testid="settings-back"]')

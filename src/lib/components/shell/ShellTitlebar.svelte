@@ -6,6 +6,7 @@
     activeTab = 'overview',
     settingsOpen = false,
     accountsOpen = false,
+    projectsOpen = false,
     onSwitchTab = () => {},
     onToggleSearch = () => {},
     onSetDarkMode = () => {},
@@ -23,7 +24,13 @@
       : 'Search (Ctrl+K)'
   )
   const TAB_ORDER = ['overview', 'files', 'tasks', 'mesh', 'git']
-  const takeoverLabel = $derived(settingsOpen ? 'Settings' : accountsOpen ? 'Accounts' : null)
+  // Invariant: the surface flags are mutually exclusive (Shell's toggles
+  // enforce it), and this precedence order matches ShellMainPanel's render
+  // branches — so if a future bug ever left two flags set, the titlebar
+  // would still name the surface the panel actually shows.
+  const takeoverLabel = $derived(
+    projectsOpen ? 'Projects' : accountsOpen ? 'Accounts' : settingsOpen ? 'Settings' : null
+  )
 
   let overviewTabEl = $state(null)
   let filesTabEl = $state(null)

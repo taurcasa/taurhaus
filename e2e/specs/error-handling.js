@@ -25,7 +25,7 @@ describe('Error Handling', () => {
   describe('project management errors', () => {
     afterEach(async () => {
       // Close modal if left open by a failed test
-      const modal = await $('[data-testid="manage-projects-modal"]')
+      const modal = await $('[data-testid="projects-takeover"]')
       if (await modal.isExisting()) await closeModal()
     })
 

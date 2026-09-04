@@ -182,6 +182,50 @@
   --shell-frame-noise-opacity-dark: 0.02;
   --shell-frame-noise-opacity-light: 0.018;
 
+  /* Sidebar rail — the tone ramp. One ramp for every interactive white on
+     brand-950: idle .30 → signaled idle .55 → hover .60 over a .05 fill →
+     open = pulled material (see the drawer language below). Keyboard focus is
+     the filter's brand-500/70 ring, rail-wide.
+
+     Geometry grid (expressed through standard utilities, listed here as the
+     one place the numbers live): 28px control hits (w-7) · 16px utility
+     glyphs at stroke 1.5 (w-4) · 14px mark boxes/badges/pills · 12px tool
+     marks · 36px project rows · 44px rail footer · 48px doorway header
+     (h-12) · radii 6/8/999 only · surface widths 640 reading / 1024 board. */
+  --color-rail-idle: rgba(255, 255, 255, 0.3);
+  --color-rail-signal: rgba(255, 255, 255, 0.55);
+  --color-rail-hover: rgba(255, 255, 255, 0.6);
+  --color-rail-hit-hover: rgba(255, 255, 255, 0.05);
+
+  /* Utility surface widths — 640 holds a reading column (Projects, Settings),
+     1024 holds the Accounts board. The rule is the token, not one number. */
+  --container-surface-reading: 640px;
+  --container-surface-board: 1024px;
+
+  /* Sidebar drawer language — ink and marks on pulled material. "Pulled"
+     means made of the main panel's own surface, so these follow the app
+     theme even though the rail itself never leaves brand-950. */
+  --sidebar-pulled-ink-dark: #f4f4f5;
+  --sidebar-pulled-ink-light: #18181b;
+  --sidebar-pulled-ink-soft-dark: #71717a;
+  --sidebar-pulled-ink-soft-light: #a1a1aa;
+  --sidebar-pulled-mark-stale-dark: #93c5fd;
+  --sidebar-pulled-mark-stale-light: #3b82f6;
+  --sidebar-pulled-dirty-dark: #fbbf24;
+  --sidebar-pulled-dirty-light: #d97706;
+
+  /* The bridge's panel-hairline cover: the panel surface FLATTENED against
+     the frame base (#0a2e2b). The surface itself is translucent, so painting
+     it again on top of the panel would double-composite — visibly brighter
+     in light mode — while these opaque equivalents land within one RGB step
+     of the panel's rendered pixels:
+       dark:  0.96·(9,14,17)  + 0.04·(10,46,43) ≈ (9,15,18)
+       light: 0.94·(255,255,255) + 0.06·(11,50,47) ≈ (240,243,243) */
+  --sidebar-bridge-cover-dark: #090f12;
+  --sidebar-bridge-cover-light: #f0f3f3;
+  --rail-key-ring-dark: rgba(255, 255, 255, 0.16);
+  --rail-key-ring-light: rgba(19, 78, 74, 0.16);
+
   /* Sidebar team session visuals */
   --sidebar-team-icon-active-dark: #86EFAC;
   --sidebar-team-icon-idle-dark: #FCD34D;
@@ -238,6 +282,12 @@
   --sidebar-team-count-idle-border: var(--sidebar-team-count-idle-border-light);
   --sidebar-team-stack-ring: var(--sidebar-team-stack-ring-light);
   --sidebar-team-logo-ring: var(--sidebar-team-logo-ring-light);
+  --sidebar-pulled-ink: var(--sidebar-pulled-ink-light);
+  --sidebar-pulled-ink-soft: var(--sidebar-pulled-ink-soft-light);
+  --sidebar-pulled-mark-stale: var(--sidebar-pulled-mark-stale-light);
+  --sidebar-pulled-dirty: var(--sidebar-pulled-dirty-light);
+  --sidebar-bridge-cover: var(--sidebar-bridge-cover-light);
+  --rail-key-ring: var(--rail-key-ring-light);
 }
 
 html.dark {
@@ -260,6 +310,12 @@ html.dark {
   --sidebar-team-count-idle-border: var(--sidebar-team-count-idle-border-dark);
   --sidebar-team-stack-ring: var(--sidebar-team-stack-ring-dark);
   --sidebar-team-logo-ring: var(--sidebar-team-logo-ring-dark);
+  --sidebar-pulled-ink: var(--sidebar-pulled-ink-dark);
+  --sidebar-pulled-ink-soft: var(--sidebar-pulled-ink-soft-dark);
+  --sidebar-pulled-mark-stale: var(--sidebar-pulled-mark-stale-dark);
+  --sidebar-pulled-dirty: var(--sidebar-pulled-dirty-dark);
+  --sidebar-bridge-cover: var(--sidebar-bridge-cover-dark);
+  --rail-key-ring: var(--rail-key-ring-dark);
 }
 
 html, body, #app {
@@ -408,6 +464,289 @@ body {
   border-color: rgba(96, 165, 250, 0.28);
 }
 
+/* ── Sidebar drawer language ──────────────────────────────────────────── */
+/* The sidebar is the drawer; the one thing the main panel is currently
+   showing is rendered in the panel's own surface material — "pulled". At
+   most one element on the rail wears this material at a time: the selected
+   project row, or, while a utility surface occupies the panel, that
+   surface's footer key (the row then demotes to the quiet "held" state). */
+
+.sidebar-row-pulled {
+  background-color: var(--shell-panel-bg);
+  /* Reach the rail's right edge through the list container's 6px padding —
+     the row is w-full, so the reach is written as width, not margin. */
+  width: calc(100% + 6px);
+  border-radius: 6px 0 0 6px;
+  box-shadow: inset 0 1px 0 var(--shell-panel-inner-highlight);
+}
+
+.sidebar-row-pulled .sidebar-row-name {
+  color: var(--sidebar-pulled-ink);
+  font-weight: 600;
+}
+
+.sidebar-row-pulled .sidebar-branch-line {
+  color: var(--sidebar-pulled-ink-soft);
+}
+
+/* Tool marks flip to the panel-legible activity family; shape stays the
+   identity, color stays the activity — only the legibility target changes. */
+.sidebar-row-pulled .session-pill-active {
+  color: var(--sidebar-team-icon-active);
+}
+
+.sidebar-row-pulled .session-pill-idle {
+  color: var(--sidebar-team-icon-idle);
+}
+
+.sidebar-row-pulled .session-pill-stale {
+  color: var(--sidebar-pulled-mark-stale);
+}
+
+.sidebar-row-pulled .sidebar-dirty-dot {
+  background-color: var(--sidebar-pulled-dirty);
+}
+
+/* The tmux-foreground edge lines run to the rail edge on a pulled row. */
+.sidebar-row-pulled .sidebar-foreground-lines {
+  right: 0;
+}
+
+/* Edge scoops: concave corners where the pulled row meets the rail edge,
+   implying continuation into the main panel. The titlebar's manila tab cuts
+   this corner with an opaque nested quarter-circle (`shell-frame-fill` +
+   rounded-bl-full) over the uniform frame; rows sit between neighbours that
+   carry their own hover/selection fills, so here the corner is painted as a
+   transparent radial gradient instead — the same shape, see-through
+   everywhere except the panel-material sliver. */
+.sidebar-row-scoop {
+  position: absolute;
+  right: 0;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.sidebar-row-scoop-top {
+  top: -8px;
+  background: radial-gradient(circle 8px at 0 0, transparent 7.5px, var(--shell-panel-bg) 8px);
+}
+
+.sidebar-row-scoop-bottom {
+  bottom: -8px;
+  background: radial-gradient(circle 8px at 0 100%, transparent 7.5px, var(--shell-panel-bg) 8px);
+}
+
+/* Footer key wearing the pulled material — the open state of a utility key.
+   The key does NOT bridge into the panel the way the pulled row does: the
+   footer arrangement deliberately keeps the key cluster bottom-left, so the
+   key's material never reaches the rail's right edge, and a bridge would
+   fabricate contact across rail chrome (its sibling keys and the daemon
+   readout). The open surface's connection to the panel is already stated by
+   the titlebar tab, which carries the takeover label in the panel's own
+   material — a second umbilical would say shown-ness twice. */
+.rail-key-pulled {
+  background-color: var(--shell-panel-bg);
+  color: var(--sidebar-pulled-ink);
+  box-shadow:
+    inset 0 1px 0 var(--shell-panel-inner-highlight),
+    0 0 0 1px var(--rail-key-ring);
+}
+
+/* ── Pulled-row bridge — the material continues into the main panel ────── */
+/* The pulled row's material crosses the frame gutter and merges with the
+   main panel, the way the titlebar's manila tab meets the content panel.
+   The row lives in the rail's scroll container, and a scroll container
+   cannot let a child paint outside its clipped axis (`overflow-y: auto`
+   forces `overflow-x` to clip too), so the bridge is built OUTSIDE the
+   rail: a clip box fixed over the gutter column, sized to the list viewport
+   so it clips the strip at exactly the lines the container clips the row,
+   with the material strip sliding inside it. The strip sits at the row's
+   content offset and is translated by -scrollTop — on the compositor via
+   the rail's scroll timeline where the engine has scroll-driven animations
+   (exact sync with the row by construction), else by the scroll handler.
+   src/lib/sidebarBridge.js carries the full constraint story. */
+
+.sidebar-rail {
+  position: relative;
+  /* Publishes the list's scroll timeline to the bridge strips (they are not
+     the scroller's descendants); inert where scroll-driven animations are
+     missing, where the JS fallback drives the transform instead. */
+  timeline-scope: --rail-scroll;
+}
+
+.sidebar-rail-scroll {
+  scroll-timeline: --rail-scroll y;
+  /* Stacks the list — scrollbar included — above the in-rail lane cover, so
+     a visible thumb travels over the pulled material like an overlay
+     scrollbar instead of vanishing beneath it. Two above the lane's one:
+     the lane itself must clear the main panel's box-shadow (z auto), which
+     otherwise tints the lane material where it spills across the rail edge. */
+  position: relative;
+  z-index: 2;
+}
+
+.sidebar-bridge-clip,
+.sidebar-bridge-lane-clip {
+  overflow: hidden;
+  pointer-events: none;
+  display: none;
+}
+
+.sidebar-bridge-clip {
+  position: fixed;
+  /* Above the two panels (both stacked at z auto): the strip covers the
+     rail's border pixel. Every floating surface (menus, hover cards,
+     overlays) stacks far higher. */
+  z-index: 1;
+}
+
+.sidebar-bridge-lane-clip {
+  position: absolute;
+  /* Above the main panel's box-shadow (which paints over the rail's edge
+     region and would tint the lane material), below the list at z 2 so the
+     scrollbar thumb stays on top. */
+  z-index: 1;
+}
+
+.sidebar-bridge-clip[data-bridge-active],
+.sidebar-bridge-lane-clip[data-bridge-active] {
+  display: block;
+}
+
+/* No inner-highlight edge here: the strip's top sits at the flare tips,
+   8px above the row's own highlighted edge, and a second bright line
+   jumping levels across the scoop curve reads as a glint, not an edge. The
+   silhouette's edge treatment stays where it shipped — on the row. */
+.sidebar-bridge-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background-color: var(--shell-panel-bg);
+  will-change: transform;
+}
+
+/* In the gutter box the translucent material stops at the panel's edge; the
+   final 2px belong to the opaque cover that blanks the panel's border +
+   inset ring along the material's contact span (strip plus fillet tips).
+   Opaque because the panel surface is translucent and would double-composite
+   over itself — the token is the flattened equivalent.
+
+   Ruling — the cover (and the whole neck) omits --shell-panel-gradient, so
+   inside the panel's top wash band the material meets the panel with a
+   measured Δ of at most 3 RGB (green, light theme, topmost row, 1080p;
+   bridge_gradient_band_light pins it). Recorded as imperceptible rather
+   than compensated: the shipped titlebar tab junction — the device's own
+   reference — measures Δ16 at the same class of seam (uncovered border
+   hairline 222 against washed panel 251), and an exact fix would need a
+   scroll-synchronized gradient realignment on a 2px column. */
+.sidebar-bridge-clip .sidebar-bridge-strip {
+  right: 2px;
+}
+
+.sidebar-bridge-cover {
+  position: absolute;
+  right: -2px;
+  width: 2px;
+  top: -6px;
+  bottom: -6px;
+  background-color: var(--sidebar-bridge-cover);
+}
+
+/* Both properties, matching supportsScrollDrivenTracking(): the strips are
+   not the scroller's descendants, so without timeline-scope the animation's
+   timeline would never resolve while the JS fallback stood down. */
+@supports (animation-timeline: --rail-scroll) and (timeline-scope: --rail-scroll) {
+  .sidebar-bridge-strip {
+    animation: sidebar-bridge-follow auto linear both;
+    animation-timeline: --rail-scroll;
+  }
+
+  /* When the driver runs in JS mode anyway (the fixture that exercises the
+     fallback), the CSS path must genuinely stand down: an animation beats
+     inline style, so leaving it live would silently measure the compositor
+     path instead of the handler's transforms. */
+  [data-bridge-tracking='js'] .sidebar-bridge-strip {
+    animation: none;
+  }
+}
+
+/* Scroll-linked positioning, not decorative motion: the strip must stay
+   glued to the row the user is scrolling, so this deliberately stays on
+   under prefers-reduced-motion (no transition is ever added to it). */
+@keyframes sidebar-bridge-follow {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(calc(-1 * var(--rail-scroll-range, 0px)));
+  }
+}
+
+/* Panel-side fillets: concave corners where the strip melts into the main
+   panel — the row's rail-edge scoop mirrored. Radius 6 (house grid) keeps
+   the curve tangent to both the strip edge and the panel edge across the
+   6px gutter. */
+.sidebar-bridge-scoop {
+  position: absolute;
+  right: 0;
+  width: 6px;
+  height: 6px;
+}
+
+.sidebar-bridge-scoop-top {
+  top: -6px;
+  background: radial-gradient(circle 6px at 0 0, transparent 5.5px, var(--shell-panel-bg) 6px);
+}
+
+.sidebar-bridge-scoop-bottom {
+  bottom: -6px;
+  background: radial-gradient(circle 6px at 0 100%, transparent 5.5px, var(--shell-panel-bg) 6px);
+}
+
+/* Guide-card group headers — a drawer guide card: sentence-case tab chip
+   sitting on a hairline, carrying the group's project count. */
+.sidebar-guide-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 19px;
+  padding-inline: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.sidebar-guide-count {
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.34);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Rail badge grammar — the filled magnitude pill (act on me). Geometry
+   matches the outline count pill: 14px tall, 10px tabular-nums. The caller
+   supplies the tone (danger/warning) as utility classes. */
+.rail-badge {
+  min-width: 14px;
+  height: 14px;
+  padding-inline: 4px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Command Center — sidebar workflow run badge.
    A project whose session is running Claude Code workflows right now. Quiet
    teal so it reads as one more piece of row metadata, not an alert. */
@@ -425,6 +764,31 @@ body {
   font-weight: 600;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+}
+
+/* On light pulled material the quiet teal restates itself in panel-legible
+   tones; the dark panel reads the rail tones as-is. */
+html:not(.dark) .sidebar-row-pulled .sidebar-workflow-badge {
+  border-color: rgba(13, 148, 136, 0.45);
+  background: rgba(13, 148, 136, 0.12);
+  color: var(--color-brand-600);
+}
+
+/* The team-count pill's light fill is near-white — invisible on the light
+   panel material — so pulled rows restate it as a faint brand tint. */
+html:not(.dark) .sidebar-row-pulled .sidebar-session-team-count {
+  background: rgba(10, 46, 43, 0.06);
+  box-shadow: inset 0 1px 0 rgba(19, 78, 74, 0.06);
+}
+
+/* The stale team tone is info-300 in both themes — pale on white — so light
+   pulled rows deepen it the way the standalone stale mark already flips. */
+html:not(.dark) .sidebar-row-pulled .sidebar-session-team[data-activity='stale'] {
+  color: var(--color-info-500);
+}
+
+html:not(.dark) .sidebar-row-pulled .sidebar-session-team-stack[data-activity='stale'] .sidebar-session-team-count {
+  border-color: rgba(59, 130, 246, 0.4);
 }
 
 @keyframes session-pill-breathe {

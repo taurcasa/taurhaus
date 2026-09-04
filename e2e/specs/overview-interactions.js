@@ -25,9 +25,22 @@ describe('Overview Interactions', () => {
   describe('header', () => {
     it('displays a non-empty project name in h1', async function () {
       if (!mainApp) return this.skip()
-      const h1 = await $('h1')
-      await h1.waitForExist({ timeout: 5_000 })
-      const text = await h1.getText()
+      // waitForExist alone raced startup: an h1 can exist while hidden (the
+      // first-run wizard mid-teardown reads as empty text) before the project
+      // selection lands. Wait for the state the assertion is about: a visible
+      // h1 with real text.
+      let text = ''
+      await browser.waitUntil(
+        async () => {
+          text = await browser.execute(() => {
+            const el = document.querySelector('h1')
+            if (!el || el.offsetParent === null) return ''
+            return el.textContent ?? ''
+          })
+          return text.trim().length > 0
+        },
+        { timeout: 10_000, timeoutMsg: 'no visible non-empty h1 appeared' },
+      )
       expect(text.trim().length).toBeGreaterThan(0)
     })
 

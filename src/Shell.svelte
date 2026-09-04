@@ -19,7 +19,6 @@
     requestLaunch,
     resolveChooserAccounts,
   } from './lib/accounts.svelte.js'
-  import AddProjectModal from './lib/AddProjectModal.svelte'
   import FirstRunWizard from './lib/FirstRunWizard.svelte'
   import Sidebar from './lib/Sidebar.svelte'
   import { startPolling as startSessionPolling, stopPolling as stopSessionPolling } from './lib/sessionStore.svelte.js'
@@ -66,10 +65,12 @@
   })
 
   let searchOpen = $state(false)
+  // The three utility surfaces are exclusive takeovers of the main panel:
+  // opening one closes the others.
   let settingsOpen = $state(false)
   let accountsOpen = $state(false)
+  let projectsOpen = $state(false)
   let requestedAddTool = $state(null)
-  let showAddProject = $state(false)
   let showWizard = $state(false)
   let wizardChecked = $state(false)
   let startupViewportSyncAttempted = false
@@ -228,10 +229,21 @@
     logger: console,
   })
 
+  /** Selecting a project always shows it: any utility surface occupying the
+   * main panel closes, so a sidebar click never changes selection invisibly
+   * behind a takeover. */
+  function selectProjectAndShow(project) {
+    settingsOpen = false
+    accountsOpen = false
+    projectsOpen = false
+    requestedAddTool = null
+    return projectController.selectProject(project)
+  }
+
   let projectContextValue = $state({
     projects: [],
     selectedProject: null,
-    selectProject: (project) => projectController.selectProject(project),
+    selectProject: (project) => selectProjectAndShow(project),
     navigateToCommit: (hash) => navigationController.navigateToCommit(hash),
     navigateToFile: (path, lineNumber) => navigationController.navigateToFile(path, lineNumber),
     navigateToCommitRange: (after, before) => navigationController.navigateToCommitRange(after, before),
@@ -243,26 +255,43 @@
     daemonStatus: null,
     launchSession: (tool, options) => handleOverviewLaunchSession(tool, options),
     openTerminal: () => handleOverviewOpenTerminal(),
+    // Open-only entry points (Overview quick action, sidebar empty state):
+    // asking to manage projects from elsewhere always lands on the surface.
     openManageProjects: () => {
-      showAddProject = true
+      settingsOpen = false
+      accountsOpen = false
+      requestedAddTool = null
+      projectsOpen = true
+    },
+    // The footer key is a toggle like its two siblings — a pulled key must
+    // never be a dead control.
+    toggleProjects: () => {
+      settingsOpen = false
+      accountsOpen = false
+      requestedAddTool = null
+      projectsOpen = !projectsOpen
     },
     toggleSettings: () => {
       accountsOpen = false
+      projectsOpen = false
       requestedAddTool = null
       settingsOpen = !settingsOpen
     },
     toggleAccounts: () => {
       settingsOpen = false
+      projectsOpen = false
       requestedAddTool = null
       accountsOpen = !accountsOpen
     },
     openAccounts: () => {
       settingsOpen = false
+      projectsOpen = false
       accountsOpen = true
     },
     // The picker footer's `Add account…`, from wherever a picker is open.
     openAddAccount: (tool) => {
       settingsOpen = false
+      projectsOpen = false
       accountsOpen = true
       requestedAddTool = tool
     },
@@ -590,6 +619,7 @@
   $effect(() => setupAccountsShortcut({
     onToggleAccounts: () => {
       settingsOpen = false
+      projectsOpen = false
       requestedAddTool = null
       accountsOpen = !accountsOpen
     },
@@ -619,6 +649,7 @@
       {activeTab}
       {settingsOpen}
       {accountsOpen}
+      {projectsOpen}
       onSwitchTab={(tab) => projectController.switchTab(tab)}
       onToggleSearch={() => {
         searchOpen = !searchOpen
@@ -643,6 +674,7 @@
           daemonStatus={daemonStatus}
           {settingsOpen}
           {accountsOpen}
+          {projectsOpen}
           {dark}
           actions={{
             onProjectHover: projectController.prefetchProjectSelection,
@@ -656,6 +688,7 @@
         {codeThemeDark}
         {settingsOpen}
         {accountsOpen}
+        {projectsOpen}
         {requestedAddTool}
         {daemonStatus}
         {daemonRecoveryEscalated}
@@ -691,8 +724,14 @@
           accountsOpen = false
           requestedAddTool = null
         }}
+        onCloseProjects={() => {
+          projectsOpen = false
+        }}
+        onProjectsChanged={() => projectController.loadProjects()}
+        onProjectCreated={(project) => projectController.handleProjectCreated(project)}
         onOpenAccounts={() => {
           settingsOpen = false
+          projectsOpen = false
           accountsOpen = true
           requestedAddTool = null
         }}
@@ -772,15 +811,6 @@
         accountsOpen = true
         requestedAddTool = null
       }}
-    />
-  {/if}
-
-  {#if showAddProject}
-    <AddProjectModal
-      {dark}
-      onClose={() => showAddProject = false}
-      onProjectsChanged={() => projectController.loadProjects()}
-      onProjectCreated={(project) => projectController.handleProjectCreated(project)}
     />
   {/if}
 

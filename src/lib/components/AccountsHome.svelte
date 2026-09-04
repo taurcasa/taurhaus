@@ -17,6 +17,8 @@
   import { baseCommandSelection } from '../accountPresentation.js'
   import { tools } from '../toolRegistry.js'
   import { themeTokens } from '../themeTokens.js'
+  import { RAIL_ICONS } from '../railIcons.js'
+  import SurfaceDoorway from './SurfaceDoorway.svelte'
   import { exhaustedUsage, liveUsageWindows, windowPressure } from '../usageWindows.js'
 
   let {
@@ -35,7 +37,6 @@
   const registry = $derived(tools())
   const t = $derived(themeTokens(dark))
   const shellTone = $derived(dark ? 'bg-zinc-950' : 'bg-zinc-50/70')
-  const headerTone = $derived(dark ? 'border-zinc-800 bg-zinc-950/95' : 'border-zinc-200 bg-white/95')
   const bannerTone = $derived(
     dark
       ? 'border-amber-400/20 bg-amber-400/[0.06] text-amber-300'
@@ -248,25 +249,42 @@
     await Promise.all(affected.map((project) => rememberChoice(project.id, tool, account.id)))
     await refreshAccountRelationships(tool, { force: true })
   }
+
+  // Keyboard: Escape closes the surface — the doorway's Esc hint speaks for
+  // it. Overlays (add-account flow, team switcher) own their own Esc, so the
+  // surface stays put while one of them is open.
+  $effect(() => {
+    const handler = (event) => {
+      if (event.key !== 'Escape') return
+      if (addTool || switchContext) return
+      onClose()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  })
 </script>
 
 <main class="h-full overflow-y-auto {shellTone}" data-testid="accounts-home">
-  <header class="sticky top-0 z-10 flex min-h-16 items-center justify-between border-b px-6 py-3 backdrop-blur {headerTone}">
-    <div>
-      <div class="flex items-center gap-2">
-        <button class="text-[12px] {t.textTertiary}" onclick={onClose} aria-label="Close accounts">←</button>
-        <h1 class="text-[16px] font-semibold tracking-tight {t.textPrimary}">Accounts</h1>
-      </div>
-      <p class="mt-0.5 pl-6 text-[10px] {t.textTertiary}" data-testid="accounts-freshness">{freshness}</p>
-    </div>
-    <button
-      class="h-8 rounded-md border px-3 text-[11px] font-medium transition-colors {refreshTone}"
-      onclick={refreshAll}
-      aria-label="Refresh account usage"
-    >↻ Refresh</button>
-  </header>
+  <SurfaceDoorway
+    {dark}
+    title="Accounts"
+    icon={RAIL_ICONS.accounts}
+    backAriaLabel="Close accounts"
+    onBack={onClose}
+  >
+    {#snippet meta()}
+      <span class="text-[11px] {t.textTertiary}" data-testid="accounts-freshness">{freshness}</span>
+    {/snippet}
+    {#snippet action()}
+      <button
+        class="h-7 rounded-md border px-2.5 text-[11px] font-medium transition-colors {refreshTone}"
+        onclick={refreshAll}
+        aria-label="Refresh account usage"
+      >Refresh</button>
+    {/snippet}
+  </SurfaceDoorway>
 
-  <div class="mx-auto max-w-5xl space-y-7 px-6 py-6">
+  <div class="mx-auto max-w-surface-board space-y-7 px-6 py-6">
     {#if degraded}
       <div class="rounded-lg border px-3 py-2 text-[11px] {bannerTone}" data-testid="accounts-degraded-banner">
         Detection degraded — showing last-known accounts. Refresh or resume sign-in from the affected row.

@@ -13,6 +13,7 @@
     sidebarWindow = { start: 0, end: 0, paddingTop: 0, paddingBottom: 0 },
     selectedProject = null,
     foregroundProjectId = null,
+    utilityOpen = false,
     dark = false,
     ctxMenuProjectId = null,
     getSessionsForProject = () => [],
@@ -110,24 +111,45 @@
 
   {#each sidebarRows.slice(sidebarWindow.start, sidebarWindow.end) as row (row.key)}
     {#if row.type === 'header'}
-      <div class="px-3.5 pt-8 pb-1.5">
-        <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/35">{row.group.label}</span>
+      <!-- Drawer guide card: a sentence-case tab chip sitting on a hairline
+           that runs to the rail edge, carrying the group's project count.
+           Fixed 42px tall — the virtualized layout counts on it. -->
+      <div class="h-[42px] flex items-end pl-1 -mr-1.5" data-testid="sidebar-group-header">
+        <div class="flex-1 flex items-end border-b border-white/[0.07]">
+          <span class="sidebar-guide-tab">
+            <span>{row.group.label}</span>
+            <span class="sidebar-guide-count">{row.group.items.length}</span>
+          </span>
+        </div>
       </div>
     {:else}
       {@const project = row.project}
       {@const selected = selectedProject && project.id === selectedProject.id}
+      {@const pulled = Boolean(selected && !utilityOpen)}
       {@const foregroundActive = foregroundProjectId && project.id === foregroundProjectId}
       {@const projectSessions = getSessionsForProject(project.path)}
       {@const indicators = toolIndicators(projectSessions)}
       {@const workflow = workflowBadge(projectSessions)}
       {@const secondaryBranch = branchLine(project)}
+      <!-- Selected rows speak the drawer language: pulled (panel material,
+           edge scoops) while the panel shows this project; held (quiet fill)
+           while a utility surface occupies the panel. The 3px selection
+           handle survives both. The transition is colors-only so the pulled
+           width/radius and the scoops change in the same instant instead of
+           the corners popping in over an animating edge. -->
       <button
         data-testid="project-item"
         data-project-id={project.id}
-        class="w-full px-3 rounded-md text-left transition-all duration-75 cursor-pointer
-          focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:ring-inset
+        class="w-full px-3 rounded-md text-left transition-colors duration-75 cursor-pointer
+          focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/70 focus-visible:ring-inset
           {secondaryBranch ? 'h-[50px] py-1.5' : 'h-[36px]'}
-          {selected ? 'bg-white/[0.08]' : ctxMenuProjectId === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintForSessions(projectSessions)}`} relative overflow-hidden"
+          {pulled
+            ? 'sidebar-row-pulled'
+            : selected
+              ? 'bg-white/[0.06] overflow-hidden'
+              : ctxMenuProjectId === project.id
+                ? 'bg-white/[0.08] overflow-hidden'
+                : `hover:bg-white/[0.04] overflow-hidden ${rowTintForSessions(projectSessions)}`} relative"
         onclick={() => onProjectClick(project)}
         oncontextmenu={(e) => onProjectContextMenu(e, project, projectSessions)}
         onkeydown={(e) => {
@@ -146,7 +168,7 @@
           {/if}
           <span class="min-w-0 flex-1">
             <span class="flex min-w-0 items-center gap-2">
-              <span class="text-[14px] truncate flex-1 min-w-0 {selected ? 'font-medium text-white' : 'text-white/75'}">{project.name}</span>
+              <span class="sidebar-row-name text-[14px] truncate flex-1 min-w-0 {selected ? 'font-medium text-white' : 'text-white/75'}">{project.name}</span>
               {#if indicators.length > 0}
                 <span class="flex items-center gap-1 shrink-0">
                   {#each indicators as ind}
@@ -239,13 +261,13 @@
                 </span>
               {/if}
               {#if project.isDirty}
-                <span class="w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
+                <span class="sidebar-dirty-dot w-[5px] h-[5px] rounded-full bg-warning-400 shrink-0"></span>
               {/if}
             </span>
             {#if secondaryBranch}
               <span
                 data-testid="sidebar-branch-line"
-                class="mt-0.5 block min-w-0 truncate pl-0.5 text-[10px] font-mono {selected ? 'text-white/35' : 'text-white/20'}"
+                class="sidebar-branch-line mt-0.5 block min-w-0 truncate pl-0.5 text-[10px] font-mono {selected ? 'text-white/35' : 'text-white/20'}"
               >⑂ {secondaryBranch}</span>
             {/if}
           </span>
@@ -260,6 +282,10 @@
             class="sidebar-foreground-lines pointer-events-none absolute left-2 right-2 bottom-0 h-[2px] bg-brand-400"
             aria-hidden="true"
           ></span>
+        {/if}
+        {#if pulled}
+          <span class="sidebar-row-scoop sidebar-row-scoop-top" aria-hidden="true"></span>
+          <span class="sidebar-row-scoop sidebar-row-scoop-bottom" aria-hidden="true"></span>
         {/if}
       </button>
     {/if}

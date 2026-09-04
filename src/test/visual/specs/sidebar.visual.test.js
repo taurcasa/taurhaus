@@ -9,6 +9,17 @@ vi.mock('../../../lib/sessionStore.svelte.js', () => ({
   getSessionsForProject: vi.fn((projectPath) => currentScenario?.sessionStore?.sessionsByProject?.[projectPath] ?? []),
 }))
 
+// The ambient account signal is store-derived; scenarios that exercise the
+// footer badge force a reading instead of priming the whole account store.
+vi.mock('../../../lib/accountPresentation.js', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    ambientAccountSignal: (...args) =>
+      currentScenario?.accountSignal ?? actual.ambientAccountSignal(...args),
+  }
+})
+
 import Sidebar from '../../../lib/Sidebar.svelte'
 import { captureVisualBase64, renderVisual } from '../renderVisual.js'
 import { sidebarScenarios } from '../fixtures/sidebar.fixtures.js'
@@ -32,6 +43,7 @@ describe('Sidebar visual coverage', () => {
         projects: scenario.projects,
         selectedProject: scenario.selectedProject,
         daemonStatus: scenario.daemonStatus,
+        ...(scenario.props ?? {}),
       },
     })
 
@@ -59,7 +71,19 @@ describe('Sidebar visual coverage', () => {
 
     const selectedRow = screen.getByText(scenario.expected.selectedProjectName).closest('button')
     expect(selectedRow).toBeTruthy()
-    expect(selectedRow.className).toContain('bg-white/[0.08]')
+    if (scenario.expected.rowState === 'held') {
+      // A utility surface occupies the panel: the row demotes to held.
+      expect(selectedRow.className).not.toContain('sidebar-row-pulled')
+      expect(selectedRow.className).toContain('bg-white/[0.06]')
+    } else {
+      // With no utility surface open the selected row wears the pulled
+      // panel material.
+      expect(selectedRow.className).toContain('sidebar-row-pulled')
+    }
+
+    if (scenario.expected.accountsBadge) {
+      expect(screen.getByTestId('accounts-signal')).toHaveTextContent(scenario.expected.accountsBadge)
+    }
 
     const screenshotPath = `sidebar/${scenario.name}.png`
     const screenshotResult = await captureVisualBase64(screenshotPath, { clip: viewportClip })
