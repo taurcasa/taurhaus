@@ -9,6 +9,7 @@
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, fastClick, clickTestId } from '../helpers/navigation.js'
+import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
 import { WAIT_SHORT, WAIT_MEDIUM } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { assertTmuxIsolation } from '../helpers/laneTmux.js'
@@ -171,12 +172,10 @@ async function hasTestId(testId) {
   return await (await $(`[data-testid="${testId}"]`)).isExisting()
 }
 
-async function readTestIdTexts(testId) {
-  return await browser.execute((id) => {
-    return Array.from(document.querySelectorAll(`[data-testid="${id}"]`))
-      .map((element) => String(element.textContent ?? '').trim())
-      .filter(Boolean)
-  }, testId)
+async function readRuntimeTeamName() {
+  return await browser.execute(() => {
+    return document.querySelector('[data-testid="mesh-runtime-title"]')?.textContent?.trim() ?? ''
+  })
 }
 
 async function clickLastTestId(testId) {
@@ -186,25 +185,6 @@ async function clickLastTestId(testId) {
   await element.scrollIntoView().catch(() => {})
   await element.click()
   return true
-}
-
-async function setInlineBuilderTeamName(value = '') {
-  await clickTestId('mesh-builder-team-name-display')
-  const teamNameInput = await $('[data-testid="mesh-builder-team-name-input"]')
-  await browser.waitUntil(
-    async () => await teamNameInput.isExisting(),
-    { ...WAIT_SHORT, timeoutMsg: 'Inline team name input did not appear' }
-  )
-  const currentTeamName = String(await teamNameInput.getValue()).trim()
-  const dispatched = await browser.execute((nextValue) => {
-    const input = document.querySelector('[data-testid="mesh-builder-team-name-input"]')
-    if (!(input instanceof HTMLInputElement)) return false
-    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-    valueSetter?.call(input, nextValue)
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    return true
-  }, value || currentTeamName || 'e2e-template-ui-team')
-  if (!dispatched) throw new Error('Inline team name input was unavailable')
 }
 
 async function isConfirmDialogOpen() {
@@ -318,8 +298,9 @@ async function disbandRuntimeTeamIfE2E() {
     return false
   }
 
-  const runtimeTitles = await readTestIdTexts('mesh-runtime-title')
-  const teamName = runtimeTitles.find((title) => createdTeamNames.has(title)) ?? ''
+  // Regression: acd3c5aa weakened the cleanup guard by searching the DOM for
+  // an expected value instead of validating the rendered runtime team name.
+  const teamName = await readRuntimeTeamName()
   if (!createdTeamNames.has(teamName)) {
     blockedReason = `Refusing to disband runtime team not created by this spec: ${teamName || 'unknown'}`
     return false
@@ -416,8 +397,7 @@ async function ensureRuntimeMode(testContext) {
   if (!(await ensureMeshAvailable(testContext))) return null
 
   if (await hasTestId('mesh-mode-runtime')) {
-    const runtimeTitles = await readTestIdTexts('mesh-runtime-title')
-    const existingTeamName = runtimeTitles.find((title) => createdTeamNames.has(title)) ?? ''
+    const existingTeamName = await readRuntimeTeamName()
     if (!createdTeamNames.has(existingTeamName)) {
       skipRuntimeTest(testContext, `Refusing to reuse runtime team not created by this spec: ${existingTeamName || 'unknown'}`)
       return null
@@ -425,12 +405,7 @@ async function ensureRuntimeMode(testContext) {
     return existingTeamName
   }
 
-  try {
-    if (!(await ensureSetupMode(testContext))) return null
-  } catch (error) {
-    skipRuntimeTest(testContext, error?.message || 'Mesh did not enter setup mode')
-    return null
-  }
+  if (!(await ensureSetupMode(testContext))) return null
 
   if (!(await hasTestId('mesh-builder-lead-card'))) {
     const leadRoleId = await findLeadRoleId()
@@ -476,17 +451,15 @@ async function ensureRuntimeMode(testContext) {
     return null
   }
 
-  // Regression: acd3c5aa read the first matching title even when Shell's hidden
-  // copy preceded the visible runtime surface.
-  const runtimeTitleMatched = await browser.waitUntil(
-    async () => (await readTestIdTexts('mesh-runtime-title')).includes(teamName),
+  // Regression: acd3c5aa converted runtime-title selector drift into a skip;
+  // a missing or incorrect runtime title must fail the workflow loudly.
+  await browser.waitUntil(
+    async () => {
+      return await readRuntimeTeamName() === teamName
+    },
     { ...WAIT_MODE, timeoutMsg: `Mesh runtime title did not resolve to ${teamName}` }
-  ).then(() => true).catch(() => false)
-  if (!runtimeTitleMatched) {
-    skipRuntimeTest(testContext, `Mesh runtime title did not resolve to ${teamName}`)
-    return null
-  }
-  const runtimeTeamName = teamName
+  )
+  const runtimeTeamName = await readRuntimeTeamName()
   if (!runtimeTeamName.startsWith('e2e-')) {
     skipRuntimeTest(testContext, `Expected e2e runtime team, got: ${runtimeTeamName || '<empty>'}`)
     return null
@@ -970,6 +943,10 @@ describe('Template CRUD UI', () => {
   })
 
   after(async () => {
+    if (!(await closeSlideOverIfOpen())) {
+      throw new Error('Template CRUD UI left an active slideover open during teardown')
+    }
+
     for (const teamName of createdTeamNames) {
       if (!teamName.startsWith('e2e-')) continue
       await invokeTauriWithTimeout('coordination_disband_team', { teamName }, 2_500)

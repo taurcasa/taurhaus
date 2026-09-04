@@ -7,6 +7,8 @@
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, clickTestId, switchToTab } from '../helpers/navigation.js'
+import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
+import { clickActiveSlideOverTestId } from '../helpers/slideover.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { assertTmuxIsolation } from '../helpers/laneTmux.js'
@@ -83,18 +85,33 @@ async function openMeshTab() {
 async function disbandRuntimeTeamIfSafe() {
   if (!(await hasTestId('mesh-mode-runtime'))) return true
 
-  const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
-  const teamName = (await runtimeTitle.isExisting()) ? (await runtimeTitle.getText()).trim() : ''
+  await browser.waitUntil(
+    async () => {
+      const teamName = await browser.execute(() => {
+        return document.querySelector('[data-testid="mesh-runtime-title"]')?.textContent?.trim() ?? ''
+      })
+      return createdTeamNames.has(teamName)
+    },
+    { ...WAIT_MEDIUM, timeoutMsg: 'Runtime team title did not resolve to a team created by this spec' }
+  )
+  const teamName = await browser.execute(() => {
+    return document.querySelector('[data-testid="mesh-runtime-title"]')?.textContent?.trim() ?? ''
+  })
 
   if (!createdTeamNames.has(teamName)) {
     tier2SkipReason = `Refusing to disband runtime team not created by this spec: ${teamName || 'unknown'}`
     return false
   }
 
+  await clickTestId('mesh-runtime-more-toggle')
+  await browser.waitUntil(
+    async () => await hasTestId('mesh-runtime-disband'),
+    { ...WAIT_SHORT, timeoutMsg: 'Disband action did not appear' }
+  )
   await clickTestId('mesh-runtime-disband')
-  if (await hasTestId('confirm-dialog-confirm')) {
-    await clickTestId('confirm-dialog-confirm')
-  }
+  const confirm = await $('dialog[open][data-testid="confirm-dialog"] [data-testid="confirm-dialog-confirm"]')
+  await confirm.waitForExist({ timeout: WAIT_SHORT.timeout })
+  await confirm.click()
 
   await browser.waitUntil(
     async () => (await hasTestId('mesh-mode-empty')) || (await hasTestId('mesh-mode-setup')),
@@ -117,7 +134,9 @@ async function ensureSetupMode() {
   if (await hasTestId('mesh-mode-setup')) return true
 
   if (await hasTestId('mesh-mode-empty')) {
-    await clickTestId('mesh-builder-team-name-display')
+    // Regression: 17e0f9d1 made setup contingent on the inline input event;
+    // clicking the display alone leaves the builder in empty mode.
+    await setInlineBuilderTeamName()
   }
 
   await browser.waitUntil(
@@ -126,26 +145,6 @@ async function ensureSetupMode() {
   )
 
   return true
-}
-
-async function openCustomizerAndSetTeamName(teamName) {
-  await clickTestId('mesh-action-customize')
-  await browser.waitUntil(
-    async () => await hasTestId('team-customizer-panel'),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not open' }
-  )
-
-  const teamNameInput = await $('[data-testid="team-customizer-name-input"]')
-  await teamNameInput.waitForExist({ timeout: WAIT_MEDIUM.timeout })
-  await teamNameInput.clearValue()
-  await teamNameInput.setValue(teamName)
-
-  await clickTestId('team-customizer-save')
-
-  await browser.waitUntil(
-    async () => !(await hasTestId('team-customizer-panel')),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not close after apply' }
-  )
 }
 
 async function selectFirstNonEmptyOption(selector) {
@@ -267,8 +266,10 @@ describe('Mesh Workflow', () => {
       if (!setupReady) return this.skip()
 
       expect(await hasTestId('mesh-mode-setup')).toBe(true)
-      expect(await hasTestId('mesh-canvas')).toBe(true)
-      expect(await hasTestId('mesh-action-customize')).toBe(true)
+      // Regression: d35063e4 replaced the setup canvas with the roster builder
+      // shell while this workflow kept asserting the runtime-only canvas.
+      expect(await hasTestId('mesh-builder-shell')).toBe(true)
+      expect(await hasTestId('mesh-builder-team-name-display')).toBe(true)
       expect(await hasTestId('mesh-action-initialize')).toBe(true)
     })
 
@@ -282,7 +283,23 @@ describe('Mesh Workflow', () => {
       const teamName = `e2e-mesh-${uniqueSuffix}`
       const secondAgentName = `e2e-agent-${uniqueSuffix}`
 
-      await openCustomizerAndSetTeamName(teamName)
+      // Regression: 14793e0a moved team-name editing from the setup action bar
+      // into the roster builder's inline editor.
+      await setInlineBuilderTeamName(teamName)
+
+      // Regression: 14793e0a made the roster catalog authoritative; a lead
+      // must be selected explicitly before initialization can be enabled.
+      if (!(await hasTestId('mesh-builder-lead-card'))) {
+        const firstLead = await $(
+          '[data-testid="mesh-builder-role-section-leads"] button[data-testid^="mesh-builder-role-"]'
+        )
+        await firstLead.waitForExist({ timeout: WAIT_MEDIUM.timeout })
+        await firstLead.click()
+        await browser.waitUntil(
+          async () => await hasTestId('mesh-builder-lead-card'),
+          { ...WAIT_MEDIUM, timeoutMsg: 'Selected lead role did not populate the roster' }
+        )
+      }
 
       const initializeButton = await $('[data-testid="mesh-action-initialize"]')
       await initializeButton.waitForExist({ timeout: WAIT_MEDIUM.timeout })
@@ -323,27 +340,44 @@ describe('Mesh Workflow', () => {
       createdTeamName = teamName
       createdTeamNames.add(teamName)
 
-      await clickTestId('mesh-runtime-add-agent')
+      // Regression: 430e09ee removed the duplicate Add Agent button; runtime
+      // additions now begin from the primary action.
+      await clickTestId('mesh-runtime-primary-action')
       await browser.waitUntil(
         async () => await hasTestId('mesh-add-agent-form'),
         { ...WAIT_SHORT, timeoutMsg: 'Hot-add form did not appear' }
       )
+
+      // Regression: 372511aa replaced the runtime role select with role cards;
+      // hot-add remains disabled until the user chooses one.
+      const roleCardTestId = await browser.execute(() => {
+        const cards = Array.from(document.querySelectorAll('[data-testid^="mesh-add-agent-role-card-"]'))
+        const enabled = cards.find((card) => !card.disabled && card.getAttribute('aria-disabled') !== 'true')
+        return enabled?.getAttribute('data-testid') ?? null
+      })
+      if (!roleCardTestId) throw new Error('No enabled add-agent role card was available')
+      await clickActiveSlideOverTestId(roleCardTestId)
 
       const addAgentNameInput = await $('[data-testid="mesh-add-agent-name-input"]')
       await addAgentNameInput.clearValue()
       await addAgentNameInput.setValue(secondAgentName)
 
       const selectedAddProject = await selectFirstNonEmptyOption('[data-testid="mesh-add-agent-project-select"]')
-      if (!selectedAddProject) return this.skip()
+      if (!selectedAddProject) throw new Error('No add-agent project option was available')
 
+      await browser.waitUntil(
+        async () => await (await $('[data-testid="mesh-add-agent-submit"]')).isEnabled(),
+        { ...WAIT_MEDIUM, timeoutMsg: 'Add Agent button never became enabled' }
+      )
       await clickTestId('mesh-add-agent-submit')
 
+      // Regression: 372511aa left the initialization success message visible
+      // behind the add-agent form, so it cannot signal hot-add completion.
       await browser.waitUntil(
         async () => {
           const addError = await hasTestId('mesh-add-agent-error')
-          const runtimeMessage = await hasTestId('mesh-runtime-message')
           const formClosed = !(await hasTestId('mesh-add-agent-form'))
-          return addError || runtimeMessage || formClosed
+          return addError || formClosed
         },
         { ...WAIT_LONG, timeoutMsg: 'Hot-add did not update UI state' }
       )
@@ -352,12 +386,15 @@ describe('Mesh Workflow', () => {
         throw new Error(`Hot-add failed: ${await (await $('[data-testid="mesh-add-agent-error"]')).getText()}`)
       }
 
-      await clickTestId('mesh-runtime-disband')
-
-      if (await hasTestId('confirm-dialog-confirm')) {
-        await clickTestId('confirm-dialog-confirm')
+      // Regression: 430e09ee moved disband into the runtime overflow menu;
+      // reuse the safety-checked user flow for teardown.
+      if (!(await disbandRuntimeTeamIfSafe())) {
+        throw new Error(tier2SkipReason)
       }
 
+      if (await hasTestId('mesh-mode-setup') && await hasTestId('mesh-action-reset')) {
+        await clickTestId('mesh-action-reset')
+      }
       await browser.waitUntil(
         async () => await hasTestId('mesh-mode-empty'),
         { ...WAIT_LONG, timeoutMsg: 'Disband did not return mesh to empty mode' }
