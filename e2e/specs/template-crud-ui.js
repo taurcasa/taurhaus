@@ -822,30 +822,38 @@ describe('Template CRUD UI', () => {
       // Regression: 430e09ee removed the duplicate Add Agent action; active
       // teams expose the same flow through the runtime primary action.
       //
-      // Two hardenings, diagnosed separately under full-suite runs:
-      // - The form mounts through catalog IPC and misses WAIT_MEDIUM under
-      //   7-worker load while passing standalone — this once-per-suite mount
-      //   gets the XLONG budget.
-      // - Should the team genuinely vanish inside the window (a dead-session
-      //   self-heal disband is legitimate here: tier-1 members run
-      //   unauthenticated and die fast), rebuild once and retry; a second
-      //   loss fails loudly. NOTE for future readers: the spec's own cleanup
-      //   disbands the team AFTER a failure and BEFORE artifact capture, so a
-      //   "Team disbanded" banner in failure.png is usually the cleanup, not
-      //   the cause — check the app log for who issued the disband.
-      await clickTestId('mesh-runtime-primary-action')
+      // Diagnosed under full-suite load (app log shows ZERO IPC after the
+      // click): the 2s live-team-status poll re-renders the runtime view, so
+      // a single click can land on a just-replaced (stale) button element and
+      // vanish — standalone runs re-render less and never hit it. The open is
+      // therefore click-until-open (idempotent: the click opens one slide-over
+      // and the form check runs first), which survives any re-render timing.
+      // NOTE for future readers: the spec's own cleanup disbands the team
+      // AFTER a failure and BEFORE artifact capture, so a "Team disbanded"
+      // banner in failure.png is usually the cleanup, not the cause — check
+      // the app log for who issued the disband.
       try {
         await browser.waitUntil(
-          async () => await hasTestId('mesh-add-agent-form'),
+          async () => {
+            if (await hasTestId('mesh-add-agent-form')) return true
+            await clickTestId('mesh-runtime-primary-action')
+            return await hasTestId('mesh-add-agent-form')
+          },
           { ...WAIT_XLONG, timeoutMsg: 'Add agent form did not open' }
         )
       } catch (error) {
+        // A dead-session self-heal disband inside the window is legitimate
+        // product behavior in tier-1 (members run unauthenticated and die
+        // fast): rebuild the runtime team once; a second loss fails loudly.
         if (await hasTestId('mesh-mode-runtime')) throw error
         const rebuiltTeam = await ensureRuntimeMode(this)
         if (!rebuiltTeam) return
-        await clickTestId('mesh-runtime-primary-action')
         await browser.waitUntil(
-          async () => await hasTestId('mesh-add-agent-form'),
+          async () => {
+            if (await hasTestId('mesh-add-agent-form')) return true
+            await clickTestId('mesh-runtime-primary-action')
+            return await hasTestId('mesh-add-agent-form')
+          },
           { ...WAIT_XLONG, timeoutMsg: 'Add agent form did not open after team rebuild' }
         )
       }
