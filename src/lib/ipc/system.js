@@ -720,10 +720,20 @@ export function getSettings() {
   return invokeOrMock('get_settings', undefined, () => MOCK_SETTINGS).then(normalizeSettings)
 }
 
+// The terminal contract is backend-owned runtime state: attached fresh on every
+// read, replaced wholesale on save, and the normalized frontend copy no longer
+// matches the backend's wire spelling — sending it back can only break the save.
+export function settingsUpdatePayload(settings) {
+  if (!settings || typeof settings !== 'object') return settings
+  const { terminal_contract: _omitted, ...payload } = settings
+  return payload
+}
+
 export function updateSettings(settings) {
-  return invokeOrMock('update_settings', { settings }, () => ({
+  const payload = settingsUpdatePayload(settings)
+  return invokeOrMock('update_settings', { settings: payload }, () => ({
     ...MOCK_SETTINGS,
-    ...settings,
+    ...payload,
   })).then(normalizeSettings)
 }
 
