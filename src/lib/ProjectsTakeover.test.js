@@ -444,6 +444,77 @@ describe('ProjectsTakeover', () => {
     expect(onClose).toHaveBeenCalledTimes(2)
   })
 
+  it('moves focus into the surface on open and restores the trigger on close', async () => {
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Open projects'
+    document.body.appendChild(trigger)
+    trigger.focus()
+
+    const { unmount } = render(ProjectsTakeover, { props: { dark: false } })
+
+    const surface = screen.getByTestId('projects-takeover')
+    await waitFor(() => {
+      expect(surface).toHaveFocus()
+    })
+
+    unmount()
+    expect(trigger).toHaveFocus()
+    trigger.remove()
+  })
+
+  it('holds the surface open on Escape while a half-typed create name would be lost', async () => {
+    const onClose = vi.fn()
+    render(ProjectsTakeover, { props: { dark: false, onClose } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await fireEvent.click(screen.getByTestId('mode-create'))
+    await fireEvent.input(screen.getByTestId('create-name-input'), { target: { value: 'half-typed' } })
+
+    await fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+
+    // Clearing the field lifts the guard; the doorway's Esc hint holds again.
+    await fireEvent.input(screen.getByTestId('create-name-input'), { target: { value: '' } })
+    await fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('holds the surface open on Escape while a typed manual path would be lost', async () => {
+    const onClose = vi.fn()
+    scanDirectory.mockResolvedValueOnce([])
+    render(ProjectsTakeover, { props: { dark: false, onClose } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await waitFor(() => {
+      expect(screen.getByTestId('empty-scan')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getAllByTestId('enter-manual-mode')[0])
+
+    await fireEvent.input(screen.getByTestId('manual-path-input'), { target: { value: '/typed/by/hand' } })
+    await fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('holds the surface open on Escape while a scan is in flight', async () => {
+    const onClose = vi.fn()
+    let resolveScan
+    scanDirectory.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveScan = resolve })
+    )
+    render(ProjectsTakeover, { props: { dark: false, onClose } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+
+    resolveScan([])
+    await waitFor(() => {
+      expect(screen.getByTestId('empty-scan')).toBeInTheDocument()
+    })
+    await fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('clears pending remove-confirm timer on unmount', async () => {
     vi.useFakeTimers()
 

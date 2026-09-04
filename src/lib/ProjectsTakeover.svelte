@@ -85,6 +85,29 @@
   let validation = $state(null)   // { exists, isGitRepo, isRegistered } or null
   let validating = $state(false)
 
+  // Focus: the surface takes focus on open (so Esc and arrows land here
+  // immediately) and hands it back to whatever opened it on close — the one
+  // piece of the modal's focus machinery a takeover still owes its trigger.
+  let rootEl = $state(null)
+  let restoreFocusElement = null
+  $effect(() => {
+    if (!rootEl) return
+    if (
+      !restoreFocusElement &&
+      document.activeElement instanceof HTMLElement &&
+      !rootEl.contains(document.activeElement)
+    ) {
+      restoreFocusElement = document.activeElement
+    }
+    rootEl.focus()
+    return () => {
+      if (restoreFocusElement?.isConnected) {
+        restoreFocusElement.focus()
+      }
+      restoreFocusElement = null
+    }
+  })
+
   const registeredPaths = $derived(new Set(registered.map(p => p.path)))
   const selectableProjects = $derived(discovered.filter(p => !registeredPaths.has(p.path)))
   const selectedCount = $derived(selected.size)
@@ -108,12 +131,26 @@
     }
   })
 
-  // Keyboard: Escape closes the surface, exactly as Settings handles it.
+  // Keyboard: Escape closes the surface, as Settings handles it — except
+  // while closing would lose work. The guard set: an in-flight scan,
+  // registration or creation; a half-typed create name; a manual path that
+  // differs from the remembered prefill (i.e. typed or picked this visit).
+  // Scan results are deliberately not guarded — they are one click to
+  // regenerate, and Esc refusing to close over a visible list reads as
+  // broken. A shared Esc-priority architecture across surfaces and transient
+  // overlays is a follow-up; this guard only protects real data loss.
+  const escGuarded = $derived(
+    scanning ||
+      registering ||
+      creating ||
+      createProjectName.trim().length > 0 ||
+      (manualPath.trim().length > 0 && manualPath.trim() !== rememberedProjectDialogPath)
+  )
   $effect(() => {
     const handler = (e) => {
-      if (e.key === 'Escape') {
-        onClose()
-      }
+      if (e.key !== 'Escape') return
+      if (escGuarded) return
+      onClose()
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
@@ -415,7 +452,12 @@
   }
 </script>
 
-<div class="flex-1 overflow-y-auto" data-testid="projects-takeover">
+<div
+  bind:this={rootEl}
+  class="flex-1 overflow-y-auto outline-none"
+  tabindex="-1"
+  data-testid="projects-takeover"
+>
   <SurfaceDoorway
     {dark}
     title="Projects"
