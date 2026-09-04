@@ -9,6 +9,7 @@ use crate::coordination::stores::telemetry::{
     read_task_telemetry, EffortSwitchOutcome, RoutingTelemetryEvent,
 };
 use crate::coordination::stores::TeamRootRegistry;
+use taurhaus_lib::task_scanner::claude_index::ClaudeSourceIndex;
 
 #[derive(Debug, Default)]
 struct ReportStats {
@@ -73,6 +74,7 @@ pub fn render_routing_report(
     let mut output = format!(
         "Routing telemetry: last {days} days\n\
          Wall-time is the Stage 1 cost proxy; tokens are not collected.\n\n\
+         Accepted remains 0 until the mesh ledger writes metadata.rulings.\n\n\
          Role/model\n\
          role | model | tasks_touched | accepted | completed_unruled | relaunches | effort_switches | nudges | staled | median_wall_time\n"
     );
@@ -220,11 +222,8 @@ fn increment_counts(stats: &mut ReportStats, effort: bool, nudge: bool, stale: b
 }
 
 fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Option<LedgerVerdict> {
-    let path = teams_dir
-        .parent()?
-        .join("tasks")
-        .join(team_name)
-        .join(format!("{task_id}.json"));
+    let path =
+        ClaudeSourceIndex::team_tasks_dir(teams_dir, team_name)?.join(format!("{task_id}.json"));
     let metadata = fs::metadata(&path).ok()?;
     if metadata.len() > 1_048_576 {
         return None;
@@ -232,11 +231,9 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
     let task =
         taurhaus_lib::task_scanner::claude::parse_task_file(&path, Some(team_name.to_string()))
             .ok()??;
-    let terminal =
-        crate::coordination::operational_context::is_terminal_task_status(&task.status.to_string());
     Some(LedgerVerdict {
-        accepted_eligible: terminal
-            && task.status == taurhaus_lib::task_scanner::TaskStatus::Completed,
+        // Stale is terminal for observation, but Amendment 4 accepts only completion.
+        accepted_eligible: task.status == taurhaus_lib::task_scanner::TaskStatus::Completed,
         has_review_ruling: task.has_review_ruling,
     })
 }
@@ -407,6 +404,9 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains("Wall-time is the Stage 1 cost proxy; tokens are not collected."));
+        assert!(
+            report.contains("Accepted remains 0 until the mesh ledger writes metadata.rulings.")
+        );
         assert!(
             report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s")
         );

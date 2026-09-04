@@ -2139,10 +2139,9 @@ mod tests {
             .parent()
             .expect("teams root parent")
             .join("tasks/deadline-team/42.json");
-        let mut task: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(&task_path).expect("read mesh task"),
-        )
-        .expect("parse mesh task");
+        let mut task: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&task_path).expect("read mesh task"))
+                .expect("parse mesh task");
         task["status"] = serde_json::Value::String("completed".to_string());
         task["metadata"] = serde_json::json!({
             "completed_at": "2026-09-04T10:30:00Z",

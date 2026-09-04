@@ -44,6 +44,11 @@ impl ClaudeSourceIndex {
             .and_then(|root| root.path.parent())
             .map(|account_dir| account_dir.join("teams"))
     }
+
+    /// Resolve the task directory paired with an account-scoped teams root.
+    pub fn team_tasks_dir(teams_dir: &Path, team_name: &str) -> Option<PathBuf> {
+        Some(teams_dir.parent()?.join("tasks").join(team_name))
+    }
 }
 
 /// Build Claude source index using default user directories and live sessions.

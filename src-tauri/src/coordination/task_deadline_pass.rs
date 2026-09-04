@@ -56,7 +56,8 @@ pub(crate) fn apply_task_deadlines(
 }
 
 fn observe_terminal_tasks(teams_dir: &Path, team_name: &str, now: DateTime<Utc>) {
-    let Some(tasks_dir) = crate::coordination::pipelines::mesh_tasks_dir(teams_dir, team_name)
+    let Some(tasks_dir) =
+        crate::task_scanner::claude_index::ClaudeSourceIndex::team_tasks_dir(teams_dir, team_name)
     else {
         return;
     };
@@ -73,10 +74,9 @@ fn observe_terminal_tasks(teams_dir: &Path, team_name: &str, now: DateTime<Utc>)
         if metadata.len() > 1_048_576 {
             continue;
         }
-        let Ok(Some(task)) = crate::task_scanner::claude::parse_task_file(
-            &path,
-            Some(team_name.to_string()),
-        ) else {
+        let Ok(Some(task)) =
+            crate::task_scanner::claude::parse_task_file(&path, Some(team_name.to_string()))
+        else {
             continue;
         };
         if !crate::coordination::operational_context::is_terminal_task_status(
