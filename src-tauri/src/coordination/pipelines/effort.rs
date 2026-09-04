@@ -445,6 +445,7 @@ impl CoordinationOrchestrator {
                     task_effort::emit_effort_resume(
                         &self.teams_dir,
                         "effort.resume.failed",
+                        crate::coordination::stores::telemetry::EffortSwitchOutcome::Failed,
                         team_name,
                         &member.name,
                         &pending.task_id,
@@ -462,6 +463,7 @@ impl CoordinationOrchestrator {
             task_effort::emit_effort_resume(
                 &self.teams_dir,
                 "effort.resume.started",
+                crate::coordination::stores::telemetry::EffortSwitchOutcome::Started,
                 team_name,
                 &member.name,
                 &pending.task_id,
@@ -485,6 +487,7 @@ impl CoordinationOrchestrator {
                 task_effort::emit_effort_resume(
                     &self.teams_dir,
                     "effort.resume.failed",
+                    crate::coordination::stores::telemetry::EffortSwitchOutcome::Failed,
                     team_name,
                     &member.name,
                     &pending.task_id,
@@ -518,6 +521,7 @@ impl CoordinationOrchestrator {
                     task_effort::emit_effort_resume(
                         &self.teams_dir,
                         "effort.resume.completed",
+                        crate::coordination::stores::telemetry::EffortSwitchOutcome::Completed,
                         team_name,
                         &member.name,
                         &pending.task_id,
@@ -541,6 +545,7 @@ impl CoordinationOrchestrator {
                     task_effort::emit_effort_resume(
                         &self.teams_dir,
                         "effort.resume.failed",
+                        crate::coordination::stores::telemetry::EffortSwitchOutcome::Failed,
                         team_name,
                         &member.name,
                         &pending.task_id,
@@ -769,6 +774,7 @@ fn pending_member_effort_outcome(
         task_effort::emit_effort_resume(
             &orchestrator.teams_dir,
             "effort.resume.failed",
+            crate::coordination::stores::telemetry::EffortSwitchOutcome::Failed,
             team_name,
             &member.name,
             &assigned.task_id,

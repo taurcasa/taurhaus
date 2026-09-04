@@ -22,6 +22,15 @@ const UNATTRIBUTED_SIDECAR: &str = "_unattributed";
 const MAX_SIDECAR_BYTES: u64 = 8 * 1_048_576;
 static WRITE_FAILURE_REPORTED: AtomicBool = AtomicBool::new(false);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffortSwitchOutcome {
+    Started,
+    Completed,
+    Failed,
+    BudgetExhausted,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum RoutingTelemetryEvent {
@@ -43,7 +52,7 @@ pub enum RoutingTelemetryEvent {
         attempt: u32,
         from_effort: Option<String>,
         to_effort: String,
-        outcome: String,
+        outcome: EffortSwitchOutcome,
     },
     NudgeSent {
         timestamp: DateTime<Utc>,
@@ -247,7 +256,7 @@ pub fn record_effort_switch(
     attempt: u32,
     from_effort: Option<&str>,
     to_effort: &str,
-    outcome: &str,
+    outcome: EffortSwitchOutcome,
 ) {
     append_task_telemetry_fail_soft(
         teams_dir,
@@ -260,7 +269,7 @@ pub fn record_effort_switch(
             attempt,
             from_effort: from_effort.map(ToString::to_string),
             to_effort: to_effort.to_string(),
-            outcome: outcome.to_string(),
+            outcome,
         },
     );
 }
@@ -405,7 +414,7 @@ mod tests {
 
     use super::{
         append_task_telemetry, read_task_telemetry, record_completion_observed,
-        record_deadline_action, record_effort_switch, record_launch_rendered,
+        record_deadline_action, record_effort_switch, record_launch_rendered, EffortSwitchOutcome,
         RoutingTelemetryEvent,
     };
 
@@ -566,7 +575,7 @@ mod tests {
             2,
             Some("medium"),
             "high",
-            "completed",
+            EffortSwitchOutcome::Completed,
         );
         record_deadline_action(&teams_dir, "routing-team", "42", "builder", 20, false);
 
@@ -576,9 +585,9 @@ mod tests {
             &events[0],
             RoutingTelemetryEvent::EffortSwitch {
                 attempt: 2,
-                outcome,
+                outcome: EffortSwitchOutcome::Completed,
                 ..
-            } if outcome == "completed"
+            }
         ));
         assert!(matches!(
             &events[1],

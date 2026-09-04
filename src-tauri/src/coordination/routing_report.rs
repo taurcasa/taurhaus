@@ -5,7 +5,9 @@ use std::path::Path;
 use chrono::{DateTime, Duration, Utc};
 
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::stores::telemetry::{read_task_telemetry, RoutingTelemetryEvent};
+use crate::coordination::stores::telemetry::{
+    read_task_telemetry, EffortSwitchOutcome, RoutingTelemetryEvent,
+};
 use crate::coordination::stores::TeamRootRegistry;
 
 #[derive(Debug, Default)]
@@ -151,9 +153,10 @@ fn accumulate_task(
 
     for event in events {
         let (counts_effort, counts_nudge, counts_stale) = match event {
-            RoutingTelemetryEvent::EffortSwitch { outcome, .. } if outcome == "completed" => {
-                (true, false, false)
-            }
+            RoutingTelemetryEvent::EffortSwitch {
+                outcome: EffortSwitchOutcome::Completed,
+                ..
+            } => (true, false, false),
             RoutingTelemetryEvent::NudgeSent { .. } => (false, true, false),
             RoutingTelemetryEvent::TaskStaled { .. } => (false, false, true),
             _ => continue,
