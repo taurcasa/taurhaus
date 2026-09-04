@@ -80,6 +80,45 @@ The current daemon protocol is **24** (`daemon/protocol.rs`). Protocols 11–14 
 | Team-daemon credential | `teams/<team>/state/control_auth/<member>.json` | JSON | mesh | mesh | mesh-owned | Taurhaus reads nothing from the file. Before `mesh team-daemon start` it checks three gates and logs `coordination.team_daemon.skipped` with the first failing `reason`: file present (`missing_lead_control_credential`), lead's `config.json` carries a non-empty `controlAuthTokenHash` (`missing_lead_control_auth_token_hash`), lead is not `isActive: false` (`inactive_lead_control_identity`) |
 | Seam leases | `teams/<team>/state/leases/<name>.json` | JSON | mesh | mesh, Taurhaus (read-only, best-effort) | mesh-owned | Compaction cards and resume onboarding list the member's held/handback-ready seams and waiting positions. Unlocked filename-keyed reads: oversized and zero-byte records skipped (zero-byte is mesh's first-acquire transient), unreadable records warn-skipped, an absent dir composes the card exactly as before |
 | Member compaction state | `teams/<team>/state/compaction/<member>.json` | JSON | Taurhaus | Taurhaus | Derived idempotency/audit state | Last compaction handled + terminal result |
+| Routing telemetry | `teams/<team>/state/telemetry/<task_id>.jsonl` | JSONL | Taurhaus daemon / WSL-native hook process | `just routing-report` | Derived observational history | Append-only per-task launch, effort, deadline, and completion observations. `_unattributed.jsonl` holds the rare rendered launch whose seam cannot name one task |
+
+#### Telemetry (Stage 1)
+
+Routing telemetry is observational only. It is appended beside operations the
+daemon already performs and is never consulted by launch rendering, assignment,
+effort, deadline, or scheduling decisions. The app process does not write these
+files. A write failure produces one process-bounded warning and never changes
+the result of the wrapped operation.
+
+Each team root stores small per-task sidecars at
+`teams/<team>/state/telemetry/<task_id>.jsonl`; they do not rotate. Readers are
+tolerant: a missing file, an oversized sidecar, or an individual corrupt or
+partially written line is skipped. The event vocabulary is:
+
+- `launch_rendered`: member, role, tool, and the model and applied effort from
+  `RenderedLaunch`, plus the model catalog's capability tier and rank.
+- `effort_switch`: the existing assignment-effort outcome, attempt number, and
+  previous/requested effort.
+- `nudge_sent` and `task_staled`: the already-committed deadline action and its
+  deadline fields.
+- `completion_observed`: a terminal status seen by the daemon task scanner and
+  whether that parsed ledger record carried a review ruling.
+
+The operational snapshot normally identifies the one task held by a member at
+the launch seam. Taurhaus does not guess if that attribution is unavailable:
+an attributable task uses its own sidecar; a genuinely unattributed rendered
+launch uses `_unattributed.jsonl` with `task_id: null` and is excluded from
+task-level report rows.
+
+`just routing-report [DAYS]` (30 days by default) enumerates the default and all
+registered team roots, tolerantly reads the sidecars, and rejoins every task to
+the current mesh ledger record. It prints per `(role, model)` rows and a
+per-model rollup with tasks touched, accepted, completed-but-unruled,
+relaunches, completed effort switches, nudges, stale actions, and median elapsed
+time from first render to completion observation. Acceptance follows Amendment
+4 exactly: only ledger status `completed` with a sequenced review ruling counts.
+A bare completed status is `completed_unruled`, never accepted. Tokens are not
+collected in Stage 1; the report header identifies wall-time as the cost proxy.
 
 ### 3. External Tool Data Taurhaus Observes But Does Not Own
 

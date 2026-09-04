@@ -2221,6 +2221,20 @@ mod tests {
     }
 
     #[test]
+    fn routing_design_marks_stage_one_as_shipped_when_merged() {
+        let design = include_str!("../../../docs/design/role-first-model-routing.md");
+        let stage_one = design
+            .split_once("### Stage 1 — telemetry: make cost-per-accepted-task measurable")
+            .expect("Stage 1 roadmap row")
+            .1
+            .split_once("### Stage 2")
+            .expect("end of Stage 1 roadmap row")
+            .0;
+
+        assert!(stage_one.contains("**Status: shipped when merged.**"));
+    }
+
+    #[test]
     fn model_catalog_validates_effort_per_tool_and_codex_model() {
         assert!(ModelCatalog::supports_effort(
             CliTool::Claude,
