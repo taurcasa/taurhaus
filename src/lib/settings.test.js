@@ -687,11 +687,11 @@ describe('Settings component', () => {
     })
   })
 
-  it('Terminal section has heading "Terminal & Sessions"', async () => {
+  it('Terminal section has heading "Terminal & sessions"', async () => {
     render(Settings, { props: defaultProps() })
     await waitFor(() => {
       const section = screen.getByTestId('settings-terminal')
-      expect(section.textContent).toContain('Terminal & Sessions')
+      expect(section.textContent).toContain('Terminal & sessions')
     })
   })
 
