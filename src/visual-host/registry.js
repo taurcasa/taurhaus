@@ -9,6 +9,7 @@ import RosterDesignAHost from './hosts/RosterDesignAHost.svelte'
 import RosterDesignBHost from './hosts/RosterDesignBHost.svelte'
 import RosterDesignCHost from './hosts/RosterDesignCHost.svelte'
 import ShellPopupsHost from './hosts/ShellPopupsHost.svelte'
+import SidebarBridgeHost from './hosts/SidebarBridgeHost.svelte'
 import SidebarHost from './hosts/SidebarHost.svelte'
 import WorkflowRunsHost from './hosts/WorkflowRunsHost.svelte'
 import { configureVisualHostState } from './mockState.js'
@@ -22,6 +23,7 @@ import { meshTeamBuilderScenarios } from '../test/visual/fixtures/meshTeamBuilde
 import { modelSelectScenarios } from '../test/visual/fixtures/modelSelect.fixtures.js'
 import { rosterDesignScenarios } from '../test/visual/fixtures/rosterDesigns.fixtures.js'
 import { shellPopupsScenarios } from '../test/visual/fixtures/shellPopups.fixtures.js'
+import { sidebarBridgeScenarios } from '../test/visual/fixtures/sidebarBridge.fixtures.js'
 import { sidebarScenarios } from '../test/visual/fixtures/sidebar.fixtures.js'
 import { workflowRunsScenarios } from '../test/visual/fixtures/workflowRuns.fixtures.js'
 
@@ -92,6 +94,13 @@ export const visualRegistry = [
     label: 'Sidebar',
     component: SidebarHost,
     scenarios: sidebarScenarios,
+    applyMocks: applySidebarMocks,
+  },
+  {
+    id: 'sidebar-bridge',
+    label: 'Sidebar bridge (rail · gutter · panel junction)',
+    component: SidebarBridgeHost,
+    scenarios: sidebarBridgeScenarios,
     applyMocks: applySidebarMocks,
   },
   {

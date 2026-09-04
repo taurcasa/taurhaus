@@ -28,6 +28,7 @@
     TEAM_ACCOUNT_NOTE,
   } from './accountMenu.js'
   import { toolLabel, tools } from './toolRegistry.js'
+  import { bridgeFrame, supportsScrollDrivenTracking } from './sidebarBridge.js'
   import { RAIL_ICONS } from './railIcons.js'
   import SidebarProjectList from './SidebarProjectList.svelte'
   import ContextMenu from './ContextMenu.svelte'
@@ -63,6 +64,19 @@
   let projectListEl = $state(null)
   let projectListScrollTop = $state(0)
   let projectListViewportHeight = $state(480)
+
+  // --- Pulled-row bridge ---
+  // The elements that continue the pulled row's material across the frame
+  // gutter into the main panel. They are driven imperatively (measured
+  // rects written straight to style) rather than through template state:
+  // the geometry is a paint concern that must update in the same frame as
+  // a scroll, and no other component state depends on it.
+  let asideEl = $state(null)
+  let bridgeClipEl = $state(null)
+  let bridgeStripEl = $state(null)
+  let laneClipEl = $state(null)
+  let laneStripEl = $state(null)
+  const bridgeUsesScrollTimeline = supportsScrollDrivenTracking()
   const sidebarProjection = $derived.by(() => buildSidebarProjection(projects, filterQuery))
   const filteredProjects = $derived(sidebarProjection.filtered)
   const groupedProjects = $derived(sidebarProjection.grouped)
@@ -125,6 +139,18 @@
   // pulled material instead — and the selected row demotes to "held".
   const utilityOpen = $derived(settingsOpen || accountsOpen || projectsOpen)
 
+  // Whether the rail can currently be showing a pulled row at all. This
+  // mirrors the template's list branches — the loading skeleton, the error
+  // state, and the empty list render no rows — plus the drawer law (a
+  // utility surface demotes the row to held). The bridge's existence keys
+  // off this, so a list reload or error hides it in the same flush that
+  // removes the rows; the DOM query in updateBridge covers what remains
+  // (filter with no matches, a virtualized row out of its window).
+  const bridgePossible = $derived(
+    !sidebarLoading && !sidebarError && !utilityOpen
+      && Boolean(selectedProject) && projects.length > 0
+  )
+
   function showHoverCard(project, sessions, el) {
     clearTimeout(hoverTimeout)
     if (hoverCard) {
@@ -165,6 +191,100 @@
     return () => window.removeEventListener('resize', updateViewport)
   })
 
+  /**
+   * The main panel's left edge, anchored on the data-shell-main-panel
+   * attribute ShellMainPanel carries (the bridge host mirrors it). The
+   * attribute, not the tag, is the contract: a wrapper around the panel
+   * would silently break a structural `:scope > main` lookup. Where no
+   * panel exists the geometry falls back to the frame gap token.
+   */
+  function measureBridgePanelLeft() {
+    const panel = asideEl?.parentElement?.querySelector('[data-shell-main-panel]')
+    return panel ? panel.getBoundingClientRect().left : null
+  }
+
+  function positionBridgeStrip(el, strip, scrollRange) {
+    el.style.top = `${strip.top}px`
+    el.style.height = `${strip.height}px`
+    el.style.setProperty('--rail-scroll-range', `${scrollRange}px`)
+    if (!bridgeUsesScrollTimeline) {
+      el.style.transform = `translateY(${-(projectListEl?.scrollTop ?? 0)}px)`
+    }
+  }
+
+  function applyBridgeFrame(frame) {
+    if (!bridgeClipEl) return
+    if (!frame.active) {
+      delete bridgeClipEl.dataset.bridgeActive
+      if (laneClipEl) delete laneClipEl.dataset.bridgeActive
+      return
+    }
+    const { wrapper, strip, lane, scrollRange } = frame
+    bridgeClipEl.dataset.bridgeActive = 'true'
+    bridgeClipEl.style.left = `${wrapper.left}px`
+    bridgeClipEl.style.top = `${wrapper.top}px`
+    bridgeClipEl.style.width = `${wrapper.width}px`
+    bridgeClipEl.style.height = `${wrapper.height}px`
+    positionBridgeStrip(bridgeStripEl, strip, scrollRange)
+    if (!laneClipEl || !laneStripEl) return
+    if (lane) {
+      laneClipEl.dataset.bridgeActive = 'true'
+      laneClipEl.style.left = `${lane.left}px`
+      laneClipEl.style.top = `${lane.top}px`
+      laneClipEl.style.width = `${lane.width}px`
+      laneClipEl.style.height = `${lane.height}px`
+      positionBridgeStrip(laneStripEl, lane.strip, scrollRange)
+    } else {
+      delete laneClipEl.dataset.bridgeActive
+    }
+  }
+
+  /**
+   * One measurement pass: find the pulled row in the DOM (`held` renders no
+   * `.sidebar-row-pulled`, so a utility surface hides the bridge by
+   * construction) and lay the bridge over the gutter. `bridgePossible`
+   * gates existence first — the loading/error/empty branches replace the
+   * rows without touching the selection, and a stale strip must never keep
+   * painting across the gutter. The row's rect is the source of truth —
+   * the virtualizer's offsets assume 36px rows while a branch-line row
+   * renders 50px.
+   */
+  function updateBridge() {
+    if (!bridgeClipEl || !bridgeStripEl) return
+    if (!bridgePossible) {
+      applyBridgeFrame({ active: false })
+      return
+    }
+    applyBridgeFrame(bridgeFrame({
+      rowRect: projectListEl?.querySelector('.sidebar-row-pulled')?.getBoundingClientRect() ?? null,
+      railRect: asideEl?.getBoundingClientRect() ?? null,
+      listRect: projectListEl?.getBoundingClientRect() ?? null,
+      panelLeft: measureBridgePanelLeft(),
+      scrollTop: projectListEl?.scrollTop ?? 0,
+      scrollHeight: projectListEl?.scrollHeight ?? 0,
+      clientHeight: projectListEl?.clientHeight ?? 0,
+    }))
+  }
+
+  // Remeasure after every flush that can move, replace, or forbid the
+  // pulled row: the existence gate (loading/error/empty/utility/selection
+  // cleared), the selected identity (which row wears the class), list
+  // content and grouping, the virtual window (which reads the scroll offset
+  // only while virtualized — exactly when scrolling can mount/unmount the
+  // row; the strip base itself is scroll-invariant, and the compositor or
+  // the scroll handler owns the per-frame translation), and the measured
+  // viewport. The element refs are tracked so the first pass runs on mount.
+  $effect(() => {
+    void bridgePossible
+    void selectedProject
+    void sidebarRows
+    void sidebarWindow
+    void projectListViewportHeight
+    void asideEl
+    void projectListEl
+    updateBridge()
+  })
+
   $effect(() => {
     return () => {
       if (hoverTimeout) {
@@ -200,6 +320,10 @@
     hoverCard = null
     if (hoverTimeout) clearTimeout(hoverTimeout)
     projectListScrollTop = event.currentTarget?.scrollTop || 0
+    // Without scroll-driven animations the bridge strip's -scrollTop
+    // translation is written here, synchronously with the scroll event, so
+    // it lands in the same frame as the row's own movement.
+    if (!bridgeUsesScrollTimeline) updateBridge()
   }
 
   function resolveSessionProjectId(session, fallbackProject = null) {
@@ -783,7 +907,11 @@
   })
 </script>
 
-<aside class="w-[252px] bg-brand-950 rounded-lg flex flex-col shrink-0 border border-white/[0.06] overflow-hidden">
+<aside
+  bind:this={asideEl}
+  class="sidebar-rail w-[252px] bg-brand-950 rounded-lg flex flex-col shrink-0 border border-white/[0.06] overflow-hidden"
+  data-bridge-tracking={bridgeUsesScrollTimeline ? 'timeline' : 'js'}
+>
 
   <!-- Filter -->
   <div class="px-3 pt-3 pb-1">
@@ -831,7 +959,7 @@
   <!-- Project list -->
   <div
     bind:this={projectListEl}
-    class="flex-1 overflow-y-auto px-1.5 pt-1"
+    class="sidebar-rail-scroll flex-1 overflow-y-auto px-1.5 pt-1"
     onscroll={handleProjectListScroll}
     data-testid="sidebar-project-scroll"
   >
@@ -934,6 +1062,38 @@
         {/if}
       </span>
     {/if}
+  </div>
+
+  <!-- Pulled-row bridge: the selected row's panel material continuing across
+       the frame gutter into the main panel. Fixed-position so it escapes the
+       rail's overflow clip (a scroll container cannot paint a child across
+       its own x-axis); the driver above sizes the clip to the list viewport
+       and slides the strip to the measured row. -->
+  <div
+    class="sidebar-bridge-clip"
+    bind:this={bridgeClipEl}
+    aria-hidden="true"
+    data-testid="sidebar-bridge"
+  >
+    <div class="sidebar-bridge-strip" bind:this={bridgeStripEl}>
+      <span class="sidebar-bridge-scoop sidebar-bridge-scoop-top"></span>
+      <span class="sidebar-bridge-scoop sidebar-bridge-scoop-bottom"></span>
+      <span class="sidebar-bridge-cover"></span>
+    </div>
+  </div>
+
+  <!-- In-rail lane cover: when the list overflows, the classic scrollbar
+       takes 8px of layout and the pulled row stops short of the rail edge.
+       This strip restores the drawer law ("flush to the rail's right edge");
+       the list stacks above it, so the thumb travels over the material like
+       an overlay scrollbar. -->
+  <div
+    class="sidebar-bridge-lane-clip"
+    bind:this={laneClipEl}
+    aria-hidden="true"
+    data-testid="sidebar-bridge-lane"
+  >
+    <div class="sidebar-bridge-strip" bind:this={laneStripEl}></div>
   </div>
 </aside>
 
