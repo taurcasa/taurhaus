@@ -179,8 +179,8 @@ vi.mock('./lib/Settings.svelte', () => ({
   default: createMockComponent('settings', () => {}),
 }))
 
-vi.mock('./lib/AddProjectModal.svelte', () => ({
-  default: createMockComponent('add-project', () => {}),
+vi.mock('./lib/ProjectsTakeover.svelte', () => ({
+  default: createMockComponent('projects-takeover', () => {}),
 }))
 
 vi.mock('./lib/FirstRunWizard.svelte', () => ({

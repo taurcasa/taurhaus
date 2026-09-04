@@ -27,7 +27,7 @@ describe('Project Lifecycle', () => {
   describe('manage projects modal', () => {
     afterEach(async () => {
       // Close modal if it was left open by a failed test
-      const modal = await $('[data-testid="manage-projects-modal"]')
+      const modal = await $('[data-testid="projects-takeover"]')
       if (await modal.isExisting()) await closeModal()
     })
 
@@ -35,7 +35,7 @@ describe('Project Lifecycle', () => {
       if (!mainApp) return this.skip()
 
       await openManageProjects()
-      const modal = await $('[data-testid="manage-projects-modal"]')
+      const modal = await $('[data-testid="projects-takeover"]')
       expect(await modal.isExisting()).toBe(true)
     })
 
@@ -119,7 +119,7 @@ describe('Project Lifecycle', () => {
       await openManageProjects()
       await closeModal()
 
-      const modal = await $('[data-testid="manage-projects-modal"]')
+      const modal = await $('[data-testid="projects-takeover"]')
       expect(await modal.isExisting()).toBe(false)
 
       // Main content is visible again
@@ -269,18 +269,15 @@ describe('Project Lifecycle', () => {
   // ─── Sidebar State ────────────────────────────────────────────────────────
 
   describe('sidebar state', () => {
-    it('activity group headers are visible (ACTIVE/RECENT/STALE/DORMANT)', async function () {
+    it('activity group headers are visible (Active/Recent/Stale/Dormant guide cards)', async function () {
       if (!mainApp) return this.skip()
 
-      // At least one group header should exist — we look for any of the four group labels
-      const sidebarText = await browser.execute(() => document.querySelector('aside')?.textContent || '')
-      const hasGroupHeader =
-        sidebarText.includes('ACTIVE') ||
-        sidebarText.includes('RECENT') ||
-        sidebarText.includes('STALE') ||
-        sidebarText.includes('DORMANT')
+      // At least one guide-card group header should exist
+      const headerCount = await browser.execute(() =>
+        document.querySelectorAll('[data-testid="sidebar-group-header"]').length
+      )
 
-      expect(hasGroupHeader).toBe(true)
+      expect(headerCount).toBeGreaterThan(0)
     })
 
     it('sidebar skeleton is gone and projects have loaded', async function () {

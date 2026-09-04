@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { render, screen, waitFor, fireEvent } from '@testing-library/svelte'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 import '../app.css'
 
@@ -56,11 +54,9 @@ const {
   getSettings,
   updateSettings,
 } = await import('./ipc.js')
-import AddProjectModal from './AddProjectModal.svelte'
+import ProjectsTakeover from './ProjectsTakeover.svelte'
 
-const appCss = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8')
-
-describe('AddProjectModal', () => {
+describe('ProjectsTakeover', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     listProjects.mockResolvedValue([
@@ -101,7 +97,7 @@ describe('AddProjectModal', () => {
   it('shows empty registered state when listProjects load fails', async () => {
     listProjects.mockRejectedValueOnce(new Error('offline'))
 
-    render(AddProjectModal, { props: { dark: false } })
+    render(ProjectsTakeover, { props: { dark: false } })
 
     await waitFor(() => {
       expect(screen.getByTestId('no-projects')).toBeInTheDocument()
@@ -111,7 +107,7 @@ describe('AddProjectModal', () => {
   it('uses two-click remove confirmation and removes project', async () => {
     const onProjectsChanged = vi.fn()
 
-    render(AddProjectModal, {
+    render(ProjectsTakeover, {
       props: {
         dark: false,
         onProjectsChanged,
@@ -136,7 +132,7 @@ describe('AddProjectModal', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     removeProject.mockRejectedValueOnce(new Error('permission denied'))
 
-    render(AddProjectModal, {
+    render(ProjectsTakeover, {
       props: {
         dark: false,
       },
@@ -166,7 +162,7 @@ describe('AddProjectModal', () => {
     ])
     registerProjectsBatch.mockResolvedValueOnce([{ success: true }])
 
-    render(AddProjectModal, {
+    render(ProjectsTakeover, {
       props: {
         dark: false,
         onProjectsChanged,
@@ -194,7 +190,7 @@ describe('AddProjectModal', () => {
   it('shows scan error and allows switching to manual mode', async () => {
     scanDirectory.mockRejectedValueOnce(new Error('scan failed'))
 
-    render(AddProjectModal, { props: { dark: false } })
+    render(ProjectsTakeover, { props: { dark: false } })
 
     await fireEvent.click(screen.getByTestId('show-add-section'))
 
@@ -224,7 +220,7 @@ describe('AddProjectModal', () => {
         { id: 'p2', name: 'Project Two', path: '/projects/two', activityState: 'recent' },
       ])
 
-    render(AddProjectModal, { props: { dark: false } })
+    render(ProjectsTakeover, { props: { dark: false } })
 
     await fireEvent.click(screen.getByTestId('show-add-section'))
     await waitFor(() => {
@@ -250,7 +246,7 @@ describe('AddProjectModal', () => {
       { name: 'one', path: '/projects/one', has_git: true },
     ])
 
-    render(AddProjectModal, { props: { dark: false } })
+    render(ProjectsTakeover, { props: { dark: false } })
 
     await fireEvent.click(screen.getByTestId('show-add-section'))
 
@@ -267,7 +263,7 @@ describe('AddProjectModal', () => {
       isRegistered: false,
     })
 
-    render(AddProjectModal, { props: { dark: false } })
+    render(ProjectsTakeover, { props: { dark: false } })
 
     await fireEvent.click(screen.getByTestId('show-add-section'))
     await waitFor(() => {
@@ -304,7 +300,7 @@ describe('AddProjectModal', () => {
         { id: 'p2', name: 'Project Two', path: '/manual/selected', activityState: 'recent' },
       ])
 
-    render(AddProjectModal, {
+    render(ProjectsTakeover, {
       props: {
         dark: false,
         onProjectsChanged,
@@ -349,7 +345,7 @@ describe('AddProjectModal', () => {
       project_dialog_last_path: '/remembered/path',
     })
 
-    render(AddProjectModal, { props: { dark: false } })
+    render(ProjectsTakeover, { props: { dark: false } })
 
     await fireEvent.click(screen.getByTestId('show-add-section'))
     await waitFor(() => {
@@ -365,7 +361,7 @@ describe('AddProjectModal', () => {
   })
 
   it('persists selected create parent path', async () => {
-    render(AddProjectModal, { props: { dark: false } })
+    render(ProjectsTakeover, { props: { dark: false } })
 
     await fireEvent.click(screen.getByTestId('show-add-section'))
     await fireEvent.click(screen.getByTestId('mode-create'))
@@ -388,7 +384,7 @@ describe('AddProjectModal', () => {
     })
     registerProjectsBatch.mockResolvedValueOnce([{ success: false, error: 'already tracked' }])
 
-    render(AddProjectModal, { props: { dark: false } })
+    render(ProjectsTakeover, { props: { dark: false } })
 
     await fireEvent.click(screen.getByTestId('show-add-section'))
     await waitFor(() => {
@@ -410,10 +406,27 @@ describe('AddProjectModal', () => {
     })
   })
 
-  it('closes on Escape, done button, and backdrop click only', async () => {
+  it('opens behind the shared doorway with the Projects key echo and count', async () => {
+    render(ProjectsTakeover, { props: { dark: false } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('projects-takeover')).toBeInTheDocument()
+    })
+
+    const doorway = screen.getByTestId('surface-doorway')
+    expect(within(doorway).getByRole('heading', { name: 'Projects' })).toBeInTheDocument()
+    expect(within(doorway).getByTestId('projects-back')).toHaveTextContent('Back')
+    expect(doorway.querySelector('kbd')).toHaveTextContent('Esc')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('projects-registered-count')).toHaveTextContent('1 registered')
+    })
+  })
+
+  it('closes on Escape and on the doorway back button', async () => {
     const onClose = vi.fn()
 
-    const { container } = render(AddProjectModal, {
+    render(ProjectsTakeover, {
       props: {
         dark: false,
         onClose,
@@ -421,100 +434,91 @@ describe('AddProjectModal', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('manage-projects-modal')).toBeInTheDocument()
+      expect(screen.getByTestId('projects-takeover')).toBeInTheDocument()
     })
 
-    const dialog = screen.getByTestId('manage-projects-modal')
-    const backdrop = container.firstElementChild
-
-    await fireEvent.mouseDown(dialog)
-    expect(onClose).not.toHaveBeenCalled()
-
-    await fireEvent.mouseDown(backdrop)
+    await fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(1)
 
-    await fireEvent.click(screen.getByTestId('done-button'))
+    await fireEvent.click(screen.getByTestId('projects-back'))
     expect(onClose).toHaveBeenCalledTimes(2)
-
-    await fireEvent.keyDown(window, { key: 'Escape' })
-    expect(onClose).toHaveBeenCalledTimes(3)
   })
 
-  it('keeps the manage projects overlay out of the shell frame flow', async () => {
-    const shellFrame = document.createElement('div')
-    shellFrame.className = 'shell-frame'
-    document.body.appendChild(shellFrame)
-
-    const mainContent = document.createElement('div')
-    mainContent.setAttribute('data-testid', 'shell-main-content')
-    shellFrame.appendChild(mainContent)
-
-    render(AddProjectModal, {
-      target: shellFrame,
-      props: {
-        dark: false,
-      },
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('manage-projects-modal')).toBeInTheDocument()
-    })
-
-    // Regression: commit 188211f reintroduced `.shell-frame > * { position: relative }`,
-    // which overrode Tailwind's `.fixed` on direct-child overlays and pushed the app
-    // content upward instead of floating Manage Projects above it.
-    const backdrop = screen.getByTestId('manage-projects-backdrop')
-    expect(backdrop).toHaveAttribute('data-shell-overlay')
-    expect(appCss).toContain('.shell-frame > :not([data-shell-overlay])')
-    expect(appCss).not.toContain('.shell-frame > * {\n  position: relative;')
-    expect(shellFrame.firstElementChild).toBe(mainContent)
-    expect(shellFrame.lastElementChild).toBe(backdrop)
-
-    shellFrame.remove()
-  })
-
-  it('traps Tab focus inside modal and restores trigger focus on close', async () => {
+  it('moves focus into the surface on open and restores the trigger on close', async () => {
     const trigger = document.createElement('button')
-    trigger.textContent = 'Open projects modal'
+    trigger.textContent = 'Open projects'
     document.body.appendChild(trigger)
     trigger.focus()
 
-    const onClose = vi.fn()
-    const { unmount } = render(AddProjectModal, {
-      props: {
-        dark: false,
-        onClose,
-      },
-    })
+    const { unmount } = render(ProjectsTakeover, { props: { dark: false } })
 
-    const firstFocusable = screen.getByTestId('modal-close')
-    const lastFocusable = screen.getByTestId('done-button')
-
+    const surface = screen.getByTestId('projects-takeover')
     await waitFor(() => {
-      expect(firstFocusable).toHaveFocus()
+      expect(surface).toHaveFocus()
     })
-
-    lastFocusable.focus()
-    expect(lastFocusable).toHaveFocus()
-
-    await fireEvent.keyDown(window, { key: 'Tab' })
-    expect(firstFocusable).toHaveFocus()
-
-    await fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
-    expect(lastFocusable).toHaveFocus()
-
-    await fireEvent.click(lastFocusable)
-    expect(onClose).toHaveBeenCalledTimes(1)
 
     unmount()
     expect(trigger).toHaveFocus()
     trigger.remove()
   })
 
+  it('holds the surface open on Escape while a half-typed create name would be lost', async () => {
+    const onClose = vi.fn()
+    render(ProjectsTakeover, { props: { dark: false, onClose } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await fireEvent.click(screen.getByTestId('mode-create'))
+    await fireEvent.input(screen.getByTestId('create-name-input'), { target: { value: 'half-typed' } })
+
+    await fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+
+    // Clearing the field lifts the guard; the doorway's Esc hint holds again.
+    await fireEvent.input(screen.getByTestId('create-name-input'), { target: { value: '' } })
+    await fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('holds the surface open on Escape while a typed manual path would be lost', async () => {
+    const onClose = vi.fn()
+    scanDirectory.mockResolvedValueOnce([])
+    render(ProjectsTakeover, { props: { dark: false, onClose } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await waitFor(() => {
+      expect(screen.getByTestId('empty-scan')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getAllByTestId('enter-manual-mode')[0])
+
+    await fireEvent.input(screen.getByTestId('manual-path-input'), { target: { value: '/typed/by/hand' } })
+    await fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('holds the surface open on Escape while a scan is in flight', async () => {
+    const onClose = vi.fn()
+    let resolveScan
+    scanDirectory.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveScan = resolve })
+    )
+    render(ProjectsTakeover, { props: { dark: false, onClose } })
+
+    await fireEvent.click(screen.getByTestId('show-add-section'))
+    await fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+
+    resolveScan([])
+    await waitFor(() => {
+      expect(screen.getByTestId('empty-scan')).toBeInTheDocument()
+    })
+    await fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('clears pending remove-confirm timer on unmount', async () => {
     vi.useFakeTimers()
 
-    const { unmount } = render(AddProjectModal, {
+    const { unmount } = render(ProjectsTakeover, {
       props: {
         dark: false,
       },
@@ -533,7 +537,7 @@ describe('AddProjectModal', () => {
   })
 
   it('create mode validates project name before submit', async () => {
-    render(AddProjectModal, { props: { dark: false } })
+    render(ProjectsTakeover, { props: { dark: false } })
 
     await fireEvent.click(screen.getByTestId('show-add-section'))
     await fireEvent.click(screen.getByTestId('mode-create'))
@@ -549,7 +553,7 @@ describe('AddProjectModal', () => {
     expect(createProject).not.toHaveBeenCalled()
   })
 
-  it('creates a new project, closes modal, and emits callbacks', async () => {
+  it('creates a new project, closes the takeover, and emits callbacks', async () => {
     const onClose = vi.fn()
     const onProjectsChanged = vi.fn()
     const onProjectCreated = vi.fn()
@@ -562,7 +566,7 @@ describe('AddProjectModal', () => {
       path: '/projects/new-project',
     })
 
-    render(AddProjectModal, {
+    render(ProjectsTakeover, {
       props: { dark: false, onClose, onProjectsChanged, onProjectCreated },
     })
 

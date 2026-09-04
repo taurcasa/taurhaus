@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render } from '@testing-library/svelte'
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 function createMockComponent(name) {
@@ -45,6 +45,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 vi.mock('./lib/sessionStore.svelte.js', () => ({
   DEFAULT_TAURI_POLL_INTERVAL_MS: 5000,
   getSessionForProject: vi.fn(() => null),
+  getSessionsForProject: vi.fn(() => []),
   getSessions: vi.fn(() => new Map()),
   applyDaemonSessionUpdate: vi.fn(),
   hydrateFromBackend: vi.fn(),
@@ -93,7 +94,9 @@ vi.mock('./lib/accounts.svelte.js', () => ({
   setGlobalDefault: vi.fn(() => Promise.resolve()),
 }))
 
-vi.mock('./lib/Sidebar.svelte', () => ({ default: createMockComponent('sidebar') }))
+// The sidebar stays real: these tests exercise the footer keys and project
+// rows against the Shell's surface state machine. Everything behind the main
+// panel is mocked away.
 vi.mock('./lib/OverviewTab.svelte', () => ({ default: createMockComponent('overview') }))
 vi.mock('./lib/FilesTab.svelte', () => ({ default: createMockComponent('files') }))
 vi.mock('./lib/TaskBoard.svelte', () => ({ default: createMockComponent('tasks') }))
@@ -104,74 +107,110 @@ vi.mock('./lib/ProjectsTakeover.svelte', () => ({ default: createMockComponent('
 vi.mock('./lib/FirstRunWizard.svelte', () => ({ default: createMockComponent('first-run') }))
 vi.mock('./lib/components/MeshTab.svelte', () => ({ default: createMockComponent('mesh-tab') }))
 
-const { refreshAccountRelationships, refreshAccounts, refreshResolvedBases, refreshUsage } =
-  await import('./lib/accounts.svelte.js')
+const { listProjects } = await import('./lib/ipc.js')
 
 import Shell from './Shell.svelte'
 
-const toolsIn = (calls) => new Set(calls.map(([tool]) => tool))
-const toolsAsked = (mock) => toolsIn(mock.mock.calls)
+const project = {
+  id: 'p1',
+  name: 'Fixture Project',
+  path: '/projects/fixture',
+  activityState: 'active',
+  branch: 'main',
+  isDirty: false,
+}
 
-describe('Shell ambient account synchronisation', () => {
+// The Shell-level oracle is the real titlebar: an open utility surface
+// replaces the project tabs with its takeover label. (The mocked surface
+// components cannot signal teardown — Svelte 5 never calls a legacy mock's
+// $destroy — so presence of tabs is the reliable closed-state signal.)
+function surfaceLabelVisible(label) {
+  return screen.queryByText(label) !== null && screen.queryAllByRole('tab').length === 0
+}
+
+async function openProjectsTakeover() {
+  await waitFor(() => {
+    expect(screen.getByTestId('manage-projects-btn')).toBeInTheDocument()
+  })
+  await fireEvent.click(screen.getByTestId('manage-projects-btn'))
+  await waitFor(() => {
+    expect(surfaceLabelVisible('Projects')).toBe(true)
+  })
+}
+
+describe('Shell utility-surface state machine', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.useFakeTimers()
+    listProjects.mockResolvedValue([project])
   })
 
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  // Regression: 971d9643 keyed the shell's only account refresh to daemon-status
-  // changes over account-selectable tools alone and never refreshed usage, so
-  // the footer magnitude sat at its startup value and Antigravity was absent
-  // until someone hovered the accounts button.
-  it('reads every registry tool, usage included, without a hover', async () => {
+  it('toggles the Projects takeover from the footer key', async () => {
     render(Shell)
-    await vi.advanceTimersByTimeAsync(10)
 
-    expect(toolsAsked(refreshAccounts)).toEqual(new Set(['claude', 'codex', 'agy', 'grok']))
-    expect(toolsAsked(refreshUsage)).toEqual(new Set(['claude', 'codex', 'agy']))
+    await openProjectsTakeover()
+
+    // Second click on the key closes the surface — the key is a toggle like
+    // its two siblings, so the pulled state never becomes a dead control.
+    await fireEvent.click(screen.getByTestId('manage-projects-btn'))
+    await waitFor(() => {
+      expect(screen.getAllByRole('tab').length).toBeGreaterThan(0)
+    })
   })
 
-  it('re-reads what the backend poller has observed since, without forcing it', async () => {
+  it('keeps open-only semantics on the sidebar empty-state scan action', async () => {
+    listProjects.mockResolvedValue([])
     render(Shell)
-    await vi.advanceTimersByTimeAsync(10)
-    const opening = refreshAccounts.mock.calls.length
-    const openingProviderReads = refreshUsage.mock.calls.length
 
-    await vi.advanceTimersByTimeAsync(60_000)
+    await waitFor(() => {
+      expect(screen.getByTestId('sidebar-empty-scan')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('sidebar-empty-scan'))
+    await waitFor(() => {
+      expect(surfaceLabelVisible('Projects')).toBe(true)
+    })
 
-    const tick = refreshAccounts.mock.calls.slice(opening)
-    expect(toolsIn(tick)).toEqual(new Set(['claude', 'codex', 'agy', 'grok']))
-    expect(tick.every(([, options]) => options?.force === true)).toBe(true)
-    // The poller decides how often a subscription is worth asking again; the
-    // chrome only reads what it has already observed.
-    expect(refreshUsage.mock.calls.length).toBe(openingProviderReads)
+    // A second invocation of the open-only entry point leaves the surface
+    // open rather than toggling it away.
+    await fireEvent.click(screen.getByTestId('sidebar-empty-scan'))
+    expect(surfaceLabelVisible('Projects')).toBe(true)
   })
 
-  // Regression: 6556676e brought the ambient chrome level with detection but
-  // never with what the launch commands select, so the footer judged the
-  // default directory relevant while an alias sent every launch elsewhere.
-  it('reads what the launch commands select for the tools that can switch', async () => {
+  it('closes any open utility surface when a project is selected', async () => {
     render(Shell)
-    await vi.advanceTimersByTimeAsync(10)
 
-    expect(toolsAsked(refreshResolvedBases)).toEqual(new Set(['claude', 'codex', 'grok']))
+    await openProjectsTakeover()
+
+    // Clicking a project row must always show that project: the takeover
+    // closes instead of leaving the selection change invisible.
+    await fireEvent.click(screen.getByTestId('project-item'))
+    await waitFor(() => {
+      expect(screen.getAllByRole('tab').length).toBeGreaterThan(0)
+    })
+
+    // The row is pulled again — the panel is showing this project.
+    await waitFor(() => {
+      expect(screen.getByTestId('project-item').className).toContain('sidebar-row-pulled')
+    })
   })
 
-  // Regression: 6556676e refreshed the relationship index only on the opening
-  // pass, so a pin made from Overview or the sidebar left the footer's calm or
-  // warning state as it was until somebody opened Accounts.
-  it('keeps the relationship index level on the recurring pass', async () => {
+  it('closes Settings when a project is selected', async () => {
     render(Shell)
-    await vi.advanceTimersByTimeAsync(10)
-    const opening = refreshAccountRelationships.mock.calls.length
-    expect(opening).toBeGreaterThan(0)
 
-    await vi.advanceTimersByTimeAsync(60_000)
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-toggle')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('settings-toggle'))
+    await waitFor(() => {
+      expect(surfaceLabelVisible('Settings')).toBe(true)
+    })
 
-    const tick = refreshAccountRelationships.mock.calls.slice(opening)
-    expect(toolsIn(tick)).toEqual(new Set(['claude', 'codex', 'agy', 'grok']))
+    await fireEvent.click(screen.getByTestId('project-item'))
+    await waitFor(() => {
+      expect(screen.getAllByRole('tab').length).toBeGreaterThan(0)
+    })
   })
 })

@@ -1,8 +1,10 @@
+// Sentence-case labels: group headers render as drawer guide cards, and the
+// ALL-CAPS register died in the list with the sidebar unification.
 const SIDEBAR_GROUPS = [
-  { key: 'active', label: 'ACTIVE' },
-  { key: 'recent', label: 'RECENT' },
-  { key: 'stale', label: 'STALE' },
-  { key: 'dormant', label: 'DORMANT' },
+  { key: 'active', label: 'Active' },
+  { key: 'recent', label: 'Recent' },
+  { key: 'stale', label: 'Stale' },
+  { key: 'dormant', label: 'Dormant' },
 ]
 
 const projectionCache = new Map()

@@ -139,7 +139,7 @@ describe('SearchOverlay', () => {
 
     // Regression: commit 188211f reintroduced `.shell-frame > * { position: relative }`,
     // which overrode Tailwind's `.fixed` on direct-child overlays and pushed both
-    // SearchOverlay and AddProjectModal into normal document flow.
+    // SearchOverlay and other overlays into normal document flow.
     const overlay = screen.getByTestId('search-overlay')
     expect(overlay).toHaveAttribute('data-shell-overlay')
     expect(appCss).toContain('.shell-frame > :not([data-shell-overlay])')

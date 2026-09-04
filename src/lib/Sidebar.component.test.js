@@ -111,7 +111,7 @@ describe('Sidebar component branches', () => {
 
   it('fires selection and footer actions', async () => {
     const onSelectProject = vi.fn()
-    const onAddProject = vi.fn()
+    const onToggleProjects = vi.fn()
     const onToggleSettings = vi.fn()
     const onToggleAccounts = vi.fn()
     const projects = makeProjects(3)
@@ -121,7 +121,7 @@ describe('Sidebar component branches', () => {
         projects,
         actions: {
           onSelectProject,
-          onAddProject,
+          onToggleProjects,
           onToggleSettings,
           onToggleAccounts,
         },
@@ -135,14 +135,80 @@ describe('Sidebar component branches', () => {
     await fireEvent.click(screen.getAllByTestId('project-item')[0])
     expect(onSelectProject).toHaveBeenCalledWith(expect.objectContaining({ id: projects[0].id }))
 
+    // The footer key is a toggle; the open-only onAddProject path is the
+    // empty-state scan action, covered by the states test above.
     await fireEvent.click(screen.getByTestId('manage-projects-btn'))
-    expect(onAddProject).toHaveBeenCalled()
+    expect(onToggleProjects).toHaveBeenCalled()
 
     await fireEvent.click(screen.getByTestId('settings-toggle'))
     expect(onToggleSettings).toHaveBeenCalled()
 
     await fireEvent.click(screen.getByTestId('accounts-toggle'))
     expect(onToggleAccounts).toHaveBeenCalled()
+  })
+
+  it('pulls the selected row, and demotes it to held while a utility surface is open', async () => {
+    const projects = makeProjects(2)
+    const { rerender } = render(Sidebar, {
+      props: { projects, selectedProject: projects[0] },
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('project-item').length).toBe(2)
+    })
+
+    // Pulled: the selected row is made of the panel material, carries the
+    // edge scoops, and keeps its selection handle.
+    const pulled = screen.getAllByTestId('project-item')[0]
+    expect(pulled.className).toContain('sidebar-row-pulled')
+    expect(within(pulled).getByTestId('sidebar-selection-indicator')).toBeInTheDocument()
+    expect(pulled.querySelector('.sidebar-row-scoop-top')).toBeTruthy()
+    expect(pulled.querySelector('.sidebar-row-scoop-bottom')).toBeTruthy()
+
+    // Held: a utility surface occupies the panel, so the row demotes to the
+    // quiet fill — no panel material, no scoops, but the handle survives.
+    await rerender({ projects, selectedProject: projects[0], settingsOpen: true })
+    const held = screen.getAllByTestId('project-item')[0]
+    expect(held.className).not.toContain('sidebar-row-pulled')
+    expect(held.className).toContain('bg-white/[0.06]')
+    expect(within(held).getByTestId('sidebar-selection-indicator')).toBeInTheDocument()
+    expect(held.querySelector('.sidebar-row-scoop-top')).toBeFalsy()
+  })
+
+  it('arranges the footer as a key cluster left and the daemon readout right', () => {
+    render(Sidebar, { props: { projects: makeProjects(1), daemonStatus: 'connected' } })
+
+    const projectsKey = screen.getByTestId('manage-projects-btn')
+    const accountsKey = screen.getByTestId('accounts-toggle')
+    const settingsKey = screen.getByTestId('settings-toggle')
+    const daemon = screen.getByTestId('daemon-status')
+
+    // DOM order carries the arrangement: Projects · Accounts · Settings, then
+    // the daemon readout (pushed right, deliberately un-key-like).
+    expect(projectsKey.compareDocumentPosition(accountsKey) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(accountsKey.compareDocumentPosition(settingsKey) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(settingsKey.compareDocumentPosition(daemon) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    // The Projects key is the folder glyph, not a plus.
+    expect(projectsKey.querySelector('path')?.getAttribute('d')).toContain('2.25 12.75V12')
+  })
+
+  it('gives each footer key the same idle tone and a pulled open state', async () => {
+    const { rerender } = render(Sidebar, { props: { projects: makeProjects(1) } })
+
+    for (const testid of ['manage-projects-btn', 'accounts-toggle', 'settings-toggle']) {
+      expect(screen.getByTestId(testid).className).toContain('text-rail-idle')
+    }
+
+    await rerender({ projects: makeProjects(1), settingsOpen: true })
+    expect(screen.getByTestId('settings-toggle').className).toContain('rail-key-pulled')
+    expect(screen.getByTestId('manage-projects-btn').className).toContain('text-rail-idle')
+
+    await rerender({ projects: makeProjects(1), settingsOpen: false, projectsOpen: true })
+    expect(screen.getByTestId('manage-projects-btn').className).toContain('rail-key-pulled')
+
+    await rerender({ projects: makeProjects(1), projectsOpen: false, accountsOpen: true })
+    expect(screen.getByTestId('accounts-toggle').className).toContain('rail-key-pulled')
   })
 
   // Regression: e28881d opened the Accounts usage board on pointer entry but
@@ -177,7 +243,8 @@ describe('Sidebar component branches', () => {
     expect(screen.getByTestId('sidebar-filter').className).toContain('focus-visible:ring-1')
     expect(screen.getByTestId('sidebar-filter').className).toContain('focus-visible:ring-brand-500/70')
     expect(screen.getAllByTestId('project-item')[0].className).toContain('focus-visible:ring-1')
-    expect(screen.getAllByTestId('project-item')[0].className).toContain('focus-visible:ring-brand-500')
+    // The rail-wide focus law: rows share the filter's brand-500/70 ring.
+    expect(screen.getAllByTestId('project-item')[0].className).toContain('focus-visible:ring-brand-500/70')
   })
 
   it('renders a right-side foreground indicator when the project matches the foreground project id', async () => {
@@ -271,9 +338,29 @@ describe('Sidebar component branches', () => {
     render(Sidebar, { props: { projects } })
 
     await waitFor(() => {
-      expect(screen.getByText('RECENT')).toBeInTheDocument()
+      expect(screen.getByText('Recent')).toBeInTheDocument()
       expect(screen.getByText('Recent Project')).toBeInTheDocument()
     })
+  })
+
+  it('renders group headers as guide cards with sentence-case labels and counts', async () => {
+    const projects = makeProjects(4) // one project per activity group
+
+    render(Sidebar, { props: { projects } })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('project-item').length).toBe(4)
+    })
+
+    const headers = screen.getAllByTestId('sidebar-group-header')
+    expect(headers.length).toBe(4)
+    // Sentence case — the 10px ALL-CAPS register dies in the list.
+    expect(headers[0]).toHaveTextContent('Active')
+    expect(headers[0].textContent).not.toContain('ACTIVE')
+    // Each guide card carries the group's project count.
+    for (const header of headers) {
+      expect(header.querySelector('.sidebar-guide-count')).toHaveTextContent('1')
+    }
   })
 
   it('renders non-default branches on a second line and hides default branches', async () => {
