@@ -126,7 +126,8 @@ Promote the shipped convention (Opus ↔ Codex, visual dual review) to data:
 review_policy:
   implementation:      { required: true, reviewer_family: different_from_implementer }
   architecture_change: { required: true, reviewer_family: different_from_author,
-                         minimum_capability: frontier }
+                         reviewer_minimum_capability: strong,
+                         altitude_pass: { required: true, minimum_capability: frontier } }
 ```
 
 The goal is not that one family is more correct; it is decorrelating blind
@@ -200,7 +201,33 @@ field on ModelCatalog entries, tier assignments authored by the operator.
 
 **Prerequisites:** 0.9.1 released (no schema churn mid-release); role catalog
 v2 and template git storage (shipped); catalog tier assignments reviewed by
-the operator — tiers are human-owned policy, not inferred.
+the operator — tiers are human-owned policy, not inferred. **Reviewed
+2026-09-04; the signed-off table:**
+
+| Tier | Models (rank within tier, highest first) |
+|---|---|
+| `frontier` | `fable` (Fable 5.1) |
+| `strong` | `gpt-5.6-sol` · `opus` (Opus 5) · `claude-opus-4-6`/`-thinking` (agy) · `gemini-3.1-pro-high` · `grok-4.6` · `gpt-5.5` |
+| `efficient` | `gpt-5.6-luna` (preferred for batch/volume work — speed and throughput over peak intelligence) · `gpt-5.4` · `gpt-5.4-mini` · `gemini-3.x-flash-*` · `gemini-3.1-pro-low` · `gpt-oss-120b-medium` · `grok-4.5` |
+| *untiered* | `gpt-5.6-terra` (no current place — see rule below) · deprecated entries (`sonnet`, `haiku`; replacement pointers make them unroutable anyway) |
+
+Three rules the review produced:
+
+- **Untiered = unroutable.** A model with no tier is never selected by
+  adaptive routing; it remains explicitly pinnable by a human. This is how a
+  model with "no current place" stays available without entering any ladder.
+- **Within-tier rank is data.** Operator calibration: `gpt-5.6-sol` ranks
+  above `opus` on intelligence while both sit in `strong` — the router's
+  "cheapest meeting threshold" and the escalation ladder need the ordering,
+  not just the tier. Entries carry a rank (or ordered position) within tier.
+- **Capability rank ≠ system role.** Opus below Sol on raw intelligence does
+  NOT demote Opus in the system: its adversarial-review value is
+  *decorrelation*, which lives in the review policy (`reviewer_family:
+  different_from_implementer` + a floor), not in the tier ladder.
+  Consequently the architecture-review policy expresses the shipped practice
+  exactly: reviewer floor `strong` with family diversity, **plus** a
+  `frontier` altitude pass on architecture-bearing changes — not a `frontier`
+  reviewer requirement that would exclude the cross-family lens.
 
 **Exit gate:** role import/export and preset round-trips carry the new fields
 losslessly (adapter tests); `cli_renderers`/launch goldens byte-identical —
