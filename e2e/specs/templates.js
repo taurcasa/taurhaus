@@ -8,6 +8,7 @@
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
+import { clickActiveSlideOverTestId } from '../helpers/slideover.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG } from '../helpers/timing.js'
 
 let mainApp = false
@@ -138,8 +139,10 @@ async function disbandRuntimeTeamIfSafe() {
 }
 
 async function ensureEmptyMode(testContext) {
-  await openMeshTab()
+  // Regression: f9c2e467 opened the browser without closing it between cases,
+  // leaving its backdrop over the Mesh tab used by the next case.
   await closeSlideOverIfOpen()
+  await openMeshTab()
 
   if (await hasTestId('mesh-availability-blocking')) {
     const firstError = await $('[data-testid="mesh-availability-error"]')
@@ -190,6 +193,9 @@ async function openTemplateCatalog(testContext) {
     async () => await hasTestId('template-browser-panel'),
     { ...WAIT_MEDIUM, timeoutMsg: 'Template browser did not open' }
   )
+  // Regression: f9c2e467 reopened the persistent browser controller without
+  // restoring the Roles tab assumed by each independent workflow case.
+  await clickActiveSlideOverTestId('catalog-tab-roles')
   return true
 }
 
@@ -290,7 +296,9 @@ describe('Templates Workflow', () => {
     const roleCards = await $$('[data-testid^="role-template-card-"]')
     expect(roleCards.length).toBeGreaterThan(0)
 
-    await clickTestId('catalog-tab-presets')
+    // Regression: f9c2e467 opened the SlideOver but kept targeting its clipped
+    // catalog tabs through the global WebDriver selector.
+    await clickActiveSlideOverTestId('catalog-tab-presets')
     await browser.waitUntil(
       async () => (await $$('[data-testid^="template-browser-preset-"]')).length > 0,
       { ...WAIT_MEDIUM, timeoutMsg: 'Preset cards did not load in template browser' }
@@ -320,7 +328,7 @@ describe('Templates Workflow', () => {
       expect(await (await $(`[data-testid="role-use-${roleId}"]`)).isExisting()).toBe(true)
       expect(await (await $(`[data-testid="role-inspect-${roleId}"]`)).isExisting()).toBe(true)
 
-      await (await $(`[data-testid="role-inspect-${roleId}"]`)).click()
+      await clickActiveSlideOverTestId(`role-inspect-${roleId}`)
       await browser.waitUntil(
         async () => {
           const detail = await $('[data-testid="template-role-detail"]')
@@ -366,13 +374,13 @@ describe('Templates Workflow', () => {
 
       await closeSlideOverIfOpen()
       if (!(await openTemplateCatalog(this))) return
-      await clickTestId('catalog-tab-presets')
+      await clickActiveSlideOverTestId('catalog-tab-presets')
       await browser.waitUntil(
         async () => await (await $(`[data-testid="template-preset-inspect-${presetId}"]`)).isExisting(),
         { ...WAIT_MEDIUM, timeoutMsg: 'Preset inspect control did not appear for custom preset' }
       )
 
-      await (await $(`[data-testid="template-preset-inspect-${presetId}"]`)).click()
+      await clickActiveSlideOverTestId(`template-preset-inspect-${presetId}`)
       await browser.waitUntil(
         async () => {
           const detail = await $('[data-testid="template-preset-detail"]')
@@ -412,7 +420,7 @@ describe('Templates Workflow', () => {
       if (!(await openTemplateCatalog(this))) return
 
       expect(await (await $(`[data-testid="role-template-card-${roleId}"]`)).isExisting()).toBe(true)
-      await clickTestId('catalog-tab-presets')
+      await clickActiveSlideOverTestId('catalog-tab-presets')
       expect(await (await $(`[data-testid="template-browser-preset-${presetId}"]`)).isExisting()).toBe(true)
 
       await invokeOrThrow('templates_delete_preset', { presetId }, 'templates_delete_preset')
@@ -423,7 +431,7 @@ describe('Templates Workflow', () => {
       if (!(await openTemplateCatalog(this))) return
 
       expect(await (await $(`[data-testid="role-template-card-${roleId}"]`)).isExisting()).toBe(false)
-      await clickTestId('catalog-tab-presets')
+      await clickActiveSlideOverTestId('catalog-tab-presets')
       expect(await (await $(`[data-testid="template-browser-preset-${presetId}"]`)).isExisting()).toBe(false)
     } finally {
       await bestEffortDeletePreset(presetId)
