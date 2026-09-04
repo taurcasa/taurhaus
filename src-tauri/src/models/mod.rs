@@ -2096,12 +2096,7 @@ mod tests {
                 Some(CapabilityTier::Strong),
                 Some(1),
             ),
-            (
-                CliTool::Claude,
-                "claude-opus-4-6",
-                None,
-                None,
-            ),
+            (CliTool::Claude, "claude-opus-4-6", None, None),
             (
                 CliTool::Agy,
                 "claude-opus-4-6-thinking",
@@ -2120,30 +2115,15 @@ mod tests {
                 Some(CapabilityTier::Strong),
                 Some(4),
             ),
-            (
-                CliTool::Codex,
-                "gpt-5.5",
-                None,
-                None,
-            ),
+            (CliTool::Codex, "gpt-5.5", None, None),
             (
                 CliTool::Codex,
                 "gpt-5.6-luna",
                 Some(CapabilityTier::Efficient),
                 Some(0),
             ),
-            (
-                CliTool::Codex,
-                "gpt-5.4",
-                None,
-                None,
-            ),
-            (
-                CliTool::Codex,
-                "gpt-5.4-mini",
-                None,
-                None,
-            ),
+            (CliTool::Codex, "gpt-5.4", None, None),
+            (CliTool::Codex, "gpt-5.4-mini", None, None),
             (
                 CliTool::Agy,
                 "gemini-3.7-flash-high",
