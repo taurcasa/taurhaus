@@ -570,6 +570,13 @@ pub(crate) fn is_deadline_eligible_task_status(status: &str) -> bool {
     status.trim() == "in_progress"
 }
 
+/// Whether the scanner has observed a task's terminal state. Terminal means
+/// `completed` or `stale` for observation purposes; only `completed` is
+/// eligible for the report's Amendment 4 acceptance buckets.
+pub(crate) fn is_terminal_task_status(status: &str) -> bool {
+    matches!(status.trim(), "completed" | "stale")
+}
+
 fn task_priority(task: &taurhaus_lib::db::task_queries::PersistedTask) -> u8 {
     match task.status.as_str() {
         "in_progress" => 3,

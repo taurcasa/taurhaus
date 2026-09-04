@@ -1192,9 +1192,8 @@ fn record_terminal_task_observations(
 ) -> usize {
     let mut recorded = 0;
     for task in result.tasks.iter().filter(|task| {
-        matches!(
-            task.status,
-            crate::task_scanner::TaskStatus::Completed | crate::task_scanner::TaskStatus::Stale
+        crate::coordination::operational_context::is_terminal_task_status(
+            &task.status.to_string(),
         )
     }) {
         let Some(teams_dir) = index.team_teams_dir(&task.source_key) else {

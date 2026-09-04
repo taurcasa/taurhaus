@@ -24,7 +24,7 @@ struct ReportStats {
 
 #[derive(Debug)]
 struct LedgerVerdict {
-    terminal: bool,
+    accepted_eligible: bool,
     has_review_ruling: bool,
 }
 
@@ -188,10 +188,10 @@ fn accumulate_task(
 fn mark_task(stats: &mut ReportStats, task_key: &str, ledger: Option<&LedgerVerdict>) {
     stats.tasks.insert(task_key.to_string());
     match ledger {
-        Some(ledger) if ledger.terminal && ledger.has_review_ruling => {
+        Some(ledger) if ledger.accepted_eligible && ledger.has_review_ruling => {
             stats.accepted.insert(task_key.to_string());
         }
-        Some(ledger) if ledger.terminal => {
+        Some(ledger) if ledger.accepted_eligible => {
             stats.completed_unruled.insert(task_key.to_string());
         }
         _ => {}
@@ -232,12 +232,12 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
     let task =
         taurhaus_lib::task_scanner::claude::parse_task_file(&path, Some(team_name.to_string()))
             .ok()??;
+    let terminal = crate::coordination::operational_context::is_terminal_task_status(
+        &task.status.to_string(),
+    );
     Some(LedgerVerdict {
-        terminal: matches!(
-            task.status,
-            taurhaus_lib::task_scanner::TaskStatus::Completed
-                | taurhaus_lib::task_scanner::TaskStatus::Stale
-        ),
+        accepted_eligible: terminal
+            && task.status == taurhaus_lib::task_scanner::TaskStatus::Completed,
         has_review_ruling: task.has_review_ruling,
     })
 }
@@ -413,11 +413,10 @@ mod tests {
         assert!(report.contains("gpt-5.6-luna | 1 | 0 | 1"));
     }
 
-    // Regression: a9fea658 re-derived only the literal `completed` status,
-    // so the scanner's other terminal ledger state disappeared from both
-    // acceptance buckets even though completion telemetry had been recorded.
+    // Regression: c9c6c49b treated the scanner's `stale` terminal state as
+    // accepted-eligible, so a timed-out task with a ruling inflated accepted.
     #[test]
-    fn stale_ledger_tasks_are_terminal_and_keep_the_scanners_ruling_parser() {
+    fn stale_ledger_tasks_count_only_as_staled_even_with_a_ruling() {
         let root = tempfile::tempdir().expect("tempdir");
         let default_teams = root.path().join("personal/teams");
         write_json(
@@ -433,6 +432,16 @@ mod tests {
             "2026-09-03T10:10:00Z",
             false,
         );
+        let sidecar = default_teams.join("routing-team/state/telemetry/43.jsonl");
+        use std::io::Write;
+        writeln!(
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&sidecar)
+                .expect("open sidecar"),
+            "{{\"event\":\"task_staled\",\"timestamp\":\"2026-09-03T10:09:00Z\",\"task_id\":\"43\",\"member\":\"builder\",\"deadline_minutes\":20}}"
+        )
+        .expect("append stale observation");
         write_json(
             &root.path().join("personal/tasks/routing-team/43.json"),
             serde_json::json!({
@@ -455,6 +464,8 @@ mod tests {
         )
         .expect("render report");
 
-        assert!(report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0"));
+        assert!(report.contains(
+            "rust-developer | gpt-5.6-sol | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 10m 00s"
+        ));
     }
 }
