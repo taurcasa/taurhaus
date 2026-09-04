@@ -8,7 +8,7 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
+import { waitForProjectsLoaded, fastClick, clickTestId } from '../helpers/navigation.js'
 import { WAIT_SHORT, WAIT_MEDIUM } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { assertTmuxIsolation } from '../helpers/laneTmux.js'
@@ -171,6 +171,23 @@ async function hasTestId(testId) {
   return await (await $(`[data-testid="${testId}"]`)).isExisting()
 }
 
+async function readTestIdTexts(testId) {
+  return await browser.execute((id) => {
+    return Array.from(document.querySelectorAll(`[data-testid="${id}"]`))
+      .map((element) => String(element.textContent ?? '').trim())
+      .filter(Boolean)
+  }, testId)
+}
+
+async function clickLastTestId(testId) {
+  const elements = await $$(`[data-testid="${testId}"]`)
+  const element = elements.at(-1)
+  if (!element) return false
+  await element.scrollIntoView().catch(() => {})
+  await element.click()
+  return true
+}
+
 async function setInlineBuilderTeamName(value = '') {
   await clickTestId('mesh-builder-team-name-display')
   const teamNameInput = await $('[data-testid="mesh-builder-team-name-input"]')
@@ -198,14 +215,12 @@ async function isConfirmDialogOpen() {
 }
 
 async function clickOpenConfirmDialog() {
-  const clicked = await browser.execute(() => {
-    const dialogs = Array.from(document.querySelectorAll('[data-testid="confirm-dialog"]'))
-    const dialog = dialogs.find((candidate) => candidate instanceof HTMLDialogElement && candidate.open)
-    const confirm = dialog?.querySelector('[data-testid="confirm-dialog-confirm"]')
-    if (!(confirm instanceof HTMLButtonElement)) return false
-    confirm.click()
-    return true
-  })
+  const selector = 'dialog[open][data-testid="confirm-dialog"] [data-testid="confirm-dialog-confirm"]'
+  const confirm = await $(selector)
+  if (!(await confirm.isExisting()) || !(await confirm.isEnabled())) {
+    throw new Error('Open confirmation action was unavailable')
+  }
+  const clicked = await fastClick(selector)
   if (!clicked) throw new Error('Open confirmation action was unavailable')
 }
 
@@ -295,16 +310,33 @@ async function openMeshTab() {
 async function disbandRuntimeTeamIfE2E() {
   if (!(await hasTestId('mesh-mode-runtime'))) return true
 
-  const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
-  const teamName = (await runtimeTitle.isExisting()) ? (await runtimeTitle.getText()).trim() : ''
+  if (await hasTestId('mesh-node-detail-close')) {
+    await clickLastTestId('mesh-node-detail-close')
+  }
+  if (!(await closeSlideOverIfOpen())) {
+    blockedReason = 'Could not close active slideover before disband'
+    return false
+  }
+
+  const runtimeTitles = await readTestIdTexts('mesh-runtime-title')
+  const teamName = runtimeTitles.find((title) => createdTeamNames.has(title)) ?? ''
   if (!createdTeamNames.has(teamName)) {
     blockedReason = `Refusing to disband runtime team not created by this spec: ${teamName || 'unknown'}`
     return false
   }
 
-  await clickTestId('mesh-runtime-disband')
-  if (await hasTestId('confirm-dialog-confirm')) {
-    await clickTestId('confirm-dialog-confirm')
+  await clickLastTestId('mesh-runtime-more-toggle')
+  await browser.waitUntil(
+    async () => await hasTestId('mesh-runtime-disband'),
+    { ...WAIT_SHORT, timeoutMsg: 'Disband action did not appear' }
+  )
+  await clickLastTestId('mesh-runtime-disband')
+  const confirmAppeared = await browser.waitUntil(
+    async () => await isConfirmDialogOpen(),
+    { ...WAIT_SHORT, timeoutMsg: 'Disband confirmation did not appear' }
+  ).then(() => true).catch(() => false)
+  if (confirmAppeared) {
+    await clickOpenConfirmDialog()
   }
 
   await browser.waitUntil(
@@ -384,8 +416,8 @@ async function ensureRuntimeMode(testContext) {
   if (!(await ensureMeshAvailable(testContext))) return null
 
   if (await hasTestId('mesh-mode-runtime')) {
-    const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
-    const existingTeamName = (await runtimeTitle.isExisting()) ? (await runtimeTitle.getText()).trim() : ''
+    const runtimeTitles = await readTestIdTexts('mesh-runtime-title')
+    const existingTeamName = runtimeTitles.find((title) => createdTeamNames.has(title)) ?? ''
     if (!createdTeamNames.has(existingTeamName)) {
       skipRuntimeTest(testContext, `Refusing to reuse runtime team not created by this spec: ${existingTeamName || 'unknown'}`)
       return null
@@ -444,13 +476,17 @@ async function ensureRuntimeMode(testContext) {
     return null
   }
 
-  const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
-  if (!(await runtimeTitle.isExisting())) {
-    skipRuntimeTest(testContext, 'Mesh runtime title missing after initialization')
+  // Regression: acd3c5aa read the first matching title even when Shell's hidden
+  // copy preceded the visible runtime surface.
+  const runtimeTitleMatched = await browser.waitUntil(
+    async () => (await readTestIdTexts('mesh-runtime-title')).includes(teamName),
+    { ...WAIT_MODE, timeoutMsg: `Mesh runtime title did not resolve to ${teamName}` }
+  ).then(() => true).catch(() => false)
+  if (!runtimeTitleMatched) {
+    skipRuntimeTest(testContext, `Mesh runtime title did not resolve to ${teamName}`)
     return null
   }
-
-  const runtimeTeamName = (await runtimeTitle.getText()).trim()
+  const runtimeTeamName = teamName
   if (!runtimeTeamName.startsWith('e2e-')) {
     skipRuntimeTest(testContext, `Expected e2e runtime team, got: ${runtimeTeamName || '<empty>'}`)
     return null
@@ -816,14 +852,21 @@ describe('Template CRUD UI', () => {
       const runtimeTeam = await ensureRuntimeMode(this)
       if (!runtimeTeam) return
 
-      await clickTestId('mesh-runtime-add-agent')
+      // Regression: 430e09ee removed the duplicate Add Agent action; active
+      // teams expose the same flow through the runtime primary action.
+      await clickTestId('mesh-runtime-primary-action')
       await browser.waitUntil(
         async () => await hasTestId('mesh-add-agent-form'),
         { ...WAIT_MEDIUM, timeoutMsg: 'Add agent form did not open' }
       )
 
-      const roleSelect = await $('[data-testid="mesh-add-agent-role-select"]')
-      await roleSelect.selectByAttribute('value', roleId)
+      // Regression: 372511aa replaced the runtime role select with the shared
+      // role catalog, so role-aware coverage must choose its catalog card.
+      await browser.waitUntil(
+        async () => await hasActiveSlideOverTestId(`mesh-add-agent-role-card-${roleId}`),
+        { ...WAIT_MEDIUM, timeoutMsg: 'Created runtime role did not appear in the catalog' }
+      )
+      await clickActiveSlideOverTestId(`mesh-add-agent-role-card-${roleId}`)
 
       await browser.waitUntil(
         async () => {
@@ -876,16 +919,18 @@ describe('Template CRUD UI', () => {
       const runtimeTeam = await ensureRuntimeMode(this)
       if (!runtimeTeam) return
 
-      const firstAgentNode = (await $$('[data-testid="mesh-node-agent"]'))[0]
-      if (!firstAgentNode) return this.skip()
+      // Regression: acd3c5aa initialized a lead-only fixture but silently
+      // skipped capture coverage unless an agent node happened to exist.
+      const firstRuntimeNode = (await $$('[data-testid="mesh-node-lead"], [data-testid="mesh-node-agent"]'))[0]
+      if (!firstRuntimeNode) throw new Error('Runtime node missing after initialization')
 
-      await firstAgentNode.click()
+      await firstRuntimeNode.click()
       await browser.waitUntil(
         async () => await hasTestId('mesh-node-detail-capture'),
         { ...WAIT_MEDIUM, timeoutMsg: 'Runtime node detail capture button did not appear' }
       )
 
-      await clickTestId('mesh-node-detail-capture')
+      await clickLastTestId('mesh-node-detail-capture')
       await browser.waitUntil(
         async () => await hasTestId('mesh-capture-role-form'),
         { ...WAIT_MEDIUM, timeoutMsg: 'Capture role dialog did not open' }
@@ -914,6 +959,7 @@ describe('Template CRUD UI', () => {
       }
 
       if (!(await openTemplateBrowser(this))) return
+      await clickActiveSlideOverTestId('catalog-tab-roles')
       expect(await (await $(`[data-testid="role-template-card-${capturedRoleId}"]`)).isExisting()).toBe(true)
     } finally {
       await disbandRuntimeTeamIfE2E()
