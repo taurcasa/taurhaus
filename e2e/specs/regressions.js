@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { selectProjectByName, switchToTab, waitForProjectsLoaded } from '../helpers/navigation.js'
+import { clickTestId, selectProjectByName, switchToTab, waitForProjectsLoaded } from '../helpers/navigation.js'
 import { TAURHAUS_CLAUDE_DIR, TAURHAUS_PROJECT_PATH } from '../helpers/platform.js'
 import { POLL, WAIT_MEDIUM } from '../helpers/timing.js'
 import { ensureAttachedTmuxSession, killTmuxPane, openTmuxWindow } from '../helpers/tmux.js'
@@ -21,7 +21,7 @@ const REGRESSION_TEAM = `event-pipeline-team-${REGRESSION_STAMP}`
 const TASK_SUBJECT = `Regression task ${REGRESSION_STAMP}`
 const README_MARKER = `event-pipeline-readme-${REGRESSION_STAMP}`
 
-function writeRegressionTask(teamName, projectPath, subject) {
+function prepareRegressionTaskSource(teamName, projectPath) {
   const teamDir = join(TAURHAUS_CLAUDE_DIR, 'teams', teamName)
   const tasksDir = join(TAURHAUS_CLAUDE_DIR, 'tasks', teamName)
   mkdirSync(teamDir, { recursive: true })
@@ -31,13 +31,18 @@ function writeRegressionTask(teamName, projectPath, subject) {
     JSON.stringify(
       {
         name: teamName,
-        members: [{ projectPath }],
+        createdAt: Date.now(),
+        members: [{ name: 'team-lead', role: 'lead', projectPath }],
       },
       null,
       2
     ),
     'utf8'
   )
+}
+
+function writeRegressionTask(teamName, subject) {
+  const tasksDir = join(TAURHAUS_CLAUDE_DIR, 'tasks', teamName)
   writeFileSync(
     join(tasksDir, '1.json'),
     JSON.stringify(
@@ -109,23 +114,6 @@ describe('Regressions', () => {
       expect(animationName).toBe('content-enter')
     })
 
-    it('tab roots do NOT have content-enter class', async function () {
-      if (!mainApp) return this.skip()
-
-      // Regression: f7255601 added valid nested reveal animations, so a global
-      // class count no longer represented the original tab-root regression.
-      const rootOffenders = await browser.execute(() => {
-        const wrapper = document.querySelector('[data-testid="content-wrapper"]')
-        if (!wrapper) return ['content-wrapper-missing']
-        const panels = wrapper.querySelectorAll(':scope > [role="tabpanel"]')
-        return Array.from(panels).flatMap((panel) =>
-          Array.from(panel.children)
-            .filter((child) => child.classList.contains('content-enter'))
-            .map((child) => `${panel.id}:${child.tagName.toLowerCase()}`)
-        )
-      })
-      expect(rootOffenders).toEqual([])
-    })
   })
 
   describe('DirectoryBrowser overflow (commit 284bd54 regression)', () => {
@@ -375,8 +363,8 @@ describe('Regressions', () => {
 
       await selectProjectByName('taurhaus')
       await switchToTab('tasks')
-
-      writeRegressionTask(REGRESSION_TEAM, TAURHAUS_PROJECT_PATH, TASK_SUBJECT)
+      prepareRegressionTaskSource(REGRESSION_TEAM, TAURHAUS_PROJECT_PATH)
+      writeRegressionTask(REGRESSION_TEAM, TASK_SUBJECT)
 
       await browser.waitUntil(
         async () => {
@@ -395,6 +383,44 @@ describe('Regressions', () => {
           .join('\n')
       })
       expect(taskText).toContain(TASK_SUBJECT)
+    })
+  })
+
+  describe('content-enter mounted tab coverage (commit 768cdec regression)', () => {
+    it('tab roots do NOT have content-enter class', async function () {
+      if (!mainApp) return this.skip()
+
+      // Regression: f7255601 added valid nested reveal animations, so a global
+      // class count no longer represented the original tab-root regression.
+      const tabNames = ['overview', 'tasks', 'mesh', 'git', 'files']
+      for (const tabName of tabNames) {
+        await clickTestId(`tab-${tabName}`)
+        await browser.waitUntil(
+          async () => await browser.execute((name) => {
+            const panel = document.querySelector(`#shell-panel-${name}`)
+            return panel && panel.children.length > 0
+          }, tabName),
+          { ...WAIT_MEDIUM, timeoutMsg: `Tab root for "${tabName}" did not mount` }
+        )
+      }
+
+      const inspection = await browser.execute(() => {
+        const wrapper = document.querySelector('[data-testid="content-wrapper"]')
+        if (!wrapper) return { mountedPanelIds: [], rootOffenders: ['content-wrapper-missing'] }
+        const panels = wrapper.querySelectorAll(':scope > [role="tabpanel"]')
+        return {
+          mountedPanelIds: Array.from(panels)
+            .filter((panel) => panel.children.length > 0)
+            .map((panel) => panel.id),
+          rootOffenders: Array.from(panels).flatMap((panel) =>
+            Array.from(panel.children)
+              .filter((child) => child.classList.contains('content-enter'))
+              .map((child) => `${panel.id}:${child.tagName.toLowerCase()}`)
+          ),
+        }
+      })
+      expect(inspection.mountedPanelIds).toEqual(tabNames.map((name) => `shell-panel-${name}`))
+      expect(inspection.rootOffenders).toEqual([])
     })
   })
 })

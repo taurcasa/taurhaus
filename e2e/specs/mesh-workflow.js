@@ -90,7 +90,7 @@ async function disbandRuntimeTeamIfSafe() {
   const isSafeRuntimeTeam = (teamName) => {
     return createdTeamNames.has(teamName) || teamName.startsWith('e2e-mesh-recovery-')
   }
-  await browser.waitUntil(
+  const safeTitleResolved = await browser.waitUntil(
     async () => {
       const teamName = await browser.execute(() => {
         return document.querySelector('[data-testid="mesh-runtime-title"]')?.textContent?.trim() ?? ''
@@ -98,12 +98,12 @@ async function disbandRuntimeTeamIfSafe() {
       return isSafeRuntimeTeam(teamName)
     },
     { ...WAIT_MEDIUM, timeoutMsg: 'Runtime team title did not resolve to a safe e2e team' }
-  )
+  ).then(() => true).catch(() => false)
   const teamName = await browser.execute(() => {
     return document.querySelector('[data-testid="mesh-runtime-title"]')?.textContent?.trim() ?? ''
   })
 
-  if (!isSafeRuntimeTeam(teamName)) {
+  if (!safeTitleResolved || !isSafeRuntimeTeam(teamName)) {
     tier2SkipReason = `Refusing to disband runtime team outside the sealed e2e group: ${teamName || 'unknown'}`
     return false
   }

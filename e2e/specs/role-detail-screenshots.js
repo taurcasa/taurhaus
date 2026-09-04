@@ -10,6 +10,7 @@ import { resolve } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { clickTestId, fastClick, waitForProjectsLoaded } from '../helpers/navigation.js'
+import { setReactiveInputValue } from '../helpers/meshBuilder.js'
 import { WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 
 const screenshotDir = resolve(import.meta.dirname, '..', 'screenshots', 'role-detail')
@@ -163,14 +164,7 @@ async function setCatalogSearch(value) {
   // Regression: c810d1a3 used separate WebDriver clear/set calls across a
   // reactive catalog update, leaving the live Svelte input blank in the
   // first-run-wizard sealed group.
-  const dispatched = await browser.execute((nextValue) => {
-    const input = document.querySelector('[data-testid="mesh-builder-role-search"]')
-    if (!(input instanceof HTMLInputElement)) return false
-    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-    valueSetter?.call(input, String(nextValue ?? ''))
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    return true
-  }, value)
+  const dispatched = await setReactiveInputValue('mesh-builder-role-search', value)
   if (!dispatched) throw new Error('Role catalog search input was unavailable')
 }
 

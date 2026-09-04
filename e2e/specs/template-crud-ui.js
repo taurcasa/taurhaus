@@ -632,18 +632,14 @@ describe('Template CRUD UI', () => {
       }
       await bestEffortFlushPending()
 
-      const persisted = await browser.waitUntil(
+      await browser.waitUntil(
         async () => {
           const lookup = await invokeTauri('templates_get_role', { roleId })
           if (!lookup?.ok || !lookup?.result) return false
           return String(lookup.result.instructions ?? '').includes('Role instructions v2')
         },
         { ...WAIT_MODE, timeoutMsg: 'Role edit was not persisted' }
-      ).then(() => true).catch(() => false)
-      if (!persisted) {
-        skipNonRuntimeTest(this, 'Role edit persistence did not settle in time')
-        return
-      }
+      )
 
       await clickActiveSlideOverTestId('catalog-tab-roles')
 
@@ -655,8 +651,7 @@ describe('Template CRUD UI', () => {
           (await clickActiveSlideOverTestId(`role-inspect-${roleId}`)) ||
           (await clickActiveSlideOverTestId(`role-template-card-${roleId}`))
         if (!openedDetail) {
-          skipNonRuntimeTest(this, `Role inspect trigger missing for ${roleId}`)
-          return
+          throw new Error(`Role inspect trigger missing for ${roleId}`)
         }
       }
 
@@ -741,8 +736,7 @@ describe('Template CRUD UI', () => {
 
       const openedPresetsTab = await clickActiveSlideOverTestId('catalog-tab-presets')
       if (!openedPresetsTab) {
-        skipNonRuntimeTest(this, 'Preset tab toggle unavailable in active slideover')
-        return
+        throw new Error('Preset tab toggle unavailable in active slideover')
       }
       await browser.waitUntil(
         async () => await hasActiveSlideOverTestId('template-preset-create'),
@@ -943,9 +937,7 @@ describe('Template CRUD UI', () => {
   })
 
   after(async () => {
-    if (!(await closeSlideOverIfOpen())) {
-      throw new Error('Template CRUD UI left an active slideover open during teardown')
-    }
+    const slideOverClosed = await closeSlideOverIfOpen()
 
     for (const teamName of createdTeamNames) {
       if (!teamName.startsWith('e2e-')) continue
@@ -962,6 +954,10 @@ describe('Template CRUD UI', () => {
 
     if (blockedReason) {
       console.log(`[e2e] template crud ui skipped/limited due to mesh prerequisites or safety guard: ${blockedReason}`)
+    }
+
+    if (!slideOverClosed) {
+      throw new Error('Template CRUD UI left an active slideover open during teardown')
     }
   })
 })

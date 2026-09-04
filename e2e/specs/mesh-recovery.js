@@ -205,8 +205,6 @@ async function ensureSetupMode(teamName) {
     if (!disbanded) return false
   }
 
-  if (await hasVisibleTestId('mesh-mode-setup')) return true
-
   if (await hasVisibleTestId('mesh-mode-empty')) {
     // Regression: 17e0f9d1 clicked into the inline editor without dispatching
     // the input event required to move the builder from empty to setup mode.
@@ -219,6 +217,8 @@ async function ensureSetupMode(teamName) {
     async () => await hasVisibleTestId('mesh-mode-setup'),
     { ...WAIT_LONG, timeoutMsg: 'Mesh did not enter setup mode' }
   )
+
+  await setInlineBuilderTeamName(teamName)
 
   return true
 }
