@@ -365,6 +365,16 @@ describe('Regressions', () => {
       // notify callback, blocking delivery before a new team's task could scan.
       await selectProjectByName('taurhaus')
       await switchToTab('tasks')
+      // Regression: f9c1e893a assumed entering Tasks reset the persisted subtab,
+      // so the sealed session-management group left this assertion on History.
+      await clickTestId('sub-tab-active')
+      await browser.waitUntil(
+        async () => {
+          const activeSubTab = await $('[data-testid="sub-tab-active"]')
+          return (await activeSubTab.getAttribute('aria-selected')) === 'true'
+        },
+        { ...WAIT_MEDIUM, timeoutMsg: 'Active task board subtab did not become selected' }
+      )
       prepareRegressionTaskSource(REGRESSION_TEAM, TAURHAUS_PROJECT_PATH)
       writeRegressionTask(REGRESSION_TEAM, TASK_SUBJECT)
 
