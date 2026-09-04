@@ -580,9 +580,11 @@ body {
   scroll-timeline: --rail-scroll y;
   /* Stacks the list — scrollbar included — above the in-rail lane cover, so
      a visible thumb travels over the pulled material like an overlay
-     scrollbar instead of vanishing beneath it. */
+     scrollbar instead of vanishing beneath it. Two above the lane's one:
+     the lane itself must clear the main panel's box-shadow (z auto), which
+     otherwise tints the lane material where it spills across the rail edge. */
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 
 .sidebar-bridge-clip,
@@ -602,6 +604,10 @@ body {
 
 .sidebar-bridge-lane-clip {
   position: absolute;
+  /* Above the main panel's box-shadow (which paints over the rail's edge
+     region and would tint the lane material), below the list at z 2 so the
+     scrollbar thumb stays on top. */
+  z-index: 1;
 }
 
 .sidebar-bridge-clip[data-bridge-active],

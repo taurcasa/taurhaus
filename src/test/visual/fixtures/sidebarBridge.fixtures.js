@@ -47,6 +47,7 @@ function createScenario({
   scrollTo = null,
   props = {},
   forceJsTracking = false,
+  simulateScrollbarLane = false,
   expected,
 }) {
   return {
@@ -58,6 +59,14 @@ function createScenario({
     scrollTo,
     props,
     forceJsTracking,
+    // Reproduces the classic-scrollbar layout (an 8px lane between the rows
+    // and the rail edge) via a list inset, so the in-rail lane cover runs
+    // on real layout even on overlay-scrollbar engines. The bridge only
+    // measures the shortfall — it cannot tell a scrollbar from an inset.
+    // (On an engine whose scrollbar also takes space this would stack to a
+    // 16px shortfall and the bridge would refuse — a loud signal that the
+    // engine's scrollbar behavior changed.)
+    simulateScrollbarLane,
     expected: { bridge: true, lane: false, ...expected },
   }
 }
@@ -92,6 +101,26 @@ export const sidebarBridgeScenarios = [
     selectedIndex: 12,
     scrollTo: 240,
     expected: { bridge: true, lane: true },
+  }),
+  createScenario({
+    // The classic-scrollbar layout: the row stops 8px short of the rail
+    // edge and the in-rail lane cover carries the material to the border.
+    name: 'bridge_forced_lane_dark',
+    theme: 'dark',
+    projects: longList(),
+    selectedIndex: 12,
+    scrollTo: 240,
+    simulateScrollbarLane: true,
+    expected: { bridge: true, lane: 'always' },
+  }),
+  createScenario({
+    name: 'bridge_forced_lane_light',
+    theme: 'light',
+    projects: longList(),
+    selectedIndex: 12,
+    scrollTo: 240,
+    simulateScrollbarLane: true,
+    expected: { bridge: true, lane: 'always' },
   }),
   createScenario({
     // The pulled row scrolled half out at the list's top edge: the bridge

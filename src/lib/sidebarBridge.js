@@ -111,11 +111,16 @@ export function bridgeFrame({
     height: rowRect.height + 2 * BRIDGE_FLARE_PX,
   }
 
+  // The lane element is absolutely positioned inside the rail, whose 1px
+  // border makes its PADDING box the containing block — so these offsets
+  // are stated relative to the padding-box origin (border-box + border), or
+  // the cover lands 1px off on both axes and a rail hairline survives at
+  // the row's right edge on space-taking-scrollbar engines.
   const lane = laneWidth > FLUSH_TOLERANCE_PX
     ? {
-        left: rowRect.right - railRect.left,
+        left: rowRect.right - (railRect.left + RAIL_BORDER_PX),
         width: laneWidth,
-        top: listRect.top - railRect.top,
+        top: listRect.top - (railRect.top + RAIL_BORDER_PX),
         height: listRect.height,
         strip,
       }

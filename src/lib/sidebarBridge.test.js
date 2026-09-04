@@ -122,13 +122,15 @@ describe('bridgeFrame — scrollbar lane', () => {
     expect(frame({ rowRect: nearFlush }).lane).toBe(null)
   })
 
-  it('covers the scrollbar lane in rail coordinates when the row stops short', () => {
+  it('covers the scrollbar lane in rail padding-box coordinates when the row stops short', () => {
     const { lane } = frame({ rowRect: laneRow, scrollHeight: 900 })
     expect(lane).not.toBe(null)
-    // Rail-relative x: from the row's right edge to the rail's inner border.
-    expect(lane.left).toBe(laneRow.right - railRect.left)
+    // The rail's 1px border makes its padding box the containing block for
+    // the absolutely positioned lane, so offsets subtract the border on
+    // both axes: from the row's right edge to the rail's inner border.
+    expect(lane.left).toBe(laneRow.right - railRect.left - RAIL_BORDER_PX)
     expect(lane.width).toBe(railRect.right - RAIL_BORDER_PX - laneRow.right)
-    expect(lane.top).toBe(listRect.top - railRect.top)
+    expect(lane.top).toBe(listRect.top - railRect.top - RAIL_BORDER_PX)
     expect(lane.height).toBe(listRect.height)
   })
 

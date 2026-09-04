@@ -25,6 +25,16 @@
     setScrollDrivenTrackingForTesting(false)
   }
 
+  // Reproduce the classic-scrollbar layout before the Sidebar first
+  // measures: an 8px lane between the rows and the rail edge (total right
+  // inset 14px instead of px-1.5's 6px), which is what a space-taking
+  // scrollbar does to the list. Injected as a stylesheet so the very first
+  // bridge pass already sees the shortfall.
+  // svelte-ignore state_referenced_locally
+  const laneStyle = scenario?.simulateScrollbarLane
+    ? '[data-testid="sidebar-project-scroll"] { padding-right: 14px !important; }'
+    : null
+
   onMount(() => {
     void (async () => {
       if (scenario?.scrollTo != null) {
@@ -36,6 +46,10 @@
     return () => setScrollDrivenTrackingForTesting(null)
   })
 </script>
+
+{#if laneStyle}
+  <svelte:element this={'style'}>{laneStyle}</svelte:element>
+{/if}
 
 <!-- The Shell body junction the bridge lives at: teal frame, real titlebar
      (manila tab and inverse scoop for reference), real Sidebar, the frame

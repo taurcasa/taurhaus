@@ -95,14 +95,22 @@ describe('Pulled-row bridge — Shell body junction', () => {
         expect(rowRect.top).toBeLessThan(listRect.top)
       }
 
-      if (scenario.expected.lane && scrollbarTakesSpace()) {
-        // The classic scrollbar took its lane; the in-rail cover spans from
-        // the row's short edge to the rail border, under the thumb.
+      const laneExpected =
+        scenario.expected.lane === 'always'
+        || (scenario.expected.lane && scrollbarTakesSpace())
+      if (laneExpected) {
+        // The row stops short of the rail edge (a classic scrollbar's lane,
+        // or this fixture's simulation of one); the in-rail cover spans
+        // from the row's short edge to the rail border. Viewport-coords
+        // assertions, so a containing-block mix-up (border box vs the
+        // bordered rail's padding box) cannot pass.
         expect(lane.hasAttribute('data-bridge-active')).toBe(true)
         const laneRect = lane.getBoundingClientRect()
         expect(rowRect.right).toBeLessThan(railRect.right - 2)
         expect(laneRect.left).toBeCloseTo(rowRect.right, 0)
         expect(laneRect.right).toBeCloseTo(railRect.right - 1, 0)
+        expect(laneRect.top).toBeCloseTo(listRect.top, 0)
+        expect(laneRect.height).toBeCloseTo(listRect.height, 0)
       } else {
         // Overlay-scrollbar engines (and short lists): the row is flush and
         // there is no lane to cover.

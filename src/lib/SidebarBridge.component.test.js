@@ -134,10 +134,12 @@ describe('Sidebar pulled-row bridge — show/hide', () => {
     const lane = screen.getByTestId('sidebar-bridge-lane')
     await waitFor(() => expect(lane).toHaveAttribute('data-bridge-active'))
 
-    // Rail coordinates: from the row's right edge to the inner border.
-    expect(lane.style.left).toBe('243px')
+    // Rail PADDING-box coordinates (the aside's 1px border makes the
+    // padding box the containing block for the absolute lane): from the
+    // row's right edge (viewport 249 -> 249-6-1) to the inner border.
+    expect(lane.style.left).toBe('242px')
     expect(lane.style.width).toBe('8px')
-    expect(lane.style.top).toBe('46px')
+    expect(lane.style.top).toBe('45px')
     expect(lane.style.height).toBe('498px')
 
     // The gutter bridge still runs, sharing the strip's vertical base.
