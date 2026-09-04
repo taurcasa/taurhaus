@@ -551,9 +551,9 @@ pub struct ModelCatalogEntry {
     pub default_effort: Option<String>,
     pub deprecated: bool,
     pub replacement: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capability_tier: Option<CapabilityTier>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier_rank: Option<u32>,
 }
 
