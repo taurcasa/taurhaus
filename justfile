@@ -272,6 +272,10 @@ metrics:
 analyze-compaction *ARGS:
     python3 scripts/analyze-compaction.py {{ARGS}}
 
+# Observational routing telemetry; wall-time is the Stage 1 cost proxy.
+routing-report DAYS="30":
+    cargo run --quiet --manifest-path src-tauri/Cargo.toml --bin routing-report -- {{quote(DAYS)}}
+
 # Trigger a real managed Claude compaction and verify the hook + delivery path.
 test-compaction-claude TEAM MEMBER *ARGS:
     python3 scripts/test-compaction-claude.py --team {{TEAM}} --member {{MEMBER}} {{ARGS}}

@@ -804,6 +804,10 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "shared newer-wins publisher is invoked by daemon services",
         ),
         (
+            "src/coordination/routing_report.rs",
+            "read-only routing report enumerates registry-authoritative team roots",
+        ),
+        (
             "src/coordination/orchestrator/delivery.rs",
             "daemon-hosted delivery records last-seen and daemon pid after send",
         ),

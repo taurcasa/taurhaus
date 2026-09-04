@@ -22,6 +22,7 @@ pub mod reconcile;
 pub mod reinjection;
 pub mod requests;
 pub mod roster;
+pub mod routing_report;
 pub mod runtime;
 pub mod state;
 pub mod stores;
