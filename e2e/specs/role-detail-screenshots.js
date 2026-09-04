@@ -280,9 +280,11 @@ async function createEditableCatalogRole() {
   )
   await clickTestId('mesh-role-editor-save')
 
+  // Regression: c810d1a3 treated the first git-backed role write as an
+  // ordinary UI transition, timing out while the save was still in flight.
   await browser.waitUntil(
     async () => !(await hasTestId('mesh-role-editor')),
-    { ...WAIT_LONG, timeoutMsg: 'Role editor dialog did not close after save' }
+    { ...WAIT_XLONG, timeoutMsg: 'Role editor dialog did not close after save' }
   )
 
   await browser.waitUntil(
