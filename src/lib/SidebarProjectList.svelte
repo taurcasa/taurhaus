@@ -134,11 +134,13 @@
       <!-- Selected rows speak the drawer language: pulled (panel material,
            edge scoops) while the panel shows this project; held (quiet fill)
            while a utility surface occupies the panel. The 3px selection
-           handle survives both. -->
+           handle survives both. The transition is colors-only so the pulled
+           width/radius and the scoops change in the same instant instead of
+           the corners popping in over an animating edge. -->
       <button
         data-testid="project-item"
         data-project-id={project.id}
-        class="w-full px-3 rounded-md text-left transition-all duration-75 cursor-pointer
+        class="w-full px-3 rounded-md text-left transition-colors duration-75 cursor-pointer
           focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/70 focus-visible:ring-inset
           {secondaryBranch ? 'h-[50px] py-1.5' : 'h-[36px]'}
           {pulled

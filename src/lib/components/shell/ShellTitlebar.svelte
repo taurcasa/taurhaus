@@ -24,8 +24,12 @@
       : 'Search (Ctrl+K)'
   )
   const TAB_ORDER = ['overview', 'files', 'tasks', 'mesh', 'git']
+  // Invariant: the surface flags are mutually exclusive (Shell's toggles
+  // enforce it), and this precedence order matches ShellMainPanel's render
+  // branches — so if a future bug ever left two flags set, the titlebar
+  // would still name the surface the panel actually shows.
   const takeoverLabel = $derived(
-    settingsOpen ? 'Settings' : accountsOpen ? 'Accounts' : projectsOpen ? 'Projects' : null
+    projectsOpen ? 'Projects' : accountsOpen ? 'Accounts' : settingsOpen ? 'Settings' : null
   )
 
   let overviewTabEl = $state(null)

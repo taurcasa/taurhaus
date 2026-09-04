@@ -6,7 +6,7 @@ Project management is the core workflow for adding repositories to taurhaus, org
 
 ## Overview
 
-taurhaus treats each registered repository as a project with persisted metadata, computed activity state, and optional relationships to other projects. Users manage projects from the sidebar and Manage Projects modal, then work from the Overview tab and project context menu.
+taurhaus treats each registered repository as a project with persisted metadata, computed activity state, and optional relationships to other projects. Users manage projects from the sidebar and the Projects takeover, then work from the Overview tab and project context menu.
 
 At runtime, project state is a combination of:
 - Persisted metadata (name, path, timestamps, cached git data)
@@ -42,7 +42,7 @@ What users see:
 - Projects listed under group headers (headers only appear when group has items)
 - Filter input to narrow by project name
 - Per-project row indicators: session tool badges, cached branch badge, dirty indicator, and foreground-project emphasis when tmux focus resolves to that project
-- Footer controls: Manage Projects button and daemon status
+- Footer controls: the Projects·Accounts·Settings key cluster and the daemon status readout
 
 Ordering behavior:
 - Backend returns projects sorted by `last_activity_at DESC`.
@@ -136,7 +136,7 @@ Safety/confirmation behavior:
 
 | File | Purpose |
 |------|---------|
-| `src/lib/AddProjectModal.svelte` | Manage Projects modal: quick scan, manual add, remove |
+| `src/lib/ProjectsTakeover.svelte` | Projects takeover surface: quick scan, manual add, remove |
 | `src/lib/FirstRunWizard.svelte` | First-run batch scan and registration flow |
 | `src/lib/Sidebar.svelte` | Project grouping, listing, filter, right-click context menu |
 | `src/lib/ContextMenu.svelte` | Reusable context menu component with keyboard support |

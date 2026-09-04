@@ -48,6 +48,6 @@
   <span class="ml-auto flex items-center gap-3">
     {#if meta}{@render meta()}{/if}
     {#if action}{@render action()}{/if}
-    <kbd class="rounded border px-1.5 py-0.5 font-mono text-[10px] font-semibold {kbdTone}">Esc</kbd>
+    <kbd class="rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-semibold {kbdTone}">Esc</kbd>
   </span>
 </header>
