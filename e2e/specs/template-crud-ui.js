@@ -525,9 +525,7 @@ describe('Template CRUD UI', () => {
     }
   })
 
-    // Known-stale since 17e0f9d: Browse catalog became Focus search and
-    // TemplateBrowserPanel currently has no render site. Keep skipped until the UI returns.
-    it.skip('creates a custom role via UI', async function () {
+    it('creates a custom role via UI', async function () {
     if (!mainApp) return this.skip()
 
     const roleId = nextId('e2e-role-ui-create')
