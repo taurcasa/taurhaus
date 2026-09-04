@@ -10,7 +10,7 @@
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, fastClick, clickTestId } from '../helpers/navigation.js'
 import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
-import { WAIT_SHORT, WAIT_MEDIUM } from '../helpers/timing.js'
+import { WAIT_SHORT, WAIT_MEDIUM, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 import {
@@ -822,17 +822,22 @@ describe('Template CRUD UI', () => {
       // Regression: 430e09ee removed the duplicate Add Agent action; active
       // teams expose the same flow through the runtime primary action.
       //
-      // Accepted race, retried once: tier-1 member panes run unauthenticated
-      // CLIs whose sessions die fast, and the daemon's dead-session self-heal
-      // may legitimately disband the just-initialized team inside this action
-      // window ("Team disbanded" banner, app back in setup mode). That is
-      // correct product behavior, not a defect — the test rebuilds the
-      // runtime team once and repeats the action; a second loss fails loudly.
+      // Two hardenings, diagnosed separately under full-suite runs:
+      // - The form mounts through catalog IPC and misses WAIT_MEDIUM under
+      //   7-worker load while passing standalone — this once-per-suite mount
+      //   gets the XLONG budget.
+      // - Should the team genuinely vanish inside the window (a dead-session
+      //   self-heal disband is legitimate here: tier-1 members run
+      //   unauthenticated and die fast), rebuild once and retry; a second
+      //   loss fails loudly. NOTE for future readers: the spec's own cleanup
+      //   disbands the team AFTER a failure and BEFORE artifact capture, so a
+      //   "Team disbanded" banner in failure.png is usually the cleanup, not
+      //   the cause — check the app log for who issued the disband.
       await clickTestId('mesh-runtime-primary-action')
       try {
         await browser.waitUntil(
           async () => await hasTestId('mesh-add-agent-form'),
-          { ...WAIT_MEDIUM, timeoutMsg: 'Add agent form did not open' }
+          { ...WAIT_XLONG, timeoutMsg: 'Add agent form did not open' }
         )
       } catch (error) {
         if (await hasTestId('mesh-mode-runtime')) throw error
@@ -841,7 +846,7 @@ describe('Template CRUD UI', () => {
         await clickTestId('mesh-runtime-primary-action')
         await browser.waitUntil(
           async () => await hasTestId('mesh-add-agent-form'),
-          { ...WAIT_MEDIUM, timeoutMsg: 'Add agent form did not open after self-heal rebuild' }
+          { ...WAIT_XLONG, timeoutMsg: 'Add agent form did not open after team rebuild' }
         )
       }
 
