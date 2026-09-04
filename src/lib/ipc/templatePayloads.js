@@ -16,7 +16,7 @@ function normalizeCapabilityPolicy(value) {
   if (!value || typeof value !== 'object') return null
   const normalized = {
     ...value,
-    modelSelection: value.modelSelection ?? value.model_selection ?? 'fixed',
+    modelSelection: value.modelSelection ?? value.model_selection ?? null,
     minimumCapability: value.minimumCapability ?? value.minimum_capability ?? null,
     allowedModels: optionalTrimmedStringList(value.allowedModels ?? value.allowed_models) ?? [],
     effortBand: optionalTrimmedStringList(value.effortBand ?? value.effort_band) ?? [],

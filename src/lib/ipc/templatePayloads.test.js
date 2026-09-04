@@ -119,6 +119,22 @@ describe('templatePayloads normalizeRoleTemplateInput', () => {
     expect(normalizeRoleTemplateInput(response).capabilityPolicy).toEqual(capabilityPolicy)
   })
 
+  // Regression: commit 2268fa09 duplicated the backend's implicit fixed default
+  // in both frontend normalizers instead of preserving an absent selection.
+  it('does not invent a capability policy model selection', () => {
+    expect(normalizeRoleTemplateResponse({
+      role_id: 'developer-codex',
+      name: 'Developer',
+      capability_policy: { minimum_capability: 'strong' },
+    }).capabilityPolicy.modelSelection).toBeNull()
+
+    expect(normalizeRoleTemplateInput({
+      roleId: 'developer-codex',
+      name: 'Developer',
+      capabilityPolicy: { minimumCapability: 'strong' },
+    }).capabilityPolicy.modelSelection).toBeNull()
+  })
+
   // Regression: commits ff40911 and 5d2ce27 kept model and effort in one string,
   // so the launcher stripped the suffix and ran the member at the user's global
   // effort. Saving a role must emit the split, canonical pair.
