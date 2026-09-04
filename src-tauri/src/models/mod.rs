@@ -551,6 +551,18 @@ pub struct ModelCatalogEntry {
     pub default_effort: Option<String>,
     pub deprecated: bool,
     pub replacement: Option<String>,
+    #[serde(default)]
+    pub capability_tier: Option<CapabilityTier>,
+    #[serde(default)]
+    pub tier_rank: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityTier {
+    Frontier,
+    Strong,
+    Efficient,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -795,6 +807,7 @@ fn model_catalog_entry(
     deprecated: bool,
     replacement: Option<&str>,
 ) -> ModelCatalogEntry {
+    let (capability_tier, tier_rank) = model_capability(id);
     ModelCatalogEntry {
         id: id.to_string(),
         label: label.to_string(),
@@ -802,7 +815,34 @@ fn model_catalog_entry(
         default_effort: default_effort.map(str::to_string),
         deprecated,
         replacement: replacement.map(str::to_string),
+        capability_tier,
+        tier_rank,
     }
+}
+
+fn model_capability(id: &str) -> (Option<CapabilityTier>, Option<u32>) {
+    use CapabilityTier::{Efficient, Frontier, Strong};
+
+    let assignment = match id {
+        "fable" => (Frontier, 0),
+        "gpt-5.6-sol" => (Strong, 0),
+        "opus" => (Strong, 1),
+        "claude-opus-4-6" | "claude-opus-4-6-thinking" => (Strong, 2),
+        "gemini-3.1-pro-high" => (Strong, 3),
+        "grok-4.6" => (Strong, 4),
+        "gpt-5.5" => (Strong, 5),
+        // Preferred for batch/volume work: speed and throughput over peak
+        // intelligence (operator-signed Stage-0 catalog policy).
+        "gpt-5.6-luna" => (Efficient, 0),
+        "gpt-5.4" => (Efficient, 1),
+        "gpt-5.4-mini" => (Efficient, 2),
+        id if id.starts_with("gemini-3.") && id.contains("-flash-") => (Efficient, 3),
+        "gemini-3.1-pro-low" => (Efficient, 4),
+        "gpt-oss-120b-medium" => (Efficient, 5),
+        "grok-4.5" => (Efficient, 6),
+        _ => return (None, None),
+    };
+    (Some(assignment.0), Some(assignment.1))
 }
 
 impl Default for ModelCatalog {
@@ -2011,6 +2051,123 @@ mod tests {
     }
 
     #[test]
+    fn model_catalog_carries_signed_off_capability_tiers_and_ranks() {
+        let expected = [
+            (
+                CliTool::Claude,
+                "fable",
+                Some(CapabilityTier::Frontier),
+                Some(0),
+            ),
+            (
+                CliTool::Codex,
+                "gpt-5.6-sol",
+                Some(CapabilityTier::Strong),
+                Some(0),
+            ),
+            (
+                CliTool::Claude,
+                "opus",
+                Some(CapabilityTier::Strong),
+                Some(1),
+            ),
+            (
+                CliTool::Claude,
+                "claude-opus-4-6",
+                Some(CapabilityTier::Strong),
+                Some(2),
+            ),
+            (
+                CliTool::Agy,
+                "claude-opus-4-6-thinking",
+                Some(CapabilityTier::Strong),
+                Some(2),
+            ),
+            (
+                CliTool::Agy,
+                "gemini-3.1-pro-high",
+                Some(CapabilityTier::Strong),
+                Some(3),
+            ),
+            (
+                CliTool::Grok,
+                "grok-4.6",
+                Some(CapabilityTier::Strong),
+                Some(4),
+            ),
+            (
+                CliTool::Codex,
+                "gpt-5.5",
+                Some(CapabilityTier::Strong),
+                Some(5),
+            ),
+            (
+                CliTool::Codex,
+                "gpt-5.6-luna",
+                Some(CapabilityTier::Efficient),
+                Some(0),
+            ),
+            (
+                CliTool::Codex,
+                "gpt-5.4",
+                Some(CapabilityTier::Efficient),
+                Some(1),
+            ),
+            (
+                CliTool::Codex,
+                "gpt-5.4-mini",
+                Some(CapabilityTier::Efficient),
+                Some(2),
+            ),
+            (
+                CliTool::Agy,
+                "gemini-3.7-flash-high",
+                Some(CapabilityTier::Efficient),
+                Some(3),
+            ),
+            (
+                CliTool::Agy,
+                "gemini-3.6-flash-medium",
+                Some(CapabilityTier::Efficient),
+                Some(3),
+            ),
+            (
+                CliTool::Agy,
+                "gemini-3.5-flash-low",
+                Some(CapabilityTier::Efficient),
+                Some(3),
+            ),
+            (
+                CliTool::Agy,
+                "gemini-3.1-pro-low",
+                Some(CapabilityTier::Efficient),
+                Some(4),
+            ),
+            (
+                CliTool::Agy,
+                "gpt-oss-120b-medium",
+                Some(CapabilityTier::Efficient),
+                Some(5),
+            ),
+            (
+                CliTool::Grok,
+                "grok-4.5",
+                Some(CapabilityTier::Efficient),
+                Some(6),
+            ),
+            (CliTool::Codex, "gpt-5.6-terra", None, None),
+            (CliTool::Claude, "sonnet", None, None),
+            (CliTool::Claude, "haiku", None, None),
+        ];
+
+        for (tool, id, tier, rank) in expected {
+            let entry = ModelCatalog::entry_for(tool, id).unwrap_or_else(|| panic!("{id}"));
+            assert_eq!(entry.capability_tier, tier, "{id} tier");
+            assert_eq!(entry.tier_rank, rank, "{id} rank");
+        }
+    }
+
+    #[test]
     fn model_catalog_validates_effort_per_tool_and_codex_model() {
         assert!(ModelCatalog::supports_effort(
             CliTool::Claude,
@@ -2058,6 +2215,11 @@ mod tests {
         assert!(value["modelCatalog"]["codex"][0]
             .get("defaultEffort")
             .is_some());
+        assert_eq!(
+            value["modelCatalog"]["codex"][0]["capabilityTier"],
+            "strong"
+        );
+        assert_eq!(value["modelCatalog"]["codex"][0]["tierRank"], 0);
         assert!(value["cliVersions"].get("codex").is_some());
         assert!(value["cliVersions"]
             .get("codexQueueWakeSupported")

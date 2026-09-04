@@ -100,6 +100,8 @@ function normalizeModelCatalogEntry(raw) {
     : []
   const defaultEffort = raw.defaultEffort ?? raw.default_effort ?? null
   const replacement = raw.replacement ?? null
+  const capabilityTier = raw.capabilityTier ?? raw.capability_tier ?? null
+  const tierRank = raw.tierRank ?? raw.tier_rank ?? null
   const normalized = {
     ...raw,
     id,
@@ -108,8 +110,12 @@ function normalizeModelCatalogEntry(raw) {
     defaultEffort: defaultEffort == null ? null : String(defaultEffort).trim() || null,
     deprecated: Boolean(raw.deprecated),
     replacement: replacement == null ? null : String(replacement).trim() || null,
+    capabilityTier: capabilityTier == null ? null : String(capabilityTier).trim() || null,
+    tierRank: Number.isInteger(tierRank) && tierRank >= 0 ? tierRank : null,
   }
   delete normalized.default_effort
+  delete normalized.capability_tier
+  delete normalized.tier_rank
   return normalized
 }
 
