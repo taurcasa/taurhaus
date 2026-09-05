@@ -130,6 +130,7 @@ struct NotifyEventContext {
     watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
     watched_dirs: Arc<Mutex<HashSet<PathBuf>>>,
     watch_refcounts: Option<Arc<Mutex<HashMap<PathBuf, usize>>>>,
+    registrations: Option<Arc<Mutex<HashMap<String, WatchRegistration>>>>,
 }
 
 /// Build a `Gitignore` matcher from a project's `.gitignore` file.
@@ -256,49 +257,6 @@ pub(crate) fn reconcile_pruned_tree_watches(
             continue;
         }
         watcher.watch(&path, RecursiveMode::NonRecursive)?;
-        watched_dirs.insert(path);
-    }
-
-    Ok(watched_dirs.len())
-}
-
-fn reconcile_shared_pruned_tree_watches(
-    watcher: &mut RecommendedWatcher,
-    shared_refcounts: &mut HashMap<PathBuf, usize>,
-    watched_dirs: &mut HashSet<PathBuf>,
-    project_root: &Path,
-    gitignore: &Gitignore,
-) -> Result<usize, notify::Error> {
-    let desired_dirs = desired_watch_dirs_for_root(project_root, gitignore);
-
-    let stale_dirs = watched_dirs
-        .iter()
-        .filter(|path| !desired_dirs.contains(*path))
-        .cloned()
-        .collect::<Vec<_>>();
-    for path in stale_dirs {
-        if let Some(refcount) = shared_refcounts.get_mut(&path) {
-            if *refcount <= 1 {
-                shared_refcounts.remove(&path);
-                let _ = watcher.unwatch(&path);
-            } else {
-                *refcount -= 1;
-            }
-        }
-        watched_dirs.remove(&path);
-    }
-
-    for path in desired_dirs {
-        if watched_dirs.contains(&path) {
-            continue;
-        }
-        match shared_refcounts.get_mut(&path) {
-            Some(refcount) => *refcount += 1,
-            None => {
-                watcher.watch(&path, RecursiveMode::NonRecursive)?;
-                shared_refcounts.insert(path.clone(), 1);
-            }
-        }
         watched_dirs.insert(path);
     }
 
@@ -637,10 +595,10 @@ fn matching_tree_notify_contexts(
     watch_refcounts: &Arc<Mutex<HashMap<PathBuf, usize>>>,
     event: &Event,
 ) -> Vec<NotifyEventContext> {
-    let registrations = registrations
+    let registration_state = registrations
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    registrations
+    registration_state
         .iter()
         .filter_map(|(project_id, registration)| {
             let WatchRegistration::Tree(tree) = registration else {
@@ -658,6 +616,7 @@ fn matching_tree_notify_contexts(
                 watcher: watcher.clone(),
                 watched_dirs: tree.watched_dirs.clone(),
                 watch_refcounts: Some(watch_refcounts.clone()),
+                registrations: Some(registrations.clone()),
             })
         })
         .collect()
@@ -790,48 +749,149 @@ fn run_deferred_reconciles(context: &NotifyEventContext) {
     }
 }
 
-/// One full desired-vs-actual reconcile pass for a project's watch tree. The
-/// gitignore matcher is cloned under a narrow guard so the notify callback's
-/// next classification never waits behind the tree walk.
 fn reconcile_watch_dirs_full(context: &NotifyEventContext) -> Option<usize> {
-    let gitignore = {
-        let gis = context
-            .gitignores
+    loop {
+        let gitignore = {
+            let gitignores = context
+                .gitignores
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            gitignores.get(&context.project_id)?.clone()
+        };
+        if !reconcile_registration_is_active(context) {
+            return None;
+        }
+        let previous_dirs = context
+            .watched_dirs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        let previous_refcounts = context.watch_refcounts.as_ref().map(|refcounts| {
+            refcounts
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clone()
+        });
+
+        // Snapshot first, then walk with no locks held: large trees must never
+        // delay callback classification or another registration's state access.
+        let desired_dirs = desired_watch_dirs_for_root(&context.project_root, &gitignore);
+        let stale_dirs = previous_dirs
+            .iter()
+            .filter(|path| !desired_dirs.contains(*path))
+            .cloned()
+            .collect::<Vec<_>>();
+        let new_dirs = desired_dirs
+            .iter()
+            .filter(|path| !previous_dirs.contains(*path))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let mut watcher_guard = context
+            .watcher
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        gis.get(&context.project_id)?.clone()
-    };
 
-    let mut watcher_guard = context
-        .watcher
+        // Another registration/reconcile can update the snapshot before this
+        // worker obtains the watcher. Retry rather than applying a stale diff.
+        let watched_dirs_unchanged = *context
+            .watched_dirs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            == previous_dirs;
+        let refcounts_unchanged = match (&context.watch_refcounts, &previous_refcounts) {
+            (Some(refcounts), Some(previous)) => {
+                *refcounts.lock().unwrap_or_else(|error| error.into_inner()) == *previous
+            }
+            (None, None) => true,
+            _ => false,
+        };
+        if !watched_dirs_unchanged || !refcounts_unchanged {
+            drop(watcher_guard);
+            continue;
+        }
+        if !reconcile_registration_is_active(context) {
+            return None;
+        }
+
+        let watcher = watcher_guard.as_mut()?;
+        let mut updated_dirs = previous_dirs.clone();
+        let mut physically_removed = Vec::new();
+        let mut physically_added = Vec::new();
+
+        // Lock order: notify watch()/unwatch() waits for the callback thread.
+        // These calls hold ONLY `watcher`; the callback can take watched-dir or
+        // registration state and return its ack. The callback never takes `watcher`.
+        for path in &stale_dirs {
+            let should_unwatch = previous_refcounts
+                .as_ref()
+                .is_none_or(|refcounts| refcounts.get(path).copied().unwrap_or(0) <= 1);
+            if should_unwatch {
+                let _ = watcher.unwatch(path);
+                physically_removed.push(path.clone());
+            }
+            updated_dirs.remove(path);
+        }
+        for path in &new_dirs {
+            let needs_physical_watch = previous_refcounts
+                .as_ref()
+                .is_none_or(|refcounts| !refcounts.contains_key(path));
+            if needs_physical_watch {
+                if watcher.watch(path, RecursiveMode::NonRecursive).is_err() {
+                    continue;
+                }
+                physically_added.push(path.clone());
+            }
+            updated_dirs.insert(path.clone());
+        }
+
+        if !reconcile_registration_is_active(context) {
+            // The owner removed this registration while waiting for `watcher`.
+            // Restore the physical snapshot and do not recreate its state.
+            for path in physically_added {
+                let _ = watcher.unwatch(&path);
+            }
+            for path in physically_removed {
+                let _ = watcher.watch(&path, RecursiveMode::NonRecursive);
+            }
+            return None;
+        }
+
+        if let Some(refcounts) = context.watch_refcounts.as_ref() {
+            let mut refcounts = refcounts.lock().unwrap_or_else(|error| error.into_inner());
+            for path in previous_dirs.difference(&updated_dirs) {
+                if let Some(refcount) = refcounts.get_mut(path) {
+                    if *refcount <= 1 {
+                        refcounts.remove(path);
+                    } else {
+                        *refcount -= 1;
+                    }
+                }
+            }
+            for path in updated_dirs.difference(&previous_dirs) {
+                *refcounts.entry(path.clone()).or_insert(0) += 1;
+            }
+        }
+        let count = updated_dirs.len();
+        *context
+            .watched_dirs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = updated_dirs;
+        return Some(count);
+    }
+}
+
+fn reconcile_registration_is_active(context: &NotifyEventContext) -> bool {
+    let Some(registrations) = context.registrations.as_ref() else {
+        return true;
+    };
+    let registrations = registrations
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    let watcher = watcher_guard.as_mut()?;
-    let mut watched_dirs = context
-        .watched_dirs
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-
-    let count = if let Some(refcounts) = context.watch_refcounts.as_ref() {
-        let mut refcounts = refcounts.lock().unwrap_or_else(|error| error.into_inner());
-        reconcile_shared_pruned_tree_watches(
-            watcher,
-            &mut refcounts,
-            &mut watched_dirs,
-            &context.project_root,
-            &gitignore,
-        )
-        .ok()?
-    } else {
-        reconcile_pruned_tree_watches(
-            watcher,
-            &mut watched_dirs,
-            &context.project_root,
-            &gitignore,
-        )
-        .ok()?
+    let Some(WatchRegistration::Tree(tree)) = registrations.get(&context.project_id) else {
+        return false;
     };
-    Some(count)
+    tree.root == context.project_root && Arc::ptr_eq(&tree.watched_dirs, &context.watched_dirs)
 }
 
 fn handle_shared_file_notify_event(
@@ -967,13 +1027,21 @@ impl ProjectWatcher {
         }
 
         let watched_dirs = Arc::new(Mutex::new(HashSet::new()));
+        let desired_dirs = {
+            let gis = self.gitignores.lock().unwrap_or_else(|e| e.into_inner());
+            desired_watch_dirs_for_root(
+                &project_root,
+                gis.get(&project_id)
+                    .expect("watch_project inserted gitignore before reconcile"),
+            )
+        };
 
-        let watched_dir_count = {
-            let mut watched_dirs_guard = watched_dirs.lock().unwrap_or_else(|e| e.into_inner());
-            let mut refcounts = self
+        loop {
+            let previous_refcounts = self
                 .tree_watch_refcounts
                 .lock()
-                .unwrap_or_else(|error| error.into_inner());
+                .unwrap_or_else(|error| error.into_inner())
+                .clone();
             let mut watcher = self
                 .tree_watcher
                 .lock()
@@ -981,18 +1049,42 @@ impl ProjectWatcher {
             let watcher = watcher
                 .as_mut()
                 .expect("shared tree watcher missing during watch registration");
-            let gis = self.gitignores.lock().unwrap_or_else(|e| e.into_inner());
-            let gitignore = gis
-                .get(&project_id)
-                .expect("watch_project inserted gitignore before reconcile");
-            reconcile_shared_pruned_tree_watches(
-                watcher,
-                &mut refcounts,
-                &mut watched_dirs_guard,
-                &project_root,
-                gitignore,
-            )?
-        };
+            if *self
+                .tree_watch_refcounts
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                != previous_refcounts
+            {
+                continue;
+            }
+
+            let mut physically_added: Vec<PathBuf> = Vec::new();
+            for path in &desired_dirs {
+                if previous_refcounts.contains_key(path) {
+                    continue;
+                }
+                if let Err(error) = watcher.watch(path, RecursiveMode::NonRecursive) {
+                    for added in physically_added {
+                        let _ = watcher.unwatch(&added);
+                    }
+                    return Err(error);
+                }
+                physically_added.push(path.clone());
+            }
+
+            let mut refcounts = self
+                .tree_watch_refcounts
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            for path in &desired_dirs {
+                *refcounts.entry(path.clone()).or_insert(0) += 1;
+            }
+            *watched_dirs.lock().unwrap_or_else(|e| e.into_inner()) =
+                desired_dirs.iter().cloned().collect();
+            break;
+        }
+
+        let watched_dir_count = desired_dirs.len();
 
         emit_watch_local_registered(&project_id, &project_root, watched_dir_count);
         self.watchers
@@ -1055,11 +1147,12 @@ impl ProjectWatcher {
         if let Some(registration) = registration {
             match registration {
                 WatchRegistration::Tree(tree) => {
-                    let watched_dir_count = tree
+                    let watched_dirs = tree
                         .watched_dirs
                         .lock()
                         .unwrap_or_else(|error| error.into_inner())
-                        .len();
+                        .clone();
+                    let watched_dir_count = watched_dirs.len();
                     let mut watcher = self
                         .tree_watcher
                         .lock()
@@ -1067,15 +1160,33 @@ impl ProjectWatcher {
                     let watcher = watcher
                         .as_mut()
                         .expect("shared tree watcher missing during unwatch");
+                    let previous_refcounts = self
+                        .tree_watch_refcounts
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner())
+                        .clone();
+                    for path in &watched_dirs {
+                        if previous_refcounts.get(path).copied().unwrap_or(0) <= 1 {
+                            let _ = watcher.unwatch(path);
+                        }
+                    }
                     let mut refcounts = self
                         .tree_watch_refcounts
                         .lock()
                         .unwrap_or_else(|error| error.into_inner());
-                    let mut watched_dirs = tree
-                        .watched_dirs
+                    for path in &watched_dirs {
+                        if let Some(refcount) = refcounts.get_mut(path) {
+                            if *refcount <= 1 {
+                                refcounts.remove(path);
+                            } else {
+                                *refcount -= 1;
+                            }
+                        }
+                    }
+                    tree.watched_dirs
                         .lock()
-                        .unwrap_or_else(|error| error.into_inner());
-                    release_shared_tree_watches(Some(watcher), &mut refcounts, &mut watched_dirs);
+                        .unwrap_or_else(|error| error.into_inner())
+                        .clear();
                     emit_watch_local_unregistered(project_id, &tree.root, watched_dir_count);
                 }
                 WatchRegistration::File { path } => {
@@ -1279,6 +1390,7 @@ mod tests {
             watcher: watcher.clone(),
             watched_dirs: watched_dirs.clone(),
             watch_refcounts: None,
+            registrations: None,
         }
     }
 
@@ -1600,6 +1712,7 @@ mod tests {
             watcher: Arc::new(Mutex::new(Some(watcher))),
             watched_dirs: Arc::new(Mutex::new(HashSet::new())),
             watch_refcounts: Some(Arc::new(Mutex::new(HashMap::new()))),
+            registrations: None,
         };
 
         schedule_deferred_reconcile(context.clone());
@@ -1621,6 +1734,111 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(20));
         }
+    }
+
+    #[test]
+    fn shared_tree_reconcile_stays_live_during_continued_callback_events() {
+        // Regression: b24d3a54 held watched-dir/refcount state while watch() waited for
+        // the notify callback, allowing continued events to deadlock the reconcile worker.
+        let (finished_tx, finished_rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+            let dir = tempfile::TempDir::new().unwrap();
+            let root = dir.path().to_path_buf();
+            let original_dir = root.join("src");
+            std::fs::create_dir(&original_dir).unwrap();
+            let watched_dirs = Arc::new(Mutex::new(HashSet::from([root.clone()])));
+            let callback_watched_dirs = watched_dirs.clone();
+            let (callback_entered_tx, callback_entered_rx) = mpsc::channel();
+            let (release_callback_tx, release_callback_rx) = mpsc::channel();
+            let (callback_paths_tx, callback_paths_rx) = mpsc::channel();
+            let mut first_event = true;
+            let mut raw_watcher = RecommendedWatcher::new(
+                move |result: Result<Event, notify::Error>| {
+                    let Ok(event) = result else {
+                        return;
+                    };
+                    if first_event {
+                        first_event = false;
+                        callback_entered_tx.send(()).unwrap();
+                        release_callback_rx.recv().unwrap();
+                    }
+                    let _state = callback_watched_dirs
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner());
+                    callback_paths_tx.send(event.paths).unwrap();
+                },
+                Config::default().with_poll_interval(Duration::from_secs(2)),
+            )
+            .unwrap();
+            raw_watcher
+                .watch(&root, RecursiveMode::NonRecursive)
+                .unwrap();
+
+            std::fs::write(root.join("during-reconcile.rs"), "// callback\n").unwrap();
+            callback_entered_rx
+                .recv_timeout(Duration::from_secs(3))
+                .expect("continued callback event did not begin");
+
+            let new_dir = root.join("fresh-module");
+            std::fs::create_dir(&new_dir).unwrap();
+            let project_id = "reconcile-race".to_string();
+            let (event_tx, _event_rx) = mpsc::channel();
+            let context = NotifyEventContext {
+                tx: event_tx,
+                project_id: project_id.clone(),
+                project_root: root.clone(),
+                debounce: Arc::new(Mutex::new(HashMap::new())),
+                gitignores: Arc::new(Mutex::new(HashMap::from([(
+                    project_id,
+                    build_gitignore(&root),
+                )]))),
+                watcher: Arc::new(Mutex::new(Some(raw_watcher))),
+                watched_dirs: watched_dirs.clone(),
+                watch_refcounts: Some(Arc::new(Mutex::new(HashMap::from([(root.clone(), 1)])))),
+                registrations: None,
+            };
+            schedule_deferred_reconcile(context.clone());
+            std::thread::sleep(Duration::from_millis(100));
+            release_callback_tx.send(()).unwrap();
+
+            let reconcile_deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                if watched_dirs
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .contains(&new_dir)
+                {
+                    break;
+                }
+                assert!(
+                    Instant::now() < reconcile_deadline,
+                    "shared-tree reconcile worker did not complete"
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+
+            let after_path = root.join("after-reconcile.rs");
+            std::fs::write(&after_path, "fn after_reconcile() {}\n").unwrap();
+            let delivery_deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                if let Ok(paths) = callback_paths_rx.recv_timeout(Duration::from_millis(100)) {
+                    if paths.contains(&after_path) {
+                        break;
+                    }
+                }
+                assert!(
+                    Instant::now() < delivery_deadline,
+                    "original tree stopped delivering after reconcile"
+                );
+            }
+
+            finished_tx.send(()).unwrap();
+        });
+
+        finished_rx
+            .recv_timeout(Duration::from_secs(8))
+            .expect("shared-tree reconcile sequence deadlocked");
     }
 
     // --- Debounce logic test ---
