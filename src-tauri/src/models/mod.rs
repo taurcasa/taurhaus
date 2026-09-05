@@ -635,6 +635,19 @@ static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
             false,
             None,
         ),
+        // GPT-6 Astra: slug + effort range live-verified against the operator's
+        // Codex CLI 2026-09-05 (`model: gpt-6-astra`, efforts low..max accepted).
+        // Deliberately UNTIERED pending the routing doc's calibration sign-off —
+        // untiered = unroutable but pinnable, so calibration lanes can select it
+        // while no ladder does.
+        model_catalog_entry(
+            "gpt-6-astra",
+            "GPT-6 Astra",
+            CODEX_EFFORTS_WITH_MAX,
+            Some("high"),
+            false,
+            None,
+        ),
         model_catalog_entry(
             "gpt-5.6-terra",
             "GPT-5.6-Terra",
