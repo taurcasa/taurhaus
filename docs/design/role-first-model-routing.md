@@ -361,6 +361,14 @@ should need editing. On-arrival checklist (a small-change lane):
    reviewer on a few contained lanes first; the tier is confirmed by observed
    work, and Stage-1 telemetry (once live) records the evidence.
 
+**Arrival log 2026-09-05**: available on the operator's account; slug
+`gpt-6-astra` and efforts (`low`..`max` accepted; server enum
+none/minimal/low/medium/high/xhigh/max) live-verified via a minimal
+`codex exec` probe; catalog entry added UNTIERED per the calibration rule
+(unroutable, pinnable). Next: calibration lanes (first: the mesh e2e flake
+audit with Astra as implementer, after the watch-deadlock hotfix merges so
+its e2e runs don't hit the wedge), then operator tier sign-off.
+
 Intel as of 2026-09-04 (press, pre-availability — verify everything on the
 real CLI): it is **OpenAI GPT-6 Astra** — limited preview 2026-09-03, public
 release planned 2026-09-07, reaching Plus/Pro/Business "over coming days"
