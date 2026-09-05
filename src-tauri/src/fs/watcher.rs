@@ -695,8 +695,8 @@ fn handle_shared_tree_notify_event(
 /// runs full-tree passes until the generation it started from is still
 /// current, so an event burst collapses into at most two passes and at most
 /// one reconcile thread exists per project at a time.
-#[derive(Default)]
-struct DeferredReconcileLedger {
+#[derive(Debug, Default)]
+pub(crate) struct DeferredReconcileLedger {
     generation: HashMap<String, u64>,
     running: HashSet<String>,
 }
@@ -704,18 +704,18 @@ struct DeferredReconcileLedger {
 impl DeferredReconcileLedger {
     /// Record a qualifying event. Returns true when the caller must start a
     /// worker (none is running for this project).
-    fn note_event(&mut self, project_id: &str) -> bool {
+    pub(crate) fn note_event(&mut self, project_id: &str) -> bool {
         *self.generation.entry(project_id.to_string()).or_insert(0) += 1;
         self.running.insert(project_id.to_string())
     }
 
-    fn current_generation(&self, project_id: &str) -> u64 {
+    pub(crate) fn current_generation(&self, project_id: &str) -> u64 {
         self.generation.get(project_id).copied().unwrap_or(0)
     }
 
     /// A worker finished a pass it started at `generation`. Returns true when
     /// the worker may stop (no newer event arrived meanwhile).
-    fn finish_pass(&mut self, project_id: &str, generation: u64) -> bool {
+    pub(crate) fn finish_pass(&mut self, project_id: &str, generation: u64) -> bool {
         if self.current_generation(project_id) == generation {
             self.generation.remove(project_id);
             self.running.remove(project_id);
@@ -723,6 +723,10 @@ impl DeferredReconcileLedger {
         } else {
             false
         }
+    }
+
+    pub(crate) fn cancel_worker(&mut self, project_id: &str) {
+        self.running.remove(project_id);
     }
 }
 
@@ -754,7 +758,7 @@ fn schedule_deferred_reconcile(context: NotifyEventContext) {
         let mut ledger = DEFERRED_RECONCILES
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        ledger.running.remove(&project_id);
+        ledger.cancel_worker(&project_id);
     }
 }
 

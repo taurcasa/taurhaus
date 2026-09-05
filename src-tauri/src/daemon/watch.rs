@@ -10,12 +10,13 @@ use notify::{Config, Event as NotifyEvent, RecommendedWatcher, Watcher};
 
 use crate::daemon::protocol::{self, DaemonEvent, DaemonResponse};
 use crate::fs::watcher::{
-    build_gitignore, classify_notify_event_with_state, reconcile_pruned_tree_watches,
-    reconcile_pruned_tree_watches_for_event, ClassifiedNotifyEvent,
+    build_gitignore, classify_notify_event_with_state, desired_watch_dirs_for_root,
+    ClassifiedNotifyEvent, DeferredReconcileLedger,
 };
 
 #[derive(Debug)]
 pub(crate) struct DaemonWatchRegistration {
+    registration_id: u64,
     pub(crate) path: PathBuf,
     pub(crate) watched_dirs: HashSet<PathBuf>,
     pub(crate) gitignore: Gitignore,
@@ -36,19 +37,27 @@ pub(crate) struct SharedDaemonWatchRegistry {
     watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
     state: Arc<Mutex<SharedWatchState>>,
     next_connection_id: AtomicU64,
+    next_registration_id: AtomicU64,
 }
 
 impl SharedDaemonWatchRegistry {
     pub(crate) fn new() -> notify::Result<Arc<Self>> {
         let watcher_slot: Arc<Mutex<Option<RecommendedWatcher>>> = Arc::new(Mutex::new(None));
         let state = Arc::new(Mutex::new(SharedWatchState::default()));
+        let reconciles = Arc::new(Mutex::new(DeferredReconcileLedger::default()));
         let watcher_for_callback = watcher_slot.clone();
         let state_for_callback = state.clone();
+        let reconciles_for_callback = reconciles.clone();
 
         let watcher = RecommendedWatcher::new(
             move |res: Result<NotifyEvent, notify::Error>| match res {
                 Ok(event) => {
-                    forward_shared_watch_event(&state_for_callback, &watcher_for_callback, event);
+                    forward_shared_watch_event(
+                        &state_for_callback,
+                        &watcher_for_callback,
+                        &reconciles_for_callback,
+                        event,
+                    );
                 }
                 Err(error) => {
                     tracing::warn!(error = %error, "shared file watcher error");
@@ -68,6 +77,7 @@ impl SharedDaemonWatchRegistry {
             watcher: watcher_slot,
             state,
             next_connection_id: AtomicU64::new(1),
+            next_registration_id: AtomicU64::new(1),
         }))
     }
 
@@ -100,6 +110,8 @@ impl SharedDaemonWatchRegistry {
         path: &Path,
         writer: &Arc<Mutex<TcpStream>>,
     ) -> notify::Result<usize> {
+        let gitignore = build_gitignore(path);
+        let desired_dirs = desired_watch_dirs_for_root(path, &gitignore);
         let mut watcher = self
             .watcher
             .lock()
@@ -107,29 +119,37 @@ impl SharedDaemonWatchRegistry {
         let watcher = watcher
             .as_mut()
             .expect("shared daemon watcher missing during watch registration");
-        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
 
-        if let Some(registration) = state.registrations.get_mut(watch_key) {
-            registration
-                .subscribers
-                .insert(connection_id, writer.clone());
-            return Ok(registration.watched_dirs.len());
+        {
+            let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+            if let Some(registration) = state.registrations.get_mut(watch_key) {
+                registration
+                    .subscribers
+                    .insert(connection_id, writer.clone());
+                return Ok(registration.watched_dirs.len());
+            }
         }
 
-        let gitignore = build_gitignore(path);
         let mut watched_dirs = HashSet::new();
-        reconcile_pruned_tree_watches(watcher, &mut watched_dirs, path, &gitignore)?;
+        for desired_dir in desired_dirs {
+            watcher.watch(&desired_dir, notify::RecursiveMode::NonRecursive)?;
+            watched_dirs.insert(desired_dir);
+        }
         let watched_dir_count = watched_dirs.len();
-        state.registrations.insert(
-            watch_key.to_string(),
-            DaemonWatchRegistration {
-                path: path.to_path_buf(),
-                watched_dirs,
-                gitignore,
-                last_git_event_at: None,
-                subscribers: HashMap::from([(connection_id, writer.clone())]),
-            },
-        );
+        {
+            let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+            state.registrations.insert(
+                watch_key.to_string(),
+                DaemonWatchRegistration {
+                    registration_id: self.next_registration_id.fetch_add(1, Ordering::Relaxed),
+                    path: path.to_path_buf(),
+                    watched_dirs,
+                    gitignore,
+                    last_git_event_at: None,
+                    subscribers: HashMap::from([(connection_id, writer.clone())]),
+                },
+            );
+        }
         Ok(watched_dir_count)
     }
 
@@ -141,19 +161,23 @@ impl SharedDaemonWatchRegistry {
         let watcher = watcher
             .as_mut()
             .expect("shared daemon watcher missing during unwatch");
-        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        let registration = state.registrations.get_mut(watch_key)?;
-        registration.subscribers.remove(&connection_id);
-        if !registration.subscribers.is_empty() {
-            return Some(registration.watched_dirs.len());
-        }
+        let (watched_dir_count, watched_dirs) = {
+            let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+            let registration = state.registrations.get_mut(watch_key)?;
+            registration.subscribers.remove(&connection_id);
+            if !registration.subscribers.is_empty() {
+                return Some(registration.watched_dirs.len());
+            }
 
-        let watched_dir_count = registration.watched_dirs.len();
-        let watched_dirs: Vec<PathBuf> = registration.watched_dirs.drain().collect();
+            let registration = state.registrations.remove(watch_key)?;
+            (
+                registration.watched_dirs.len(),
+                registration.watched_dirs.into_iter().collect::<Vec<_>>(),
+            )
+        };
         for watched_dir in watched_dirs {
             let _ = watcher.unwatch(&watched_dir);
         }
-        state.registrations.remove(watch_key);
         Some(watched_dir_count)
     }
 
@@ -367,48 +391,22 @@ pub(crate) fn relative_to(path: &Path, root: &Path) -> String {
 fn forward_shared_watch_event(
     state: &Arc<Mutex<SharedWatchState>>,
     watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
+    reconciles: &Arc<Mutex<DeferredReconcileLedger>>,
     event: NotifyEvent,
 ) {
-    let deliveries: Vec<SharedWatchDelivery> = {
-        let mut watcher = watcher.lock().unwrap_or_else(|error| error.into_inner());
+    let (deliveries, reconcile_requests): (Vec<SharedWatchDelivery>, Vec<(String, &'static str)>) = {
         let mut state = state.lock().unwrap_or_else(|error| error.into_inner());
         let mut deliveries = Vec::new();
+        let mut reconcile_requests = Vec::new();
 
         for (watch_key, registration) in state.registrations.iter_mut() {
             if !event_matches_registration(&event, &registration.path) {
                 continue;
             }
 
-            if let Some(watcher) = watcher.as_mut() {
-                let before = registration.watched_dirs.len();
-                if let Ok(Some(count)) = reconcile_pruned_tree_watches_for_event(
-                    watcher,
-                    &mut registration.watched_dirs,
-                    &registration.path,
-                    &registration.gitignore,
-                    &event,
-                ) {
-                    if count != before {
-                        crate::daemon::server::mark_daemon_watch_telemetry_dirty();
-                        let reason = if event.paths.iter().any(|path| {
-                            path.file_name()
-                                .map(|name| name.to_string_lossy())
-                                .is_some_and(|name| {
-                                    name == ".gitignore" || name == ".taurhausignore"
-                                })
-                        }) {
-                            "gitignore_changed"
-                        } else {
-                            "directory_topology_changed"
-                        };
-                        tracing::info!(
-                            path = %watch_key,
-                            watched_dir_count = count,
-                            reason,
-                            "Reconciled shared daemon watch tree"
-                        );
-                    }
-                }
+            if let Some(reason) = daemon_event_reconcile_reason(&registration.watched_dirs, &event)
+            {
+                reconcile_requests.push((watch_key.clone(), reason));
             }
 
             let classified = classify_notify_event_with_state(
@@ -428,7 +426,7 @@ fn forward_shared_watch_event(
             deliveries.push((subscribers, daemon_events));
         }
 
-        deliveries
+        (deliveries, reconcile_requests)
     };
 
     for (subscribers, daemon_events) in deliveries {
@@ -438,6 +436,187 @@ fn forward_shared_watch_event(
             }
         }
     }
+
+    // notify control methods wait for this callback's event loop. The callback
+    // therefore only classifies/delivers and schedules full reconciles elsewhere.
+    for (watch_key, reason) in reconcile_requests {
+        schedule_daemon_reconcile(
+            state.clone(),
+            watcher.clone(),
+            reconciles.clone(),
+            watch_key,
+            reason,
+        );
+    }
+}
+
+fn daemon_event_reconcile_reason(
+    watched_dirs: &HashSet<PathBuf>,
+    event: &NotifyEvent,
+) -> Option<&'static str> {
+    if event.paths.iter().any(|path| {
+        path.file_name()
+            .map(|name| name.to_string_lossy())
+            .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
+    }) {
+        return Some("gitignore_changed");
+    }
+
+    if !matches!(
+        event.kind,
+        notify::EventKind::Create(_) | notify::EventKind::Modify(_) | notify::EventKind::Remove(_)
+    ) {
+        return None;
+    }
+
+    if event.paths.iter().any(|path| path.is_dir())
+        || matches!(event.kind, notify::EventKind::Remove(_))
+            && event.paths.iter().any(|path| {
+                watched_dirs
+                    .iter()
+                    .any(|watched| watched == path || watched.starts_with(path))
+            })
+    {
+        Some("directory_topology_changed")
+    } else {
+        None
+    }
+}
+
+fn schedule_daemon_reconcile(
+    state: Arc<Mutex<SharedWatchState>>,
+    watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
+    reconciles: Arc<Mutex<DeferredReconcileLedger>>,
+    watch_key: String,
+    reason: &'static str,
+) {
+    let must_start = reconciles
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .note_event(&watch_key);
+    if !must_start {
+        return;
+    }
+
+    let worker_key = watch_key.clone();
+    let worker_reconciles = reconciles.clone();
+    let spawn = std::thread::Builder::new()
+        .name("taurhaus-daemon-watch-reconcile".to_string())
+        .spawn(move || {
+            run_daemon_reconciles(&state, &watcher, &worker_reconciles, &worker_key, reason)
+        });
+    if let Err(error) = spawn {
+        tracing::warn!(
+            %error,
+            path = %watch_key,
+            "daemon watch reconcile thread spawn failed; deferring to the next event"
+        );
+        reconciles
+            .lock()
+            .unwrap_or_else(|lock_error| lock_error.into_inner())
+            .cancel_worker(&watch_key);
+    }
+}
+
+fn run_daemon_reconciles(
+    state: &Arc<Mutex<SharedWatchState>>,
+    watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
+    reconciles: &Arc<Mutex<DeferredReconcileLedger>>,
+    watch_key: &str,
+    reason: &'static str,
+) {
+    loop {
+        let generation = reconciles
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .current_generation(watch_key);
+
+        if let Some((count, changed)) = reconcile_daemon_watch_dirs_full(state, watcher, watch_key)
+        {
+            if changed {
+                crate::daemon::server::mark_daemon_watch_telemetry_dirty();
+                tracing::info!(
+                    path = %watch_key,
+                    watched_dir_count = count,
+                    reason,
+                    "Reconciled shared daemon watch tree"
+                );
+            }
+        }
+
+        if reconciles
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .finish_pass(watch_key, generation)
+        {
+            break;
+        }
+    }
+}
+
+fn reconcile_daemon_watch_dirs_full(
+    state: &Arc<Mutex<SharedWatchState>>,
+    watcher: &Arc<Mutex<Option<RecommendedWatcher>>>,
+    watch_key: &str,
+) -> Option<(usize, bool)> {
+    let (registration_id, project_root, gitignore, previous_dirs) = {
+        let state = state.lock().unwrap_or_else(|error| error.into_inner());
+        let registration = state.registrations.get(watch_key)?;
+        (
+            registration.registration_id,
+            registration.path.clone(),
+            registration.gitignore.clone(),
+            registration.watched_dirs.clone(),
+        )
+    };
+
+    // Tree walking may touch a large checkout, so it must never extend a state lock.
+    let desired_dirs = desired_watch_dirs_for_root(&project_root, &gitignore);
+    let stale_dirs = previous_dirs
+        .iter()
+        .filter(|path| !desired_dirs.contains(*path))
+        .cloned()
+        .collect::<Vec<_>>();
+    let new_dirs = desired_dirs
+        .iter()
+        .filter(|path| !previous_dirs.contains(*path))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    // Lock order: watch()/unwatch() wait for notify's callback thread. Never call
+    // them while holding `state`, because the callback acquires `state`; and the
+    // callback itself must never acquire `watcher` or invoke notify control methods.
+    let mut watcher_guard = watcher.lock().unwrap_or_else(|error| error.into_inner());
+    let watcher = watcher_guard.as_mut()?;
+    let mut updated_dirs = previous_dirs;
+    for path in stale_dirs {
+        let _ = watcher.unwatch(&path);
+        updated_dirs.remove(&path);
+    }
+    for path in new_dirs {
+        match watcher.watch(&path, notify::RecursiveMode::NonRecursive) {
+            Ok(()) => {
+                updated_dirs.insert(path);
+            }
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    path = %watch_key,
+                    watch_dir = %path.display(),
+                    "Failed to extend shared daemon watch tree"
+                );
+            }
+        }
+    }
+
+    let mut state = state.lock().unwrap_or_else(|error| error.into_inner());
+    let registration = state.registrations.get_mut(watch_key)?;
+    if registration.registration_id != registration_id {
+        return None;
+    }
+    let changed = registration.watched_dirs != updated_dirs;
+    registration.watched_dirs = updated_dirs;
+    Some((registration.watched_dirs.len(), changed))
 }
 
 #[cfg(test)]
@@ -453,6 +632,7 @@ mod tests {
     type SharedWatchTestState = (
         Arc<Mutex<Option<RecommendedWatcher>>>,
         Arc<Mutex<SharedWatchState>>,
+        Arc<Mutex<DeferredReconcileLedger>>,
         String,
     );
 
@@ -462,6 +642,7 @@ mod tests {
     ) -> SharedWatchTestState {
         let watch_key = root.to_string_lossy().to_string();
         let registration = DaemonWatchRegistration {
+            registration_id: 1,
             path: root.to_path_buf(),
             watched_dirs: HashSet::new(),
             gitignore: build_gitignore(root),
@@ -472,7 +653,8 @@ mod tests {
             registrations: HashMap::from([(watch_key.clone(), registration)]),
         }));
         let watcher = Arc::new(Mutex::new(None));
-        (watcher, state, watch_key)
+        let reconciles = Arc::new(Mutex::new(DeferredReconcileLedger::default()));
+        (watcher, state, reconciles, watch_key)
     }
 
     fn tcp_stream_pair() -> (TcpStream, TcpStream) {
@@ -579,6 +761,75 @@ mod tests {
     }
 
     #[test]
+    fn shared_registry_stays_live_while_reconciling_directory_topology() {
+        // Regression: 05fff4f6 moved daemon watches into a shared notify callback that
+        // called watch() from the event-loop thread, deadlocking the daemon on topology churn.
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+            let dir = tempfile::TempDir::new().unwrap();
+            let root = dir.path().to_path_buf();
+            let original_dir = root.join("src");
+            std::fs::create_dir(&original_dir).unwrap();
+
+            let (writer_stream, peer_stream) = tcp_stream_pair();
+            peer_stream
+                .set_read_timeout(Some(Duration::from_millis(100)))
+                .unwrap();
+            let writer = Arc::new(Mutex::new(writer_stream));
+            let mut reader = BufReader::new(peer_stream);
+            let registry = SharedDaemonWatchRegistry::new().unwrap();
+            let mut runtime = WatchRuntime::new(registry.clone());
+            let watch_params = json!({ "path": root.to_string_lossy() });
+            assert!(handle_watch("w1", &watch_params, &writer, &mut runtime).is_ok());
+
+            let watch_key = root.canonicalize().unwrap().to_string_lossy().to_string();
+            let new_dir = root.join("fresh-module");
+            std::fs::create_dir(&new_dir).unwrap();
+
+            let reconcile_deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                if registry
+                    .watched_dirs(&watch_key)
+                    .is_some_and(|dirs| dirs.contains(&new_dir))
+                {
+                    break;
+                }
+                assert!(
+                    Instant::now() < reconcile_deadline,
+                    "new directory watch was not reconciled"
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+
+            let original_file = original_dir.join("after-reconcile.rs");
+            std::fs::write(&original_file, "fn after_reconcile() {}\n").unwrap();
+            let delivery_deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                if let Some(event) = next_daemon_event(&mut reader) {
+                    if event.event == protocol::event::FILE_CHANGED {
+                        let payload: protocol::FileChangedData =
+                            serde_json::from_value(event.data).unwrap();
+                        if payload.files == vec!["src/after-reconcile.rs".to_string()] {
+                            break;
+                        }
+                    }
+                }
+                assert!(
+                    Instant::now() < delivery_deadline,
+                    "original tree stopped delivering after topology reconcile"
+                );
+            }
+
+            finished_tx.send(()).unwrap();
+        });
+
+        finished_rx
+            .recv_timeout(Duration::from_secs(8))
+            .expect("daemon watch sequence deadlocked");
+    }
+
+    #[test]
     fn forward_shared_watch_event_filters_gitignored_files() {
         let dir = tempfile::TempDir::new().unwrap();
         let root = dir.path().to_path_buf();
@@ -595,14 +846,14 @@ mod tests {
         let writer = Arc::new(Mutex::new(writer_stream));
         let mut reader = BufReader::new(peer_stream);
 
-        let (watcher, state, project_path) = test_shared_watch_state(&root, &writer);
+        let (watcher, state, reconciles, project_path) = test_shared_watch_state(&root, &writer);
 
         let ignored_event = NotifyEvent {
             kind: EventKind::Modify(ModifyKind::Data(DataChange::Any)),
             paths: vec![root.join("output/images/test.png")],
             attrs: Default::default(),
         };
-        forward_shared_watch_event(&state, &watcher, ignored_event);
+        forward_shared_watch_event(&state, &watcher, &reconciles, ignored_event);
         assert!(
             next_daemon_event(&mut reader).is_none(),
             "gitignored files should not emit daemon file_changed events"
@@ -613,7 +864,7 @@ mod tests {
             paths: vec![root.join("src/main.rs")],
             attrs: Default::default(),
         };
-        forward_shared_watch_event(&state, &watcher, regular_event);
+        forward_shared_watch_event(&state, &watcher, &reconciles, regular_event);
 
         let event = next_daemon_event(&mut reader).expect("expected daemon event for src/main.rs");
         assert_eq!(event.event, protocol::event::FILE_CHANGED);
@@ -637,14 +888,14 @@ mod tests {
         let writer = Arc::new(Mutex::new(writer_stream));
         let mut reader = BufReader::new(peer_stream);
 
-        let (watcher, state, _project_path) = test_shared_watch_state(&root, &writer);
+        let (watcher, state, reconciles, _project_path) = test_shared_watch_state(&root, &writer);
 
         let regular_event = NotifyEvent {
             kind: EventKind::Modify(ModifyKind::Data(DataChange::Any)),
             paths: vec![root.join("generated/output.txt")],
             attrs: Default::default(),
         };
-        forward_shared_watch_event(&state, &watcher, regular_event.clone());
+        forward_shared_watch_event(&state, &watcher, &reconciles, regular_event.clone());
         assert!(
             next_daemon_event(&mut reader).is_some(),
             "file should emit before .gitignore is updated"
@@ -656,10 +907,10 @@ mod tests {
             paths: vec![root.join(".gitignore")],
             attrs: Default::default(),
         };
-        forward_shared_watch_event(&state, &watcher, gitignore_event);
+        forward_shared_watch_event(&state, &watcher, &reconciles, gitignore_event);
         let _ = next_daemon_event(&mut reader);
 
-        forward_shared_watch_event(&state, &watcher, regular_event);
+        forward_shared_watch_event(&state, &watcher, &reconciles, regular_event);
         assert!(
             next_daemon_event(&mut reader).is_none(),
             "file should be filtered after .gitignore matcher rebuild"
