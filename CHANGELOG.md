@@ -6,6 +6,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-09-05
+
+### Fixed
+
+- **Daemon deadlock on directory changes (the white-screen incident)**: the
+  daemon's file-watch hub adjusted its own watches from inside the file-event
+  callback — on Linux's inotify that call waits on the very thread making the
+  callback, so the first folder created or deleted in a watched project froze
+  the daemon permanently: the port kept accepting while no request was ever
+  answered, and the app hung at startup. Watch reconciliation now runs on a
+  coalescing worker with strict lock discipline at both the daemon and app
+  watch paths, guarded by timeout-bounded liveness regression tests. Also
+  fixed alongside: watch rollback when a project is unregistered mid-
+  reconcile (leaked watches / permanently lost file events), a checkout-sized
+  tree walk on every duplicate watch subscription, and warn-spam under
+  inotify watch exhaustion.
+
+### Added
+
+- **GPT-6 Astra** in the model catalog (`gpt-6-astra`, efforts low–max,
+  verified against the live CLI). Selectable everywhere models are picked;
+  GPT-5.6-Sol remains the default. Untiered pending calibration per the
+  routing policy.
+
+### Tooling
+
+- `just install-windows` gates the daemon restart on the port actually being
+  released, not just process exit — WSL can hold a dead daemon's listener for
+  a minute, which made the 0.9.1 install need a manual rescue.
+
 ## [0.9.1] - 2026-09-04
 
 ### Added
