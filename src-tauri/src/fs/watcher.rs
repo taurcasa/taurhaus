@@ -234,7 +234,8 @@ pub(crate) fn desired_watch_dirs_for_root(
     dirs
 }
 
-pub(crate) fn reconcile_pruned_tree_watches(
+#[cfg(test)]
+fn reconcile_pruned_tree_watches(
     watcher: &mut RecommendedWatcher,
     watched_dirs: &mut HashSet<PathBuf>,
     project_root: &Path,
@@ -261,83 +262,6 @@ pub(crate) fn reconcile_pruned_tree_watches(
     }
 
     Ok(watched_dirs.len())
-}
-
-fn release_shared_tree_watches(
-    mut watcher: Option<&mut RecommendedWatcher>,
-    shared_refcounts: &mut HashMap<PathBuf, usize>,
-    watched_dirs: &mut HashSet<PathBuf>,
-) {
-    for path in watched_dirs.drain() {
-        if let Some(refcount) = shared_refcounts.get_mut(&path) {
-            if *refcount <= 1 {
-                shared_refcounts.remove(&path);
-                if let Some(watcher) = watcher.as_mut() {
-                    let _ = watcher.unwatch(&path);
-                }
-            } else {
-                *refcount -= 1;
-            }
-        }
-    }
-}
-
-pub(crate) fn reconcile_pruned_tree_watches_for_event(
-    watcher: &mut RecommendedWatcher,
-    watched_dirs: &mut HashSet<PathBuf>,
-    project_root: &Path,
-    gitignore: &Gitignore,
-    event: &Event,
-) -> Result<Option<usize>, notify::Error> {
-    match event.kind {
-        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {}
-        _ => return Ok(None),
-    }
-
-    if event.paths.iter().any(|path| {
-        path.file_name()
-            .map(|name| name.to_string_lossy())
-            .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
-    }) {
-        let count = reconcile_pruned_tree_watches(watcher, watched_dirs, project_root, gitignore)?;
-        return Ok(Some(count));
-    }
-
-    let mut changed = false;
-
-    if matches!(event.kind, EventKind::Remove(_)) {
-        for path in &event.paths {
-            let removed_dirs = watched_dirs
-                .iter()
-                .filter(|watched| *watched == path || watched.starts_with(path))
-                .cloned()
-                .collect::<Vec<_>>();
-            if removed_dirs.is_empty() {
-                continue;
-            }
-            changed = true;
-            for removed in removed_dirs {
-                let _ = watcher.unwatch(&removed);
-                watched_dirs.remove(&removed);
-            }
-        }
-    } else {
-        for path in &event.paths {
-            if !path.is_dir() {
-                continue;
-            }
-            if !should_watch_directory_path(project_root, path, gitignore) {
-                continue;
-            }
-            let before = watched_dirs.len();
-            let _ = reconcile_pruned_tree_watches(watcher, watched_dirs, project_root, gitignore)?;
-            if watched_dirs.len() != before {
-                changed = true;
-            }
-        }
-    }
-
-    Ok(changed.then_some(watched_dirs.len()))
 }
 
 /// Shared classification output for a single notify event.
@@ -1577,22 +1501,33 @@ mod tests {
 
     #[test]
     fn shared_tree_watcher_keeps_refcount_until_last_project_unwatches() {
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let dir = tempfile::TempDir::new().unwrap();
         let root = dir.path().to_path_buf();
         std::fs::create_dir_all(root.join("src")).unwrap();
-        let mut shared_refcounts =
-            HashMap::from([(root.clone(), 2usize), (root.join("src"), 2usize)]);
-        let mut p1_dirs = HashSet::from([root.clone(), root.join("src")]);
-        let mut p2_dirs = HashSet::from([root.clone(), root.join("src")]);
+        let (mut watcher, _rx) = ProjectWatcher::new();
+        watcher
+            .watch_project("p1".to_string(), root.clone())
+            .unwrap();
+        watcher
+            .watch_project("p2".to_string(), root.clone())
+            .unwrap();
 
-        release_shared_tree_watches(None, &mut shared_refcounts, &mut p1_dirs);
-        assert!(p1_dirs.is_empty());
-        assert_eq!(shared_refcounts.get(&root), Some(&1));
-        assert_eq!(shared_refcounts.get(&root.join("src")), Some(&1));
+        watcher.unwatch_project("p1");
+        let refcounts = watcher
+            .tree_watch_refcounts
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert_eq!(refcounts.get(&root), Some(&1));
+        assert_eq!(refcounts.get(&root.join("src")), Some(&1));
+        drop(refcounts);
 
-        release_shared_tree_watches(None, &mut shared_refcounts, &mut p2_dirs);
-        assert!(p2_dirs.is_empty());
-        assert!(shared_refcounts.is_empty());
+        watcher.unwatch_project("p2");
+        assert!(watcher
+            .tree_watch_refcounts
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .is_empty());
     }
 
     // --- Deferred reconcile scheduling ---
@@ -1626,6 +1561,14 @@ mod tests {
         assert!(ledger.finish_pass("p1", g1));
         // p2's worker is unaffected by p1 finishing.
         assert!(!ledger.note_event("p2"));
+    }
+
+    #[test]
+    fn ledger_allows_retry_after_worker_spawn_failure() {
+        let mut ledger = DeferredReconcileLedger::default();
+        assert!(ledger.note_event("p1"));
+        ledger.cancel_worker("p1");
+        assert!(ledger.note_event("p1"));
     }
 
     #[test]
@@ -2115,21 +2058,7 @@ mod tests {
 
         std::fs::write(root.join(".gitignore"), "generated/\n").unwrap();
         let gitignore = build_gitignore(&root);
-        let event = Event {
-            kind: EventKind::Modify(notify::event::ModifyKind::Data(
-                notify::event::DataChange::Any,
-            )),
-            paths: vec![root.join(".gitignore")],
-            attrs: Default::default(),
-        };
-        reconcile_pruned_tree_watches_for_event(
-            &mut watcher,
-            &mut watched_dirs,
-            &root,
-            &gitignore,
-            &event,
-        )
-        .unwrap();
+        reconcile_pruned_tree_watches(&mut watcher, &mut watched_dirs, &root, &gitignore).unwrap();
 
         assert!(!watched_dirs.contains(&root.join("generated")));
         assert!(!watched_dirs.contains(&root.join("generated/cache")));
@@ -2153,21 +2082,7 @@ mod tests {
         reconcile_pruned_tree_watches(&mut watcher, &mut watched_dirs, &root, &gitignore).unwrap();
 
         std::fs::create_dir_all(root.join("node_modules/react")).unwrap();
-        let event = Event {
-            kind: EventKind::Create(notify::event::CreateKind::Folder),
-            paths: vec![root.join("node_modules")],
-            attrs: Default::default(),
-        };
-        let result = reconcile_pruned_tree_watches_for_event(
-            &mut watcher,
-            &mut watched_dirs,
-            &root,
-            &gitignore,
-            &event,
-        )
-        .unwrap();
-
-        assert!(result.is_none());
+        reconcile_pruned_tree_watches(&mut watcher, &mut watched_dirs, &root, &gitignore).unwrap();
         assert!(!watched_dirs.contains(&root.join("node_modules")));
         assert!(!watched_dirs.contains(&root.join("node_modules/react")));
     }

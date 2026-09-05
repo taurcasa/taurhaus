@@ -764,9 +764,9 @@ mod tests {
     fn shared_registry_stays_live_while_reconciling_directory_topology() {
         // Regression: 05fff4f6 moved daemon watches into a shared notify callback that
         // called watch() from the event-loop thread, deadlocking the daemon on topology churn.
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let (finished_tx, finished_rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
             let dir = tempfile::TempDir::new().unwrap();
             let root = dir.path().to_path_buf();
             let original_dir = root.join("src");
