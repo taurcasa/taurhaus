@@ -951,14 +951,16 @@ impl ProjectWatcher {
         }
 
         let watched_dirs = Arc::new(Mutex::new(HashSet::new()));
-        let desired_dirs = {
+        // Snapshot first, then walk with no locks held: the callback needs
+        // `gitignores` for every classification, and a large checkout walk
+        // under that guard stalls every watched project's events.
+        let gitignore_for_walk = {
             let gis = self.gitignores.lock().unwrap_or_else(|e| e.into_inner());
-            desired_watch_dirs_for_root(
-                &project_root,
-                gis.get(&project_id)
-                    .expect("watch_project inserted gitignore before reconcile"),
-            )
+            gis.get(&project_id)
+                .expect("watch_project inserted gitignore before reconcile")
+                .clone()
         };
+        let desired_dirs = desired_watch_dirs_for_root(&project_root, &gitignore_for_walk);
 
         loop {
             let previous_refcounts = self
@@ -1236,37 +1238,46 @@ fn event_may_change_watched_directories(
     watched_dirs: &Arc<Mutex<HashSet<PathBuf>>>,
     event: &Event,
 ) -> bool {
+    let watched_dirs = watched_dirs
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    watch_reconcile_reason(&watched_dirs, event).is_some()
+}
+
+/// The one topology gate: does this event change the desired watch set, and
+/// why. Shared by the app shared-tree path (as a bool) and the daemon hub
+/// (as the telemetry label) so the two can never drift.
+pub(crate) fn watch_reconcile_reason(
+    watched_dirs: &HashSet<PathBuf>,
+    event: &Event,
+) -> Option<&'static str> {
     if event.paths.iter().any(|path| {
         path.file_name()
             .map(|name| name.to_string_lossy())
             .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
     }) {
-        return true;
+        return Some("gitignore_changed");
     }
 
     if !matches!(
         event.kind,
         EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
     ) {
-        return false;
+        return None;
     }
 
-    if event.paths.iter().any(|path| path.is_dir()) {
-        return true;
+    if event.paths.iter().any(|path| path.is_dir())
+        || matches!(event.kind, EventKind::Remove(_))
+            && event.paths.iter().any(|path| {
+                watched_dirs
+                    .iter()
+                    .any(|watched| watched == path || watched.starts_with(path))
+            })
+    {
+        Some("directory_topology_changed")
+    } else {
+        None
     }
-
-    if !matches!(event.kind, EventKind::Remove(_)) {
-        return false;
-    }
-
-    let watched_dirs = watched_dirs
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    event.paths.iter().any(|path| {
-        watched_dirs
-            .iter()
-            .any(|watched| watched == path || watched.starts_with(path))
-    })
 }
 
 #[cfg(test)]
@@ -1681,11 +1692,13 @@ mod tests {
 
     #[test]
     fn shared_tree_reconcile_stays_live_during_continued_callback_events() {
+        // Hoisted before the timed thread: the cross-binary heavy lock must
+        // not count against the deadlock budget (matches the daemon twin).
+        let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         // Regression: b24d3a54 held watched-dir/refcount state while watch() waited for
         // the notify callback, allowing continued events to deadlock the reconcile worker.
         let (finished_tx, finished_rx) = mpsc::channel();
         std::thread::spawn(move || {
-            let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
             let dir = tempfile::TempDir::new().unwrap();
             let root = dir.path().to_path_buf();
             let original_dir = root.join("src");

@@ -7,7 +7,7 @@ win_dir   := env_var_or_default("TAURHAUS_WINDOWS_BUILD_DIR", "/mnt/c/taurhaus_b
 windows_bun_version := `node -p 'require("./package.json").packageManager.split("@").slice(1).join("@")'`
 # Top-level-only by specification; Cargo `tests/<dir>/main.rs` targets require explicit future handling.
 integration_test_args := `for test_file in src-tauri/tests/*.rs; do test_name="${test_file##*/}"; printf -- '--test %s ' "${test_name%.rs}"; done`
-heavy_rust_test_filters := "daemon::server::tests:: daemon::event_listener::tests:: provider::daemon_client::tests:: daemon::launcher::tests:: fs::watcher::tests::watcher_starts_and_stops fs::watcher::tests::unwatch_all_clears_everything"
+heavy_rust_test_filters := "daemon::server::tests:: daemon::event_listener::tests:: provider::daemon_client::tests:: daemon::launcher::tests:: daemon::watch::tests:: fs::watcher::tests::watcher_starts_and_stops fs::watcher::tests::unwatch_all_clears_everything fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events"
 
 # macOS remote build host (Scaleway Mac mini)
 mac_host  := "m1@62.210.195.235"

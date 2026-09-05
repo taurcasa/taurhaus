@@ -110,6 +110,19 @@ impl SharedDaemonWatchRegistry {
         path: &Path,
         writer: &Arc<Mutex<TcpStream>>,
     ) -> notify::Result<usize> {
+        // Fast path first: an already-watched project only gains a subscriber.
+        // The tree walk below is checkout-sized, so it must not run for every
+        // additional client or reconnect (and never under any lock).
+        {
+            let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+            if let Some(registration) = state.registrations.get_mut(watch_key) {
+                registration
+                    .subscribers
+                    .insert(connection_id, writer.clone());
+                return Ok(registration.watched_dirs.len());
+            }
+        }
+
         let gitignore = build_gitignore(path);
         let desired_dirs = desired_watch_dirs_for_root(path, &gitignore);
         let mut watcher = self
@@ -121,6 +134,8 @@ impl SharedDaemonWatchRegistry {
             .expect("shared daemon watcher missing during watch registration");
 
         {
+            // Re-check under the lock: another connection may have registered
+            // this project during the walk — subscribe and discard the walk.
             let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
             if let Some(registration) = state.registrations.get_mut(watch_key) {
                 registration
@@ -404,7 +419,8 @@ fn forward_shared_watch_event(
                 continue;
             }
 
-            if let Some(reason) = daemon_event_reconcile_reason(&registration.watched_dirs, &event)
+            if let Some(reason) =
+                crate::fs::watcher::watch_reconcile_reason(&registration.watched_dirs, &event)
             {
                 reconcile_requests.push((watch_key.clone(), reason));
             }
@@ -450,39 +466,6 @@ fn forward_shared_watch_event(
     }
 }
 
-fn daemon_event_reconcile_reason(
-    watched_dirs: &HashSet<PathBuf>,
-    event: &NotifyEvent,
-) -> Option<&'static str> {
-    if event.paths.iter().any(|path| {
-        path.file_name()
-            .map(|name| name.to_string_lossy())
-            .is_some_and(|name| name == ".gitignore" || name == ".taurhausignore")
-    }) {
-        return Some("gitignore_changed");
-    }
-
-    if !matches!(
-        event.kind,
-        notify::EventKind::Create(_) | notify::EventKind::Modify(_) | notify::EventKind::Remove(_)
-    ) {
-        return None;
-    }
-
-    if event.paths.iter().any(|path| path.is_dir())
-        || matches!(event.kind, notify::EventKind::Remove(_))
-            && event.paths.iter().any(|path| {
-                watched_dirs
-                    .iter()
-                    .any(|watched| watched == path || watched.starts_with(path))
-            })
-    {
-        Some("directory_topology_changed")
-    } else {
-        None
-    }
-}
-
 fn schedule_daemon_reconcile(
     state: Arc<Mutex<SharedWatchState>>,
     watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
@@ -525,6 +508,9 @@ fn run_daemon_reconciles(
     watch_key: &str,
     reason: &'static str,
 ) {
+    // The label describes the event that STARTED this worker; later passes
+    // exist because further events coalesced into them.
+    let mut pass_reason = reason;
     loop {
         let generation = reconciles
             .lock()
@@ -538,7 +524,7 @@ fn run_daemon_reconciles(
                 tracing::info!(
                     path = %watch_key,
                     watched_dir_count = count,
-                    reason,
+                    reason = pass_reason,
                     "Reconciled shared daemon watch tree"
                 );
             }
@@ -551,6 +537,7 @@ fn run_daemon_reconciles(
         {
             break;
         }
+        pass_reason = "coalesced";
     }
 }
 
@@ -589,34 +576,65 @@ fn reconcile_daemon_watch_dirs_full(
     let mut watcher_guard = watcher.lock().unwrap_or_else(|error| error.into_inner());
     let watcher = watcher_guard.as_mut()?;
     let mut updated_dirs = previous_dirs;
+    let mut physically_removed = Vec::new();
+    let mut physically_added = Vec::new();
+    let mut watch_failures = 0usize;
+    let mut first_failed_dir: Option<PathBuf> = None;
     for path in stale_dirs {
-        let _ = watcher.unwatch(&path);
+        if watcher.unwatch(&path).is_ok() {
+            physically_removed.push(path.clone());
+        }
         updated_dirs.remove(&path);
     }
     for path in new_dirs {
         match watcher.watch(&path, notify::RecursiveMode::NonRecursive) {
             Ok(()) => {
+                physically_added.push(path.clone());
                 updated_dirs.insert(path);
             }
-            Err(error) => {
-                tracing::warn!(
-                    %error,
-                    path = %watch_key,
-                    watch_dir = %path.display(),
-                    "Failed to extend shared daemon watch tree"
-                );
+            Err(_) => {
+                // Failed dirs stay outside updated_dirs and retry on the next
+                // topology event; one aggregated warn per pass keeps watch
+                // exhaustion (ENOSPC/max_user_watches) from spamming the sink.
+                watch_failures += 1;
+                first_failed_dir.get_or_insert(path);
             }
         }
     }
-
-    let mut state = state.lock().unwrap_or_else(|error| error.into_inner());
-    let registration = state.registrations.get_mut(watch_key)?;
-    if registration.registration_id != registration_id {
-        return None;
+    if watch_failures > 0 {
+        tracing::warn!(
+            path = %watch_key,
+            failed = watch_failures,
+            first_failed = %first_failed_dir
+                .as_deref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
+            "Failed to extend shared daemon watch tree"
+        );
     }
-    let changed = registration.watched_dirs != updated_dirs;
-    registration.watched_dirs = updated_dirs;
-    Some((registration.watched_dirs.len(), changed))
+
+    {
+        let mut state = state.lock().unwrap_or_else(|error| error.into_inner());
+        if let Some(registration) = state.registrations.get_mut(watch_key) {
+            if registration.registration_id == registration_id {
+                let changed = registration.watched_dirs != updated_dirs;
+                registration.watched_dirs = updated_dirs;
+                return Some((registration.watched_dirs.len(), changed));
+            }
+        }
+    }
+    // The registration was removed or replaced while the tree walk ran. Its
+    // new owner (or nobody) still claims the pre-walk physical snapshot, so
+    // restore it — otherwise added dirs leak inotify descriptors and removed
+    // dirs are never re-watched (the next pass diffs against the claiming
+    // set and sees nothing to add). Mirrors fs/watcher.rs's rollback.
+    for path in physically_added {
+        let _ = watcher.unwatch(&path);
+    }
+    for path in physically_removed {
+        let _ = watcher.watch(&path, notify::RecursiveMode::NonRecursive);
+    }
+    None
 }
 
 #[cfg(test)]
