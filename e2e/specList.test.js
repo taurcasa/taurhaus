@@ -21,6 +21,13 @@ function groupedNames() {
 }
 
 describe('default WDIO spec list', () => {
+  it('includes the critical native smoke and exposes a one-boot completion recipe', async () => {
+    expect(groupedNames()).toContain('critical-smoke.js')
+    const { spawnSync } = await import('node:child_process')
+    const result = spawnSync('just', ['--dry-run', 'test-e2e-smoke'], { encoding: 'utf8' })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stderr).toContain('--spec e2e/specs/critical-smoke.js')
+  })
   // Regression: 3b56a3f ("test(e2e): add the live Codex compaction lane driven
   // through the hook bridge") added a spec that spends real Codex and Claude
   // subscription turns without adding it to a group. Ungrouped specs are

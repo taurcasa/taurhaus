@@ -23,7 +23,7 @@ export const specGroups = {
   // General visual capture and non-tmux guards.
   guards: ['screenshots.js', 'readme-screenshots.js'],
   // Standalone UI and detail-state capture.
-  ui: ['role-detail-screenshots.js'],
+  ui: ['critical-smoke.js', 'role-detail-screenshots.js'],
   wizard: ['first-run-wizard.js'],
   // Template storage, editing, and roster screenshots.
   templates: ['template-crud-ui.js', 'template-screenshots.js', 'templates.js'],

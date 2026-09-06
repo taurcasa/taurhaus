@@ -13,6 +13,24 @@ Testing follows TDD for logic and visual review for layout. The maintained lanes
 - **AC-driven coverage** — every acceptance criterion gets a test. No numeric coverage targets.
 - **Regression guards** — every bug fix ships with a test that stays forever. Non-negotiable.
 
+## Lane and PR acceptance
+
+Product changes require one `E2E_INSTALL_DAEMON=0 just test-e2e-smoke` pass
+beside the static/unit gates; documentation-only changes are exempt. This
+one-session native smoke saves settings via the real frontend payload and
+reloads persisted state, closes SlideOver before keyboard navigation, reads a
+startup project, and reconnects the private worker daemon before useful work.
+It never launches a model CLI. Full behavioral breadth is risk-triggered and
+required at milestones; one complete pass is sufficient, not three automatic
+repeats. Reuse `E2E_SKIP_BUILD=1` only with an already verified fresh build.
+
+Only `first-run-wizard.js` gets a virgin worker root. Other workers scan and
+batch-register generated fixture repositories through the wizard's supported
+Tauri commands, then reload the frontend. Both paths assert exactly `ledger`
+and `taurhaus` are registered and `is_first_run` is false. A missing seed must
+fail; it must never fall back to another UI wizard walk. Settings saving remains
+a real UI action in the smoke, independent of onboarding setup.
+
 ## Test layers
 
 ### Rust tests

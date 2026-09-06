@@ -440,6 +440,10 @@ _e2e_display := if env_var_or_default("E2E_HEADED", "0") == "1" { "" } else { "x
 test-e2e: e2e-prepare-daemon
     CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
 
+# Mandatory per-PR native smoke; one isolated app session.
+test-e2e-smoke: e2e-prepare-daemon
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js --spec e2e/specs/critical-smoke.js
+
 # Run E2E tests — Tier 1 + Tier 2 (daemon must be running)
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
 # opt-in that only rebuilds/restarts the operator's installed daemon.
