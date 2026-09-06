@@ -134,6 +134,7 @@ check:
     run_frontend_lane() {
         just lint-frontend
         just lint-workflows
+        just lint-just-gates
         just typecheck
         just test-frontend
     }
@@ -348,6 +349,11 @@ test-rust: test-rust-fast test-rust-unit test-rust-integration
 # Use for quick compile feedback.
 test-rust-fast: ensure-tauri-resources
     cd src-tauri && cargo check --tests
+
+# Executed contracts: measured 36.52s incremental (33.11s build), 52.69s repeat
+# with shared-target contention/rebuild; warm execution ~4.6s, cold build unmeasured.
+test-contracts: ensure-tauri-resources
+    cd src-tauri && cargo test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1
 
 # Rust unit-test execution lane (excludes heavy daemon/network/watcher suites).
 test-rust-unit: ensure-tauri-resources

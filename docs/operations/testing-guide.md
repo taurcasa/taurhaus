@@ -22,12 +22,23 @@ Per-module `#[test]` functions with `pretty_assertions` for readable diffs and `
 ```bash
 just test-rust            # Full Rust lane (fast compile + unit + integration/system)
 just test-rust-fast       # Compile check only (fast feedback)
+just test-contracts       # Execute CLI goldens, module boundaries, harness conformance
 just test-rust-unit       # Unit/bin tests, heavy suites excluded
 just test-rust-integration # Every src-tauri/tests/*.rs binary plus the heavy --lib suites
 just test-daemon-connectivity # Manual daemon chain verification (WSL/local)
 ```
 
 Test placement follows two patterns:
+
+Rust-touching lanes run `just test-contracts` beside `just check-quick` and
+affected Rust tests. This promotes the launch-default and writer-boundary
+defect catchers without replacing full Rust CI. Review changed golden defaults.
+Measured on 2026-09-06: 64 contract tests passed; first incremental invocation
+36.52 s (Cargo build 33.11 s), repeat 52.69 s including shared-target lock wait
+and rebuild. Test-binary execution totals about 4.6 s; a contention-free warm
+invocation and a cold build were not measured. These are not cold-build claims.
+The lead `check` also executes `lint-just-gates` in its frontend lane; its
+seeded integrity runs replace both lanes and therefore do not recurse.
 
 - command-layer modules keep external sibling `tests.rs` files
 - lower-level modules keep inline `#[cfg(test)] mod tests`

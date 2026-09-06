@@ -419,6 +419,7 @@ This is non-negotiable. No regression fix ships without a corresponding test.
 
 ### Quality Gates
 - `just check-quick` is the per-task gate: `cargo fmt` + `cargo check --tests` + frontend typecheck + frontend unit tests
+- Rust-touching lanes also run `just test-contracts` and affected Rust tests before completion: `check-quick` compiles Rust tests but executes no Rust assertions. Review changed launch defaults explicitly when a golden changes.
 - `just check` is the full gate and is run by team-lead in serialized fashion (or before release)
 - CI runs the stable `Rust unit tests` job (`just test-rust-unit`) on every pull request, independently of the existing fast/frontend quality-gate job.
 - CI runs `Rust integration tests` (`just test-rust-integration`) on every pull request, main push, and manual workflow dispatch.
