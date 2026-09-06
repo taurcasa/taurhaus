@@ -4,6 +4,7 @@ import { isConfirmDialogOpen, clickOpenConfirmDialog } from '../helpers/confirmD
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
+import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
 import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 import { assertWorkerMeshAvailable } from '../helpers/workerEnv.js'
 
@@ -106,8 +107,13 @@ async function ensureSetupMode() {
     if (!disbanded) return false
   }
 
+  // Regression: 17e0f9d1 made the empty state an inline editor whose mode only
+  // flips to setup on an input event; clicking the display alone never
+  // transitions. Use the shared gesture the other mesh specs adopted in the
+  // flake audit — this spec kept a stale local copy and the audit's
+  // bail-truncated close-out run never reached it.
   if (await hasTestId('mesh-mode-empty')) {
-    await clickTestId('mesh-builder-team-name-display')
+    await setInlineBuilderTeamName()
   }
 
   await browser.waitUntil(
