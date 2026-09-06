@@ -164,3 +164,55 @@ role-template lane (Astra Architect / Cross-File Reviewer / leashed Heavy
 Implementer / Security Auditor / Dual-Judge pair; review-route updates;
 diff-budget gate + oversize telemetry event; BUILTIN_CATALOG_REVISION bump)
 → Product Build field test.
+
+## Field test box score (pre-registered 2026-09-06, before first launch)
+
+Product Build preset on `~/projects/taurjobs` (wave-1 slice per its
+`BRIEF.md`: configure → run once with live progress → browse results). These
+expectations are written down BEFORE the first team launch so the retro
+grades predictions, not memories. Grading source: `just routing-report`
+plus the mesh ledger and the operator's own experience.
+
+**Predictions to grade:**
+
+1. **Delivery**: the wave-1 slice reaches a demoable state (configure a
+   search, one real background run with visible progress, results browsable)
+   without the operator writing product code. Interventions expected:
+   operator answers direction questions and approves the team's reserved
+   decisions; anything beyond that (unsticking members, repairing state,
+   re-explaining the assignment) counts against the machinery, and more than
+   ~3 such interventions per day is a red flag on the blueprint.
+2. **Routing telemetry (Stage-1 exit evidence)**: every member launch lands
+   in the sidecars; after the wave, `just routing-report` shows a row per
+   (role, model) with `accepted` > 0 — a wave that ends with only
+   `completed_unruled` means the review contract is theater and Decision 3's
+   gate was skipped in practice.
+3. **The leash moves or stays honestly zero**: the Astra heavy implementer
+   either respects diff budgets (oversize_diffs = 0 with real reviewed
+   diffs behind it) or the column counts incidents attributed to the OWNER
+   row. Predicted, given the over-engineering bias: 1–3 oversize incidents
+   in the first wave. Zero incidents alongside sprawling merged diffs =
+   reviewers not enforcing the gate, which is a finding about the reviewer
+   role text, not a pass.
+4. **Two-family review holds**: no slice merges with only same-family
+   review. Astra cross-file review (solo, Decision 4) produces at least one
+   finding Opus's product lens would plausibly have missed or vice versa —
+   judged qualitatively at retro; if the two lenses' findings fully overlap,
+   the Opus-one-seat bet gets revisited in the other direction (maybe one
+   lens suffices entirely).
+5. **Orientation default earns its place**: Fable lead delegates rather than
+   implements (lead transcript shows assignment contracts, not diffs); the
+   Astra architect produces slice plans the implementers execute without
+   re-architecting mid-task. A lead that starts implementing or an architect
+   whose plans get overturned by implementers is orientation evidence for
+   Decision 1's next review.
+6. **Cost shape**: wall-time per accepted task (the Stage-1 proxy) is
+   recorded per row; no token accounting this wave. The retro compares the
+   heavy-implementer row against the Sol implementer rows from earlier
+   waves as the first real Astra-vs-Sol cost-per-accepted-task datum
+   (Decision 2's gate).
+
+**Not graded this wave**: taurjobs product quality beyond the demoable
+slice (that is the team's job, and wave 2's); suite health (owned by the
+test-strategy reform lane); Astra-as-lead (Decision 2 explicitly waits for
+this wave's numbers).
