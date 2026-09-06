@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
-import { buildSpecList, listSpecFiles, paidSpecs, specGroups } from './specList.js'
+import { PERSISTENT_HARNESS_SPECS, buildSpecList, captureSpecs, listSpecFiles, paidSpecs, specGroups } from './specList.js'
 
 // Vitest runs from the repository root (see CLAUDE.md), which is what makes
 // this the real specs directory rather than a fixture.
@@ -21,6 +21,38 @@ function groupedNames() {
 }
 
 describe('default WDIO spec list', () => {
+  // Regression: 94ba0199 evicted general/README capture but left mesh capture
+  // asserting the retired MeshActionBar customizer path in acceptance.
+  it('declares mesh screenshots as on-demand capture and exposes it in the capture recipe', async () => {
+    expect(flatNames(buildSpecList(specsDir))).not.toContain('mesh-screenshots.js')
+    expect(captureSpecs).toContain('mesh-screenshots.js')
+    const { spawnSync } = await import('node:child_process')
+    const result = spawnSync('just', ['--dry-run', 'capture-e2e-docs'], { encoding: 'utf8' })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stderr).toContain('--spec e2e/specs/mesh-screenshots.js')
+  })
+  it('keeps nine behavioral sessions and leaves docs captures to an explicit recipe', async () => {
+    const names = flatNames(buildSpecList(specsDir))
+    expect(names).not.toContain('readme-screenshots.js')
+    expect(names).not.toContain('general-screenshots.js')
+    expect(names).toContain('screenshots.js')
+    expect(buildSpecList(specsDir)).toHaveLength(9)
+    expect(specGroups.wizard).toEqual(['first-run-wizard.js'])
+    // Native theme switching already has behavioral assertions in this spec.
+    expect(names).toContain('theme-and-shortcuts.js')
+    const { spawnSync } = await import('node:child_process')
+    const result = spawnSync('just', ['--dry-run', 'capture-e2e-docs'], { encoding: 'utf8' })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stderr).toContain('--spec e2e/specs/readme-screenshots.js')
+    expect(result.stderr).toContain('--spec e2e/specs/general-screenshots.js')
+  })
+  it('includes the critical native smoke and exposes a one-boot completion recipe', async () => {
+    expect(groupedNames()).toContain('critical-smoke.js')
+    const { spawnSync } = await import('node:child_process')
+    const result = spawnSync('just', ['--dry-run', 'test-e2e-smoke'], { encoding: 'utf8' })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stderr).toContain('--spec e2e/specs/critical-smoke.js')
+  })
   // Regression: 3b56a3f ("test(e2e): add the live Codex compaction lane driven
   // through the hook bridge") added a spec that spends real Codex and Claude
   // subscription turns without adding it to a group. Ungrouped specs are
@@ -199,5 +231,17 @@ describe('default WDIO spec list', () => {
     expect(Object.keys(specGroups)).toEqual(
       expect.arrayContaining(['ui', 'templates', 'mesh', 'tmux'])
     )
+  })
+
+  // Regression: round 2 hardcoded the persistent-harness opt-in as an inline
+  // regex in wdio.conf.js; renaming either spec would have silently reverted
+  // its worker to the exiting CLI blockers and reproduced the Add Agent red.
+  it('names persistent-harness specs that exist and sit in a behavioral group', () => {
+    const present = listSpecFiles(specsDir)
+    expect(PERSISTENT_HARNESS_SPECS.length).toBeGreaterThan(0)
+    for (const name of PERSISTENT_HARNESS_SPECS) {
+      expect(present).toContain(name)
+      expect(groupedNames()).toContain(name)
+    }
   })
 })

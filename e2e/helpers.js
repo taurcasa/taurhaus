@@ -3,10 +3,9 @@
  */
 
 import {
-  PAUSE_BOOT, PAUSE_BOOT_ACTION, POLL_BOOT, POLL_WIZARD,
+  PAUSE_BOOT, PAUSE_BOOT_ACTION, POLL_BOOT,
   TIMEOUT_BOOT,
 } from './helpers/timing.js'
-import { PROJECTS_DIR } from './helpers/platform.js'
 
 /**
  * Wait for the app to be ready — handles splash screen, wizard, or main shell.
@@ -55,91 +54,12 @@ export async function waitForAppReady() {
   )
 }
 
-/**
- * Ensure we're in the main app (past the wizard).
- * If the wizard is showing, navigate through it.
- *
- * @returns {Promise<boolean>} true if main app is now visible
- */
+/** Assert setup succeeded. Only first-run-wizard.js may walk onboarding. */
 export async function ensureMainApp() {
-  // Check if we're already in the main app
-  const overviewTab = await $('[data-testid="tab-overview"]')
-  if (await overviewTab.isExisting()) return true
-
-  // Must be the wizard — navigate through it
-  const getStarted = await $('[data-testid="get-started-button"]')
-  if (!(await getStarted.isExisting())) return false
-
-  // Step 1: Get started
-  await getStarted.click()
-
-  // Step 2: Daemon setup — auto-proceeds if installed, otherwise skip
-  const daemonStep = await $('[data-testid="wizard-step-2"]')
-  if (await daemonStep.isExisting()) {
-    const browseStep = await $('[data-testid="wizard-step-3"]')
-    await browser.waitUntil(
-      async () => {
-        if (await browseStep.isExisting()) return true
-
-        const checking = await $('[data-testid="daemon-checking"]')
-        if (await checking.isExisting()) return false
-
-        const skipBtn = await $('[data-testid="daemon-skip-button"]')
-        if (await skipBtn.isExisting()) {
-          await skipBtn.click()
-        }
-        return await browseStep.isExisting()
-      },
-      {
-        timeout: 15_000,
-        interval: POLL_WIZARD,
-        timeoutMsg: 'Wizard did not reach scan step from daemon setup'
-      }
-    )
+  if (await $('[data-testid="get-started-button"]').isExisting()) {
+    throw new Error('Required post-onboarding seed is absent; refusing a fallback wizard walk')
   }
-
-  // Step 3: Scan for projects
-  const input = await $('[data-testid="wizard-step-3"] input[type="text"]')
-  await input.waitForExist({ timeout: 5_000 })
-  await input.setValue(PROJECTS_DIR)
-
-  const scanBtn = await $('[data-testid="scan-button"]')
-  await scanBtn.click()
-
-  // Step 3: Register projects
-  const registerBtn = await $('[data-testid="register-button"]')
-  await registerBtn.waitForExist({ timeout: 30_000 })
-  await browser.waitUntil(
-    async () => browser.execute(() => {
-      const register = document.querySelector('[data-testid="register-button"]')
-      if (!register) return false
-      if (!register.disabled) return true
-
-      // If nothing is selected, force-select all discovered projects.
-      const selectAll = Array.from(
-        document.querySelectorAll('[data-testid="wizard-step-4"] button')
-      ).find((button) => button.textContent?.trim() === 'Select all')
-      if (selectAll) selectAll.click()
-
-      return !register.disabled
-    }),
-    { timeout: 10_000, interval: POLL_WIZARD, timeoutMsg: 'Register button stayed disabled in wizard step 4' }
-  )
-
-  await registerBtn.click()
-
-  // Step 4 → 5: Wait for indexing → completion → click dashboard
-  const dashboardBtn = await $('[data-testid="go-to-dashboard"]')
-  await dashboardBtn.waitForExist({ timeout: 120_000 })
-  await dashboardBtn.click()
-
-  await browser.waitUntil(
-    async () => {
-      const tab = await $('[data-testid="tab-overview"]')
-      return await tab.isExisting()
-    },
-    { timeout: 30_000, interval: POLL_WIZARD, timeoutMsg: 'Overview tab did not appear after wizard completion' }
-  )
+  await $('[data-testid="tab-overview"]').waitForExist({ timeout: 30_000 })
   return true
 }
 

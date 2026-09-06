@@ -25,13 +25,27 @@ const WORKER_DAEMON_PORT_START = 20_000
 const WORKER_DAEMON_PORT_COUNT = 12_000
 
 /** Seed an isolated login home without reading the operator's shell files. */
-export function prepareWorkerHome(workerHome, { meshBinaryPath } = {}) {
+export function prepareWorkerHome(workerHome, { meshBinaryPath, blockRealClis = true, persistentHarnesses = false } = {}) {
   mkdirSync(workerHome, { recursive: true })
-  writeFileSync(join(workerHome, '.zshrc'), '# taurhaus E2E isolated shell home\n', 'utf8')
-
-  if (!meshBinaryPath || !existsSync(meshBinaryPath)) return
   const workerBinDir = join(workerHome, '.local', 'bin')
   mkdirSync(workerBinDir, { recursive: true })
+  for (const file of ['.zshrc', '.bashrc', '.profile']) {
+    writeFileSync(join(workerHome, file), '# taurhaus E2E isolated shell home\nexport PATH="$HOME/.local/bin:$PATH"\n', 'utf8')
+  }
+  if (blockRealClis) {
+    for (const tool of ['claude', 'codex', 'agy', 'grok']) {
+      const source = persistentHarnesses
+        ? `#!${process.execPath}
+if (process.argv.includes('--version')) { console.log('E2E inert harness'); process.exit(0) }
+process.on('SIGINT', () => process.exit(0))
+process.on('SIGTERM', () => process.exit(0))
+setInterval(() => {}, 60_000)
+`
+        : '#!/bin/sh\necho "E2E requires an explicit test stub; real harness execution blocked" >&2\nexit 77\n'
+      writeFileSync(join(workerBinDir, tool), source, { mode: 0o755 })
+    }
+  }
+  if (!meshBinaryPath || !existsSync(meshBinaryPath)) return
   symlinkSync(resolve(meshBinaryPath), join(workerBinDir, 'mesh'))
 }
 
@@ -96,6 +110,7 @@ export function buildWorkerEnv(
   const root = resolve(sessionTempRoot)
   const env = { ...baseEnv }
   env.HOME = resolve(root, 'home')
+  env.PATH = `${resolve(env.HOME, '.local', 'bin')}:${baseEnv.PATH || '/usr/bin:/bin'}`
   for (const key of WORKER_ROOT_ENV_KEYS) {
     env[key] = resolve(root, ROOT_SUBDIRS[key])
   }

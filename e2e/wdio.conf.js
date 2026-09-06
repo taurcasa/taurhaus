@@ -6,18 +6,10 @@
  * This keeps per-operation latency low (~95ms vs ~165ms with all specs
  * in one session) while avoiding per-spec app startup overhead.
  *
- * The original groups are organized by app layer (inside-out):
- *   1. Content  — individual tab workflows (read-only)
- *   2. Features — cross-cutting features (read-only)
- *   3. Shell    — app chrome & platform integration
- *   4. Config   — state mutation & validation
- *   5. Guards   — general visual capture and non-tmux guards
- * Stateful additions use named UI, template, mesh, and tmux groups. The
- * manifest is sealed: every non-paid spec must be named by one group.
- *
- * Groups are SEALED — new specs form new groups, never expand existing ones.
- * The groups themselves live in `specList.js`, together with the paid lanes a
- * suite run must never pick up on its own.
+ * Nine serial behavioral sessions: eight use generated onboarding through
+ * supported setup commands; one exercises the real wizard on a virgin root.
+ * The sealed manifest in specList.js declares paid and docs-capture exclusions.
+ * Breadth recipes disable both bail flags; named runs remain fail-fast.
  *
  * Uses tauri-driver as the WebDriver bridge, which delegates to the
  * platform's native WebDriver (WebKitWebDriver on Linux, msedgedriver on Windows).
@@ -44,9 +36,9 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import { resolve } from 'node:path'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { relative, resolve } from 'node:path'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
 import { createCodexScratchHome } from './helpers/codexScratchHome.js'
@@ -62,7 +54,9 @@ import {
   findAvailableWorkerDaemonPort,
   prepareWorkerHome,
 } from './helpers/workerEnv.js'
-import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
+import { CODEX_SCRATCH_SPECS, PERSISTENT_HARNESS_SPECS, buildSpecList, captureSpecs, listSpecFiles, paidSpecs } from './specList.js'
+import { needsWizard, seedOnboarding, invokeApp } from './helpers/onboarding.js'
+import { declaredTestExclusions, finishRun, selectedSpecFiles, updateRunSummary } from './runSummary.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
@@ -110,6 +104,7 @@ for (const [groupIndex, group] of specList.entries()) {
 }
 
 let tauriDriver
+let buildProcess
 let sessionTempRoot = null
 let tauriDriverStderrBuffer = ''
 let sessionAppLogPaths = []
@@ -338,11 +333,6 @@ async function waitForWebDriverReady(host, port, timeoutMs = 5_000, intervalMs =
   throw new Error(`tauri-driver did not become protocol-ready at ${host}:${port} within ${timeoutMs}ms`)
 }
 
-function killByPortPattern(pattern) {
-  if (process.platform === 'win32') return
-  spawnSync('pkill', ['-f', pattern], { stdio: 'ignore' })
-}
-
 function refreshOwnedProcessRecords() {
   if (!processLedger || !sessionRunToken) return
   for (const record of findRunTokenProcessRecords(sessionRunToken)) {
@@ -362,18 +352,11 @@ function stopOwnedProcessRefresh() {
   ownedProcessRefreshTimer = null
 }
 
-function cleanupDriverPortFallback() {
-  // Last-resort fallback for orphan processes on this worker's ports.
-  killByPortPattern(`tauri-driver --port ${wdioPort} --native-port ${nativeWebDriverPort}`)
-  killByPortPattern(`WebKitWebDriver --port=${nativeWebDriverPort}`)
-}
-
 function cleanupTauriDriver() {
   stopOwnedProcessRefresh()
   refreshOwnedProcessRecords()
   processLedger?.cleanup()
   tauriDriver = null
-  cleanupDriverPortFallback()
   processLedger?.remove()
   processLedger = null
   sessionRunToken = ''
@@ -388,6 +371,9 @@ function cleanupSessionTempRoot() {
 }
 
 function cleanupAllE2eArtifacts() {
+  if (buildProcess && buildProcess.exitCode === null) {
+    try { process.kill(-buildProcess.pid, 'SIGTERM') } catch { /* already exited */ }
+  }
   cleanupTauriDriver()
   killIsolatedTmuxServer()
   cleanupSessionTempRoot()
@@ -406,6 +392,9 @@ function registerCleanupHandlers() {
 
   const handleSignal = () => {
     cleanupAllE2eArtifacts()
+    if (process.env.E2E_RUN_SUMMARY) {
+      try { updateRunSummary(summary => finishRun(summary, 1)) } catch { /* preparation may not have created it */ }
+    }
     process.exit(1)
   }
   const handleCrash = () => {
@@ -459,6 +448,7 @@ export const config = {
   framework: 'mocha',
   mochaOpts: {
     ui: 'bdd',
+    require: [resolve(import.meta.dirname, 'runSummary.js')],
     timeout: mochaTimeoutMs,
     bail: mochaBail,
   },
@@ -536,29 +526,78 @@ export const config = {
    * Build the Tauri debug binary before running tests.
    * Skip with E2E_SKIP_BUILD=1 if you already have a fresh build.
    */
-  async onPrepare() {
+  async onPrepare(launchConfig) {
+    const startedAt = new Date().toISOString()
     cleanupStaleProcessLedgers(projectRoot)
+    mkdirSync(wdioOutputDir, { recursive: true })
+    const summaryDir = mkdtempSync(resolve(wdioOutputDir, 'run-'))
+    process.env.E2E_RUN_SUMMARY = resolve(summaryDir, 'run-summary.json')
+    writeFileSync(process.env.E2E_RUN_SUMMARY, JSON.stringify({
+      started_at: startedAt,
+      build_ms: 0,
+      build_reused: process.env.E2E_SKIP_BUILD === '1',
+      wall_ms: null,
+      boots: 0,
+      wizard_walks: 0,
+      revision: spawnSync('git', ['rev-parse', 'HEAD'], { cwd: projectRoot, encoding: 'utf8' }).stdout.trim(),
+      dirty: Boolean(spawnSync('git', ['status', '--porcelain'], { cwd: projectRoot, encoding: 'utf8' }).stdout.trim()),
+      binary: binaryPath,
+      binary_sha256: null,
+      complete: false,
+      exclusions: [],
+      specs: {},
+    }))
+    console.log(`[e2e] Run summary: ${process.env.E2E_RUN_SUMMARY}`)
+    try {
+      const selected = selectedSpecFiles(launchConfig)
+      updateRunSummary(summary => {
+        summary.exclusions = listSpecFiles(specsDir).filter(name => !selected.some(path => path.endsWith(`/${name}`))).map(name => ({
+          kind: 'file',
+          spec: relative(projectRoot, resolve(specsDir, name)),
+          reason: paidSpecs.includes(name) ? 'paid; explicitly named only'
+            : captureSpecs.includes(name) ? 'on-demand documentation capture'
+              : 'explicit suite selection/exclusion',
+        }))
+        summary.exclusions.push(...declaredTestExclusions.filter(entry =>
+          selected.some(path => relative(projectRoot, path) === entry.spec)
+        ).map(entry => ({ kind: 'test', ...entry })))
+        summary.specs = Object.fromEntries(selected.map(path => [relative(projectRoot, path), null]))
+      })
 
-    if (process.env.E2E_SKIP_BUILD === '1') {
-      console.log('[e2e] Skipping build (E2E_SKIP_BUILD=1)')
-      return
+      if (process.env.E2E_SKIP_BUILD === '1') {
+        console.log('[e2e] Skipping build (E2E_SKIP_BUILD=1)')
+        updateRunSummary(summary => { summary.binary_sha256 = createHash('sha256').update(readFileSync(binaryPath)).digest('hex') })
+        return
+      }
+
+      console.log('[e2e] Building Tauri debug binary...')
+      const buildStarted = Date.now()
+      await new Promise((resolve, reject) => {
+        const build = spawn('just', ['build-e2e'], {
+          cwd: projectRoot,
+          stdio: 'inherit',
+          detached: true,
+        })
+        buildProcess = build
+        build.on('error', reject)
+        build.on('close', (code) => {
+          buildProcess = null
+          if (code === 0) {
+            console.log('[e2e] Build complete')
+            resolve()
+          } else {
+            reject(new Error(`Build failed with exit code ${code}`))
+          }
+        })
+      }).finally(() => updateRunSummary(summary => { summary.build_ms = Date.now() - buildStarted }))
+      updateRunSummary(summary => { summary.binary_sha256 = createHash('sha256').update(readFileSync(binaryPath)).digest('hex') })
+    } catch (error) {
+      updateRunSummary(summary => { summary.preparation_error = String(error) })
+      // WDIO swallows ordinary onPrepare errors. Clear the worker schedule and
+      // let onComplete fail the recorded incomplete run instead of booting apps.
+      launchConfig.specs = []
+      throw error
     }
-
-    console.log('[e2e] Building Tauri debug binary...')
-    return new Promise((resolve, reject) => {
-      const build = spawn('bunx', ['tauri', 'build', '--debug', '--no-bundle'], {
-        cwd: projectRoot,
-        stdio: 'inherit',
-      })
-      build.on('close', (code) => {
-        if (code === 0) {
-          console.log('[e2e] Build complete')
-          resolve()
-        } else {
-          reject(new Error(`Build failed with exit code ${code}`))
-        }
-      })
-    })
   },
 
   /**
@@ -591,7 +630,14 @@ export const config = {
     for (const key of WORKER_ROOT_ENV_KEYS) {
       mkdirSync(workerEnv[key], { recursive: true })
     }
-    prepareWorkerHome(workerEnv.HOME, { meshBinaryPath: operatorMeshBinaryPath })
+    prepareWorkerHome(workerEnv.HOME, {
+      meshBinaryPath: operatorMeshBinaryPath,
+      blockRealClis: !paidCodexWorker,
+      // These runtime UI specs require living members, without provider turns.
+      persistentHarnesses: (specs ?? []).some(spec =>
+        PERSISTENT_HARNESS_SPECS.some(name => resolve(spec).endsWith(`/${name}`))
+      ),
+    })
     tauriDriverStderrBuffer = ''
     sessionAppLogPaths = [
       `${tauriDataDir}/taurhaus.log.jsonl`,
@@ -612,6 +658,7 @@ export const config = {
     prepareCodexScratchHome(specs, workerEnv.CODEX_HOME)
     for (const key of [
       'HOME',
+      'PATH',
       ...WORKER_ROOT_ENV_KEYS,
       'TAURHAUS_DAEMON_PORT',
       'TAURHAUS_DAEMON_BINARY',
@@ -651,9 +698,31 @@ export const config = {
     await waitForWebDriverReady('127.0.0.1', wdioPort)
   },
 
-  before() {
+  async before(_capabilities, specs) {
     // WebKitWebDriver and the app exist only after WDIO creates the session.
     refreshOwnedProcessRecords()
+    updateRunSummary(summary => {
+      summary.boots++
+      if (needsWizard(specs)) summary.wizard_walks++
+    })
+    try {
+      if (needsWizard(specs)) return
+      await browser.waitUntil(
+        () => browser.execute(() => Boolean(window.__TAURI_INTERNALS__)),
+        { timeout: 30_000, timeoutMsg: 'Tauri setup IPC unavailable' }
+      )
+      await seedOnboarding(invokeApp, process.env.E2E_PROJECTS_DIR)
+      await browser.refresh()
+      await $('[data-testid="tab-overview"]').waitForExist({ timeout: 30_000 })
+      if (await $('[data-testid="first-run-wizard"]').isExisting()) {
+        throw new Error('Seeded root returned to onboarding after reload')
+      }
+    } catch (error) {
+      // WDIO logs and swallows config-hook errors. The Mocha root hook must
+      // also fail, or a spec with permissive prerequisites could report green.
+      process.env.E2E_SETUP_ERROR = String(error)
+      throw error
+    }
   },
 
   /**
@@ -666,8 +735,10 @@ export const config = {
   /**
    * Final safety net so failed/crashed runs don't leave app instances behind.
    */
-  async onComplete() {
+  async onComplete(exitCode) {
     cleanupAllE2eArtifacts()
     cleanupStaleProcessLedgers(projectRoot)
+    const summary = updateRunSummary(summary => finishRun(summary, exitCode))
+    if (!summary.complete) throw new Error(`Required E2E coverage did not all execute and pass: ${process.env.E2E_RUN_SUMMARY}`)
   },
 }

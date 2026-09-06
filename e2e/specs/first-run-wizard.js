@@ -6,6 +6,7 @@
 import { waitForAppReady } from '../helpers.js'
 import { PROJECTS_DIR } from '../helpers/platform.js'
 import { POLL_WIZARD, WAIT_LONG } from '../helpers/timing.js'
+import { assertOnboardedProjects, invokeApp } from '../helpers/onboarding.js'
 
 describe('First-run wizard', () => {
   before(async () => {
@@ -172,5 +173,10 @@ describe('First-run wizard', () => {
 
     const projectItems = await $$('[data-testid="project-item"]')
     expect(projectItems.length).toBeGreaterThanOrEqual(2)
+    assertOnboardedProjects(await invokeApp('list_projects'), await invokeApp('is_first_run'))
+    await browser.refresh()
+    await $('[data-testid="tab-overview"]').waitForExist({ timeout: 30_000 })
+    expect(await $('[data-testid="first-run-wizard"]').isExisting()).toBe(false)
+    assertOnboardedProjects(await invokeApp('list_projects'), await invokeApp('is_first_run'))
   })
 })

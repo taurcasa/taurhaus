@@ -17,17 +17,16 @@ export const specGroups = {
   // Cross-cutting features (read-only).
   features: ['tasks-workflow.js', 'cross-tab-navigation.js', 'search-workflow.js'],
   // App chrome and platform integration.
-  shell: ['theme-and-shortcuts.js', 'context-menu.js', 'daemon-integration.js'],
+  shell: ['theme-and-shortcuts.js', 'context-menu.js', 'daemon-integration.js', 'screenshots.js'],
   // State mutation and validation.
   config: ['settings-persistence.js', 'project-lifecycle.js', 'error-handling.js'],
-  // General visual capture and non-tmux guards.
-  guards: ['screenshots.js', 'readme-screenshots.js'],
   // Standalone UI and detail-state capture.
-  ui: ['first-run-wizard.js', 'role-detail-screenshots.js'],
+  ui: ['critical-smoke.js', 'role-detail-screenshots.js'],
+  wizard: ['first-run-wizard.js'],
   // Template storage, editing, and roster screenshots.
   templates: ['template-crud-ui.js', 'template-screenshots.js', 'templates.js'],
   // Team runtime and recovery workflows.
-  mesh: ['mesh-recovery.js', 'mesh-screenshots.js', 'mesh-workflow.js'],
+  mesh: ['mesh-recovery.js', 'mesh-workflow.js'],
   // Real session actions and runtime session presentation.
   tmux: ['command-center-real-actions.js', 'session-management.js', 'regressions.js'],
 }
@@ -53,6 +52,17 @@ export const CODEX_SCRATCH_SPECS = [
   'managed-stage-parallel.js',
 ]
 export const paidSpecs = [...CODEX_SCRATCH_SPECS]
+export const captureSpecs = ['general-screenshots.js', 'readme-screenshots.js', 'mesh-screenshots.js']
+
+/**
+ * Runtime UI specs whose workers install inert-but-alive CLI stubs instead of
+ * the exiting blockers: their tests open runtime member surfaces (Add Agent,
+ * hot-add) that only render while mesh members stay alive, without ever
+ * driving a provider turn. Manifest authority consumed by wdio.conf.js
+ * `beforeSession` — naming policy here keeps a spec rename from silently
+ * reverting those workers to exit blockers.
+ */
+export const PERSISTENT_HARNESS_SPECS = ['template-crud-ui.js', 'mesh-workflow.js']
 
 /** Spec files present in `specsDir`, sorted. */
 export function listSpecFiles(specsDir) {
@@ -62,15 +72,15 @@ export function listSpecFiles(specsDir) {
 // Build the sealed spec list. Each group becomes one worker session. Paid lanes
 // are named on the command line; every other file must belong to a named group.
 export function buildSpecList(specsDir, specFiles = listSpecFiles(specsDir)) {
-  const paid = new Set(paidSpecs)
-  const allFiles = specFiles.filter(name => !paid.has(name))
+  const excluded = new Set([...paidSpecs, ...captureSpecs])
+  const allFiles = specFiles.filter(name => !excluded.has(name))
   const groups = Object.values(specGroups)
   const knownSpecs = new Set(groups.flat())
   const ungrouped = allFiles.filter(name => !knownSpecs.has(name))
   if (ungrouped.length > 0) {
     throw new Error(
       `Ungrouped E2E specs: ${ungrouped.join(', ')}. ` +
-      'Add each file to a named specGroups group or to paidSpecs.'
+      'Add each file to a named specGroups group, paidSpecs, or captureSpecs.'
     )
   }
 

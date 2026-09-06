@@ -134,6 +134,7 @@ check:
     run_frontend_lane() {
         just lint-frontend
         just lint-workflows
+        just lint-just-gates
         just typecheck
         just test-frontend
     }
@@ -349,6 +350,11 @@ test-rust: test-rust-fast test-rust-unit test-rust-integration
 test-rust-fast: ensure-tauri-resources
     cd src-tauri && cargo check --tests
 
+# Executed contracts: measured 36.52s incremental (33.11s build), 52.69s repeat
+# with shared-target contention/rebuild; warm execution ~4.6s, cold build unmeasured.
+test-contracts: ensure-tauri-resources
+    cd src-tauri && cargo test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1
+
 # Rust unit-test execution lane (excludes heavy daemon/network/watcher suites).
 test-rust-unit: ensure-tauri-resources
     cd src-tauri && heavy_test_filters="{{heavy_rust_test_filters}}"; skip_args=""; for test_filter in $heavy_test_filters; do skip_args="$skip_args --skip $test_filter"; done; cargo test --lib --bins -- --test-threads=1 $skip_args
@@ -432,7 +438,15 @@ build-e2e:
 _e2e_display := if env_var_or_default("E2E_HEADED", "0") == "1" { "" } else { "xvfb-run -a -s '-screen 0 1600x1000x24' env -u WAYLAND_DISPLAY GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1" }
 
 test-e2e: e2e-prepare-daemon
-    CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
+    E2E_BAIL=0 E2E_MOCHA_BAIL=0 CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js --exclude "$PWD/e2e/specs/daemon-integration.js"
+
+# Mandatory per-PR native smoke; one isolated app session.
+test-e2e-smoke: e2e-prepare-daemon
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js --spec e2e/specs/critical-smoke.js
+
+# On-demand documentation artifacts; excluded from behavioral acceptance.
+capture-e2e-docs: e2e-prepare-daemon
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js --spec e2e/specs/general-screenshots.js --spec e2e/specs/readme-screenshots.js --spec e2e/specs/mesh-screenshots.js
 
 # Run E2E tests — Tier 1 + Tier 2 (daemon must be running)
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
@@ -441,7 +455,7 @@ test-e2e: e2e-prepare-daemon
 # is never part of a suite run: `e2e/specList.js` keeps every paid lane out of
 # the config's spec list. Start it by name with test-e2e-spec.
 test-e2e-full: e2e-prepare-daemon
-    CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js
+    E2E_BAIL=0 E2E_MOCHA_BAIL=0 CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js
 
 # Run a single E2E spec file.
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy

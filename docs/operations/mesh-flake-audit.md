@@ -155,11 +155,20 @@ do not count toward the required three consecutive full-suite greens.
 
 ## Known residual (orchestrator ruling, 2026-09-06)
 
-`mesh-recovery` › cold-resume's `waitForOfflineMemberCount` still misses its
-cadence-derived 30s budget in roughly 2 of 10 full-suite runs. Every observed
-failure is propagation timing, never product behavior. Ruled: not worth
-further blind budget growth in this lane — the e2e-efficiency lane (seeded
-boots, parallel instances) changes the timing landscape wholesale and owns
-this site's re-evaluation. Until then this single test is the suite's one
-known flake; a red HERE and only here does not invalidate a run's verdict on
-other specs.
+The earlier ruling described roughly **2/10 full-suite runs** as propagation
+failures and delegated re-evaluation to the test-strategy lane. That product-vs-
+timing conclusion is superseded by the orchestrator's 2026-09-06 evidence:
+**3/3 failures** — reform branch full suite, reform branch standalone, and main
+standalone. Two failures are standalone, so suite contention does not explain
+the observation. This is not a measured 30% rate or a new timeout percentile.
+
+Cold-resume's tail waits for zero offline members after Resume Team, the same
+team-daemon startup-verification path cited by the two permanently skipped
+recovery siblings. The test-strategy round therefore declares this one test a
+known-issue exclusion, with this docket and the resume-verification product
+issue named in run accounting. It leaves every stop/reload/resume assertion
+intact for the product lane. No timeout growth, retry, or weakened assertion
+is a fix for this issue. The other two existing product-issue skips receive
+the same explicit accounting reason; the inverse-availability case remains
+conditional. A green tier-1 now excludes these named cases visibly and does
+not claim resume verification works.

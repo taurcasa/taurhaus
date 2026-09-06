@@ -13,6 +13,154 @@ Testing follows TDD for logic and visual review for layout. The maintained lanes
 - **AC-driven coverage** — every acceptance criterion gets a test. No numeric coverage targets.
 - **Regression guards** — every bug fix ships with a test that stays forever. Non-negotiable.
 
+## Lane and PR acceptance
+
+Product changes require one `E2E_INSTALL_DAEMON=0 just test-e2e-smoke` pass
+beside the static/unit gates; documentation-only changes are exempt. This
+one-session native smoke saves settings via the real frontend payload and
+reloads persisted state, closes SlideOver before keyboard navigation, reads a
+startup project, and reconnects the private worker daemon before useful work.
+It never launches a model CLI. Full behavioral breadth is risk-triggered and
+required at milestones; one complete pass is sufficient, not three automatic
+repeats. Reuse `E2E_SKIP_BUILD=1` only with an already verified fresh build.
+Ordinary workers put rejecting `claude`/`codex`/`agy`/`grok` shims first on
+their isolated shell PATH. Runtime tests must supply their own generated CLI
+stubs; missing stubs cannot fall through to an installed real harness. Only
+the explicitly named paid workers omit those shims. Workers containing
+`template-crud-ui` or `mesh-workflow` instead receive generated inert harnesses
+that remain alive until cleanup; their runtime UI coverage needs living members,
+not provider turns.
+
+Only `first-run-wizard.js` gets a virgin worker root. Other workers scan and
+batch-register generated fixture repositories through the wizard's supported
+Tauri commands, then reload the frontend. Both paths assert exactly `ledger`
+and `taurhaus` are registered and `is_first_run` is false. A missing seed must
+fail; it must never fall back to another UI wizard walk. Settings saving remains
+a real UI action in the smoke, independent of onboarding setup.
+
+Round-2 parity check (2026-09-06): a real wizard walk and seed-only setup produced
+matching app-data path inventories and all database tables after normalizing
+project UUIDs, worker paths, and timestamps. Neither persisted settings; both
+used product defaults. Both Claude roots contained only `tasks`, with no teams
+entry. The Add Agent regression came from `925c78c3` prepending exit-77 CLI
+blockers ahead of the old inert fixtures, so members immediately became offline.
+The runtime-only persistent fixtures fix that cause without changing onboarding.
+The `_active-project-teams` warning still occurs during passing runtime tests;
+it is not a seed-created entry.
+
+Each WDIO invocation prints a unique `run-summary.json` path under its log
+directory. It records selected/executed/passed/failed/skipped/unreached counts
+per spec, skipped test names, revision (with dirty-tree flag), and binary SHA-256.
+Files selected but never loaded remain null, rather than looking passed. The
+completion hook fails even if WDIO exits zero when selected tests have unexplained
+skips or were not reached. Exact declared test exclusions stay counted as skipped
+(executed and passed remain zero); `excluded_tests` records their names and reasons.
+`complete` means all coverage outside those declared exclusions passed. Missing
+prerequisites are failures of required coverage; paid
+lanes and explicit file exclusions are declared separately. A fail-fast run is
+useful diagnosis, not evidence of complete breadth. Both `test-e2e` and
+`test-e2e-full` disable WDIO and Mocha bail. Named specs and smoke retain the
+local fail-fast defaults; bare WDIO can opt into breadth with `E2E_BAIL=0
+E2E_MOCHA_BAIL=0`.
+
+`just capture-e2e-docs` selects general, README, and mesh screenshots on demand;
+these files are excluded from acceptance with reason `on-demand documentation capture`.
+Mesh capture still references the retired customizer path and needs a later docs
+update; this round deliberately does not rewrite it. Its setup, initialization,
+and runtime wiring are covered by `mesh-workflow` and `template-crud-ui`. The
+native light/dark transition
+assertions from the old `screenshots.js` remain in its behavioral spec.
+The default behavioral manifest retains nine serial sessions: eight seeded,
+one virgin wizard. This removes eight repeated wizard walks while preserving
+the existing session isolation. The former capture session is replaced by the
+dedicated wizard session; the small smoke shares the UI group during breadth.
+`maxInstances: 1` and private headless Xvfb remain unchanged. The summary also
+records `boots`, `wizard_walks`, `wall_ms` (from launcher preparation, including
+build), `build_ms`, and whether the build was reused. No parallelism change is
+justified by this lane. Before: nine boots and nine wizard walks per suite;
+after: nine boots and one wizard walk. Historical whole-suite wall time was
+not measured; compare future runs using the recorded build and execution costs.
+
+Round-2 verification: `just check-quick`, `just lint`, `bunx vitest run`,
+`just test-contracts`, and `E2E_INSTALL_DAEMON=0 just test-e2e` all exited 0.
+Vitest passed 149 files / 2,460 tests; contracts executed 64 tests. The tier-1
+summary `run-AtARJ7` at code revision `3bd7a866` records 23 files / 166 selected,
+143 executed and passed, 23 declared skips, zero failures or unreached tests,
+and `complete: true`. Wall time was 287.739 s including a 21.675 s build;
+WDIO's execution-only display was 4:25. Nine boots / one wizard walk preserves
+the nine-boot baseline while removing eight wizard walks. This is one complete
+breadth pass, not a comparison against the earlier bail-truncated timings.
+Standalone `template-crud-ui` passed all eight tests; `mesh-workflow` passed
+four with its two declared inverse-condition skips. Local logs and a summary
+copy are under `.check-logs/reform-round2/`. All 14 worker roots created during
+this round were removed, with no remaining owned processes or checkout ledgers.
+No `src-tauri/` diff was made, so the Rust-unit execution rule was not triggered.
+
+### Inherited conditional skips (phase 3)
+
+The 22 skipped tests enumerated by `run-yGwpMI` predate this reform. Earlier
+bail-truncated runs did not count the complete set. They are inherited test debt
+assigned to **phase 3 (liveness/progress pack)**, not new passing coverage. The
+static declarations in `e2e/runSummary.js` explain only these exact names;
+unknown skips still fail accounting. Existing conditional behavior is unchanged.
+
+**`overview-interactions.js` (1):** No dismissible relationship row (or its dismiss control).
+
+- `Overview Interactions relationships dismissing a relationship removes the row`
+
+**`git-workflow.js` (4):** No session filter; no further commit page; a nonempty repository; or unavailable project/commit selection for position memory, respectively.
+
+- `Git Workflow navigation range filter appears when commits are session-filtered`
+- `Git Workflow navigation scroll sentinel exists when more commits are available`
+- `Git Workflow navigation empty state shows git-empty when repository has no commits`
+- `Git Workflow position memory selected commit is restored after switching projects and back`
+
+**`files-workflow.js` (2):** No matching visible code node or binary/image node, respectively.
+
+- `Files Workflow file viewing clicking a .js or .rs file shows code-viewer with highlighted spans`
+- `Files Workflow file viewing binary or image file shows appropriate viewer or informational message`
+
+**`tasks-workflow.js` (6):** The fixture has no task rows (`hasTasks` is false); detail tests depend on those rows.
+
+- `Tasks Workflow kanban board renders kanban columns when tasks exist`
+- `Tasks Workflow kanban board task rows show non-empty subject text`
+- `Tasks Workflow kanban board task rows contain a tool icon SVG`
+- `Tasks Workflow task detail clicking a task row opens the detail panel`
+- `Tasks Workflow task detail detail panel shows description or sections content`
+- `Tasks Workflow task detail detail close button dismisses the panel`
+
+**`cross-tab-navigation.js` (2):** The helper cannot resolve two distinct selectable project labels (or select them).
+
+- `Cross-Tab Navigation project switching preserves active tab when returning to a previously visited project`
+- `Cross-Tab Navigation project switching new project defaults to Overview tab`
+
+**`settings-persistence.js` (1):** There is no second selectable terminal-emulator option.
+
+- `Settings Persistence terminal settings terminal emulator change persists after close and reopen`
+
+**`mesh-recovery.js` (3):** The first two are permanent resume-verification product-issue skips; the last is an inverse-availability skip because mesh/tmux are available. These are not three equivalent propagation flakes. Net effect with cold-resume declared below: **mesh-recovery contributes zero executed tests to tier-1** until the resume-verification product issue is fixed — all four of its registrations are declared exclusions, so a green run carries no executed recovery evidence.
+
+- `Mesh Recovery surfaces degraded runtime state after a member pane dies`
+- `Mesh Recovery surfaces duplicate-add conflicts and lets the operator recover by changing the name`
+- `Mesh Recovery records when mesh recovery tier 2 is unavailable`
+
+**`mesh-workflow.js` (2):** Both are inverse-condition cases: this isolated worker requires mesh/tmux to be available.
+
+- `Mesh Workflow tier 1 shows blocking availability messaging when mesh is unavailable`
+- `Mesh Workflow tier 2 skips tier 2 when mesh prerequisites are unavailable`
+
+**`regressions.js` (1):** DirectoryBrowser is not mounted, so its clipping cannot be inspected.
+
+- `Regressions DirectoryBrowser overflow (commit 284bd54 regression) directory tree has overflow-hidden for horizontal clipping`
+
+Cold-resume adds one **declared known-issue exclusion**, making the expected
+pending set 23 if all inherited conditions recur. It preserves the complete
+stop/reload/resume assertions; only its registration becomes pending. The two
+already-pending recovery cases now share its named reason in accounting:
+team-daemon startup verification times out after resume. See the corrected
+[residual docket](./mesh-flake-audit.md#known-residual-orchestrator-ruling-2026-09-06).
+No other test's skip behavior changes in this round.
+
 ## Test layers
 
 ### Rust tests
@@ -22,12 +170,23 @@ Per-module `#[test]` functions with `pretty_assertions` for readable diffs and `
 ```bash
 just test-rust            # Full Rust lane (fast compile + unit + integration/system)
 just test-rust-fast       # Compile check only (fast feedback)
+just test-contracts       # Execute CLI goldens, module boundaries, harness conformance
 just test-rust-unit       # Unit/bin tests, heavy suites excluded
 just test-rust-integration # Every src-tauri/tests/*.rs binary plus the heavy --lib suites
 just test-daemon-connectivity # Manual daemon chain verification (WSL/local)
 ```
 
 Test placement follows two patterns:
+
+Rust-touching lanes run `just test-contracts` beside `just check-quick` and
+affected Rust tests. This promotes the launch-default and writer-boundary
+defect catchers without replacing full Rust CI. Review changed golden defaults.
+Measured on 2026-09-06: 64 contract tests passed; first incremental invocation
+36.52 s (Cargo build 33.11 s), repeat 52.69 s including shared-target lock wait
+and rebuild. Test-binary execution totals about 4.6 s; a contention-free warm
+invocation and a cold build were not measured. These are not cold-build claims.
+The lead `check` also executes `lint-just-gates` in its frontend lane; its
+seeded integrity runs replace both lanes and therefore do not recurse.
 
 - command-layer modules keep external sibling `tests.rs` files
 - lower-level modules keep inline `#[cfg(test)] mod tests`
@@ -145,7 +304,7 @@ it cannot kill a concurrent run or a foreign process that reused a PID.
 The WDIO manifest is sealed. `e2e/specList.js` explicitly assigns every
 non-paid spec to a named group (`ui`, `templates`, `mesh`, and `tmux` name the
 stateful additions); an ungrouped spec fails with instructions to add it to a
-group or `paidSpecs`. The default suite is exactly the union of those groups,
+group, `paidSpecs`, or `captureSpecs`. The default suite is exactly the union of those groups,
 and paid specs remain excluded.
 
 #### Paid E2E lanes
@@ -262,7 +421,7 @@ must be shadowed by inert fixtures before the suite is started.
 
 The two unconditional recovery skips predate this lane and name product
 issues. Workflow prerequisite failures now fail loudly; its inverse-environment
-skips name the installed mesh/tmux fact. No new skip is authorized. A failed
+skips name the installed mesh/tmux fact. The later test-strategy round declares cold-resume against that same issue; see the inherited-skip inventory above. A failed
 wait remains a failure. Failure
 screenshots can show cleanup's disband, so diagnosis must use the preceding
 app log, as documented by `673dac42`.
