@@ -23,6 +23,10 @@ startup project, and reconnects the private worker daemon before useful work.
 It never launches a model CLI. Full behavioral breadth is risk-triggered and
 required at milestones; one complete pass is sufficient, not three automatic
 repeats. Reuse `E2E_SKIP_BUILD=1` only with an already verified fresh build.
+Ordinary workers put rejecting `claude`/`codex`/`agy`/`grok` shims first on
+their isolated shell PATH. Runtime tests must supply their own generated CLI
+stubs; missing stubs cannot fall through to an installed real harness. Only
+the explicitly named paid workers omit those shims.
 
 Only `first-run-wizard.js` gets a virgin worker root. Other workers scan and
 batch-register generated fixture repositories through the wizard's supported
@@ -50,6 +54,12 @@ The default behavioral manifest retains nine serial sessions: eight seeded,
 one virgin wizard. This removes eight repeated wizard walks while preserving
 the existing session isolation. The former capture session is replaced by the
 dedicated wizard session; the small smoke shares the UI group during breadth.
+`maxInstances: 1` and private headless Xvfb remain unchanged. The summary also
+records `boots`, `wizard_walks`, `wall_ms` (from launcher preparation, including
+build), `build_ms`, and whether the build was reused. No parallelism change is
+justified by this lane. Before: nine boots and nine wizard walks per suite;
+after: nine boots and one wizard walk. Historical whole-suite wall time was
+not measured; compare future runs using the recorded build and execution costs.
 
 ## Test layers
 
@@ -194,7 +204,7 @@ it cannot kill a concurrent run or a foreign process that reused a PID.
 The WDIO manifest is sealed. `e2e/specList.js` explicitly assigns every
 non-paid spec to a named group (`ui`, `templates`, `mesh`, and `tmux` name the
 stateful additions); an ungrouped spec fails with instructions to add it to a
-group or `paidSpecs`. The default suite is exactly the union of those groups,
+group, `paidSpecs`, or `captureSpecs`. The default suite is exactly the union of those groups,
 and paid specs remain excluded.
 
 #### Paid E2E lanes

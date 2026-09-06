@@ -1,15 +1,43 @@
-import { describe, expect, it } from 'vitest'
-import { summarizeSuite, coverageComplete, selectedSpecFiles } from './runSummary.js'
+import { describe, expect, it, vi } from 'vitest'
+import { summarizeSuite, coverageComplete, selectedSpecFiles, finishRun, mochaHooks } from './runSummary.js'
 import { resolve } from 'node:path'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 
 describe('suite run accounting', () => {
+  it('writes the loaded Mocha tree and persists pending cases without inventing passes', () => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'taurhaus-summary-test-'))
+    const path = resolve(dir, 'run-summary.json')
+    const root = { tests: [{ file: resolve('e2e/specs/critical-smoke.js'), title: 'required' }], suites: [] }
+    vi.stubEnv('E2E_RUN_SUMMARY', path)
+    vi.stubEnv('E2E_SETUP_ERROR', '')
+    try {
+      writeFileSync(path, JSON.stringify({ specs: {} }))
+      mochaHooks.beforeAll.call({ test: { parent: root } })
+      expect(JSON.parse(readFileSync(path)).specs['e2e/specs/critical-smoke.js'].unreached).toBe(1)
+      root.tests[0].pending = true
+      mochaHooks.afterAll()
+      expect(JSON.parse(readFileSync(path)).specs['e2e/specs/critical-smoke.js']).toMatchObject({ executed: 0, skipped: 1 })
+      vi.stubEnv('E2E_SETUP_ERROR', 'seed failed')
+      expect(() => mochaHooks.beforeAll.call({ test: { parent: root } })).toThrow('seed failed')
+    } finally {
+      vi.unstubAllEnvs()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+  it('records whole-run wall time separately from build time and preserves serial headless execution', () => {
+    const summary = { started_at: '2026-09-06T12:00:00.000Z', build_ms: 1_500, specs: {} }
+    finishRun(summary, 1, Date.parse('2026-09-06T12:00:05.000Z'))
+    expect(summary).toMatchObject({ wall_ms: 5_000, build_ms: 1_500, complete: false, exit_code: 1 })
+    expect(readFileSync('e2e/wdio.conf.js', 'utf8')).toContain('maxInstances: 1')
+    expect(readFileSync('justfile', 'utf8')).toContain('xvfb-run -a')
+  })
   it('uses process identity cleanup without a port-pattern kill fallback', () => {
     const source = readFileSync('e2e/wdio.conf.js', 'utf8')
     expect(source).toContain('processLedger?.cleanup()')
     expect(source).not.toContain("spawnSync('pkill'")
   })
-  it('uses WDIO selection including explicit spec and exclusions', () => {
+  it('uses resolved WDIO selection including explicit spec and exclusions', () => {
     const a = resolve('e2e/specs/first-run-wizard.js')
     const b = resolve('e2e/specs/settings-persistence.js')
     expect(selectedSpecFiles({ specs: [[a], [b]], exclude: [b] })).toEqual([a])

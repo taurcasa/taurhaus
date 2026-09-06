@@ -1,16 +1,20 @@
-import { ConfigParser } from '@wdio/config/node'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const localPath = path => path.startsWith('file:') ? fileURLToPath(path) : resolve(path)
 const specName = path => relative(process.cwd(), localPath(path))
 
-// Use WDIO's own selector so --spec/--exclude/grouping cannot drift from the runner.
+// WDIO has already applied --spec to config.specs before onPrepare. Our
+// manifest and recipes use concrete paths; reject unresolved patterns rather
+// than claiming coverage for an inferred selection.
 export function selectedSpecFiles(config) {
-  const parser = new ConfigParser(resolve('e2e/wdio.conf.js'))
-  parser.merge(config)
-  return parser.getSpecs().flat().map(localPath)
+  const specs = config.specs.flat().map(localPath)
+  const excluded = (config.exclude ?? []).map(localPath)
+  for (const path of [...specs, ...excluded]) {
+    if (!existsSync(path)) throw new Error(`Run accounting requires an existing concrete spec path: ${path}`)
+  }
+  return [...new Set(specs)].filter(path => !excluded.includes(path))
 }
 
 export function summarizeSuite(root) {
@@ -39,6 +43,12 @@ export function coverageComplete(specs, exitCode) {
     row && row.selected > 0 && row.executed === row.selected && row.passed === row.selected &&
     row.failed === 0 && row.skipped === 0 && row.unreached === 0
   )
+}
+
+export function finishRun(summary, exitCode, finishedAt = Date.now()) {
+  summary.exit_code = exitCode
+  summary.wall_ms = finishedAt - Date.parse(summary.started_at)
+  summary.complete = coverageComplete(summary.specs, exitCode)
 }
 
 export function updateRunSummary(update) {

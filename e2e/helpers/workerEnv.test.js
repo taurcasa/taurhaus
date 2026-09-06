@@ -11,6 +11,7 @@ import {
   prepareWorkerHome,
 } from './workerEnv.js'
 import { E2E_RUN_TOKEN_ENV } from './laneCleanup.js'
+import { spawnSync } from 'node:child_process'
 
 function isInside(root, candidate) {
   const pathFromRoot = relative(root, candidate)
@@ -18,6 +19,20 @@ function isInside(root, candidate) {
 }
 
 describe('buildWorkerEnv', () => {
+  it('blocks default harness executables in ordinary workers without invoking an installed CLI', () => {
+    const root = mkdtempSync(join(tmpdir(), 'taurhaus-cli-guard-'))
+    try {
+      const env = buildWorkerEnv(root, { baseEnv: { PATH: '/usr/bin:/bin' } })
+      prepareWorkerHome(env.HOME)
+      expect(env.PATH.split(':')[0]).toBe(join(env.HOME, '.local', 'bin'))
+      for (const tool of ['claude', 'codex', 'agy', 'grok']) {
+        // Absolute generated path: a missing shim can never fall through to a real CLI.
+        const result = spawnSync(join(env.HOME, '.local', 'bin', tool), ['--version'], { env, encoding: 'utf8' })
+        expect(result.status).toBe(77)
+        expect(result.stderr).toContain('E2E requires an explicit test stub')
+      }
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  })
   // Regression: commit f9c1e893 isolated only the app-data and Claude roots;
   // later Codex, Grok and Antigravity integrations inherited the operator's
   // real homes in ordinary E2E workers.
@@ -53,7 +68,7 @@ describe('buildWorkerEnv', () => {
     // ~/.claude* siblings and polled the operator's subscriptions.
     expect(isInside(sessionTempRoot, env.HOME), 'HOME must be inside the worker root').toBe(true)
     expect(env.HOME.startsWith(operatorHome), 'HOME must not use the operator home').toBe(false)
-    expect(env.PATH).toBe('/usr/bin')
+    expect(env.PATH).toBe(`${env.HOME}/.local/bin:/usr/bin`)
   })
 
   // Regression: commit 272eed7d isolated HOME without the mesh binary that

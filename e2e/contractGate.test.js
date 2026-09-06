@@ -3,6 +3,12 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 
 describe('executed contract gate', () => {
+  // Regression: 909880055 kept a cwd-relative exclusion when WDIO resolves
+  // exclusions against its config directory, so Tier 1 selected Tier 2 too.
+  it('anchors the Tier-2 exclusion to the checkout rather than WDIO config directory', () => {
+    const result = spawnSync('just', ['--dry-run', 'test-e2e'], { encoding: 'utf8' })
+    expect(result.stderr).toContain('--exclude "$PWD/e2e/specs/daemon-integration.js"')
+  })
   it('disables both bail flags for breadth while keeping named runs fail-fast', () => {
     for (const recipe of ['test-e2e', 'test-e2e-full']) {
       const result = spawnSync('just', ['--dry-run', recipe], { encoding: 'utf8' })

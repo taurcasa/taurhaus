@@ -438,7 +438,7 @@ build-e2e:
 _e2e_display := if env_var_or_default("E2E_HEADED", "0") == "1" { "" } else { "xvfb-run -a -s '-screen 0 1600x1000x24' env -u WAYLAND_DISPLAY GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1" }
 
 test-e2e: e2e-prepare-daemon
-    E2E_BAIL=0 E2E_MOCHA_BAIL=0 CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
+    E2E_BAIL=0 E2E_MOCHA_BAIL=0 CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js --exclude "$PWD/e2e/specs/daemon-integration.js"
 
 # Mandatory per-PR native smoke; one isolated app session.
 test-e2e-smoke: e2e-prepare-daemon
