@@ -11,3 +11,12 @@ export async function clickRuntimeAddAgent(wait) {
     })
   }, 'mesh-add-agent-form', wait)
 }
+
+export async function unlockRuntimeAddAgent(wait) {
+  // Regression: acd3c5aa3 lost a single unlock click in the full suite.
+  // The target-first check prevents a retry from locking the fields again.
+  await clickUntil('mesh-add-agent-unlock-toggle',
+    async () => (await (await $('[data-testid="mesh-add-agent-tool-select"]')).getAttribute('disabled')) === null,
+    wait
+  )
+}

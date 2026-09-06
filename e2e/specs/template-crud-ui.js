@@ -9,7 +9,7 @@
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { clickUntil } from '../helpers/clickUntil.js'
-import { clickRuntimeAddAgent } from '../helpers/meshRuntime.js'
+import { clickRuntimeAddAgent, unlockRuntimeAddAgent } from '../helpers/meshRuntime.js'
 import { isConfirmDialogOpen, clickOpenConfirmDialog } from '../helpers/confirmDialog.js'
 import { waitForProjectsLoaded, fastClick, clickTestId } from '../helpers/navigation.js'
 import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
@@ -858,10 +858,7 @@ describe('Template CRUD UI', () => {
       expect(await modelSelect.getAttribute('disabled')).not.toBeNull()
       expect(await descriptionInput.getAttribute('disabled')).not.toBeNull()
 
-      await clickTestId('mesh-add-agent-unlock-toggle')
-
-      await browser.waitUntil(
-        async () => (await (await $('[data-testid="mesh-add-agent-tool-select"]')).getAttribute('disabled')) === null,
+      await unlockRuntimeAddAgent(
         { ...WAIT_SHORT, timeoutMsg: 'Role-aware unlock did not re-enable editable fields' }
       )
 

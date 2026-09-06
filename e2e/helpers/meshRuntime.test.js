@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { clickRuntimeAddAgent } from './meshRuntime.js'
+import { clickRuntimeAddAgent, unlockRuntimeAddAgent } from './meshRuntime.js'
 
 // Regression: 275d42d6 retried the primary action without checking whether
 // it still meant Add Agent; a stopped team would receive repeated resumes.
@@ -53,5 +53,32 @@ describe('runtime Add Agent opener', () => {
     expect(click).toHaveBeenCalledTimes(1)
     expect(labels).toEqual(['Add Agent'])
     expect(opened).toBe(true)
+  })
+
+  // Regression: acd3c5aa3 used a single WebDriver click on the unlock toggle.
+  // Round-2 E2E run 2 left fields disabled after that click. Retry the lost
+  // delivery, but never toggle fields that are already editable back to locked.
+  it.each([false, true])('unlocks after a lost click without relocking (initially unlocked: %s)', async (initiallyUnlocked) => {
+    let unlocked = initiallyUnlocked
+    let clicks = 0
+    vi.stubGlobal('$', async () => ({
+      isExisting: async () => true,
+      getAttribute: async () => unlocked ? null : '',
+      scrollIntoView: async () => {},
+      click: async () => {
+        if (++clicks > 1 || initiallyUnlocked) unlocked = !unlocked
+      },
+    }))
+    vi.stubGlobal('browser', {
+      waitUntil: async (condition, options) => {
+        for (let poll = 0; poll < 3; poll++) {
+          if (await condition()) return true
+        }
+        throw new Error(options.timeoutMsg)
+      },
+    })
+    await unlockRuntimeAddAgent({ timeoutMsg: 'Fields stayed locked' })
+    expect(unlocked).toBe(true)
+    expect(clicks).toBe(initiallyUnlocked ? 0 : 2)
   })
 })

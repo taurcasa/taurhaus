@@ -4,6 +4,8 @@ Baseline: `0a22cf7c`, branch `fix/mesh-e2e-flake-audit`. Implementer: GPT-6
 Astra. Scope: test helpers/specs; no product changes. This is a lane report,
 not a plan ledger. P1 = lost click across runtime polling; P2 = scanner-state
 propagation. “Fixed” refers to deliverable 2, commit `275d42d6`.
+Sections 1–4 preserve the round-1 record; section 5 corrects its findings and
+records round-2 verification.
 
 ## 1. Sweep
 
@@ -200,3 +202,13 @@ Red-first tests execute the real workflow hooks/cases with fake IPC/DOM:
 unsafe opener/confirmation behavior produced 6 failures / 1 pass, then 7/7
 passed. WDIO Timer error-shape tests produced 2 failures before correcting the
 fake, then 7/7 helper tests passed. No test starts a real harness.
+
+The second preliminary E2E run failed at the existing single-click unlock in
+`template-crud-ui`: `Role-aware unlock did not re-enable editable fields`.
+The preceding logs show initialization completed and runtime snapshots continued;
+disband was the test's later cleanup, not the cause. The original sweep's
+"not applicable" classification for unlock was too broad. A lost-click test
+and an already-unlocked test failed against the extracted single-click flow
+(2 failed / 4 passed). Unlock now uses the same target-first helper without
+changing the editable-field assertion or its timeout. Final proof restarts
+after this correction; the failed run is retained in the preliminary logs.
