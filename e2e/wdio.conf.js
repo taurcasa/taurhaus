@@ -626,7 +626,12 @@ export const config = {
     for (const key of WORKER_ROOT_ENV_KEYS) {
       mkdirSync(workerEnv[key], { recursive: true })
     }
-    prepareWorkerHome(workerEnv.HOME, { meshBinaryPath: operatorMeshBinaryPath, blockRealClis: !paidCodexWorker })
+    prepareWorkerHome(workerEnv.HOME, {
+      meshBinaryPath: operatorMeshBinaryPath,
+      blockRealClis: !paidCodexWorker,
+      // These runtime UI specs require living members, without provider turns.
+      persistentHarnesses: specs.some(spec => /\/(template-crud-ui|mesh-workflow)\.js$/.test(spec)),
+    })
     tauriDriverStderrBuffer = ''
     sessionAppLogPaths = [
       `${tauriDataDir}/taurhaus.log.jsonl`,

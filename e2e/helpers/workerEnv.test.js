@@ -11,7 +11,8 @@ import {
   prepareWorkerHome,
 } from './workerEnv.js'
 import { E2E_RUN_TOKEN_ENV } from './laneCleanup.js'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { once } from 'node:events'
 
 function isInside(root, candidate) {
   const pathFromRoot = relative(root, candidate)
@@ -19,6 +20,28 @@ function isInside(root, candidate) {
 }
 
 describe('buildWorkerEnv', () => {
+  // Regression: 925c78c3 prepended exit-77 guards ahead of the inherited inert
+  // harnesses. Runtime members died immediately, leaving Resume instead of Add Agent.
+  it('keeps explicit runtime fixtures alive and shuts down only the generated children', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'taurhaus-runtime-stub-'))
+    try {
+      const env = buildWorkerEnv(root, { baseEnv: { PATH: '/usr/bin:/bin' } })
+      prepareWorkerHome(env.HOME, { persistentHarnesses: true })
+      for (const tool of ['claude', 'codex', 'agy', 'grok']) {
+        const child = spawn(join(env.HOME, '.local', 'bin', tool), [], { env, stdio: 'ignore' })
+        const closed = once(child, 'close')
+        try {
+          await once(child, 'spawn')
+          // A bounded liveness check of an inert fixture, not a real CLI or load test.
+          await new Promise(resolve => setTimeout(resolve, 100))
+          expect(child.exitCode, `${tool} must remain available for runtime Add Agent`).toBeNull()
+        } finally {
+          if (child.exitCode === null) child.kill('SIGTERM')
+          await closed
+        }
+      }
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  })
   it('blocks default harness executables in ordinary workers without invoking an installed CLI', () => {
     const root = mkdtempSync(join(tmpdir(), 'taurhaus-cli-guard-'))
     try {

@@ -25,7 +25,7 @@ const WORKER_DAEMON_PORT_START = 20_000
 const WORKER_DAEMON_PORT_COUNT = 12_000
 
 /** Seed an isolated login home without reading the operator's shell files. */
-export function prepareWorkerHome(workerHome, { meshBinaryPath, blockRealClis = true } = {}) {
+export function prepareWorkerHome(workerHome, { meshBinaryPath, blockRealClis = true, persistentHarnesses = false } = {}) {
   mkdirSync(workerHome, { recursive: true })
   const workerBinDir = join(workerHome, '.local', 'bin')
   mkdirSync(workerBinDir, { recursive: true })
@@ -34,7 +34,15 @@ export function prepareWorkerHome(workerHome, { meshBinaryPath, blockRealClis = 
   }
   if (blockRealClis) {
     for (const tool of ['claude', 'codex', 'agy', 'grok']) {
-      writeFileSync(join(workerBinDir, tool), '#!/bin/sh\necho "E2E requires an explicit test stub; real harness execution blocked" >&2\nexit 77\n', { mode: 0o755 })
+      const source = persistentHarnesses
+        ? `#!${process.execPath}
+if (process.argv.includes('--version')) { console.log('E2E inert harness'); process.exit(0) }
+process.on('SIGINT', () => process.exit(0))
+process.on('SIGTERM', () => process.exit(0))
+setInterval(() => {}, 60_000)
+`
+        : '#!/bin/sh\necho "E2E requires an explicit test stub; real harness execution blocked" >&2\nexit 77\n'
+      writeFileSync(join(workerBinDir, tool), source, { mode: 0o755 })
     }
   }
   if (!meshBinaryPath || !existsSync(meshBinaryPath)) return
