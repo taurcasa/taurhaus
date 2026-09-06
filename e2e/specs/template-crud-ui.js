@@ -621,25 +621,16 @@ describe('Template CRUD UI', () => {
         { ...WAIT_MODE, timeoutMsg: 'Role edit was not persisted' }
       )
 
-      await clickActiveSlideOverTestId('catalog-tab-roles')
-
-      // After save, some UI states stay in the catalog already; avoid a full
-      // close/reopen cycle here because it introduces slideover race flakiness.
-      let detailOpen = await hasTestId('template-role-detail')
-      if (!detailOpen) {
-        const openedDetail =
-          (await clickActiveSlideOverTestId(`role-inspect-${roleId}`)) ||
-          (await clickActiveSlideOverTestId(`role-template-card-${roleId}`))
-        if (!openedDetail) {
-          throw new Error(`Role inspect trigger missing for ${roleId}`)
-        }
-      }
-
-      await browser.waitUntil(
+      // Regression: 707ce88a tried inspection only once after persistence;
+      // the editor can still be yielding to the catalog at that point. Retry
+      // only the detail opener, never the save, and keep the existing deadline.
+      await clickUntil(
         async () => {
-          const detail = await $('[data-testid="template-role-detail"]')
-          return await detail.isExisting()
+          await clickActiveSlideOverTestId('catalog-tab-roles')
+          return (await clickActiveSlideOverTestId(`role-inspect-${roleId}`)) ||
+            (await clickActiveSlideOverTestId(`role-template-card-${roleId}`))
         },
+        'template-role-detail',
         { ...WAIT_MODE, timeoutMsg: 'Role detail panel did not open after edit' }
       )
     } finally {

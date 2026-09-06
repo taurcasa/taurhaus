@@ -221,3 +221,14 @@ the sealed e2e group`. The workflow now refreshes once in `before`, then runs
 normal app readiness and availability checks against a fresh project snapshot.
 The ownership guard remains unchanged. A real-spec regression reproducing the
 stale view failed before this change (1 failed / 10 passed), then passed.
+
+A later full run passed Mesh but failed the untouched session-management hover
+assertion: expected `Active work in progress`, received an empty string. Its
+failure screenshot already shows the expected text. That separate transient
+read was retained under `preliminary-hover/`; no session source was changed.
+Another sequence exposed a single-attempt role-inspect opener after edit
+persistence, before the editor had yielded to the catalog. The actual edit
+case failed under injected delayed-control readiness (2 red tests); it now
+uses `clickUntil` for inspection only, preserving the save count, detail
+assertion and 6s deadline. Both regression tests pass. These failed sequences
+do not count toward the required three consecutive full-suite greens.
