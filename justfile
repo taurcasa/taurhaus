@@ -444,6 +444,10 @@ test-e2e: e2e-prepare-daemon
 test-e2e-smoke: e2e-prepare-daemon
     CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js --spec e2e/specs/critical-smoke.js
 
+# On-demand documentation artifacts; excluded from behavioral acceptance.
+capture-e2e-docs: e2e-prepare-daemon
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js --spec e2e/specs/general-screenshots.js --spec e2e/specs/readme-screenshots.js
+
 # Run E2E tests — Tier 1 + Tier 2 (daemon must be running)
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
 # opt-in that only rebuilds/restarts the operator's installed daemon.

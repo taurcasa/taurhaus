@@ -40,6 +40,14 @@ or not reached. Missing prerequisites are failures of required coverage; paid
 lanes and explicit file exclusions are declared separately. A fail-fast run is
 useful diagnosis, not evidence of complete breadth.
 
+`just capture-e2e-docs` produces general and README screenshots on demand;
+these files are excluded from acceptance. The native light/dark transition
+assertions from the old `screenshots.js` remain in its behavioral spec.
+The default behavioral manifest retains nine serial sessions: eight seeded,
+one virgin wizard. This removes eight repeated wizard walks while preserving
+the existing session isolation. The former capture session is replaced by the
+dedicated wizard session; the small smoke shares the UI group during breadth.
+
 ## Test layers
 
 ### Rust tests

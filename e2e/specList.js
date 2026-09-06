@@ -17,11 +17,9 @@ export const specGroups = {
   // Cross-cutting features (read-only).
   features: ['tasks-workflow.js', 'cross-tab-navigation.js', 'search-workflow.js'],
   // App chrome and platform integration.
-  shell: ['theme-and-shortcuts.js', 'context-menu.js', 'daemon-integration.js'],
+  shell: ['theme-and-shortcuts.js', 'context-menu.js', 'daemon-integration.js', 'screenshots.js'],
   // State mutation and validation.
   config: ['settings-persistence.js', 'project-lifecycle.js', 'error-handling.js'],
-  // General visual capture and non-tmux guards.
-  guards: ['screenshots.js', 'readme-screenshots.js'],
   // Standalone UI and detail-state capture.
   ui: ['critical-smoke.js', 'role-detail-screenshots.js'],
   wizard: ['first-run-wizard.js'],
@@ -54,6 +52,7 @@ export const CODEX_SCRATCH_SPECS = [
   'managed-stage-parallel.js',
 ]
 export const paidSpecs = [...CODEX_SCRATCH_SPECS]
+export const captureSpecs = ['general-screenshots.js', 'readme-screenshots.js']
 
 /** Spec files present in `specsDir`, sorted. */
 export function listSpecFiles(specsDir) {
@@ -63,15 +62,15 @@ export function listSpecFiles(specsDir) {
 // Build the sealed spec list. Each group becomes one worker session. Paid lanes
 // are named on the command line; every other file must belong to a named group.
 export function buildSpecList(specsDir, specFiles = listSpecFiles(specsDir)) {
-  const paid = new Set(paidSpecs)
-  const allFiles = specFiles.filter(name => !paid.has(name))
+  const excluded = new Set([...paidSpecs, ...captureSpecs])
+  const allFiles = specFiles.filter(name => !excluded.has(name))
   const groups = Object.values(specGroups)
   const knownSpecs = new Set(groups.flat())
   const ungrouped = allFiles.filter(name => !knownSpecs.has(name))
   if (ungrouped.length > 0) {
     throw new Error(
       `Ungrouped E2E specs: ${ungrouped.join(', ')}. ` +
-      'Add each file to a named specGroups group or to paidSpecs.'
+      'Add each file to a named specGroups group, paidSpecs, or captureSpecs.'
     )
   }
 

@@ -62,7 +62,7 @@ import {
   findAvailableWorkerDaemonPort,
   prepareWorkerHome,
 } from './helpers/workerEnv.js'
-import { CODEX_SCRATCH_SPECS, buildSpecList, listSpecFiles, paidSpecs } from './specList.js'
+import { CODEX_SCRATCH_SPECS, buildSpecList, captureSpecs, listSpecFiles, paidSpecs } from './specList.js'
 import { needsWizard, seedOnboarding, invokeApp } from './helpers/onboarding.js'
 import { coverageComplete, selectedSpecFiles, updateRunSummary } from './runSummary.js'
 
@@ -541,7 +541,9 @@ export const config = {
       complete: false,
       exclusions: listSpecFiles(specsDir).filter(name => !selected.some(path => path.endsWith(`/${name}`))).map(spec => ({
         spec,
-        reason: paidSpecs.includes(spec) ? 'paid; explicitly named only' : 'explicit suite selection/exclusion',
+        reason: paidSpecs.includes(spec) ? 'paid; explicitly named only'
+          : captureSpecs.includes(spec) ? 'on-demand documentation capture'
+            : 'explicit suite selection/exclusion',
       })),
       specs: Object.fromEntries(selected.map(path => [relative(projectRoot, path), null])),
     }))

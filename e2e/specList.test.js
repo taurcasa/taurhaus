@@ -21,6 +21,21 @@ function groupedNames() {
 }
 
 describe('default WDIO spec list', () => {
+  it('keeps nine behavioral sessions and leaves docs captures to an explicit recipe', async () => {
+    const names = flatNames(buildSpecList(specsDir))
+    expect(names).not.toContain('readme-screenshots.js')
+    expect(names).not.toContain('general-screenshots.js')
+    expect(names).toContain('screenshots.js')
+    expect(buildSpecList(specsDir)).toHaveLength(9)
+    expect(specGroups.wizard).toEqual(['first-run-wizard.js'])
+    // Native theme switching already has behavioral assertions in this spec.
+    expect(names).toContain('theme-and-shortcuts.js')
+    const { spawnSync } = await import('node:child_process')
+    const result = spawnSync('just', ['--dry-run', 'capture-e2e-docs'], { encoding: 'utf8' })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stderr).toContain('--spec e2e/specs/readme-screenshots.js')
+    expect(result.stderr).toContain('--spec e2e/specs/general-screenshots.js')
+  })
   it('includes the critical native smoke and exposes a one-boot completion recipe', async () => {
     expect(groupedNames()).toContain('critical-smoke.js')
     const { spawnSync } = await import('node:child_process')
