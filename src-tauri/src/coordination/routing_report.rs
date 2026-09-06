@@ -16,6 +16,7 @@ struct ReportStats {
     tasks: BTreeSet<String>,
     accepted: BTreeSet<String>,
     completed_unruled: BTreeSet<String>,
+    oversize_diffs: usize,
     relaunches: usize,
     effort_switches: usize,
     nudges: usize,
@@ -27,6 +28,7 @@ struct ReportStats {
 struct LedgerVerdict {
     accepted_eligible: bool,
     has_review_ruling: bool,
+    oversize_diffs: usize,
 }
 
 pub fn render_routing_report(
@@ -87,12 +89,12 @@ pub fn render_routing_report(
     }
     output.push_str(
         "Role/model\n\
-         role | model | tasks_touched | accepted | completed_unruled | relaunches | effort_switches | nudges | staled | median_wall_time\n",
+         role | model | tasks_touched | accepted | completed_unruled | oversize_diffs | relaunches | effort_switches | nudges | staled | median_wall_time\n",
     );
     for ((role, model), stats) in &role_rows {
         push_row(&mut output, Some(role), model, stats);
     }
-    output.push_str("\nModel rollup\nmodel | tasks_touched | accepted | completed_unruled | relaunches | effort_switches | nudges | staled | median_wall_time\n");
+    output.push_str("\nModel rollup\nmodel | tasks_touched | accepted | completed_unruled | oversize_diffs | relaunches | effort_switches | nudges | staled | median_wall_time\n");
     for (model, stats) in &model_rows {
         push_row(&mut output, None, model, stats);
     }
@@ -200,6 +202,9 @@ fn accumulate_task(
 
 fn mark_task(stats: &mut ReportStats, task_key: &str, ledger: Option<&LedgerVerdict>) {
     stats.tasks.insert(task_key.to_string());
+    if let Some(ledger) = ledger {
+        stats.oversize_diffs += ledger.oversize_diffs;
+    }
     match ledger {
         Some(ledger) if ledger.accepted_eligible && ledger.has_review_ruling => {
             stats.accepted.insert(task_key.to_string());
@@ -239,6 +244,21 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
     if metadata.len() > 1_048_576 {
         return None;
     }
+    let raw = fs::read_to_string(&path).ok()?;
+    let value = serde_json::from_str::<serde_json::Value>(&raw).ok()?;
+    let oversize_diffs = value
+        .get("metadata")
+        .and_then(|metadata| metadata.get("rulings"))
+        .and_then(serde_json::Value::as_array)
+        .map(|rulings| {
+            rulings
+                .iter()
+                .filter(|ruling| {
+                    ruling.get("kind").and_then(serde_json::Value::as_str) == Some("oversize_diff")
+                })
+                .count()
+        })
+        .unwrap_or(0);
     let task =
         taurhaus_lib::task_scanner::claude::parse_task_file(&path, Some(team_name.to_string()))
             .ok()??;
@@ -246,6 +266,7 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
         // Stale is terminal for observation, but Amendment 4 accepts only completion.
         accepted_eligible: task.status == taurhaus_lib::task_scanner::TaskStatus::Completed,
         has_review_ruling: task.has_review_ruling,
+        oversize_diffs,
     })
 }
 
@@ -264,10 +285,11 @@ fn push_row(output: &mut String, role: Option<&str>, model: &str, stats: &Report
         output.push_str(&format!("{role} | "));
     }
     output.push_str(&format!(
-        "{model} | {} | {} | {} | {} | {} | {} | {} | {}\n",
+        "{model} | {} | {} | {} | {} | {} | {} | {} | {} | {}\n",
         stats.tasks.len(),
         stats.accepted.len(),
         stats.completed_unruled.len(),
+        stats.oversize_diffs,
         stats.relaunches,
         stats.effort_switches,
         stats.nudges,
@@ -389,7 +411,11 @@ mod tests {
                 "blocks": [],
                 "blockedBy": [],
                 "owner": "builder",
-                "metadata": {"rulings": [{"kind": "verdict", "value": "accepted"}]}
+                "metadata": {"rulings": [
+                    {"kind": "verdict", "value": "accepted"},
+                    {"kind": "oversize_diff", "value": "failed", "by": "reviewer"},
+                    {"kind": "oversize_diff", "value": "failed", "by": "reviewer-2"}
+                ]}
             }),
         );
         write_json(
@@ -418,14 +444,15 @@ mod tests {
         // The zero-accepted hint must NEVER print beside a non-zero accepted
         // column (this fixture records a ruling).
         assert!(!report.contains("none are recorded in this window yet"));
-        assert!(
-            report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s")
-        );
-        assert!(
-            report.contains("test-developer | gpt-5.6-luna | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 5m 00s")
-        );
-        assert!(report.contains("gpt-5.6-sol | 1 | 1 | 0"));
-        assert!(report.contains("gpt-5.6-luna | 1 | 0 | 1"));
+        assert!(report.contains(
+            "role | model | tasks_touched | accepted | completed_unruled | oversize_diffs | relaunches"
+        ));
+        assert!(report
+            .contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 2 | 0 | 0 | 0 | 0 | 10m 00s"));
+        assert!(report
+            .contains("test-developer | gpt-5.6-luna | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 5m 00s"));
+        assert!(report.contains("gpt-5.6-sol | 1 | 1 | 0 | 2"));
+        assert!(report.contains("gpt-5.6-luna | 1 | 0 | 1 | 0"));
     }
 
     // Regression: c9c6c49b could not attribute a reused member launch that
@@ -516,7 +543,7 @@ mod tests {
         let report = render_routing_report(&default_teams, 30, now + chrono::Duration::minutes(1))
             .expect("render report");
 
-        assert!(report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 0 | 1 | 0"));
+        assert!(report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 0 | 0 | 1 | 0"));
     }
 
     // Regression: c9c6c49b treated the scanner's `stale` terminal state as
@@ -570,8 +597,7 @@ mod tests {
         )
         .expect("render report");
 
-        assert!(
-            report.contains("rust-developer | gpt-5.6-sol | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 10m 00s")
-        );
+        assert!(report
+            .contains("rust-developer | gpt-5.6-sol | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 10m 00s"));
     }
 }
