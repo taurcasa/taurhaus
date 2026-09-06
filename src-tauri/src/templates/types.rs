@@ -1275,6 +1275,10 @@ mod tests {
         let expected = [
             "adversarial-reviewer-claude",
             "antigravity-orchestrator",
+            "astra-architect",
+            "astra-crossfile-reviewer",
+            "astra-heavy-implementer",
+            "astra-security-auditor",
             "claude-design-lead",
             "claude-product-checker",
             "claude-researcher",
@@ -1289,6 +1293,8 @@ mod tests {
             "v4-developer-claude",
             "v4-developer-codex",
             "v4-developer-grok",
+            "judge-astra",
+            "judge-fable",
         ]
         .into_iter()
         .collect::<std::collections::BTreeSet<_>>();
@@ -1400,6 +1406,126 @@ mod tests {
                     role.role_id
                 );
             }
+        }
+    }
+
+    #[test]
+    fn frontier_roles_encode_the_decided_behavioral_contracts() {
+        let roles = load_role_templates()
+            .into_iter()
+            .map(|role| (role.role_id.clone(), role))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        for (role_id, tool, model, effort, mode) in [
+            (
+                "astra-architect",
+                CliTool::Codex,
+                "gpt-6-astra",
+                "high",
+                "architecture",
+            ),
+            (
+                "astra-crossfile-reviewer",
+                CliTool::Codex,
+                "gpt-6-astra",
+                "high",
+                "review",
+            ),
+            (
+                "astra-heavy-implementer",
+                CliTool::Codex,
+                "gpt-6-astra",
+                "high",
+                "implementation",
+            ),
+            (
+                "astra-security-auditor",
+                CliTool::Codex,
+                "gpt-6-astra",
+                "xhigh",
+                "review",
+            ),
+            (
+                "judge-astra",
+                CliTool::Codex,
+                "gpt-6-astra",
+                "high",
+                "review",
+            ),
+            (
+                "judge-fable",
+                CliTool::Claude,
+                "fable",
+                "high",
+                "review",
+            ),
+        ] {
+            let role = roles
+                .get(role_id)
+                .unwrap_or_else(|| panic!("missing frontier role '{role_id}'"));
+            assert_eq!(role.defaults.cli_tool, tool, "{role_id} tool");
+            assert_eq!(role.defaults.model, model, "{role_id} model");
+            assert_eq!(
+                role.defaults.reasoning_effort.as_deref(),
+                Some(effort),
+                "{role_id} effort"
+            );
+            assert_eq!(role.mode.as_deref(), Some(mode), "{role_id} mode");
+        }
+
+        let architect = &roles["astra-architect"];
+        let architect_contract = format!(
+            "{}\n{}",
+            architect.instructions,
+            architect.behavioral_contract.execution.join("\n")
+        );
+        assert!(architect_contract.contains("system design"));
+        assert!(architect_contract.contains("interfaces"));
+        assert!(architect_contract.contains("cross-module consistency"));
+        assert!(architect_contract.contains("Claude-family altitude pass"));
+
+        let crossfile = &roles["astra-crossfile-reviewer"];
+        let crossfile_contract = format!(
+            "{}\n{}",
+            crossfile.instructions,
+            crossfile.behavioral_contract.execution.join("\n")
+        );
+        assert!(crossfile_contract.contains("distributed-context"));
+        assert!(crossfile_contract.contains("cross-module"));
+        assert!(crossfile_contract.contains("not a style lens"));
+
+        let heavy = &roles["astra-heavy-implementer"];
+        let heavy_contract = heavy.behavioral_contract.execution.join("\n");
+        assert!(heavy_contract.contains("Every assignment MUST state a diff budget."));
+        assert!(heavy_contract.contains(
+            "Exceeding the assignment's diff budget without prior lead approval is a review FAILURE, not a style note."
+        ));
+        assert!(heavy_contract.contains("mesh task ruling"));
+        assert!(heavy_contract.contains("--kind oversize_diff"));
+        assert!(heavy_contract.contains("so telemetry carries the incident"));
+
+        let security = &roles["astra-security-auditor"];
+        let security_contract = format!(
+            "{}\n{}\n{}",
+            security.instructions,
+            security.behavioral_contract.execution.join("\n"),
+            security.behavioral_contract.escalation.join("\n")
+        );
+        assert!(security_contract.contains("public-version refusal"));
+        assert!(security_contract.contains("mandatory Fable counter-audit"));
+
+        for role_id in ["judge-astra", "judge-fable"] {
+            let judge = &roles[role_id];
+            let contract = format!(
+                "{}\n{}",
+                judge.instructions,
+                judge.behavioral_contract.execution.join("\n")
+            );
+            assert!(contract.contains("same material"), "{role_id}");
+            assert!(
+                contract.contains("Never see the other judge's verdict before recording your own."),
+                "{role_id}"
+            );
         }
     }
 
