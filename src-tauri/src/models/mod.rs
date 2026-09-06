@@ -637,9 +637,9 @@ static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
         ),
         // GPT-6 Astra: slug + effort range live-verified against the operator's
         // Codex CLI 2026-09-05 (`model: gpt-6-astra`, efforts low..max accepted).
-        // Deliberately UNTIERED pending the routing doc's calibration sign-off —
-        // untiered = unroutable but pinnable, so calibration lanes can select it
-        // while no ladder does.
+        // Tiered FRONTIER (after fable) on the 2026-09-06 calibration
+        // sign-off; sits after gpt-5.6-sol here because catalog order is the
+        // tool default and Sol keeps that seat.
         model_catalog_entry(
             "gpt-6-astra",
             "GPT-6 Astra",
@@ -863,6 +863,10 @@ fn model_capability(id: &str) -> (Option<CapabilityTier>, Option<u32>) {
 
     let assignment = match id {
         "fable" => (Frontier, 0),
+        // Operator sign-off 2026-09-06 (docs/design/astra-calibration-memo.md):
+        // frontier, ranked after fable. Tier is routability; the lead-seat
+        // question stays gated on field-test cost data (blueprint Decision 2).
+        "gpt-6-astra" => (Frontier, 1),
         "gpt-5.6-sol" => (Strong, 0),
         "opus" => (Strong, 1),
         "claude-opus-4-6" | "claude-opus-4-6-thinking" => (Strong, 2),
@@ -2113,6 +2117,12 @@ mod tests {
                 "fable",
                 Some(CapabilityTier::Frontier),
                 Some(0),
+            ),
+            (
+                CliTool::Codex,
+                "gpt-6-astra",
+                Some(CapabilityTier::Frontier),
+                Some(1),
             ),
             (
                 CliTool::Codex,

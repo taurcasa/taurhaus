@@ -210,7 +210,7 @@ this document requires updating that pin. **Here is the signed-off table:**
 
 | Tier | Models (rank within tier, highest first) |
 |---|---|
-| `frontier` | `fable` (Fable 5.1) |
+| `frontier` | `fable` (Fable 5.1) · `gpt-6-astra` (GPT-6 Astra — signed off 2026-09-06 on the [calibration memo](astra-calibration-memo.md); lead seat still gated on Decision 2's field-test cost data) |
 | `strong` | `gpt-5.6-sol` · `opus` (Opus 5) · `claude-opus-4-6`/`-thinking` (agy)† · `gemini-3.1-pro-high` · `grok-4.6` · `gpt-5.5`† |
 | `efficient` | `gpt-5.6-luna` (preferred for batch/volume work — speed and throughput over peak intelligence) · `gpt-5.4` · `gpt-5.4-mini` · `gemini-3.x-flash-*` · `gemini-3.1-pro-low` · `gpt-oss-120b-medium` · `grok-4.5` |
 | *untiered* | `gpt-5.6-terra` (no current place — see rule below) · every deprecated entry (`sonnet`, `haiku`, and the ids marked † above via the precedence rule) |
