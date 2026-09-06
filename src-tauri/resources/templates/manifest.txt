@@ -1,7 +1,7 @@
 # Closed catalog of templates shipped with this build. Paths are relative to this file.
 presets/batch-processing.yaml
-presets/dev-team.yaml
 presets/design-ui.yaml
+presets/dev-team.yaml
 presets/full-team.yaml
 presets/grok-pair.yaml
 presets/pair.yaml

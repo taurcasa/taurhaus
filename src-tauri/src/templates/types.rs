@@ -2039,6 +2039,18 @@ mod tests {
         }
 
         let blueprint = include_str!("../../../docs/design/team-blueprints-frontier-era.md");
+        let header = blueprint
+            .split_once("## What three days of Astra field data says")
+            .expect("blueprint status header")
+            .0;
+        // Regression: ab7dcd75 marked the delta shipped while the document
+        // header still said that none of the proposal was implemented.
+        assert!(
+            header.contains(
+                "**Status:** Decisions recorded 2026-09-06; role/preset delta shipped in catalog revision 5."
+            ) && !header.contains("nothing here is implemented"),
+            "blueprint header should reflect the shipped catalog"
+        );
         let delta = blueprint
             .split_once("## Role-template delta")
             .expect("role-template delta section")
@@ -2072,6 +2084,10 @@ mod tests {
                 vec![("claude-researcher", 1), ("v4-developer-codex", 1)],
             ),
         ];
+        let expected_ids = expected
+            .iter()
+            .map(|(preset_id, _, _)| *preset_id)
+            .collect::<Vec<_>>();
 
         for (preset_id, version, expected_slots) in expected {
             let preset = presets
@@ -2094,17 +2110,15 @@ mod tests {
             );
         }
 
-        let legacy_preset_ids = [
-            "dev-team",
-            "full-team",
-            "grok-pair",
-            "pair",
-            "research-team",
-        ];
-        for preset in presets
-            .iter()
-            .filter(|preset| legacy_preset_ids.contains(&preset.preset_id.as_str()))
-        {
+        // Regression: 9e4081e1 scoped canonical-role validation to the old
+        // preset IDs while relaxing model/effort overrides for new presets.
+        for preset in &presets {
+            assert!(
+                roles.iter().any(|role| role.role_id == preset.lead_role_id),
+                "preset '{}' references non-canonical lead role '{}'",
+                preset.preset_id,
+                preset.lead_role_id
+            );
             for slot in &preset.agent_slots {
                 assert!(
                     roles.iter().any(|role| role.role_id == slot.role_id),
@@ -2112,14 +2126,16 @@ mod tests {
                     preset.preset_id,
                     slot.role_id
                 );
-                assert!(
-                    slot.overrides.as_ref().is_none_or(|overrides| {
-                        overrides.model.is_none() && overrides.reasoning_effort.is_none()
-                    }),
-                    "preset '{}' should inherit model and effort from role '{}'",
-                    preset.preset_id,
-                    slot.role_id
-                );
+                if expected_ids.contains(&preset.preset_id.as_str()) {
+                    assert!(
+                        slot.overrides.as_ref().is_none_or(|overrides| {
+                            overrides.model.is_none() && overrides.reasoning_effort.is_none()
+                        }),
+                        "preset '{}' should inherit model and effort from role '{}'",
+                        preset.preset_id,
+                        slot.role_id
+                    );
+                }
             }
         }
     }

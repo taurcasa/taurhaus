@@ -1,9 +1,9 @@
 # Team Blueprints for the Two-Frontier Era
 
-Discussion proposal (operator + orchestrator), 2026-09-06. First-draft model
-assignments with rationale — nothing here is implemented until discussed,
-and every Astra placement is contingent on the calibration sign-off
-(`role-first-model-routing.md`; the flake-audit calibration lane is in flight).
+Original discussion proposal (operator + orchestrator), 2026-09-06. The
+binding decisions are recorded below.
+
+**Status:** Decisions recorded 2026-09-06; role/preset delta shipped in catalog revision 5.
 
 ## What three days of Astra field data says
 
