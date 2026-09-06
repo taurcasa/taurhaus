@@ -26,7 +26,7 @@ export const specGroups = {
   // Template storage, editing, and roster screenshots.
   templates: ['template-crud-ui.js', 'template-screenshots.js', 'templates.js'],
   // Team runtime and recovery workflows.
-  mesh: ['mesh-recovery.js', 'mesh-screenshots.js', 'mesh-workflow.js'],
+  mesh: ['mesh-recovery.js', 'mesh-workflow.js'],
   // Real session actions and runtime session presentation.
   tmux: ['command-center-real-actions.js', 'session-management.js', 'regressions.js'],
 }
@@ -52,7 +52,7 @@ export const CODEX_SCRATCH_SPECS = [
   'managed-stage-parallel.js',
 ]
 export const paidSpecs = [...CODEX_SCRATCH_SPECS]
-export const captureSpecs = ['general-screenshots.js', 'readme-screenshots.js']
+export const captureSpecs = ['general-screenshots.js', 'readme-screenshots.js', 'mesh-screenshots.js']
 
 /** Spec files present in `specsDir`, sorted. */
 export function listSpecFiles(specsDir) {

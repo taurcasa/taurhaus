@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
-import { buildSpecList, listSpecFiles, paidSpecs, specGroups } from './specList.js'
+import { buildSpecList, captureSpecs, listSpecFiles, paidSpecs, specGroups } from './specList.js'
 
 // Vitest runs from the repository root (see CLAUDE.md), which is what makes
 // this the real specs directory rather than a fixture.
@@ -21,6 +21,16 @@ function groupedNames() {
 }
 
 describe('default WDIO spec list', () => {
+  // Regression: 94ba0199 evicted general/README capture but left mesh capture
+  // asserting the retired MeshActionBar customizer path in acceptance.
+  it('declares mesh screenshots as on-demand capture and exposes it in the capture recipe', async () => {
+    expect(flatNames(buildSpecList(specsDir))).not.toContain('mesh-screenshots.js')
+    expect(captureSpecs).toContain('mesh-screenshots.js')
+    const { spawnSync } = await import('node:child_process')
+    const result = spawnSync('just', ['--dry-run', 'capture-e2e-docs'], { encoding: 'utf8' })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stderr).toContain('--spec e2e/specs/mesh-screenshots.js')
+  })
   it('keeps nine behavioral sessions and leaves docs captures to an explicit recipe', async () => {
     const names = flatNames(buildSpecList(specsDir))
     expect(names).not.toContain('readme-screenshots.js')
