@@ -3,6 +3,15 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 
 describe('executed contract gate', () => {
+  it('disables both bail flags for breadth while keeping named runs fail-fast', () => {
+    for (const recipe of ['test-e2e', 'test-e2e-full']) {
+      const result = spawnSync('just', ['--dry-run', recipe], { encoding: 'utf8' })
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stderr).toContain('E2E_BAIL=0 E2E_MOCHA_BAIL=0')
+    }
+    const focused = spawnSync('just', ['--dry-run', 'test-e2e-spec', 'critical-smoke'], { encoding: 'utf8' })
+    expect(focused.stderr).not.toContain('E2E_BAIL=0')
+  })
   it('selects all three contract binaries for execution, without the heavy lane', () => {
     const result = spawnSync('just', ['--dry-run', 'test-contracts'], { encoding: 'utf8' })
     expect(result.status, result.stderr).toBe(0)

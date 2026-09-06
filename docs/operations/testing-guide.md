@@ -38,7 +38,10 @@ Files selected but never loaded remain null, rather than looking passed. The
 completion hook fails even if WDIO exits zero when selected tests were skipped
 or not reached. Missing prerequisites are failures of required coverage; paid
 lanes and explicit file exclusions are declared separately. A fail-fast run is
-useful diagnosis, not evidence of complete breadth.
+useful diagnosis, not evidence of complete breadth. Both `test-e2e` and
+`test-e2e-full` disable WDIO and Mocha bail. Named specs and smoke retain the
+local fail-fast defaults; bare WDIO can opt into breadth with `E2E_BAIL=0
+E2E_MOCHA_BAIL=0`.
 
 `just capture-e2e-docs` produces general and README screenshots on demand;
 these files are excluded from acceptance. The native light/dark transition
