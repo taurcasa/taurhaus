@@ -100,6 +100,9 @@ For manual visual review, run `bun run dev:visual` and use the fixture host docu
 
 ### E2E tests
 
+The [Mesh flake audit](./mesh-flake-audit.md) records runtime opener safety,
+scanner-derived wait budgets, and the acceptance runs (including skip sets).
+
 WebdriverIO + `tauri-driver`. E2E tests launch the real app binary and interact with it through the accessibility tree. Linux only — Windows E2E is not supported due to shared app data directory conflicts.
 
 ```bash

@@ -122,7 +122,12 @@ The propagation test also rejects state arriving after the 30s bound.
 so the additional Rust-unit execution rule is not triggered. No plan ledger
 was edited. Gates and E2E proof are recorded below when completed.
 
-## 4. Acceptance proof
+## 4. Round-1 acceptance proof (superseded)
+
+The record below describes the original implementation runs. Round-2 review
+subsequently observed **155 passing / 26 skipped** in its third run versus
+**157 / 24** in the first two: both mesh-workflow tier-2 cases were skipped.
+Thus round 1 did not establish skip-set stability; see the round-2 record below.
 
 All commands ran from this checkout root, without piping gates. Each exit
 code was captured immediately with `rc=$?`. No test-source changes occurred
@@ -169,3 +174,29 @@ Review/routing calibration belongs to the independent reviewer; the
 implementer does not assign its own quality score. Review-relevant choices:
 one 20-line retry helper, no product edits, deterministic fault injection,
 and no new skip or repeated mutation.
+
+## 5. Round-2 corrections
+
+`mesh-workflow` now requires successful app and mesh/tmux readiness in its
+`before` hook. RPC failure, incomplete availability, a blocking setup surface,
+unsafe runtime cleanup, and initialization errors fail coverage instead of
+turning its two required tier-2 cases into skips. The two inverse-environment
+cases explain their stable skip fact: the worker has mesh and tmux installed.
+This is a hard precondition, not a scanner-cadence guess for a binary lookup.
+
+`meshRuntime.js` checks the primary action's enabled Add Agent label and clicks
+in one browser task, on every retry. A Resume control is never clicked. All
+five confirmation sites use `confirmDialog.js`, which scopes to the open dialog
+and retains `fastClick`'s intercepted-click fallback. Named-node selection
+asserts the detail heading at the caller instead of an always-true return.
+
+The UI cadence is imported from `meshTabGate.svelte.js`; the Rust idle cadence
+is named locally. The 20s margin covers worker-load variance in probes and IPC.
+Its basis is the historical failure of 20/25s budgets, not a measured percentile;
+the 28s regression boundary is virtual. No load or stress measurement was run.
+
+Red-first tests execute the real workflow hooks/cases with fake IPC/DOM:
+9 failed / 1 passed before the precondition fix, then 10/10 passed. The extracted
+unsafe opener/confirmation behavior produced 6 failures / 1 pass, then 7/7
+passed. WDIO Timer error-shape tests produced 2 failures before correcting the
+fake, then 7/7 helper tests passed. No test starts a real harness.

@@ -32,8 +32,20 @@ describe('clickUntil', () => {
     }))
     vi.stubGlobal('browser', {
       waitUntil: vi.fn(async (condition, options) => {
+        // WDIO 9 Timer retries rejected conditions and remembers the latest
+        // poll's error. waitUntil wraps that error at timeout; a plain false
+        // uses timeoutMsg. Virtual ticks omit wall-clock drift/abort handling.
+        let lastError
         for (let elapsed = 0; elapsed <= options.timeout; elapsed += options.interval) {
-          if (await condition()) return true
+          lastError = undefined
+          try {
+            if (await condition()) return true
+          } catch (error) {
+            lastError = error
+          }
+        }
+        if (lastError) {
+          throw new Error(`waitUntil condition failed with the following reason: ${lastError.message}`)
         }
         throw new Error(options.timeoutMsg)
       }),
@@ -75,6 +87,21 @@ describe('clickUntil', () => {
   it('fails with the caller diagnostic when clicks never open the target', async () => {
     const click = vi.fn()
     await expect(clickUntil(click, async () => false, wait)).rejects.toThrow(wait.timeoutMsg)
+    expect(click).toHaveBeenCalledTimes(4)
+  })
+
+  it('retries condition errors like WDIO Timer before a later successful poll', async () => {
+    const click = vi.fn().mockRejectedValueOnce(new Error('stale element'))
+      .mockImplementation(async () => { opened = true })
+    await clickUntil(click, async () => opened, wait)
+    expect(click).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports the last condition error with WDIO timeout wrapping', async () => {
+    const click = vi.fn().mockRejectedValue(new Error('stale element'))
+    await expect(clickUntil(click, async () => false, wait)).rejects.toThrow(
+      'waitUntil condition failed with the following reason: stale element'
+    )
     expect(click).toHaveBeenCalledTimes(4)
   })
 })

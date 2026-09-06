@@ -1,3 +1,5 @@
+import { RUNTIME_STATUS_POLL_MS } from '../../src/lib/components/meshTabGate.svelte.js'
+
 /**
  * Shared timing constants for E2E tests.
  *
@@ -81,13 +83,17 @@ export const WAIT_LONG = { timeout: TIMEOUT_LONG, interval: POLL_SLOW }
 export const WAIT_XLONG = { timeout: TIMEOUT_XLONG, interval: POLL_SLOW }
 
 // Regression: 430e09ee budgeted recovery state as a 20/25s one-off wait.
-// daemon/session_activity.rs: idle scanner cadence = 1500ms (active = 500ms).
-// meshTabGate.svelte.js: live runtime UI cadence = 2000ms.
-// 4 scanner cycles + 2 UI polls + 20s scheduling/IPC margin under suite
-// contention = 4 * 1500 + 2 * 2000 + 20000 = 30000ms. The margin permits
-// slow process probes and queued IPC; it is not another scanner cadence.
+// Rust's IDLE_SCAN_INTERVAL in daemon/session_activity.rs (not JS-importable).
+const IDLE_SCANNER_CADENCE_MS = 1_500
+// Worker-load variance: queued IPC and process probes can consume several
+// nominal scan periods. The 0.9.1 audit observed the old 20/25s budgets fail;
+// 20s is conservative headroom, not a measured latency percentile. The 28s
+// unit boundary is injected evidence, not a wall-clock measurement.
+const WORKER_LOAD_MARGIN_MS = 20_000
+// 4 idle scans + 2 imported UI polls + worker-load margin:
+// 4 * 1500 + 2 * 2000 + 20000 = 30000ms.
 // Use only for scanner/roster propagation, not local UI or command completion.
 export const WAIT_MESH_PROPAGATION = {
-  timeout: 4 * 1_500 + 2 * 2_000 + 20_000,
+  timeout: 4 * IDLE_SCANNER_CADENCE_MS + 2 * RUNTIME_STATUS_POLL_MS + WORKER_LOAD_MARGIN_MS,
   interval: POLL_SLOW,
 }
