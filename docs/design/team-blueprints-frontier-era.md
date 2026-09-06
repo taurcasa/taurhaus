@@ -136,16 +136,27 @@ review-route notes on existing roles to name the two-family topology.
 Shipping bundled role changes pays the `BUILTIN_CATALOG_REVISION` cost
 (Stage 0's lesson) — priced into the lane.
 
-## Open questions for the discussion
+## Decisions (operator questionnaire, 2026-09-06)
 
-1. Lead/architect orientation: accept the default (Fable leads, Astra
-   architects) with per-team swaps, or fix it per blueprint?
-2. Astra as *lead* (the operator floated it): the data says its lead costs
-   run high (cache economics, context surcharge) — worth one calibration
-   team anyway, or wait for telemetry?
-3. How hard should the Astra heavy-implementer guard be — diff budget as a
-   review gate, or an assignment-contract line only?
-4. Does Opus keep two seats (product reviewer + core reviewer B) or shrink
-   to one now that Astra reviews cross-file?
-5. Which blueprint does the 0.9.2 field test run? (Proposal: Product Build
-   Team — it exercises the most new machinery at once.)
+1. **Orientation: default + swaps.** Fable leads / Astra architects as the
+   catalog default; any team may deliberately swap, and swaps are telemetry.
+2. **Astra as lead: after telemetry.** The architect/reviewer seats get
+   graded by the field test's routing report first; the lead experiment is
+   decided on cost-per-accepted-task numbers.
+3. **Heavy-implementer leash: review gate + telemetry.** The assignment
+   contract states a diff budget; the reviewer FAILS oversized diffs; each
+   oversize incident lands in telemetry as tier-decision evidence.
+4. **Opus shrinks to one seat now** (operator override of the
+   keep-two recommendation): Opus keeps the product-review seat; Astra takes
+   core cross-file review solo. The next retro's routing report grades the
+   bet.
+5. **The 0.9.2 field test runs the Product Build blueprint.**
+6. *(Adjacent thread closed)* The tab-revisit fade is **kept** as deliberate
+   behavior; the regression guard's lineage comment can drop its "pending
+   review" clause at next touch.
+
+Execution order: Astra calibration lane concludes → operator tier sign-off →
+role-template lane (Astra Architect / Cross-File Reviewer / leashed Heavy
+Implementer / Security Auditor / Dual-Judge pair; review-route updates;
+diff-budget gate + oversize telemetry event; BUILTIN_CATALOG_REVISION bump)
+→ Product Build field test.
