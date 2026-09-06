@@ -6,6 +6,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-09-06
+
+### Added
+
+- **GPT-6 Astra tiered frontier** (ranked after Fable) on the calibration
+  sign-off — routable wherever policy asks for frontier capability; Sol
+  keeps the Codex default seat.
+
+### Changed
+
+- Removed the orphaned `MeshActionBar` component (the customizer lives in
+  the template catalog flow).
+
+### Tooling
+
+- Test-strategy reform phase 1: executed Rust contract gate
+  (`just test-contracts`), seeded onboarding (wizard walks 9→1), mandatory
+  native smoke, machine-readable per-suite run accounting with declared
+  exclusions, docs capture out of acceptance, bail-off breadth runs.
+
 ## [0.9.3] - 2026-09-06
 
 ### Added
