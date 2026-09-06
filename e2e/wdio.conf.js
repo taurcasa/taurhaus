@@ -44,9 +44,9 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import { resolve } from 'node:path'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { relative, resolve } from 'node:path'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
 import { createCodexScratchHome } from './helpers/codexScratchHome.js'
@@ -62,8 +62,9 @@ import {
   findAvailableWorkerDaemonPort,
   prepareWorkerHome,
 } from './helpers/workerEnv.js'
-import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
+import { CODEX_SCRATCH_SPECS, buildSpecList, listSpecFiles, paidSpecs } from './specList.js'
 import { needsWizard, seedOnboarding, invokeApp } from './helpers/onboarding.js'
+import { coverageComplete, selectedSpecFiles, updateRunSummary } from './runSummary.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
@@ -339,11 +340,6 @@ async function waitForWebDriverReady(host, port, timeoutMs = 5_000, intervalMs =
   throw new Error(`tauri-driver did not become protocol-ready at ${host}:${port} within ${timeoutMs}ms`)
 }
 
-function killByPortPattern(pattern) {
-  if (process.platform === 'win32') return
-  spawnSync('pkill', ['-f', pattern], { stdio: 'ignore' })
-}
-
 function refreshOwnedProcessRecords() {
   if (!processLedger || !sessionRunToken) return
   for (const record of findRunTokenProcessRecords(sessionRunToken)) {
@@ -363,18 +359,11 @@ function stopOwnedProcessRefresh() {
   ownedProcessRefreshTimer = null
 }
 
-function cleanupDriverPortFallback() {
-  // Last-resort fallback for orphan processes on this worker's ports.
-  killByPortPattern(`tauri-driver --port ${wdioPort} --native-port ${nativeWebDriverPort}`)
-  killByPortPattern(`WebKitWebDriver --port=${nativeWebDriverPort}`)
-}
-
 function cleanupTauriDriver() {
   stopOwnedProcessRefresh()
   refreshOwnedProcessRecords()
   processLedger?.cleanup()
   tauriDriver = null
-  cleanupDriverPortFallback()
   processLedger?.remove()
   processLedger = null
   sessionRunToken = ''
@@ -460,6 +449,7 @@ export const config = {
   framework: 'mocha',
   mochaOpts: {
     ui: 'bdd',
+    require: [resolve(import.meta.dirname, 'runSummary.js')],
     timeout: mochaTimeoutMs,
     bail: mochaBail,
   },
@@ -537,20 +527,39 @@ export const config = {
    * Build the Tauri debug binary before running tests.
    * Skip with E2E_SKIP_BUILD=1 if you already have a fresh build.
    */
-  async onPrepare() {
+  async onPrepare(launchConfig) {
     cleanupStaleProcessLedgers(projectRoot)
+    mkdirSync(wdioOutputDir, { recursive: true })
+    const summaryDir = mkdtempSync(resolve(wdioOutputDir, 'run-'))
+    process.env.E2E_RUN_SUMMARY = resolve(summaryDir, 'run-summary.json')
+    const selected = selectedSpecFiles(launchConfig)
+    writeFileSync(process.env.E2E_RUN_SUMMARY, JSON.stringify({
+      revision: spawnSync('git', ['rev-parse', 'HEAD'], { cwd: projectRoot, encoding: 'utf8' }).stdout.trim(),
+      dirty: Boolean(spawnSync('git', ['status', '--porcelain'], { cwd: projectRoot, encoding: 'utf8' }).stdout.trim()),
+      binary: binaryPath,
+      binary_sha256: null,
+      complete: false,
+      exclusions: listSpecFiles(specsDir).filter(name => !selected.some(path => path.endsWith(`/${name}`))).map(spec => ({
+        spec,
+        reason: paidSpecs.includes(spec) ? 'paid; explicitly named only' : 'explicit suite selection/exclusion',
+      })),
+      specs: Object.fromEntries(selected.map(path => [relative(projectRoot, path), null])),
+    }))
+    console.log(`[e2e] Run summary: ${process.env.E2E_RUN_SUMMARY}`)
 
     if (process.env.E2E_SKIP_BUILD === '1') {
       console.log('[e2e] Skipping build (E2E_SKIP_BUILD=1)')
+      updateRunSummary(summary => { summary.binary_sha256 = createHash('sha256').update(readFileSync(binaryPath)).digest('hex') })
       return
     }
 
     console.log('[e2e] Building Tauri debug binary...')
-    return new Promise((resolve, reject) => {
-      const build = spawn('bunx', ['tauri', 'build', '--debug', '--no-bundle'], {
+    await new Promise((resolve, reject) => {
+      const build = spawn('just', ['build-e2e'], {
         cwd: projectRoot,
         stdio: 'inherit',
       })
+      build.on('error', reject)
       build.on('close', (code) => {
         if (code === 0) {
           console.log('[e2e] Build complete')
@@ -560,6 +569,7 @@ export const config = {
         }
       })
     })
+    updateRunSummary(summary => { summary.binary_sha256 = createHash('sha256').update(readFileSync(binaryPath)).digest('hex') })
   },
 
   /**
@@ -655,7 +665,8 @@ export const config = {
   async before(_capabilities, specs) {
     // WebKitWebDriver and the app exist only after WDIO creates the session.
     refreshOwnedProcessRecords()
-    if (!needsWizard(specs)) {
+    try {
+      if (needsWizard(specs)) return
       await browser.waitUntil(
         () => browser.execute(() => Boolean(window.__TAURI_INTERNALS__)),
         { timeout: 30_000, timeoutMsg: 'Tauri setup IPC unavailable' }
@@ -666,6 +677,11 @@ export const config = {
       if (await $('[data-testid="first-run-wizard"]').isExisting()) {
         throw new Error('Seeded root returned to onboarding after reload')
       }
+    } catch (error) {
+      // WDIO logs and swallows config-hook errors. The Mocha root hook must
+      // also fail, or a spec with permissive prerequisites could report green.
+      process.env.E2E_SETUP_ERROR = String(error)
+      throw error
     }
   },
 
@@ -679,8 +695,13 @@ export const config = {
   /**
    * Final safety net so failed/crashed runs don't leave app instances behind.
    */
-  async onComplete() {
+  async onComplete(exitCode) {
     cleanupAllE2eArtifacts()
     cleanupStaleProcessLedgers(projectRoot)
+    const summary = updateRunSummary(summary => {
+      summary.exit_code = exitCode
+      summary.complete = coverageComplete(summary.specs, exitCode)
+    })
+    if (!summary.complete) throw new Error(`Required E2E coverage did not all execute and pass: ${process.env.E2E_RUN_SUMMARY}`)
   },
 }

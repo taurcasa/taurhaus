@@ -31,6 +31,15 @@ and `taurhaus` are registered and `is_first_run` is false. A missing seed must
 fail; it must never fall back to another UI wizard walk. Settings saving remains
 a real UI action in the smoke, independent of onboarding setup.
 
+Each WDIO invocation prints a unique `run-summary.json` path under its log
+directory. It records selected/executed/passed/failed/skipped/unreached counts
+per spec, skipped test names, revision (with dirty-tree flag), and binary SHA-256.
+Files selected but never loaded remain null, rather than looking passed. The
+completion hook fails even if WDIO exits zero when selected tests were skipped
+or not reached. Missing prerequisites are failures of required coverage; paid
+lanes and explicit file exclusions are declared separately. A fail-fast run is
+useful diagnosis, not evidence of complete breadth.
+
 ## Test layers
 
 ### Rust tests
