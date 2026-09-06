@@ -1494,8 +1494,11 @@ mod tests {
         assert!(heavy_contract.contains(
             "Exceeding the assignment's diff budget without prior lead approval is a review FAILURE, not a style note."
         ));
-        assert!(heavy_contract.contains("mesh task ruling"));
-        assert!(heavy_contract.contains("--kind oversize_diff"));
+        // Regression: 9398670f shipped a `mesh task ruling` command without
+        // the mesh 0.2.28-required `--value`, so the policy exited with rc=2.
+        assert!(heavy_contract.contains(
+            "mesh task ruling <id> --kind oversize_diff --value failed --note <budget-and-actual>"
+        ));
         assert!(heavy_contract.contains("so telemetry carries the incident"));
 
         let security = &roles["astra-security-auditor"];
