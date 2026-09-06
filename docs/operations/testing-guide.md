@@ -26,7 +26,10 @@ repeats. Reuse `E2E_SKIP_BUILD=1` only with an already verified fresh build.
 Ordinary workers put rejecting `claude`/`codex`/`agy`/`grok` shims first on
 their isolated shell PATH. Runtime tests must supply their own generated CLI
 stubs; missing stubs cannot fall through to an installed real harness. Only
-the explicitly named paid workers omit those shims.
+the explicitly named paid workers omit those shims. Workers containing
+`template-crud-ui` or `mesh-workflow` instead receive generated inert harnesses
+that remain alive until cleanup; their runtime UI coverage needs living members,
+not provider turns.
 
 Only `first-run-wizard.js` gets a virgin worker root. Other workers scan and
 batch-register generated fixture repositories through the wizard's supported
@@ -35,6 +38,16 @@ and `taurhaus` are registered and `is_first_run` is false. A missing seed must
 fail; it must never fall back to another UI wizard walk. Settings saving remains
 a real UI action in the smoke, independent of onboarding setup.
 
+Round-2 parity check (2026-09-06): a real wizard walk and seed-only setup produced
+matching app-data path inventories and all database tables after normalizing
+project UUIDs, worker paths, and timestamps. Neither persisted settings; both
+used product defaults. Both Claude roots contained only `tasks`, with no teams
+entry. The Add Agent regression came from `925c78c3` prepending exit-77 CLI
+blockers ahead of the old inert fixtures, so members immediately became offline.
+The runtime-only persistent fixtures fix that cause without changing onboarding.
+The `_active-project-teams` warning still occurs during passing runtime tests;
+it is not a seed-created entry.
+
 Each WDIO invocation prints a unique `run-summary.json` path under its log
 directory. It records selected/executed/passed/failed/skipped/unreached counts
 per spec, skipped test names, revision (with dirty-tree flag), and binary SHA-256.
@@ -42,7 +55,8 @@ Files selected but never loaded remain null, rather than looking passed. The
 completion hook fails even if WDIO exits zero when selected tests have unexplained
 skips or were not reached. Exact declared test exclusions stay counted as skipped
 (executed and passed remain zero); `excluded_tests` records their names and reasons.
-`complete` means all coverage outside those declared exclusions passed. Missing prerequisites are failures of required coverage; paid
+`complete` means all coverage outside those declared exclusions passed. Missing
+prerequisites are failures of required coverage; paid
 lanes and explicit file exclusions are declared separately. A fail-fast run is
 useful diagnosis, not evidence of complete breadth. Both `test-e2e` and
 `test-e2e-full` disable WDIO and Mocha bail. Named specs and smoke retain the
@@ -53,7 +67,8 @@ E2E_MOCHA_BAIL=0`.
 these files are excluded from acceptance with reason `on-demand documentation capture`.
 Mesh capture still references the retired customizer path and needs a later docs
 update; this round deliberately does not rewrite it. Its setup, initialization,
-and runtime wiring are covered by `mesh-workflow` and `template-crud-ui`. The native light/dark transition
+and runtime wiring are covered by `mesh-workflow` and `template-crud-ui`. The
+native light/dark transition
 assertions from the old `screenshots.js` remain in its behavioral spec.
 The default behavioral manifest retains nine serial sessions: eight seeded,
 one virgin wizard. This removes eight repeated wizard walks while preserving
@@ -66,6 +81,20 @@ justified by this lane. Before: nine boots and nine wizard walks per suite;
 after: nine boots and one wizard walk. Historical whole-suite wall time was
 not measured; compare future runs using the recorded build and execution costs.
 
+Round-2 verification: `just check-quick`, `just lint`, `bunx vitest run`,
+`just test-contracts`, and `E2E_INSTALL_DAEMON=0 just test-e2e` all exited 0.
+Vitest passed 149 files / 2,460 tests; contracts executed 64 tests. The tier-1
+summary `run-AtARJ7` at code revision `3bd7a866` records 23 files / 166 selected,
+143 executed and passed, 23 declared skips, zero failures or unreached tests,
+and `complete: true`. Wall time was 287.739 s including a 21.675 s build;
+WDIO's execution-only display was 4:25. Nine boots / one wizard walk preserves
+the nine-boot baseline while removing eight wizard walks. This is one complete
+breadth pass, not a comparison against the earlier bail-truncated timings.
+Standalone `template-crud-ui` passed all eight tests; `mesh-workflow` passed
+four with its two declared inverse-condition skips. Local logs and a summary
+copy are under `.check-logs/reform-round2/`. All 14 worker roots created during
+this round were removed, with no remaining owned processes or checkout ledgers.
+No `src-tauri/` diff was made, so the Rust-unit execution rule was not triggered.
 
 ### Inherited conditional skips (phase 3)
 
