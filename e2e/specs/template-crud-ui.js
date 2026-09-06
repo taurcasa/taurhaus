@@ -8,6 +8,7 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
+import { clickUntil } from '../helpers/clickUntil.js'
 import { waitForProjectsLoaded, fastClick, clickTestId } from '../helpers/navigation.js'
 import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_XLONG } from '../helpers/timing.js'
@@ -306,19 +307,13 @@ async function disbandRuntimeTeamIfE2E() {
     return false
   }
 
-  await clickLastTestId('mesh-runtime-more-toggle')
-  await browser.waitUntil(
-    async () => await hasTestId('mesh-runtime-disband'),
+  await clickUntil('mesh-runtime-more-toggle', 'mesh-runtime-disband',
     { ...WAIT_SHORT, timeoutMsg: 'Disband action did not appear' }
   )
-  await clickLastTestId('mesh-runtime-disband')
-  const confirmAppeared = await browser.waitUntil(
-    async () => await isConfirmDialogOpen(),
+  await clickUntil('mesh-runtime-disband', isConfirmDialogOpen,
     { ...WAIT_SHORT, timeoutMsg: 'Disband confirmation did not appear' }
-  ).then(() => true).catch(() => false)
-  if (confirmAppeared) {
-    await clickOpenConfirmDialog()
-  }
+  )
+  await clickOpenConfirmDialog()
 
   await browser.waitUntil(
     async () => (await hasTestId('mesh-mode-empty')) || (await hasTestId('mesh-mode-setup')),
@@ -833,12 +828,7 @@ describe('Template CRUD UI', () => {
       // banner in failure.png is usually the cleanup, not the cause — check
       // the app log for who issued the disband.
       try {
-        await browser.waitUntil(
-          async () => {
-            if (await hasTestId('mesh-add-agent-form')) return true
-            await clickTestId('mesh-runtime-primary-action')
-            return await hasTestId('mesh-add-agent-form')
-          },
+        await clickUntil('mesh-runtime-primary-action', 'mesh-add-agent-form',
           { ...WAIT_XLONG, timeoutMsg: 'Add agent form did not open' }
         )
       } catch (error) {
@@ -848,12 +838,7 @@ describe('Template CRUD UI', () => {
         if (await hasTestId('mesh-mode-runtime')) throw error
         const rebuiltTeam = await ensureRuntimeMode(this)
         if (!rebuiltTeam) return
-        await browser.waitUntil(
-          async () => {
-            if (await hasTestId('mesh-add-agent-form')) return true
-            await clickTestId('mesh-runtime-primary-action')
-            return await hasTestId('mesh-add-agent-form')
-          },
+        await clickUntil('mesh-runtime-primary-action', 'mesh-add-agent-form',
           { ...WAIT_XLONG, timeoutMsg: 'Add agent form did not open after team rebuild' }
         )
       }
@@ -919,18 +904,19 @@ describe('Template CRUD UI', () => {
 
       // Regression: acd3c5aa initialized a lead-only fixture but silently
       // skipped capture coverage unless an agent node happened to exist.
-      const firstRuntimeNode = (await $$('[data-testid="mesh-node-lead"], [data-testid="mesh-node-agent"]'))[0]
-      if (!firstRuntimeNode) throw new Error('Runtime node missing after initialization')
-
-      await firstRuntimeNode.click()
-      await browser.waitUntil(
-        async () => await hasTestId('mesh-node-detail-capture'),
+      await clickUntil(
+        async () => {
+          const firstRuntimeNode = (await $$('[data-testid="mesh-node-lead"], [data-testid="mesh-node-agent"]'))[0]
+          if (!firstRuntimeNode) throw new Error('Runtime node missing after initialization')
+          await firstRuntimeNode.click()
+        },
+        'mesh-node-detail-capture',
         { ...WAIT_MEDIUM, timeoutMsg: 'Runtime node detail capture button did not appear' }
       )
 
-      await clickLastTestId('mesh-node-detail-capture')
-      await browser.waitUntil(
-        async () => await hasTestId('mesh-capture-role-form'),
+      await clickUntil(
+        () => clickLastTestId('mesh-node-detail-capture'),
+        'mesh-capture-role-form',
         { ...WAIT_MEDIUM, timeoutMsg: 'Capture role dialog did not open' }
       )
 

@@ -79,3 +79,15 @@ export const WAIT_LONG = { timeout: TIMEOUT_LONG, interval: POLL_SLOW }
 
 /** For extra-heavy operations (full index rebuild, large file tree). */
 export const WAIT_XLONG = { timeout: TIMEOUT_XLONG, interval: POLL_SLOW }
+
+// Regression: 430e09ee budgeted recovery state as a 20/25s one-off wait.
+// daemon/session_activity.rs: idle scanner cadence = 1500ms (active = 500ms).
+// meshTabGate.svelte.js: live runtime UI cadence = 2000ms.
+// 4 scanner cycles + 2 UI polls + 20s scheduling/IPC margin under suite
+// contention = 4 * 1500 + 2 * 2000 + 20000 = 30000ms. The margin permits
+// slow process probes and queued IPC; it is not another scanner cadence.
+// Use only for scanner/roster propagation, not local UI or command completion.
+export const WAIT_MESH_PROPAGATION = {
+  timeout: 4 * 1_500 + 2 * 2_000 + 20_000,
+  interval: POLL_SLOW,
+}
