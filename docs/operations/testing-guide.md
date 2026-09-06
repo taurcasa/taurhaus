@@ -100,8 +100,9 @@ For manual visual review, run `bun run dev:visual` and use the fixture host docu
 
 ### E2E tests
 
-The [Mesh flake audit](./mesh-flake-audit.md) records runtime opener safety,
-scanner-derived wait budgets, and the acceptance runs (including skip sets).
+The [Mesh runtime flake audit](#mesh-runtime-flake-audit) below records opener
+safety and scanner-derived wait budgets. The [lane report](./mesh-flake-audit.md)
+retains acceptance runs, including skip sets.
 
 WebdriverIO + `tauri-driver`. E2E tests launch the real app binary and interact with it through the accessibility tree. Linux only — Windows E2E is not supported due to shared app data directory conflicts.
 
@@ -167,6 +168,104 @@ The three managed-stage lanes additionally set `CLAUDE_DIR` on the panes they cr
 The W2 evidence is a scanner-contract read-back over a production-shaped summary that the lane synthesizes after both live stages finish. Its task ids and RESULT timestamps come from those stages, and its label/phase vocabulary is parsed from `.claude/workflows/feature-pr.js`; the production scanner then has to surface both couriers from the one completed summary. The credential-free Claude lead never takes a turn and emits no Workflow summary, so this lane does **not** prove that a real lead run filed the stages. That is the documented experiment-5 item-(d) gap under the two-Codex-session cost ceiling. The synthesized courier phase is `Managed stage`, the production W2 phase for `stage()`, while the exec transport uses `Implement`; the phase name is not evidence that an implementation step went missing.
 
 All paid lanes take on every host change they make as an undo (`e2e/helpers/laneCleanup.js`) that runs on interrupt as well as on teardown. Like every ordinary spec, they run on the worker's private tmux server; the tmux-driving source guard requires an isolation assertion before the first tmux call, and teardown takes the whole worker server down. All three managed-stage lanes additionally check the app's own `/proc/<pid>/environ` before they spend a turn.
+
+## Mesh runtime flake audit
+
+P1 = lost click across runtime polling; P2 = scanner-state propagation.
+The [lane report](./mesh-flake-audit.md) retains implementation and acceptance
+evidence. This table reflects the round-2 fixes.
+
+All seven specs containing Mesh UI selectors were read, including their local
+helpers. Rows group repeated calls to the same helper; distinct transitions
+are listed separately. The four paid specs drive coordination through IPC,
+not Mesh runtime UI, and are excluded from the suite and this change.
+
+| Site / action → wait | Pattern | Disposition and reason |
+| --- | --- | --- |
+| All seven specs: `openMeshTab` → surface / gate resolution | — | Not applicable: titlebar is outside the polled runtime subtree; gate resolves availability IPC. |
+| `mesh-workflow`: shared eligibility probe → tier-2 cases | — | Fixed: `before` refreshes the prior spec's cached view and requires app, mesh and tmux readiness; failures fail the hook instead of skipping both cases. |
+| `mesh-workflow`: overview → Mesh tab switching | — | Not applicable: shell navigation, not scanner state. |
+| `meshBuilder.setInlineBuilderTeamName` → input, then setup | — | Already safe for these patterns: setup is not runtime-polled; native input event drives the transition. |
+| `mesh-workflow`: lead selection → lead card | — | Not applicable: local setup roster. |
+| `mesh-workflow`: initialize enable / click → runtime or error | — | Not applicable: command completion, not scanner propagation; never retry a launch. |
+| `mesh-workflow`: primary action → add-agent form | P1 | Fixed: fresh-query retry checks an enabled Add Agent label atomically; never clicks Resume. |
+| `mesh-workflow`: role/name/project → enabled submit | — | Already safe: editor state; role card is clicked atomically in the active SlideOver. |
+| `mesh-workflow`: submit → form closed or error | — | Already safe: command result checked explicitly; never retry a mutation. |
+| `mesh-workflow`: overflow → disband action | P1 | Fixed: target-first retry avoids losing or re-toggling the menu. |
+| `mesh-workflow`: disband action → open confirmation | P1 | Fixed: retry the opener, not the confirmation. |
+| `mesh-workflow`: confirm → empty/setup; reset → empty | — | Not applicable: disband command result and local reset. |
+| `mesh-recovery`: overflow → menu; disband → confirmation | P1 | Fixed: both runtime openers are single clicks. |
+| `mesh-recovery`: confirm → empty/setup | — | Not applicable: command completion; ownership checked before disband. |
+| `mesh-recovery`: builder lead/agent → cards; input → setup | — | Not applicable: local setup state, no live runtime poll. |
+| `mesh-recovery`: initialize → runtime/error/title | — | Not applicable: command completion and title identity, not member liveness. |
+| `mesh-recovery`: kill all panes → offline count → coldResume snapshot | P2 | Fixed: 25s overrides undercut honest scanner propagation budgets. |
+| `mesh-recovery`: reload → app/projects → stopped runtime copy | P2 | Fixed for runtime copy; app/project boot retains its own readiness checks. |
+| `mesh-recovery`: resume click / IPC → zero offline → active runtime copy | P2 | Fixed: one launch followed by scanner/UI propagation, not repeated resume clicks. |
+| `mesh-recovery`: kill member → offline count / degraded snapshot / UI copy | P2 | Fixed; existing product-issue skip remains visible. |
+| `mesh-recovery`: named agent node → matching detail | P1 | Fixed: current loop stops at click delivery, not matching detail. |
+| `mesh-recovery`: detail → Offline status | P2 | Fixed: status is fed by runtime polling. |
+| `mesh-recovery`: Add Agent (primary or secondary) → form | P1 | Fixed: retry only the open, after active-state validation. |
+| `mesh-recovery`: role/name/project → submit → error/form/message | — | Not applicable: command/editor state; final named-node assertion still required. |
+| `mesh-recovery`: successful add → named node | P2 | Fixed: roster visibility follows runtime refresh. |
+| `template-crud-ui`: runtime overflow → disband; disband → open dialog | P1 | Fixed: last-element single clicks still race re-renders. |
+| `template-crud-ui`: confirm → empty/setup; reset → empty | — | Not applicable: command completion and local reset. |
+| `template-crud-ui`: lead → card; initialize → runtime/error/title | — | Not applicable: setup and initialize response, not scanner propagation. |
+| `template-crud-ui`: Add Agent → form, including rebuild branch | P1 | Fixed: both previously safe local loops now use the same shared helper. |
+| `template-crud-ui`: runtime node → detail capture button | P1 | Fixed: cached node handle can be replaced before click. |
+| `template-crud-ui`: detail capture → capture form | P1 | Fixed: target-first retry for the runtime detail opener. |
+| `template-crud-ui`: role card → autofill; cancel → closed | — | Not applicable: local editor state. |
+| `template-crud-ui`: unlock → editable fields | P1 | Fixed: full-suite evidence showed a lost click; target-first retry stops when fields are editable, without relocking them. |
+| `template-crud-ui`: capture save → success banner → catalog card | — | Already safe: atomic active-SlideOver save and exact success text; never retry save. |
+| `template-crud-ui`: template browser → panel | — | Not applicable: empty/setup view is not runtime-polled. |
+| `template-crud-ui`: create/edit role → editor; inspect → detail | — | Already safe: active-SlideOver query and DOM click share one browser task. |
+| `template-crud-ui`: role save → persisted role / instructions | — | Not applicable: git-backed command result, not daemon scanner. |
+| `template-crud-ui`: saved edit → role inspection | P1 | Fixed: persistence can finish before the catalog control is ready; retry inspection, preserving the single save and final detail assertion (`4b4fb842`). |
+| `template-crud-ui`: role delete → dialog → card absent | — | Already safe for P1/P2: atomic opener; final deletion assertion remains. |
+| `template-crud-ui`: presets tab → create; create → customizer | — | Already safe: atomic SlideOver clicks, no runtime poll. |
+| `template-crud-ui`: preset save → card / customizer closed; delete → dialog → absent | — | Not applicable: storage command and catalog refresh. |
+| `template-crud-ui`: cleanup close/cancel → SlideOver closed | — | Already safe: bounded existing atomic clicks with closed-state checks. |
+| `templates`: close overlay → absent; reset → empty; browser → panel | — | Not applicable: setup/catalog only; refuses every runtime disband. |
+| `templates`: roles/presets tabs → cards; inspect → exact detail text | — | Already safe: atomic active-SlideOver clicks. |
+| `templates`: upsert/flush → reopen → card/details; delete/flush → reopen → absent | — | Not applicable: awaited storage IPC, no scanner dependency. |
+| `mesh-screenshots`: runtime disband opener → confirmation | P1 | Fixed: open overflow first and await an actually open dialog. |
+| `mesh-screenshots`: confirm → empty/setup | — | Not applicable: disband command completion. |
+| `mesh-screenshots`: display → setup; customize → panel → input | — | Not applicable to timing classes: legacy setup selectors/input flow; report drift if executed. |
+| `mesh-screenshots`: customizer save → closed; initialize → runtime/failure | — | Not applicable: command completion, never repeat mutations. |
+| `mesh-screenshots`: theme → capture | — | Not applicable: shell styling, no propagation wait. |
+| `template-screenshots`: runtime cleanup disband → confirmation | P1 | Fixed: same runtime opener shape, behind existing ownership guard. |
+| `template-screenshots`: init-back/reset → setup/empty; wait initializing exit | — | Not applicable: local setup or initialize response. |
+| `template-screenshots`: preset/custom → setup; add roles → counts; pin → strip | — | Not applicable: setup-only local roster; legacy selectors are separate drift. |
+| `template-screenshots`: overlay close → absent; theme → screenshot settle | — | Not applicable: setup overlays and visual capture. |
+| `role-detail-screenshots`: setup/search → catalog; role info → detail | — | Not applicable: catalog preview, not a live runtime node. |
+| `role-detail-screenshots`: edit → inputs; cancel/close → absent | — | Already safe for P1: atomic overlay clicks; existing bounded edit retries are setup-only. |
+| `role-detail-screenshots`: create → editor; save → closed/card/searchable | — | Not applicable: local editor/storage response (existing git-write budget retained). |
+
+### Cadence and safety evidence
+
+`daemon/session_activity.rs` uses 500ms active / 1500ms idle scan intervals;
+`meshTabGate.svelte.js` uses 2000ms live-status polling. These are separate
+from the 30s background self-heal pass; recovery queries reconcile live
+presence through the daemon directly (`commands/coordination/live_status.rs`).
+Propagation budget: four idle scans (6000ms), two UI polls (4000ms),
+plus 20000ms scheduling/IPC margin for suite contention = 30000ms.
+The UI cadence is imported; the Rust idle cadence is named locally because it
+is not JS-importable. The margin covers queued IPC and process-probe variance;
+it is conservative headroom based on failed 20/25s waits, not a measured
+latency percentile. The 28s unit-test boundary is injected virtual time. This is a
+bounded allowance, not a promise that product work has a 30s upper bound.
+
+The manifest currently runs one worker at a time (`maxInstances: 1`), despite
+the historical seven-worker incident. Acceptance runs must use the requested
+unmodified command/configuration, not introduce a load run. Paid lanes stay
+excluded. Worker roots/tmux/daemon are isolated; any default harness commands
+must be shadowed by inert fixtures before the suite is started.
+
+The two unconditional recovery skips predate this lane and name product
+issues. Workflow prerequisite failures now fail loudly; its inverse-environment
+skips name the installed mesh/tmux fact. No new skip is authorized. A failed
+wait remains a failure. Failure
+screenshots can show cleanup's disband, so diagnosis must use the preceding
+app log, as documented by `673dac42`.
 
 ## Test lanes
 

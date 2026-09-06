@@ -4,7 +4,7 @@ import { clickTestId } from './navigation.js'
  * Retry a lost runtime click until its target state holds. Strings are test IDs;
  * callbacks allow named nodes / open-dialog predicates and must re-query DOM.
  * Only for repeatable UI controls; never pass a launch, save or confirmation.
- * Audit and cadence evidence: docs/operations/mesh-flake-audit.md.
+ * Audit and cadence evidence: docs/operations/testing-guide.md#mesh-runtime-flake-audit.
  */
 export async function clickUntil(click, target, wait) {
   const isOpen = typeof target === 'function'
