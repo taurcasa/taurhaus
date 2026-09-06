@@ -64,6 +64,7 @@ src-tauri/resources/*
 !src-tauri/resources/mesh.lock.json
 
 # Development screenshots (Playwright captures, visual reviews)
+docs/screenshot-*.png
 *.png
 !docs/*.png
 !docs/screenshots/**
