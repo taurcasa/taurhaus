@@ -15,6 +15,8 @@ import { join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { clickUntil } from '../helpers/clickUntil.js'
+import { clickRuntimeAddAgent } from '../helpers/meshRuntime.js'
+import { isConfirmDialogOpen, clickOpenConfirmDialog } from '../helpers/confirmDialog.js'
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
 import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG, WAIT_MESH_PROPAGATION, TIMEOUT_BOOT } from '../helpers/timing.js'
@@ -214,11 +216,10 @@ async function disbandRuntimeTeamIfSafe() {
 
   await openRuntimeOverflow()
   await clickUntil('mesh-runtime-disband',
-    async () => await browser.execute(() =>
-      document.querySelector('dialog[open][data-testid="confirm-dialog"]') !== null),
+    isConfirmDialogOpen,
     { ...WAIT_SHORT, timeoutMsg: 'Disband confirmation dialog did not appear' }
   )
-  await clickTestId('confirm-dialog-confirm')
+  await clickOpenConfirmDialog()
 
   await browser.waitUntil(
     async () => (await hasTestId('mesh-mode-empty')) || (await hasTestId('mesh-mode-setup')),
@@ -637,18 +638,10 @@ async function clickAgentNodeByName(name) {
     },
     { ...WAIT_MEDIUM, timeoutMsg: `Mesh node detail for "${name}" did not open` }
   )
-  return true
 }
 
 async function addAgentWithName(name) {
-  await clickUntil(
-    async () => {
-      const action = await hasTestId('mesh-runtime-add-agent')
-        ? 'mesh-runtime-add-agent'
-        : 'mesh-runtime-primary-action'
-      await clickTestId(action)
-    },
-    'mesh-add-agent-form',
+  await clickRuntimeAddAgent(
     { ...WAIT_SHORT, timeoutMsg: 'Add-agent form did not open' }
   )
 
@@ -839,8 +832,8 @@ describe('Mesh Recovery', function () {
     expect(runtimeUi.summary).toContain('1 stopped')
     expect(await hasTestId('mesh-runtime-add-agent')).toBe(true)
 
-    const selected = await clickAgentNodeByName(targetMember.name)
-    expect(selected).toBe(true)
+    await clickAgentNodeByName(targetMember.name)
+    expect(await (await $('[data-testid="mesh-node-detail-name"]')).getText()).toContain(targetMember.name)
     await browser.waitUntil(
       async () => (await (await $('[data-testid="mesh-node-detail-status"]')).getText()).includes('Offline'),
       { ...WAIT_MESH_PROPAGATION, timeoutMsg: `Mesh node detail for ${targetMember.name} did not show Offline` }

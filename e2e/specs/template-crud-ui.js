@@ -9,6 +9,8 @@
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { clickUntil } from '../helpers/clickUntil.js'
+import { clickRuntimeAddAgent } from '../helpers/meshRuntime.js'
+import { isConfirmDialogOpen, clickOpenConfirmDialog } from '../helpers/confirmDialog.js'
 import { waitForProjectsLoaded, fastClick, clickTestId } from '../helpers/navigation.js'
 import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_XLONG } from '../helpers/timing.js'
@@ -186,23 +188,6 @@ async function clickLastTestId(testId) {
   await element.scrollIntoView().catch(() => {})
   await element.click()
   return true
-}
-
-async function isConfirmDialogOpen() {
-  return await browser.execute(() => {
-    const dialogs = Array.from(document.querySelectorAll('[data-testid="confirm-dialog"]'))
-    return dialogs.some((dialog) => dialog instanceof HTMLDialogElement && dialog.open)
-  })
-}
-
-async function clickOpenConfirmDialog() {
-  const selector = 'dialog[open][data-testid="confirm-dialog"] [data-testid="confirm-dialog-confirm"]'
-  const confirm = await $(selector)
-  if (!(await confirm.isExisting()) || !(await confirm.isEnabled())) {
-    throw new Error('Open confirmation action was unavailable')
-  }
-  const clicked = await fastClick(selector)
-  if (!clicked) throw new Error('Open confirmation action was unavailable')
 }
 
 function skipRuntimeTest(testContext, reason) {
@@ -828,7 +813,7 @@ describe('Template CRUD UI', () => {
       // banner in failure.png is usually the cleanup, not the cause — check
       // the app log for who issued the disband.
       try {
-        await clickUntil('mesh-runtime-primary-action', 'mesh-add-agent-form',
+        await clickRuntimeAddAgent(
           { ...WAIT_XLONG, timeoutMsg: 'Add agent form did not open' }
         )
       } catch (error) {
@@ -838,7 +823,7 @@ describe('Template CRUD UI', () => {
         if (await hasTestId('mesh-mode-runtime')) throw error
         const rebuiltTeam = await ensureRuntimeMode(this)
         if (!rebuiltTeam) return
-        await clickUntil('mesh-runtime-primary-action', 'mesh-add-agent-form',
+        await clickRuntimeAddAgent(
           { ...WAIT_XLONG, timeoutMsg: 'Add agent form did not open after team rebuild' }
         )
       }

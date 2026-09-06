@@ -7,6 +7,8 @@
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { clickUntil } from '../helpers/clickUntil.js'
+import { clickRuntimeAddAgent } from '../helpers/meshRuntime.js'
+import { isConfirmDialogOpen, clickOpenConfirmDialog } from '../helpers/confirmDialog.js'
 import { waitForProjectsLoaded, clickTestId, switchToTab } from '../helpers/navigation.js'
 import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
 import { clickActiveSlideOverTestId } from '../helpers/slideover.js'
@@ -112,13 +114,10 @@ async function disbandRuntimeTeamIfSafe() {
     { ...WAIT_SHORT, timeoutMsg: 'Disband action did not appear' }
   )
   await clickUntil('mesh-runtime-disband',
-    async () => await browser.execute(() =>
-      document.querySelector('dialog[open][data-testid="confirm-dialog"]') !== null),
+    isConfirmDialogOpen,
     { ...WAIT_SHORT, timeoutMsg: 'Disband confirmation dialog did not appear' }
   )
-  const confirm = await $('dialog[open][data-testid="confirm-dialog"] [data-testid="confirm-dialog-confirm"]')
-  await confirm.waitForExist({ timeout: WAIT_SHORT.timeout })
-  await confirm.click()
+  await clickOpenConfirmDialog()
 
   await browser.waitUntil(
     async () => (await hasTestId('mesh-mode-empty')) || (await hasTestId('mesh-mode-setup')),
@@ -346,7 +345,7 @@ describe('Mesh Workflow', () => {
 
       // Regression: 430e09ee removed the duplicate Add Agent button; runtime
       // additions now begin from the primary action.
-      await clickUntil('mesh-runtime-primary-action', 'mesh-add-agent-form',
+      await clickRuntimeAddAgent(
         { ...WAIT_SHORT, timeoutMsg: 'Hot-add form did not appear' }
       )
 

@@ -10,6 +10,7 @@ import { resolve } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { clickUntil } from '../helpers/clickUntil.js'
+import { isConfirmDialogOpen, clickOpenConfirmDialog } from '../helpers/confirmDialog.js'
 import { clickTestId, fastClick, waitForProjectsLoaded } from '../helpers/navigation.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
@@ -158,11 +159,10 @@ async function ensureEmptyMode() {
       { ...WAIT_SHORT, timeoutMsg: 'Disband action did not appear' }
     )
     await clickUntil('mesh-runtime-disband',
-      async () => await browser.execute(() =>
-        document.querySelector('dialog[open][data-testid="confirm-dialog"]') !== null),
+      isConfirmDialogOpen,
       { ...WAIT_SHORT, timeoutMsg: 'Disband confirmation dialog did not appear' }
     )
-    await (await $('dialog[open][data-testid="confirm-dialog"] [data-testid="confirm-dialog-confirm"]')).click()
+    await clickOpenConfirmDialog()
     createdTeamNames.delete(runtimeTeamName)
   }
 
