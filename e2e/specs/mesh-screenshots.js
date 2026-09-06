@@ -1,6 +1,8 @@
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
+import { clickUntil } from '../helpers/clickUntil.js'
+import { isConfirmDialogOpen, clickOpenConfirmDialog } from '../helpers/confirmDialog.js'
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
-import { WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
+import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 import { assertWorkerMeshAvailable } from '../helpers/workerEnv.js'
@@ -77,10 +79,14 @@ async function disbandRuntimeTeamIfSafe() {
   const teamName = (await runtimeTitle.isExisting()) ? (await runtimeTitle.getText()).trim() : ''
   if (!createdTeamNames.has(teamName)) return false
 
-  await clickTestId('mesh-runtime-disband')
-  if (await hasTestId('confirm-dialog-confirm')) {
-    await clickTestId('confirm-dialog-confirm')
-  }
+  await clickUntil('mesh-runtime-more-toggle', 'mesh-runtime-disband',
+    { ...WAIT_SHORT, timeoutMsg: 'Disband action did not appear' }
+  )
+  await clickUntil('mesh-runtime-disband',
+    isConfirmDialogOpen,
+    { ...WAIT_SHORT, timeoutMsg: 'Disband confirmation dialog did not appear' }
+  )
+  await clickOpenConfirmDialog()
 
   await browser.waitUntil(
     async () => (await hasTestId('mesh-mode-empty')) || (await hasTestId('mesh-mode-setup')),

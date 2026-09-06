@@ -6,6 +6,9 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
+import { clickUntil } from '../helpers/clickUntil.js'
+import { clickRuntimeAddAgent } from '../helpers/meshRuntime.js'
+import { isConfirmDialogOpen, clickOpenConfirmDialog } from '../helpers/confirmDialog.js'
 import { waitForProjectsLoaded, clickTestId, switchToTab } from '../helpers/navigation.js'
 import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
 import { clickActiveSlideOverTestId } from '../helpers/slideover.js'
@@ -107,15 +110,14 @@ async function disbandRuntimeTeamIfSafe() {
     return false
   }
 
-  await clickTestId('mesh-runtime-more-toggle')
-  await browser.waitUntil(
-    async () => await hasTestId('mesh-runtime-disband'),
+  await clickUntil('mesh-runtime-more-toggle', 'mesh-runtime-disband',
     { ...WAIT_SHORT, timeoutMsg: 'Disband action did not appear' }
   )
-  await clickTestId('mesh-runtime-disband')
-  const confirm = await $('dialog[open][data-testid="confirm-dialog"] [data-testid="confirm-dialog-confirm"]')
-  await confirm.waitForExist({ timeout: WAIT_SHORT.timeout })
-  await confirm.click()
+  await clickUntil('mesh-runtime-disband',
+    isConfirmDialogOpen,
+    { ...WAIT_SHORT, timeoutMsg: 'Disband confirmation dialog did not appear' }
+  )
+  await clickOpenConfirmDialog()
 
   await browser.waitUntil(
     async () => (await hasTestId('mesh-mode-empty')) || (await hasTestId('mesh-mode-setup')),
@@ -173,32 +175,36 @@ describe('Mesh Workflow', () => {
     assertTmuxIsolation(process.env)
     tmuxPaneSnapshot = snapshotTmuxPanes()
 
+    // Regression: 960e61ec clears shared ownership after recovery's IPC
+    // disband, but this WebView can retain that deleted team's cached runtime.
+    // Establish a fresh project snapshot before probing tier-2 eligibility.
+    await browser.refresh()
     await waitForAppReady()
     mainApp = await ensureMainApp()
     if (!mainApp) {
-      tier2SkipReason = 'Main app unavailable'
-      return
+      throw new Error('Main app unavailable: Mesh workflow requires the main app')
     }
 
     await waitForProjectsLoaded()
 
     const availability = await invokeCoordination('coordination_get_feature_availability')
+    // Regression: 5cebfef81 silently disabled both tier-2 cases on a transient
+    // probe failure. This sealed worker requires mesh/tmux: establish a hard
+    // precondition here so missing readiness fails the run, never its skip set.
     if (!availability.ok) {
-      tier2Enabled = false
-      tier2SkipReason = `Feature availability check failed: ${availability.error}`
-      return
+      throw new Error(`Mesh prerequisite check failed: ${availability.error}`)
     }
 
     const report = availability.result || {}
     assertWorkerMeshAvailable(report)
-    const canInitialize = report.canInitialize !== false
-    const meshAvailable = report.meshAvailable !== false
-    const tmuxAvailable = report.tmuxAvailable !== false
+    const canInitialize = report.canInitialize === true
+    const meshAvailable = report.meshAvailable === true
+    const tmuxAvailable = report.tmuxAvailable === true
     const blockingErrors = Array.isArray(report.blockingErrors) ? report.blockingErrors : []
 
     tier2Enabled = canInitialize && meshAvailable && tmuxAvailable && blockingErrors.length === 0
     if (!tier2Enabled) {
-      tier2SkipReason = blockingErrors[0] || 'Mesh or tmux unavailable'
+      throw new Error(`Mesh prerequisites unavailable: ${blockingErrors[0] || 'mesh/tmux readiness not confirmed'}`)
     }
   })
 
@@ -235,7 +241,10 @@ describe('Mesh Workflow', () => {
 
     it('shows blocking availability messaging when mesh is unavailable', async function () {
       if (!mainApp) return this.skip()
-      if (tier2Enabled) return this.skip()
+      if (tier2Enabled) {
+        console.log('[e2e][mesh-workflow] skipped unavailable-mesh messaging: worker has mesh and tmux installed')
+        return this.skip()
+      }
 
       await openMeshTab()
 
@@ -267,7 +276,7 @@ describe('Mesh Workflow', () => {
       if (!tier2Enabled) return this.skip()
 
       const setupReady = await ensureSetupMode()
-      if (!setupReady) return this.skip()
+      if (!setupReady) throw new Error(`Mesh setup precondition failed: ${tier2SkipReason}`)
 
       expect(await hasTestId('mesh-mode-setup')).toBe(true)
       // Regression: d35063e4 replaced the setup canvas with the roster builder
@@ -282,7 +291,7 @@ describe('Mesh Workflow', () => {
       if (!tier2Enabled) return this.skip()
 
       const setupReady = await ensureSetupMode()
-      if (!setupReady) return this.skip()
+      if (!setupReady) throw new Error(`Mesh setup precondition failed: ${tier2SkipReason}`)
 
       const teamName = `e2e-mesh-${uniqueSuffix}`
       const secondAgentName = `e2e-agent-${uniqueSuffix}`
@@ -311,6 +320,9 @@ describe('Mesh Workflow', () => {
         async () => await initializeButton.isEnabled(),
         { ...WAIT_MEDIUM, timeoutMsg: 'Initialize button never became enabled' }
       )
+      // Own the attempted fixture too, so partial initialization is cleaned up
+      // when a required runtime assertion fails below.
+      registerCreatedTeam(teamName)
       await initializeButton.click()
 
       await browser.waitUntil(
@@ -325,30 +337,19 @@ describe('Mesh Workflow', () => {
       )
 
       if (await hasTestId('mesh-init-failure')) {
-        const reason = `Mesh initialize failed: ${await (await $('[data-testid="mesh-init-failure"]')).getText()}`
-        tier2SkipReason = reason
-        console.warn(`[e2e][mesh-workflow] skipping tier2 initialize flow: ${reason}`)
-        this.skip()
-        return
+        throw new Error(`Mesh initialize failed: ${await (await $('[data-testid="mesh-init-failure"]')).getText()}`)
       }
       if (await hasTestId('mesh-error')) {
-        const reason = `Mesh error after initialize: ${await (await $('[data-testid="mesh-error"]')).getText()}`
-        tier2SkipReason = reason
-        console.warn(`[e2e][mesh-workflow] skipping tier2 initialize flow: ${reason}`)
-        this.skip()
-        return
+        throw new Error(`Mesh error after initialize: ${await (await $('[data-testid="mesh-error"]')).getText()}`)
       }
 
       const runtimeTitle = await $('[data-testid="mesh-runtime-title"]')
       expect(await runtimeTitle.isExisting()).toBe(true)
       createdTeamName = teamName
-      registerCreatedTeam(teamName)
 
       // Regression: 430e09ee removed the duplicate Add Agent button; runtime
       // additions now begin from the primary action.
-      await clickTestId('mesh-runtime-primary-action')
-      await browser.waitUntil(
-        async () => await hasTestId('mesh-add-agent-form'),
+      await clickRuntimeAddAgent(
         { ...WAIT_SHORT, timeoutMsg: 'Hot-add form did not appear' }
       )
 
@@ -410,7 +411,10 @@ describe('Mesh Workflow', () => {
 
     it('skips tier 2 when mesh prerequisites are unavailable', async function () {
       if (!mainApp) return this.skip()
-      if (tier2Enabled) return this.skip()
+      if (tier2Enabled) {
+        console.log('[e2e][mesh-workflow] skipped unavailable-prerequisite case: worker has mesh and tmux installed')
+        return this.skip()
+      }
       expect(typeof tier2SkipReason).toBe('string')
       expect(tier2SkipReason.length).toBeGreaterThan(0)
     })

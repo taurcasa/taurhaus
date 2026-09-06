@@ -8,6 +8,9 @@
  */
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
+import { clickUntil } from '../helpers/clickUntil.js'
+import { clickRuntimeAddAgent, unlockRuntimeAddAgent } from '../helpers/meshRuntime.js'
+import { isConfirmDialogOpen, clickOpenConfirmDialog } from '../helpers/confirmDialog.js'
 import { waitForProjectsLoaded, fastClick, clickTestId } from '../helpers/navigation.js'
 import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_XLONG } from '../helpers/timing.js'
@@ -187,23 +190,6 @@ async function clickLastTestId(testId) {
   return true
 }
 
-async function isConfirmDialogOpen() {
-  return await browser.execute(() => {
-    const dialogs = Array.from(document.querySelectorAll('[data-testid="confirm-dialog"]'))
-    return dialogs.some((dialog) => dialog instanceof HTMLDialogElement && dialog.open)
-  })
-}
-
-async function clickOpenConfirmDialog() {
-  const selector = 'dialog[open][data-testid="confirm-dialog"] [data-testid="confirm-dialog-confirm"]'
-  const confirm = await $(selector)
-  if (!(await confirm.isExisting()) || !(await confirm.isEnabled())) {
-    throw new Error('Open confirmation action was unavailable')
-  }
-  const clicked = await fastClick(selector)
-  if (!clicked) throw new Error('Open confirmation action was unavailable')
-}
-
 function skipRuntimeTest(testContext, reason) {
   blockedReason = reason
   console.log(`[e2e] runtime lane skipped: ${reason}`)
@@ -306,19 +292,13 @@ async function disbandRuntimeTeamIfE2E() {
     return false
   }
 
-  await clickLastTestId('mesh-runtime-more-toggle')
-  await browser.waitUntil(
-    async () => await hasTestId('mesh-runtime-disband'),
+  await clickUntil('mesh-runtime-more-toggle', 'mesh-runtime-disband',
     { ...WAIT_SHORT, timeoutMsg: 'Disband action did not appear' }
   )
-  await clickLastTestId('mesh-runtime-disband')
-  const confirmAppeared = await browser.waitUntil(
-    async () => await isConfirmDialogOpen(),
+  await clickUntil('mesh-runtime-disband', isConfirmDialogOpen,
     { ...WAIT_SHORT, timeoutMsg: 'Disband confirmation did not appear' }
-  ).then(() => true).catch(() => false)
-  if (confirmAppeared) {
-    await clickOpenConfirmDialog()
-  }
+  )
+  await clickOpenConfirmDialog()
 
   await browser.waitUntil(
     async () => (await hasTestId('mesh-mode-empty')) || (await hasTestId('mesh-mode-setup')),
@@ -641,25 +621,16 @@ describe('Template CRUD UI', () => {
         { ...WAIT_MODE, timeoutMsg: 'Role edit was not persisted' }
       )
 
-      await clickActiveSlideOverTestId('catalog-tab-roles')
-
-      // After save, some UI states stay in the catalog already; avoid a full
-      // close/reopen cycle here because it introduces slideover race flakiness.
-      let detailOpen = await hasTestId('template-role-detail')
-      if (!detailOpen) {
-        const openedDetail =
-          (await clickActiveSlideOverTestId(`role-inspect-${roleId}`)) ||
-          (await clickActiveSlideOverTestId(`role-template-card-${roleId}`))
-        if (!openedDetail) {
-          throw new Error(`Role inspect trigger missing for ${roleId}`)
-        }
-      }
-
-      await browser.waitUntil(
+      // Regression: 707ce88a tried inspection only once after persistence;
+      // the editor can still be yielding to the catalog at that point. Retry
+      // only the detail opener, never the save, and keep the existing deadline.
+      await clickUntil(
         async () => {
-          const detail = await $('[data-testid="template-role-detail"]')
-          return await detail.isExisting()
+          await clickActiveSlideOverTestId('catalog-tab-roles')
+          return (await clickActiveSlideOverTestId(`role-inspect-${roleId}`)) ||
+            (await clickActiveSlideOverTestId(`role-template-card-${roleId}`))
         },
+        'template-role-detail',
         { ...WAIT_MODE, timeoutMsg: 'Role detail panel did not open after edit' }
       )
     } finally {
@@ -833,12 +804,7 @@ describe('Template CRUD UI', () => {
       // banner in failure.png is usually the cleanup, not the cause — check
       // the app log for who issued the disband.
       try {
-        await browser.waitUntil(
-          async () => {
-            if (await hasTestId('mesh-add-agent-form')) return true
-            await clickTestId('mesh-runtime-primary-action')
-            return await hasTestId('mesh-add-agent-form')
-          },
+        await clickRuntimeAddAgent(
           { ...WAIT_XLONG, timeoutMsg: 'Add agent form did not open' }
         )
       } catch (error) {
@@ -848,12 +814,7 @@ describe('Template CRUD UI', () => {
         if (await hasTestId('mesh-mode-runtime')) throw error
         const rebuiltTeam = await ensureRuntimeMode(this)
         if (!rebuiltTeam) return
-        await browser.waitUntil(
-          async () => {
-            if (await hasTestId('mesh-add-agent-form')) return true
-            await clickTestId('mesh-runtime-primary-action')
-            return await hasTestId('mesh-add-agent-form')
-          },
+        await clickRuntimeAddAgent(
           { ...WAIT_XLONG, timeoutMsg: 'Add agent form did not open after team rebuild' }
         )
       }
@@ -888,10 +849,7 @@ describe('Template CRUD UI', () => {
       expect(await modelSelect.getAttribute('disabled')).not.toBeNull()
       expect(await descriptionInput.getAttribute('disabled')).not.toBeNull()
 
-      await clickTestId('mesh-add-agent-unlock-toggle')
-
-      await browser.waitUntil(
-        async () => (await (await $('[data-testid="mesh-add-agent-tool-select"]')).getAttribute('disabled')) === null,
+      await unlockRuntimeAddAgent(
         { ...WAIT_SHORT, timeoutMsg: 'Role-aware unlock did not re-enable editable fields' }
       )
 
@@ -919,18 +877,19 @@ describe('Template CRUD UI', () => {
 
       // Regression: acd3c5aa initialized a lead-only fixture but silently
       // skipped capture coverage unless an agent node happened to exist.
-      const firstRuntimeNode = (await $$('[data-testid="mesh-node-lead"], [data-testid="mesh-node-agent"]'))[0]
-      if (!firstRuntimeNode) throw new Error('Runtime node missing after initialization')
-
-      await firstRuntimeNode.click()
-      await browser.waitUntil(
-        async () => await hasTestId('mesh-node-detail-capture'),
+      await clickUntil(
+        async () => {
+          const firstRuntimeNode = (await $$('[data-testid="mesh-node-lead"], [data-testid="mesh-node-agent"]'))[0]
+          if (!firstRuntimeNode) throw new Error('Runtime node missing after initialization')
+          await firstRuntimeNode.click()
+        },
+        'mesh-node-detail-capture',
         { ...WAIT_MEDIUM, timeoutMsg: 'Runtime node detail capture button did not appear' }
       )
 
-      await clickLastTestId('mesh-node-detail-capture')
-      await browser.waitUntil(
-        async () => await hasTestId('mesh-capture-role-form'),
+      await clickUntil(
+        () => clickLastTestId('mesh-node-detail-capture'),
+        'mesh-capture-role-form',
         { ...WAIT_MEDIUM, timeoutMsg: 'Capture role dialog did not open' }
       )
 

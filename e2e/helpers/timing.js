@@ -1,3 +1,5 @@
+import { RUNTIME_STATUS_POLL_MS } from '../../src/lib/components/meshTabGate.svelte.js'
+
 /**
  * Shared timing constants for E2E tests.
  *
@@ -79,3 +81,19 @@ export const WAIT_LONG = { timeout: TIMEOUT_LONG, interval: POLL_SLOW }
 
 /** For extra-heavy operations (full index rebuild, large file tree). */
 export const WAIT_XLONG = { timeout: TIMEOUT_XLONG, interval: POLL_SLOW }
+
+// Regression: 430e09ee budgeted recovery state as a 20/25s one-off wait.
+// Rust's IDLE_SCAN_INTERVAL in daemon/session_activity.rs (not JS-importable).
+const IDLE_SCANNER_CADENCE_MS = 1_500
+// Worker-load variance: queued IPC and process probes can consume several
+// nominal scan periods. The 0.9.1 audit observed the old 20/25s budgets fail;
+// 20s is conservative headroom, not a measured latency percentile. The 28s
+// unit boundary is injected evidence, not a wall-clock measurement.
+const WORKER_LOAD_MARGIN_MS = 20_000
+// 4 idle scans + 2 imported UI polls + worker-load margin:
+// 4 * 1500 + 2 * 2000 + 20000 = 30000ms.
+// Use only for scanner/roster propagation, not local UI or command completion.
+export const WAIT_MESH_PROPAGATION = {
+  timeout: 4 * IDLE_SCANNER_CADENCE_MS + 2 * RUNTIME_STATUS_POLL_MS + WORKER_LOAD_MARGIN_MS,
+  interval: POLL_SLOW,
+}

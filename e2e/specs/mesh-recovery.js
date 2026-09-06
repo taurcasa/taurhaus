@@ -14,9 +14,12 @@ import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
+import { clickUntil } from '../helpers/clickUntil.js'
+import { clickRuntimeAddAgent } from '../helpers/meshRuntime.js'
+import { isConfirmDialogOpen, clickOpenConfirmDialog } from '../helpers/confirmDialog.js'
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
 import { setInlineBuilderTeamName } from '../helpers/meshBuilder.js'
-import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
+import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG, WAIT_MESH_PROPAGATION, TIMEOUT_BOOT } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 import { assertWorkerMeshAvailable } from '../helpers/workerEnv.js'
@@ -196,10 +199,7 @@ async function openMeshTab() {
 }
 
 async function openRuntimeOverflow() {
-  if (await hasTestId('mesh-runtime-more-menu')) return
-  await clickTestId('mesh-runtime-more-toggle')
-  await browser.waitUntil(
-    async () => await hasTestId('mesh-runtime-more-menu'),
+  await clickUntil('mesh-runtime-more-toggle', 'mesh-runtime-more-menu',
     { ...WAIT_SHORT, timeoutMsg: 'Mesh runtime overflow menu did not open' }
   )
 }
@@ -215,12 +215,11 @@ async function disbandRuntimeTeamIfSafe() {
   }
 
   await openRuntimeOverflow()
-  await clickTestId('mesh-runtime-disband')
-  await browser.waitUntil(
-    async () => await hasTestId('confirm-dialog'),
+  await clickUntil('mesh-runtime-disband',
+    isConfirmDialogOpen,
     { ...WAIT_SHORT, timeoutMsg: 'Disband confirmation dialog did not appear' }
   )
-  await clickTestId('confirm-dialog-confirm')
+  await clickOpenConfirmDialog()
 
   await browser.waitUntil(
     async () => (await hasTestId('mesh-mode-empty')) || (await hasTestId('mesh-mode-setup')),
@@ -323,7 +322,7 @@ async function waitForRuntimeUi({ teamName, stateCopy, primaryLabel, summaryIncl
 
       return true
     },
-    { ...WAIT_XLONG, timeoutMsg: `Mesh runtime UI did not settle to expected state for ${teamName}` }
+    { ...WAIT_MESH_PROPAGATION, timeoutMsg: `Mesh runtime UI did not settle to expected state for ${teamName}` }
   )
 }
 
@@ -432,7 +431,7 @@ function countOfflineMembers(status) {
   }).length
 }
 
-async function waitForOfflineMemberCount(teamName, expectedCount, timeoutMs = 20_000) {
+async function waitForOfflineMemberCount(teamName, expectedCount, timeoutMs = WAIT_MESH_PROPAGATION.timeout) {
   await browser.waitUntil(
     async () => {
       const status = await getLiveTeamStatus(teamName)
@@ -440,13 +439,13 @@ async function waitForOfflineMemberCount(teamName, expectedCount, timeoutMs = 20
     },
     {
       timeout: timeoutMs,
-      interval: WAIT_MEDIUM.interval,
+      interval: WAIT_MESH_PROPAGATION.interval,
       timeoutMsg: `Offline member count for ${teamName} did not become ${expectedCount}`,
     }
   )
 }
 
-async function waitForProjectRuntimeState(projectPath, teamName, expectedState, timeoutMs = 20_000) {
+async function waitForProjectRuntimeState(projectPath, teamName, expectedState, timeoutMs = WAIT_MESH_PROPAGATION.timeout) {
   await browser.waitUntil(
     async () => {
       const snapshot = await getProjectMeshSnapshot(projectPath)
@@ -456,7 +455,7 @@ async function waitForProjectRuntimeState(projectPath, teamName, expectedState, 
     },
     {
       timeout: timeoutMs,
-      interval: WAIT_MEDIUM.interval,
+      interval: WAIT_MESH_PROPAGATION.interval,
       timeoutMsg: `Project mesh snapshot for ${teamName} did not enter ${expectedState}`,
     }
   )
@@ -586,7 +585,7 @@ async function ensureRuntimeIsActive(teamName) {
   const liveStatus = await getLiveTeamStatus(teamName)
   if (countOfflineMembers(liveStatus) > 0) {
     await invokeTauriOrThrow('coordination_resume_team', { request: { teamName } })
-    await waitForOfflineMemberCount(teamName, 0, 25_000)
+    await waitForOfflineMemberCount(teamName, 0)
   }
 
   await openMeshTab()
@@ -620,29 +619,16 @@ async function hasAgentNodeNamed(name) {
 }
 
 async function clickAgentNodeByName(name) {
-  const existingDetail = await $('[data-testid="mesh-node-detail-name"]')
-  if (await existingDetail.isExisting()) {
-    const currentName = await existingDetail.getText()
-    if (currentName.includes(name)) return true
-  }
-
-  const clicked = await browser.waitUntil(
+  await clickUntil(
     async () => {
       const nodes = await $$('[data-testid="mesh-node-agent"]')
       for (const node of nodes) {
         if ((await node.getText()).includes(name)) {
           await node.click()
-          return true
+          return
         }
       }
-      return false
     },
-    { ...WAIT_MEDIUM, timeoutMsg: `Mesh agent node "${name}" did not appear` }
-  ).catch(() => false)
-
-  if (!clicked) return false
-
-  await browser.waitUntil(
     async () => {
       const detail = await $('[data-testid="mesh-node-detail"]')
       if (!(await detail.isExisting())) return false
@@ -652,22 +638,12 @@ async function clickAgentNodeByName(name) {
     },
     { ...WAIT_MEDIUM, timeoutMsg: `Mesh node detail for "${name}" did not open` }
   )
-
-  return true
 }
 
 async function addAgentWithName(name) {
-  if (!(await hasTestId('mesh-add-agent-form'))) {
-    if (await hasTestId('mesh-runtime-add-agent')) {
-      await clickTestId('mesh-runtime-add-agent')
-    } else {
-      await clickTestIdAllowingDriverTimeout('mesh-runtime-primary-action')
-    }
-    await browser.waitUntil(
-      async () => await hasTestId('mesh-add-agent-form'),
-      { ...WAIT_SHORT, timeoutMsg: 'Add-agent form did not open' }
-    )
-  }
+  await clickRuntimeAddAgent(
+    { ...WAIT_SHORT, timeoutMsg: 'Add-agent form did not open' }
+  )
 
   const selectedRole = await selectFirstEnabledRoleCard()
   if (!selectedRole) {
@@ -704,14 +680,16 @@ async function addAgentWithName(name) {
 
   await browser.waitUntil(
     async () => await hasAgentNodeNamed(name),
-    { ...WAIT_XLONG, timeoutMsg: `Re-added agent "${name}" did not appear in the mesh` }
+    { ...WAIT_MESH_PROPAGATION, timeoutMsg: `Re-added agent "${name}" did not appear in the mesh` }
   )
 
   return { ok: true, error: null }
 }
 
 describe('Mesh Recovery', function () {
-  this.timeout(120_000)
+  // Five propagation waits + runtime-title wait + reload boot + initialize
+  // + 10s UI margin; the Mocha deadline must not truncate the inner waits.
+  this.timeout(5 * WAIT_MESH_PROPAGATION.timeout + 45_000 + TIMEOUT_BOOT + WAIT_XLONG.timeout + 10_000)
 
   before(async function () {
     assertTmuxIsolation(process.env)
@@ -773,7 +751,6 @@ describe('Mesh Recovery', function () {
   it('shows cold-resume controls after a full team stop and reload', async function () {
     if (!mainApp) return this.skip()
     if (!tier2Enabled) return this.skip()
-    this.timeout(120_000)
 
     const initialized = await initializeRuntimeTeam()
     expect(initialized).toBeTruthy()
@@ -792,8 +769,8 @@ describe('Mesh Recovery', function () {
     expect(paneIds).not.toContain(keeperPaneId)
 
     killPanes(paneIds)
-    await waitForOfflineMemberCount(teamName, paneIds.length, 25_000)
-    await waitForProjectRuntimeState(projectPath, teamName, 'coldResume', 25_000)
+    await waitForOfflineMemberCount(teamName, paneIds.length)
+    await waitForProjectRuntimeState(projectPath, teamName, 'coldResume')
 
     await reloadAppShell()
     await openMeshTab()
@@ -805,7 +782,7 @@ describe('Mesh Recovery', function () {
     })
 
     await clickTestIdAllowingDriverTimeout('mesh-runtime-primary-action')
-    await waitForOfflineMemberCount(teamName, 0, 25_000)
+    await waitForOfflineMemberCount(teamName, 0)
     await waitForRuntimeUi({
       teamName,
       stateCopy: 'Team running normally',
@@ -836,9 +813,9 @@ describe('Mesh Recovery', function () {
 
     killPane(targetPaneId)
 
-    await waitForOfflineMemberCount(teamName, 1, 25_000)
+    await waitForOfflineMemberCount(teamName, 1)
     if (projectPath) {
-      await waitForProjectRuntimeState(projectPath, teamName, 'degraded', 25_000)
+      await waitForProjectRuntimeState(projectPath, teamName, 'degraded')
     }
 
     await openMeshTab()
@@ -855,11 +832,11 @@ describe('Mesh Recovery', function () {
     expect(runtimeUi.summary).toContain('1 stopped')
     expect(await hasTestId('mesh-runtime-add-agent')).toBe(true)
 
-    const selected = await clickAgentNodeByName(targetMember.name)
-    expect(selected).toBe(true)
+    await clickAgentNodeByName(targetMember.name)
+    expect(await (await $('[data-testid="mesh-node-detail-name"]')).getText()).toContain(targetMember.name)
     await browser.waitUntil(
       async () => (await (await $('[data-testid="mesh-node-detail-status"]')).getText()).includes('Offline'),
-      { ...WAIT_LONG, timeoutMsg: `Mesh node detail for ${targetMember.name} did not show Offline` }
+      { ...WAIT_MESH_PROPAGATION, timeoutMsg: `Mesh node detail for ${targetMember.name} did not show Offline` }
     )
     expect(await (await $('[data-testid="mesh-node-detail-focus"]')).isEnabled()).toBe(false)
   })
