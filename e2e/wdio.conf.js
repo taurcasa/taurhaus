@@ -63,6 +63,7 @@ import {
   prepareWorkerHome,
 } from './helpers/workerEnv.js'
 import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
+import { needsWizard, seedOnboarding, invokeApp } from './helpers/onboarding.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
@@ -651,9 +652,21 @@ export const config = {
     await waitForWebDriverReady('127.0.0.1', wdioPort)
   },
 
-  before() {
+  async before(_capabilities, specs) {
     // WebKitWebDriver and the app exist only after WDIO creates the session.
     refreshOwnedProcessRecords()
+    if (!needsWizard(specs)) {
+      await browser.waitUntil(
+        () => browser.execute(() => Boolean(window.__TAURI_INTERNALS__)),
+        { timeout: 30_000, timeoutMsg: 'Tauri setup IPC unavailable' }
+      )
+      await seedOnboarding(invokeApp, process.env.E2E_PROJECTS_DIR)
+      await browser.refresh()
+      await $('[data-testid="tab-overview"]').waitForExist({ timeout: 30_000 })
+      if (await $('[data-testid="first-run-wizard"]').isExisting()) {
+        throw new Error('Seeded root returned to onboarding after reload')
+      }
+    }
   },
 
   /**
