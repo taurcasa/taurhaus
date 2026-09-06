@@ -54,6 +54,16 @@ export const CODEX_SCRATCH_SPECS = [
 export const paidSpecs = [...CODEX_SCRATCH_SPECS]
 export const captureSpecs = ['general-screenshots.js', 'readme-screenshots.js', 'mesh-screenshots.js']
 
+/**
+ * Runtime UI specs whose workers install inert-but-alive CLI stubs instead of
+ * the exiting blockers: their tests open runtime member surfaces (Add Agent,
+ * hot-add) that only render while mesh members stay alive, without ever
+ * driving a provider turn. Manifest authority consumed by wdio.conf.js
+ * `beforeSession` — naming policy here keeps a spec rename from silently
+ * reverting those workers to exit blockers.
+ */
+export const PERSISTENT_HARNESS_SPECS = ['template-crud-ui.js', 'mesh-workflow.js']
+
 /** Spec files present in `specsDir`, sorted. */
 export function listSpecFiles(specsDir) {
   return readdirSync(specsDir).filter(name => name.endsWith('.js')).sort()

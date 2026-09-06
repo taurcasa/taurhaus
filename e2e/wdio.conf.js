@@ -54,7 +54,7 @@ import {
   findAvailableWorkerDaemonPort,
   prepareWorkerHome,
 } from './helpers/workerEnv.js'
-import { CODEX_SCRATCH_SPECS, buildSpecList, captureSpecs, listSpecFiles, paidSpecs } from './specList.js'
+import { CODEX_SCRATCH_SPECS, PERSISTENT_HARNESS_SPECS, buildSpecList, captureSpecs, listSpecFiles, paidSpecs } from './specList.js'
 import { needsWizard, seedOnboarding, invokeApp } from './helpers/onboarding.js'
 import { declaredTestExclusions, finishRun, selectedSpecFiles, updateRunSummary } from './runSummary.js'
 
@@ -551,15 +551,16 @@ export const config = {
     try {
       const selected = selectedSpecFiles(launchConfig)
       updateRunSummary(summary => {
-        summary.exclusions = listSpecFiles(specsDir).filter(name => !selected.some(path => path.endsWith(`/${name}`))).map(spec => ({
-          spec,
-          reason: paidSpecs.includes(spec) ? 'paid; explicitly named only'
-            : captureSpecs.includes(spec) ? 'on-demand documentation capture'
+        summary.exclusions = listSpecFiles(specsDir).filter(name => !selected.some(path => path.endsWith(`/${name}`))).map(name => ({
+          kind: 'file',
+          spec: relative(projectRoot, resolve(specsDir, name)),
+          reason: paidSpecs.includes(name) ? 'paid; explicitly named only'
+            : captureSpecs.includes(name) ? 'on-demand documentation capture'
               : 'explicit suite selection/exclusion',
         }))
         summary.exclusions.push(...declaredTestExclusions.filter(entry =>
           selected.some(path => relative(projectRoot, path) === entry.spec)
-        ))
+        ).map(entry => ({ kind: 'test', ...entry })))
         summary.specs = Object.fromEntries(selected.map(path => [relative(projectRoot, path), null]))
       })
 
@@ -633,7 +634,9 @@ export const config = {
       meshBinaryPath: operatorMeshBinaryPath,
       blockRealClis: !paidCodexWorker,
       // These runtime UI specs require living members, without provider turns.
-      persistentHarnesses: specs.some(spec => /\/(template-crud-ui|mesh-workflow)\.js$/.test(spec)),
+      persistentHarnesses: (specs ?? []).some(spec =>
+        PERSISTENT_HARNESS_SPECS.some(name => resolve(spec).endsWith(`/${name}`))
+      ),
     })
     tauriDriverStderrBuffer = ''
     sessionAppLogPaths = [

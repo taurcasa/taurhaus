@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
-import { buildSpecList, captureSpecs, listSpecFiles, paidSpecs, specGroups } from './specList.js'
+import { PERSISTENT_HARNESS_SPECS, buildSpecList, captureSpecs, listSpecFiles, paidSpecs, specGroups } from './specList.js'
 
 // Vitest runs from the repository root (see CLAUDE.md), which is what makes
 // this the real specs directory rather than a fixture.
@@ -231,5 +231,17 @@ describe('default WDIO spec list', () => {
     expect(Object.keys(specGroups)).toEqual(
       expect.arrayContaining(['ui', 'templates', 'mesh', 'tmux'])
     )
+  })
+
+  // Regression: round 2 hardcoded the persistent-harness opt-in as an inline
+  // regex in wdio.conf.js; renaming either spec would have silently reverted
+  // its worker to the exiting CLI blockers and reproduced the Add Agent red.
+  it('names persistent-harness specs that exist and sit in a behavioral group', () => {
+    const present = listSpecFiles(specsDir)
+    expect(PERSISTENT_HARNESS_SPECS.length).toBeGreaterThan(0)
+    for (const name of PERSISTENT_HARNESS_SPECS) {
+      expect(present).toContain(name)
+      expect(groupedNames()).toContain(name)
+    }
   })
 })

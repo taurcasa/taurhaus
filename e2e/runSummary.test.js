@@ -1,10 +1,38 @@
 import { describe, expect, it, vi } from 'vitest'
-import { summarizeSuite, coverageComplete, selectedSpecFiles, finishRun, mochaHooks } from './runSummary.js'
+import { declaredTestExclusions, summarizeSuite, coverageComplete, selectedSpecFiles, finishRun, mochaHooks } from './runSummary.js'
 import { resolve } from 'node:path'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 
 describe('suite run accounting', () => {
+  // A typo in a declared exclusion otherwise fails closed only after a full
+  // ~5-minute tier-1 lane; this moves the failure into vitest. The fullTitle
+  // is describe prefixes + leaf title, so match the longest suffix that
+  // appears verbatim in the spec source (the it() title at minimum).
+  it('declares exclusions whose titles exist in their spec sources', () => {
+    for (const entry of declaredTestExclusions) {
+      const source = readFileSync(resolve(entry.spec), 'utf8')
+      const words = entry.test.split(' ')
+      const found = words.some((_, i) => {
+        const suffix = words.slice(i).join(' ')
+        return suffix.length >= 12 && source.includes(suffix)
+      })
+      expect(found, `${entry.spec}: "${entry.test}" not found in source`).toBe(true)
+    }
+  })
+
+  // The inherited pre-reform conditional skips are enumerable debt phase 3
+  // retires; the known-issue entries are tracked by the resume-verification
+  // product issue instead. Both counts may only ever go DOWN — raising a cap
+  // requires justifying a new declared exclusion in review.
+  it('caps the declared exclusion debt so it can only retire', () => {
+    const inherited = declaredTestExclusions.filter(e => e.reason.startsWith('Inherited pre-reform'))
+    const knownIssue = declaredTestExclusions.filter(e => e.reason.startsWith('Known issue'))
+    expect(inherited.length + knownIssue.length).toBe(declaredTestExclusions.length)
+    expect(inherited.length).toBeLessThanOrEqual(20)
+    expect(knownIssue.length).toBeLessThanOrEqual(3)
+  })
+
   // Regression: 3329e3e2 counted inherited resume-verification exclusions as
   // unexplained skips; 97000c80 then reached cold-resume on every breadth run.
   it('accounts for the named resume-verification exclusion without inventing execution', () => {

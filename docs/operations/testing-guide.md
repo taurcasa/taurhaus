@@ -138,7 +138,7 @@ unknown skips still fail accounting. Existing conditional behavior is unchanged.
 
 - `Settings Persistence terminal settings terminal emulator change persists after close and reopen`
 
-**`mesh-recovery.js` (3):** The first two are permanent resume-verification product-issue skips; the last is an inverse-availability skip because mesh/tmux are available. These are not three equivalent propagation flakes.
+**`mesh-recovery.js` (3):** The first two are permanent resume-verification product-issue skips; the last is an inverse-availability skip because mesh/tmux are available. These are not three equivalent propagation flakes. Net effect with cold-resume declared below: **mesh-recovery contributes zero executed tests to tier-1** until the resume-verification product issue is fixed — all four of its registrations are declared exclusions, so a green run carries no executed recovery evidence.
 
 - `Mesh Recovery surfaces degraded runtime state after a member pane dies`
 - `Mesh Recovery surfaces duplicate-add conflicts and lets the operator recover by changing the name`
