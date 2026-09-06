@@ -499,7 +499,7 @@ fn frontier_catalog_reconciles_revision_four_roles_and_seeds_new_roles() {
     let store = TemplateStore::with_packaged_builtins_dir(app_data.clone(), builtins.clone());
     store.ensure_directories().expect("ensure dirs");
 
-    let route_block = "\n  TWO-FAMILY REVIEW ROUTE\n  Claude-written work routes to a GPT-family reviewer; GPT-family work routes to a Claude-family reviewer. Architecture-bearing Astra output also gets a\n  Claude-family altitude pass. Record deliberate same-family exceptions rather\n  than presenting them as independent review.\n";
+    let route_block = "\n  TWO-FAMILY REVIEW ROUTE\n  Claude-written work routes to a GPT-family reviewer; GPT-family work\n  routes to a Claude-family reviewer. Architecture-bearing Astra output\n  also gets a Claude-family altitude pass. Record deliberate same-family\n  exceptions rather than presenting them as independent review.\n";
     let product_block = "\n  PRODUCT-REVIEW SEAT\n  This is the product-review seat and the one Opus seat in the decided default\n  topology. Review GPT-family product work with an independent Claude-family\n  lens; do not expand this role into a second core cross-file seat.\n";
     for (name, current_version, previous_version, added_block, expected_hash) in [
         (

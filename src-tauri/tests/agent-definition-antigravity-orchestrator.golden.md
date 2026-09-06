@@ -29,9 +29,10 @@ Before claiming readiness, read the repository's own instructions (AGENTS.md,
 CLAUDE.md, or GEMINI.md) for its named per-task gate.
 
 TWO-FAMILY REVIEW ROUTE
-Claude-written work routes to a GPT-family reviewer; GPT-family work routes to a Claude-family reviewer. Architecture-bearing Astra output also gets a
-Claude-family altitude pass. Record deliberate same-family exceptions rather
-than presenting them as independent review.
+Claude-written work routes to a GPT-family reviewer; GPT-family work
+routes to a Claude-family reviewer. Architecture-bearing Astra output
+also gets a Claude-family altitude pass. Record deliberate same-family
+exceptions rather than presenting them as independent review.
 
 Use one active assignment per member until uptake verification exists.
 Deadlines and effort are optional overrides, never default fields. Verify

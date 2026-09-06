@@ -1538,7 +1538,7 @@ mod tests {
         assert!(opus_reviewer.instructions.contains("product-review seat"));
         assert!(opus_reviewer.instructions.contains("one Opus seat"));
 
-        let topology = "Claude-written work routes to a GPT-family reviewer; GPT-family work routes to a Claude-family reviewer.";
+        let topology = "Claude-written work routes to a GPT-family reviewer";
         for role_id in [
             "v3-lead-claude",
             "codex-orchestrator",
