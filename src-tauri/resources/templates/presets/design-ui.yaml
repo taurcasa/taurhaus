@@ -1,0 +1,61 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: design-ui
+name: Design-led UI
+description: "Fable owns creative direction while a Fable incumbent and Astra challenger implement the same approved slice; the opposite-family judges review both outputs independently."
+version: "1.0.0"
+lead_role_id: v3-lead-claude
+
+agent_slots:
+  - role_id: claude-design-lead
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: creative-direction
+  - role_id: v4-developer-claude
+    count: 1
+    project_binding: lead_project
+    overrides:
+      model: fable
+      reasoning_effort: high
+      name_pattern: ui-incumbent
+      focus_area: "Fable-incumbent implementation of an approved design direction"
+      instructions_append: |
+        DESIGN BAKE-OFF
+        Implement the same approved UI slice and evidence matrix as the Astra
+        challenger. Do not inspect or imitate the challenger's implementation.
+  - role_id: frontend-design-skill-developer
+    count: 1
+    project_binding: lead_project
+    overrides:
+      model: gpt-6-astra
+      reasoning_effort: high
+      name_pattern: ui-challenger
+      instructions_append: |
+        DESIGN BAKE-OFF
+        You are the Astra challenger. Implement the same approved UI slice and
+        evidence matrix as the Fable incumbent without inspecting its work.
+  - role_id: judge-astra
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: astra-visual-reviewer
+      instructions_append: |
+        VISUAL REVIEW
+        Apply the assignment's visual rubric to the Fable-incumbent result from
+        complete rendered evidence while preserving verdict isolation.
+  - role_id: judge-fable
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: fable-visual-reviewer
+      instructions_append: |
+        VISUAL REVIEW
+        Apply the assignment's visual rubric to the Astra-challenger result from
+        complete rendered evidence while preserving verdict isolation.
+
+defaults:
+  team_name_pattern: "{project}-design"
+  tmux_layout: tiled

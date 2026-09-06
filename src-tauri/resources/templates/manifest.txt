@@ -1,9 +1,15 @@
 # Closed catalog of templates shipped with this build. Paths are relative to this file.
+presets/batch-processing.yaml
 presets/dev-team.yaml
+presets/design-ui.yaml
 presets/full-team.yaml
 presets/grok-pair.yaml
 presets/pair.yaml
+presets/product-build.yaml
+presets/research-eval.yaml
 presets/research-team.yaml
+presets/security-audit.yaml
+presets/taurhaus-core.yaml
 roles/adversarial-reviewer-claude.yaml
 roles/antigravity-orchestrator.yaml
 roles/astra-architect.yaml

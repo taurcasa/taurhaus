@@ -1796,8 +1796,8 @@ mod tests {
         );
         assert_eq!(
             presets.len(),
-            5,
-            "expected exactly five built-in team presets"
+            11,
+            "expected exactly eleven built-in team presets"
         );
         assert!(
             presets.iter().any(|preset| preset.preset_id == "pair"),
@@ -1831,6 +1831,194 @@ mod tests {
                     panic!("preset '{}' failed validation: {err}", preset.preset_id)
                 });
         }
+    }
+
+    #[test]
+    fn frontier_presets_match_the_decided_blueprint_seatings() {
+        let roles = load_role_templates()
+            .into_iter()
+            .map(|role| (role.role_id.clone(), role))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let presets = load_team_presets()
+            .into_iter()
+            .map(|preset| (preset.preset_id.clone(), preset))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        let expected_rosters = [
+            (
+                "product-build",
+                "v3-lead-claude",
+                vec![
+                    ("astra-architect", 1),
+                    ("v4-developer-codex", 2),
+                    ("astra-heavy-implementer", 1),
+                    ("adversarial-reviewer-claude", 1),
+                    ("v3-architect-codex", 1),
+                ],
+            ),
+            (
+                "taurhaus-core",
+                "v3-lead-claude",
+                vec![
+                    ("v3-architect-codex", 1),
+                    ("v4-developer-codex", 1),
+                    ("astra-crossfile-reviewer", 1),
+                ],
+            ),
+            (
+                "security-audit",
+                "astra-security-auditor",
+                vec![("judge-fable", 1), ("v4-developer-codex", 1)],
+            ),
+            (
+                "research-eval",
+                "v3-lead-claude",
+                vec![
+                    ("claude-researcher", 1),
+                    ("v4-developer-grok", 1),
+                    ("judge-fable", 1),
+                    ("judge-astra", 1),
+                ],
+            ),
+            (
+                "batch-processing",
+                "codex-orchestrator",
+                vec![
+                    ("v4-developer-codex", 3),
+                    ("adversarial-reviewer-claude", 1),
+                ],
+            ),
+            (
+                "design-ui",
+                "v3-lead-claude",
+                vec![
+                    ("claude-design-lead", 1),
+                    ("v4-developer-claude", 1),
+                    ("frontend-design-skill-developer", 1),
+                    ("judge-astra", 1),
+                    ("judge-fable", 1),
+                ],
+            ),
+        ];
+
+        for (preset_id, lead_role_id, expected_slots) in expected_rosters {
+            let preset = presets
+                .get(preset_id)
+                .unwrap_or_else(|| panic!("missing frontier preset '{preset_id}'"));
+            assert_eq!(preset.lead_role_id, lead_role_id, "{preset_id} lead");
+            assert_eq!(
+                preset
+                    .agent_slots
+                    .iter()
+                    .map(|slot| (slot.role_id.as_str(), slot.count))
+                    .collect::<Vec<_>>(),
+                expected_slots,
+                "{preset_id} roster"
+            );
+        }
+
+        let core = &presets["taurhaus-core"];
+        assert_eq!(
+            core.agent_slots
+                .iter()
+                .filter(|slot| slot.role_id == "astra-crossfile-reviewer")
+                .map(|slot| slot.count)
+                .sum::<u32>(),
+            1,
+            "Astra should hold the core cross-file review seat solo"
+        );
+        assert!(
+            core.agent_slots
+                .iter()
+                .all(|slot| slot.role_id != "adversarial-reviewer-claude"),
+            "the decided core roster has no Opus reviewer"
+        );
+
+        let product = &presets["product-build"];
+        assert_eq!(
+            product
+                .agent_slots
+                .iter()
+                .filter(|slot| slot.role_id == "adversarial-reviewer-claude")
+                .map(|slot| slot.count)
+                .sum::<u32>(),
+            1,
+            "Product Build should carry the one Opus product-review seat"
+        );
+
+        let frontier_ids = [
+            "product-build",
+            "taurhaus-core",
+            "security-audit",
+            "research-eval",
+            "batch-processing",
+            "design-ui",
+        ];
+        let mut opus_seats = Vec::new();
+        for preset_id in frontier_ids {
+            let preset = &presets[preset_id];
+            let lead = &roles[&preset.lead_role_id];
+            let lead_model = preset
+                .lead_overrides
+                .as_ref()
+                .and_then(|overrides| overrides.model.as_deref())
+                .unwrap_or(&lead.defaults.model);
+            if lead_model == "opus" {
+                opus_seats.push((preset_id, "lead".to_string()));
+            }
+            for slot in &preset.agent_slots {
+                let role = &roles[&slot.role_id];
+                let model = slot
+                    .overrides
+                    .as_ref()
+                    .and_then(|overrides| overrides.model.as_deref())
+                    .unwrap_or(&role.defaults.model);
+                if model == "opus" {
+                    for _ in 0..slot.count {
+                        opus_seats.push((preset_id, slot.role_id.clone()));
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            opus_seats,
+            vec![(
+                "product-build",
+                "adversarial-reviewer-claude".to_string()
+            )],
+            "the decided frontier set keeps exactly one Opus seat"
+        );
+
+        let core_implementer = &core.agent_slots[1].overrides;
+        assert_eq!(
+            core_implementer
+                .as_ref()
+                .and_then(|overrides| overrides.reasoning_effort.as_deref()),
+            Some("high")
+        );
+        let batch = &presets["batch-processing"];
+        assert_eq!(
+            batch
+                .lead_overrides
+                .as_ref()
+                .and_then(|overrides| overrides.reasoning_effort.as_deref()),
+            Some("medium")
+        );
+        assert_eq!(
+            batch.agent_slots[0]
+                .overrides
+                .as_ref()
+                .and_then(|overrides| overrides.model.as_deref()),
+            Some("gpt-5.6-luna")
+        );
+        assert_eq!(
+            presets["design-ui"].agent_slots[2]
+                .overrides
+                .as_ref()
+                .and_then(|overrides| overrides.model.as_deref()),
+            Some("gpt-6-astra"),
+            "the design preset should seat Astra as the UI challenger"
+        );
     }
 
     #[test]
@@ -1875,7 +2063,17 @@ mod tests {
             );
         }
 
-        for preset in &presets {
+        let legacy_preset_ids = [
+            "dev-team",
+            "full-team",
+            "grok-pair",
+            "pair",
+            "research-team",
+        ];
+        for preset in presets
+            .iter()
+            .filter(|preset| legacy_preset_ids.contains(&preset.preset_id.as_str()))
+        {
             for slot in &preset.agent_slots {
                 assert!(
                     roles.iter().any(|role| role.role_id == slot.role_id),

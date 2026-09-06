@@ -1,0 +1,31 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: taurhaus-core
+name: taurhaus Core
+description: "Fable leads and architects daemon, wire, and concurrency work; Sol implements at high effort; Astra alone owns the cross-file review seat."
+version: "1.0.0"
+lead_role_id: v3-lead-claude
+
+agent_slots:
+  - role_id: v3-architect-codex
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: architect
+  - role_id: v4-developer-codex
+    count: 1
+    project_binding: lead_project
+    overrides:
+      reasoning_effort: high
+      name_pattern: implementer
+  - role_id: astra-crossfile-reviewer
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: crossfile-reviewer
+
+defaults:
+  team_name_pattern: "{project}-core"
+  tmux_layout: tiled
