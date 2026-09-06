@@ -127,7 +127,11 @@ block legitimate audit prompts.*
 | UI implementer | **Fable** (incumbent) vs **Astra** (challenger) | Astra's UI-geometric-correctness reports earn it a bake-off, not the seat |
 | Visual reviewer | the other frontier family | decorrelated eyes on aesthetics |
 
-## Role-template delta this implies (a later lane, post-discussion)
+## Role-template delta (shipped)
+
+**Status: shipped.** Bundled catalog revision 5 carries the decided roles,
+review routes, and six presets; the routing report also counts
+`oversize_diff` ledger rulings per role/model row.
 
 New bundled roles: Astra Architect, Astra Cross-File Reviewer, Astra Heavy
 Implementer (behavioral contract carries the anti-over-engineering guard and

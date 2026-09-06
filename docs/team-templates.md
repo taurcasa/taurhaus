@@ -407,22 +407,30 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
-- **Roles (16)**:
+- **Roles (22)**:
   - orchestration: `v3-lead-claude` (Fable 5.1), `codex-orchestrator` (GPT-5.6 Sol), and `antigravity-orchestrator` (the Antigravity/agy alternative)
-  - implementation: `v4-developer-claude`, `v4-developer-codex`, `v4-developer-agy`, `v4-developer-grok`, `quick-dev-codex`, and `frontend-design-skill-developer`
-  - review and decision support: `v3-architect-codex`, `adversarial-reviewer-claude`, `claude-product-checker`, `claude-design-lead`, `claude-researcher`, `docs-verifier-codex`, and `codex-qa`
-- **Presets (5)**:
+  - implementation: `v4-developer-claude`, `v4-developer-codex`, `v4-developer-agy`, `v4-developer-grok`, `quick-dev-codex`, `frontend-design-skill-developer`, and the diff-budgeted `astra-heavy-implementer`
+  - architecture, review, and decision support: `v3-architect-codex`, `adversarial-reviewer-claude`, `claude-product-checker`, `claude-design-lead`, `claude-researcher`, `docs-verifier-codex`, `codex-qa`, `astra-architect`, `astra-crossfile-reviewer`, `astra-security-auditor`, `judge-astra`, and `judge-fable`
+- **Presets (11)**:
   - `pair` — `v3-lead-claude` plus `quick-dev-codex`
   - `dev-team` — `v3-lead-claude` plus two `v4-developer-codex`
   - `full-team` — `v3-lead-claude` plus `v3-architect-codex` and two `v4-developer-codex`
   - `research-team` — `v3-lead-claude` plus `claude-researcher` and one `v4-developer-codex`
   - `grok-pair` — `v3-lead-claude` plus one `v4-developer-grok`
+  - `product-build` — the field-test roster: Fable lead and altitude reviewer, Astra architect and bounded heavy implementer, two Sol implementers, and the one Opus product reviewer
+  - `taurhaus-core` — Fable lead and architect, one high-effort Sol implementer, and Astra as the sole cross-file reviewer
+  - `security-audit` — Astra xhigh lead auditor, independent Fable counter-auditor, and one high-effort Sol fix implementer
+  - `research-eval` — Fable synthesis, Sol and Grok research lanes, and the isolated `judge-fable` / `judge-astra` pair
+  - `batch-processing` — Sol medium coordinator, three Luna workers, and a Fable medium sample reviewer
+  - `design-ui` — Fable creative direction, a Fable incumbent and Astra challenger implementation bake-off, and opposite-family visual judges
 
-Every preset names its lead explicitly, references only canonical role ids, and
-inherits model and effort from each role instead of pinning slot overrides. The
-historical `v3-lead-claude` and `v3-architect-codex` ids remain because presets
-already reference them; their bodies and versions carry the current playbook.
-Those frozen compatibility ids no longer indicate which harness runs the role.
+Every preset names its lead explicitly and references only canonical role ids.
+The original five presets inherit model and effort from their roles; the six
+frontier presets use narrow slot overrides where the blueprint calls for a
+different effort or a model bake-off. The historical `v3-lead-claude` and
+`v3-architect-codex` ids remain because presets already reference them; their
+bodies and versions carry the current playbook. Those frozen compatibility ids
+no longer indicate which harness runs the role.
 
 The architect and researcher are open model slots. Architect defaults to Fable 5.1
 with GPT-5.6 Sol named as the fallback; researcher defaults to session-proven Sol
@@ -431,11 +439,22 @@ Opus 5 and documents the candidate Sol-recall-then-Opus-verification variant.
 Switching one of these experiments is a field edit to the role's `defaults`, not
 a new role file.
 
+The dedicated frontier roles are fixed seats rather than open slots. Astra owns
+system architecture, distributed-context review, bounded cross-cutting
+implementation, and the lead security-audit lane. The heavy implementer cannot
+start without an objective diff budget; an unapproved excess is a review
+failure, and the reviewer records it with `mesh task ruling --kind
+oversize_diff` for the routing report. `judge-fable` and `judge-astra` receive
+the same material and must lock independent verdicts before either sees the
+other's result.
+
 Design is deliberately split: `claude-design-lead` owns creative direction
 (Fable 5.1 preferred, Gemini via Antigravity as the alternative), while
 `frontend-design-skill-developer` owns UI implementation (Sol preferred, Opus 5
 as the alternative). Both roles treat automated evidence as a pre-filter and
-state that UX conclusions require human validation.
+state that UX conclusions require human validation. The `design-ui` preset does
+not award Astra that seat: it runs the decided Fable-incumbent/Astra-challenger
+bake-off and routes each result to the other frontier family for visual review.
 
 These built-ins are most useful when you read them as lane definitions:
 

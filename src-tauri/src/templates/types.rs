@@ -1452,13 +1452,7 @@ mod tests {
                 "high",
                 "review",
             ),
-            (
-                "judge-fable",
-                CliTool::Claude,
-                "fable",
-                "high",
-                "review",
-            ),
+            ("judge-fable", CliTool::Claude, "fable", "high", "review"),
         ] {
             let role = roles
                 .get(role_id)
@@ -1982,10 +1976,7 @@ mod tests {
         }
         assert_eq!(
             opus_seats,
-            vec![(
-                "product-build",
-                "adversarial-reviewer-claude".to_string()
-            )],
+            vec![("product-build", "adversarial-reviewer-claude".to_string())],
             "the decided frontier set keeps exactly one Opus seat"
         );
 
@@ -2018,6 +2009,43 @@ mod tests {
                 .and_then(|overrides| overrides.model.as_deref()),
             Some("gpt-6-astra"),
             "the design preset should seat Astra as the UI challenger"
+        );
+    }
+
+    #[test]
+    fn frontier_template_docs_name_the_shipped_catalog() {
+        let guide = include_str!("../../../docs/team-templates.md");
+        for id in [
+            "astra-architect",
+            "astra-crossfile-reviewer",
+            "astra-heavy-implementer",
+            "astra-security-auditor",
+            "judge-astra",
+            "judge-fable",
+            "product-build",
+            "taurhaus-core",
+            "security-audit",
+            "research-eval",
+            "batch-processing",
+            "design-ui",
+        ] {
+            assert!(
+                guide.contains(&format!("`{id}`")),
+                "team template guide should list '{id}'"
+            );
+        }
+
+        let blueprint = include_str!("../../../docs/design/team-blueprints-frontier-era.md");
+        let delta = blueprint
+            .split_once("## Role-template delta")
+            .expect("role-template delta section")
+            .1
+            .split_once("## Decisions")
+            .expect("decisions after role-template delta")
+            .0;
+        assert!(
+            delta.contains("**Status: shipped.**"),
+            "blueprint role-template delta should be marked shipped"
         );
     }
 
