@@ -641,17 +641,18 @@ _install-daemon-from-build:
         fi
         echo "✓ Daemon stopped"
         # Process exit does not free the listener under WSL mirrored
-        # networking — the socket can linger past the PID (seen holding the
-        # whole 0.9.1 restart window). Gate the restart on the port actually
-        # being free, not on the process being gone.
+        # networking — the socket can linger past the PID. The hold is only
+        # visible at BIND level: during the linger a connect probe fails
+        # (looks free) and ss shows nothing, yet bind still returns EADDRINUSE
+        # (0.9.2 install proved this against a connect-probing gate). So the
+        # gate must attempt a real bind.
         PORT_FREE=false
         for i in $(seq 1 90); do
-            if ! (exec 3<>"/dev/tcp/127.0.0.1/$RESTART_PORT") 2>/dev/null; then
+            if python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',$RESTART_PORT)); s.close()" 2>/dev/null; then
                 PORT_FREE=true
                 break
             fi
-            exec 3>&- 3<&- || true
-            [ "$i" = 1 ] && echo "  · waiting for port $RESTART_PORT to be released…"
+            [ "$i" = 1 ] && echo "  · waiting for port $RESTART_PORT to be released (bind probe)…"
             sleep 1
         done
         if [ "$PORT_FREE" != true ]; then
