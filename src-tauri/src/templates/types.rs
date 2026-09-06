@@ -1494,10 +1494,11 @@ mod tests {
         assert!(heavy_contract.contains(
             "Exceeding the assignment's diff budget without prior lead approval is a review FAILURE, not a style note."
         ));
-        // Regression: 9398670f shipped a `mesh task ruling` command without
-        // the mesh 0.2.28-required `--value`, so the policy exited with rc=2.
+        // Regression: 33116f20 used `oversize_diff` as a mesh 0.2.28 ruling
+        // kind, but the closed kind vocabulary requires a `ruling` kind and
+        // records the telemetry discriminator in `field`.
         assert!(heavy_contract.contains(
-            "mesh task ruling <id> --kind oversize_diff --value failed --note <budget-and-actual>"
+            "mesh task ruling <id> --kind ruling --value failed --field oversize_diff --note <budget-and-actual>"
         ));
         assert!(heavy_contract.contains("so telemetry carries the incident"));
 
@@ -2037,6 +2038,11 @@ mod tests {
                 "team template guide should list '{id}'"
             );
         }
+        // Regression: 33116f20 corrected only the role template's command,
+        // leaving the guide to publish an invalid custom ruling kind.
+        assert!(guide.contains(
+            "mesh task ruling <id> --kind ruling --value failed --field oversize_diff --note <budget-and-actual>"
+        ));
 
         let blueprint = include_str!("../../../docs/design/team-blueprints-frontier-era.md");
         let header = blueprint

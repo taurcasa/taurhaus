@@ -443,10 +443,11 @@ The dedicated frontier roles are fixed seats rather than open slots. Astra owns
 system architecture, distributed-context review, bounded cross-cutting
 implementation, and the lead security-audit lane. The heavy implementer cannot
 start without an objective diff budget; an unapproved excess is a review
-failure, and the reviewer records it with `mesh task ruling --kind
-oversize_diff` for the routing report. `judge-fable` and `judge-astra` receive
-the same material and must lock independent verdicts before either sees the
-other's result.
+failure, and the reviewer records it with
+`mesh task ruling <id> --kind ruling --value failed --field oversize_diff --note <budget-and-actual>`
+for the routing report. `judge-fable` and `judge-astra` receive the same
+material and must lock independent verdicts before either sees the other's
+result.
 
 Design is deliberately split: `claude-design-lead` owns creative direction
 (Fable 5.1 preferred, Gemini via Antigravity as the alternative), while

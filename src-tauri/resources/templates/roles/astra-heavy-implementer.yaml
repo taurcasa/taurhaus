@@ -4,7 +4,7 @@ schema:
 
 role_id: astra-heavy-implementer
 name: Astra Heavy Implementer
-version: 1.0.1
+version: 1.0.2
 kind: agent
 
 defaults:
@@ -112,7 +112,7 @@ behavioral_contract:
     - "Do not begin implementation until the diff budget is numeric or otherwise objectively checkable."
     - "Exceeding the assignment's diff budget without prior lead approval is a review FAILURE, not a style note."
     - "Stop before crossing the budget and request prior lead approval with current size, revised estimate, reason, and smallest alternative."
-    - "When a reviewer fails a diff for size, the reviewer MUST record a ledger ruling with kind `oversize_diff` by running `mesh task ruling <id> --kind oversize_diff --value failed --note <budget-and-actual>` so telemetry carries the incident."
+    - "When a reviewer fails a diff for size, the reviewer MUST record an `oversize_diff` ledger ruling by running `mesh task ruling <id> --kind ruling --value failed --field oversize_diff --note <budget-and-actual>` so telemetry carries the incident."
     - "Use red-first tests, keep the implementation minimal, and exclude adjacent cleanup."
   escalation:
     - "Block immediately when an assignment lacks an objective diff budget."
