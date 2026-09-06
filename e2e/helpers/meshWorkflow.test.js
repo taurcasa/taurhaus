@@ -31,6 +31,7 @@ describe('Mesh workflow coverage preconditions', () => {
       isExisting: async () => !selector.includes('mesh-mode-gate') && !selector.includes('mesh-mode-runtime'),
     })))
     vi.stubGlobal('browser', {
+      refresh: vi.fn(),
       executeAsync: vi.fn(async () => ({ ok: true, result: available })),
       waitUntil: vi.fn(async (condition, options) => {
         if (await condition()) return true
@@ -81,6 +82,28 @@ describe('Mesh workflow coverage preconditions', () => {
     }))
     const context = { skip: vi.fn() }
     await cases.get('shows setup controls in setup mode').call(context)
+    expect(context.skip).not.toHaveBeenCalled()
+  })
+
+  // Regression: 960e61ec let sealed specs share cleanup, but the recovery
+  // teardown clears ownership after IPC disband while the view can still show
+  // that deleted team. The next spec must load fresh state before eligibility.
+  it('refreshes a stale runtime left by the previous spec before establishing setup', async () => {
+    let refreshed = false
+    browser.refresh.mockImplementation(async () => { refreshed = true })
+    browser.execute = vi.fn(async () => 'e2e-deleted-recovery-team')
+    $.mockImplementation(async (selector) => ({
+      isExisting: async () => {
+        if (/mesh-mode-gate|mesh-availability-blocking/.test(selector)) return false
+        if (selector.includes('mesh-mode-runtime')) return !refreshed
+        if (selector.includes('mesh-mode-setup')) return refreshed
+        return true
+      },
+    }))
+    await setup()
+    const context = { skip: vi.fn() }
+    await cases.get('shows setup controls in setup mode').call(context)
+    expect(browser.refresh).toHaveBeenCalledTimes(1)
     expect(context.skip).not.toHaveBeenCalled()
   })
 

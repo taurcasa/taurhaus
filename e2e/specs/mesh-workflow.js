@@ -175,6 +175,10 @@ describe('Mesh Workflow', () => {
     assertTmuxIsolation(process.env)
     tmuxPaneSnapshot = snapshotTmuxPanes()
 
+    // Regression: 960e61ec clears shared ownership after recovery's IPC
+    // disband, but this WebView can retain that deleted team's cached runtime.
+    // Establish a fresh project snapshot before probing tier-2 eligibility.
+    await browser.refresh()
     await waitForAppReady()
     mainApp = await ensureMainApp()
     if (!mainApp) {

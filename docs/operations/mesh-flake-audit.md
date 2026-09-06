@@ -212,3 +212,12 @@ and an already-unlocked test failed against the extracted single-click flow
 (2 failed / 4 passed). Unlock now uses the same target-first helper without
 changing the editable-field assertion or its timeout. Final proof restarts
 after this correction; the failed run is retained in the preliminary logs.
+
+The next sequence's second run exposed the original skip race as a hard
+failure: recovery had disbanded its team and cleared shared ownership, but the
+following spec still rendered the deleted team's cached runtime. The diagnostic
+was `Mesh setup precondition failed: Refusing to disband runtime team outside
+the sealed e2e group`. The workflow now refreshes once in `before`, then runs
+normal app readiness and availability checks against a fresh project snapshot.
+The ownership guard remains unchanged. A real-spec regression reproducing the
+stale view failed before this change (1 failed / 10 passed), then passed.
