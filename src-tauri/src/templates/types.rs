@@ -1275,6 +1275,10 @@ mod tests {
         let expected = [
             "adversarial-reviewer-claude",
             "antigravity-orchestrator",
+            "astra-architect",
+            "astra-crossfile-reviewer",
+            "astra-heavy-implementer",
+            "astra-security-auditor",
             "claude-design-lead",
             "claude-product-checker",
             "claude-researcher",
@@ -1289,6 +1293,8 @@ mod tests {
             "v4-developer-claude",
             "v4-developer-codex",
             "v4-developer-grok",
+            "judge-astra",
+            "judge-fable",
         ]
         .into_iter()
         .collect::<std::collections::BTreeSet<_>>();
@@ -1400,6 +1406,153 @@ mod tests {
                     role.role_id
                 );
             }
+        }
+    }
+
+    #[test]
+    fn frontier_roles_encode_the_decided_behavioral_contracts() {
+        let roles = load_role_templates()
+            .into_iter()
+            .map(|role| (role.role_id.clone(), role))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        for (role_id, tool, model, effort, mode) in [
+            (
+                "astra-architect",
+                CliTool::Codex,
+                "gpt-6-astra",
+                "high",
+                "architecture",
+            ),
+            (
+                "astra-crossfile-reviewer",
+                CliTool::Codex,
+                "gpt-6-astra",
+                "high",
+                "review",
+            ),
+            (
+                "astra-heavy-implementer",
+                CliTool::Codex,
+                "gpt-6-astra",
+                "high",
+                "implementation",
+            ),
+            (
+                "astra-security-auditor",
+                CliTool::Codex,
+                "gpt-6-astra",
+                "xhigh",
+                "review",
+            ),
+            (
+                "judge-astra",
+                CliTool::Codex,
+                "gpt-6-astra",
+                "high",
+                "review",
+            ),
+            ("judge-fable", CliTool::Claude, "fable", "high", "review"),
+        ] {
+            let role = roles
+                .get(role_id)
+                .unwrap_or_else(|| panic!("missing frontier role '{role_id}'"));
+            assert_eq!(role.defaults.cli_tool, tool, "{role_id} tool");
+            assert_eq!(role.defaults.model, model, "{role_id} model");
+            assert_eq!(
+                role.defaults.reasoning_effort.as_deref(),
+                Some(effort),
+                "{role_id} effort"
+            );
+            assert_eq!(role.mode.as_deref(), Some(mode), "{role_id} mode");
+        }
+
+        let architect = &roles["astra-architect"];
+        let architect_contract = format!(
+            "{}\n{}",
+            architect.instructions,
+            architect.behavioral_contract.execution.join("\n")
+        );
+        assert!(architect_contract.contains("system design"));
+        assert!(architect_contract.contains("interfaces"));
+        assert!(architect_contract.contains("cross-module consistency"));
+        assert!(architect_contract.contains("Claude-family altitude pass"));
+
+        let crossfile = &roles["astra-crossfile-reviewer"];
+        let crossfile_contract = format!(
+            "{}\n{}",
+            crossfile.instructions,
+            crossfile.behavioral_contract.execution.join("\n")
+        );
+        assert!(crossfile_contract.contains("distributed-context"));
+        assert!(crossfile_contract.contains("cross-module"));
+        assert!(crossfile_contract.contains("not a style lens"));
+
+        let heavy = &roles["astra-heavy-implementer"];
+        let heavy_contract = heavy.behavioral_contract.execution.join("\n");
+        assert!(heavy_contract.contains("Every assignment MUST state a diff budget."));
+        assert!(heavy_contract.contains(
+            "Exceeding the assignment's diff budget without prior lead approval is a review FAILURE, not a style note."
+        ));
+        // Regression: 33116f20 used `oversize_diff` as a mesh 0.2.28 ruling
+        // kind, but the closed kind vocabulary requires a `ruling` kind and
+        // records the telemetry discriminator in `field`.
+        assert!(heavy_contract.contains(
+            "mesh task ruling <id> --kind ruling --value failed --field oversize_diff --note <budget-and-actual>"
+        ));
+        assert!(heavy_contract.contains("so telemetry carries the incident"));
+
+        let security = &roles["astra-security-auditor"];
+        let security_contract = format!(
+            "{}\n{}\n{}",
+            security.instructions,
+            security.behavioral_contract.execution.join("\n"),
+            security.behavioral_contract.escalation.join("\n")
+        );
+        assert!(security_contract.contains("public-version refusal"));
+        assert!(security_contract.contains("mandatory Fable counter-audit"));
+
+        for role_id in ["judge-astra", "judge-fable"] {
+            let judge = &roles[role_id];
+            let contract = format!(
+                "{}\n{}",
+                judge.instructions,
+                judge.behavioral_contract.execution.join("\n")
+            );
+            assert!(contract.contains("same material"), "{role_id}");
+            assert!(
+                contract.contains("Never see the other judge's verdict before recording your own."),
+                "{role_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn existing_review_routes_encode_the_decided_two_family_topology() {
+        let roles = load_role_templates()
+            .into_iter()
+            .map(|role| (role.role_id.clone(), role))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        let opus_reviewer = &roles["adversarial-reviewer-claude"];
+        assert!(opus_reviewer.instructions.contains("product-review seat"));
+        assert!(opus_reviewer.instructions.contains("one Opus seat"));
+
+        let topology = "Claude-written work routes to a GPT-family reviewer";
+        for role_id in [
+            "v3-lead-claude",
+            "codex-orchestrator",
+            "antigravity-orchestrator",
+        ] {
+            let lead = &roles[role_id];
+            assert!(
+                lead.instructions.contains("TWO-FAMILY REVIEW ROUTE"),
+                "{role_id} should name its review-route topology"
+            );
+            assert!(
+                lead.instructions.contains(topology),
+                "{role_id} should route implementation across model families"
+            );
         }
     }
 
@@ -1641,8 +1794,8 @@ mod tests {
         );
         assert_eq!(
             presets.len(),
-            5,
-            "expected exactly five built-in team presets"
+            11,
+            "expected exactly eleven built-in team presets"
         );
         assert!(
             presets.iter().any(|preset| preset.preset_id == "pair"),
@@ -1679,6 +1832,245 @@ mod tests {
     }
 
     #[test]
+    fn frontier_presets_match_the_decided_blueprint_seatings() {
+        let roles = load_role_templates()
+            .into_iter()
+            .map(|role| (role.role_id.clone(), role))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let presets = load_team_presets()
+            .into_iter()
+            .map(|preset| (preset.preset_id.clone(), preset))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        let expected_rosters = [
+            (
+                "product-build",
+                "v3-lead-claude",
+                vec![
+                    ("astra-architect", 1),
+                    ("v4-developer-codex", 2),
+                    ("astra-heavy-implementer", 1),
+                    ("adversarial-reviewer-claude", 1),
+                    ("v3-architect-codex", 1),
+                ],
+            ),
+            (
+                "taurhaus-core",
+                "v3-lead-claude",
+                vec![
+                    ("v3-architect-codex", 1),
+                    ("v4-developer-codex", 1),
+                    ("astra-crossfile-reviewer", 1),
+                ],
+            ),
+            (
+                "security-audit",
+                "astra-security-auditor",
+                vec![("judge-fable", 1), ("v4-developer-codex", 1)],
+            ),
+            (
+                "research-eval",
+                "v3-lead-claude",
+                vec![
+                    ("claude-researcher", 1),
+                    ("v4-developer-grok", 1),
+                    ("judge-fable", 1),
+                    ("judge-astra", 1),
+                ],
+            ),
+            (
+                "batch-processing",
+                "codex-orchestrator",
+                vec![
+                    ("v4-developer-codex", 3),
+                    ("adversarial-reviewer-claude", 1),
+                ],
+            ),
+            (
+                "design-ui",
+                "v3-lead-claude",
+                vec![
+                    ("claude-design-lead", 1),
+                    ("v4-developer-claude", 1),
+                    ("frontend-design-skill-developer", 1),
+                    ("judge-astra", 1),
+                    ("judge-fable", 1),
+                ],
+            ),
+        ];
+
+        for (preset_id, lead_role_id, expected_slots) in expected_rosters {
+            let preset = presets
+                .get(preset_id)
+                .unwrap_or_else(|| panic!("missing frontier preset '{preset_id}'"));
+            assert_eq!(preset.lead_role_id, lead_role_id, "{preset_id} lead");
+            assert_eq!(
+                preset
+                    .agent_slots
+                    .iter()
+                    .map(|slot| (slot.role_id.as_str(), slot.count))
+                    .collect::<Vec<_>>(),
+                expected_slots,
+                "{preset_id} roster"
+            );
+        }
+
+        let core = &presets["taurhaus-core"];
+        assert_eq!(
+            core.agent_slots
+                .iter()
+                .filter(|slot| slot.role_id == "astra-crossfile-reviewer")
+                .map(|slot| slot.count)
+                .sum::<u32>(),
+            1,
+            "Astra should hold the core cross-file review seat solo"
+        );
+        assert!(
+            core.agent_slots
+                .iter()
+                .all(|slot| slot.role_id != "adversarial-reviewer-claude"),
+            "the decided core roster has no Opus reviewer"
+        );
+
+        let product = &presets["product-build"];
+        assert_eq!(
+            product
+                .agent_slots
+                .iter()
+                .filter(|slot| slot.role_id == "adversarial-reviewer-claude")
+                .map(|slot| slot.count)
+                .sum::<u32>(),
+            1,
+            "Product Build should carry the one Opus product-review seat"
+        );
+
+        let frontier_ids = [
+            "product-build",
+            "taurhaus-core",
+            "security-audit",
+            "research-eval",
+            "batch-processing",
+            "design-ui",
+        ];
+        let mut opus_seats = Vec::new();
+        for preset_id in frontier_ids {
+            let preset = &presets[preset_id];
+            let lead = &roles[&preset.lead_role_id];
+            let lead_model = preset
+                .lead_overrides
+                .as_ref()
+                .and_then(|overrides| overrides.model.as_deref())
+                .unwrap_or(&lead.defaults.model);
+            if lead_model == "opus" {
+                opus_seats.push((preset_id, "lead".to_string()));
+            }
+            for slot in &preset.agent_slots {
+                let role = &roles[&slot.role_id];
+                let model = slot
+                    .overrides
+                    .as_ref()
+                    .and_then(|overrides| overrides.model.as_deref())
+                    .unwrap_or(&role.defaults.model);
+                if model == "opus" {
+                    for _ in 0..slot.count {
+                        opus_seats.push((preset_id, slot.role_id.clone()));
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            opus_seats,
+            vec![("product-build", "adversarial-reviewer-claude".to_string())],
+            "the decided frontier set keeps exactly one Opus seat"
+        );
+
+        let core_implementer = &core.agent_slots[1].overrides;
+        assert_eq!(
+            core_implementer
+                .as_ref()
+                .and_then(|overrides| overrides.reasoning_effort.as_deref()),
+            Some("high")
+        );
+        let batch = &presets["batch-processing"];
+        assert_eq!(
+            batch
+                .lead_overrides
+                .as_ref()
+                .and_then(|overrides| overrides.reasoning_effort.as_deref()),
+            Some("medium")
+        );
+        assert_eq!(
+            batch.agent_slots[0]
+                .overrides
+                .as_ref()
+                .and_then(|overrides| overrides.model.as_deref()),
+            Some("gpt-5.6-luna")
+        );
+        assert_eq!(
+            presets["design-ui"].agent_slots[2]
+                .overrides
+                .as_ref()
+                .and_then(|overrides| overrides.model.as_deref()),
+            Some("gpt-6-astra"),
+            "the design preset should seat Astra as the UI challenger"
+        );
+    }
+
+    #[test]
+    fn frontier_template_docs_name_the_shipped_catalog() {
+        let guide = include_str!("../../../docs/team-templates.md");
+        for id in [
+            "astra-architect",
+            "astra-crossfile-reviewer",
+            "astra-heavy-implementer",
+            "astra-security-auditor",
+            "judge-astra",
+            "judge-fable",
+            "product-build",
+            "taurhaus-core",
+            "security-audit",
+            "research-eval",
+            "batch-processing",
+            "design-ui",
+        ] {
+            assert!(
+                guide.contains(&format!("`{id}`")),
+                "team template guide should list '{id}'"
+            );
+        }
+        // Regression: 33116f20 corrected only the role template's command,
+        // leaving the guide to publish an invalid custom ruling kind.
+        assert!(guide.contains(
+            "mesh task ruling <id> --kind ruling --value failed --field oversize_diff --note <budget-and-actual>"
+        ));
+
+        let blueprint = include_str!("../../../docs/design/team-blueprints-frontier-era.md");
+        let header = blueprint
+            .split_once("## What three days of Astra field data says")
+            .expect("blueprint status header")
+            .0;
+        // Regression: ab7dcd75 marked the delta shipped while the document
+        // header still said that none of the proposal was implemented.
+        assert!(
+            header.contains(
+                "**Status:** Decisions recorded 2026-09-06; role/preset delta shipped in catalog revision 5."
+            ) && !header.contains("nothing here is implemented"),
+            "blueprint header should reflect the shipped catalog"
+        );
+        let delta = blueprint
+            .split_once("## Role-template delta")
+            .expect("role-template delta section")
+            .1
+            .split_once("## Decisions")
+            .expect("decisions after role-template delta")
+            .0;
+        assert!(
+            delta.contains("**Status: shipped.**"),
+            "blueprint role-template delta should be marked shipped"
+        );
+    }
+
+    #[test]
     fn built_in_presets_use_only_the_canonical_roles() {
         let roles = load_role_templates();
         let presets = load_team_presets();
@@ -1698,6 +2090,10 @@ mod tests {
                 vec![("claude-researcher", 1), ("v4-developer-codex", 1)],
             ),
         ];
+        let expected_ids = expected
+            .iter()
+            .map(|(preset_id, _, _)| *preset_id)
+            .collect::<Vec<_>>();
 
         for (preset_id, version, expected_slots) in expected {
             let preset = presets
@@ -1720,7 +2116,15 @@ mod tests {
             );
         }
 
+        // Regression: 9e4081e1 scoped canonical-role validation to the old
+        // preset IDs while relaxing model/effort overrides for new presets.
         for preset in &presets {
+            assert!(
+                roles.iter().any(|role| role.role_id == preset.lead_role_id),
+                "preset '{}' references non-canonical lead role '{}'",
+                preset.preset_id,
+                preset.lead_role_id
+            );
             for slot in &preset.agent_slots {
                 assert!(
                     roles.iter().any(|role| role.role_id == slot.role_id),
@@ -1728,13 +2132,78 @@ mod tests {
                     preset.preset_id,
                     slot.role_id
                 );
+                if expected_ids.contains(&preset.preset_id.as_str()) {
+                    assert!(
+                        slot.overrides.as_ref().is_none_or(|overrides| {
+                            overrides.model.is_none() && overrides.reasoning_effort.is_none()
+                        }),
+                        "preset '{}' should inherit model and effort from role '{}'",
+                        preset.preset_id,
+                        slot.role_id
+                    );
+                }
+            }
+        }
+    }
+
+    // Regression: 9e4081e1 shipped the first bundled presets that pin models
+    // and efforts in slot overrides, and nothing validated those against
+    // ModelCatalog the way bundled role defaults are validated.
+    #[test]
+    fn bundled_preset_overrides_name_catalog_models_and_efforts() {
+        fn check_overrides(
+            preset_id: &str,
+            label: &str,
+            role: &RoleTemplate,
+            overrides: Option<&SlotOverrides>,
+        ) {
+            let Some(overrides) = overrides else { return };
+            let model = overrides
+                .model
+                .as_deref()
+                .unwrap_or(role.defaults.model.as_str());
+            let entry =
+                ModelCatalog::entry_for(role.defaults.cli_tool, model).unwrap_or_else(|| {
+                    panic!(
+                        "preset '{preset_id}' {label} pins unknown model '{model}' for {:?}",
+                        role.defaults.cli_tool
+                    )
+                });
+            assert!(
+                !entry.deprecated,
+                "preset '{preset_id}' {label} pins retired model '{model}'"
+            );
+            if let Some(effort) = overrides.reasoning_effort.as_deref() {
                 assert!(
-                    slot.overrides.as_ref().is_none_or(|overrides| {
-                        overrides.model.is_none() && overrides.reasoning_effort.is_none()
-                    }),
-                    "preset '{}' should inherit model and effort from role '{}'",
-                    preset.preset_id,
-                    slot.role_id
+                    entry.efforts.iter().any(|accepted| accepted == effort),
+                    "preset '{preset_id}' {label} effort '{effort}' is not accepted by '{model}'"
+                );
+            }
+        }
+
+        let roles = load_role_templates();
+        let presets = load_team_presets();
+        for preset in &presets {
+            let lead_role = roles
+                .iter()
+                .find(|role| role.role_id == preset.lead_role_id)
+                .expect("canonical lead role");
+            check_overrides(
+                &preset.preset_id,
+                "lead_overrides",
+                lead_role,
+                preset.lead_overrides.as_ref(),
+            );
+            for slot in &preset.agent_slots {
+                let role = roles
+                    .iter()
+                    .find(|role| role.role_id == slot.role_id)
+                    .expect("canonical slot role");
+                check_overrides(
+                    &preset.preset_id,
+                    &slot.role_id,
+                    role,
+                    slot.overrides.as_ref(),
                 );
             }
         }

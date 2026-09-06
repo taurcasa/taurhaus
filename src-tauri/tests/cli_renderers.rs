@@ -509,6 +509,7 @@ fn export_agent_definitions_cli_writes_generated_claude_agents_only() {
         "adversarial-reviewer-claude".to_string(),
         "claude-design-lead".to_string(),
         "claude-product-checker".to_string(),
+        "judge-fable".to_string(),
         "v3-architect-codex".to_string(),
         "v3-lead-claude".to_string(),
         "v4-developer-claude".to_string(),

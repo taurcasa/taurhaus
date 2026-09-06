@@ -1,11 +1,21 @@
 # Closed catalog of templates shipped with this build. Paths are relative to this file.
+presets/batch-processing.yaml
+presets/design-ui.yaml
 presets/dev-team.yaml
 presets/full-team.yaml
 presets/grok-pair.yaml
 presets/pair.yaml
+presets/product-build.yaml
+presets/research-eval.yaml
 presets/research-team.yaml
+presets/security-audit.yaml
+presets/taurhaus-core.yaml
 roles/adversarial-reviewer-claude.yaml
 roles/antigravity-orchestrator.yaml
+roles/astra-architect.yaml
+roles/astra-crossfile-reviewer.yaml
+roles/astra-heavy-implementer.yaml
+roles/astra-security-auditor.yaml
 roles/claude-design-lead.yaml
 roles/claude-product-checker.yaml
 roles/claude-researcher.yaml
@@ -13,6 +23,8 @@ roles/codex-orchestrator.yaml
 roles/codex-qa.yaml
 roles/docs-verifier-codex.yaml
 roles/frontend-design-skill-developer.yaml
+roles/judge-astra.yaml
+roles/judge-fable.yaml
 roles/quick-dev-codex.yaml
 roles/v3-architect-codex.yaml
 roles/v3-lead-claude.yaml

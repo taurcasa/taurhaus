@@ -1,0 +1,43 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: batch-processing
+name: Batch Processing
+description: "Sol coordinates a low-cost Luna worker pool while a Fable-overridden Claude reviewer spot-checks a declared sample without adding another Opus seat."
+version: "1.0.0"
+lead_role_id: codex-orchestrator
+lead_overrides:
+  reasoning_effort: medium
+  name_pattern: coordinator
+
+agent_slots:
+  - role_id: v4-developer-codex
+    count: 3
+    project_binding: lead_project
+    overrides:
+      model: gpt-5.6-luna
+      reasoning_effort: low
+      name_pattern: worker-{n}
+      focus_area: "Bounded mechanical batch execution with per-item evidence and deterministic output"
+      behavior_summary: "Processes assigned items independently, preserves ordering and failure evidence, and avoids redesigning the batch or absorbing exceptions."
+      instructions_append: |
+        BATCH OVERRIDE
+        This is a mechanical Luna worker lane. Process only the assigned shard,
+        preserve per-item success and failure evidence, and stop when an item
+        requires judgment or architecture outside the batch contract.
+  - role_id: adversarial-reviewer-claude
+    count: 1
+    project_binding: lead_project
+    overrides:
+      model: fable
+      reasoning_effort: medium
+      name_pattern: sample-reviewer
+      instructions_append: |
+        SAMPLE-REVIEW OVERRIDE
+        Review only the lead-declared representative sample and report whether
+        its failures require widening the sample or stopping the batch.
+
+defaults:
+  team_name_pattern: "{project}-batch"
+  tmux_layout: tiled

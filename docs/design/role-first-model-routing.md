@@ -256,7 +256,9 @@ actions, and terminal task observations with ruling presence. One
 multi-team-root reporting surface (`just routing-report [DAYS]`) rejoins those
 observations to the current task ledger and reports per `(role, model)` plus a
 per-model rollup. Ledger completion with a review ruling is `accepted`; bare
-completion is reported separately as `completed_unruled`. Tokens are not
+completion is reported separately as `completed_unruled`; an oversize-failure
+ruling (`field: oversize_diff`, `value: failed`) does not count as a review
+ruling and lands in the `oversize_diffs` column against the task owner instead. Tokens are not
 collected in this stage because harness surfaces differ; wall-time is the
 explicit cost proxy.
 

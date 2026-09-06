@@ -40,7 +40,7 @@ const DEFAULT_DEBOUNCE_WINDOW_SECS: i64 = 30;
 const FALLBACK_LOCK_RETRY_DELAY_MS: u64 = 20;
 const FALLBACK_LOCK_RETRY_ATTEMPTS: usize = 250;
 const TEMP_FILE_RANDOM_RETRY_ATTEMPTS: usize = 16;
-const BUILTIN_CATALOG_REVISION: u32 = 4;
+const BUILTIN_CATALOG_REVISION: u32 = 5;
 const PACKAGED_TEMPLATE_MANIFEST: &str = include_str!("../../../resources/templates/manifest.txt");
 
 const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n.lock.fallback\n";
@@ -63,6 +63,23 @@ const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n
 // so no fingerprint block exists for it; the recorded supersession below moves
 // stores directly from revision 1 bytes to the current revision.
 const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
+    // Revision 5: frontier-era review routing superseded these revision-4 bytes.
+    (
+        "roles/adversarial-reviewer-claude.yaml",
+        "114c1f0c2e190e54234be8b42ffbaa51e2a8254aa4260607c8b967c0027eb560",
+    ),
+    (
+        "roles/antigravity-orchestrator.yaml",
+        "621341ec4f9584273888f72798df59550953751ceb9555196603d5ff7e8fa2e8",
+    ),
+    (
+        "roles/codex-orchestrator.yaml",
+        "862bc8a777617f7159a7007fe0039dfc120fad9ec28b99284e598c3ba96bb9c3",
+    ),
+    (
+        "roles/v3-lead-claude.yaml",
+        "4bf49412425deacc87dbb9969942588d0a0db85ba2c95e0447a42bfd24d9bb8a",
+    ),
     // Revision 4: Fable 5.1 prose sweep superseded these revision-3 bytes.
     (
         "roles/v3-lead-claude.yaml",

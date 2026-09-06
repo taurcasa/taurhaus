@@ -1,0 +1,43 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: research-eval
+name: Research / Eval
+description: "Fable synthesizes, Sol and Grok gather independent evidence, and the Fable/Astra judge pair records isolated verdicts on the same evaluation cells."
+version: "1.0.0"
+lead_role_id: v3-lead-claude
+
+agent_slots:
+  - role_id: claude-researcher
+    count: 1
+    project_binding: lead_project
+    overrides:
+      reasoning_effort: medium
+      name_pattern: sol-researcher
+  - role_id: v4-developer-grok
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: grok-researcher
+      focus_area: "Live-web-flavored evidence gathering and independent research breadth"
+      behavior_summary: "Researches the assigned question with current primary sources, separates fact from inference, and does not implement production behavior in this preset."
+      instructions_append: |
+        RESEARCH-EVAL OVERRIDE
+        In this preset your assigned work kind is measure, diagnose, or
+        spec-delta, not implementation. Gather current primary-source evidence,
+        label inference, and return a decision-ready research artifact.
+  - role_id: judge-fable
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: judge-fable
+  - role_id: judge-astra
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: judge-astra
+
+defaults:
+  team_name_pattern: "{project}-eval"
+  tmux_layout: tiled
