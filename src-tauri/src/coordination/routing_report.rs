@@ -9,7 +9,7 @@ use crate::coordination::stores::telemetry::{
     read_task_telemetry, EffortSwitchOutcome, RoutingTelemetryEvent,
 };
 use crate::coordination::stores::TeamRootRegistry;
-use taurhaus_lib::task_scanner::claude::{parse_task_file, MAX_FILE_SIZE};
+use taurhaus_lib::task_scanner::claude::{is_oversize_failure, parse_task_content, MAX_FILE_SIZE};
 use taurhaus_lib::task_scanner::claude_index::ClaudeSourceIndex;
 use taurhaus_lib::task_scanner::types::TaskStatus;
 
@@ -30,7 +30,15 @@ struct ReportStats {
 struct LedgerVerdict {
     accepted_eligible: bool,
     has_review_ruling: bool,
-    oversize_diffs_by_subject: BTreeMap<String, usize>,
+    oversize_rulings: Vec<OversizeRuling>,
+}
+
+/// One oversize-diff failure ruling, carried per ruling (not aggregated) so
+/// attribution can select the owner's launch active at the ruling's `at`.
+#[derive(Debug)]
+struct OversizeRuling {
+    owner: String,
+    at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug)]
@@ -184,22 +192,36 @@ fn accumulate_task(
         record_wall_time(stats, task_key, launch_times.into_iter().min(), completion);
     }
     if let Some(ledger) = ledger {
-        for (member, count) in &ledger.oversize_diffs_by_subject {
-            let Some(launch) = launches
+        for ruling in &ledger.oversize_rulings {
+            let owned = launches
                 .iter()
-                .filter(|launch| launch.member == *member)
-                .max_by_key(|launch| launch.timestamp)
-            else {
+                .filter(|launch| launch.member == ruling.owner)
+                .collect::<Vec<_>>();
+            // Same convention as the event attribution below: the owner's
+            // launch active at the ruling's `at`, else the owner's earliest —
+            // a mid-task relaunch under another model must not absorb earlier
+            // incidents.
+            let selected = ruling
+                .at
+                .and_then(|at| {
+                    owned
+                        .iter()
+                        .filter(|launch| launch.timestamp <= at)
+                        .max_by_key(|launch| launch.timestamp)
+                        .copied()
+                })
+                .or_else(|| owned.iter().min_by_key(|launch| launch.timestamp).copied());
+            let Some(launch) = selected else {
                 continue;
             };
             role_rows
                 .entry((launch.role.clone(), launch.model.clone()))
                 .or_default()
-                .oversize_diffs += count;
+                .oversize_diffs += 1;
             model_rows
                 .entry(launch.model.clone())
                 .or_default()
-                .oversize_diffs += count;
+                .oversize_diffs += 1;
         }
     }
 
@@ -280,8 +302,8 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
     if metadata.len() > MAX_FILE_SIZE {
         return None;
     }
-    let task = parse_task_file(&path, Some(team_name.to_string())).ok()??;
     let raw = fs::read_to_string(&path).ok()?;
+    let task = parse_task_content(&path, &raw, Some(team_name.to_string())).ok()??;
     let ledger = serde_json::from_str::<LedgerTaskFile>(&raw).ok()?;
     let rulings = ledger
         .metadata
@@ -295,27 +317,27 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
         .as_deref()
         .map(str::trim)
         .filter(|owner| !owner.is_empty());
-    let mut oversize_diffs_by_subject = BTreeMap::<String, usize>::new();
-    for ruling in rulings.iter().filter(|ruling| {
-        ruling.get("field").and_then(serde_json::Value::as_str) == Some("oversize_diff")
-    }) {
-        let Some(subject) = owner.or_else(|| {
-            ruling
-                .get("by")
+    let mut oversize_rulings = Vec::new();
+    // The diff's producer is the task owner; `by` names the filing reviewer,
+    // so a ruling on an ownerless task is dropped rather than charged to a
+    // reviewer's row.
+    if let Some(owner) = owner {
+        for ruling in rulings.iter().filter(|ruling| is_oversize_failure(ruling)) {
+            let at = ruling
+                .get("at")
                 .and_then(serde_json::Value::as_str)
-                .map(str::trim)
-                .filter(|member| !member.is_empty())
-        }) else {
-            continue;
-        };
-        *oversize_diffs_by_subject
-            .entry(subject.to_string())
-            .or_default() += 1;
+                .and_then(|at| DateTime::parse_from_rfc3339(at).ok())
+                .map(|at| at.with_timezone(&Utc));
+            oversize_rulings.push(OversizeRuling {
+                owner: owner.to_string(),
+                at,
+            });
+        }
     }
     Some(LedgerVerdict {
         accepted_eligible: task.status == TaskStatus::Completed,
         has_review_ruling: task.has_review_ruling,
-        oversize_diffs_by_subject,
+        oversize_rulings,
     })
 }
 
@@ -735,6 +757,216 @@ mod tests {
 
         assert!(report.contains(
             "astra-heavy-implementer | gpt-6-astra | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 10m 00s"
+        ));
+    }
+
+    // Regression: 52505603 fell back to the ruling's `by` when the ledger
+    // record carried no owner, charging the incident to the filing reviewer —
+    // the same inverted contract the owner fix rejected, narrowed to
+    // unassigned tasks.
+    #[test]
+    fn ownerless_oversize_rulings_are_dropped_not_charged_to_the_reviewer() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let default_teams = root.path().join("personal/teams");
+        write_json(
+            &default_teams.join("routing-team/config.json"),
+            serde_json::json!({"name": "routing-team", "members": []}),
+        );
+        write_sidecar(
+            &default_teams,
+            "routing-team",
+            "47",
+            "astra-heavy-implementer",
+            "gpt-6-astra",
+            "2026-09-03T10:10:00Z",
+            false,
+        );
+        crate::coordination::stores::telemetry::append_task_telemetry(
+            &default_teams,
+            "routing-team",
+            Some("47"),
+            &crate::coordination::stores::telemetry::RoutingTelemetryEvent::LaunchRendered {
+                timestamp: Utc.with_ymd_and_hms(2026, 9, 3, 10, 1, 0).unwrap(),
+                task_id: Some("47".to_string()),
+                member: "reviewer".to_string(),
+                role: "adversarial-reviewer-claude".to_string(),
+                tool: "claude".to_string(),
+                model: Some("claude-opus-4-6".to_string()),
+                applied_effort: None,
+                capability_tier: Some("strong".to_string()),
+                tier_rank: Some(1),
+            },
+        )
+        .expect("record reviewer launch");
+        write_json(
+            &root.path().join("personal/tasks/routing-team/47.json"),
+            serde_json::json!({
+                "id": "47",
+                "subject": "Never assigned, still ruled oversize",
+                "description": null,
+                "activeForm": null,
+                "status": "completed",
+                "blocks": [],
+                "blockedBy": [],
+                "metadata": {"rulings": [{
+                    "seq": 1,
+                    "kind": "ruling",
+                    "field": "oversize_diff",
+                    "value": "failed",
+                    "by": "reviewer",
+                    "at": "2026-09-03T10:09:00Z",
+                    "note": "budget 200 lines; actual 260"
+                }]}
+            }),
+        );
+
+        let report = render_routing_report(
+            &default_teams,
+            30,
+            Utc.with_ymd_and_hms(2026, 9, 4, 12, 0, 0).unwrap(),
+        )
+        .expect("render report");
+
+        assert!(report.contains(
+            "astra-heavy-implementer | gpt-6-astra | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+        ));
+        assert!(report.contains(
+            "adversarial-reviewer-claude | claude-opus-4-6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 9m 00s"
+        ));
+    }
+
+    // Regression: 52505603 charged every oversize ruling to the owner's
+    // LATEST launch, so a mid-task relaunch under another model absorbed the
+    // earlier model's incidents — the comparison the column exists to inform.
+    #[test]
+    fn oversize_rulings_attribute_to_the_launch_active_at_the_ruling_time() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let default_teams = root.path().join("personal/teams");
+        write_json(
+            &default_teams.join("routing-team/config.json"),
+            serde_json::json!({"name": "routing-team", "members": []}),
+        );
+        for (minute, model) in [(0, "gpt-5.6-sol"), (6, "gpt-6-astra")] {
+            crate::coordination::stores::telemetry::append_task_telemetry(
+                &default_teams,
+                "routing-team",
+                Some("48"),
+                &crate::coordination::stores::telemetry::RoutingTelemetryEvent::LaunchRendered {
+                    timestamp: Utc.with_ymd_and_hms(2026, 9, 3, 10, minute, 0).unwrap(),
+                    task_id: Some("48".to_string()),
+                    member: "builder".to_string(),
+                    role: "astra-heavy-implementer".to_string(),
+                    tool: "codex".to_string(),
+                    model: Some(model.to_string()),
+                    applied_effort: Some("high".to_string()),
+                    capability_tier: Some("frontier".to_string()),
+                    tier_rank: Some(0),
+                },
+            )
+            .expect("record launch");
+        }
+        crate::coordination::stores::telemetry::append_task_telemetry(
+            &default_teams,
+            "routing-team",
+            Some("48"),
+            &crate::coordination::stores::telemetry::RoutingTelemetryEvent::CompletionObserved {
+                timestamp: Utc.with_ymd_and_hms(2026, 9, 3, 10, 10, 0).unwrap(),
+                observed_at: Some(Utc.with_ymd_and_hms(2026, 9, 3, 10, 10, 0).unwrap()),
+                task_id: "48".to_string(),
+                status: "completed".to_string(),
+                has_review_ruling: true,
+            },
+        )
+        .expect("record completion");
+        write_json(
+            &root.path().join("personal/tasks/routing-team/48.json"),
+            serde_json::json!({
+                "id": "48",
+                "subject": "Relaunched under another model mid-task",
+                "description": null,
+                "activeForm": null,
+                "status": "completed",
+                "blocks": [],
+                "blockedBy": [],
+                "owner": "builder",
+                "metadata": {"rulings": [
+                    {"seq": 1, "kind": "ruling", "field": "oversize_diff", "value": "failed", "by": "reviewer", "at": "2026-09-03T10:03:00Z", "note": "budget 200 lines; actual 260"},
+                    {"seq": 2, "kind": "verdict", "value": "accepted", "by": "reviewer", "at": "2026-09-03T10:08:00Z"},
+                    {"seq": 3, "kind": "ruling", "field": "oversize_diff", "value": "failed", "by": "reviewer", "at": "2026-09-03T10:09:00Z", "note": "budget 200 lines; actual 240"}
+                ]}
+            }),
+        );
+
+        let report = render_routing_report(
+            &default_teams,
+            30,
+            Utc.with_ymd_and_hms(2026, 9, 4, 12, 0, 0).unwrap(),
+        )
+        .expect("render report");
+
+        assert!(report.contains(
+            "astra-heavy-implementer | gpt-5.6-sol | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 10m 00s"
+        ));
+        assert!(report.contains(
+            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 4m 00s"
+        ));
+        assert!(report.contains("gpt-5.6-sol | 1 | 1 | 0 | 1"));
+        assert!(report.contains("gpt-6-astra | 1 | 1 | 0 | 1"));
+    }
+
+    // Regression: 52505603 counted any `field: oversize_diff` ruling as an
+    // incident while the scanner only excluded `value: failed` from review
+    // acceptance — the two layers disagreed about a waived ruling. Both now
+    // share task_scanner::claude::is_oversize_failure.
+    #[test]
+    fn waived_oversize_rulings_neither_count_as_incidents_nor_block_acceptance() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let default_teams = root.path().join("personal/teams");
+        write_json(
+            &default_teams.join("routing-team/config.json"),
+            serde_json::json!({"name": "routing-team", "members": []}),
+        );
+        write_sidecar(
+            &default_teams,
+            "routing-team",
+            "46",
+            "astra-heavy-implementer",
+            "gpt-6-astra",
+            "2026-09-03T10:10:00Z",
+            true,
+        );
+        write_json(
+            &root.path().join("personal/tasks/routing-team/46.json"),
+            serde_json::json!({
+                "id": "46",
+                "subject": "Oversize waived by the lead",
+                "description": null,
+                "activeForm": null,
+                "status": "completed",
+                "blocks": [],
+                "blockedBy": [],
+                "owner": "builder",
+                "metadata": {"rulings": [{
+                    "seq": 1,
+                    "kind": "ruling",
+                    "field": "oversize_diff",
+                    "value": "waived",
+                    "by": "reviewer",
+                    "at": "2026-09-03T10:09:00Z",
+                    "note": "budget 200 lines; actual 210 — lead waived"
+                }]}
+            }),
+        );
+
+        let report = render_routing_report(
+            &default_teams,
+            30,
+            Utc.with_ymd_and_hms(2026, 9, 4, 12, 0, 0).unwrap(),
+        )
+        .expect("render report");
+
+        assert!(report.contains(
+            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
     }
 

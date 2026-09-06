@@ -2146,6 +2146,69 @@ mod tests {
         }
     }
 
+    // Regression: 9e4081e1 shipped the first bundled presets that pin models
+    // and efforts in slot overrides, and nothing validated those against
+    // ModelCatalog the way bundled role defaults are validated.
+    #[test]
+    fn bundled_preset_overrides_name_catalog_models_and_efforts() {
+        fn check_overrides(
+            preset_id: &str,
+            label: &str,
+            role: &RoleTemplate,
+            overrides: Option<&SlotOverrides>,
+        ) {
+            let Some(overrides) = overrides else { return };
+            let model = overrides
+                .model
+                .as_deref()
+                .unwrap_or(role.defaults.model.as_str());
+            let entry =
+                ModelCatalog::entry_for(role.defaults.cli_tool, model).unwrap_or_else(|| {
+                    panic!(
+                        "preset '{preset_id}' {label} pins unknown model '{model}' for {:?}",
+                        role.defaults.cli_tool
+                    )
+                });
+            assert!(
+                !entry.deprecated,
+                "preset '{preset_id}' {label} pins retired model '{model}'"
+            );
+            if let Some(effort) = overrides.reasoning_effort.as_deref() {
+                assert!(
+                    entry.efforts.iter().any(|accepted| accepted == effort),
+                    "preset '{preset_id}' {label} effort '{effort}' is not accepted by '{model}'"
+                );
+            }
+        }
+
+        let roles = load_role_templates();
+        let presets = load_team_presets();
+        for preset in &presets {
+            let lead_role = roles
+                .iter()
+                .find(|role| role.role_id == preset.lead_role_id)
+                .expect("canonical lead role");
+            check_overrides(
+                &preset.preset_id,
+                "lead_overrides",
+                lead_role,
+                preset.lead_overrides.as_ref(),
+            );
+            for slot in &preset.agent_slots {
+                let role = roles
+                    .iter()
+                    .find(|role| role.role_id == slot.role_id)
+                    .expect("canonical slot role");
+                check_overrides(
+                    &preset.preset_id,
+                    &slot.role_id,
+                    role,
+                    slot.overrides.as_ref(),
+                );
+            }
+        }
+    }
+
     #[test]
     fn dev_team_preset_resolves_member_names() {
         let roles = load_role_templates();

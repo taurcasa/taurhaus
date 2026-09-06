@@ -121,9 +121,13 @@ inventing a requested model or requiring another relaunch.
 registered team roots, tolerantly reads the sidecars, and rejoins every task to
 the current mesh ledger record. It prints per `(role, model)` rows and a
 per-model rollup with tasks touched, accepted, completed-but-unruled,
-relaunches, completed effort switches, nudges, stale actions, and median elapsed
+oversize-diff incidents, relaunches, completed effort switches, nudges, stale
+actions, and median elapsed
 time from first render to the terminal state-change timestamp. Acceptance follows Amendment
-4 exactly: only ledger status `completed` with a sequenced review ruling counts.
+4 exactly: only ledger status `completed` with a sequenced review ruling counts,
+and an oversize-failure ruling (`field: oversize_diff`, `value: failed`) is not
+a review ruling for that purpose — it is counted in the `oversize_diffs` column
+instead, attributed to the task owner's launch active at the ruling's time.
 A bare completed status is `completed_unruled`, never accepted. Tokens are not
 collected in Stage 1; the report header identifies wall-time as the cost proxy.
 Rulings are recordable today (`mesh task ruling`, mesh >= 0.2.28); a window
