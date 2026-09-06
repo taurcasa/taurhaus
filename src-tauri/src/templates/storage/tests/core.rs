@@ -164,6 +164,20 @@ fn packaged_template_manifest_matches_bundled_yaml() {
     // rule must fail here. The on-disk path is only named for the message.
     let manifest_path = templates_dir.join("manifest.txt");
     let manifested = super::super::packaged_template_manifest();
+    let manifest_raw = fs::read_to_string(&manifest_path).expect("read packaged manifest");
+    let entries = manifest_raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect::<Vec<_>>();
+    let mut sorted_entries = entries.clone();
+    sorted_entries.sort_unstable();
+    // Regression: 9e4081e1 inserted design-ui after dev-team, breaking the
+    // closed catalog's established ASCII ordering.
+    assert_eq!(
+        entries, sorted_entries,
+        "resources/templates/manifest.txt entries must stay ASCII-sorted"
+    );
 
     let mut bundled = BTreeSet::new();
     for dirname in [ROLES_DIRNAME, PRESETS_DIRNAME] {

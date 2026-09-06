@@ -72,3 +72,4 @@ docs/screenshot-*.png
 
 # Visual screenshot lane (server pid/log)
 .visual-shot/
+LANE-SPEC.md

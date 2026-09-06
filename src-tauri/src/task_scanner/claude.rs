@@ -137,16 +137,26 @@ fn metadata_u32(metadata: Option<&serde_json::Value>, key: &str) -> Option<u32> 
         .filter(|value| *value > 0)
 }
 
+/// A ledger ruling recording an oversize-diff failure (the leash's shape:
+/// `--kind ruling --value failed --field oversize_diff`). The one predicate
+/// shared by review acceptance (which excludes these) and the routing report
+/// (which counts them), so the two sets agree by construction.
+pub fn is_oversize_failure(ruling: &serde_json::Value) -> bool {
+    ruling.get("field").and_then(serde_json::Value::as_str) == Some("oversize_diff")
+        && ruling.get("value").and_then(serde_json::Value::as_str) == Some("failed")
+}
+
 fn metadata_has_review_ruling(metadata: Option<&serde_json::Value>) -> bool {
     metadata
         .and_then(|metadata| metadata.get("rulings"))
         .and_then(serde_json::Value::as_array)
         .is_some_and(|rulings| {
             rulings.iter().any(|ruling| {
-                matches!(
-                    ruling.get("kind").and_then(serde_json::Value::as_str),
-                    Some("verdict" | "score" | "ruling")
-                )
+                !is_oversize_failure(ruling)
+                    && matches!(
+                        ruling.get("kind").and_then(serde_json::Value::as_str),
+                        Some("verdict" | "score" | "ruling")
+                    )
             })
         })
 }
@@ -445,8 +455,19 @@ pub fn parse_task_file(
     source_key: Option<String>,
 ) -> Result<Option<UnifiedTask>, String> {
     let content = fs::read_to_string(path).map_err(|e| format!("Read error: {e}"))?;
+    parse_task_content(path, &content, source_key)
+}
+
+/// Parse an already-read task file body; `path` supplies only the
+/// modified-time fallback and is never re-read, so a caller that also needs
+/// the raw bytes observes one consistent version of the file.
+pub fn parse_task_content(
+    path: &Path,
+    content: &str,
+    source_key: Option<String>,
+) -> Result<Option<UnifiedTask>, String> {
     let raw: RawClaudeTask =
-        serde_json::from_str(&content).map_err(|e| format!("Parse error: {e}"))?;
+        serde_json::from_str(content).map_err(|e| format!("Parse error: {e}"))?;
 
     // Deleted tasks are excluded entirely — they should not appear on the board
     if raw.status == "deleted" {
@@ -685,6 +706,37 @@ mod tests {
 
         let tasks = parse_task_directory_for_test(&task_dir);
         assert!(tasks[0].has_review_ruling);
+    }
+
+    // Regression: 13111833 treated every generic `ruling` entry as review
+    // acceptance, including an oversize-diff failure filed for telemetry.
+    #[test]
+    fn oversize_failure_is_not_a_review_acceptance_ruling() {
+        let tmp = TempDir::new().unwrap();
+        let task_dir = tmp.path().join("routing-team");
+        fs::create_dir_all(&task_dir).unwrap();
+        write_task(
+            &task_dir,
+            "43.json",
+            r#"{
+                "id": "43",
+                "subject": "Oversized implementation",
+                "status": "completed",
+                "owner": "builder",
+                "metadata": {
+                    "rulings": [{
+                        "seq": 1,
+                        "kind": "ruling",
+                        "field": "oversize_diff",
+                        "value": "failed",
+                        "by": "reviewer"
+                    }]
+                }
+            }"#,
+        );
+
+        let tasks = parse_task_directory_for_test(&task_dir);
+        assert!(!tasks[0].has_review_ruling);
     }
 
     #[test]

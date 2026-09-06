@@ -1,0 +1,29 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: security-audit
+name: Security Audit
+description: "Astra leads a bounded xhigh audit, Fable independently counter-audits the same evidence, and Sol owns high-effort remediation."
+version: "1.0.0"
+lead_role_id: astra-security-auditor
+
+agent_slots:
+  - role_id: judge-fable
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: counter-auditor
+      instructions_append: |
+        In this preset, independently counter-audit the Astra lead's complete
+        security scope and evidence before verdict reconciliation.
+  - role_id: v4-developer-codex
+    count: 1
+    project_binding: lead_project
+    overrides:
+      reasoning_effort: high
+      name_pattern: fix-implementer
+
+defaults:
+  team_name_pattern: "{project}-security-audit"
+  tmux_layout: tiled

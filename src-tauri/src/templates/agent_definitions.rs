@@ -412,6 +412,21 @@ mod tests {
     }
 
     #[test]
+    fn judge_fable_exports_as_a_sane_claude_agent_definition() {
+        let template = role(include_str!(
+            "../../resources/templates/roles/judge-fable.yaml"
+        ));
+        let rendered = render_agent_definition(&template);
+
+        assert!(rendered.starts_with(
+            "---\nname: \"judge-fable\"\ndescription: \"Independent Claude-family judging of a shared evaluation cell under strict verdict isolation\"\nmodel: \"fable\"\neffort: \"high\"\n---\n"
+        ));
+        assert!(rendered.contains("Never see the other judge's verdict before recording your own."));
+        assert!(rendered.contains("docs/team-delivery-standard.md"));
+        assert!(rendered.contains("Behavioral Contract:"));
+    }
+
+    #[test]
     fn frontmatter_splits_a_legacy_model_spelling_and_quotes_unsafe_text() {
         let mut template = role(include_str!(
             "../../resources/templates/roles/quick-dev-codex.yaml"

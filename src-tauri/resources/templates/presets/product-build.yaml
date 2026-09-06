@@ -1,0 +1,40 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: product-build
+name: Product Build
+description: "The 0.9.2 field-test roster: Fable leads, Astra architects and handles one bounded heavy slice, Sol implements in parallel, Opus owns product review, and Fable altitude-checks architecture."
+version: "1.0.0"
+lead_role_id: v3-lead-claude
+
+agent_slots:
+  - role_id: astra-architect
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: architect
+  - role_id: v4-developer-codex
+    count: 2
+    project_binding: lead_project
+    overrides:
+      name_pattern: implementer-{n}
+  - role_id: astra-heavy-implementer
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: heavy-implementer
+  - role_id: adversarial-reviewer-claude
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: product-reviewer
+  - role_id: v3-architect-codex
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: altitude-reviewer
+
+defaults:
+  team_name_pattern: "{project}-product"
+  tmux_layout: tiled

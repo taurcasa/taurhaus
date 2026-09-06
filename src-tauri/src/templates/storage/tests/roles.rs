@@ -207,7 +207,7 @@ fn bundled_roles_use_canonical_model_and_reasoning_effort() {
         .collect::<Vec<_>>();
     paths.sort();
 
-    assert_eq!(paths.len(), 16, "bundled role count changed");
+    assert_eq!(paths.len(), 22, "bundled role count changed");
 
     let mut high_effort_roles = Vec::new();
     for path in paths {
@@ -239,7 +239,7 @@ fn bundled_roles_use_canonical_model_and_reasoning_effort() {
         }
     }
 
-    assert_eq!(high_effort_roles.len(), 10);
+    assert_eq!(high_effort_roles.len(), 15);
     assert!(high_effort_roles
         .iter()
         .any(|role| role == "v3-architect-codex"));
@@ -490,6 +490,137 @@ fn list_roles_picks_up_external_files_added_to_roles_directory() {
     assert_eq!(ext.template.instructions, "external file");
 }
 
+#[test]
+fn frontier_catalog_reconciles_revision_four_roles_and_seeds_new_roles() {
+    let (_root, app_data, _fixture_builtins) = setup_dirs();
+    let builtins = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("templates");
+    let store = TemplateStore::with_packaged_builtins_dir(app_data.clone(), builtins.clone());
+    store.ensure_directories().expect("ensure dirs");
+
+    let route_block = "\n  TWO-FAMILY REVIEW ROUTE\n  Claude-written work routes to a GPT-family reviewer; GPT-family work\n  routes to a Claude-family reviewer. Architecture-bearing Astra output\n  also gets a Claude-family altitude pass. Record deliberate same-family\n  exceptions rather than presenting them as independent review.\n";
+    let product_block = "\n  PRODUCT-REVIEW SEAT\n  This is the product-review seat and the one Opus seat in the decided default\n  topology. Review GPT-family product work with an independent Claude-family\n  lens; do not expand this role into a second core cross-file seat.\n";
+    for (name, current_version, previous_version, added_block, expected_hash) in [
+        (
+            "adversarial-reviewer-claude.yaml",
+            "3.1.0",
+            "3.0.0",
+            product_block,
+            "114c1f0c2e190e54234be8b42ffbaa51e2a8254aa4260607c8b967c0027eb560",
+        ),
+        (
+            "antigravity-orchestrator.yaml",
+            "3.1.0",
+            "3.0.0",
+            route_block,
+            "621341ec4f9584273888f72798df59550953751ceb9555196603d5ff7e8fa2e8",
+        ),
+        (
+            "codex-orchestrator.yaml",
+            "3.1.0",
+            "3.0.0",
+            route_block,
+            "862bc8a777617f7159a7007fe0039dfc120fad9ec28b99284e598c3ba96bb9c3",
+        ),
+        (
+            "v3-lead-claude.yaml",
+            "5.1.0",
+            "5.0.0",
+            route_block,
+            "4bf49412425deacc87dbb9969942588d0a0db85ba2c95e0447a42bfd24d9bb8a",
+        ),
+    ] {
+        let current = fs::read_to_string(builtins.join("roles").join(name))
+            .expect("read current bundled role");
+        let previous = current
+            .replacen(
+                &format!("version: {current_version}"),
+                &format!("version: {previous_version}"),
+                1,
+            )
+            .replace(added_block, "");
+        assert_eq!(
+            format!("{:x}", Sha256::digest(previous.as_bytes())),
+            expected_hash,
+            "fixture must reconstruct exact revision-four bytes for {name}"
+        );
+        write(&app_data.join("templates/roles").join(name), &previous);
+    }
+
+    store
+        .save_state(&TemplateStoreState {
+            builtin_catalog_revision: 4,
+            ..TemplateStoreState::default()
+        })
+        .expect("mark store at previous catalog revision");
+    store
+        .ensure_repo_for_mutation()
+        .expect("seed current missing builtins");
+
+    for name in [
+        "astra-architect.yaml",
+        "astra-crossfile-reviewer.yaml",
+        "astra-heavy-implementer.yaml",
+        "astra-security-auditor.yaml",
+        "judge-astra.yaml",
+        "judge-fable.yaml",
+    ] {
+        assert!(
+            app_data.join("templates/roles").join(name).is_file(),
+            "new bundled role {name} should arrive through seeding"
+        );
+    }
+
+    let catalog = store.load_catalog().expect("reconcile frontier catalog");
+    let roles = catalog
+        .roles
+        .into_iter()
+        .map(|role| (role.role_id.clone(), role))
+        .collect::<BTreeMap<_, _>>();
+    for (role_id, version, marker) in [
+        (
+            "adversarial-reviewer-claude",
+            "3.1.0",
+            "product-review seat",
+        ),
+        (
+            "antigravity-orchestrator",
+            "3.1.0",
+            "TWO-FAMILY REVIEW ROUTE",
+        ),
+        ("codex-orchestrator", "3.1.0", "TWO-FAMILY REVIEW ROUTE"),
+        ("v3-lead-claude", "5.1.0", "TWO-FAMILY REVIEW ROUTE"),
+    ] {
+        let role = &roles[role_id];
+        assert_eq!(role.version, version, "{role_id} should be reconciled");
+        assert!(
+            role.instructions.contains(marker),
+            "{role_id} should carry its revised review route"
+        );
+    }
+    for role_id in [
+        "astra-architect",
+        "astra-crossfile-reviewer",
+        "astra-heavy-implementer",
+        "astra-security-auditor",
+        "judge-astra",
+        "judge-fable",
+    ] {
+        assert!(
+            roles.contains_key(role_id),
+            "new role {role_id} should load"
+        );
+    }
+    assert_eq!(
+        store
+            .load_state()
+            .expect("load reconciled state")
+            .builtin_catalog_revision,
+        5
+    );
+}
+
 // Regression: 9a6b9596 consolidated the bundled catalog without reconciling
 // copies seeded by 0.8.5, so retired roles and stale role/preset bodies won.
 #[test]
@@ -535,6 +666,10 @@ fn previous_release_builtins_reconcile_before_catalog_reads_and_export() {
     let expected = [
         "adversarial-reviewer-claude",
         "antigravity-orchestrator",
+        "astra-architect",
+        "astra-crossfile-reviewer",
+        "astra-heavy-implementer",
+        "astra-security-auditor",
         "claude-design-lead",
         "claude-product-checker",
         "claude-researcher",
@@ -542,6 +677,8 @@ fn previous_release_builtins_reconcile_before_catalog_reads_and_export() {
         "codex-qa",
         "docs-verifier-codex",
         "frontend-design-skill-developer",
+        "judge-astra",
+        "judge-fable",
         "quick-dev-codex",
         "v3-architect-codex",
         "v3-lead-claude",
@@ -693,6 +830,10 @@ fn v0_8_3_seeded_presets_reconcile_to_the_canonical_catalog() {
         [
             "adversarial-reviewer-claude",
             "antigravity-orchestrator",
+            "astra-architect",
+            "astra-crossfile-reviewer",
+            "astra-heavy-implementer",
+            "astra-security-auditor",
             "claude-design-lead",
             "claude-product-checker",
             "claude-researcher",
@@ -700,6 +841,8 @@ fn v0_8_3_seeded_presets_reconcile_to_the_canonical_catalog() {
             "codex-qa",
             "docs-verifier-codex",
             "frontend-design-skill-developer",
+            "judge-astra",
+            "judge-fable",
             "quick-dev-codex",
             "v3-architect-codex",
             "v3-lead-claude",
@@ -714,11 +857,17 @@ fn v0_8_3_seeded_presets_reconcile_to_the_canonical_catalog() {
     assert_eq!(
         preset_ids,
         [
+            "batch-processing",
             "dev-team",
+            "design-ui",
             "full-team",
             "grok-pair",
             "pair",
+            "product-build",
+            "research-eval",
             "research-team",
+            "security-audit",
+            "taurhaus-core",
         ]
         .into_iter()
         .collect()

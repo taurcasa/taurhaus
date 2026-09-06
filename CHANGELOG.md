@@ -6,6 +6,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-09-06
+
+### Added
+
+- **Frontier-era role catalog**: six new bundled roles — `astra-architect`,
+  `astra-heavy-implementer`, `astra-crossfile-reviewer`,
+  `astra-security-auditor`, and the paired bake-off judges `judge-astra` /
+  `judge-fable` — plus reconciled edits to the existing roles: the two-family
+  review route is spelled out per role, and Opus narrows to its one
+  adversarial-review seat.
+- **Frontier-era team presets**: `product-build`, `design-ui` (Fable-incumbent
+  vs Astra-challenger with opposite-family judges), `research-eval`,
+  `security-audit`, `batch-processing`, and `taurhaus-core`, each with
+  catalog-validated per-slot model and effort overrides.
+- **Oversize-diff leash telemetry**: the heavy-implementer's diff-budget
+  contract now records a mesh-validated ruling
+  (`mesh task ruling <id> --kind ruling --value failed --field oversize_diff`),
+  and `just routing-report` gains an `oversize_diffs` column attributed to the
+  task owner's launch active at the ruling's time — never the filing reviewer.
+  One shared predicate decides what counts as an oversize failure for both the
+  report and review acceptance, and an oversize failure never counts a task
+  as accepted.
+
 ## [0.9.2] - 2026-09-05
 
 ### Fixed
