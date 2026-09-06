@@ -9,7 +9,9 @@ use crate::coordination::stores::telemetry::{
     read_task_telemetry, EffortSwitchOutcome, RoutingTelemetryEvent,
 };
 use crate::coordination::stores::TeamRootRegistry;
+use taurhaus_lib::task_scanner::claude::{parse_task_file, MAX_FILE_SIZE};
 use taurhaus_lib::task_scanner::claude_index::ClaudeSourceIndex;
+use taurhaus_lib::task_scanner::types::TaskStatus;
 
 #[derive(Debug, Default)]
 struct ReportStats {
@@ -28,7 +30,7 @@ struct ReportStats {
 struct LedgerVerdict {
     accepted_eligible: bool,
     has_review_ruling: bool,
-    oversize_diffs_by_member: BTreeMap<String, usize>,
+    oversize_diffs_by_subject: BTreeMap<String, usize>,
 }
 
 #[derive(Debug)]
@@ -41,11 +43,6 @@ struct LaunchAttribution {
 
 #[derive(serde::Deserialize)]
 struct LedgerTaskFile {
-    #[serde(rename = "id")]
-    _id: String,
-    #[serde(rename = "subject")]
-    _subject: String,
-    status: String,
     #[serde(default)]
     metadata: Option<serde_json::Value>,
 }
@@ -187,7 +184,7 @@ fn accumulate_task(
         record_wall_time(stats, task_key, launch_times.into_iter().min(), completion);
     }
     if let Some(ledger) = ledger {
-        for (member, count) in &ledger.oversize_diffs_by_member {
+        for (member, count) in &ledger.oversize_diffs_by_subject {
             let Some(launch) = launches
                 .iter()
                 .filter(|launch| launch.member == *member)
@@ -280,47 +277,45 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
     let path =
         ClaudeSourceIndex::team_tasks_dir(teams_dir, team_name)?.join(format!("{task_id}.json"));
     let metadata = fs::metadata(&path).ok()?;
-    if metadata.len() > 1_048_576 {
+    if metadata.len() > MAX_FILE_SIZE {
         return None;
     }
+    let task = parse_task_file(&path, Some(team_name.to_string())).ok()??;
     let raw = fs::read_to_string(&path).ok()?;
-    let task = serde_json::from_str::<LedgerTaskFile>(&raw).ok()?;
-    if task.status == "deleted" {
-        return None;
-    }
-    let rulings = task
+    let ledger = serde_json::from_str::<LedgerTaskFile>(&raw).ok()?;
+    let rulings = ledger
         .metadata
         .as_ref()
         .and_then(|metadata| metadata.get("rulings"))
         .and_then(serde_json::Value::as_array)
         .map(Vec::as_slice)
         .unwrap_or_default();
-    let mut oversize_diffs_by_member = BTreeMap::<String, usize>::new();
+    let owner = task
+        .owner
+        .as_deref()
+        .map(str::trim)
+        .filter(|owner| !owner.is_empty());
+    let mut oversize_diffs_by_subject = BTreeMap::<String, usize>::new();
     for ruling in rulings.iter().filter(|ruling| {
-        ruling.get("kind").and_then(serde_json::Value::as_str) == Some("oversize_diff")
+        ruling.get("field").and_then(serde_json::Value::as_str) == Some("oversize_diff")
     }) {
-        let Some(member) = ruling
-            .get("by")
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|member| !member.is_empty())
-        else {
+        let Some(subject) = owner.or_else(|| {
+            ruling
+                .get("by")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|member| !member.is_empty())
+        }) else {
             continue;
         };
-        *oversize_diffs_by_member
-            .entry(member.to_string())
+        *oversize_diffs_by_subject
+            .entry(subject.to_string())
             .or_default() += 1;
     }
     Some(LedgerVerdict {
-        // Stale is terminal for observation, but Amendment 4 accepts only completion.
-        accepted_eligible: task.status == "completed",
-        has_review_ruling: rulings.iter().any(|ruling| {
-            matches!(
-                ruling.get("kind").and_then(serde_json::Value::as_str),
-                Some("verdict" | "score" | "ruling")
-            )
-        }),
-        oversize_diffs_by_member,
+        accepted_eligible: task.status == TaskStatus::Completed,
+        has_review_ruling: task.has_review_ruling,
+        oversize_diffs_by_subject,
     })
 }
 
@@ -466,9 +461,9 @@ mod tests {
                 "blockedBy": [],
                 "owner": "builder",
                 "metadata": {"rulings": [
-                    {"kind": "verdict", "value": "accepted"},
-                    {"kind": "oversize_diff", "value": "failed", "by": "builder"},
-                    {"kind": "oversize_diff", "value": "failed", "by": "builder"}
+                    {"seq": 1, "kind": "verdict", "value": "accepted", "by": "reviewer", "at": "2026-09-03T10:08:00Z"},
+                    {"seq": 2, "kind": "ruling", "field": "oversize_diff", "value": "failed", "by": "reviewer", "at": "2026-09-03T10:09:00Z", "note": "budget 20 lines; actual 30"},
+                    {"seq": 3, "kind": "ruling", "field": "oversize_diff", "value": "failed", "by": "reviewer", "at": "2026-09-03T10:09:30Z", "note": "budget 20 lines; actual 31"}
                 ]}
             }),
         );
@@ -600,10 +595,10 @@ mod tests {
         assert!(report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 0 | 0 | 1 | 0"));
     }
 
-    // Regression: 5358be4d credited each task-level oversize ruling to every
-    // role/model that touched the task instead of the launched member in `by`.
+    // Regression: 24854270 credited an oversize ruling to its filing reviewer
+    // (`by`) instead of the task owner whose produced diff the leash measures.
     #[test]
-    fn oversize_diff_rulings_are_attributed_only_to_the_named_member() {
+    fn oversize_diff_rulings_are_attributed_to_the_task_owner() {
         let root = tempfile::tempdir().expect("tempdir");
         let default_teams = root.path().join("personal/teams");
         write_json(
@@ -664,8 +659,8 @@ mod tests {
                 "blockedBy": [],
                 "owner": "builder",
                 "metadata": {"rulings": [
-                    {"kind": "verdict", "value": "rejected", "by": "reviewer"},
-                    {"kind": "oversize_diff", "value": "failed", "by": "reviewer"}
+                    {"seq": 1, "kind": "verdict", "value": "accepted", "by": "reviewer", "at": "2026-09-03T10:08:00Z"},
+                    {"seq": 2, "kind": "ruling", "field": "oversize_diff", "value": "failed", "by": "reviewer", "at": "2026-09-03T10:09:00Z", "note": "budget 200 lines; actual 260"}
                 ]}
             }),
         );
@@ -678,15 +673,69 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
         assert!(report.contains(
-            "adversarial-reviewer-claude | claude-opus-4-6 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 9m 00s"
+            "adversarial-reviewer-claude | claude-opus-4-6 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 9m 00s"
         ));
         assert!(report.contains("v3-lead-claude | fable | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 8m 00s"));
-        assert!(report.contains("gpt-6-astra | 1 | 1 | 0 | 0"));
-        assert!(report.contains("claude-opus-4-6 | 1 | 1 | 0 | 1"));
+        assert!(report.contains("gpt-6-astra | 1 | 1 | 0 | 1"));
+        assert!(report.contains("claude-opus-4-6 | 1 | 1 | 0 | 0"));
         assert!(report.contains("fable | 1 | 1 | 0 | 0"));
+    }
+
+    // Regression: 13111833 treated every generic `ruling` entry as review
+    // acceptance, so the corrected oversize failure shape could accept a task.
+    #[test]
+    fn oversize_failure_alone_is_completed_unruled_not_accepted() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let default_teams = root.path().join("personal/teams");
+        write_json(
+            &default_teams.join("routing-team/config.json"),
+            serde_json::json!({"name": "routing-team", "members": []}),
+        );
+        write_sidecar(
+            &default_teams,
+            "routing-team",
+            "45",
+            "astra-heavy-implementer",
+            "gpt-6-astra",
+            "2026-09-03T10:10:00Z",
+            true,
+        );
+        write_json(
+            &root.path().join("personal/tasks/routing-team/45.json"),
+            serde_json::json!({
+                "id": "45",
+                "subject": "Oversized heavy implementation",
+                "description": null,
+                "activeForm": null,
+                "status": "completed",
+                "blocks": [],
+                "blockedBy": [],
+                "owner": "builder",
+                "metadata": {"rulings": [{
+                    "seq": 1,
+                    "kind": "ruling",
+                    "field": "oversize_diff",
+                    "value": "failed",
+                    "by": "reviewer",
+                    "at": "2026-09-03T10:09:00Z",
+                    "note": "budget 200 lines; actual 260"
+                }]}
+            }),
+        );
+
+        let report = render_routing_report(
+            &default_teams,
+            30,
+            Utc.with_ymd_and_hms(2026, 9, 4, 12, 0, 0).unwrap(),
+        )
+        .expect("render report");
+
+        assert!(report.contains(
+            "astra-heavy-implementer | gpt-6-astra | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 10m 00s"
+        ));
     }
 
     // Regression: c9c6c49b treated the scanner's `stale` terminal state as

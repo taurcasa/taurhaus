@@ -143,10 +143,14 @@ fn metadata_has_review_ruling(metadata: Option<&serde_json::Value>) -> bool {
         .and_then(serde_json::Value::as_array)
         .is_some_and(|rulings| {
             rulings.iter().any(|ruling| {
-                matches!(
-                    ruling.get("kind").and_then(serde_json::Value::as_str),
-                    Some("verdict" | "score" | "ruling")
-                )
+                let is_oversize_failure = ruling.get("field").and_then(serde_json::Value::as_str)
+                    == Some("oversize_diff")
+                    && ruling.get("value").and_then(serde_json::Value::as_str) == Some("failed");
+                !is_oversize_failure
+                    && matches!(
+                        ruling.get("kind").and_then(serde_json::Value::as_str),
+                        Some("verdict" | "score" | "ruling")
+                    )
             })
         })
 }
@@ -685,6 +689,37 @@ mod tests {
 
         let tasks = parse_task_directory_for_test(&task_dir);
         assert!(tasks[0].has_review_ruling);
+    }
+
+    // Regression: 13111833 treated every generic `ruling` entry as review
+    // acceptance, including an oversize-diff failure filed for telemetry.
+    #[test]
+    fn oversize_failure_is_not_a_review_acceptance_ruling() {
+        let tmp = TempDir::new().unwrap();
+        let task_dir = tmp.path().join("routing-team");
+        fs::create_dir_all(&task_dir).unwrap();
+        write_task(
+            &task_dir,
+            "43.json",
+            r#"{
+                "id": "43",
+                "subject": "Oversized implementation",
+                "status": "completed",
+                "owner": "builder",
+                "metadata": {
+                    "rulings": [{
+                        "seq": 1,
+                        "kind": "ruling",
+                        "field": "oversize_diff",
+                        "value": "failed",
+                        "by": "reviewer"
+                    }]
+                }
+            }"#,
+        );
+
+        let tasks = parse_task_directory_for_test(&task_dir);
+        assert!(!tasks[0].has_review_ruling);
     }
 
     #[test]
