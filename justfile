@@ -425,8 +425,14 @@ build-e2e:
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
 # opt-in that only rebuilds/restarts the operator's installed daemon.
 # Builds the app automatically unless E2E_SKIP_BUILD=1 is set.
+# All e2e app instances run on a private virtual display by default: under
+# WSLg every app boot is otherwise a real window that steals the operator's
+# focus, and a suite run boots the app once per spec group. Opt back into
+# visible windows with E2E_HEADED=1 (visual debugging).
+_e2e_display := if env_var_or_default("E2E_HEADED", "0") == "1" { "" } else { "xvfb-run -a -s '-screen 0 1600x1000x24' env WEBKIT_DISABLE_COMPOSITING_MODE=1" }
+
 test-e2e: e2e-prepare-daemon
-    CARGO_TARGET_DIR="$PWD/src-tauri/target" bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
 
 # Run E2E tests — Tier 1 + Tier 2 (daemon must be running)
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
@@ -435,14 +441,14 @@ test-e2e: e2e-prepare-daemon
 # is never part of a suite run: `e2e/specList.js` keeps every paid lane out of
 # the config's spec list. Start it by name with test-e2e-spec.
 test-e2e-full: e2e-prepare-daemon
-    CARGO_TARGET_DIR="$PWD/src-tauri/target" bunx wdio run e2e/wdio.conf.js
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js
 
 # Run a single E2E spec file.
 # Workers launch the checkout-local daemon. E2E_INSTALL_DAEMON=1 is a legacy
 # opt-in that only rebuilds/restarts the operator's installed daemon.
 # Builds by default (safe). Set E2E_SKIP_BUILD=1 explicitly if you already built.
 test-e2e-spec SPEC: e2e-prepare-daemon
-    CARGO_TARGET_DIR="$PWD/src-tauri/target" bunx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
+    CARGO_TARGET_DIR="$PWD/src-tauri/target" {{_e2e_display}} bunx wdio run e2e/wdio.conf.js --spec e2e/specs/{{SPEC}}.js
 
 # Legacy operator-daemon prep; isolated workers do not use this install.
 # Default is safe/no-op. Set E2E_INSTALL_DAEMON=1 only to mutate the host install.
