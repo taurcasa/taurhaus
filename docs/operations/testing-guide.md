@@ -39,16 +39,21 @@ Each WDIO invocation prints a unique `run-summary.json` path under its log
 directory. It records selected/executed/passed/failed/skipped/unreached counts
 per spec, skipped test names, revision (with dirty-tree flag), and binary SHA-256.
 Files selected but never loaded remain null, rather than looking passed. The
-completion hook fails even if WDIO exits zero when selected tests were skipped
-or not reached. Missing prerequisites are failures of required coverage; paid
+completion hook fails even if WDIO exits zero when selected tests have unexplained
+skips or were not reached. Exact declared test exclusions stay counted as skipped
+(executed and passed remain zero); `excluded_tests` records their names and reasons.
+`complete` means all coverage outside those declared exclusions passed. Missing prerequisites are failures of required coverage; paid
 lanes and explicit file exclusions are declared separately. A fail-fast run is
 useful diagnosis, not evidence of complete breadth. Both `test-e2e` and
 `test-e2e-full` disable WDIO and Mocha bail. Named specs and smoke retain the
 local fail-fast defaults; bare WDIO can opt into breadth with `E2E_BAIL=0
 E2E_MOCHA_BAIL=0`.
 
-`just capture-e2e-docs` produces general and README screenshots on demand;
-these files are excluded from acceptance. The native light/dark transition
+`just capture-e2e-docs` selects general, README, and mesh screenshots on demand;
+these files are excluded from acceptance with reason `on-demand documentation capture`.
+Mesh capture still references the retired customizer path and needs a later docs
+update; this round deliberately does not rewrite it. Its setup, initialization,
+and runtime wiring are covered by `mesh-workflow` and `template-crud-ui`. The native light/dark transition
 assertions from the old `screenshots.js` remain in its behavioral spec.
 The default behavioral manifest retains nine serial sessions: eight seeded,
 one virgin wizard. This removes eight repeated wizard walks while preserving
@@ -60,6 +65,72 @@ build), `build_ms`, and whether the build was reused. No parallelism change is
 justified by this lane. Before: nine boots and nine wizard walks per suite;
 after: nine boots and one wizard walk. Historical whole-suite wall time was
 not measured; compare future runs using the recorded build and execution costs.
+
+
+### Inherited conditional skips (phase 3)
+
+The 22 skipped tests enumerated by `run-yGwpMI` predate this reform. Earlier
+bail-truncated runs did not count the complete set. They are inherited test debt
+assigned to **phase 3 (liveness/progress pack)**, not new passing coverage. The
+static declarations in `e2e/runSummary.js` explain only these exact names;
+unknown skips still fail accounting. Existing conditional behavior is unchanged.
+
+**`overview-interactions.js` (1):** No dismissible relationship row (or its dismiss control).
+
+- `Overview Interactions relationships dismissing a relationship removes the row`
+
+**`git-workflow.js` (4):** No session filter; no further commit page; a nonempty repository; or unavailable project/commit selection for position memory, respectively.
+
+- `Git Workflow navigation range filter appears when commits are session-filtered`
+- `Git Workflow navigation scroll sentinel exists when more commits are available`
+- `Git Workflow navigation empty state shows git-empty when repository has no commits`
+- `Git Workflow position memory selected commit is restored after switching projects and back`
+
+**`files-workflow.js` (2):** No matching visible code node or binary/image node, respectively.
+
+- `Files Workflow file viewing clicking a .js or .rs file shows code-viewer with highlighted spans`
+- `Files Workflow file viewing binary or image file shows appropriate viewer or informational message`
+
+**`tasks-workflow.js` (6):** The fixture has no task rows (`hasTasks` is false); detail tests depend on those rows.
+
+- `Tasks Workflow kanban board renders kanban columns when tasks exist`
+- `Tasks Workflow kanban board task rows show non-empty subject text`
+- `Tasks Workflow kanban board task rows contain a tool icon SVG`
+- `Tasks Workflow task detail clicking a task row opens the detail panel`
+- `Tasks Workflow task detail detail panel shows description or sections content`
+- `Tasks Workflow task detail detail close button dismisses the panel`
+
+**`cross-tab-navigation.js` (2):** The helper cannot resolve two distinct selectable project labels (or select them).
+
+- `Cross-Tab Navigation project switching preserves active tab when returning to a previously visited project`
+- `Cross-Tab Navigation project switching new project defaults to Overview tab`
+
+**`settings-persistence.js` (1):** There is no second selectable terminal-emulator option.
+
+- `Settings Persistence terminal settings terminal emulator change persists after close and reopen`
+
+**`mesh-recovery.js` (3):** The first two are permanent resume-verification product-issue skips; the last is an inverse-availability skip because mesh/tmux are available. These are not three equivalent propagation flakes.
+
+- `Mesh Recovery surfaces degraded runtime state after a member pane dies`
+- `Mesh Recovery surfaces duplicate-add conflicts and lets the operator recover by changing the name`
+- `Mesh Recovery records when mesh recovery tier 2 is unavailable`
+
+**`mesh-workflow.js` (2):** Both are inverse-condition cases: this isolated worker requires mesh/tmux to be available.
+
+- `Mesh Workflow tier 1 shows blocking availability messaging when mesh is unavailable`
+- `Mesh Workflow tier 2 skips tier 2 when mesh prerequisites are unavailable`
+
+**`regressions.js` (1):** DirectoryBrowser is not mounted, so its clipping cannot be inspected.
+
+- `Regressions DirectoryBrowser overflow (commit 284bd54 regression) directory tree has overflow-hidden for horizontal clipping`
+
+Cold-resume adds one **declared known-issue exclusion**, making the expected
+pending set 23 if all inherited conditions recur. It preserves the complete
+stop/reload/resume assertions; only its registration becomes pending. The two
+already-pending recovery cases now share its named reason in accounting:
+team-daemon startup verification times out after resume. See the corrected
+[residual docket](./mesh-flake-audit.md#known-residual-orchestrator-ruling-2026-09-06).
+No other test's skip behavior changes in this round.
 
 ## Test layers
 
@@ -321,7 +392,7 @@ must be shadowed by inert fixtures before the suite is started.
 
 The two unconditional recovery skips predate this lane and name product
 issues. Workflow prerequisite failures now fail loudly; its inverse-environment
-skips name the installed mesh/tmux fact. No new skip is authorized. A failed
+skips name the installed mesh/tmux fact. The later test-strategy round declares cold-resume against that same issue; see the inherited-skip inventory above. A failed
 wait remains a failure. Failure
 screenshots can show cleanup's disband, so diagnosis must use the preceding
 app log, as documented by `673dac42`.

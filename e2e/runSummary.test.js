@@ -5,6 +5,21 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 
 describe('suite run accounting', () => {
+  // Regression: 3329e3e2 counted inherited resume-verification exclusions as
+  // unexplained skips; 97000c80 then reached cold-resume on every breadth run.
+  it('accounts for the named resume-verification exclusion without inventing execution', () => {
+    const file = resolve('e2e/specs/mesh-recovery.js')
+    const title = 'Mesh Recovery shows cold-resume controls after a full team stop and reload'
+    const suite = { tests: [{ file, pending: true, fullTitle: () => title }], suites: [] }
+    const rows = summarizeSuite(suite)
+    expect(rows[file]).toMatchObject({ selected: 1, executed: 0, skipped: 1 })
+    expect(rows[file].excluded_tests).toEqual([{ test: title, reason: expect.stringMatching(/resume.*verification.*mesh-flake-audit/i) }])
+    expect(coverageComplete(rows, 0)).toBe(true)
+    expect(coverageComplete(rows, 1)).toBe(false)
+    expect(coverageComplete({ 'other.js': rows[file] }, 0)).toBe(false)
+    expect(coverageComplete({ [file]: { ...rows[file], unreached: 1 } }, 0)).toBe(false)
+    expect(readFileSync(file, 'utf8')).toContain("it.skip('shows cold-resume controls after a full team stop and reload'")
+  })
   it('writes the loaded Mocha tree and persists pending cases without inventing passes', () => {
     const dir = mkdtempSync(resolve(tmpdir(), 'taurhaus-summary-test-'))
     const path = resolve(dir, 'run-summary.json')

@@ -56,7 +56,7 @@ import {
 } from './helpers/workerEnv.js'
 import { CODEX_SCRATCH_SPECS, buildSpecList, captureSpecs, listSpecFiles, paidSpecs } from './specList.js'
 import { needsWizard, seedOnboarding, invokeApp } from './helpers/onboarding.js'
-import { finishRun, selectedSpecFiles, updateRunSummary } from './runSummary.js'
+import { declaredTestExclusions, finishRun, selectedSpecFiles, updateRunSummary } from './runSummary.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
@@ -557,6 +557,9 @@ export const config = {
             : captureSpecs.includes(spec) ? 'on-demand documentation capture'
               : 'explicit suite selection/exclusion',
         }))
+        summary.exclusions.push(...declaredTestExclusions.filter(entry =>
+          selected.some(path => relative(projectRoot, path) === entry.spec)
+        ))
         summary.specs = Object.fromEntries(selected.map(path => [relative(projectRoot, path), null]))
       })
 
