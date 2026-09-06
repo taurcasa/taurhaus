@@ -124,9 +124,48 @@ was edited. Gates and E2E proof are recorded below when completed.
 
 ## 4. Acceptance proof
 
-Pending: exact lint / Vitest exits and three consecutive full tier-1 runs.
-The current default is serial, so these will not prove seven-worker behavior.
+All commands ran from this checkout root, without piping gates. Each exit
+code was captured immediately with `rc=$?`. No test-source changes occurred
+between the three E2E runs.
+
+| Gate | Outcome |
+| --- | --- |
+| `just check-quick` | Exit 0; Rust fmt/check, frontend typecheck, 142 files / 2416 tests passed. |
+| `just lint` | Exit 0; Clippy, frontend structure/dependency checks, workflow syntax and gate guards passed. |
+| `bunx vitest run` | Exit 0; 142 files / 2416 tests passed. |
+| `E2E_INSTALL_DAEMON=0 just test-e2e` — run 1 | Exit 0; `Spec Files: 9 passed, 9 total (100% completed) in 00:04:38`. |
+| `E2E_INSTALL_DAEMON=0 just test-e2e` — run 2 | Exit 0; `Spec Files: 9 passed, 9 total (100% completed) in 00:04:39`. |
+| `E2E_INSTALL_DAEMON=0 just test-e2e` — run 3 | Exit 0; `Spec Files: 9 passed, 9 total (100% completed) in 00:04:35`. |
+
+Each E2E run reported **157 passing / 24 skipped**; WDIO's nine spec-file
+entries are the sealed worker groups. All three explicitly passed cold
+stop/reload/resume, initialize/hot-add/disband, role-aware Add Agent autofill
+and unlock, and runtime-node role capture. The template group passed all 14
+cases; the Mesh group passed five and retained six skips (the two documented
+product-issue cases, three inverse-prerequisite cases, and the screenshot
+ownership guard). These are limitations, not new skips. The artifact hook
+also captures some pending cases, so an artifact directory alone is not a
+failed test; the final reporter and exit code establish the outcome.
+
+Safety setup for all three runs: inert Node harness executables named
+`claude`, `codex`, `agy`, `grok`, and `gemini` were generated in the ignored
+`.check-logs/flake-audit/cli-bin` directory and prepended to PATH. They exit on
+SIGINT/SIGTERM, print only a fixture version for `--version`, and otherwise
+idle; they never invoke an AI CLI. Existing spec-specific harness fixtures
+remain in use. `E2E_WDIO_PORT=42367`, `E2E_NATIVE_WEBDRIVER_PORT=42368`, and
+per-run `E2E_WDIO_OUTPUT_DIR` only select private driver ports/artifact paths.
+No worker-count, retry, bail, Mocha-timeout or build-skip override was used.
+The existing worker hooks own cleanup. Final verification found **zero owned
+E2E processes**, all **27/27 worker roots removed**, zero remaining checkout
+process ledgers, and both driver listener ports released. Generated docs
+screenshots were removed; the original untracked `LANE-SPEC.md` was preserved.
+
+Local evidence is retained under `.check-logs/flake-audit/`: `check-quick.log`,
+`lint.log`, `vitest.log`, `item-2-behavior-red.log`, `item-2-green.log`, and
+`e2e-run-{1,2,3}.log` with matching `.rc` files. No product bug blocked this
+lane and no product source was changed. The default configuration is serial,
+so these runs do **not** prove seven-worker behavior.
 Review/routing calibration belongs to the independent reviewer; the
 implementer does not assign its own quality score. Review-relevant choices:
-one 21-line retry helper, no product edits, deterministic fault injection,
+one 20-line retry helper, no product edits, deterministic fault injection,
 and no new skip or repeated mutation.
