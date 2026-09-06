@@ -371,6 +371,11 @@ none/minimal/low/medium/high/xhigh/max) live-verified via a minimal
 audit with Astra as implementer, after the watch-deadlock hotfix merges so
 its e2e runs don't hit the wedge), then operator tier sign-off.
 
+**Calibration verdict 2026-09-06**: four exhibits complete; the
+orchestrator's memo with the frontier recommendation is
+[`astra-calibration-memo.md`](astra-calibration-memo.md) — awaiting the
+operator's tier sign-off before the catalog or the signed table changes.
+
 Intel as of 2026-09-04 (press, pre-availability — verify everything on the
 real CLI): it is **OpenAI GPT-6 Astra** — limited preview 2026-09-03, public
 release planned 2026-09-07, reaching Plus/Pro/Business "over coming days"
