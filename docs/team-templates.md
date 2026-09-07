@@ -407,18 +407,18 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
-- **Roles (22)**:
+- **Roles (23)**:
   - orchestration: `v3-lead-claude` (Fable 5.1), `codex-orchestrator` (GPT-5.6 Sol), and `antigravity-orchestrator` (the Antigravity/agy alternative)
   - implementation: `v4-developer-claude`, `v4-developer-codex`, `v4-developer-agy`, `v4-developer-grok`, `quick-dev-codex`, `frontend-design-skill-developer`, and the diff-budgeted `astra-heavy-implementer`
-  - architecture, review, and decision support: `v3-architect-codex`, `adversarial-reviewer-claude`, `claude-product-checker`, `claude-design-lead`, `claude-researcher`, `docs-verifier-codex`, `codex-qa`, `astra-architect`, `astra-crossfile-reviewer`, `astra-security-auditor`, `judge-astra`, and `judge-fable`
-- **Presets (11)**:
+  - architecture, review, and decision support: `v3-architect-codex`, `fable-altitude-reviewer`, `adversarial-reviewer-claude`, `claude-product-checker`, `claude-design-lead`, `claude-researcher`, `docs-verifier-codex`, `codex-qa`, `astra-architect`, `astra-crossfile-reviewer`, `astra-security-auditor`, `judge-astra`, and `judge-fable`
+- **Presets (12)**:
   - `pair` — `v3-lead-claude` plus `quick-dev-codex`
   - `dev-team` — `v3-lead-claude` plus two `v4-developer-codex`
   - `full-team` — `v3-lead-claude` plus `v3-architect-codex` and two `v4-developer-codex`
   - `research-team` — `v3-lead-claude` plus `claude-researcher` and one `v4-developer-codex`
   - `grok-pair` — `v3-lead-claude` plus one `v4-developer-grok`
   - `product-build-w2` — eight standing seats: Fable lead, Astra architect/security owner, solo Astra judge, Fable altitude reviewer, Fable design lead, Fable UI implementer, and two leashed Astra heavy implementers; Sol is overflow only
-  - `product-build` — the unchanged legacy field-test preset file; its role references now resolve to current catalog defaults, including the Codex architect
+  - `product-build` — the unchanged legacy field-test preset file; its role references now resolve to current catalog defaults, including its `altitude-reviewer` seat (Codex/Sol); it no longer seats a Claude-family altitude reviewer
   - `taurhaus-core` — Fable lead and Codex architect, one high-effort Sol implementer, and Astra as the sole cross-file reviewer
   - `security-audit` — Astra xhigh lead auditor, independent Fable counter-auditor, and one high-effort Sol fix implementer
   - `research-eval` — Fable synthesis, Sol and Grok research lanes, and the isolated `judge-fable` / `judge-astra` pair
@@ -426,7 +426,7 @@ Current built-ins ship from `src-tauri/resources/templates/`:
   - `design-ui` — Fable creative direction, a Fable incumbent and Astra challenger implementation bake-off, and opposite-family visual judges
 
 Every preset names its lead explicitly and references only canonical role ids.
-The original five presets inherit model and effort from their roles; the six
+The original five presets inherit model and effort from their roles; the seven
 frontier presets use narrow slot overrides where the blueprint calls for a
 different effort or a model bake-off. The historical `v3-lead-claude` and
 `v3-architect-codex` ids remain because presets already reference them; their
@@ -439,6 +439,16 @@ untouched seeded copies advance and local edits remain user-owned, including
 across later seed-on-mutation calls. The new role and preset are in the closed
 manifest. The old `product-build` preset file is unchanged, but referenced role
 defaults are live catalog definitions, not a frozen historical roster.
+Its historical description still promises Fable altitude review, but the
+`altitude-reviewer` slot now resolves to Codex/Sol and has the architect contract.
+It does not supply the Claude-family altitude pass required by `astra-architect`;
+use `product-build-w2` for the standing two-family review roster.
+
+Two other unchanged preset descriptions also predate the architect change:
+`full-team` still advertises an "open architect slot", which now resolves to the
+fixed Codex/Sol architect; `taurhaus-core` still says "Fable leads and architects",
+but Fable only leads and Codex/Sol architects alongside its Sol implementer.
+Their descriptions are historical copy, not the effective role/tool contract.
 
 `v3-architect-codex` is now a pure Codex-family architect (Sol/high), with no
 open-slot compatibility instructions. `fable-altitude-reviewer` is the explicit
@@ -491,7 +501,9 @@ the adversarial Opus reviewer remains in the catalog but is unstaffed in Wave 2.
 These built-ins are most useful when you read them as lane definitions:
 
 - orchestrator owns routing and unblock decisions
-- architect owns structure and review boundaries
+- architect owns structure, security, and the acceptance-instrument contract
+- Fable altitude reviewer owns architecture-bearing depth and acceptance of GPT-authored work
+- Astra judge owns review of Claude-authored code and design artifacts, evidence audits, and certifications
 - developer owns implementation lanes
 - creative-direction lead owns intent, critique, and final visual judgment
 - UI implementation specialist turns approved direction into production UI

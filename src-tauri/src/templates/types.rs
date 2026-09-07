@@ -1644,9 +1644,9 @@ mod tests {
             "every long wait",
             "awaiting-GO",
             "awaited artifact",
-            "owner",
+            "blocked-on(artifact, owner)",
             "assignment generation",
-            "baseline",
+            "record the baseline, owned paths",
             "owned paths",
             "counting method",
             "exclusions",
@@ -2297,6 +2297,15 @@ mod tests {
     #[test]
     fn frontier_template_docs_name_the_shipped_catalog() {
         let guide = include_str!("../../../docs/team-templates.md");
+        // Regression: edcab898 added a role and preset without updating the
+        // catalog enumeration; mentioning an id elsewhere did not catch drift.
+        assert!(guide.contains(&format!("**Roles ({})**", load_role_templates().len())));
+        assert!(guide.contains(&format!("**Presets ({})**", load_team_presets().len())));
+        let review_roles = guide
+            .lines()
+            .find(|line| line.contains("architecture, review, and decision support:"))
+            .unwrap();
+        assert!(review_roles.contains("`fable-altitude-reviewer`"));
         for id in [
             "fable-altitude-reviewer",
             "product-build-w2",

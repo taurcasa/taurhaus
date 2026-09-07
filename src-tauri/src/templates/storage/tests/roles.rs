@@ -531,8 +531,9 @@ fn frontier_catalog_reconciles_revision_four_roles_and_seeds_new_roles() {
             "4bf49412425deacc87dbb9969942588d0a0db85ba2c95e0447a42bfd24d9bb8a",
         ),
     ] {
-        // These two roles changed again in revision 6. Reconstruct revision 4
-        // from stable revision-5 bytes, never from today's mutable catalog.
+        // Pin the two roles changed again in revision 6 to stable revision-5 bytes.
+        // The unchanged Antigravity/Codex orchestrators still use the bundle;
+        // pin those too when they change. The hashes below verify revision 4.
         let revision_five = match name {
             "v3-lead-claude.yaml" => super::wave2::REVISION_FIVE_LEAD.to_string(),
             "adversarial-reviewer-claude.yaml" => {
