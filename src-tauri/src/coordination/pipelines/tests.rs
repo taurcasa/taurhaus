@@ -44,12 +44,15 @@ use crate::templates::types::BehavioralContract;
 
 // Regression: a79d392 allowed recreation/resume to retain dead cwd and
 // unresolved models (F2/F13), and silently hydrated incoherent role/tool seats.
+// Regression: 0f973a63 erased persisted `external` declarations on load,
+// making an invalid model indistinguishable from an absent, defaultable model.
 #[test]
 fn wave2_member_validation_rejects_invalid_create_add_and_resume_before_launch() {
     for (field, value) in [
         ("cwd", "missing"),
-        ("model", ""),
         ("model", "external"),
+        ("model", " ExTeRnAl "),
+        ("model", "opus"),
         ("cli_tool", "mismatch"),
     ] {
         let tmp = TempDir::new().unwrap();
@@ -675,10 +678,7 @@ impl CoordinationRuntime for DeliveryWakePipelineRuntime {
     }
 }
 
-include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/tests/common/project_fixture.rs"
-));
+use crate::coordination::state::test_support::fixture_project;
 
 fn member(name: &str, role: MemberRole, cli_tool: CliTool, project: &str) -> Member {
     Member {
@@ -3941,9 +3941,65 @@ fn resume_accepts_a_minimal_runtime_record_written_by_mesh() {
     assert_eq!(report.failed_step, None);
 }
 
-// Regression: a79d392 treated mesh's pre-existing `external` placeholder as a model
-// declaration, so resume rendered `-m 'external'` instead of the member role's model.
-// Regression: a79d392 silently repaired the external placeholder, hiding F13.
+// Regression: 216e51e9 rejected persisted null/empty models before the
+// existing role -> catalog hydration, and turned catalog suggestions into an allowlist.
+#[test]
+fn wave2_resolved_seats_preserve_defaults_and_custom_models() {
+    for declared in [None, Some(""), Some("custom-model-2027")] {
+        for role_model in [None, Some("custom-role-model-2027")] {
+            let tmp = TempDir::new().unwrap();
+            let mut orchestrator = new_orchestrator(
+                &tmp,
+                Arc::new(FakeBackend::default()),
+                Arc::new(RecordingCoordinationRuntime::default()),
+            );
+            let mut seat = member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                tmp.path().to_str().unwrap(),
+            );
+            seat.model = declared.map(str::to_string);
+            if let Some(model) = role_model {
+                let store = TemplateStore::new(orchestrator.template_root.clone());
+                let mut role = store.get_role("v4-developer-codex").unwrap().template;
+                role.role_id = "custom-builder".into();
+                role.defaults.model = model.into();
+                store.create_role(&role).unwrap();
+                seat.role_id = Some(role.role_id);
+            }
+            // The same preflight is used for create/add seats.
+            crate::coordination::validation::validate_member_configuration(
+                &seat,
+                &orchestrator.template_root,
+            )
+            .expect("resolvable seat");
+            orchestrator.create_team("resolved-seat", None).unwrap();
+            orchestrator.add_member("resolved-seat", seat).unwrap();
+            let (resolved, _, _) = orchestrator
+                .load_resume_member_state(&ResumeMemberRequest {
+                    team_name: "resolved-seat".into(),
+                    member_name: "builder".into(),
+                    reasoning_effort_override: Some("high".into()),
+                })
+                .expect("persisted seat must resume, including effort relaunch");
+            let expected = declared
+                .filter(|model| !model.is_empty())
+                .or(role_model)
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    crate::models::ModelCatalog::default_for(CliTool::Codex)
+                        .unwrap()
+                        .id
+                        .clone()
+                });
+            assert_eq!(resolved.model.as_deref(), Some(expected.as_str()));
+        }
+    }
+}
+
+// Regression: 0f973a63 silently repaired the external placeholder on load,
+// hiding the invalid persisted seat observed in F13.
 #[test]
 fn resume_external_placeholder_is_rejected_before_hydration() {
     let tmp = TempDir::new().expect("tempdir");

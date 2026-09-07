@@ -1,7 +1,8 @@
 use crate::coordination::errors::CoordinationError;
 
-/// Validate persisted seat identity before any create/resume side effects.
-/// Do not hydrate invalid values: F2/F13 require an actionable rejection.
+/// Validate the effective seat before any create/resume side effects.
+/// Missing declarations use the existing hydration authority; explicit invalid
+/// values and incoherent role/tool seats still require an actionable rejection.
 pub(crate) fn validate_member_configuration(
     member: &crate::coordination::domain::Member,
     template_root: &std::path::Path,
@@ -21,28 +22,15 @@ pub(crate) fn validate_member_configuration(
             ),
         ));
     }
-    let declared = crate::session_scanner::launch::ModelSpec::parse_legacy(
-        member.model.as_deref().unwrap_or_default(),
-    );
-    if !declared.model.as_deref().is_some_and(|model| {
-        crate::models::ModelCatalog::entry_for(member.cli_tool, model).is_some()
-    }) {
-        return Err(invalid(
-            "model",
-            format!(
-                "choose a non-empty model from the {} model catalog",
-                member.cli_tool
-            ),
-        ));
-    }
-    if let Some(role) = member.role_id.as_deref().and_then(|role_id| {
+    let role = member.role_id.as_deref().and_then(|role_id| {
         crate::coordination::member_activation::load_role_for_member_hydration(
             template_root,
             role_id,
             &member.name,
             "validation",
         )
-    }) {
+    });
+    if let Some(role) = role.as_ref() {
         if role.defaults.cli_tool != member.cli_tool {
             return Err(invalid(
                 "cli_tool",
@@ -52,6 +40,30 @@ pub(crate) fn validate_member_configuration(
                 ),
             ));
         }
+    }
+    let mut resolved = member.clone();
+    crate::coordination::member_activation::hydrate_member_model_fields(
+        &mut resolved,
+        role.as_ref(),
+    );
+    if !resolved.model.as_deref().is_some_and(|model| {
+        !model.eq_ignore_ascii_case("external")
+            && !model.trim().is_empty()
+            && crate::coordination::member_activation::validated_role_model(
+                member.cli_tool,
+                model,
+                &member.name,
+                "validation",
+            )
+            .is_some()
+    }) {
+        return Err(invalid(
+            "model",
+            format!(
+                "choose a resolvable model for {}; 'external' is not a managed model",
+                member.cli_tool,
+            ),
+        ));
     }
     Ok(())
 }

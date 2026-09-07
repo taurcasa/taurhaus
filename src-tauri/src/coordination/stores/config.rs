@@ -1231,10 +1231,8 @@ fn normalize_persisted_model_fields(
     let Some(model) = model.as_deref() else {
         return (None, reasoning_effort);
     };
-    if model.trim().eq_ignore_ascii_case("external") {
-        return (None, reasoning_effort);
-    }
-
+    // Preserve explicit placeholders for activation validation; erasing them
+    // would turn an invalid seat into a request for role/catalog defaults.
     let mut parsed = ModelSpec::parse_legacy(model);
     if reasoning_effort.is_some() {
         parsed.reasoning_effort = reasoning_effort;
