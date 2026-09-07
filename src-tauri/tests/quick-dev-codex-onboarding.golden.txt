@@ -21,7 +21,7 @@ mesh task review <id> --summary "<handoff>" --team taureval-golden --name agent-
 mesh task complete <id> --summary "<result>" --team taureval-golden --name agent-under-test
 
 Work contract:
-Acknowledge assignment, execute, then report completion with artifacts and test results.
+Execute the first action; report through the named completion signal. Record an explicit dependency wait when execution cannot begin.
 
 Compaction safety:
 If context compaction happens and you have no unread messages or your current task is unclear, immediately message evaluator and ask for your current assignment.

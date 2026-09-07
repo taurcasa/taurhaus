@@ -40,7 +40,7 @@ const DEFAULT_DEBOUNCE_WINDOW_SECS: i64 = 30;
 const FALLBACK_LOCK_RETRY_DELAY_MS: u64 = 20;
 const FALLBACK_LOCK_RETRY_ATTEMPTS: usize = 250;
 const TEMP_FILE_RANDOM_RETRY_ATTEMPTS: usize = 16;
-const BUILTIN_CATALOG_REVISION: u32 = 5;
+const BUILTIN_CATALOG_REVISION: u32 = 6;
 const PACKAGED_TEMPLATE_MANIFEST: &str = include_str!("../../../resources/templates/manifest.txt");
 
 const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n.lock.fallback\n";
@@ -63,6 +63,47 @@ const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n
 // so no fingerprint block exists for it; the recorded supersession below moves
 // stores directly from revision 1 bytes to the current revision.
 const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
+    // Revision 6: Wave-2 roles and design challenger supersede revision-5 bytes.
+    (
+        "roles/v3-architect-codex.yaml",
+        "9b048ad1cc3f55a21aa199f24516ba5633ee05be50f24f75e7d4fa05d32de93d",
+    ),
+    (
+        "roles/judge-astra.yaml",
+        "9553e596154bad3f1850a8485ee1fd15db0baecdf31dec1138bab5a0d89062f9",
+    ),
+    (
+        "roles/astra-architect.yaml",
+        "0af5e9f4acdaaf656f64c1c7239d93492d4ec8ee93f4f6c90cd6bf5e1454b384",
+    ),
+    (
+        "roles/astra-heavy-implementer.yaml",
+        "461c8428d7b8aeb44cf85a340c0420b70a5afbcd8989502d767748e8b7c72392",
+    ),
+    (
+        "roles/v3-lead-claude.yaml",
+        "c4dd63bc959232299055c18e069040ffa4624fc8e74c3066681ccc808276b221",
+    ),
+    (
+        "roles/v4-developer-codex.yaml",
+        "ea4941a4134d56e61fd67967fe34a4914f33a313c31876028658ae37fa68830d",
+    ),
+    (
+        "roles/adversarial-reviewer-claude.yaml",
+        "0365d0f5be03eabbfa07f0fb2098901451c9d7ada9397e82ccbb9a190d0a9caa",
+    ),
+    (
+        "roles/claude-design-lead.yaml",
+        "7b68455f7b55b23a25a868b9f8b69273985d50f186b22643640613c94e65d31a",
+    ),
+    (
+        "roles/frontend-design-skill-developer.yaml",
+        "88fbe840365e524fd76dce8b32d8a401519255a123946f44bfd627c3ef1424e1",
+    ),
+    (
+        "presets/design-ui.yaml",
+        "9dbc56f986463a1c1218fb855f958149fe1d91c81b493c854d2cd096cd3783fa",
+    ),
     // Revision 5: frontier-era review routing superseded these revision-4 bytes.
     (
         "roles/adversarial-reviewer-claude.yaml",

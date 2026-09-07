@@ -99,7 +99,7 @@ impl DeliveryRenderer {
                 "mesh task complete <id> --summary \"<result>\" --team {team_name} --name {member_name}\n",
                 "\n",
                 "Work contract:\n",
-                "Acknowledge assignment, execute, then report completion with artifacts and test results.\n",
+                "Execute the first action; report through the named completion signal. Record an explicit dependency wait when execution cannot begin.\n",
                 "\n",
                 "Compaction safety:\n",
                 "If context compaction happens and you have no unread messages or your current task is unclear, immediately message {lead_name} and ask for your current assignment.\n",
@@ -468,6 +468,20 @@ mod tests {
         assert!(!rendered.contains("task update"));
     }
 
+    // Regression: 5cebfef8 told members to acknowledge before executing,
+    // contradicting the action-first assignment and delivery contract.
+    #[test]
+    fn onboarding_executes_first_action_and_records_dependency_waits() {
+        let rendered = DeliveryRenderer::render_onboarding(
+            "scratch-team",
+            "reviewer",
+            "lead",
+            RoleContext::default(),
+        );
+        assert!(rendered.contains("Execute the first action; report through the named completion signal. Record an explicit dependency wait when execution cannot begin."));
+        assert!(!rendered.contains("Acknowledge assignment"));
+    }
+
     #[test]
     fn render_onboarding_snapshot_format() {
         let rendered = DeliveryRenderer::render_onboarding(
@@ -501,7 +515,7 @@ mod tests {
             "mesh task complete <id> --summary \"<result>\" --team architecture-final --name codex-reviewer\n",
             "\n",
             "Work contract:\n",
-            "Acknowledge assignment, execute, then report completion with artifacts and test results.\n",
+            "Execute the first action; report through the named completion signal. Record an explicit dependency wait when execution cannot begin.\n",
             "\n",
             "Compaction safety:\n",
             "If context compaction happens and you have no unread messages or your current task is unclear, immediately message team-lead and ask for your current assignment.\n",

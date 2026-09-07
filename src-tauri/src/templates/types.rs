@@ -1285,6 +1285,7 @@ mod tests {
             "codex-orchestrator",
             "codex-qa",
             "docs-verifier-codex",
+            "fable-altitude-reviewer",
             "frontend-design-skill-developer",
             "quick-dev-codex",
             "v3-architect-codex",
@@ -1410,6 +1411,241 @@ mod tests {
     }
 
     #[test]
+    fn wave2_audit_replacements_are_verbatim_in_role_contracts() {
+        let roles = load_role_templates();
+        for (id, replacement) in [
+            (
+                "v3-lead-claude",
+                r#"Use the task system as canonical state only after verifying owner, assignment generation, dependency state, and accepted artifact. Escalate lifecycle contradictions; never infer inactivity from silence."#,
+            ),
+            (
+                "astra-heavy-implementer",
+                r#"For implement work, record the baseline, owned paths, counting method, exclusions, and numeric budget before editing. Measure/diagnose work follows its assigned work-kind evidence contract."#,
+            ),
+            (
+                "v4-developer-codex",
+                r#"An execution checkpoint proves command → dispatch → persisted transition with a controlled real process before UI work starts. Name incomplete stages explicitly in its RESULT."#,
+            ),
+            (
+                "v3-architect-codex",
+                r#"Block when missing evidence prevents verifying a required persistence, privacy, recovery, or execution invariant; otherwise record a bounded coverage request:"#,
+            ),
+            (
+                "adversarial-reviewer-claude",
+                r#"Every PASS names the exact candidate evidence and its scope. Verify quoted strings against candidate bytes; distinguish independently checked, accepted on citation, and unmeasured claims."#,
+            ),
+            (
+                "claude-design-lead",
+                r#"Fail unexplained app-authored jargon that obstructs comprehension. Preserve required model output, historical identifiers, and versioned provenance; add plain-language context without rewriting source evidence."#,
+            ),
+            (
+                "judge-astra",
+                r#"Activate this paired-judge role only with both judges and a fixed shared cell manifest. Ordinary product or code review uses a reviewer role with its own named rubric and stopping condition."#,
+            ),
+        ] {
+            let role = roles.iter().find(|role| role.role_id == id).unwrap();
+            let text = serde_norway::to_string(role).unwrap();
+            let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            assert!(
+                normalized.contains(replacement),
+                "{id}: missing {replacement}"
+            );
+        }
+    }
+
+    #[test]
+    fn wave2_reviewers_preserve_acceptance_semantics_after_compaction() {
+        let roles = load_role_templates();
+        for (id, tool, model, author) in [
+            (
+                "fable-altitude-reviewer",
+                CliTool::Claude,
+                "fable",
+                "GPT-authored",
+            ),
+            (
+                "judge-astra",
+                CliTool::Codex,
+                "gpt-6-astra",
+                "Claude-authored",
+            ),
+        ] {
+            let role = roles
+                .iter()
+                .find(|role| role.role_id == id)
+                .unwrap_or_else(|| panic!("missing {id}"));
+            assert_eq!(role.defaults.cli_tool, tool);
+            assert_eq!(role.defaults.model, model);
+            assert_eq!(role.defaults.reasoning_effort.as_deref(), Some("high"));
+            let compact = serde_norway::to_string(&role.runtime_compact_summary).unwrap();
+            for text in [&role.instructions, &compact] {
+                let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+                for marker in [
+                    author,
+                    "exact candidate evidence",
+                    "candidate bytes",
+                    "can this check fail?",
+                    "per-root",
+                    "zero",
+                    "independently checked",
+                    "accepted on citation",
+                    "unmeasured",
+                    "one review round",
+                    "recorded ruling",
+                ] {
+                    assert!(text.contains(marker), "{id}: missing {marker}");
+                }
+            }
+        }
+        let judge = roles
+            .iter()
+            .find(|role| role.role_id == "judge-astra")
+            .unwrap();
+        for marker in [
+            "PRIMARY: SOLO REVIEWER",
+            "SPECIAL: PAIRED CELL",
+            "gated source → landed source → review",
+            "REJECT as an unqualified PASS record",
+            "both judges and a fixed shared cell manifest",
+        ] {
+            assert!(
+                judge.instructions.contains(marker),
+                "judge: missing {marker}"
+            );
+        }
+    }
+
+    #[test]
+    fn wave2_architect_owns_security_without_general_review() {
+        let roles = load_role_templates();
+        let role = roles
+            .iter()
+            .find(|role| role.role_id == "astra-architect")
+            .unwrap();
+        let compact = serde_norway::to_string(&role.runtime_compact_summary).unwrap();
+        for text in [&role.instructions, &compact] {
+            let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            for marker in ["threat model", "security/privacy", "frozen scope", "counters", "verdict wiring",
+                "must-flag fixtures", "before any certification run", "NO review duties beyond security",
+                "a security finding that implicates the architect's own architecture decision escalates to the lead and the Fable altitude reviewer — never self-ruled."] {
+                assert!(text.contains(marker), "architect: missing {marker}");
+            }
+            assert!(!text.contains("structural review"));
+        }
+    }
+
+    #[test]
+    fn wave2_preset_has_eight_standing_seats_and_no_overflow_seat() {
+        use sha2::{Digest, Sha256};
+        let old_product = fs::read(templates_dir().join("presets/product-build.yaml")).unwrap();
+        assert_eq!(
+            format!("{:x}", Sha256::digest(old_product)),
+            "12ccf8c2873de3afec4475e7c8e2bd767e6f10dc5edd9debed5e07d8ef472303"
+        );
+        let presets = load_team_presets();
+        let preset = presets
+            .iter()
+            .find(|preset| preset.preset_id == "product-build-w2")
+            .expect("wave-2 preset");
+        assert_eq!(preset.lead_role_id, "v3-lead-claude");
+        assert_eq!(
+            preset
+                .agent_slots
+                .iter()
+                .map(|slot| (slot.role_id.as_str(), slot.count))
+                .collect::<Vec<_>>(),
+            vec![
+                ("astra-architect", 1),
+                ("judge-astra", 1),
+                ("fable-altitude-reviewer", 1),
+                ("claude-design-lead", 1),
+                ("frontend-design-skill-developer", 1),
+                ("astra-heavy-implementer", 2)
+            ]
+        );
+        let roles = load_role_templates();
+        let ui = roles
+            .iter()
+            .find(|role| role.role_id == "frontend-design-skill-developer")
+            .unwrap();
+        assert_eq!(ui.defaults.cli_tool, CliTool::Claude);
+        assert_eq!(ui.defaults.model, "fable");
+        for marker in [
+            "standing",
+            "Astra judge",
+            "restart-cursor",
+            "checkout rules",
+            "No diff-budget leash",
+        ] {
+            assert!(ui.instructions.contains(marker), "UI: missing {marker}");
+        }
+    }
+
+    #[test]
+    fn wave2_delivery_and_lead_bound_ceremony_and_budget_raises() {
+        let standard = include_str!("../../../docs/team-delivery-standard.md")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        for marker in [
+            "per-seat worktrees",
+            "git status --porcelain",
+            "CARGO_TARGET_DIR",
+            "geometry asserted",
+            "≥3 concurrent builds",
+            "cwd",
+            "code tip",
+            "rubric tip",
+            "tool hash",
+            "active root",
+            "pending rulings",
+            "next action",
+            "every long wait",
+            "awaiting-GO",
+            "awaited artifact",
+            "owner",
+            "assignment generation",
+            "baseline",
+            "owned paths",
+            "counting method",
+            "exclusions",
+            "numeric budget",
+            "--kind ruling --value approved --field budget_raised",
+            "old ceiling",
+            "new ceiling",
+            "reason",
+        ] {
+            assert!(
+                standard.contains(marker),
+                "delivery standard: missing {marker}"
+            );
+        }
+        let roles = load_role_templates();
+        let lead = roles
+            .iter()
+            .find(|role| role.role_id == "v3-lead-claude")
+            .unwrap();
+        let compact = serde_norway::to_string(&lead.runtime_compact_summary).unwrap();
+        for text in [&lead.instructions, &compact] {
+            let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            for marker in [
+                "3 review rounds",
+                "about to route a finding",
+                "is this worth another round?",
+                "one review round",
+                "recorded ruling",
+                "before the first assignment",
+                "checkout rules",
+                "restart-cursor",
+                "budget_raised",
+                "dependency wait",
+            ] {
+                assert!(text.contains(marker), "lead: missing {marker}");
+            }
+        }
+    }
+
+    #[test]
     fn frontier_roles_encode_the_decided_behavioral_contracts() {
         let roles = load_role_templates()
             .into_iter()
@@ -1490,7 +1726,9 @@ mod tests {
 
         let heavy = &roles["astra-heavy-implementer"];
         let heavy_contract = heavy.behavioral_contract.execution.join("\n");
-        assert!(heavy_contract.contains("Every assignment MUST state a diff budget."));
+        assert!(heavy_contract.contains(
+            "Every implement assignment MUST state a numeric diff budget with counting semantics."
+        ));
         assert!(heavy_contract.contains(
             "Exceeding the assignment's diff budget without prior lead approval is a review FAILURE, not a style note."
         ));
@@ -1725,7 +1963,7 @@ mod tests {
     }
 
     #[test]
-    fn open_and_design_slots_name_their_candidate_models() {
+    fn architect_and_design_seats_and_open_research_slot_use_valid_defaults() {
         let roles = load_role_templates();
         let find = |role_id: &str| {
             roles
@@ -1735,11 +1973,10 @@ mod tests {
         };
 
         let architect = find("v3-architect-codex");
-        assert_eq!(architect.defaults.cli_tool, CliTool::Claude);
-        assert_eq!(architect.defaults.model, "fable");
-        assert!(architect
-            .instructions
-            .contains("Candidates: Fable 5.1 (preferred) or GPT-5.6 Sol (fallback)"));
+        assert_eq!(architect.defaults.cli_tool, CliTool::Codex);
+        assert_eq!(architect.defaults.model, "gpt-5.6-sol");
+        assert!(!architect.instructions.contains("open slot"));
+        assert!(!architect.instructions.contains("Candidates:"));
 
         let researcher = find("claude-researcher");
         assert_eq!(researcher.defaults.cli_tool, CliTool::Codex);
@@ -1765,11 +2002,11 @@ mod tests {
         assert!(creative.instructions.contains("human validation required"));
 
         let implementation = find("frontend-design-skill-developer");
-        assert_eq!(implementation.defaults.cli_tool, CliTool::Codex);
-        assert_eq!(implementation.defaults.model, "gpt-5.6-sol");
+        assert_eq!(implementation.defaults.cli_tool, CliTool::Claude);
+        assert_eq!(implementation.defaults.model, "fable");
         assert!(implementation
             .instructions
-            .contains("UI IMPLEMENTATION candidates: GPT-5.6 Sol (preferred) or Opus 5"));
+            .contains("frontend-design skill"));
         assert!(implementation
             .instructions
             .contains("human validation required"));
@@ -1794,8 +2031,8 @@ mod tests {
         );
         assert_eq!(
             presets.len(),
-            11,
-            "expected exactly eleven built-in team presets"
+            12,
+            "expected exactly twelve built-in team presets"
         );
         assert!(
             presets.iter().any(|preset| preset.preset_id == "pair"),
@@ -1892,7 +2129,7 @@ mod tests {
                 vec![
                     ("claude-design-lead", 1),
                     ("v4-developer-claude", 1),
-                    ("frontend-design-skill-developer", 1),
+                    ("v4-developer-codex", 1),
                     ("judge-astra", 1),
                     ("judge-fable", 1),
                 ],
@@ -2020,6 +2257,8 @@ mod tests {
     fn frontier_template_docs_name_the_shipped_catalog() {
         let guide = include_str!("../../../docs/team-templates.md");
         for id in [
+            "fable-altitude-reviewer",
+            "product-build-w2",
             "astra-architect",
             "astra-crossfile-reviewer",
             "astra-heavy-implementer",
