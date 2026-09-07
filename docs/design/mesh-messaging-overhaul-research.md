@@ -250,3 +250,19 @@ The following remain open and should gate only their dependent stages:
 **Confidence and final recommendation.** Confidence is **high** in the need for independent retention, explicit task/assignment links, a stable logical post identity, selective readership, and preserving lifecycle/writer authority. Confidence is **high** that service stdout alone and ordinary MCP resource notifications are not universal inbound delivery. Confidence is **moderate** in one team journal and one scheduler as the best eventual topology at this scale; that is a design judgment without load measurements. Confidence is **moderate** in documented native boundary paths and **low** in untested hot attachment/idle-wake interoperability for the existing agy/Codex/Grok TUIs.
 
 Adopt the operator's separation of storage and delivery, improve it with a team acceptance journal and explicit receipt/authority semantics, and stage transport replacement per harness. Start with the offline reader/conformance packet, then retention/linking and delivery ownership. Advance to canonical storage and native push only when compatibility and isolated uptake tests establish the relevant contract. The immediate win is recoverable, attributable communication; token savings must still earn their own evidence.
+
+---
+
+**Operator decisions (2026-09-07, post-review).** Open question 1 is
+answered: the March per-member JSONL conversion was reverted because
+the idea and the models were both premature at the time — not because
+the approach failed architecturally. The gate on reusing its code is
+lifted in principle; the design here differs enough that reuse is
+optional. Priority decision: the current product team — and an expected
+~80% of future teams — runs frontier models on Claude Code and Codex
+only. Native push is therefore pursued FIRST-CLASS for those two
+harnesses; agy and Grok remain on the guarded tmux fallback
+indefinitely, and that asymmetry is accepted complexity, not debt.
+Next step commissioned: a version-pinned probe of the two channels on
+this machine's installed harnesses (see
+`native-push-probe-brief.md`).
