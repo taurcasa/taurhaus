@@ -98,6 +98,18 @@ and remains the ONLY writer of the canonical JSONL. Models write files
 losslessly and escape argv badly — the interface follows the model's
 strengths (house precedent: workflow prompt files, heredoc commit
 messages, markdown+front-matter handoffs). File-based entries carry the
-idempotency key, making ingestion retry-safe. If the study's verb
-sketch conflicts with this, the constraint wins and the sketch is
-amended at review.
+idempotency key, making ingestion retry-safe.
+
+Refinement (operator-confirmed): the point of the file interface is
+that there is NO escaping layer at all — authored prose is literal.
+Direct JSON authoring would merely relocate the escaping fight from
+bash into the file (every quote/newline/backslash of a 20k-character
+evidence cell inside one JSON string) and forfeit human reviewability;
+mesh must parse-and-validate on ingest either way, so JSON input saves
+nothing. Therefore: dual intake, format follows the author —
+markdown+front-matter for authored entries, `--from entry.json` for
+programmatic emitters that write no prose — both normalized and
+sequenced into the same canonical JSONL, which is always mesh's output
+and never the author's input format. If the study's verb sketch
+conflicts with this, the constraint wins and the sketch is amended at
+review.
