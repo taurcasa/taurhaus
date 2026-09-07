@@ -6,6 +6,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-09-07
+
+### Added
+
+- **Wave-2 team catalog** (revision 7): `product-build-w2` grows to nine
+  standing seats with the new on-demand `astra-asset-generator` role —
+  a minimal-uptime generation seat with prompts-on-file discipline, a
+  style gate for new asset families, and design-lead acceptance. The
+  restored `fable-altitude-reviewer` seat, standing `judge-astra`
+  reviewer, security-owning `astra-architect`, and both standing Astra
+  heavy lanes complete the wave-2 roster; `v4-developer-codex` defaults
+  to GPT-6 Astra at high effort.
+- **Routing telemetry, wave-2 machinery**: `budget_raised` rulings are
+  counted separately from review rulings (the diff-budget leash becomes
+  falsifiable), monitor nudges are distinguished from deadline nudges,
+  launch attribution commits atomically, and missing completions are
+  observed with roster-attribution retry.
+- **Role illustration set**: ten style-B layered-paper role images on
+  the exact house field, with generation prompts on file
+  (`docs/design/role-assets/`), plus the binding UI presentation laws
+  (`docs/design/ui-presentation-laws.md`).
+
+### Changed
+
+- **Bundled mesh 0.2.29**: ownership on all lifecycle verbs, explicit
+  reopen with cleared provenance, canonical lead inbox, terminal-status
+  archival without reopen, alias resolution on `task assign`, and an
+  idle monitor that respects declared waits (lead-only `--awaiting-go`
+  assignment marker released by `task update --go`), stops after two
+  ignored nudges with a single launch-health record, and emits
+  source-tagged nudge records for telemetry. Protocol and schema stay 1.
+- The deadline pass respects declared waits (`deadline.wait.skipped`)
+  and expires mesh member blocks at the monitor TTL (override:
+  `TAURHAUS_MESH_MEMBER_STATUS_TTL_SECONDS`).
+
+### Fixed
+
+- Managed-seat configuration is validated at create, recreate, and
+  resume — an invalid persisted seat (e.g. `model: "external"`) is
+  rejected before anything is stopped, instead of being silently
+  repaired or, worse, stopped and left offline.
+
 ## [0.9.4] - 2026-09-06
 
 ### Added
