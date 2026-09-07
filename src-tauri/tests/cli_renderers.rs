@@ -436,7 +436,8 @@ fn render_onboarding_cli_uses_the_agy_variant() {
     });
     let actual = run_renderer("--render-onboarding", &request);
 
-    assert!(actual.contains("~/.claude/teams/taureval-golden/inboxes/agent-under-test.json"));
+    // Regression: 18810949 moved teams to account roots; the inbox hint must follow the launch root.
+    assert!(actual.contains("$CLAUDE_DIR/teams/taureval-golden/inboxes/agent-under-test.json"));
     assert!(actual.contains("enter /exit"));
     // Regression: agy loads hooks only in a trusted workspace, so an onboarded
     // member who never answers the trust prompt reports no activity at all.
@@ -460,7 +461,8 @@ fn render_onboarding_cli_uses_the_grok_variant() {
     });
     let actual = run_renderer("--render-onboarding", &request);
 
-    assert!(actual.contains("~/.claude/teams/taureval-golden/inboxes/agent-under-test.json"));
+    // Regression: 18810949 moved teams to account roots; the inbox hint must follow the launch root.
+    assert!(actual.contains("$CLAUDE_DIR/teams/taureval-golden/inboxes/agent-under-test.json"));
     assert!(actual.contains("enter /quit"));
     assert!(actual.contains("Ctrl+Enter interjects immediately"));
 }
