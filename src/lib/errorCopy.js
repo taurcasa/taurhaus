@@ -117,6 +117,10 @@ export function describeMeshInitFailure(error, { failedStep = '' } = {}) {
     return 'Mesh is not installed yet. Install it, then try again.'
   }
 
+  if (detail.includes('tmux') && detail.includes('no space for new pane')) {
+    return 'tmux could not fit another pane in the team window. Enlarge the terminal window, then try again.'
+  }
+
   if (detail.includes('tmux')) {
     return 'tmux is not available yet. Install it, then try again.'
   }

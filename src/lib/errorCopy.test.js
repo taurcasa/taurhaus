@@ -64,6 +64,17 @@ describe('describeMeshAvailabilityIssue', () => {
 })
 
 describe('describeMeshInitFailure', () => {
+  // Regression: e5ea42a38 classified every tmux error as a missing installation.
+  it('explains pane-space exhaustion without asking to install tmux', () => {
+    expect(describeMeshInitFailure(
+      new Error('Backend error: tmux split-window failed: no space for new pane'),
+      { failedStep: 'create_panes' }
+    )).toBe('tmux could not fit another pane in the team window. Enlarge the terminal window, then try again.')
+    expect(describeMeshInitFailure(new Error('tmux not available: No such file or directory'))).toBe(
+      'tmux is not available yet. Install it, then try again.'
+    )
+  })
+
   it('rewrites common initialization failures', () => {
     expect(describeMeshInitFailure(new Error('team already exists'), { failedStep: 'create_team' })).toBe(
       'A team with this name already exists. Open it or replace it to continue.'
