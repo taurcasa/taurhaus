@@ -1,0 +1,14 @@
+title = "taurhaus gitleaks config"
+
+[extend]
+useDefault = true
+
+# Research docs pin their evidence files by SHA-256 digest. The
+# token-accounting digest trips generic-api-key ("Token-" wording next
+# to 64 hex chars). These are file checksums, not credentials — each
+# allowlisted digest is listed individually and reviewed.
+[allowlist]
+description = "SHA-256 file checksums quoted in committed research documents"
+regexes = [
+  '''5e4cdfc3ba40af04ed58d9c062dcb745be5eb0c06ea5734edf39747c8586de3e''',
+]
