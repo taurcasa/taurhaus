@@ -32,8 +32,14 @@
   .seg.signed{background:var(--manila)}
   .seg.live{background:color-mix(in oklab, var(--hue) 62%, var(--panel))}
   .seg.quiet{border-color:var(--paper-line)}
-  .agg{color:var(--ink-dim); font-size:11.5px}
-  .agg b{color:var(--ink); font-weight:600}
+  .gauges{display:flex; gap:20px; align-items:center}
+  .g .n{font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1.1}
+  .g .n small{font-size:11px; color:var(--ink-dim); font-weight:500}
+  .g .l{font-size:10px; color:var(--ink-dim); margin-top:1px}
+  .g.crewg{margin-left:auto; text-align:right}
+  .minicrew{display:flex; gap:5px; justify-content:flex-end}
+  .minicrew .chip{width:19px; height:19px}
+  .minicrew .chip svg{width:10px;height:10px}
   .walk{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:12px}
   .wchip{display:inline-flex; align-items:center; gap:6px; background:var(--chipbg);
     border-radius:14px; padding:3px 10px 3px 7px; font-size:11.5px}
@@ -74,8 +80,10 @@
   .chip .wait{position:absolute;right:-4px;bottom:-4px;width:11px;height:11px;border-radius:50%;
     background:var(--amber);color:#3a2b05;font-size:7.5px;display:grid;place-items:center}
 
-  .count{color:var(--ink-dim); font-size:10.5px; font-variant-numeric:tabular-nums;
-    min-width:66px; text-align:right; flex:none}
+  .dots{display:flex; gap:3px; flex:none; align-items:center; min-width:66px; justify-content:flex-end}
+  .dots i{width:5.5px; height:5.5px; border-radius:50%; background:var(--ink-dim)}
+  .dots i.o{background:transparent; border:1px solid var(--paper-line)}
+  .row.filed .dots i{background:color-mix(in oklab, var(--manila) 75%, var(--ink-dim))}
 
   .rail{display:flex; align-items:center; margin-top:10px; padding-top:9px;
     border-top:1px solid var(--paper-line); color:var(--ink-dim); font-size:11.5px}
@@ -91,7 +99,7 @@
   <div class="stage">
     <main class="sidepanel">
       <header class="endeavor">
-        <div class="obj">Building the first slice: configure a hunt, run it, browse what came back.</div>
+        <div class="obj" style="font-weight:500">Building the first slice: configure a hunt, run it, browse what came back.</div>
         <div class="strip">
           <span class="seg signed" title="Enter a workspace — signed off"></span>
           <span class="seg live" style="--hue:#8a7fb8" title="Run work — 3 people on it"></span>
@@ -101,13 +109,24 @@
           <span class="seg signed" title="Shared foundation — signed off"></span>
           <span class="seg quiet" title="App shell — nothing here yet"></span>
         </div>
-        <div class="agg"><b>16 of 32</b> tasks done, <b>2 of 7</b> areas signed off, <b>6</b> working now</div>
+        <div class="gauges">
+          <span class="g"><span class="n">16<small>/32</small></span><div class="l">tasks done</div></span>
+          <span class="g"><span class="n">2<small>/7</small></span><div class="l">areas signed off</div></span>
+          <span class="g crewg"><span class="minicrew">
+            <span class="chip working" title="lead · working"><svg viewBox="0 0 16 16"><path d="M8 2l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.4l-3.7 2.1.8-4.2L2 6.4l4.2-.5z"/></svg></span>
+            <span class="chip gpt working" title="sol · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+            <span class="chip gpt working" title="tess · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+            <span class="chip working" title="aya · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+            <span class="chip gpt working" title="ivo · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+            <span class="chip working" title="nia · architect + security · working"><svg viewBox="0 0 16 16"><path d="M8 2l5 2v4c0 3.2-2.2 5-5 6-2.8-1-5-2.8-5-6V4z"/></svg></span>
+          </span><div class="l">on it now</div></span>
+        </div>
       </header>
       <div class="walk">
-        <span class="wchip"><span class="dot" style="background:var(--manila)"></span>2 signed off</span>
-        <span class="wchip"><span class="dot" style="background:var(--red)"></span>1 sent back</span>
+        <span class="wchip" title="2 signed off since you last looked"><span class="dot" style="background:var(--manila)"></span>2</span>
+        <span class="wchip" title="1 sent back since you last looked"><span class="dot" style="background:var(--red)"></span>1</span>
         <span class="wchip"><span class="dot" style="background:var(--amber)"></span>1 waiting on you</span>
-        <span class="since">since you last looked (13:05)</span>
+        <span class="since" title="since you last looked">◷ 13:05</span>
       </div>
 
       <div class="row filed" style="--spine:#5b7fa6">
@@ -115,7 +134,7 @@
         <span class="mid"><span class="name">Enter a workspace</span></span>
         </span>
         <span class="crew"><span class="chip off" title="mira · implementer · offline"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span></span>
-        <span class="count">all 6 done</span>
+        <span class="dots" title="6 of 6 done"><i></i><i></i><i></i><i></i><i></i><i></i></span>
       </div>
 
       <div class="row live changed" style="--spine:#8a7fb8">
@@ -127,7 +146,7 @@
           <span class="chip gpt working" title="tess · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
           <span class="chip idle" title="bo · reviewer · idle"><svg viewBox="0 0 16 16"><path d="M2 8s2.2-3.5 6-3.5S14 8 14 8s-2.2 3.5-6 3.5S2 8 2 8z"/><circle cx="8" cy="8" r="1.4"/></svg></span>
         </span>
-        <span class="count">4 of 9 done</span>
+        <span class="dots" title="4 of 9 done"><i></i><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i></span>
       </div>
 
       <div class="row live" style="--spine:#6899a8">
@@ -137,14 +156,14 @@
           <span class="chip working" title="aya · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
           <span class="chip gpt idle" title="dev · judge · waiting for the go-ahead"><svg viewBox="0 0 16 16"><path d="M8 2v10M4 12h8M8 4L4.5 8h7z"/></svg><span class="wait">◷</span></span>
         </span>
-        <span class="count">2 of 5 done</span>
+        <span class="dots" title="2 of 5 done"><i></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i></span>
       </div>
 
       <div class="row live" style="--spine:#a67f6e">
         <svg class="glyph" viewBox="0 0 16 16"><path d="M8 2.5V10M5 7.5L8 10.5l3-3"/><path d="M3 13h10"/></svg>
         <span class="mid"><span class="name">Install and start</span></span>
         <span class="crew"><span class="chip gpt working" title="ivo · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span></span>
-        <span class="count">1 of 3 done</span>
+        <span class="dots" title="1 of 3 done"><i></i><i class="o"></i><i class="o"></i></span>
       </div>
 
       <div class="row quiet" style="--spine:#9a7a95">
@@ -152,7 +171,7 @@
         <span class="mid"><span class="name">Recover interrupted work</span><span class="note slow">nothing’s moved for 52 minutes</span></span>
         </span>
         <span class="crew"><span class="chip gpt idle" title="ivo · implementer · waiting for Run work"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg><span class="wait">◷</span></span></span>
-        <span class="count">0 of 2 done</span>
+        <span class="dots" title="0 of 2 done"><i class="o"></i><i class="o"></i></span>
       </div>
 
       <div class="row filed" style="--spine:#7c8a9e">
@@ -160,14 +179,14 @@
         <span class="mid"><span class="name">Shared foundation</span></span>
         </span>
         <span class="crew"></span>
-        <span class="count">all 3 done</span>
+        <span class="dots" title="3 of 3 done"><i></i><i></i><i></i></span>
       </div>
 
       <div class="row quiet" style="--spine:#8a9077">
         <svg class="glyph" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M2.5 6h11M6 6v7"/></svg>
         <span class="mid"><span class="name">App shell</span></span>
         <span class="crew"></span>
-        <span class="count">0 of 4 done</span>
+        <span class="dots" title="0 of 4 done"><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i></span>
       </div>
 
       <div class="rail"><b>3</b> tasks don't belong anywhere yet</div>
