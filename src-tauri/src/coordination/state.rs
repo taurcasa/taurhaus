@@ -2298,6 +2298,101 @@ mod tests {
         assert_eq!(runtime_record.pane_id.as_deref(), Some("%41"));
     }
 
+    // Regression: 008536ec gated deadline actions only by in_progress, so an
+    // assignment waiting for GO was actionable before release (Astra §3/§8,
+    // T9 19:57 nudge before 19:58 GO; F12). No real CLI or member is launched.
+    #[test]
+    fn wave2_deadline_pass_respects_declared_waits_before_go() {
+        for wait in ["task_go", "task_blocked", "member_go", "member_blocked"] {
+            for minutes in [10, 20] {
+                let (_tmp, teams, runtime, fake, state) = deadline_fixture();
+                let assigned_at = DateTime::parse_from_rfc3339("2026-09-03T19:47:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc);
+                seed_deadline_task(&teams, assigned_at, Some(20));
+                let path = teams.parent().unwrap().join("tasks/deadline-team/42.json");
+                let mut task: serde_json::Value =
+                    serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+                let config_path = teams.join("deadline-team/config.json");
+                let mut config: serde_json::Value =
+                    serde_json::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
+                let member = config["members"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .find(|member| member["name"] == "builder")
+                    .unwrap();
+                match wait {
+                    "task_go" => {
+                        task["description"] = serde_json::json!("Review starts on GO");
+                        task["metadata"]["awaiting_go"] = serde_json::json!(true);
+                    }
+                    "task_blocked" => {
+                        task["status"] = serde_json::json!("blocked");
+                        task["metadata"]["blocked_reason"] =
+                            serde_json::json!("Awaiting candidate from builder");
+                    }
+                    "member_go" => {
+                        member["metadata"] = serde_json::json!({"awaiting_go":true});
+                    }
+                    _ => {
+                        member["statusState"] = serde_json::json!("blocked");
+                        member["statusReason"] = serde_json::json!("Awaiting candidate");
+                    }
+                }
+                // This is the assignment record, before any pass can observe it.
+                std::fs::write(&path, task.to_string()).unwrap();
+                std::fs::write(&config_path, config.to_string()).unwrap();
+                for _ in 0..2 {
+                    state
+                        .run_background_task_deadline_pass_at(
+                            assigned_at + chrono::Duration::minutes(minutes),
+                        )
+                        .unwrap();
+                }
+                assert!(
+                    deadline_notices(&fake).is_empty(),
+                    "{wait} at {minutes} minutes"
+                );
+                let snapshot = deadline_snapshot(&teams);
+                assert_eq!(snapshot.task.nudged_at, None, "{wait}");
+                assert_eq!(snapshot.task.stale_at, None, "{wait}");
+                assert_eq!(
+                    mesh_task_status(&teams),
+                    if wait == "task_blocked" {
+                        "blocked"
+                    } else {
+                        "in_progress"
+                    }
+                );
+                assert_no_deadline_termination(&runtime);
+
+                if minutes == 10 {
+                    // GO at 19:58 clears the explicit marker; prose is not a parser.
+                    task["status"] = serde_json::json!("in_progress");
+                    task["metadata"]["awaiting_go"] = serde_json::json!(false);
+                    std::fs::write(&path, task.to_string()).unwrap();
+                    // Simulate the Mesh writer: Taurhaus saves preserve existing extension values.
+                    let member = config["members"]
+                        .as_array_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .find(|member| member["name"] == "builder")
+                        .unwrap();
+                    member["statusState"] = serde_json::json!("working");
+                    member["metadata"] = serde_json::json!({"awaiting_go":false});
+                    std::fs::write(&config_path, config.to_string()).unwrap();
+                    state
+                        .run_background_task_deadline_pass_at(
+                            assigned_at + chrono::Duration::minutes(11),
+                        )
+                        .unwrap();
+                    assert_eq!(deadline_notices(&fake).len(), 1, "released {wait}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn imported_mesh_deadline_drives_nudge_then_stale_from_assigned_at() {
         // Regression: 7fb03376 used a numeric deadline fixture, masking that

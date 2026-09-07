@@ -52,6 +52,15 @@ pub(crate) fn apply_task_deadlines(
                 );
             }
         }
+        if crate::coordination::stores::mesh_task::declares_wait(
+            member
+                .extra
+                .get("statusState")
+                .and_then(serde_json::Value::as_str),
+            member.extra.get("metadata"),
+        ) {
+            continue;
+        }
         let result = apply_member_deadline(
             orchestrator,
             team_name,

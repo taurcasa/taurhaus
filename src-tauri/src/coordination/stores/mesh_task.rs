@@ -11,6 +11,17 @@ use crate::coordination::errors::CoordinationError;
 
 const MAX_TASK_RECORD_BYTES: u64 = 1_048_576;
 
+/// Explicit assignment/member waits, independent of activity or elapsed time.
+/// `metadata.awaiting_go` must be set by the assignment writer before delivery
+/// and cleared on GO; never infer release from free-form messages (Astra §8).
+pub(crate) fn declares_wait(status: Option<&str>, metadata: Option<&serde_json::Value>) -> bool {
+    status == Some("blocked")
+        || metadata
+            .and_then(|metadata| metadata.get("awaiting_go"))
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+}
+
 /// Change a task status only while its identity, owner, and previous status
 /// still match the caller's observation.
 pub(crate) fn commit_status_if_unchanged(
@@ -39,6 +50,10 @@ pub(crate) fn commit_status_if_unchanged(
     if task.get("id").and_then(serde_json::Value::as_str) != Some(task_id)
         || task.get("owner").and_then(serde_json::Value::as_str) != Some(member)
         || task.get("status").and_then(serde_json::Value::as_str) != Some(expected_status)
+        || declares_wait(
+            task.get("status").and_then(serde_json::Value::as_str),
+            task.get("metadata"),
+        )
     {
         return Err(CoordinationError::Conflict(format!(
             "mesh task '{task_id}' changed before its status update committed"
@@ -69,7 +84,7 @@ pub(crate) fn commit_status_if_unchanged(
     Ok(())
 }
 
-/// Whether a task record still names this owner with `in_progress` status.
+/// Whether a task still names this owner, is in progress, and declares no wait.
 ///
 /// This probe is deliberately tolerant: every invalid or unavailable record
 /// answers `false`; the write path provides the detailed error.
@@ -92,6 +107,10 @@ pub(crate) fn is_still_open(teams_dir: &Path, team: &str, member: &str, task_id:
     task.get("id").and_then(serde_json::Value::as_str) == Some(task_id)
         && task.get("owner").and_then(serde_json::Value::as_str) == Some(member)
         && task.get("status").and_then(serde_json::Value::as_str) == Some("in_progress")
+        && !declares_wait(
+            task.get("status").and_then(serde_json::Value::as_str),
+            task.get("metadata"),
+        )
 }
 
 fn task_path(teams_dir: &Path, team: &str, task_id: &str) -> Result<PathBuf, CoordinationError> {
@@ -205,6 +224,36 @@ mod tests {
         assert_eq!(task["status"], "stale");
         assert_eq!(task["metadata"]["deadline_minutes"], 20);
         assert_eq!(task["subject"], "Run the migration");
+    }
+
+    // Regression: 008536ec compared owner/status but ignored a newly declared
+    // wait, so a GO marker arriving after the deadline probe could be staled.
+    #[test]
+    fn wave2_deadline_commit_refuses_a_wait_declared_after_the_probe() {
+        let root = tempfile::tempdir().unwrap();
+        let teams = root.path().join("teams");
+        write_task(&teams, "42", "42", "builder", "in_progress");
+        assert!(is_still_open(&teams, "deadline-team", "builder", "42"));
+        let path = task_path(&teams, "deadline-team", "42");
+        let mut task: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        task["metadata"]["awaiting_go"] = serde_json::json!(true);
+        std::fs::write(&path, task.to_string()).unwrap();
+        assert!(matches!(
+            commit_status_if_unchanged(
+                &teams,
+                "deadline-team",
+                "builder",
+                "42",
+                "in_progress",
+                "stale"
+            ),
+            Err(CoordinationError::Conflict(_))
+        ));
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&std::fs::read(path).unwrap()).unwrap(),
+            task
+        );
     }
 
     #[cfg(unix)]

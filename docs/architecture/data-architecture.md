@@ -159,6 +159,27 @@ recover historical nudges by guessing from inbox prose. The monitor's producer,
 declared-wait suppression and two-failed-nudge stop rule remain Mesh integration
 requirements under the [existing ownership split](orchestration-practical-auto-idle-and-communication.md#mesh-vs-taurhaus-responsibility-split).
 
+#### Declared waits at the Taurhaus deadline boundary
+
+A task may carry `metadata.awaiting_go: true`. The assignment writer must set
+it on the assignment record **before delivery**, including assignments whose
+contract says "starts on GO"; the same writer sets it to `false` when issuing
+GO. Mesh owns marker updates: Taurhaus config saves preserve existing
+Mesh-owned extension values. This is an explicit boolean, not a parser for assignment or
+inbox prose. A member-wide wait uses the same marker under the member's
+`metadata` in team config. Existing task `status: blocked` and member
+`statusState: blocked` also suppress deadline actions; their reason stays in
+the existing mesh record. Waits do not expire just because activity is old.
+
+Taurhaus's deadline pass reads these declarations even when its operational
+snapshot still says `in_progress`, and the locked stale-status write checks the
+task again so a newly declared wait wins over an earlier probe. Releasing a
+wait restores the existing deadline policy; it does not silently reset
+`assigned_at` or extend the configured deadline. This closes the Taurhaus-side
+pre-GO nudge path (Wave-1 F12; Astra §3/§8). Mesh must apply the same declarations
+in its idle monitor and assignment writer to close the idle-monitor T9 path;
+Taurhaus does not forge active-process evidence to suppress that monitor.
+
 ### 3. External Tool Data Taurhaus Observes But Does Not Own
 
 | Tool | Data | Typical path | Ownership | Taurhaus role |
