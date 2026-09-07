@@ -50,16 +50,15 @@
   .row.quiet .name{color:var(--ink-dim); font-weight:500}
   .row .glyph{width:13px;height:13px;stroke:var(--ink-dim);fill:none;stroke-width:1.5;
     stroke-linecap:round;stroke-linejoin:round;flex:none}
-  .name{font-weight:600; font-size:12.5px; min-width:0; flex:1; white-space:nowrap;
+  .name{font-weight:600; font-size:12.5px; min-width:0; white-space:nowrap;
     overflow:hidden; text-overflow:ellipsis}
-  .name .sid{color:var(--ink-dim); font-weight:400; font-size:10.5px; margin-right:4px}
 
-  .marks{display:flex; align-items:center; gap:6px; flex:none}
-  .m-signed{width:10px;height:10px;background:var(--manila);border-radius:2px 2px 0 0}
-  .m-sent{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;
-    border-bottom:9px solid var(--red)}
-  .m-stall{width:14px;height:4px;border-radius:2px;
-    background:repeating-linear-gradient(90deg,var(--amber) 0 3px,transparent 3px 5px)}
+  .mid{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px}
+  .name{display:block}
+  .note{display:block; font-size:11px; color:var(--ink-dim); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis}
+  .note.trouble{color:color-mix(in oklab, var(--red) 70%, var(--ink))}
+  .note.slow{color:color-mix(in oklab, var(--amber) 60%, var(--ink))}
 
   .crew{display:flex; gap:6px; flex:none}
   .chip{position:relative; width:22px; height:22px; background:var(--chipbg);
@@ -113,16 +112,16 @@
 
       <div class="row filed" style="--spine:#5b7fa6">
         <svg class="glyph" viewBox="0 0 16 16"><rect x="4" y="2.5" width="8" height="11" rx="1"/><circle cx="10" cy="8" r=".9"/></svg>
-        <span class="name"><span class="sid">S1</span>Enter a workspace</span>
-        <span class="marks"><span class="m-signed" title="signed off · nia · 13:47"></span></span>
+        <span class="mid"><span class="name">Enter a workspace</span></span>
+        </span>
         <span class="crew"><span class="chip off" title="mira · implementer · offline"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span></span>
         <span class="count">all 6 done</span>
       </div>
 
       <div class="row live changed" style="--spine:#8a7fb8">
         <svg class="glyph" viewBox="0 0 16 16"><path d="M5.5 3.5l7 4.5-7 4.5z"/></svg>
-        <span class="name"><span class="sid">S2</span>Run work</span>
-        <span class="marks"><span class="m-sent" title="API packet sent back · 14:12 — too large"></span></span>
+        <span class="mid"><span class="name">Run work</span><span class="note trouble">API packet sent back — too large, 14:12</span></span>
+        </span>
         <span class="crew">
           <span class="chip gpt working" title="sol · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
           <span class="chip gpt working" title="tess · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
@@ -133,8 +132,7 @@
 
       <div class="row live" style="--spine:#6899a8">
         <svg class="glyph" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><path d="M10 10l3.5 3.5"/></svg>
-        <span class="name"><span class="sid">S3</span>Inspect results</span>
-        <span class="marks"></span>
+        <span class="mid"><span class="name">Inspect results</span></span>
         <span class="crew">
           <span class="chip working" title="aya · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
           <span class="chip gpt idle" title="dev · judge · waiting for the go-ahead"><svg viewBox="0 0 16 16"><path d="M8 2v10M4 12h8M8 4L4.5 8h7z"/></svg><span class="wait">◷</span></span>
@@ -144,32 +142,30 @@
 
       <div class="row live" style="--spine:#a67f6e">
         <svg class="glyph" viewBox="0 0 16 16"><path d="M8 2.5V10M5 7.5L8 10.5l3-3"/><path d="M3 13h10"/></svg>
-        <span class="name"><span class="sid">S4</span>Install and start</span>
-        <span class="marks"></span>
+        <span class="mid"><span class="name">Install and start</span></span>
         <span class="crew"><span class="chip gpt working" title="ivo · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span></span>
         <span class="count">1 of 3 done</span>
       </div>
 
       <div class="row quiet" style="--spine:#9a7a95">
         <svg class="glyph" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5V5h-2.5"/></svg>
-        <span class="name"><span class="sid">S5</span>Recover interrupted work</span>
-        <span class="marks"><span class="m-stall" title="nothing's moved for 52 minutes"></span></span>
+        <span class="mid"><span class="name">Recover interrupted work</span><span class="note slow">nothing’s moved for 52 minutes</span></span>
+        </span>
         <span class="crew"><span class="chip gpt idle" title="ivo · implementer · waiting for Run work"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg><span class="wait">◷</span></span></span>
         <span class="count">0 of 2 done</span>
       </div>
 
       <div class="row filed" style="--spine:#7c8a9e">
         <svg class="glyph" viewBox="0 0 16 16"><path d="M2.5 12.5h11M4 12.5V8h3.5v4.5M8.5 12.5V5H12v7.5M6 8V4.5"/></svg>
-        <span class="name"><span class="sid">S6</span>Shared foundation</span>
-        <span class="marks"><span class="m-signed" title="signed off · nia · 13:12"></span></span>
+        <span class="mid"><span class="name">Shared foundation</span></span>
+        </span>
         <span class="crew"></span>
         <span class="count">all 3 done</span>
       </div>
 
       <div class="row quiet" style="--spine:#8a9077">
         <svg class="glyph" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M2.5 6h11M6 6v7"/></svg>
-        <span class="name"><span class="sid">S7</span>App shell</span>
-        <span class="marks"></span>
+        <span class="mid"><span class="name">App shell</span></span>
         <span class="crew"></span>
         <span class="count">0 of 4 done</span>
       </div>
