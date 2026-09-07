@@ -22,6 +22,22 @@ use crate::models::CliCommandSettings;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 
+#[cfg(test)]
+pub(crate) mod test_support {
+    // Activation fixtures own real directories, isolated per test thread.
+    thread_local! {
+        static PROJECT_ROOT: tempfile::TempDir = tempfile::TempDir::new().expect("project fixture root");
+    }
+
+    pub(crate) fn fixture_project(name: &str) -> String {
+        PROJECT_ROOT.with(|root| {
+            let path = root.path().join(name);
+            std::fs::create_dir_all(&path).expect("project fixture");
+            path.to_string_lossy().into_owned()
+        })
+    }
+}
+
 type BackendFactory = dyn Fn(BackendKind, &Path) -> Result<Arc<dyn CoordinationBackend>, CoordinationError>
     + Send
     + Sync;
@@ -883,10 +899,7 @@ mod tests {
         assert_eq!(state.root_orchestrators.lock().expect("root map").len(), 1);
     }
 
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/common/project_fixture.rs"
-    ));
+    use crate::coordination::state::test_support::fixture_project;
 
     fn sample_member(name: &str, role: MemberRole, tool: CliTool, project_path: &str) -> Member {
         Member {

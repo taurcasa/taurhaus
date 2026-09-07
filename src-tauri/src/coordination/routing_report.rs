@@ -24,7 +24,7 @@ struct ReportStats {
     budget_raises: usize,
     relaunches: usize,
     effort_switches: usize,
-    nudges: usize,
+    deadline_nudges: usize,
     monitor_nudges: usize,
     staled: usize,
     wall_times: BTreeMap<String, i64>,
@@ -309,7 +309,7 @@ fn increment_counts(stats: &mut ReportStats, event: &RoutingTelemetryEvent) {
         RoutingTelemetryEvent::NudgeSent {
             source: NudgeSource::Deadline,
             ..
-        } => stats.nudges += 1,
+        } => stats.deadline_nudges += 1,
         RoutingTelemetryEvent::NudgeSent {
             source: NudgeSource::IdleMonitor,
             ..
@@ -398,7 +398,7 @@ fn push_row(output: &mut String, role: Option<&str>, model: &str, stats: &Report
         stats.budget_raises,
         stats.relaunches,
         stats.effort_switches,
-        stats.nudges,
+        stats.deadline_nudges,
         stats.monitor_nudges,
         stats.staled,
         median_wall_time(&stats.wall_times)

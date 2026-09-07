@@ -410,10 +410,7 @@ mod tests {
         )
     }
 
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/common/project_fixture.rs"
-    ));
+    use crate::coordination::state::test_support::fixture_project;
 
     fn member(name: &str, role: MemberRole, tool: CliTool, project_path: &str) -> Member {
         Member {
@@ -615,7 +612,12 @@ mod tests {
                 orchestrator.create_team("idle-team", None)?;
                 orchestrator.add_member(
                     "idle-team",
-                    member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orchestrator.add_member(
                     "idle-team",
@@ -653,7 +655,12 @@ mod tests {
                 orchestrator.create_team("effort-team", None)?;
                 orchestrator.add_member(
                     "effort-team",
-                    member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 let mut builder = member(
                     "builder",
@@ -722,7 +729,12 @@ mod tests {
                 orchestrator.create_team("effort-team", None)?;
                 orchestrator.add_member(
                     "effort-team",
-                    member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 let mut builder = member(
                     "builder",
