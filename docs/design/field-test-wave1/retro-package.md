@@ -63,9 +63,13 @@ legible, attributed, and mostly cheap to fix.
    Astra's seven tabled role-text replacements; fix the
    onboarding-vs-assignment acknowledgment contradiction.
 7. **taurhaus product fixes**: mesh ownership on accept/start (E10);
-   lifecycle-verb contradictions (start/progress/complete semantics);
-   validate member cwd+model at create/recreate; sidecars for every task;
-   label monitor-vs-deadline event classes; unify the lead inbox names.
+   lifecycle-verb contradictions (start/progress/complete semantics —
+   post-retro amendment 35c8766: one seat never ran `mesh task start` all
+   wave, the board misrepresented its lane throughout, and a finished task
+   had to be started in order to be completed; adopt the lead's proposal
+   that RESULT and the lifecycle transition are one action); validate
+   member cwd+model at create/recreate; sidecars for every task; label
+   monitor-vs-deadline event classes; unify the lead inbox names.
 8. **Kickoff pre-seeding**: the checkout/build/display rules ship in the
    team's CLAUDE.md on day one instead of being rediscovered by incident.
 
