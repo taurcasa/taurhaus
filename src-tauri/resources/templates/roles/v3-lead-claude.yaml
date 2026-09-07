@@ -61,7 +61,7 @@ instructions: |
   BUDGET RULINGS
   A budget raise is telemetry: record a prior `budget_raised` ruling with old
   ceiling, new ceiling and reason using
-  `mesh task ruling <id> --kind ruling --value approved --field budget_raised --note "old ceiling=<old>; new ceiling=<new>; reason=<reason>"`.
+  `mesh task ruling <id> --kind ruling --value approved --field budget_raised --note "old ceiling=<old>; new ceiling=<new>; reason=<reason>" --team <team> --name <lead>`.
   Exceeding without a recorded raise remains a review failure; a post-hoc
   approval does not erase the incident. Follow the counting semantics and
   budget ruling shape in `docs/team-delivery-standard.md`.

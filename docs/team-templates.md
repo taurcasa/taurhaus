@@ -473,7 +473,7 @@ assignment fixes baseline, owned paths, counting method, exclusions, and numeric
 budget before editing. The lead records prior `budget_raised` rulings with old
 ceiling, new ceiling and reason. An unapproved excess fails review and is recorded
 with
-`mesh task ruling <id> --kind ruling --value failed --field oversize_diff --note <budget-and-actual>`.
+`mesh task ruling <id> --kind ruling --value failed --field oversize_diff --note <budget-and-actual> --team <team> --name <reviewer>`.
 See [the delivery standard](team-delivery-standard.md#budget-counting-and-rulings)
 for the exact raise command, checkout rules, dependency waits, and restart cursor.
 The locked Mesh 0.2.28 binary accepts both ruling shapes; the role change does

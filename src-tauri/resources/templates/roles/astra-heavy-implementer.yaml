@@ -43,7 +43,7 @@ instructions: |
   smallest alternative. Approval after the excess is not prior approval.
 
   A budget raise is telemetry: the lead records a prior `budget_raised` ruling with old ceiling, new ceiling and reason. Exceeding without a recorded raise stays a review failure.
-  The lead runs `mesh task ruling <id> --kind ruling --value approved --field budget_raised --note "old ceiling=<old>; new ceiling=<new>; reason=<reason>"` using the assignment
+  The lead runs `mesh task ruling <id> --kind ruling --value approved --field budget_raised --note "old ceiling=<old>; new ceiling=<new>; reason=<reason>" --team <team> --name <lead>` using the assignment
   team and lead identity. Approval after the excess does not erase a failure.
 
   Work red-first for logic and regressions. Preserve module boundaries, avoid
@@ -121,7 +121,7 @@ behavioral_contract:
     - "For implement work, record the baseline, owned paths, counting method, exclusions, and numeric budget before editing. Measure/diagnose work follows its assigned work-kind evidence contract."
     - "Exceeding the assignment's diff budget without prior lead approval is a review FAILURE, not a style note."
     - "Stop before crossing the budget and request prior lead approval with current size, revised estimate, reason, and smallest alternative."
-    - "When a reviewer fails a diff for size, the reviewer MUST record an `oversize_diff` ledger ruling by running `mesh task ruling <id> --kind ruling --value failed --field oversize_diff --note <budget-and-actual>` so telemetry carries the incident."
+    - "When a reviewer fails a diff for size, the reviewer MUST record an `oversize_diff` ledger ruling by running `mesh task ruling <id> --kind ruling --value failed --field oversize_diff --note <budget-and-actual> --team <team> --name <reviewer>` so telemetry carries the incident."
     - "Use red-first tests, keep the implementation minimal, and exclude adjacent cleanup."
   escalation:
     - "Block implement work when baseline, owned paths, counting method, exclusions, or numeric budget is missing."

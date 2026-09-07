@@ -134,7 +134,7 @@ impl DeliveryRenderer {
                 "Example: SendMessage type=\"message\" recipient=\"{lead_name}\" content=\"Status update\" summary=\"Status update\"\n",
                 "\n",
                 "Work contract:\n",
-                "Do the assigned work first, then report completion with artifacts and test results.\n",
+                "Do the assigned work first, then report completion with artifacts and test results. Record an explicit dependency wait when execution cannot begin.\n",
                 "Do not send a pure acknowledgment before you have either completed the work or identified a real blocker.\n",
                 "\n",
                 "Compaction safety:\n",
@@ -572,6 +572,22 @@ mod tests {
         assert!(rendered.contains(
             "mesh read --unread --mark-read --team architecture-final --name codex-reviewer"
         ));
+    }
+
+    #[test]
+    fn claude_onboarding_records_dependency_waits() {
+        // Regression: edcab898 updated only mesh onboarding, leaving Claude
+        // members without the dependency-wait convention when work cannot begin.
+        let rendered = DeliveryRenderer::render_claude_role_context(
+            "scratch-team",
+            "reviewer",
+            "lead",
+            RoleContext::default(),
+        );
+        assert!(
+            rendered.contains("Record an explicit dependency wait when execution cannot begin.")
+        );
+        assert!(rendered.contains("Do not send a pure acknowledgment"));
     }
 
     #[test]

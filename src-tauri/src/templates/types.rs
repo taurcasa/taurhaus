@@ -1582,6 +1582,47 @@ mod tests {
     }
 
     #[test]
+    fn wave2_ruling_examples_supply_explicit_identity() {
+        // Regression: edcab898 omitted identity flags from budget_raised examples;
+        // e70f4a92 left the same omission in oversize_diff. Member panes do not
+        // export MESH_TEAM/MESH_NAME, so these copied commands exit before recording.
+        let sources = [
+            include_str!("../../../docs/team-delivery-standard.md"),
+            include_str!("../../../docs/team-templates.md"),
+            include_str!("../../resources/templates/roles/v3-lead-claude.yaml"),
+            include_str!("../../resources/templates/roles/astra-heavy-implementer.yaml"),
+        ];
+        let mut checked = 0;
+        let mut missing = Vec::new();
+        for source in sources {
+            for tail in source.split("mesh task ruling ").skip(1) {
+                let command = tail.split(['`', '\n']).next().unwrap();
+                let words = crate::session_scanner::shell_words::words(command);
+                let has_flag = |flag, value| {
+                    words
+                        .windows(2)
+                        .any(|pair| pair[0].text == flag && pair[1].text == value)
+                };
+                let identity = if has_flag("--field", "budget_raised") {
+                    "<lead>"
+                } else {
+                    assert!(has_flag("--field", "oversize_diff"));
+                    "<reviewer>"
+                };
+                if !has_flag("--team", "<team>") || !has_flag("--name", identity) {
+                    missing.push(command);
+                }
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 5, "exercise every published ruling example");
+        assert!(
+            missing.is_empty(),
+            "ruling examples lack explicit identity: {missing:#?}"
+        );
+    }
+
+    #[test]
     fn wave2_delivery_and_lead_bound_ceremony_and_budget_raises() {
         let standard = include_str!("../../../docs/team-delivery-standard.md")
             .split_whitespace()

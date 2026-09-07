@@ -75,7 +75,7 @@ A budget raise is telemetry. Before the ceiling is crossed, the lead records
 old ceiling, new ceiling and reason as a ruling on the implementation task:
 
 ```text
-mesh task ruling <id> --kind ruling --value approved --field budget_raised --note "old ceiling=<old>; new ceiling=<new>; reason=<reason>"
+mesh task ruling <id> --kind ruling --value approved --field budget_raised --note "old ceiling=<old>; new ceiling=<new>; reason=<reason>" --team <team> --name <lead>
 ```
 
 Use the assignment's team and lead identity. The RESULT cites the ruling and
