@@ -263,3 +263,35 @@ plus the mesh ledger and the operator's own experience.
 slice (that is the team's job, and wave 2's); suite health (owned by the
 test-strategy reform lane); Astra-as-lead (Decision 2 explicitly waits for
 this wave's numbers).
+
+## Wave-2 box score (pre-registered 2026-09-07, before the wave-2 launch)
+
+Grades the Decision 7+8 bets on the 8-seat roster. Sources: routing
+report (now with budget_raises and monitor-nudge accounting), token
+accounting from transcripts/rollouts, the wave-2 retro.
+
+1. **Full-Astra bar (Decision 7)**: heavy seats hold ≈0.5M compute tokens
+   per accepted task at A-grade quality under leash contracts — or the
+   decision is revisited.
+2. **Opus tripwire (Decision 8b)**: wave 2 ships NO defect of the class
+   only the product lens caught in wave 1 (acceptance-semantics bugs,
+   checks that cannot fail, dishonest evidence reporting). One such
+   shipped defect returns the Opus seat in wave 3.
+3. **UI lane earns its premium**: frontend-design-skill surfaces reach
+   acceptance with ≤1 REQUEST CHANGES round each (wave 1: every surface
+   needed fix rounds); its cost/quality row is recorded like any seat.
+4. **Ceremony drops measurably**: lead output tokens ≤2× total
+   implementation output (wave 1: 3×); ledger-file commits <100 (wave 1:
+   257); zero board/ledger drift episodes.
+5. **Waiting is never misread**: zero nudges of seats in declared waits
+   (wave 1: T9 pre-GO nudge, repeated closure-lane nudges, one seat
+   declared dead while waiting); zero dead-seat misdiagnoses.
+6. **The leash is falsifiable**: every ceiling change appears as a
+   budget_raised ruling (wave 1: ~15 silent raises); oversize stays zero
+   only beside visible raise records and bounded diffs.
+7. **The depth gate replaces the operator brake**: zero operator-imposed
+   freezes; the lead's recorded worth-another-round rulings appear
+   instead (wave 1: R41 was operator-imposed).
+8. **Machinery interventions strictly below wave 1**: no workspace
+   destruction, no infrastructure breakage, no seat misdiagnoses — the
+   fixed incident classes stay fixed.
