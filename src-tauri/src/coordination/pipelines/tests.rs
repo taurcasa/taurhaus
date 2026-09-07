@@ -6729,6 +6729,67 @@ fn a_pinning_resume_base_does_not_claim_the_ignored_requested_effort() {
     );
 }
 
+// Regression: 216e51e9 added resume seat validation after the effort pass
+// stopped the member; 535badc5 preserved invalid external models on load.
+#[test]
+fn wave2_effort_validation_keeps_invalid_persisted_members_running() {
+    for model in ["external", "opus"] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+        mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+        orchestrator
+            .resume_member_with_cli_commands(
+                &ResumeMemberRequest {
+                    team_name: "effort-team".into(),
+                    member_name: "builder".into(),
+                    reasoning_effort_override: None,
+                },
+                &CliCommandSettings::default(),
+            )
+            .unwrap();
+        assign_task(&tmp, "builder", "high", "migration requires review");
+        let mut config = TeamConfigStore::load(tmp.path(), "effort-team").unwrap();
+        config
+            .members
+            .iter_mut()
+            .find(|member| member.name == "builder")
+            .unwrap()
+            .model = Some(model.into());
+        TeamConfigStore::save(tmp.path(), "effort-team", &config).unwrap();
+        let before = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").unwrap();
+        let calls_before = runtime.calls().len();
+        let outcome = orchestrator
+            .apply_pending_task_effort_outcome(
+                "effort-team",
+                &mut CliCommandSettings::default(),
+                "new_window",
+                EffortPassScope::TaskChanged,
+                &mut |_, _| {},
+            )
+            .unwrap();
+        assert!(
+            runtime.calls()[calls_before..]
+                .iter()
+                .all(|call| !matches!(call, RuntimeCall::KillPane { .. })),
+            "invalid {model} must never stop the pane"
+        );
+        assert!(outcome.switched.is_empty());
+        assert!(
+            outcome
+                .failed
+                .iter()
+                .any(|(member, reason)| member == "builder" && reason.contains("model")),
+            "{outcome:?}"
+        );
+        let after = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").unwrap();
+        assert_eq!(after.pane_id, before.pane_id);
+        assert_eq!(after.health, before.health);
+        assert_eq!(after.applied_effort, before.applied_effort);
+        assert_eq!(after.effort_resume_failure.unwrap().attempts, 1);
+    }
+}
+
 #[test]
 fn a_codex_member_is_relaunched_with_the_assignment_effort() {
     let tmp = TempDir::new().expect("tempdir");

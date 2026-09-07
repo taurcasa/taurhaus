@@ -427,39 +427,48 @@ impl CoordinationOrchestrator {
             // assignment's level written into it. Whatever the relaunch will
             // render from is checked here, before anything is stopped: a
             // member is only taken down for a command that carries the level.
-            let launch_commands = match effort_launch_commands(
-                cli_commands,
-                member.cli_tool,
-                &resume_render_model(team_name, member),
-                &pending.requested,
-            ) {
-                Ok(commands) => commands,
-                Err(reason) => {
-                    self.record_failed_effort_attempt(
-                        team_name,
-                        &member.name,
-                        &pending.task_id,
+            let launch_commands =
+                match crate::coordination::validation::validate_member_configuration(
+                    member,
+                    &self.template_root,
+                )
+                .map_err(|error| error.to_string())
+                .and_then(|()| {
+                    effort_launch_commands(
+                        cli_commands,
+                        member.cli_tool,
+                        &resume_render_model(team_name, member),
                         &pending.requested,
-                        pending.failed_attempts + 1,
-                    );
-                    task_effort::emit_effort_resume(
-                        &self.teams_dir,
-                        "effort.resume.failed",
-                        crate::coordination::stores::telemetry::EffortSwitchOutcome::Failed,
-                        team_name,
-                        &member.name,
-                        &pending.task_id,
-                        &pending.requested,
-                        pending.applied.as_deref(),
-                        Some(reason),
-                        pending.failed_attempts + 1,
-                    );
-                    outcome
-                        .failed
-                        .push((member.name.clone(), reason.to_string()));
-                    continue;
-                }
-            };
+                    )
+                    .map_err(str::to_string)
+                }) {
+                    Ok(commands) => commands,
+                    Err(reason) => {
+                        self.record_failed_effort_attempt(
+                            team_name,
+                            &member.name,
+                            &pending.task_id,
+                            &pending.requested,
+                            pending.failed_attempts + 1,
+                        );
+                        task_effort::emit_effort_resume(
+                            &self.teams_dir,
+                            "effort.resume.failed",
+                            crate::coordination::stores::telemetry::EffortSwitchOutcome::Failed,
+                            team_name,
+                            &member.name,
+                            &pending.task_id,
+                            &pending.requested,
+                            pending.applied.as_deref(),
+                            Some(&reason),
+                            pending.failed_attempts + 1,
+                        );
+                        outcome
+                            .failed
+                            .push((member.name.clone(), reason.to_string()));
+                        continue;
+                    }
+                };
             task_effort::emit_effort_resume(
                 &self.teams_dir,
                 "effort.resume.started",
