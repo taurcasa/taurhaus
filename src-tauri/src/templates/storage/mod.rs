@@ -40,7 +40,7 @@ const DEFAULT_DEBOUNCE_WINDOW_SECS: i64 = 30;
 const FALLBACK_LOCK_RETRY_DELAY_MS: u64 = 20;
 const FALLBACK_LOCK_RETRY_ATTEMPTS: usize = 250;
 const TEMP_FILE_RANDOM_RETRY_ATTEMPTS: usize = 16;
-const BUILTIN_CATALOG_REVISION: u32 = 6;
+const BUILTIN_CATALOG_REVISION: u32 = 7;
 const PACKAGED_TEMPLATE_MANIFEST: &str = include_str!("../../../resources/templates/manifest.txt");
 
 const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n.lock.fallback\n";
@@ -63,6 +63,11 @@ const GITIGNORE_CONTENTS: &str = "_meta/state.json\n*.tmp*\n*.displaced\n.lock\n
 // so no fingerprint block exists for it; the recorded supersession below moves
 // stores directly from revision 1 bytes to the current revision.
 const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
+    // Revision 7: the ninth seat supersedes the revision-6 eight-seat preset.
+    (
+        "presets/product-build-w2.yaml",
+        "35c6797281a45346a669feee1cc870d56539be3cb6e77a2aa7112d213738c3a2",
+    ),
     // Revision 6: Wave-2 roles and design challenger supersede revision-5 bytes.
     (
         "roles/v3-architect-codex.yaml",

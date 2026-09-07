@@ -434,7 +434,9 @@ different effort or a model bake-off. The historical `v3-lead-claude` and
 bodies and versions carry the current playbook. Those frozen compatibility ids
 no longer indicate which harness runs the role.
 
-Catalog revision **6** ships the Wave-2 roles and `product-build-w2`. Every
+Catalog revision **6** carries the Wave-2 roles and `product-build-w2`;
+revision **7** adds the on-demand `astra-asset-generator` and the nine-seat
+preset revision, registering the superseded eight-seat preset bytes. Every
 edited shipped file has its superseded SHA-256 registered for reconciliation;
 untouched seeded copies advance and local edits remain user-owned, including
 across later seed-on-mutation calls. The new roles and preset are in the closed
