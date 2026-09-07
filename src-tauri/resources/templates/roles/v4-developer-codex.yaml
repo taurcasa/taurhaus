@@ -9,8 +9,8 @@ kind: agent
 
 defaults:
   cli_tool: codex
-  model: gpt-5.6-sol
-  reasoning_effort: medium
+  model: gpt-6-astra
+  reasoning_effort: high
   default_name_pattern: dev-{n}
 
 instructions: |

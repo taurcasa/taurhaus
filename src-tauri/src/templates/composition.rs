@@ -799,7 +799,7 @@ mod tests {
         assert_eq!(dev1.model, "gpt-5.4");
         assert_eq!(dev1.reasoning_effort.as_deref(), Some("high"));
         assert_eq!(dev2.model, "gpt-5-mini");
-        assert_eq!(dev2.reasoning_effort.as_deref(), Some("medium"));
+        assert_eq!(dev2.reasoning_effort.as_deref(), Some("high"));
 
         assert_eq!(dev1.instructions, "instance replace\ninstance append");
         assert!(dev2.instructions.contains("slot append"));

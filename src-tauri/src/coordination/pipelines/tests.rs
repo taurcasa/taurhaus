@@ -3516,8 +3516,8 @@ fn load_resume_member_state_preserves_role_template_context() {
     );
     // Regression: ff40911 discarded the role effort during relaunch, while
     // resume also replaced the model with an empty string.
-    assert_eq!(loaded_member.model.as_deref(), Some("gpt-5.6-sol"));
-    assert_eq!(loaded_member.reasoning_effort.as_deref(), Some("medium"));
+    assert_eq!(loaded_member.model.as_deref(), Some("gpt-6-astra"));
+    assert_eq!(loaded_member.reasoning_effort.as_deref(), Some("high"));
 
     mark_member_offline(&tmp, "architecture-final", "builder", "%61", Some(55));
     let report = orchestrator
@@ -3529,13 +3529,13 @@ fn load_resume_member_state_preserves_role_template_context() {
     assert!(calls.iter().any(|call| matches!(
         call,
         RuntimeCall::JoinMesh { member_name, model, .. }
-            if member_name == "builder" && model == "gpt-5.6-sol"
+            if member_name == "builder" && model == "gpt-6-astra"
     )));
     assert!(calls.iter().any(|call| matches!(
         call,
         RuntimeCall::SendKeys { keys, .. }
-            if keys.contains("-m 'gpt-5.6-sol'")
-                && keys.contains("model_reasoning_effort=\"medium\"")
+            if keys.contains("-m 'gpt-6-astra'")
+                && keys.contains("model_reasoning_effort=\"high\"")
     )));
 }
 
@@ -3631,11 +3631,11 @@ fn resume_external_placeholder_hydrates_the_role_model() {
         .expect("launch command");
     assert_eq!(
         launch,
-        "codex --yolo -m 'gpt-5.6-sol' -c 'model_reasoning_effort=\"medium\"'"
+        "codex --yolo -m 'gpt-6-astra' -c 'model_reasoning_effort=\"high\"'"
     );
     assert!(calls.iter().any(|call| matches!(
         call,
-        RuntimeCall::JoinMesh { model, .. } if model == "gpt-5.6-sol"
+        RuntimeCall::JoinMesh { model, .. } if model == "gpt-6-astra"
     )));
 }
 

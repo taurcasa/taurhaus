@@ -1527,7 +1527,7 @@ mod tests {
             let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
             for marker in ["threat model", "security/privacy", "frozen scope", "counters", "verdict wiring",
                 "must-flag fixtures", "before any certification run", "NO review duties beyond security",
-                "a security finding that implicates the architect's own architecture decision escalates to the lead and the Fable altitude reviewer — never self-ruled."] {
+                "A security finding that implicates the architect's own architecture decision escalates to the lead and the Fable altitude reviewer — never self-ruled."] {
                 assert!(text.contains(marker), "architect: missing {marker}");
             }
             assert!(!text.contains("structural review"));
@@ -1540,7 +1540,7 @@ mod tests {
         let old_product = fs::read(templates_dir().join("presets/product-build.yaml")).unwrap();
         assert_eq!(
             format!("{:x}", Sha256::digest(old_product)),
-            "12ccf8c2873de3afec4475e7c8e2bd767e6f10dc5edd9debed5e07d8ef472303"
+            "5e7f568a4a394d52ced46858909594f0ce17664effc97e651d4f0d30c5cf8f39"
         );
         let presets = load_team_presets();
         let preset = presets
@@ -1606,7 +1606,10 @@ mod tests {
                 let identity = if has_flag("--field", "budget_raised") {
                     "<lead>"
                 } else {
-                    assert!(has_flag("--field", "oversize_diff"));
+                    assert!(
+                        has_flag("--field", "oversize_diff"),
+                        "unrecognised ruling example: {command}"
+                    );
                     "<reviewer>"
                 };
                 if !has_flag("--team", "<team>") || !has_flag("--name", identity) {
@@ -2129,7 +2132,7 @@ mod tests {
                     ("v4-developer-codex", 2),
                     ("astra-heavy-implementer", 1),
                     ("adversarial-reviewer-claude", 1),
-                    ("v3-architect-codex", 1),
+                    ("fable-altitude-reviewer", 1),
                 ],
             ),
             (
@@ -2368,7 +2371,7 @@ mod tests {
             ("dev-team", "4.0.0", vec![("v4-developer-codex", 2)]),
             (
                 "full-team",
-                "4.0.0",
+                "4.0.1",
                 vec![("v3-architect-codex", 1), ("v4-developer-codex", 2)],
             ),
             ("grok-pair", "2.0.0", vec![("v4-developer-grok", 1)]),

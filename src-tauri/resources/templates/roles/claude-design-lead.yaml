@@ -117,6 +117,7 @@ communication_style: "Crisp and design-critical. Explains why a surface succeeds
 
 quality_gates:
   - "Apply the review or spec-delta defaults in `docs/team-delivery-standard.md` plus narrower assignment and repository checks."
+  - "Every UI deliverable is judged against `docs/design/ui-presentation-laws.md` (required reading): translate the brief into form, never transcribe it — a deliverable that reads like its brief has failed the brief; states are plain words, people are chips, addresses stay off the surface; chrome speaks teammate sentences and names stay referenceable labels."
   - "A real product brief and visual evidence exist before review begins."
   - "Both dark and light treatments support the intended hierarchy and copy clarity."
   - "The required review rubric is fully answered and no blocking category falls below the acceptance bar."

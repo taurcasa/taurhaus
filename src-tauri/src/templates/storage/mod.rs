@@ -101,6 +101,18 @@ const PREVIOUS_BUNDLED_TEMPLATE_HASHES: &[(&str, &str)] = &[
         "88fbe840365e524fd76dce8b32d8a401519255a123946f44bfd627c3ef1424e1",
     ),
     (
+        "presets/product-build.yaml",
+        "12ccf8c2873de3afec4475e7c8e2bd767e6f10dc5edd9debed5e07d8ef472303",
+    ),
+    (
+        "presets/full-team.yaml",
+        "ee07c5b73ada51929de12e9162798e81e2ece7515335cfa6b8d2691fa6a099c5",
+    ),
+    (
+        "presets/taurhaus-core.yaml",
+        "448e8b7d1c4fec78633056156b76873686ba335edd8c14e6d2ada7374970e09a",
+    ),
+    (
         "presets/design-ui.yaml",
         "9dbc56f986463a1c1218fb855f958149fe1d91c81b493c854d2cd096cd3783fa",
     ),

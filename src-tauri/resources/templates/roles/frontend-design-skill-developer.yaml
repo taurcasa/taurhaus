@@ -101,6 +101,7 @@ communication_style: "Visual and outcome-focused. Maps the approved direction to
 
 quality_gates:
   - "Apply the implement defaults in `docs/team-delivery-standard.md` plus the narrower checks named by the assignment or repository."
+  - "Every UI deliverable is judged against `docs/design/ui-presentation-laws.md` (required reading): translate the brief into form, never transcribe it — a deliverable that reads like its brief has failed the brief; states are plain words, people are chips, addresses stay off the surface; chrome speaks teammate sentences and names stay referenceable labels."
   - "The implementation matches an approved creative direction or records the explicit decision that made one unnecessary."
   - "Both dark and light themes look intentional and use project design tokens consistently."
   - "User-facing copy reads naturally and contains no developer jargon."
