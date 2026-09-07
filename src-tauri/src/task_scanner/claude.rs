@@ -146,6 +146,12 @@ pub fn is_oversize_failure(ruling: &serde_json::Value) -> bool {
         && ruling.get("value").and_then(serde_json::Value::as_str) == Some("failed")
 }
 
+/// Budget approvals are telemetry, not review acceptance (Wave-1 F5).
+/// Shared with the report so counted raises and excluded rulings agree.
+pub fn is_budget_raise(ruling: &serde_json::Value) -> bool {
+    ruling.get("field").and_then(serde_json::Value::as_str) == Some("budget_raised")
+}
+
 fn metadata_has_review_ruling(metadata: Option<&serde_json::Value>) -> bool {
     metadata
         .and_then(|metadata| metadata.get("rulings"))
@@ -153,6 +159,7 @@ fn metadata_has_review_ruling(metadata: Option<&serde_json::Value>) -> bool {
         .is_some_and(|rulings| {
             rulings.iter().any(|ruling| {
                 !is_oversize_failure(ruling)
+                    && !is_budget_raise(ruling)
                     && matches!(
                         ruling.get("kind").and_then(serde_json::Value::as_str),
                         Some("verdict" | "score" | "ruling")
