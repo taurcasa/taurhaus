@@ -15,7 +15,7 @@ fn tmux_command_invocation(args: &[String]) -> CommandInvocation {
 
 pub(super) fn run_tmux(args: &[String]) -> Result<String, CoordinationError> {
     let invocation = tmux_command_invocation(args);
-    let output = run_system_command(&invocation)?;
+    let output = run_tmux_output(args)?;
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     if output.status.success() {
@@ -31,6 +31,10 @@ pub(super) fn run_tmux(args: &[String]) -> Result<String, CoordinationError> {
 }
 
 pub(super) fn run_tmux_output(args: &[String]) -> Result<std::process::Output, CoordinationError> {
+    #[cfg(all(test, target_os = "linux"))]
+    if let Some(output) = tests::scratch_tmux_output(args) {
+        return output;
+    }
     let invocation = tmux_command_invocation(args);
     run_system_command(&invocation)
 }
@@ -79,7 +83,22 @@ pub(super) fn create_tmux_pane_with_layout(
         TmuxLayoutAllocation::SplitExisting { window_index, .. } => {
             let target_pane =
                 resolve_split_target_pane_for_window(TAURHAUS_TMUX_SESSION_NAME, &window_index)?;
-            create_tmux_split_pane(project_id, &target_pane)
+            let pane_id = create_tmux_split_pane(project_id, &target_pane)?;
+            if policy == TmuxLayoutPolicy::PerProject {
+                // Resume/add must rebalance just like initialize/app launches:
+                // the next member splits this same anchor again.
+                if let Err(err) = run_tmux(&[
+                    "select-layout".to_string(),
+                    "-t".to_string(),
+                    pane_id.clone(),
+                    "tiled".to_string(),
+                ]) {
+                    // An Err leaves the caller unable to track this new pane.
+                    let _ = run_tmux(&["kill-pane".to_string(), "-t".to_string(), pane_id]);
+                    return Err(err);
+                }
+            }
+            Ok(pane_id)
         }
     }
 }
@@ -220,4 +239,141 @@ pub(super) fn is_shell_command(raw: &str) -> bool {
         .trim_start_matches('-')
         .to_ascii_lowercase();
     matches!(command.as_str(), "bash" | "zsh" | "sh" | "fish")
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
+    use crate::session_scanner::control::tests::{scratch_tmux_command, ScratchTmux};
+
+    thread_local! {
+        static FAIL_TILING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+
+    struct FailTiling;
+
+    impl FailTiling {
+        fn install() -> Self {
+            FAIL_TILING.with(|slot| slot.set(true));
+            Self
+        }
+    }
+
+    impl Drop for FailTiling {
+        fn drop(&mut self) {
+            FAIL_TILING.with(|slot| slot.set(false));
+        }
+    }
+
+    pub(super) fn scratch_tmux_output(
+        args: &[String],
+    ) -> Option<Result<std::process::Output, CoordinationError>> {
+        let mut cmd = scratch_tmux_command()?;
+        let mut args = args.to_vec();
+        if args.first().is_some_and(|arg| arg == "select-layout")
+            && FAIL_TILING.with(std::cell::Cell::get)
+        {
+            *args.last_mut().unwrap() = "invalid-test-layout".to_string();
+        }
+        Some(cmd.args(args).output().map_err(CoordinationError::Io))
+    }
+
+    #[test]
+    fn resume_add_nine_same_project_members_share_one_window() {
+        // Regression: 52714df3 pinned splits to the first pane; c22b502a fixed
+        // initialize/app launches but left resume/add's create_aitx_pane untiled.
+        for (width, height) in [("240", "60"), ("252", "62"), ("80", "24")] {
+            let scratch = ScratchTmux::new(width, height);
+            scratch.run(&["set-option", "-g", "default-shell", "/bin/sh"]);
+            let project = scratch.path().to_str().unwrap();
+            let runtime = SystemCoordinationRuntime;
+            let mut members = std::collections::HashSet::new();
+            let mut window = None;
+            for member in 1..=9 {
+                let pane = runtime
+                    .create_aitx_pane(project, "per_project")
+                    .unwrap_or_else(|err| panic!("member {member} at {width}x{height}: {err}"));
+                assert!(members.insert(pane.clone()));
+                let actual = scratch.run(&["display-message", "-p", "-t", &pane, "#{window_id}"]);
+                assert_eq!(window.get_or_insert(actual.clone()), &actual);
+            }
+            let window = window.unwrap();
+            assert_eq!(
+                scratch.run(&["display-message", "-p", "-t", &window, "#{window_panes}"]),
+                "9"
+            );
+            // The scratch bootstrap window remains untouched; the project gets one window.
+            assert_eq!(
+                scratch
+                    .run(&[
+                        "list-windows",
+                        "-t",
+                        TAURHAUS_TMUX_SESSION_NAME,
+                        "-F",
+                        "#{window_id}"
+                    ])
+                    .lines()
+                    .count(),
+                2
+            );
+            for dimension in scratch
+                .run(&[
+                    "list-panes",
+                    "-t",
+                    &window,
+                    "-F",
+                    "#{pane_width} #{pane_height}",
+                ])
+                .lines()
+            {
+                let values: Vec<u32> = dimension
+                    .split_whitespace()
+                    .map(|v| v.parse().unwrap())
+                    .collect();
+                assert!(
+                    values[0] >= 10 && values[1] >= 3,
+                    "unusable pane: {dimension}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn resume_add_tiling_failure_removes_only_the_new_pane() {
+        // Regression: c22b502a omitted resume/add's tiling and error cleanup.
+        let scratch = ScratchTmux::new("240", "60");
+        scratch.run(&["set-option", "-g", "default-shell", "/bin/sh"]);
+        let project = scratch.path().to_str().unwrap();
+        let runtime = SystemCoordinationRuntime;
+        let anchor = runtime.create_aitx_pane(project, "per_project").unwrap();
+        let before = scratch.run(&["list-panes", "-a", "-F", "#{pane_id}"]);
+        let failure = FailTiling::install();
+        let result = runtime.create_aitx_pane(project, "per_project");
+        drop(failure);
+        assert!(result.unwrap_err().to_string().contains("select-layout"));
+        assert_eq!(
+            scratch.run(&["list-panes", "-a", "-F", "#{pane_id}"]),
+            before
+        );
+        assert_eq!(
+            scratch.run(&["display-message", "-p", "-t", &anchor, "#{pane_id}"]),
+            anchor
+        );
+        assert!(runtime.create_aitx_pane(project, "per_project").is_ok());
+    }
+
+    #[test]
+    fn resume_add_other_policies_do_not_tile() {
+        let scratch = ScratchTmux::new("240", "60");
+        scratch.run(&["set-option", "-g", "default-shell", "/bin/sh"]);
+        let project = scratch.path().to_str().unwrap();
+        let runtime = SystemCoordinationRuntime;
+        let _failure = FailTiling::install();
+        for policy in ["split", "new_window"] {
+            for _ in 0..3 {
+                assert!(runtime.create_aitx_pane(project, policy).is_ok());
+            }
+        }
+    }
 }

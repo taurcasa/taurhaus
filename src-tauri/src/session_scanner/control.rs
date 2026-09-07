@@ -833,6 +833,8 @@ pub(crate) mod tests {
                     .env("TMUX_TMPDIR", root)
                     .env("PATH", std::env::var_os("PATH").unwrap_or_default())
                     .env("SHELL", "/bin/sh")
+                    // tmux otherwise replaces tab-separated record fields with underscores.
+                    .env("LC_ALL", "C.UTF-8")
                     .args(["-L", "team-pane-regression", "-f", "/dev/null"]);
                 cmd
             })
@@ -855,7 +857,8 @@ pub(crate) mod tests {
                 root: tempfile::TempDir::new_in("/tmp").unwrap(),
                 _not_send: std::marker::PhantomData,
             };
-            TEST_TMUX_ROOT.with(|root| *root.borrow_mut() = Some(scratch.root.path().to_path_buf()));
+            TEST_TMUX_ROOT
+                .with(|root| *root.borrow_mut() = Some(scratch.root.path().to_path_buf()));
             scratch.run(&[
                 "new-session",
                 "-d",
