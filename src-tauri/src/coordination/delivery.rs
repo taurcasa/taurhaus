@@ -56,7 +56,7 @@ impl DeliveryRenderer {
         let mut rendered = Self::render_onboarding(team_name, member_name, lead_name, role_context);
         if tool_spec.onboarding_exit_hint {
             rendered.push_str(&format!(
-                "\n\n{} session:\nInbox file: ~/.claude/teams/{team_name}/inboxes/{member_name}.json (use mesh read above to consume it).\nTo stop cleanly, enter {}.",
+                "\n\n{} session:\nInbox file: $CLAUDE_DIR/teams/{team_name}/inboxes/{member_name}.json (use mesh read above to consume it).\nTo stop cleanly, enter {}.",
                 tool_spec.label, tool_spec.exit_command
             ));
             if let Some(hint) = tool_spec.onboarding_delivery_hint {
@@ -426,7 +426,8 @@ mod tests {
         )
         .expect("agy onboarding");
 
-        assert!(rendered.contains("~/.claude/teams/architecture-final/inboxes/agy-reviewer.json"));
+        // Regression: 18810949 moved teams to account roots but this hint still named the default.
+        assert!(rendered.contains("$CLAUDE_DIR/teams/architecture-final/inboxes/agy-reviewer.json"));
         assert!(rendered.contains("Antigravity session:"));
         assert!(rendered.contains("enter /exit"));
     }
@@ -447,7 +448,10 @@ mod tests {
         .expect("grok onboarding");
 
         assert!(rendered.contains("Grok session:"));
-        assert!(rendered.contains("~/.claude/teams/architecture-final/inboxes/grok-developer.json"));
+        // Regression: 18810949 moved teams to account roots but this hint still named the default.
+        assert!(
+            rendered.contains("$CLAUDE_DIR/teams/architecture-final/inboxes/grok-developer.json")
+        );
         assert!(rendered.contains("enter /quit"));
         assert!(rendered.contains("Ctrl+Enter interjects immediately"));
     }

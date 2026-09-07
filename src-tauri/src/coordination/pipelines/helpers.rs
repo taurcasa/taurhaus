@@ -285,7 +285,7 @@ pub(super) fn run_member_session_phase(
 ) -> Result<DetectedRuntimeSession, CoordinationError> {
     match phase {
         MemberSessionPhase::LaunchOnly(cli_commands) => {
-            let launch = build_member_activation_launch_command(context, cli_commands)?;
+            let launch = build_member_activation_launch_command(teams_dir, context, cli_commands)?;
             record_context_launch_telemetry(teams_dir, context, &launch);
             send_launch_command_with_retry(runtime, pane_id, launch.command.as_str())?;
             let account = launch.account_result();
@@ -491,10 +491,11 @@ pub(super) fn send_launch_command_with_retry(
 }
 
 pub(super) fn build_member_activation_launch_command(
+    teams_dir: &Path,
     context: &MemberActivationContext,
     cli_commands: &CliCommandSettings,
 ) -> Result<TeamLaunchResult, CoordinationError> {
-    render_team_launch(
+    let mut launch = render_team_launch(
         cli_commands,
         context.member.cli_tool,
         &context.member.model,
@@ -505,7 +506,30 @@ pub(super) fn build_member_activation_launch_command(
         cli_commands.codex_bypass_hook_trust,
         context.resume_session_id.as_deref(),
         context.member.account_id.as_deref(),
-    )
+    )?;
+    // Mesh 0.2.29 reads CLAUDE_DIR, independently of every harness's account
+    // selector (including Claude's CLAUDE_CONFIG_DIR). Use the activation's
+    // authoritative root: a single-member resume may carry no Claude account.
+    let config_dir = teams_dir.parent().ok_or_else(|| {
+        CoordinationError::Validation("team root has no account directory".to_string())
+    })?;
+    let assignment = format!(
+        "CLAUDE_DIR={}",
+        shell_escape(&to_launch_namespace(config_dir).to_string_lossy())
+    );
+    // Remove stale leading bindings, including those behind an `env` prefix,
+    // before installing the root. A later assignment would otherwise win.
+    let bindings = taurhaus_lib::session_scanner::shell_words::words(&launch.command)
+        .into_iter()
+        .take_while(|word| word.is_assignment() || (!word.quoted && word.text == "env"))
+        .filter(|word| word.assignment_name() == Some("CLAUDE_DIR"))
+        .collect::<Vec<_>>();
+    for binding in bindings.into_iter().rev() {
+        launch.command.replace_range(binding.start..binding.end, "");
+    }
+    launch.command = format!("{assignment} {}", launch.command.trim_start());
+    validate_command_override(&launch.command).map_err(CoordinationError::Validation)?;
+    Ok(launch)
 }
 
 /// The token a configured resume command uses for "whatever ran last".

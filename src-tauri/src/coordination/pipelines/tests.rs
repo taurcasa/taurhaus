@@ -2820,17 +2820,26 @@ fn initialize_and_resume_leave_undeclared_effort_to_the_cli() {
     let resume =
         MemberActivationContext::for_resume_member("architecture-final", "team-lead", &persisted);
 
-    let initialize_command =
-        build_member_activation_launch_command(&initialize, &CliCommandSettings::default())
-            .expect("initialize command")
-            .command;
-    let resume_command =
-        build_member_activation_launch_command(&resume, &CliCommandSettings::default())
-            .expect("resume command")
-            .command;
+    let initialize_command = build_member_activation_launch_command(
+        Path::new("/scratch/teams"),
+        &initialize,
+        &CliCommandSettings::default(),
+    )
+    .expect("initialize command")
+    .command;
+    let resume_command = build_member_activation_launch_command(
+        Path::new("/scratch/teams"),
+        &resume,
+        &CliCommandSettings::default(),
+    )
+    .expect("resume command")
+    .command;
 
     assert_eq!(initialize_command, resume_command);
-    assert_eq!(initialize_command, "codex --yolo -m 'gpt-5.6-sol'");
+    assert_eq!(
+        initialize_command,
+        "CLAUDE_DIR='/scratch' codex --yolo -m 'gpt-5.6-sol'"
+    );
 }
 
 // Regression: 13111833 dropped a rendered launch when the member had no task
@@ -4814,7 +4823,15 @@ fn resume_pipeline_non_claude_reuses_pane_but_starts_fresh_session_and_updates_r
             _ => None,
         })
         .expect("launch command");
-    assert_eq!(launch, "codex --yolo -m 'gpt-5.6-sol'");
+    assert_eq!(
+        launch,
+        format!(
+            "CLAUDE_DIR={} codex --yolo -m 'gpt-5.6-sol'",
+            crate::session_scanner::launch::shell_escape(
+                &tmp.path().parent().unwrap().to_string_lossy()
+            )
+        )
+    );
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));
@@ -4973,7 +4990,15 @@ fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_with_session_capture()
             _ => None,
         })
         .expect("launch command");
-    assert_eq!(launch, "codex --yolo -m 'gpt-5.6-sol'");
+    assert_eq!(
+        launch,
+        format!(
+            "CLAUDE_DIR={} codex --yolo -m 'gpt-5.6-sol'",
+            crate::session_scanner::launch::shell_escape(
+                &tmp.path().parent().unwrap().to_string_lossy()
+            )
+        )
+    );
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::JoinMesh { member_name, .. } if member_name == "team-lead")));
@@ -7815,4 +7840,171 @@ fn a_quoted_assignment_before_the_frozen_effort_env_is_still_stripped() {
     )
     .expect("the frozen variable is removable");
     assert_eq!(cleaned.as_ref(), "A='b c' claude");
+}
+
+// Regression: 18810949 moved teams to selected Claude roots, but member launches
+// passed only harness account selectors. Mesh 0.2.29 reads CLAUDE_DIR, not
+// CLAUDE_CONFIG_DIR, so every harness's onboarded mesh commands missed the team.
+#[cfg(unix)]
+#[test]
+fn nondefault_team_root_reaches_onboarded_mesh_commands_for_every_harness() {
+    use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
+    use crate::session_scanner::launch::shell_escape;
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let tmp = TempDir::new().unwrap();
+    // Exercise shell quoting as well as account/root separation.
+    let root = tmp.path().join("account 2's $root");
+    let teams_dir = root.join("teams");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        teams_dir.clone(),
+        Arc::new(FakeBackend::default()),
+        runtime.clone(),
+    );
+    orchestrator.create_team("root-team", None).unwrap();
+    let bin = tmp.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    let mesh = bin.join("mesh");
+    // A scratch-only mesh double matching src/cli.rs + main.rs + paths.rs in
+    // mesh 0.2.29: CLAUDE_DIR selects the root; CLAUDE_CONFIG_DIR is ignored.
+    // No installed mesh or harness CLI is ever executed.
+    fs::write(
+        &mesh,
+        r#"#!/bin/sh
+set -eu
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --team) team="$2"; shift ;;
+        --name) member="$2"; shift ;;
+    esac
+    shift
+done
+root="${CLAUDE_DIR:-$HOME/.claude}"
+test -f "$root/teams/$team/config.json"
+cat "$root/teams/$team/inboxes/$member.json"
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&mesh, fs::Permissions::from_mode(0o755)).unwrap();
+    let harness = tmp.path().join("harness");
+    fs::write(
+        &harness,
+        "#!/bin/sh\nset -eu\n/bin/sh -c \"$ONBOARDED_COMMAND\"\n",
+    )
+    .unwrap();
+
+    for tool in [CliTool::Codex, CliTool::Grok, CliTool::Claude, CliTool::Agy] {
+        let name = tool.to_string();
+        let seat = member(&name, MemberRole::Agent, tool, tmp.path().to_str().unwrap());
+        orchestrator.add_member("root-team", seat.clone()).unwrap();
+        let notice = format!("notice for {name}");
+        MeshInboxStore::append(
+            &teams_dir,
+            "root-team",
+            &name,
+            &crate::coordination::stores::MeshInboxMessage::new(
+                "team-lead",
+                notice.clone(),
+                None,
+                Utc::now(),
+            ),
+        )
+        .unwrap();
+        let onboarding = DeliveryRenderer::render_onboarding(
+            "root-team",
+            &name,
+            "team-lead",
+            RoleContext::default(),
+        );
+        let read_command = onboarding
+            .lines()
+            .find(|line| line.starts_with("mesh read "))
+            .unwrap();
+        let mut commands = CliCommandSettings::default();
+        let account = tmp.path().join(format!("{name}-account"));
+        if let Some(selector) = spec(tool).capabilities.account_selector {
+            commands
+                .account_selector_dirs
+                .insert(selector.into(), account.clone());
+        }
+        // No Claude selector is supplied for non-Claude seats: a single-member
+        // resume need not include a Claude member in its launch inputs.
+        for stale_base in [false, true] {
+            let base = format!(
+                "{} /bin/sh {}",
+                if stale_base {
+                    "env CLAUDE_DIR=/wrong CLAUDE_DIR=/also-wrong"
+                } else {
+                    "env"
+                },
+                shell_escape(harness.to_str().unwrap())
+            );
+            let tool_commands = commands.get_mut(tool).unwrap();
+            tool_commands.fresh = base.clone();
+            tool_commands.resume = base;
+            for resumed in [false, true] {
+                let mut context =
+                    MemberActivationContext::for_resume_member("root-team", "team-lead", &seat);
+                context.resume_session_id = resumed.then(|| "scratch-session".into());
+                let mut state = MemberActivationRuntimeState::default();
+                if resumed {
+                    run_member_session_phase(
+                        runtime.as_ref(),
+                        &teams_dir,
+                        &context,
+                        "%scratch",
+                        MemberSessionPhase::LaunchOnly(&commands),
+                        &mut state,
+                    )
+                    .unwrap();
+                } else {
+                    orchestrator
+                        .acquire_initialize_member_pane(
+                            &context,
+                            &commands,
+                            "new_window",
+                            &mut Default::default(),
+                            &mut state,
+                        )
+                        .unwrap();
+                }
+                let launch = runtime
+                    .calls()
+                    .into_iter()
+                    .rev()
+                    .find_map(|call| match call {
+                        RuntimeCall::SendKeys { keys, .. } => Some(keys),
+                        _ => None,
+                    })
+                    .unwrap();
+                let output = Command::new("/bin/sh")
+                    .args(["-c", &launch])
+                    .env_clear()
+                    .env("HOME", tmp.path())
+                    .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+                    .env("CLAUDE_DIR", tmp.path().join("inherited-wrong-root"))
+                    .env("ONBOARDED_COMMAND", read_command)
+                    .output()
+                    .unwrap();
+                assert!(
+                    output.status.success(),
+                    "{tool}, resume={resumed}, stale={stale_base}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let inbox: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+                assert_eq!(inbox[0]["text"], notice);
+                if let Some(selector) = spec(tool).capabilities.account_selector {
+                    assert!(
+                        launch.contains(&format!(
+                            "{selector}={}",
+                            shell_escape(account.to_str().unwrap())
+                        )),
+                        "mesh root must not replace the harness account: {launch}"
+                    );
+                }
+            }
+        }
+    }
 }

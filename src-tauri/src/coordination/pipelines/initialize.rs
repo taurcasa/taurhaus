@@ -426,7 +426,8 @@ impl CoordinationOrchestrator {
         per_project_anchor_panes: &mut std::collections::HashMap<String, String>,
         runtime_state: &mut PendingRuntimeState,
     ) -> Result<String, CoordinationError> {
-        let launch = build_member_activation_launch_command(context, cli_commands)?;
+        let launch =
+            build_member_activation_launch_command(&self.teams_dir, context, cli_commands)?;
         record_context_launch_telemetry(&self.teams_dir, context, &launch);
         let pane_id = launch_member_pane(
             self.runtime.as_ref(),
