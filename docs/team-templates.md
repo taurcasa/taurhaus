@@ -407,9 +407,10 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
-- **Roles (23)**:
+- **Roles (24)**:
   - orchestration: `v3-lead-claude` (Fable 5.1), `codex-orchestrator` (GPT-5.6 Sol), and `antigravity-orchestrator` (the Antigravity/agy alternative)
   - implementation: `v4-developer-claude`, `v4-developer-codex`, `v4-developer-agy`, `v4-developer-grok`, `quick-dev-codex`, `frontend-design-skill-developer`, and the diff-budgeted `astra-heavy-implementer`
+  - generation: `astra-asset-generator` (on-demand Astra imagery in the approved house style, prompts on file, minimal uptime)
   - architecture, review, and decision support: `v3-architect-codex`, `fable-altitude-reviewer`, `adversarial-reviewer-claude`, `claude-product-checker`, `claude-design-lead`, `claude-researcher`, `docs-verifier-codex`, `codex-qa`, `astra-architect`, `astra-crossfile-reviewer`, `astra-security-auditor`, `judge-astra`, and `judge-fable`
 - **Presets (12)**:
   - `pair` — `v3-lead-claude` plus `quick-dev-codex`
@@ -417,7 +418,7 @@ Current built-ins ship from `src-tauri/resources/templates/`:
   - `full-team` — `v3-lead-claude` plus `v3-architect-codex` and two `v4-developer-codex`
   - `research-team` — `v3-lead-claude` plus `claude-researcher` and one `v4-developer-codex`
   - `grok-pair` — `v3-lead-claude` plus one `v4-developer-grok`
-  - `product-build-w2` — eight standing seats: Fable lead, Astra architect/security owner, solo Astra judge, Fable altitude reviewer, Fable design lead, Fable UI implementer, and two leashed Astra heavy implementers; Sol is overflow only
+  - `product-build-w2` — nine standing seats: Fable lead, Astra architect/security owner, solo Astra judge, Fable altitude reviewer, Fable design lead, Fable UI implementer, an on-demand Astra asset generator, and two leashed Astra heavy implementers; Sol is overflow only
   - `product-build` — the unchanged legacy field-test preset file; its role references now resolve to current catalog defaults, including its `altitude-reviewer` seat (Codex/Sol); it no longer seats a Claude-family altitude reviewer
   - `taurhaus-core` — Fable lead and Codex architect, one high-effort Sol implementer, and Astra as the sole cross-file reviewer
   - `security-audit` — Astra xhigh lead auditor, independent Fable counter-auditor, and one high-effort Sol fix implementer
@@ -433,10 +434,12 @@ different effort or a model bake-off. The historical `v3-lead-claude` and
 bodies and versions carry the current playbook. Those frozen compatibility ids
 no longer indicate which harness runs the role.
 
-Catalog revision **6** ships the Wave-2 roles and `product-build-w2`. Every
+Catalog revision **6** carries the Wave-2 roles and `product-build-w2`;
+revision **7** adds the on-demand `astra-asset-generator` and the nine-seat
+preset revision, registering the superseded eight-seat preset bytes. Every
 edited shipped file has its superseded SHA-256 registered for reconciliation;
 untouched seeded copies advance and local edits remain user-owned, including
-across later seed-on-mutation calls. The new role and preset are in the closed
+across later seed-on-mutation calls. The new roles and preset are in the closed
 manifest. The old `product-build` preset file is unchanged, but referenced role
 defaults are live catalog definitions, not a frozen historical roster.
 Its historical description still promises Fable altitude review, but the

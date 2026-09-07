@@ -275,7 +275,9 @@ this wave's numbers).
 
 ## Wave-2 box score (pre-registered 2026-09-07, before the wave-2 launch)
 
-Grades the Decision 7+8 bets on the 8-seat roster. Sources: routing
+Grades the Decision 7+8 bets on the roster as pre-registered (8 seats;
+Decision 8e later added the ungraded on-demand asset seat — predictions
+still concern the original eight). Sources: routing
 report (now with budget_raises and monitor-nudge accounting), token
 accounting from transcripts/rollouts, the wave-2 retro.
 
