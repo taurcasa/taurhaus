@@ -410,7 +410,7 @@ Current built-ins ship from `src-tauri/resources/templates/`:
 - **Roles (24)**:
   - orchestration: `v3-lead-claude` (Fable 5.1), `codex-orchestrator` (GPT-5.6 Sol), and `antigravity-orchestrator` (the Antigravity/agy alternative)
   - implementation: `v4-developer-claude`, `v4-developer-codex`, `v4-developer-agy`, `v4-developer-grok`, `quick-dev-codex`, `frontend-design-skill-developer`, and the diff-budgeted `astra-heavy-implementer`
-  - generation: `astra-asset-generator` (on-demand Astra imagery in the approved house style, prompts on file, minimal uptime)
+  - generation: `astra-asset-generator` (on-demand Astra imagery — and 3D assets where the host machine provides the `$blender-agent` skill — in the approved house style, regeneration records on file, minimal uptime)
   - architecture, review, and decision support: `v3-architect-codex`, `fable-altitude-reviewer`, `adversarial-reviewer-claude`, `claude-product-checker`, `claude-design-lead`, `claude-researcher`, `docs-verifier-codex`, `codex-qa`, `astra-architect`, `astra-crossfile-reviewer`, `astra-security-auditor`, `judge-astra`, and `judge-fable`
 - **Presets (12)**:
   - `pair` — `v3-lead-claude` plus `quick-dev-codex`
@@ -436,7 +436,10 @@ no longer indicate which harness runs the role.
 
 Catalog revision **6** carries the Wave-2 roles and `product-build-w2`;
 revision **7** adds the on-demand `astra-asset-generator` and the nine-seat
-preset revision, registering the superseded eight-seat preset bytes. Every
+preset revision, registering the superseded eight-seat preset bytes;
+revision **8** gives that seat its machine-conditional 3D annex (the
+`$blender-agent` skill, where the host provides it), registering the
+superseded imagery-only role bytes. Every
 edited shipped file has its superseded SHA-256 registered for reconciliation;
 untouched seeded copies advance and local edits remain user-owned, including
 across later seed-on-mutation calls. The new roles and preset are in the closed
