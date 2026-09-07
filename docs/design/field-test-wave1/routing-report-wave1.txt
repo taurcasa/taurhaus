@@ -1,0 +1,20 @@
+cargo run --quiet --manifest-path src-tauri/Cargo.toml --bin routing-report -- '7'
+Routing telemetry: last 7 days
+Wall-time is the Stage 1 cost proxy; tokens are not collected.
+
+Role/model
+role | model | tasks_touched | accepted | completed_unruled | oversize_diffs | relaunches | effort_switches | nudges | staled | median_wall_time
+adversarial-reviewer-claude | opus | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 5m 17s
+astra-architect | gpt-6-astra | 2 | 2 | 0 | 0 | 1 | 0 | 0 | 0 | 117m 58s
+astra-heavy-implementer | gpt-6-astra | 11 | 9 | 1 | 0 | 1 | 0 | 0 | 0 | 34m 15s
+claude-design-lead | fable | 2 | 2 | 0 | 0 | 1 | 0 | 0 | 0 | 166m 18s
+judge-astra | gpt-6-astra | 3 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 8m 08s
+v3-architect-codex | fable | 4 | 3 | 1 | 0 | 0 | 0 | 0 | 0 | 1m 59s
+v4-developer-codex | gpt-5.6-sol | 3 | 3 | 0 | 0 | 1 | 0 | 0 | 0 | 234m 07s
+
+Model rollup
+model | tasks_touched | accepted | completed_unruled | oversize_diffs | relaunches | effort_switches | nudges | staled | median_wall_time
+fable | 6 | 5 | 1 | 0 | 1 | 0 | 0 | 0 | 9m 28s
+gpt-5.6-sol | 3 | 3 | 0 | 0 | 1 | 0 | 0 | 0 | 234m 07s
+gpt-6-astra | 15 | 13 | 1 | 0 | 3 | 0 | 0 | 0 | 45m 17s
+opus | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 5m 17s
