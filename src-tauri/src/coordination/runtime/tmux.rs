@@ -245,7 +245,92 @@ pub(super) fn is_shell_command(raw: &str) -> bool {
 mod tests {
     use super::*;
     use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
-    use crate::session_scanner::control::tests::{scratch_tmux_command, ScratchTmux};
+    use std::path::Path;
+    use std::process::Command;
+
+    // Keep this fixture local: integration targets recompile coordination with
+    // scanner shims, which do not expose the scanner's private test helpers.
+    thread_local! {
+        static TEST_TMUX_ROOT: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
+    }
+
+    fn scratch_tmux_command() -> Option<Command> {
+        TEST_TMUX_ROOT.with(|root| {
+            root.borrow().as_ref().map(|root| {
+                let mut cmd = Command::new("tmux");
+                cmd.env_clear()
+                    .env("HOME", root)
+                    .env("TMUX_TMPDIR", root)
+                    .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+                    .env("SHELL", "/bin/sh")
+                    // tmux otherwise replaces tab-separated record fields with underscores.
+                    .env("LC_ALL", "C.UTF-8")
+                    .args(["-L", "team-pane-regression", "-f", "/dev/null"]);
+                cmd
+            })
+        })
+    }
+
+    struct ScratchTmux {
+        root: tempfile::TempDir,
+        // The override belongs to the installing thread, including on drop.
+        _not_send: std::marker::PhantomData<*const ()>,
+    }
+
+    impl ScratchTmux {
+        fn new(width: &str, height: &str) -> Self {
+            let scratch = Self {
+                // Regression: c22b502a inherited long TMPDIR values, exceeding
+                // the Unix socket path limit before the test could start.
+                root: tempfile::TempDir::new_in("/tmp").unwrap(),
+                _not_send: std::marker::PhantomData,
+            };
+            TEST_TMUX_ROOT
+                .with(|root| *root.borrow_mut() = Some(scratch.root.path().to_path_buf()));
+            scratch.run(&[
+                "new-session",
+                "-d",
+                "-s",
+                TAURHAUS_TMUX_SESSION_NAME,
+                "-x",
+                width,
+                "-y",
+                height,
+                "-n",
+                "team",
+                "/bin/sh",
+            ]);
+            scratch
+        }
+
+        fn path(&self) -> &Path {
+            self.root.path()
+        }
+
+        fn run(&self, args: &[&str]) -> String {
+            let output = scratch_tmux_command()
+                .unwrap()
+                .args(args)
+                .output()
+                .unwrap_or_else(|err| {
+                    panic!("Scratch tmux tests require tmux installed on PATH: {err}")
+                });
+            assert!(
+                output.status.success(),
+                "{args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        }
+    }
+
+    impl Drop for ScratchTmux {
+        fn drop(&mut self) {
+            // The private socket root is still installed, including during unwinding.
+            let _ = scratch_tmux_command().unwrap().arg("kill-server").output();
+            TEST_TMUX_ROOT.with(|root| *root.borrow_mut() = None);
+        }
+    }
 
     thread_local! {
         static FAIL_TILING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };

@@ -813,7 +813,7 @@ fn run_tmux_send_keys(pane: &str, keys: &str) -> Result<(), String> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
 
     use crate::session_scanner::process::ProcessInfo;
@@ -824,7 +824,7 @@ pub(crate) mod tests {
     }
 
     #[cfg(target_os = "linux")]
-    pub(crate) fn scratch_tmux_command() -> Option<Command> {
+    pub(super) fn scratch_tmux_command() -> Option<Command> {
         TEST_TMUX_ROOT.with(|root| {
             root.borrow().as_ref().map(|root| {
                 let mut cmd = Command::new("tmux");
@@ -842,7 +842,7 @@ pub(crate) mod tests {
     }
 
     #[cfg(target_os = "linux")]
-    pub(crate) struct ScratchTmux {
+    struct ScratchTmux {
         root: tempfile::TempDir,
         // The override belongs to the installing thread, including on drop.
         _not_send: std::marker::PhantomData<*const ()>,
@@ -850,7 +850,7 @@ pub(crate) mod tests {
 
     #[cfg(target_os = "linux")]
     impl ScratchTmux {
-        pub(crate) fn new(width: &str, height: &str) -> Self {
+        fn new(width: &str, height: &str) -> Self {
             let scratch = Self {
                 // Regression: c22b502a inherited long TMPDIR values, exceeding
                 // the Unix socket path limit before the test could start.
@@ -875,11 +875,11 @@ pub(crate) mod tests {
             scratch
         }
 
-        pub(crate) fn path(&self) -> &Path {
+        fn path(&self) -> &Path {
             self.root.path()
         }
 
-        pub(crate) fn run(&self, args: &[&str]) -> String {
+        fn run(&self, args: &[&str]) -> String {
             let output = tmux_command().args(args).output().unwrap_or_else(|err| {
                 panic!("Scratch tmux tests require tmux installed on PATH: {err}")
             });
