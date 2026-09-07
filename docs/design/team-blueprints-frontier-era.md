@@ -198,10 +198,19 @@ Shipping bundled role changes pays the `BUILTIN_CATALOG_REVISION` cost
    evidence-auditor function, made a first-class solo-reviewer role).
    (d) Both heavies are standing (operator correction): idle implementer
    seats with a task queue cost ~nothing, mid-wave adds cost onboarding.
-   Resulting roster (8 standing): lead (Fable) · architect+security
+   (e) A ninth standing seat (operator addition, 2026-09-07, after the
+   asset pilot proved the capability): **astra-asset-generator** — a
+   Codex/Astra seat with direct image-generation tooling, producing the
+   team's visual assets under the design lead's direction and the
+   presentation laws. Minimal uptime by design: it sits in a declared
+   wait unless assigned (the idle monitor now respects that), and it is
+   deliberately NOT folded into a heavy implementer — generation is a
+   different craft with a different delivery contract (PNGs + prompts on
+   file for regenerability; never wires assets into code).
+   Resulting roster (9 standing): lead (Fable) · architect+security
    (Astra) · judge/reviewer (Astra) · altitude reviewer (Fable) · design
-   lead (Fable) · frontend-design-skill-dev (Fable) · Astra heavy ×2 ·
-   Sol overflow. Review map: GPT-authored code → Fable altitude;
+   lead (Fable) · frontend-design-skill-dev (Fable) · asset generator
+   (Astra, on-demand) · Astra heavy ×2 · Sol overflow. Review map: GPT-authored code → Fable altitude;
    Claude-authored code + evidence audits → Astra judge; one round per
    lane by default, a second requires the lead's recorded "worth another
    round?" ruling.
