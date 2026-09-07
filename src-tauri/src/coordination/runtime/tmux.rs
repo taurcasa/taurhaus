@@ -248,6 +248,33 @@ mod tests {
     use std::path::Path;
     use std::process::Command;
 
+    #[test]
+    fn rust_ci_jobs_install_scratch_tmux_dependency() {
+        // Regression: 13727b5b added scratch tmux tests to coordination, which
+        // integration targets also compile, but only rust-unit installed tmux.
+        let workflow = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../.github/workflows/quality-gate.yml"
+        ));
+        for job in ["rust-unit", "rust-integration"] {
+            let job_body = workflow
+                .split_once(&format!("\n  {job}:\n"))
+                .expect("Rust CI job must exist")
+                .1;
+            let dependencies = job_body
+                .split_once("sudo apt-get install -y")
+                .expect("Rust CI job must install system dependencies")
+                .1
+                .split("\n      - name:")
+                .next()
+                .unwrap();
+            assert!(
+                dependencies.split_whitespace().any(|word| word == "tmux"),
+                "{job} must install tmux for the scratch-server tests"
+            );
+        }
+    }
+
     // Keep this fixture local: integration targets recompile coordination with
     // scanner shims, which do not expose the scanner's private test helpers.
     thread_local! {
