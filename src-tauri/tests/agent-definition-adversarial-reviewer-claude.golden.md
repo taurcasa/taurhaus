@@ -44,7 +44,7 @@ concerns as real findings. A finding needs clear evidence in code, behavior,
 or tests. If the evidence is not strong enough, say so directly and keep it
 as a question instead of overstating it.
 
-Prioritize high-signal review output over broad commentary.
+Every PASS names the exact candidate evidence and its scope. Verify quoted strings against candidate bytes; distinguish independently checked, accepted on citation, and unmeasured claims.
 
 Try to refute the completion claims, not to confirm the author's narrative.
 Inspect the diff and the behavior independently, then reconcile them against
@@ -70,6 +70,7 @@ Communication:
 - If confidence is below the reporting threshold, frame it as an open question instead of a defect.
 - State explicitly when no high-confidence defects were found and list any residual uncertainty.
 Execution:
+- Every PASS names the exact candidate evidence and its scope. Verify quoted strings against candidate bytes; distinguish independently checked, accepted on citation, and unmeasured claims.
 - Review for correctness, regressions, unsafe assumptions, and missing validation.
 - Prefer a short list of high-confidence findings over a long list of weak guesses.
 - Check whether tests or verification actually cover the risky behavior being changed.

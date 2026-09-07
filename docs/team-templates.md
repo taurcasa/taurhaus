@@ -407,60 +407,103 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
-- **Roles (22)**:
+- **Roles (23)**:
   - orchestration: `v3-lead-claude` (Fable 5.1), `codex-orchestrator` (GPT-5.6 Sol), and `antigravity-orchestrator` (the Antigravity/agy alternative)
   - implementation: `v4-developer-claude`, `v4-developer-codex`, `v4-developer-agy`, `v4-developer-grok`, `quick-dev-codex`, `frontend-design-skill-developer`, and the diff-budgeted `astra-heavy-implementer`
-  - architecture, review, and decision support: `v3-architect-codex`, `adversarial-reviewer-claude`, `claude-product-checker`, `claude-design-lead`, `claude-researcher`, `docs-verifier-codex`, `codex-qa`, `astra-architect`, `astra-crossfile-reviewer`, `astra-security-auditor`, `judge-astra`, and `judge-fable`
-- **Presets (11)**:
+  - architecture, review, and decision support: `v3-architect-codex`, `fable-altitude-reviewer`, `adversarial-reviewer-claude`, `claude-product-checker`, `claude-design-lead`, `claude-researcher`, `docs-verifier-codex`, `codex-qa`, `astra-architect`, `astra-crossfile-reviewer`, `astra-security-auditor`, `judge-astra`, and `judge-fable`
+- **Presets (12)**:
   - `pair` — `v3-lead-claude` plus `quick-dev-codex`
   - `dev-team` — `v3-lead-claude` plus two `v4-developer-codex`
   - `full-team` — `v3-lead-claude` plus `v3-architect-codex` and two `v4-developer-codex`
   - `research-team` — `v3-lead-claude` plus `claude-researcher` and one `v4-developer-codex`
   - `grok-pair` — `v3-lead-claude` plus one `v4-developer-grok`
-  - `product-build` — the field-test roster: Fable lead and altitude reviewer, Astra architect and bounded heavy implementer, two Sol implementers, and the one Opus product reviewer
-  - `taurhaus-core` — Fable lead and architect, one high-effort Sol implementer, and Astra as the sole cross-file reviewer
+  - `product-build-w2` — eight standing seats: Fable lead, Astra architect/security owner, solo Astra judge, Fable altitude reviewer, Fable design lead, Fable UI implementer, and two leashed Astra heavy implementers; Sol is overflow only
+  - `product-build` — the unchanged legacy field-test preset file; its role references now resolve to current catalog defaults, including its `altitude-reviewer` seat (Codex/Sol); it no longer seats a Claude-family altitude reviewer
+  - `taurhaus-core` — Fable lead and Codex architect, one high-effort Sol implementer, and Astra as the sole cross-file reviewer
   - `security-audit` — Astra xhigh lead auditor, independent Fable counter-auditor, and one high-effort Sol fix implementer
   - `research-eval` — Fable synthesis, Sol and Grok research lanes, and the isolated `judge-fable` / `judge-astra` pair
   - `batch-processing` — Sol medium coordinator, three Luna workers, and a Fable medium sample reviewer
   - `design-ui` — Fable creative direction, a Fable incumbent and Astra challenger implementation bake-off, and opposite-family visual judges
 
 Every preset names its lead explicitly and references only canonical role ids.
-The original five presets inherit model and effort from their roles; the six
+The original five presets inherit model and effort from their roles; the seven
 frontier presets use narrow slot overrides where the blueprint calls for a
 different effort or a model bake-off. The historical `v3-lead-claude` and
 `v3-architect-codex` ids remain because presets already reference them; their
 bodies and versions carry the current playbook. Those frozen compatibility ids
 no longer indicate which harness runs the role.
 
-The architect and researcher are open model slots. Architect defaults to Fable 5.1
-with GPT-5.6 Sol named as the fallback; researcher defaults to session-proven Sol
-with Opus 5 High named as the alternative. The adversarial reviewer defaults to
-Opus 5 and documents the candidate Sol-recall-then-Opus-verification variant.
-Switching one of these experiments is a field edit to the role's `defaults`, not
-a new role file.
+Catalog revision **6** ships the Wave-2 roles and `product-build-w2`. Every
+edited shipped file has its superseded SHA-256 registered for reconciliation;
+untouched seeded copies advance and local edits remain user-owned, including
+across later seed-on-mutation calls. The new role and preset are in the closed
+manifest. The old `product-build` preset file is unchanged, but referenced role
+defaults are live catalog definitions, not a frozen historical roster.
+Its historical description still promises Fable altitude review, but the
+`altitude-reviewer` slot now resolves to Codex/Sol and has the architect contract.
+It does not supply the Claude-family altitude pass required by `astra-architect`;
+use `product-build-w2` for the standing two-family review roster.
 
-The dedicated frontier roles are fixed seats rather than open slots. Astra owns
-system architecture, distributed-context review, bounded cross-cutting
-implementation, and the lead security-audit lane. The heavy implementer cannot
-start without an objective diff budget; an unapproved excess is a review
-failure, and the reviewer records it with
-`mesh task ruling <id> --kind ruling --value failed --field oversize_diff --note <budget-and-actual>`
-for the routing report. `judge-fable` and `judge-astra` receive the same
-material and must lock independent verdicts before either sees the other's
-result.
+Two other unchanged preset descriptions also predate the architect change:
+`full-team` still advertises an "open architect slot", which now resolves to the
+fixed Codex/Sol architect; `taurhaus-core` still says "Fable leads and architects",
+but Fable only leads and Codex/Sol architects alongside its Sol implementer.
+Their descriptions are historical copy, not the effective role/tool contract.
 
-Design is deliberately split: `claude-design-lead` owns creative direction
-(Fable 5.1 preferred, Gemini via Antigravity as the alternative), while
-`frontend-design-skill-developer` owns UI implementation (Sol preferred, Opus 5
-as the alternative). Both roles treat automated evidence as a pre-filter and
-state that UX conclusions require human validation. The `design-ui` preset does
-not award Astra that seat: it runs the decided Fable-incumbent/Astra-challenger
-bake-off and routes each result to the other frontier family for visual review.
+`v3-architect-codex` is now a pure Codex-family architect (Sol/high), with no
+open-slot compatibility instructions. `fable-altitude-reviewer` is the explicit
+Claude/Fable/high structural seat: deep review of architecture-bearing slices
+and per-slice acceptance on GPT-authored code. Missing evidence blocks when a
+required persistence, privacy, recovery, or execution invariant cannot be
+verified; otherwise the reviewer requests bounded coverage.
+
+`judge-astra` primarily serves as the standing solo reviewer for Claude-authored
+code and design artifacts, evidence audits, and certifications. It follows the
+three-hash chain (gated source → landed source → review) and rejects unqualified
+PASS claims that exceed the evidence. Its dual-judge contract with `judge-fable`
+is a special mode activated only with both judges and a fixed shared cell
+manifest; only that mode requires paired verdict isolation and reconciliation.
+
+Both reviewer seats own acceptance semantics: exact candidate evidence and
+scope for every PASS, quoted strings verified against candidate bytes, "can this
+check fail?", per-root counts including zeros, and independently checked versus
+accepted on citation versus unmeasured claims. One round per lane is the default;
+a second requires the lead's recorded "is this worth another round?" ruling.
+
+`astra-architect` owns architecture and the post-freeze security portfolio:
+threat model, security/privacy milestone boundaries, and the acceptance-instrument
+contract (frozen scope, counters, verdict wiring, must-flag fixtures before any
+certification is queued). It has no review duties beyond security. A security
+finding implicating its own architecture decision goes to the lead and Fable
+altitude reviewer, never self-ruled. `astra-crossfile-reviewer` and
+`astra-security-auditor` remain available for other presets.
+
+Both `astra-heavy-implementer` seats are standing in Wave 2. Each implement
+assignment fixes baseline, owned paths, counting method, exclusions, and numeric
+budget before editing. The lead records prior `budget_raised` rulings with old
+ceiling, new ceiling and reason. An unapproved excess fails review and is recorded
+with
+`mesh task ruling <id> --kind ruling --value failed --field oversize_diff --note <budget-and-actual> --team <team> --name <reviewer>`.
+See [the delivery standard](team-delivery-standard.md#budget-counting-and-rulings)
+for the exact raise command, checkout rules, dependency waits, and restart cursor.
+The locked Mesh 0.2.28 binary accepts both ruling shapes; the role change does
+not implement telemetry/report columns.
+
+Design remains split: `claude-design-lead` owns creative direction and
+`frontend-design-skill-developer` is the standing Claude/Fable/high UI lane using
+the frontend-design skill, with Astra judge review and no markup diff-budget
+leash. Both roles retain human validation for UX judgments. The legacy
+`design-ui` bake-off uses `v4-developer-codex` for its Astra challenger so the
+model remains valid after the UI specialist's harness changes to Claude.
+The researcher remains an open slot (Sol by default, Opus as the alternative);
+the adversarial Opus reviewer remains in the catalog but is unstaffed in Wave 2.
 
 These built-ins are most useful when you read them as lane definitions:
 
 - orchestrator owns routing and unblock decisions
-- architect owns structure and review boundaries
+- architect owns structure, security, and the acceptance-instrument contract
+- Fable altitude reviewer owns architecture-bearing depth and acceptance of GPT-authored work
+- Astra judge owns review of Claude-authored code and design artifacts, evidence audits, and certifications
 - developer owns implementation lanes
 - creative-direction lead owns intent, critique, and final visual judgment
 - UI implementation specialist turns approved direction into production UI

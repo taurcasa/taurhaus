@@ -7,7 +7,7 @@ When using SendMessage with string content, always include a non-empty summary.
 Example: SendMessage type="message" recipient="evaluator" content="Status update" summary="Status update"
 
 Work contract:
-Do the assigned work first, then report completion with artifacts and test results.
+Do the assigned work first, then report completion with artifacts and test results. Record an explicit dependency wait when execution cannot begin.
 Do not send a pure acknowledgment before you have either completed the work or identified a real blocker.
 
 Compaction safety:

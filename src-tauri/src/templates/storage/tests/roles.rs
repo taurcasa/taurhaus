@@ -207,7 +207,7 @@ fn bundled_roles_use_canonical_model_and_reasoning_effort() {
         .collect::<Vec<_>>();
     paths.sort();
 
-    assert_eq!(paths.len(), 22, "bundled role count changed");
+    assert_eq!(paths.len(), 23, "bundled role count changed");
 
     let mut high_effort_roles = Vec::new();
     for path in paths {
@@ -239,7 +239,7 @@ fn bundled_roles_use_canonical_model_and_reasoning_effort() {
         }
     }
 
-    assert_eq!(high_effort_roles.len(), 15);
+    assert_eq!(high_effort_roles.len(), 17);
     assert!(high_effort_roles
         .iter()
         .any(|role| role == "v3-architect-codex"));
@@ -531,9 +531,17 @@ fn frontier_catalog_reconciles_revision_four_roles_and_seeds_new_roles() {
             "4bf49412425deacc87dbb9969942588d0a0db85ba2c95e0447a42bfd24d9bb8a",
         ),
     ] {
-        let current = fs::read_to_string(builtins.join("roles").join(name))
-            .expect("read current bundled role");
-        let previous = current
+        // Pin the two roles changed again in revision 6 to stable revision-5 bytes.
+        // The unchanged Antigravity/Codex orchestrators still use the bundle;
+        // pin those too when they change. The hashes below verify revision 4.
+        let revision_five = match name {
+            "v3-lead-claude.yaml" => super::wave2::REVISION_FIVE_LEAD.to_string(),
+            "adversarial-reviewer-claude.yaml" => {
+                super::wave2::REVISION_FIVE_PRODUCT_REVIEWER.to_string()
+            }
+            _ => fs::read_to_string(builtins.join("roles").join(name)).unwrap(),
+        };
+        let previous = revision_five
             .replacen(
                 &format!("version: {current_version}"),
                 &format!("version: {previous_version}"),
@@ -581,7 +589,7 @@ fn frontier_catalog_reconciles_revision_four_roles_and_seeds_new_roles() {
     for (role_id, version, marker) in [
         (
             "adversarial-reviewer-claude",
-            "3.1.0",
+            "3.2.0",
             "product-review seat",
         ),
         (
@@ -590,7 +598,7 @@ fn frontier_catalog_reconciles_revision_four_roles_and_seeds_new_roles() {
             "TWO-FAMILY REVIEW ROUTE",
         ),
         ("codex-orchestrator", "3.1.0", "TWO-FAMILY REVIEW ROUTE"),
-        ("v3-lead-claude", "5.1.0", "TWO-FAMILY REVIEW ROUTE"),
+        ("v3-lead-claude", "5.2.0", "TWO-FAMILY REVIEW ROUTE"),
     ] {
         let role = &roles[role_id];
         assert_eq!(role.version, version, "{role_id} should be reconciled");
@@ -617,7 +625,7 @@ fn frontier_catalog_reconciles_revision_four_roles_and_seeds_new_roles() {
             .load_state()
             .expect("load reconciled state")
             .builtin_catalog_revision,
-        5
+        BUILTIN_CATALOG_REVISION
     );
 }
 
@@ -676,6 +684,7 @@ fn previous_release_builtins_reconcile_before_catalog_reads_and_export() {
         "codex-orchestrator",
         "codex-qa",
         "docs-verifier-codex",
+        "fable-altitude-reviewer",
         "frontend-design-skill-developer",
         "judge-astra",
         "judge-fable",
@@ -840,6 +849,7 @@ fn v0_8_3_seeded_presets_reconcile_to_the_canonical_catalog() {
             "codex-orchestrator",
             "codex-qa",
             "docs-verifier-codex",
+            "fable-altitude-reviewer",
             "frontend-design-skill-developer",
             "judge-astra",
             "judge-fable",
@@ -864,6 +874,7 @@ fn v0_8_3_seeded_presets_reconcile_to_the_canonical_catalog() {
             "grok-pair",
             "pair",
             "product-build",
+            "product-build-w2",
             "research-eval",
             "research-team",
             "security-audit",

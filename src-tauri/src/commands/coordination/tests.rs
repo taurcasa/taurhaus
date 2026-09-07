@@ -3768,8 +3768,8 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
     assert_eq!(developer.role_id.as_deref(), Some("v4-developer-codex"));
     assert_eq!(developer.role_name.as_deref(), Some("Developer (Codex)"));
     assert_eq!(developer.cli_tool, CliTool::Codex);
-    assert_eq!(developer.model.as_deref(), Some("gpt-5.6-sol"));
-    assert_eq!(developer.reasoning_effort.as_deref(), Some("medium"));
+    assert_eq!(developer.model.as_deref(), Some("gpt-6-astra"));
+    assert_eq!(developer.reasoning_effort.as_deref(), Some("high"));
     assert!(developer
         .handoff_expectations
         .as_ref()
