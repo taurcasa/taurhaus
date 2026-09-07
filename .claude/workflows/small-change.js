@@ -586,7 +586,7 @@ function codexWrapper(o) {
   const exec =
     'timeout ' +
     o.timeout +
-    ' codex exec --yolo --skip-git-repo-check' +
+    ' env -u TMUX codex exec --yolo --skip-git-repo-check' +
     CODEX_FLAGS +
     (o.schema ? ' --output-schema ' + sh(base + '.schema.json') : '') +
     ' -C ' +
