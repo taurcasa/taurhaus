@@ -30,21 +30,9 @@ fn wsl_exec_command(program: &str) -> Command {
     cmd
 }
 
-#[cfg(all(test, target_os = "linux"))]
-thread_local! {
-    static TEST_TMUX_ROOT: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
-}
-
 fn tmux_command() -> Command {
     #[cfg(all(test, target_os = "linux"))]
-    if let Some(root) = TEST_TMUX_ROOT.with(|root| root.borrow().clone()) {
-        let mut cmd = Command::new("/usr/bin/tmux");
-        cmd.env_clear()
-            .env("HOME", &root)
-            .env("TMUX_TMPDIR", &root)
-            .env("PATH", "/usr/bin:/bin")
-            .env("SHELL", "/bin/sh")
-            .args(["-L", "team-pane-regression", "-f", "/dev/null"]);
+    if let Some(cmd) = tests::scratch_tmux_command() {
         return cmd;
     }
 
@@ -825,19 +813,49 @@ fn run_tmux_send_keys(pane: &str, keys: &str) -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     use crate::session_scanner::process::ProcessInfo;
 
     #[cfg(target_os = "linux")]
-    struct ScratchTmux(tempfile::TempDir);
+    thread_local! {
+        static TEST_TMUX_ROOT: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn scratch_tmux_command() -> Option<Command> {
+        TEST_TMUX_ROOT.with(|root| {
+            root.borrow().as_ref().map(|root| {
+                let mut cmd = Command::new("tmux");
+                cmd.env_clear()
+                    .env("HOME", root)
+                    .env("TMUX_TMPDIR", root)
+                    .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+                    .env("SHELL", "/bin/sh")
+                    .args(["-L", "team-pane-regression", "-f", "/dev/null"]);
+                cmd
+            })
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) struct ScratchTmux {
+        root: tempfile::TempDir,
+        // The override belongs to the installing thread, including on drop.
+        _not_send: std::marker::PhantomData<*const ()>,
+    }
 
     #[cfg(target_os = "linux")]
     impl ScratchTmux {
-        fn new(width: &str, height: &str) -> Self {
-            let scratch = Self(tempfile::tempdir().unwrap());
-            TEST_TMUX_ROOT.with(|root| *root.borrow_mut() = Some(scratch.0.path().to_path_buf()));
+        pub(crate) fn new(width: &str, height: &str) -> Self {
+            let scratch = Self {
+                // Regression: c22b502a inherited long TMPDIR values, exceeding
+                // the Unix socket path limit before the test could start.
+                root: tempfile::TempDir::new_in("/tmp").unwrap(),
+                _not_send: std::marker::PhantomData,
+            };
+            TEST_TMUX_ROOT.with(|root| *root.borrow_mut() = Some(scratch.root.path().to_path_buf()));
             scratch.run(&[
                 "new-session",
                 "-d",
@@ -854,8 +872,14 @@ mod tests {
             scratch
         }
 
-        fn run(&self, args: &[&str]) -> String {
-            let output = tmux_command().args(args).output().unwrap();
+        pub(crate) fn path(&self) -> &Path {
+            self.root.path()
+        }
+
+        pub(crate) fn run(&self, args: &[&str]) -> String {
+            let output = tmux_command().args(args).output().unwrap_or_else(|err| {
+                panic!("Scratch tmux tests require tmux installed on PATH: {err}")
+            });
             assert!(
                 output.status.success(),
                 "{args:?}: {}",
@@ -876,13 +900,23 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
+    fn scratch_tmux_resolves_binary_from_path() {
+        // Regression: c22b502a hard-coded /usr/bin/tmux, excluding PATH installs.
+        let scratch = ScratchTmux::new("240", "60");
+        assert_eq!(tmux_command().get_program(), "tmux");
+        assert_eq!(scratch.path().parent(), Some(Path::new("/tmp")));
+        drop(scratch);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
     fn nine_same_project_members_share_one_window() {
         // Regression: a53ad3115 pinned every team split to the original project
         // anchor without rebalancing; 847720c8 exposed it with the ninth seat.
         // Even 240x60 exhausts the repeatedly halved anchor before nine panes.
         for (width, height) in [("240", "60"), ("252", "62"), ("80", "24")] {
             let scratch = ScratchTmux::new(width, height);
-            let project = scratch.0.path().to_str().unwrap();
+            let project = scratch.root.path().to_str().unwrap();
             let anchor =
                 scratch.run(&["display-message", "-p", "-t", "taurhaus:team", "#{pane_id}"]);
             let window = scratch.run(&["display-message", "-p", "-t", &anchor, "#{window_id}"]);
