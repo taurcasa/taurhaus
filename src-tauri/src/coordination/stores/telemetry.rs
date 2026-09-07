@@ -240,10 +240,11 @@ pub fn attribute_latest_launch_to_task(
         else {
             return Ok(());
         };
-        append_task_telemetry(
+        let attributed = append_attributed_launch(
             teams_dir,
             team_name,
-            Some(task_id),
+            task_id,
+            member,
             &RoutingTelemetryEvent::LaunchRendered {
                 timestamp: Utc::now(),
                 task_id: Some(task_id.to_string()),
@@ -256,7 +257,7 @@ pub fn attribute_latest_launch_to_task(
                 tier_rank,
             },
         )?;
-        if taskless {
+        if attributed && taskless {
             remove_attributed_boot(teams_dir, team_name, member, rendered_at)?;
         }
         Ok(())
@@ -264,6 +265,34 @@ pub fn attribute_latest_launch_to_task(
     if let Err(error) = result {
         report_write_failure(team_name, Some(task_id), &error);
     }
+}
+
+// The unlocked directory probe is advisory: recheck the target under the same
+// exclusive lock as the append so concurrent callers cannot invent a relaunch.
+fn append_attributed_launch(
+    teams_dir: &Path,
+    team_name: &str,
+    task_id: &str,
+    member: &str,
+    event: &RoutingTelemetryEvent,
+) -> std::io::Result<bool> {
+    let path = task_telemetry_path(teams_dir, team_name, Some(task_id))?;
+    let mut file = open_sidecar(&path)?;
+    file.lock_exclusive()?;
+    let Some(events) = read_locked_task_telemetry(&mut file, &path)? else {
+        FileExt::unlock(&file)?;
+        return Ok(false);
+    };
+    let duplicate = events.iter().any(|event| {
+        matches!(event,
+        RoutingTelemetryEvent::LaunchRendered { member: launched_member, .. }
+            if launched_member == member)
+    });
+    if !duplicate {
+        append_locked(&mut file, event)?;
+    }
+    FileExt::unlock(&file)?;
+    Ok(!duplicate)
 }
 
 /// Remove only the boot we copied; a concurrent newer render stays taskless.
@@ -274,7 +303,11 @@ fn remove_attributed_boot(
     rendered_at: DateTime<Utc>,
 ) -> std::io::Result<()> {
     let path = task_telemetry_path(teams_dir, team_name, None)?;
-    let mut file = OpenOptions::new().read(true).append(true).open(&path)?;
+    let mut file = match OpenOptions::new().read(true).append(true).open(&path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
     file.lock_exclusive()?;
     if let Some(mut events) = read_locked_task_telemetry(&mut file, &path)? {
         let before = events.len();
@@ -701,6 +734,54 @@ mod tests {
 
         assert_eq!(read_task_telemetry(&path), vec![event]);
         assert!(std::fs::metadata(path).expect("sidecar metadata").len() < 1024);
+    }
+
+    // Regression: 813cad59 reported a successful attribution as a write failure
+    // when its optional unattributed cache disappeared before cleanup.
+    #[test]
+    fn wave2_missing_boot_cache_cleanup_is_a_noop() {
+        use super::remove_attributed_boot;
+        let root = tempfile::tempdir().unwrap();
+        remove_attributed_boot(root.path(), "team", "builder", Utc::now()).unwrap();
+        assert!(!root
+            .path()
+            .join("team/state/telemetry/_unattributed.jsonl")
+            .exists());
+    }
+
+    // Regression: 813cad59 added concurrent deadline/snapshot callers whose
+    // unlocked duplicate probes could copy the same launch twice (phantom relaunch).
+    #[test]
+    fn wave2_concurrent_attribution_records_one_launch() {
+        use super::{append_attributed_launch, task_telemetry_path};
+        let root = tempfile::tempdir().unwrap();
+        // Both callers have already probed an empty target and found this launch.
+        let candidate = RoutingTelemetryEvent::LaunchRendered {
+            timestamp: Utc::now(),
+            task_id: Some("new-task".into()),
+            member: "builder".into(),
+            role: "developer".into(),
+            tool: "codex".into(),
+            model: Some("gpt-6-astra".into()),
+            applied_effort: None,
+            capability_tier: None,
+            tier_rank: None,
+        };
+        let barrier = std::sync::Barrier::new(2);
+        std::thread::scope(|scope| {
+            for _ in 0..2 {
+                let candidate = &candidate;
+                let root = &root;
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    barrier.wait();
+                    append_attributed_launch(root.path(), "team", "new-task", "builder", candidate)
+                        .unwrap();
+                });
+            }
+        });
+        let path = task_telemetry_path(root.path(), "team", Some("new-task")).unwrap();
+        assert_eq!(read_task_telemetry(&path).len(), 1);
     }
 
     // Regression: c9c6c49b copied roster boots to tasks but left them in the
