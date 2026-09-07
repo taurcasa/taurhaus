@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scope — taurjobs mockup</title>
+<style>
+  /* ── Token direction (see design-proposal.md §6). Dark is primary. ── */
+  :root {
+    --frame-bg: #0a2e2b;
+    --frame-grad: linear-gradient(180deg, #0c3532 0%, #0a2e2b 48%, #082725 100%);
+    --panel-bg: #0a1013;
+    --panel-border: rgba(255, 255, 255, 0.06);
+    --ink: #e2ecea;
+    --ink-2: #9fb3b0;
+    --ink-3: #64726f;
+    --hair: rgba(255, 255, 255, 0.07);
+
+    --paper-border: rgba(255, 255, 255, 0.09);
+    --active-bg: rgba(255, 255, 255, 0.04);
+    --active-border: rgba(255, 255, 255, 0.13);
+    --active-shadow: 0 3px 10px rgba(0, 0, 0, 0.28), 0 10px 22px rgba(0, 0, 0, 0.18);
+
+    --manila-bg: rgba(214, 193, 138, 0.09);
+    --manila-border: rgba(214, 193, 138, 0.3);
+    --manila-tab-bg: #2a2721;
+    --manila-ink: rgba(214, 193, 138, 0.85);
+
+    --lit: rgba(45, 212, 191, 0.55);
+    --lit-glow: 0 0 10px rgba(45, 212, 191, 0.14);
+    --teal: #2dd4bf;
+    --teal-soft: rgba(45, 212, 191, 0.32);
+
+    --ok: #22c55e;
+    --wait: #fbbf24;
+    --wait-ink: #fcd34d;
+    --dispute: #f87171;
+    --unsure: #60a5fa;
+    --off: #6b7280;
+
+    --strip-bg: rgba(24, 24, 27, 0.55);
+    --drawer-bg: #0d1518;
+    --drawer-border: rgba(255, 255, 255, 0.1);
+    --ghost-border: rgba(255, 255, 255, 0.18);
+    --chipfill: rgba(255, 255, 255, 0.045);
+  }
+  body:has(#theme:checked) {
+    --panel-bg: #f6faf9;
+    --panel-border: rgba(19, 78, 74, 0.1);
+    --ink: #1c2b29;
+    --ink-2: #52605e;
+    --ink-3: #8a9694;
+    --hair: rgba(19, 78, 74, 0.1);
+
+    --paper-border: rgba(19, 78, 74, 0.14);
+    --active-bg: #ffffff;
+    --active-border: rgba(13, 148, 136, 0.16);
+    --active-shadow: 0 2px 8px rgba(15, 23, 42, 0.09), 0 8px 20px rgba(15, 23, 42, 0.08);
+
+    --manila-bg: #f6f0de;
+    --manila-border: rgba(166, 138, 66, 0.3);
+    --manila-tab-bg: #efe6cb;
+    --manila-ink: #8a6d2f;
+
+    --lit: rgba(13, 148, 136, 0.45);
+    --lit-glow: 0 0 10px rgba(13, 148, 136, 0.12);
+    --teal: #0d9488;
+    --teal-soft: rgba(13, 148, 136, 0.3);
+
+    --ok: #16a34a;
+    --wait: #d97706;
+    --wait-ink: #b45309;
+    --dispute: #dc2626;
+    --unsure: #3b82f6;
+    --off: #9ca3af;
+
+    --strip-bg: rgba(240, 253, 250, 0.65);
+    --drawer-bg: rgba(255, 255, 255, 0.98);
+    --drawer-border: rgba(19, 78, 74, 0.12);
+    --ghost-border: rgba(19, 78, 74, 0.28);
+    --chipfill: rgba(19, 78, 74, 0.05);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 13px/1.45 'Geist', ui-sans-serif, -apple-system, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: var(--frame-bg);
+    color: var(--ink);
+  }
+  .mono { font-family: 'Geist Mono', ui-monospace, 'SF Mono', 'Cascadia Code', monospace; font-variant-numeric: tabular-nums; }
+
+  /* ── Frame + titlebar ─────────────────────────────────────────── */
+  .frame {
+    min-height: 100vh; display: flex; flex-direction: column;
+    padding: 0 6px 6px; background-image: var(--frame-grad);
+  }
+  .titlebar {
+    height: 46px; flex: none; display: flex; align-items: flex-end; gap: 14px;
+    color: rgba(255, 255, 255, 0.55);
+  }
+  .brand { padding: 0 10px 12px 6px; font-weight: 600; font-size: 13px; color: rgba(255,255,255,0.7); }
+  .tabs { display: flex; align-items: flex-end; gap: 2px; }
+  .tab-quiet {
+    padding: 0 10px 12px; font-size: 12px; color: rgba(255, 255, 255, 0.38);
+  }
+  .tab-pill {
+    position: relative; height: 36px; padding: 0 16px; display: flex; align-items: center; gap: 8px;
+    background: var(--panel-bg); color: var(--ink);
+    border-radius: 8px 8px 0 0; font-size: 12.5px; font-weight: 600;
+    margin-bottom: -1px; z-index: 2;
+  }
+  .tab-pill .scoop {
+    position: absolute; bottom: 0; width: 8px; height: 8px; pointer-events: none;
+  }
+  .tab-pill .scoop.l { left: -8px; background: radial-gradient(circle 8px at 0 0, transparent 7.5px, var(--panel-bg) 8px); }
+  .tab-pill .scoop.r { right: -8px; background: radial-gradient(circle 8px at 100% 0, transparent 7.5px, var(--panel-bg) 8px); }
+  .tab-dot { width: 6px; height: 6px; border-radius: 999px; border: 1px solid var(--teal-soft); background: transparent; }
+  .titlebar .spacer { flex: 1; }
+  .theme-toggle {
+    margin-bottom: 10px; margin-right: 4px; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; color: rgba(255,255,255,0.5); cursor: pointer; user-select: none;
+  }
+  .theme-toggle input { accent-color: #2dd4bf; }
+
+  /* ── Main panel ───────────────────────────────────────────────── */
+  .panel {
+    flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative;
+    background: var(--panel-bg); border: 1px solid var(--panel-border);
+    border-radius: 10px; border-top-left-radius: 0; overflow: hidden;
+  }
+
+  /* ── Walk strip ───────────────────────────────────────────────── */
+  .walk {
+    flex: none; margin: 10px 12px 0; padding: 8px 12px 9px;
+    background: var(--strip-bg); border: 1px solid var(--hair); border-radius: 8px;
+  }
+  .walk-head {
+    font-size: 10.5px; letter-spacing: 0.01em; color: var(--ink-3); margin-bottom: 6px;
+  }
+  .walk-line {
+    display: flex; align-items: baseline; gap: 8px; max-width: 72ch;
+    font-size: 13px; line-height: 1.55;
+  }
+  .walk-line + .walk-line { margin-top: 6px; }
+  .wglyph { flex: none; width: 16px; display: inline-flex; justify-content: center; transform: translateY(1px); }
+  .wtext { min-width: 0; }
+  .wtext b { font-weight: 600; }
+  .wcite { flex: none; margin-left: auto; font-size: 10.5px; color: var(--ink-3); text-decoration: none; }
+  .wcite:hover { color: var(--teal); }
+  .walk-foot {
+    display: flex; align-items: center; gap: 10px; margin-top: 8px;
+    font-size: 11.5px; color: var(--ink-3);
+  }
+  .btn-quiet {
+    margin-left: auto; padding: 3px 10px; font: inherit; font-size: 11.5px; font-weight: 600;
+    color: var(--ink-2); background: transparent; border: 1px solid var(--hair); border-radius: 6px; cursor: pointer;
+  }
+  .btn-quiet:hover { color: var(--ink); border-color: var(--teal-soft); }
+
+  /* ── Content row: grid + roster rail ──────────────────────────── */
+  .content { flex: 1; display: flex; min-height: 0; padding: 10px 12px; gap: 10px; position: relative; }
+  .grid {
+    flex: 1; min-width: 0; align-content: start;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: 10px;
+  }
+
+  /* Region cards — ground carries work presence only (proposal §3). */
+  .region {
+    position: relative; border-radius: 8px; padding: 10px 12px 11px;
+    border: 1px solid var(--paper-border); background: transparent;
+  }
+  .region.active {
+    background: var(--active-bg); border-color: var(--active-border); box-shadow: var(--active-shadow);
+  }
+  .region.lit { border-color: var(--lit); box-shadow: var(--lit-glow); }
+  .region.active.lit { box-shadow: var(--lit-glow), var(--active-shadow); }
+  .region.filed {
+    background: var(--manila-bg); border-color: var(--manila-border); margin-top: 0;
+  }
+  .filed-tab {
+    position: absolute; top: -17px; left: 10px; height: 17px; padding: 0 9px 0 8px;
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--manila-tab-bg); border: 1px solid var(--manila-border); border-bottom: none;
+    border-radius: 6px 6px 0 0; font-size: 10px; font-weight: 600; color: var(--manila-ink);
+  }
+  .grid > .region.filed { margin-top: 17px; }
+
+  .r-head { display: flex; align-items: baseline; gap: 7px; }
+  .r-id {
+    flex: none; font-size: 10px; padding: 1px 5px; border: 1px solid var(--hair);
+    border-radius: 4px; color: var(--ink-3);
+  }
+  .r-name { font-size: 13px; font-weight: 600; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .r-flags { margin-left: auto; flex: none; display: flex; gap: 8px; }
+  .flag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; }
+  .flag.contested { color: var(--dispute); }
+  .flag.stalled { color: var(--wait-ink); }
+  .r-stmt { margin-top: 3px; font-size: 11.5px; color: var(--ink-2); }
+  .r-chips { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .r-counts { margin-top: 8px; font-size: 10.5px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .r-counts .none { font-style: italic; }
+  .ruling-chip {
+    display: inline-flex; align-items: center; padding: 1px 6px; border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--dispute) 45%, transparent);
+    color: var(--dispute); font-size: 10px; font-weight: 600;
+  }
+  .ruling-chip.accept { border-color: color-mix(in srgb, var(--ok) 45%, transparent); color: var(--ok); }
+
+  /* Member chips — observation channel + declared-wait tag. */
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px 0 6px;
+    border: 1px solid var(--hair); border-radius: 999px; background: var(--chipfill);
+    font-size: 11px; cursor: pointer;
+  }
+  .chip:hover { border-color: var(--teal-soft); }
+  .chip.dim { opacity: 0.62; }
+  .chip .dot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+  .dot.ok { background: var(--ok); }
+  .dot.idle { background: var(--wait); }
+  .dot.unsure { background: var(--unsure); }
+  .dot.off { background: var(--off); }
+  .chip .lastseen { font-size: 9.5px; color: var(--ink-3); }
+  .waittag {
+    display: inline-flex; align-items: center; gap: 3px; height: 14px; padding: 0 5px;
+    border: 1px solid color-mix(in srgb, var(--wait) 55%, transparent); border-radius: 999px;
+    color: var(--wait-ink); font-size: 9.5px; font-weight: 600; white-space: nowrap;
+  }
+  .toollogo { flex: none; opacity: 0.8; }
+
+  /* ── Roster rail ──────────────────────────────────────────────── */
+  .roster {
+    flex: none; width: 176px; padding: 8px 10px; overflow: auto;
+    border: 1px solid var(--hair); border-radius: 8px; align-self: stretch;
+  }
+  .roster h2 { margin: 0 0 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.02em; color: var(--ink-3); }
+  .r-row { display: flex; align-items: center; gap: 6px; height: 24px; font-size: 11.5px; }
+  .r-row .dot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+  .r-row .nm { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .r-row .star { color: var(--teal); font-size: 10px; }
+  .r-row.offline { color: var(--ink-3); }
+  .roster hr { border: none; border-top: 1px solid var(--hair); margin: 6px 0; }
+
+  /* ── Drawer: seat card (restart cursor) ───────────────────────── */
+  .drawer {
+    position: absolute; top: 170px; right: 196px; width: 296px; z-index: 3;
+    background: var(--drawer-bg); border: 1px solid var(--drawer-border); border-radius: 10px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34); padding: 12px 14px;
+  }
+  body:has(#theme:checked) .drawer { box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14); }
+  .d-head { display: flex; align-items: center; gap: 7px; }
+  .d-name { font-size: 13.5px; font-weight: 600; }
+  .d-sub { margin-top: 2px; font-size: 10.5px; color: var(--ink-3); }
+  .d-wait {
+    margin-top: 9px; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--wait) 40%, transparent);
+    border-radius: 6px; font-size: 11px; color: var(--wait-ink);
+  }
+  .d-wait .cite { color: var(--ink-3); font-size: 10px; }
+  .d-rows { margin-top: 9px; display: flex; flex-direction: column; gap: 7px; }
+  .d-row { font-size: 11.5px; }
+  .d-row .k { display: block; font-size: 9.5px; font-weight: 600; letter-spacing: 0.03em; color: var(--ink-3); margin-bottom: 1px; }
+  .d-row .cite { color: var(--ink-3); font-size: 10px; margin-left: 4px; }
+  .d-actions { margin-top: 11px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .btn-handle {
+    padding: 4px 10px; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+    color: var(--teal); background: transparent; border: 1px solid var(--teal-soft); border-radius: 6px;
+  }
+  .btn-handle:hover { border-color: var(--teal); }
+  .d-close { margin-left: auto; border: none; background: none; color: var(--ink-3); font-size: 12px; cursor: pointer; }
+
+  /* ── Unplaced shelf + freshness bar ───────────────────────────── */
+  .shelf {
+    flex: none; margin: 0 12px; padding: 6px 2px; display: flex; align-items: center; gap: 10px;
+    border-top: 1px solid var(--hair); font-size: 11px; color: var(--ink-2);
+  }
+  .shelf b { color: var(--ink); font-weight: 600; }
+  .ghost {
+    display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px;
+    border: 1px dashed var(--ghost-border); border-radius: 999px; font-size: 10.5px; color: var(--ink-2);
+  }
+  .shelf .fold { margin-left: auto; color: var(--ink-3); }
+  .fresh {
+    flex: none; margin: 0 12px 8px; padding: 5px 2px 2px; display: flex; flex-wrap: wrap; gap: 4px 0;
+    border-top: 1px solid var(--hair); font-size: 10px; color: var(--ink-3);
+  }
+  .fresh .seg { display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; }
+  .fresh .seg + .seg { border-left: 1px solid var(--hair); }
+  .fresh .src { color: var(--ink-2); font-weight: 600; }
+  .okdot { width: 5px; height: 5px; border-radius: 999px; background: var(--ok); opacity: 0.7; }
+
+  svg.g { display: block; }
+</style>
+</head>
+<body>
+<!-- Theme state (light/dark switch, titlebar-visible per house paradigm) -->
+<div class="frame">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="g-flag" viewBox="0 0 12 12"><path d="M2.5 1v10M2.5 1.5h6.5L7 4l2 2.5H2.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+      <symbol id="g-pause" viewBox="0 0 12 12"><path d="M4 2.5v7M8 2.5v7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+      <symbol id="g-folder" viewBox="0 0 12 12"><path d="M1.5 3.5c0-.6.4-1 1-1h2.4l1 1.2h4.6c.6 0 1 .4 1 1v4.8c0 .6-.4 1-1 1h-8c-.6 0-1-.4-1-1z" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+      <symbol id="g-check" viewBox="0 0 12 12"><path d="M2 6.4 4.8 9 10 3.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="g-clock" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 3.4V6l1.9 1.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+      <symbol id="g-send" viewBox="0 0 12 12"><path d="M1.5 6h8M6.6 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="g-claude" viewBox="0 0 12 12"><path d="M6 1v10M1.7 3.5l8.6 5M1.7 8.5l8.6-5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+      <symbol id="g-codex" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.4" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+    </defs>
+  </svg>
+
+  <header class="titlebar">
+    <div class="brand">taurhaus</div>
+    <nav class="tabs">
+      <span class="tab-quiet">Overview</span>
+      <span class="tab-quiet">Tasks</span>
+      <span class="tab-quiet">Files</span>
+      <span class="tab-quiet">Git</span>
+      <span class="tab-quiet">Mesh</span>
+      <span class="tab-pill"><span class="scoop l"></span>Scope<span class="tab-dot" title="unread walk"></span><span class="scoop r"></span></span>
+    </nav>
+    <div class="spacer"></div>
+    <label class="theme-toggle"><input type="checkbox" id="theme"> light</label>
+  </header>
+
+  <main class="panel">
+
+    <!-- The walk: since-your-mark, first-observed window, six lines max. -->
+    <section class="walk" aria-label="The walk">
+      <div class="walk-head mono">since your mark · Sun 12:31 · 11 events first observed</div>
+      <div class="walk-line"><span class="wglyph" style="color:var(--dispute)"><svg class="g" width="12" height="12"><use href="#g-flag"/></svg></span><span class="wtext"><b>S5</b> · reject recorded — 'runner protocol' ruled <b>oversize</b> by bo · owner sol</span><a class="wcite mono" href="#">T42 · 14:12</a></div>
+      <div class="walk-line"><span class="wglyph" style="color:var(--wait)"><svg class="g" width="12" height="12"><use href="#g-pause"/></svg></span><span class="wtext"><b>mira</b> declared waiting — GO from lead before wiring the S3 stream</span><a class="wcite mono" href="#">inbox m-214 · 13:58</a></div>
+      <div class="walk-line"><span class="wglyph" style="color:var(--manila-ink)"><svg class="g" width="12" height="12"><use href="#g-folder"/></svg></span><span class="wtext"><b>S7</b> filed by nia — foundation declared complete</span><a class="wcite mono" href="#">BRIEF S7 · 13:47</a></div>
+      <div class="walk-line"><span class="wglyph" style="color:var(--ok)"><svg class="g" width="12" height="12"><use href="#g-check"/></svg></span><span class="wtext"><b>S2</b> · 'run record schema' complete — accept 36/40 by bo</span><a class="wcite mono" href="#">T31 · 13:22</a></div>
+      <div class="walk-line"><span class="wglyph" style="color:var(--wait)"><svg class="g" width="12" height="12"><use href="#g-clock"/></svg></span><span class="wtext"><b>S6</b> · no movement 52m — deadline-pass observation · owner ivo</span><a class="wcite mono" href="#">T27 · 14:05</a></div>
+      <div class="walk-line"><span class="wglyph" style="color:var(--ink-3)"><svg class="g" width="12" height="12"><use href="#g-send"/></svg></span><span class="wtext">nudge → ivo, from <b>monitor</b></span><a class="wcite mono" href="#">telemetry · 14:18</a></div>
+      <div class="walk-foot"><span>… 4 quieter events</span><button class="btn-quiet" title="Marks the walk read. Flags stay until their record closes.">Mark caught up</button></div>
+    </section>
+
+    <div class="content">
+      <!-- Region grid: fixed document order from BRIEF.md addressed headings. -->
+      <section class="grid" aria-label="Declared scope">
+
+        <article class="region"> <!-- all complete, nothing declared: stays paper -->
+          <div class="r-head"><span class="r-id mono">S1</span><span class="r-name">Configure a hunt</span></div>
+          <div class="r-stmt">Criteria, CV and references, model per pipeline task.</div>
+          <div class="r-counts"><span>3/3 mapped complete</span><span class="none">no ruling recorded</span></div>
+        </article>
+
+        <article class="region active lit">
+          <div class="r-head"><span class="r-id mono">S2</span><span class="r-name">Run a hunt</span></div>
+          <div class="r-stmt">Headless agents on the operator's own subscriptions.</div>
+          <div class="r-chips">
+            <span class="chip"><svg class="g toollogo" width="10" height="10"><use href="#g-codex"/></svg>sol<span class="dot ok"></span></span>
+            <span class="chip dim"><svg class="g toollogo" width="10" height="10"><use href="#g-codex"/></svg>tess<span class="dot unsure"></span><span class="lastseen">last seen 14:09</span></span>
+          </div>
+          <div class="r-counts"><span>2/6 mapped complete</span><span class="ruling-chip accept">accept 36/40 · bo · 13:22</span></div>
+        </article>
+
+        <article class="region active lit">
+          <div class="r-head"><span class="r-id mono">S3</span><span class="r-name">Live progress</span></div>
+          <div class="r-stmt">A running hunt shows its work, not a spinner.</div>
+          <div class="r-chips">
+            <span class="chip"><svg class="g toollogo" width="10" height="10"><use href="#g-codex"/></svg>mira<span class="dot idle"></span><span class="waittag">awaiting GO</span></span>
+          </div>
+          <div class="r-counts"><span>1/4 mapped complete</span></div>
+        </article>
+
+        <article class="region active">
+          <div class="r-head"><span class="r-id mono">S4</span><span class="r-name">Browse results</span></div>
+          <div class="r-stmt">Offers and insights; seen offers recognized across runs.</div>
+          <div class="r-chips">
+            <span class="chip"><svg class="g toollogo" width="10" height="10"><use href="#g-codex"/></svg>aya<span class="dot ok"></span></span>
+          </div>
+          <div class="r-counts"><span>1/5 mapped complete</span></div>
+        </article>
+
+        <article class="region active lit">
+          <div class="r-head"><span class="r-id mono">S5</span><span class="r-name">Supervision</span>
+            <span class="r-flags"><span class="flag contested"><svg class="g" width="11" height="11"><use href="#g-flag"/></svg>contested · sol</span></span></div>
+          <div class="r-stmt">Streaming event parsing per CLI; failure recovery.</div>
+          <div class="r-chips">
+            <span class="chip"><svg class="g toollogo" width="10" height="10"><use href="#g-claude"/></svg>bo<span class="dot ok"></span></span>
+          </div>
+          <div class="r-counts"><span>2/5 mapped complete</span><span class="ruling-chip">reject · oversize · bo · 14:12</span></div>
+        </article>
+
+        <article class="region active">
+          <div class="r-head"><span class="r-id mono">S6</span><span class="r-name">Persistence</span>
+            <span class="r-flags"><span class="flag stalled"><svg class="g" width="11" height="11"><use href="#g-clock"/></svg>stalled 52m · ivo</span></span></div>
+          <div class="r-stmt">What a run is as a record; seen.md migrates.</div>
+          <div class="r-chips">
+            <span class="chip"><svg class="g toollogo" width="10" height="10"><use href="#g-codex"/></svg>ivo<span class="dot idle"></span></span>
+          </div>
+          <div class="r-counts"><span>2/4 mapped complete</span></div>
+        </article>
+
+        <article class="region filed lit"> <!-- declared outcome: the manila folder tab -->
+          <span class="filed-tab"><svg class="g" width="10" height="10"><use href="#g-folder"/></svg>filed by nia · 13:47</span>
+          <div class="r-head"><span class="r-id mono">S7</span><span class="r-name">App shell &amp; foundation</span></div>
+          <div class="r-stmt">Tauri shell, house layout, CLI detection.</div>
+          <div class="r-counts"><span>5/5 mapped complete</span><span class="ruling-chip accept">accept 38/40 · bo · Sat 18:04</span></div>
+        </article>
+
+      </section>
+
+      <!-- Roster rail: everyone, incl. idle and offline. -->
+      <aside class="roster" aria-label="Roster">
+        <h2>Roster · 9</h2>
+        <div class="r-row"><span class="dot ok"></span><span class="nm">lead</span><span class="star">★</span></div>
+        <div class="r-row"><span class="dot idle"></span><span class="nm">nia</span></div>
+        <div class="r-row"><span class="dot ok"></span><span class="nm">sol</span></div>
+        <div class="r-row"><span class="dot unsure"></span><span class="nm" style="opacity:.7">tess</span></div>
+        <div class="r-row"><span class="dot ok"></span><span class="nm">bo</span></div>
+        <div class="r-row"><span class="dot idle"></span><span class="nm">mira</span><span class="waittag">GO?</span></div>
+        <div class="r-row"><span class="dot ok"></span><span class="nm">aya</span></div>
+        <div class="r-row"><span class="dot idle"></span><span class="nm">ivo</span></div>
+        <hr>
+        <div class="r-row offline"><span class="dot off"></span><span class="nm">dev</span><span class="lastseen" style="font-size:9.5px">offline</span></div>
+      </aside>
+
+      <!-- Seat card: the restart cursor for a member chip (drawer). -->
+      <aside class="drawer" aria-label="Seat card — mira">
+        <div class="d-head">
+          <svg class="g toollogo" width="12" height="12"><use href="#g-codex"/></svg>
+          <span class="d-name">mira</span><span class="dot idle" style="width:6px;height:6px;border-radius:999px"></span>
+          <button class="d-close" aria-label="Close">✕</button>
+        </div>
+        <div class="d-sub">observed idle · medium confidence · runtime read 2s ago</div>
+        <div class="d-wait"><b>declared waiting</b> — GO from lead before wiring the S3 stream <span class="cite mono">inbox m-214 · 13:58</span></div>
+        <div class="d-rows">
+          <div class="d-row"><span class="k">current tip</span>reported S3 stream plan to lead<span class="cite mono">inbox m-214 · 13:58</span></div>
+          <div class="d-row"><span class="k">pending rulings</span>none open on mira's work</div>
+          <div class="d-row"><span class="k">next action</span>wire run-progress stream after GO<span class="cite mono">declared · m-214</span></div>
+        </div>
+        <div class="d-actions">
+          <button class="btn-handle">Open pane · draft ACTION REQUIRED</button>
+          <button class="btn-handle">Open in Task Board</button>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Unplaced shelf: unknown is a place on screen, scoped to open tasks. -->
+    <section class="shelf" aria-label="Unplaced work">
+      <span><b>4 unplaced</b> · 1 unresolved ref — of 19 open tasks</span>
+      <span class="ghost mono">S9? · retry ledger writes — unresolved</span>
+      <span class="fold">history folded (32)</span>
+    </section>
+
+    <!-- Freshness bar: read ≠ written ≠ event, per source. -->
+    <footer class="fresh mono" aria-label="Source freshness">
+      <span class="seg"><span class="okdot"></span><span class="src">ledger</span>read 4s · written 2m · newest event 14:18</span>
+      <span class="seg"><span class="okdot"></span><span class="src">BRIEF.md</span>read 12s · written 13:40</span>
+      <span class="seg"><span class="okdot"></span><span class="src">runtime</span>read 2s</span>
+      <span class="seg"><span class="src">journal</span>11 events first observed since your mark (12:31)</span>
+    </footer>
+
+  </main>
+</div>
+</body>
+</html>
