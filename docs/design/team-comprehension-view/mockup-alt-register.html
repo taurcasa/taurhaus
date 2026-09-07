@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scope — register</title>
+<style>
+  :root{
+    --frame:#0b2b29; --panel:#10201f; --panel-2:#152826; --ink:#d7e2e0; --ink-dim:#7e9491;
+    --paper-line:#2a403d; --paper-live:#1a312e; --manila:#e8d9b0; --manila-ink:#3d3416;
+    --green:#4ade80; --amber:#f5c15c; --red:#e5484d; --teal:#2dd4bf; --chipbg:#0e1c1b;
+  }
+  .light{
+    --frame:#0e3532; --panel:#f4f3ee; --panel-2:#eceae2; --ink:#20302e; --ink-dim:#6b7d7a;
+    --paper-line:#d8d4c6; --paper-live:#fffdf6; --manila:#e3cf97; --chipbg:#e7e4da;
+  }
+  *{box-sizing:border-box; margin:0}
+  body{font-family:Geist,"Geist Sans",ui-sans-serif,system-ui,sans-serif;
+    background:var(--frame); color:var(--ink); padding:14px; font-size:13px; min-height:100vh}
+  .stage{display:flex; gap:22px; justify-content:center; align-items:flex-start}
+  .caption{color:#9db3b0; font-size:12px; padding:6px 4px 10px; display:flex; gap:14px; align-items:center; max-width:470px; margin:0 auto}
+  .caption .spacer{flex:1}
+  .theme{background:transparent;border:none;color:#9db3b0;font:inherit;font-size:12px;cursor:pointer}
+  .theme:focus-visible{outline:2px solid var(--teal); outline-offset:2px}
+
+  .sidepanel{width:470px; background:var(--panel); border-radius:12px; padding:14px 14px 12px}
+
+  .endeavor{margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid var(--paper-line)}
+  .obj{font-size:13px; font-weight:600; line-height:1.4; margin-bottom:9px}
+  .strip{display:flex; gap:4px; margin-bottom:8px}
+  .seg{height:8px; flex:1; border-radius:3px; border:1px solid transparent}
+  .seg.signed{background:var(--manila)}
+  .seg.live{background:color-mix(in oklab, var(--hue) 62%, var(--panel))}
+  .seg.quiet{border-color:var(--paper-line)}
+  .gauges{display:flex; gap:20px; align-items:center}
+  .g .n{font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1.1}
+  .g .n small{font-size:11px; color:var(--ink-dim); font-weight:500}
+  .g .l{font-size:10px; color:var(--ink-dim); margin-top:1px}
+  .g.crewg{margin-left:auto; text-align:right}
+  .minicrew{display:flex; gap:5px; justify-content:flex-end}
+  .minicrew .chip{width:19px; height:19px}
+  .minicrew .chip svg{width:10px;height:10px}
+  .walk{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:12px}
+  .wchip{display:inline-flex; align-items:center; gap:6px; background:var(--chipbg);
+    border-radius:14px; padding:3px 10px 3px 7px; font-size:11.5px}
+  .wchip .dot{width:6px;height:6px;border-radius:50%}
+  .since{color:var(--ink-dim); font-size:11px; width:100%}
+
+  .row{position:relative; display:flex; align-items:center; gap:8px; padding:9px 10px 9px 14px;
+    border-radius:8px; margin-bottom:5px}
+  .row::before{content:""; position:absolute; left:4px; top:8px; bottom:8px; width:3px;
+    border-radius:2px; background:var(--spine,transparent); opacity:.75}
+  .row.live{background:var(--paper-live)}
+  .row.changed{box-shadow:0 0 0 1.5px var(--teal)}
+  .row.filed{background:color-mix(in oklab, var(--manila) 13%, var(--panel))}
+  .row.quiet .name{color:var(--ink-dim); font-weight:500}
+  .row .glyph{width:13px;height:13px;stroke:var(--ink-dim);fill:none;stroke-width:1.5;
+    stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .name{font-weight:600; font-size:12.5px; min-width:0; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis}
+
+  .mid{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px}
+  .name{display:block}
+  .note{display:block; font-size:11px; color:var(--ink-dim); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis}
+  .note.trouble{color:color-mix(in oklab, var(--red) 70%, var(--ink))}
+  .note.slow{color:color-mix(in oklab, var(--amber) 60%, var(--ink))}
+
+  .crew{display:flex; gap:6px; flex:none}
+  .chip{position:relative; width:22px; height:22px; background:var(--chipbg);
+    display:grid; place-items:center; color:var(--ink)}
+  .chip,.chip::after{border-radius:50%}
+  .chip.gpt,.chip.gpt::after{border-radius:6px}
+  .chip::after{content:"";position:absolute;inset:-2px;border:1.8px solid transparent}
+  .chip.working::after{border-color:var(--green)}
+  .chip.idle::after{border-color:color-mix(in oklab, var(--amber) 65%, transparent)}
+  .chip.off{opacity:.42}
+  .chip svg{width:11px;height:11px;stroke:var(--ink);fill:none;stroke-width:1.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .chip .wait{position:absolute;right:-4px;bottom:-4px;width:11px;height:11px;border-radius:50%;
+    background:var(--amber);color:#3a2b05;font-size:7.5px;display:grid;place-items:center}
+
+  .dots{display:flex; gap:3px; flex:none; align-items:center; min-width:66px; justify-content:flex-end}
+  .dots i{width:5.5px; height:5.5px; border-radius:50%; background:var(--ink-dim)}
+  .dots i.o{background:transparent; border:1px solid var(--paper-line)}
+  .row.filed .dots i{background:color-mix(in oklab, var(--manila) 75%, var(--ink-dim))}
+
+  .rail{display:flex; align-items:center; margin-top:10px; padding-top:9px;
+    border-top:1px solid var(--paper-line); color:var(--ink-dim); font-size:11.5px}
+  .rail b{color:var(--ink); font-weight:600; margin-right:4px}
+</style>
+</head>
+<body>
+  <div class="caption">
+    <span>Scope — alternative: the register (built for the side-panel width taurhaus actually lives at)</span>
+    <span class="spacer"></span>
+    <button class="theme" id="th">Light</button>
+  </div>
+  <div class="stage">
+    <main class="sidepanel">
+      <header class="endeavor">
+        <div class="obj" style="font-weight:500">Building the first slice: configure a hunt, run it, browse what came back.</div>
+        <div class="strip">
+          <span class="seg signed" title="Enter a workspace — signed off"></span>
+          <span class="seg live" style="--hue:#8a7fb8" title="Run work — 3 people on it"></span>
+          <span class="seg live" style="--hue:#6899a8" title="Inspect results — 2 people on it"></span>
+          <span class="seg live" style="--hue:#a67f6e" title="Install and start — 1 person on it"></span>
+          <span class="seg quiet" title="Recover interrupted work — waiting"></span>
+          <span class="seg signed" title="Shared foundation — signed off"></span>
+          <span class="seg quiet" title="App shell — nothing here yet"></span>
+        </div>
+        <div class="gauges">
+          <span class="g"><span class="n">16<small>/32</small></span><div class="l">tasks done</div></span>
+          <span class="g"><span class="n">2<small>/7</small></span><div class="l">areas signed off</div></span>
+          <span class="g crewg"><span class="minicrew">
+            <span class="chip working" title="lead · working"><svg viewBox="0 0 16 16"><path d="M8 2l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.4l-3.7 2.1.8-4.2L2 6.4l4.2-.5z"/></svg></span>
+            <span class="chip gpt working" title="sol · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+            <span class="chip gpt working" title="tess · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+            <span class="chip working" title="aya · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+            <span class="chip gpt working" title="ivo · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+            <span class="chip working" title="nia · architect + security · working"><svg viewBox="0 0 16 16"><path d="M8 2l5 2v4c0 3.2-2.2 5-5 6-2.8-1-5-2.8-5-6V4z"/></svg></span>
+          </span><div class="l">on it now</div></span>
+        </div>
+      </header>
+      <div class="walk">
+        <span class="wchip" title="2 signed off since you last looked"><span class="dot" style="background:var(--manila)"></span>2</span>
+        <span class="wchip" title="1 sent back since you last looked"><span class="dot" style="background:var(--red)"></span>1</span>
+        <span class="wchip"><span class="dot" style="background:var(--amber)"></span>1 waiting on you</span>
+        <span class="since" title="since you last looked">◷ 13:05</span>
+      </div>
+
+      <div class="row filed" style="--spine:#5b7fa6">
+        <svg class="glyph" viewBox="0 0 16 16"><rect x="4" y="2.5" width="8" height="11" rx="1"/><circle cx="10" cy="8" r=".9"/></svg>
+        <span class="mid"><span class="name">Enter a workspace</span></span>
+        </span>
+        <span class="crew"><span class="chip off" title="mira · implementer · offline"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span></span>
+        <span class="dots" title="6 of 6 done"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      </div>
+
+      <div class="row live changed" style="--spine:#8a7fb8">
+        <svg class="glyph" viewBox="0 0 16 16"><path d="M5.5 3.5l7 4.5-7 4.5z"/></svg>
+        <span class="mid"><span class="name">Run work</span><span class="note trouble">API packet sent back — too large, 14:12</span></span>
+        </span>
+        <span class="crew">
+          <span class="chip gpt working" title="sol · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+          <span class="chip gpt working" title="tess · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+          <span class="chip idle" title="bo · reviewer · idle"><svg viewBox="0 0 16 16"><path d="M2 8s2.2-3.5 6-3.5S14 8 14 8s-2.2 3.5-6 3.5S2 8 2 8z"/><circle cx="8" cy="8" r="1.4"/></svg></span>
+        </span>
+        <span class="dots" title="4 of 9 done"><i></i><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i></span>
+      </div>
+
+      <div class="row live" style="--spine:#6899a8">
+        <svg class="glyph" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><path d="M10 10l3.5 3.5"/></svg>
+        <span class="mid"><span class="name">Inspect results</span></span>
+        <span class="crew">
+          <span class="chip working" title="aya · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+          <span class="chip gpt idle" title="dev · judge · waiting for the go-ahead"><svg viewBox="0 0 16 16"><path d="M8 2v10M4 12h8M8 4L4.5 8h7z"/></svg><span class="wait">◷</span></span>
+        </span>
+        <span class="dots" title="2 of 5 done"><i></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i></span>
+      </div>
+
+      <div class="row live" style="--spine:#a67f6e">
+        <svg class="glyph" viewBox="0 0 16 16"><path d="M8 2.5V10M5 7.5L8 10.5l3-3"/><path d="M3 13h10"/></svg>
+        <span class="mid"><span class="name">Install and start</span></span>
+        <span class="crew"><span class="chip gpt working" title="ivo · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span></span>
+        <span class="dots" title="1 of 3 done"><i></i><i class="o"></i><i class="o"></i></span>
+      </div>
+
+      <div class="row quiet" style="--spine:#9a7a95">
+        <svg class="glyph" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5V5h-2.5"/></svg>
+        <span class="mid"><span class="name">Recover interrupted work</span><span class="note slow">nothing’s moved for 52 minutes</span></span>
+        </span>
+        <span class="crew"><span class="chip gpt idle" title="ivo · implementer · waiting for Run work"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg><span class="wait">◷</span></span></span>
+        <span class="dots" title="0 of 2 done"><i class="o"></i><i class="o"></i></span>
+      </div>
+
+      <div class="row filed" style="--spine:#7c8a9e">
+        <svg class="glyph" viewBox="0 0 16 16"><path d="M2.5 12.5h11M4 12.5V8h3.5v4.5M8.5 12.5V5H12v7.5M6 8V4.5"/></svg>
+        <span class="mid"><span class="name">Shared foundation</span></span>
+        </span>
+        <span class="crew"></span>
+        <span class="dots" title="3 of 3 done"><i></i><i></i><i></i></span>
+      </div>
+
+      <div class="row quiet" style="--spine:#8a9077">
+        <svg class="glyph" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M2.5 6h11M6 6v7"/></svg>
+        <span class="mid"><span class="name">App shell</span></span>
+        <span class="crew"></span>
+        <span class="dots" title="0 of 4 done"><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i></span>
+      </div>
+
+      <div class="rail"><b>3</b> tasks don't belong anywhere yet</div>
+    </main>
+  </div>
+<script>
+  th.addEventListener('click',()=>{document.body.classList.toggle('light');
+    th.textContent=document.body.classList.contains('light')?'Dark':'Light';});
+</script>
+</body>
+</html>

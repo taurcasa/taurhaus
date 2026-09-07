@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scope — strip chart</title>
+<style>
+  :root{
+    --frame:#0b2b29; --panel:#10201f; --panel-2:#152826; --ink:#d7e2e0; --ink-dim:#7e9491;
+    --paper-line:#2a403d; --manila:#e8d9b0; --manila-ink:#3d3416;
+    --green:#4ade80; --amber:#f5c15c; --red:#e5484d; --teal:#2dd4bf; --chipbg:#0e1c1b;
+  }
+  .light{
+    --frame:#0e3532; --panel:#f4f3ee; --panel-2:#eceae2; --ink:#20302e; --ink-dim:#6b7d7a;
+    --paper-line:#d8d4c6; --manila:#e3cf97; --chipbg:#e7e4da;
+  }
+  *{box-sizing:border-box; margin:0}
+  body{font-family:Geist,"Geist Sans",ui-sans-serif,system-ui,sans-serif;
+    background:var(--frame); color:var(--ink); padding:14px; font-size:13px; min-height:100vh}
+  .window{max-width:1180px; margin:0 auto}
+  .titlebar{display:flex; align-items:center; gap:10px; padding:4px 4px 10px}
+  .app{font-weight:600; font-size:13px; color:#cfe0dd}
+  .hint{color:#9db3b0; font-size:12px; margin-left:12px}
+  .spacer{flex:1}
+  .theme{background:transparent;border:none;color:#9db3b0;font:inherit;font-size:12px;cursor:pointer}
+  .theme:focus-visible{outline:2px solid var(--teal); outline-offset:2px}
+  .panel{background:var(--panel); border-radius:12px; padding:18px 20px 14px}
+
+  .walk{display:flex; align-items:center; gap:8px; margin-bottom:18px}
+  .wchip{display:inline-flex; align-items:center; gap:6px; background:var(--chipbg);
+    border-radius:15px; padding:4px 11px 4px 8px; font-size:12px}
+  .wchip .dot{width:7px;height:7px;border-radius:50%}
+  .since{color:var(--ink-dim); font-size:12px; margin-left:auto}
+
+  /* lanes */
+  .lanes{display:grid; grid-template-columns:190px 1fr 150px; row-gap:4px; align-items:center}
+  .lane-name{display:flex; align-items:center; gap:7px; padding:10px 10px 10px 0; font-weight:600; font-size:13px}
+  .lane-name .spinebar{width:3px; align-self:stretch; border-radius:2px; margin-right:6px}
+  .lane-name svg{width:13px;height:13px;stroke:var(--ink-dim);fill:none;stroke-width:1.5;
+    stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .lane-name .sid{color:var(--ink-dim); font-weight:400; font-size:11px}
+  .quiet .lane-name{color:var(--ink-dim); font-weight:500}
+
+  .track{position:relative; height:34px}
+  .track .base{position:absolute; left:0; right:0; top:50%; height:1px; background:var(--paper-line)}
+  .track .act{position:absolute; top:calc(50% - 2px); height:5px; border-radius:3px;
+    background:color-mix(in oklab, var(--spinec, var(--ink-dim)) 55%, transparent)}
+  .mark{position:absolute; top:50%; transform:translate(-50%,-50%)}
+  .mark.signed{width:11px;height:11px;background:var(--manila);border-radius:2px 2px 0 0}
+  .mark.sent{width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
+    border-bottom:10px solid var(--red)}
+  .mark.stall{width:26px;height:5px;top:calc(50% + .5px);border-radius:3px;
+    background:repeating-linear-gradient(90deg,var(--amber) 0 3px,transparent 3px 6px);opacity:.8}
+  .nowline{position:absolute; right:0; top:6px; bottom:6px; width:1.5px; background:var(--teal); opacity:.55}
+
+  .now{display:flex; align-items:center; gap:7px; justify-content:flex-end; padding:4px 0}
+  .count{color:var(--ink-dim); font-size:11px; font-variant-numeric:tabular-nums; min-width:64px; text-align:right}
+
+  .chip{position:relative; width:24px; height:24px; background:var(--chipbg);
+    display:grid; place-items:center; color:var(--ink)}
+  .chip,.chip::after{border-radius:50%}
+  .chip.gpt,.chip.gpt::after{border-radius:7px}
+  .chip::after{content:"";position:absolute;inset:-2.5px;border:2px solid transparent}
+  .chip.working::after{border-color:var(--green)}
+  .chip.idle::after{border-color:color-mix(in oklab, var(--amber) 65%, transparent)}
+  .chip.off{opacity:.42}
+  .chip svg{width:12px;height:12px;stroke:var(--ink);fill:none;stroke-width:1.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .chip .wait{position:absolute;right:-5px;bottom:-5px;width:12px;height:12px;border-radius:50%;
+    background:var(--amber);color:#3a2b05;font-size:8px;display:grid;place-items:center}
+
+  .axis{display:grid; grid-template-columns:190px 1fr 150px; color:var(--ink-dim); font-size:10.5px;
+    margin-top:2px}
+  .axis .t{position:relative; height:16px}
+  .axis .t span{position:absolute; transform:translateX(-50%)}
+  .rail{display:flex; align-items:center; margin-top:14px; padding-top:11px;
+    border-top:1px solid var(--paper-line); color:var(--ink-dim); font-size:12px}
+  .rail b{color:var(--ink); font-weight:600}
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="titlebar">
+    <span class="app">taurhaus</span>
+    <span class="hint">Scope — alternative: the strip chart (time flows left to right; now is the right edge)</span>
+    <span class="spacer"></span>
+    <button class="theme" id="th">Light</button>
+  </div>
+  <main class="panel">
+    <div class="walk">
+      <span class="wchip"><span class="dot" style="background:var(--manila)"></span>2 signed off</span>
+      <span class="wchip"><span class="dot" style="background:var(--red)"></span>1 sent back</span>
+      <span class="wchip"><span class="dot" style="background:var(--amber)"></span>1 waiting on you</span>
+      <span class="since">since you last looked (13:05)</span>
+    </div>
+
+    <div class="lanes">
+      <!-- S1 -->
+      <div class="lane-name"><span class="spinebar" style="background:#5b7fa6"></span>
+        <svg viewBox="0 0 16 16"><rect x="4" y="2.5" width="8" height="11" rx="1"/><circle cx="10" cy="8" r=".9"/></svg>
+        <span class="sid">S1</span>Enter a workspace</div>
+      <div class="track" style="--spinec:#5b7fa6">
+        <div class="base"></div><div class="act" style="left:2%; width:38%"></div>
+        <span class="mark signed" style="left:56%" title="signed off · nia · 13:47"></span>
+        <div class="nowline"></div>
+      </div>
+      <div class="now"><span class="chip off" title="mira · implementer · offline"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span><span class="count">all 6 done</span></div>
+
+      <!-- S2 -->
+      <div class="lane-name"><span class="spinebar" style="background:#8a7fb8"></span>
+        <svg viewBox="0 0 16 16"><path d="M5.5 3.5l7 4.5-7 4.5z"/></svg>
+        <span class="sid">S2</span>Run work</div>
+      <div class="track" style="--spinec:#8a7fb8">
+        <div class="base"></div><div class="act" style="left:8%; width:88%"></div>
+        <span class="mark sent" style="left:78%" title="API packet sent back · 14:12 — too large"></span>
+        <div class="nowline"></div>
+      </div>
+      <div class="now">
+        <span class="chip gpt working" title="sol · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+        <span class="chip gpt working" title="tess · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+        <span class="chip idle" title="bo · reviewer · idle"><svg viewBox="0 0 16 16"><path d="M2 8s2.2-3.5 6-3.5S14 8 14 8s-2.2 3.5-6 3.5S2 8 2 8z"/><circle cx="8" cy="8" r="1.4"/></svg></span>
+        <span class="count">4 of 9 done</span>
+      </div>
+
+      <!-- S3 -->
+      <div class="lane-name"><span class="spinebar" style="background:#6899a8"></span>
+        <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><path d="M10 10l3.5 3.5"/></svg>
+        <span class="sid">S3</span>Inspect results</div>
+      <div class="track" style="--spinec:#6899a8">
+        <div class="base"></div><div class="act" style="left:30%; width:60%"></div>
+        <div class="nowline"></div>
+      </div>
+      <div class="now">
+        <span class="chip working" title="aya · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+        <span class="chip gpt idle" title="dev · judge · waiting for the go-ahead"><svg viewBox="0 0 16 16"><path d="M8 2v10M4 12h8M8 4L4.5 8h7z"/></svg><span class="wait">◷</span></span>
+        <span class="count">2 of 5 done</span>
+      </div>
+
+      <!-- S4 -->
+      <div class="lane-name"><span class="spinebar" style="background:#a67f6e"></span>
+        <svg viewBox="0 0 16 16"><path d="M8 2.5V10M5 7.5L8 10.5l3-3"/><path d="M3 13h10"/></svg>
+        <span class="sid">S4</span>Install and start</div>
+      <div class="track" style="--spinec:#a67f6e">
+        <div class="base"></div><div class="act" style="left:55%; width:41%"></div>
+        <div class="nowline"></div>
+      </div>
+      <div class="now">
+        <span class="chip gpt working" title="ivo · implementer · working"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg></span>
+        <span class="count">1 of 3 done</span>
+      </div>
+
+      <!-- S5 -->
+      <div class="lane-name quietname"><span class="spinebar" style="background:#9a7a95"></span>
+        <svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5V5h-2.5"/></svg>
+        <span class="sid">S5</span>Recover interrupted work</div>
+      <div class="track" style="--spinec:#9a7a95">
+        <div class="base"></div>
+        <span class="mark stall" style="left:88%" title="nothing's moved for 52 minutes"></span>
+        <div class="nowline"></div>
+      </div>
+      <div class="now">
+        <span class="chip gpt idle" title="ivo · implementer · waiting for Run work"><svg viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-6.5 6.5H4v-3z"/><path d="M9 4l3 3"/></svg><span class="wait">◷</span></span>
+        <span class="count">0 of 2 done</span>
+      </div>
+
+      <!-- S6 -->
+      <div class="lane-name"><span class="spinebar" style="background:#7c8a9e"></span>
+        <svg viewBox="0 0 16 16"><path d="M2.5 12.5h11M4 12.5V8h3.5v4.5M8.5 12.5V5H12v7.5M6 8V4.5"/></svg>
+        <span class="sid">S6</span>Shared foundation</div>
+      <div class="track" style="--spinec:#7c8a9e">
+        <div class="base"></div><div class="act" style="left:0%; width:22%"></div>
+        <span class="mark signed" style="left:30%" title="signed off · nia · 13:12"></span>
+        <div class="nowline"></div>
+      </div>
+      <div class="now"><span class="count">all 3 done</span></div>
+
+      <!-- S7 -->
+      <div class="lane-name quiet"><span class="spinebar" style="background:#8a9077"></span>
+        <svg viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M2.5 6h11M6 6v7"/></svg>
+        <span class="sid">S7</span>App shell</div>
+      <div class="track" style="--spinec:#8a9077"><div class="base"></div><div class="nowline"></div></div>
+      <div class="now"><span class="count">0 of 4 done</span></div>
+    </div>
+
+    <div class="axis">
+      <span></span>
+      <div class="t"><span style="left:5%">12:30</span><span style="left:30%">13:00</span>
+        <span style="left:55%">13:30</span><span style="left:80%">14:00</span><span style="left:98%">now</span></div>
+      <span></span>
+    </div>
+
+    <div class="rail"><b>3</b>&nbsp;tasks don't belong anywhere yet</div>
+  </main>
+</div>
+<script>
+  th.addEventListener('click',()=>{document.body.classList.toggle('light');
+    th.textContent=document.body.classList.contains('light')?'Dark':'Light';});
+</script>
+</body>
+</html>

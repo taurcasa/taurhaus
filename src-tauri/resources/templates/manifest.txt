@@ -5,6 +5,7 @@ presets/dev-team.yaml
 presets/full-team.yaml
 presets/grok-pair.yaml
 presets/pair.yaml
+presets/product-build-w2.yaml
 presets/product-build.yaml
 presets/research-eval.yaml
 presets/research-team.yaml
@@ -13,6 +14,7 @@ presets/taurhaus-core.yaml
 roles/adversarial-reviewer-claude.yaml
 roles/antigravity-orchestrator.yaml
 roles/astra-architect.yaml
+roles/astra-asset-generator.yaml
 roles/astra-crossfile-reviewer.yaml
 roles/astra-heavy-implementer.yaml
 roles/astra-security-auditor.yaml
@@ -22,6 +24,7 @@ roles/claude-researcher.yaml
 roles/codex-orchestrator.yaml
 roles/codex-qa.yaml
 roles/docs-verifier-codex.yaml
+roles/fable-altitude-reviewer.yaml
 roles/frontend-design-skill-developer.yaml
 roles/judge-astra.yaml
 roles/judge-fable.yaml

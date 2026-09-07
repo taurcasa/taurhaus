@@ -4,8 +4,8 @@ schema:
 
 preset_id: full-team
 name: Full Team
-description: "One Fable-led orchestrator, the open architect slot, and two Sol developers for structural guidance and implementation throughput."
-version: "4.0.0"
+description: "One Fable-led orchestrator, a Codex architect, and two Codex developers for structural guidance and implementation throughput."
+version: "4.0.1"
 lead_role_id: v3-lead-claude
 
 agent_slots:

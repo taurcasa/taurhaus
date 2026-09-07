@@ -1,0 +1,50 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: product-build-w2
+name: Product Build — Wave 2
+description: "Nine standing seats: Fable leads, designs, implements UI and reviews GPT work; Astra owns architecture/security, reviews Claude work, implements through two leashed heavy lanes, and generates visual assets on demand. Sol is overflow only."
+version: "1.1.0"
+lead_role_id: v3-lead-claude
+
+agent_slots:
+  - role_id: astra-architect
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: architect
+  - role_id: judge-astra
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: judge-astra
+  - role_id: fable-altitude-reviewer
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: altitude-reviewer
+  - role_id: claude-design-lead
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: design-lead
+  - role_id: frontend-design-skill-developer
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: ui-implementer
+  - role_id: astra-asset-generator
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: asset-generator
+  - role_id: astra-heavy-implementer
+    count: 2
+    project_binding: lead_project
+    overrides:
+      name_pattern: heavy-implementer-{n}
+
+defaults:
+  team_name_pattern: "{project}-product-w2"
+  tmux_layout: tiled

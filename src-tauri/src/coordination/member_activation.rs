@@ -529,7 +529,7 @@ mod tests {
             .filter_map(|line| serde_json::from_str::<Value>(line).ok())
             .find(|event| event["event"] == "launch.model.invalid" && event["member"] == "reviewer")
             .expect("invalid role model event");
-        assert_eq!(event["found"], "gpt-5.6-sol");
+        assert_eq!(event["found"], "gpt-6-astra");
         assert_eq!(event["replacement"], "opus");
     }
 

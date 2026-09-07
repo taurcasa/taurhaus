@@ -11,6 +11,7 @@ mod git;
 mod manifest;
 mod presets;
 mod roles;
+mod wave2;
 
 pub(super) fn setup_dirs() -> (TempDir, PathBuf, PathBuf) {
     let root = TempDir::new().expect("tempdir");

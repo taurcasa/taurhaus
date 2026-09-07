@@ -30,6 +30,76 @@ The committed packet is the specification. Link it and this standard; do not pas
 
 The completion-signal line also states the response expectation. Prefix a request that requires execution with `ACTION REQUIRED:`. Prefix context that needs no action with `INFO ONLY:` and end it with `no response needed`. Do not send a pure acknowledgment; execute the first action, then report through the named completion signal.
 
+## Checkout rules
+
+The lead broadcasts these rules before the first assignment. Code lanes work
+only in per-seat worktrees; do not move an active checkout. Documentation seats
+use pathspec-only commits after a separately-run `git status --porcelain` and
+inspect the staged paths before committing. Never sweep another lane's changes.
+Use per-seat CARGO_TARGET_DIR. Capture only from your own display with geometry
+asserted. Stagger gate runs at ≥3 concurrent builds. Gate the combined candidate
+before serialized landing and name its source and landing hashes.
+
+## Restart-cursor convention
+
+Persist a compact restart-cursor at every long wait, including waits for review,
+a build slot, routed input, or GO: cwd, code tip, rubric tip, tool hash, active
+root, pending rulings, and next action. Use exact paths and hashes; explicitly
+mark unavailable or inapplicable values. Update the current cursor rather than
+copying unchanged history. On resume, verify these identities before continuing.
+
+## Blocked and awaiting-GO
+
+When execution cannot begin, record an explicit dependency wait: `awaiting-GO`
+or `blocked-on(artifact, owner)`, with the awaited artifact, owner, task and
+assignment generation, and the condition that releases the wait. Record blocked
+state through the existing lifecycle and send the named BLOCKED completion
+signal. A pre-read is not execution and silence is not evidence of inactivity.
+The lead verifies owner, assignment generation, dependency state, and accepted
+artifact before treating the task system as canonical; escalate contradictions.
+Suppress operational idle nudges for a recorded dependency wait; route input or
+GO explicitly before resuming. This is an operating convention, not a new daemon
+state or an assertion that automated nudge suppression has shipped.
+
+## Budget counting and rulings
+
+For implement work under a diff-budget leash, record the baseline, owned paths,
+counting method, exclusions, and numeric budget before editing. State whether
+the ceiling counts net additions, gross additions plus deletions, final file
+length, or consolidated task-owned changes; keep that method fixed throughout
+the assignment. Declare generated-code and test exclusions explicitly, never
+hide changes by moving files or recutting the baseline. Measure/diagnose work
+uses its assigned evidence contract. UI markup has no heavy-implementer leash.
+
+A budget raise is telemetry. Before the ceiling is crossed, the lead records
+old ceiling, new ceiling and reason as a ruling on the implementation task:
+
+```text
+mesh task ruling <id> --kind ruling --value approved --field budget_raised --note "old ceiling=<old>; new ceiling=<new>; reason=<reason>" --team <team> --name <lead>
+```
+
+Use the assignment's team and lead identity. The RESULT cites the ruling and
+measures the candidate using the original counting semantics. Exceeding without
+a recorded prior raise stays a review failure; post-hoc approval does not erase
+it. The reviewer records an `oversize_diff` ruling for that failure. Recording
+raises supplies evidence for telemetry consumers; this convention does not add
+routing-report columns.
+
+## Review manifests and depth
+
+Freeze candidate hash, rubric revision, allowed evidence, reviewer lens, and
+stopping condition before review. Every PASS names exact candidate evidence and
+scope; verify quoted strings against candidate bytes, ask "can this check fail?",
+report per-root counts including explicit zeros, and distinguish independently
+checked, accepted on citation, and unmeasured claims.
+
+Use one review round per lane by default; a second requires the lead's recorded
+"is this worth another round?" ruling. When a non-product artifact (instrument,
+plan, rubric) accumulates 3 review rounds or the lead is about to route a finding,
+answer and record that question before it becomes an assignment. Record either
+a bounded next round with its value and stopping condition or a stop with its
+consequence. A changed rubric gets a bounded delta review, not an implicit reset.
+
 ## Results and reviewer artifacts
 
 Results are compact: give the commit hash (or `none — measure/diagnose only`) and the findings or outcome bullets. Include only evidence needed to assess the claim, plus any red-first skip required by the work-kind table. Essays and repeated gate transcripts make the decision harder to find and are discouraged.
