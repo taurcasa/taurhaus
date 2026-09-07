@@ -37,6 +37,25 @@ research.md; both on the wave-1 archive):
    inbox, workflow event, and task metadata is ONE event with several
    sources, not three notices (overhaul study's receipt/dedup rules).
 
+5. **Ledger as append-log with rendered projections** — operator
+   observation, measured 2026-09-07: 283 of 694 commits on taurjob
+   (40.8% of the whole project history) touch a ledger file; the lead
+   spends a large share of its output re-rendering state into markdown
+   by hand, with git as a poor man's event log. Design: ledger entries
+   become appendable events through a mesh verb (`entry`, `amend`
+   superseding a prior id with a reason, tombstone with a reason —
+   never an in-place edit); "the ledger" is a fold over the stream;
+   `ledger.md` becomes a GENERATED rendering produced on demand and
+   committed only as point-in-time snapshots at real boundaries (wave
+   closure, milestone freezes). No service, no watcher — the ledger is
+   pull-only, which is exactly why it needs none of the messaging
+   study's delivery machinery. Most candidate events already exist as
+   structured records (tasks, rulings, completions, budget raises);
+   the new event type covers what is prose-only today: honest
+   outcomes, remaining, evidence links. This is also the gentlest
+   rehearsal of the mesh-next pattern (append + fold + render) with
+   zero transport risk.
+
 Each is a bounded mesh or machinery lane in the existing ad-hoc mode.
 None requires the new storage; all survive it. Run them post-wave (mesh
 0.2.29 stays locked while the wave is live), measure against the
