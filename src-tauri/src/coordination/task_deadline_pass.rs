@@ -38,6 +38,20 @@ pub(crate) fn apply_task_deadlines(
     let mut outcome = DeadlinePassOutcome::default();
 
     for member in &config.members {
+        // Retry roster-boot attribution even if the app's task projection has
+        // not changed since the render arrived (F9c).
+        if let Some(snapshot) =
+            OperationalContextSnapshotStore::load(&orchestrator.teams_dir, team_name, &member.name)?
+        {
+            if !snapshot.task.id.trim().is_empty() {
+                crate::coordination::stores::telemetry::attribute_latest_launch_to_task(
+                    &orchestrator.teams_dir,
+                    team_name,
+                    &snapshot.task.id,
+                    &member.name,
+                );
+            }
+        }
         let result = apply_member_deadline(
             orchestrator,
             team_name,
@@ -56,8 +70,7 @@ pub(crate) fn apply_task_deadlines(
 }
 
 // Cost bound stated: this re-parses the team's task files each pass, but the
-// completion writer dedupes per (status, ruling) under flock and only appends
-// to sidecars telemetry already opened, so passes after the first observation
+// completion writer dedupes per (status, ruling) under flock, so passes after the first observation
 // are read-only. A last-pass mtime skip was considered and rejected as state
 // for negligible gain at team-sized task counts.
 fn observe_terminal_tasks(teams_dir: &Path, team_name: &str, now: DateTime<Utc>) {
@@ -399,6 +412,36 @@ mod tests {
         OperationalAssignmentFooterSnapshot, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
         OperationalWorkingSetSnapshot,
     };
+
+    // Regression: c9c6c49b required a pre-existing launch sidecar, so F9c
+    // terminal tasks missed between daemon snapshots never got an observation.
+    #[test]
+    fn wave2_terminal_observer_creates_missing_sidecars_once() {
+        let root = TempDir::new().unwrap();
+        let teams = root.path().join("teams");
+        let tasks = root.path().join("tasks/completion-team");
+        std::fs::create_dir_all(&tasks).unwrap();
+        for (id, status) in [("3", "completed"), ("4", "stale"), ("5", "pending")] {
+            std::fs::write(
+                tasks.join(format!("{id}.json")),
+                serde_json::json!({"id":id,"subject":"Observed task","status":status,
+                    "stateChangedAt":"2026-09-03T10:10:00Z"})
+                .to_string(),
+            )
+            .unwrap();
+        }
+        super::observe_terminal_tasks(&teams, "completion-team", Utc::now());
+        super::observe_terminal_tasks(&teams, "completion-team", Utc::now());
+        for id in ["3", "4"] {
+            let events = crate::coordination::stores::telemetry::read_task_telemetry(
+                &teams.join(format!("completion-team/state/telemetry/{id}.jsonl")),
+            );
+            assert_eq!(events.len(), 1, "terminal task {id}");
+        }
+        assert!(!teams
+            .join("completion-team/state/telemetry/5.jsonl")
+            .exists());
+    }
 
     #[test]
     fn deadline_events_carry_the_bounded_action_context() {

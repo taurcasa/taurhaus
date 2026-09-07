@@ -133,10 +133,6 @@ fn publish_snapshot(
         return Ok(false);
     }
 
-    let previous_task_id = current
-        .as_ref()
-        .map(|current| current.task.id.trim().to_string())
-        .unwrap_or_default();
     let mut candidate = snapshot.clone();
     if let Some(current) = current {
         candidate.version = current.version;
@@ -160,7 +156,7 @@ fn publish_snapshot(
     OperationalContextSnapshotStore::save_locked(&guard, teams_dir, &candidate)?;
     drop(guard);
     let task_id = candidate.task.id.trim();
-    if !task_id.is_empty() && previous_task_id != task_id {
+    if !task_id.is_empty() {
         crate::coordination::stores::telemetry::attribute_latest_launch_to_task(
             teams_dir,
             &candidate.team_name,
@@ -838,6 +834,69 @@ mod tests {
 
         assert!(snapshot.assignment_footer.task_effort.is_empty());
         assert!(snapshot.assignment_footer.task_effort_why.is_empty());
+    }
+
+    // Regression: c9c6c49b attributed only when task id changed; a roster
+    // boot rendered after the first snapshot stayed unattributed forever (F9c).
+    #[test]
+    fn wave2_snapshot_retries_late_roster_boot_attribution_once() {
+        use crate::coordination::stores::telemetry::{
+            append_task_telemetry, read_task_telemetry, RoutingTelemetryEvent,
+        };
+        let teams = TempDir::new().unwrap();
+        let (conn, _db) = test_db();
+        write_team(teams.path());
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &owned_task("42", "First task", "in_progress", None),
+        )
+        .unwrap();
+        let (snapshot, changed_at) = prepare_member_snapshot_with_task_timestamp(
+            teams.path(),
+            &conn,
+            "architecture-final",
+            "frontend-dev",
+            "proj-web",
+        )
+        .unwrap();
+        publish_member_operation_snapshot(teams.path(), &snapshot, changed_at).unwrap();
+        append_task_telemetry(
+            teams.path(),
+            "architecture-final",
+            None,
+            &RoutingTelemetryEvent::LaunchRendered {
+                timestamp: Utc::now(),
+                task_id: None,
+                member: "frontend-dev".to_string(),
+                role: "developer".to_string(),
+                tool: "codex".to_string(),
+                model: Some("gpt-6-astra".to_string()),
+                applied_effort: None,
+                capability_tier: None,
+                tier_rank: None,
+            },
+        )
+        .unwrap();
+        for _ in 0..2 {
+            let (snapshot, changed_at) = prepare_member_snapshot_with_task_timestamp(
+                teams.path(),
+                &conn,
+                "architecture-final",
+                "frontend-dev",
+                "proj-web",
+            )
+            .unwrap();
+            publish_member_operation_snapshot(teams.path(), &snapshot, changed_at).unwrap();
+        }
+        assert_eq!(
+            read_task_telemetry(
+                &teams
+                    .path()
+                    .join("architecture-final/state/telemetry/42.jsonl")
+            )
+            .len(),
+            1
+        );
     }
 
     fn owned_task(

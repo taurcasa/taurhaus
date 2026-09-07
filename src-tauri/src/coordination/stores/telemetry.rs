@@ -119,9 +119,7 @@ pub fn record_completion_observed(
 ) {
     let result = (|| -> std::io::Result<()> {
         let path = task_telemetry_path(teams_dir, team_name, Some(task_id))?;
-        let Some(mut file) = open_existing_sidecar(&path)? else {
-            return Ok(());
-        };
+        let mut file = open_sidecar(&path)?;
         file.lock_exclusive()?;
         let Some(events) = read_locked_task_telemetry(&mut file, &path)? else {
             FileExt::unlock(&file)?;
@@ -350,14 +348,6 @@ fn open_sidecar(path: &Path) -> std::io::Result<File> {
     #[cfg(unix)]
     options.mode(0o600);
     options.open(path)
-}
-
-fn open_existing_sidecar(path: &Path) -> std::io::Result<Option<File>> {
-    match OpenOptions::new().append(true).read(true).open(path) {
-        Ok(file) => Ok(Some(file)),
-        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error),
-    }
 }
 
 fn read_locked_task_telemetry(
@@ -792,11 +782,10 @@ mod tests {
         ));
     }
 
-    // Regression: 13111833 created a sidecar for every historical terminal
-    // task and treated an oversized sidecar as empty, making repeated scans
-    // append forever after the reader's safety cap was crossed.
+    // Regression: c9c6c49b suppressed missing completion sidecars (F9c).
+    // Keep the 13111833 oversized-file guard: unreadable is not empty.
     #[test]
-    fn completion_observation_requires_existing_bounded_telemetry() {
+    fn completion_observation_creates_missing_but_preserves_oversized_telemetry() {
         let root = tempfile::tempdir().expect("tempdir");
         let teams_dir = root.path().join("teams");
         let absent = teams_dir.join("routing-team/state/telemetry/old-task.jsonl");
@@ -809,7 +798,11 @@ mod tests {
             true,
             Utc::now(),
         );
-        assert!(!absent.exists(), "historical tasks must not gain sidecars");
+        assert_eq!(
+            read_task_telemetry(&absent).len(),
+            1,
+            "every terminal task gets an observation"
+        );
 
         let oversized = teams_dir.join("routing-team/state/telemetry/large-task.jsonl");
         std::fs::create_dir_all(oversized.parent().expect("telemetry dir"))
