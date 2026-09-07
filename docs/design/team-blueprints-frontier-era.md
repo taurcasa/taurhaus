@@ -158,6 +158,21 @@ Shipping bundled role changes pays the `BUILTIN_CATALOG_REVISION` cost
 6. *(Adjacent thread closed)* The tab-revisit fade is **kept** as deliberate
    behavior; the regression guard's lineage comment can drop its "pending
    review" clause at next touch.
+7. **Full-Astra implementation (operator decision, 2026-09-07,
+   post-wave-1).** The wave-1 token accounting
+   (`field-test-wave1/token-accounting.md`) measured Astra heavy seats at
+   ~2.5× fewer compute tokens per accepted task than Sol — near cost
+   parity under the ~2.5× premium — while grading higher on quality and
+   discipline. Sol-at-high-effort would raise its reasoning spend above
+   parity with at best matched quality, so the planned controlled
+   experiment is dominated and skipped. Wave 2 runs implementation on
+   Astra heavy seats under leash contracts; the blueprint's "Sol remains
+   the implementation workhorse" principle is superseded. Hedges: Sol is
+   the designated overflow lane when the Codex usage window runs hot;
+   review-side family diversity is unchanged (every Astra diff gets
+   Claude-family review); the bet is pre-registered in the wave-2 box
+   score — Astra holds ~0.5M compute tokens per accepted task at A-grade
+   quality, or this decision is revisited.
 
 Execution order: Astra calibration lane concludes → operator tier sign-off →
 role-template lane (Astra Architect / Cross-File Reviewer / leashed Heavy
