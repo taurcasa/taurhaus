@@ -49,13 +49,7 @@ pub(crate) fn validate_member_configuration(
     if !resolved.model.as_deref().is_some_and(|model| {
         !model.eq_ignore_ascii_case("external")
             && !model.trim().is_empty()
-            && crate::coordination::member_activation::validated_role_model(
-                member.cli_tool,
-                model,
-                &member.name,
-                "validation",
-            )
-            .is_some()
+            && crate::coordination::member_activation::model_is_valid_for(member.cli_tool, model)
     }) {
         return Err(invalid(
             "model",

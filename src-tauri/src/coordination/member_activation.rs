@@ -215,21 +215,25 @@ fn declared_model_fields(model: &str, reasoning_effort: Option<String>) -> Model
     parsed
 }
 
-pub(crate) fn validated_role_model(
-    tool: CliTool,
-    model: &str,
-    member_name: &str,
-    operation: &str,
-) -> Option<String> {
+pub(crate) fn model_is_valid_for(tool: CliTool, model: &str) -> bool {
     if ModelCatalog::entry_for(tool, model).is_some() {
-        return Some(model.to_string());
+        return true;
     }
 
     let belongs_to_another_tool = crate::session_scanner::cli_tool::all()
         .iter()
         .map(|entry| entry.tool)
         .any(|candidate| candidate != tool && ModelCatalog::entry_for(candidate, model).is_some());
-    if !belongs_to_another_tool {
+    !belongs_to_another_tool
+}
+
+pub(crate) fn validated_role_model(
+    tool: CliTool,
+    model: &str,
+    member_name: &str,
+    operation: &str,
+) -> Option<String> {
+    if model_is_valid_for(tool, model) {
         return Some(model.to_string());
     }
 

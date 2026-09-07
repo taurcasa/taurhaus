@@ -1,7 +1,4 @@
-include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/tests/common/project_fixture.rs"
-));
+use crate::coordination::state::test_support::fixture_project;
 
 use super::session_listing::{persist_local_account_observations, CliSessionFreshness};
 use super::*;

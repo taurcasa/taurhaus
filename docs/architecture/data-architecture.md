@@ -170,7 +170,13 @@ inbox prose. A member-wide wait uses the same marker under the member's
 `metadata` in team config. Existing task `status: blocked` and member
 `statusState: blocked` also suppress deadline actions; their reason stays in
 the existing mesh record. The member status applies only while `statusSetAt`
-is live (30-minute TTL, matching Mesh's IdleMonitor). Missing, invalid, or
+is live. Mesh's team-daemon IdleMonitor owns the TTL; Taurhaus's compatibility
+value is named once as `MESH_IDLE_MONITOR_DEFAULT_STATUS_TTL` in
+`coordination/task_deadline_pass.rs` (30 minutes). A Mesh TTL policy change
+requires this constant to move with it. Deployments can set
+`TAURHAUS_MESH_MEMBER_STATUS_TTL_SECONDS` to the monitor's positive TTL in
+seconds; absent, invalid, non-positive, or overflowing values use the default.
+Missing, invalid, or
 expired timestamps do not suppress actions. Explicit `metadata.awaiting_go`
 markers do not expire just because activity is old. A pass that skips members
 emits one debug `deadline.wait.skipped` summary with the waiting-member count.

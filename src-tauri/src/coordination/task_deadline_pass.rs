@@ -16,8 +16,18 @@ use crate::coordination::stores::{
 };
 use crate::coordination::task_deadline::{decide, DeadlineAction, DeadlineInput, Timestamp};
 
-// Mesh IdleMonitor owns statusState/statusSetAt liveness (30 minutes).
-const MEMBER_STATUS_TTL: Duration = Duration::minutes(30);
+// Mesh team-daemon IdleMonitor owns statusState/statusSetAt expiry.
+// Keep this compatibility default synchronized with Mesh; deployments can
+// override it via TAURHAUS_MESH_MEMBER_STATUS_TTL_SECONDS (see data-architecture.md).
+const MESH_IDLE_MONITOR_DEFAULT_STATUS_TTL: Duration = Duration::minutes(30);
+
+fn member_status_ttl(override_seconds: Option<&str>) -> Duration {
+    override_seconds
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|seconds| *seconds > 0)
+        .and_then(Duration::try_seconds)
+        .unwrap_or(MESH_IDLE_MONITOR_DEFAULT_STATUS_TTL)
+}
 
 const ACTIVITY_FRESHNESS: Duration = Duration::seconds(120);
 
@@ -40,6 +50,8 @@ pub(crate) fn apply_task_deadlines(
         .map(|member| member.name.clone());
     let mut outcome = DeadlinePassOutcome::default();
 
+    let ttl_override = std::env::var("TAURHAUS_MESH_MEMBER_STATUS_TTL_SECONDS").ok();
+    let status_ttl = member_status_ttl(ttl_override.as_deref());
     let mut waiting_members = 0u32;
     for member in &config.members {
         // Retry roster-boot attribution even if the app's task projection has
@@ -68,7 +80,7 @@ pub(crate) fn apply_task_deadlines(
                 .and_then(parse_timestamp)
                 .is_some_and(|set_at| {
                     let age = now - set_at;
-                    age >= Duration::zero() && age < MEMBER_STATUS_TTL
+                    age >= Duration::zero() && age < status_ttl
                 });
         if blocked_is_live
             || crate::coordination::stores::mesh_task::awaiting_go(member.extra.get("metadata"))
@@ -448,6 +460,22 @@ mod tests {
         OperationalAssignmentFooterSnapshot, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
         OperationalWorkingSetSnapshot,
     };
+
+    // Regression: 51923397 copied Mesh IdleMonitor's expiry with no way to
+    // follow a deployment whose mesh-owned TTL differs from the default.
+    #[test]
+    fn wave2_review_mesh_status_ttl_can_follow_the_monitor_policy() {
+        assert_eq!(member_status_ttl(Some("3600")), Duration::hours(1));
+        for value in [
+            None,
+            Some("bad"),
+            Some("0"),
+            Some("-1"),
+            Some("9223372036854775807"),
+        ] {
+            assert_eq!(member_status_ttl(value), Duration::minutes(30));
+        }
+    }
 
     // Regression: c9c6c49b required a pre-existing launch sidecar, so F9c
     // terminal tasks missed between daemon snapshots never got an observation.

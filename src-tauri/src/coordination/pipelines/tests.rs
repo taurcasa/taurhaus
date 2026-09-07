@@ -42,6 +42,77 @@ use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::templates::storage::TemplateStore;
 use crate::templates::types::BehavioralContract;
 
+// Regression: 216e51e9 used a repairing hydration predicate to reject seats,
+// emitting a catalog-substitution event even though validation refuses launch.
+#[test]
+fn wave2_review_validation_does_not_claim_model_substitution() {
+    let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().unwrap();
+    let log_path = tmp.path().join("validation.jsonl");
+    let sink = LogFileState::new(log_path.clone()).unwrap();
+    install_global_sink(&sink);
+    let mut seat = member(
+        "builder",
+        MemberRole::Agent,
+        CliTool::Codex,
+        tmp.path().to_str().unwrap(),
+    );
+    seat.model = Some("opus".into());
+    let error = crate::coordination::validation::validate_member_configuration(&seat, tmp.path())
+        .unwrap_err();
+    assert!(matches!(error, CoordinationError::Validation(_)));
+    sink.flush_for_test().unwrap();
+    assert!(
+        !fs::read_to_string(&log_path)
+            .unwrap_or_default()
+            .contains("launch.model.invalid"),
+        "rejection must not claim that a default was substituted"
+    );
+    assert!(
+        crate::coordination::member_activation::validated_role_model(
+            CliTool::Codex,
+            "opus",
+            "builder",
+            "resume_hydration"
+        )
+        .is_none()
+    );
+    sink.flush_for_test().unwrap();
+    assert!(fs::read_to_string(&log_path)
+        .unwrap()
+        .contains("launch.model.invalid"));
+}
+
+// Regression: 216e51e9 put seat filesystem/template checks before the existing
+// agent-name validation, masking empty and duplicate names with cwd errors.
+#[test]
+fn wave2_review_initialize_checks_names_before_seat_configuration() {
+    for (name, expected) in [
+        ("", "agent name must not be empty"),
+        ("lead", "duplicate member name 'lead'"),
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator =
+            new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+        let request = InitializeTeamRequest {
+            team_name: "invalid-team".into(),
+            team_description: None,
+            lead: setup_config("lead", "claude", "opus", tmp.path().to_str().unwrap()),
+            lead_mode: LeadMode::LaunchNew,
+            agents: vec![setup_config(
+                name,
+                "codex",
+                "gpt-6-astra",
+                tmp.path().join("missing").to_str().unwrap(),
+            )],
+        };
+        let report = orchestrator.initialize_team(&request).unwrap();
+        assert!(format!("{report:?}").contains(expected), "{report:?}");
+        assert!(runtime.calls().is_empty());
+    }
+}
+
 // Regression: a79d392 allowed recreation/resume to retain dead cwd and
 // unresolved models (F2/F13), and silently hydrated incoherent role/tool seats.
 // Regression: 0f973a63 erased persisted `external` declarations on load,

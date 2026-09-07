@@ -1,7 +1,4 @@
-include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/tests/common/project_fixture.rs"
-));
+use crate::coordination::state::test_support::fixture_project;
 
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Write};
@@ -5213,4 +5210,35 @@ fn member_workflow_activity_prefers_the_daemon_hint_over_a_local_rescan() {
         live_status::member_workflow_activity(&member_view(remote_transcript, None)),
         None
     );
+}
+
+// Regression: 216e51e9 made cwd validation fatal, exposing the add-member
+// command's unnormalized Windows path at the WSL daemon boundary.
+#[test]
+fn wave2_review_add_member_normalizes_optional_project_paths() {
+    let (db, _file) = test_db_state();
+    for (input, expected) in [
+        (Some("C:\\work\\project"), Some("/mnt/c/work/project")),
+        (Some(" /tmp/project "), Some("/tmp/project")),
+        (None, None),
+    ] {
+        let request = crate::coordination::requests::AddMemberRequest {
+            team_name: "team".into(),
+            member_name: "builder".into(),
+            backend_kind: "mesh".into(),
+            project_path: input.map(str::to_string),
+        };
+        let normalized =
+            super::request_normalization::normalize_add_member_request_path(&db, request).unwrap();
+        assert_eq!(normalized.project_path.as_deref(), expected);
+        assert_eq!(normalized.team_name, "team");
+        assert_eq!(normalized.member_name, "builder");
+    }
+    let request = crate::coordination::requests::AddMemberRequest {
+        team_name: "team".into(),
+        member_name: "builder".into(),
+        backend_kind: "mesh".into(),
+        project_path: Some(" ".into()),
+    };
+    assert!(super::request_normalization::normalize_add_member_request_path(&db, request).is_err());
 }

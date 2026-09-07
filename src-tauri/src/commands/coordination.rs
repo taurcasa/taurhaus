@@ -57,7 +57,8 @@ use mapping::*;
 use progress::*;
 use request_normalization::{
     hydrate_add_agent_request_role_metadata, hydrate_initialize_request_role_metadata,
-    normalize_add_agent_request_path, normalize_initialize_request_paths,
+    normalize_add_agent_request_path, normalize_add_member_request_path,
+    normalize_initialize_request_paths,
 };
 #[cfg(test)]
 use state_sync::*;
@@ -1383,17 +1384,20 @@ pub async fn coordination_add_member(
             .daemon
             .as_ref()
             .ok_or_else(|| "adding a team member requires the taurhaus daemon".to_string())?;
+        let db = app_for_task.state::<DbState>();
+        let request = normalize_add_member_request_path(
+            &db,
+            crate::coordination::requests::AddMemberRequest {
+                team_name,
+                member_name,
+                backend_kind,
+                project_path,
+            },
+        )?;
         add_member_through_daemon(
             &app_for_task,
             daemon,
-            crate::daemon::protocol::CoordinationAddMemberParams {
-                request: crate::coordination::requests::AddMemberRequest {
-                    team_name,
-                    member_name,
-                    backend_kind,
-                    project_path,
-                },
-            },
+            crate::daemon::protocol::CoordinationAddMemberParams { request },
         )
         .ipc()
     })

@@ -127,6 +127,7 @@ pub fn render_routing_report(
     for (model, stats) in &model_rows {
         push_row(&mut output, None, model, stats);
     }
+    output.push_str("\nEvents without recipient launch telemetry are omitted from both rollups.\n");
     Ok(output)
 }
 
@@ -463,6 +464,14 @@ mod tests {
             Utc.with_ymd_and_hms(2026, 9, 4, 12, 0, 0).unwrap(),
         )
         .unwrap();
+        // Regression: 6a6c14a9 dropped unknown-seat nudges without disclosing
+        // that missing recipient launch telemetry suppresses report counts.
+        assert!(
+            report.contains(
+                "Events without recipient launch telemetry are omitted from both rollups."
+            ),
+            "{report}"
+        );
         assert!(
             report.contains("deadline_nudges | monitor_nudges"),
             "{report}"
