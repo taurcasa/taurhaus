@@ -25,6 +25,15 @@
 
   .sidepanel{width:470px; background:var(--panel); border-radius:12px; padding:14px 14px 12px}
 
+  .endeavor{margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid var(--paper-line)}
+  .obj{font-size:13px; font-weight:600; line-height:1.4; margin-bottom:9px}
+  .strip{display:flex; gap:4px; margin-bottom:8px}
+  .seg{height:8px; flex:1; border-radius:3px; border:1px solid transparent}
+  .seg.signed{background:var(--manila)}
+  .seg.live{background:color-mix(in oklab, var(--hue) 62%, var(--panel))}
+  .seg.quiet{border-color:var(--paper-line)}
+  .agg{color:var(--ink-dim); font-size:11.5px}
+  .agg b{color:var(--ink); font-weight:600}
   .walk{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:12px}
   .wchip{display:inline-flex; align-items:center; gap:6px; background:var(--chipbg);
     border-radius:14px; padding:3px 10px 3px 7px; font-size:11.5px}
@@ -82,6 +91,19 @@
   </div>
   <div class="stage">
     <main class="sidepanel">
+      <header class="endeavor">
+        <div class="obj">Building the first slice: configure a hunt, run it, browse what came back.</div>
+        <div class="strip">
+          <span class="seg signed" title="Enter a workspace — signed off"></span>
+          <span class="seg live" style="--hue:#8a7fb8" title="Run work — 3 people on it"></span>
+          <span class="seg live" style="--hue:#6899a8" title="Inspect results — 2 people on it"></span>
+          <span class="seg live" style="--hue:#a67f6e" title="Install and start — 1 person on it"></span>
+          <span class="seg quiet" title="Recover interrupted work — waiting"></span>
+          <span class="seg signed" title="Shared foundation — signed off"></span>
+          <span class="seg quiet" title="App shell — nothing here yet"></span>
+        </div>
+        <div class="agg"><b>16 of 32</b> tasks done, <b>2 of 7</b> areas signed off, <b>6</b> working now</div>
+      </header>
       <div class="walk">
         <span class="wchip"><span class="dot" style="background:var(--manila)"></span>2 signed off</span>
         <span class="wchip"><span class="dot" style="background:var(--red)"></span>1 sent back</span>
