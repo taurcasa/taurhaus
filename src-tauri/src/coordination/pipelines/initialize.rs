@@ -323,6 +323,14 @@ impl CoordinationOrchestrator {
             )));
         }
 
+        for setup in std::iter::once(&request.lead).chain(request.agents.iter()) {
+            let member = member_from_agent_setup(setup, MemberRole::Agent)?;
+            crate::coordination::validation::validate_member_configuration(
+                &member,
+                &self.template_root,
+            )?;
+        }
+
         let mut seen = std::collections::HashSet::new();
         seen.insert(request.lead.name.trim().to_string());
         for agent in &request.agents {

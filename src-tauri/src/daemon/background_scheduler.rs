@@ -410,6 +410,11 @@ mod tests {
         )
     }
 
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/common/project_fixture.rs"
+    ));
+
     fn member(name: &str, role: MemberRole, tool: CliTool, project_path: &str) -> Member {
         Member {
             name: name.to_string(),
@@ -431,7 +436,7 @@ mod tests {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
-            model: None,
+            model: crate::models::ModelCatalog::default_for(tool).map(|entry| entry.id.clone()),
             reasoning_effort: None,
             account_id: None,
             project_path: std::path::PathBuf::from(project_path),
@@ -484,7 +489,7 @@ mod tests {
                 },
                 ownership: OperationalOwnershipSnapshot::default(),
                 working_set: OperationalWorkingSetSnapshot {
-                    project_path: "/tmp/app".to_string(),
+                    project_path: fixture_project("app"),
                     focal_files: Vec::new(),
                 },
             },
@@ -614,7 +619,12 @@ mod tests {
                 )?;
                 orchestrator.add_member(
                     "idle-team",
-                    member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app"),
+                    member(
+                        "builder",
+                        MemberRole::Agent,
+                        CliTool::Codex,
+                        fixture_project("app").as_str(),
+                    ),
                 )
             })
             .expect("seed idle team");
@@ -645,7 +655,12 @@ mod tests {
                     "effort-team",
                     member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
                 )?;
-                let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                let mut builder = member(
+                    "builder",
+                    MemberRole::Agent,
+                    CliTool::Codex,
+                    fixture_project("app").as_str(),
+                );
                 builder.reasoning_effort = Some("low".to_string());
                 orchestrator.add_member("effort-team", builder)
             })
@@ -655,7 +670,7 @@ mod tests {
         runtime.set_pane_dead("%21", false);
         runtime.set_pane_shell("%21", false);
         runtime.set_pane_current_command("%21", Some("codex"));
-        runtime.set_pane_current_path("%21", Some("/tmp/app"));
+        runtime.set_pane_current_path("%21", Some(fixture_project("app").as_str()));
         runtime.set_pane_identity("%21", Some(2021), Some(1_755_000_021));
         runtime.set_detected_runtime_session(
             "%21",
@@ -709,7 +724,12 @@ mod tests {
                     "effort-team",
                     member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
                 )?;
-                let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                let mut builder = member(
+                    "builder",
+                    MemberRole::Agent,
+                    CliTool::Codex,
+                    fixture_project("app").as_str(),
+                );
                 builder.reasoning_effort = Some("low".to_string());
                 orchestrator.add_member("effort-team", builder)
             })

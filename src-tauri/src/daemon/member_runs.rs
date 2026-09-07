@@ -452,6 +452,7 @@ mod tests {
     }
 
     fn agent(name: &str, project: &std::path::Path) -> AgentDefinition {
+        std::fs::create_dir_all(project).expect("project fixture");
         AgentDefinition {
             name: name.to_string(),
             cli_tool: "codex".to_string(),

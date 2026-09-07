@@ -414,6 +414,7 @@ mod tests {
     use crate::models::CliCommandSettings;
 
     fn agent(name: &str, project: &str) -> AgentDefinition {
+        std::fs::create_dir_all(project).expect("project fixture");
         AgentDefinition {
             name: name.to_string(),
             cli_tool: "codex".to_string(),

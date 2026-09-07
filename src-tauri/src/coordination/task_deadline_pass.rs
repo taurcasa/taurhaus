@@ -40,8 +40,8 @@ pub(crate) fn apply_task_deadlines(
     for member in &config.members {
         // Retry roster-boot attribution even if the app's task projection has
         // not changed since the render arrived (F9c).
-        if let Some(snapshot) =
-            OperationalContextSnapshotStore::load(&orchestrator.teams_dir, team_name, &member.name)?
+        if let Ok(Some(snapshot)) =
+            OperationalContextSnapshotStore::load(&orchestrator.teams_dir, team_name, &member.name)
         {
             if !snapshot.task.id.trim().is_empty() {
                 crate::coordination::stores::telemetry::attribute_latest_launch_to_task(

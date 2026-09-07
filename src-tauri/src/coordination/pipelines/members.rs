@@ -188,6 +188,11 @@ impl CoordinationOrchestrator {
         validate_member_name(&request.agent.name)?;
         validate_non_empty("agent project id", &request.agent.project_id)?;
         validate_non_empty("agent cli tool", &request.agent.cli_tool)?;
+        let member = member_from_agent_setup(&request.agent, MemberRole::Agent)?;
+        crate::coordination::validation::validate_member_configuration(
+            &member,
+            &self.template_root,
+        )?;
         let config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
         if config
             .members
@@ -238,6 +243,11 @@ impl CoordinationOrchestrator {
                     request.member_name, request.team_name
                 ))
             })?;
+
+        crate::coordination::validation::validate_member_configuration(
+            &member,
+            &self.template_root,
+        )?;
 
         let role = member.role_id.as_deref().and_then(|role_id| {
             load_role_for_member_hydration(&self.template_root, role_id, &member.name, "resume")

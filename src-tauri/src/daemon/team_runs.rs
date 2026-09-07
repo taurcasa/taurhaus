@@ -912,6 +912,7 @@ mod tests {
     use crate::session_scanner::cli_tool::CliTool;
 
     fn agent(name: &str, project: &std::path::Path) -> AgentDefinition {
+        std::fs::create_dir_all(project).expect("project fixture");
         AgentDefinition {
             name: name.to_string(),
             cli_tool: "codex".to_string(),
@@ -970,8 +971,8 @@ mod tests {
                 team_name: "arch".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
-                lead: agent("team-lead", &project.join("lead")),
-                agents: vec![agent("builder", &project.join("builder"))],
+                lead: agent("team-lead", project),
+                agents: vec![agent("builder", project)],
             },
             &CliCommandSettings::default(),
             "new_window",
@@ -1064,7 +1065,7 @@ mod tests {
             assignment_footer: Default::default(),
             ownership: Default::default(),
             working_set: crate::coordination::stores::OperationalWorkingSetSnapshot {
-                project_path: temp.path().join("builder").display().to_string(),
+                project_path: temp.path().display().to_string(),
                 focal_files: vec!["src/current.rs".to_string()],
             },
         };
@@ -1124,6 +1125,7 @@ mod tests {
         for member in &mut config.members {
             if member.role == crate::coordination::domain::MemberRole::Lead {
                 member.cli_tool = CliTool::Claude;
+                member.model = Some("opus".to_string());
             } else {
                 member.account_id = Some("personal".to_string());
             }
@@ -1251,6 +1253,7 @@ mod tests {
         let mut config = TeamConfigStore::load(&default_teams, "arch").expect("config");
         for member in &mut config.members {
             member.cli_tool = CliTool::Claude;
+            member.model = Some("opus".to_string());
             member.account_id = Some("claude-default".to_string());
         }
         TeamConfigStore::save(&default_teams, "arch", &config).expect("Claude config");
@@ -1312,6 +1315,7 @@ mod tests {
         let mut config = TeamConfigStore::load(&default_teams, "arch").expect("config");
         for member in &mut config.members {
             member.cli_tool = CliTool::Claude;
+            member.model = Some("opus".to_string());
             member.account_id = Some("claude-default".to_string());
         }
         TeamConfigStore::save(&default_teams, "arch", &config).expect("Claude config");
@@ -1375,6 +1379,7 @@ mod tests {
         for member in &mut config.members {
             if member.role == crate::coordination::domain::MemberRole::Lead {
                 member.cli_tool = CliTool::Claude;
+                member.model = Some("opus".to_string());
             } else {
                 member.account_id = Some("work".to_string());
             }
@@ -1437,6 +1442,7 @@ mod tests {
         for member in &mut config.members {
             if member.role == crate::coordination::domain::MemberRole::Lead {
                 member.cli_tool = CliTool::Claude;
+                member.model = Some("opus".to_string());
             } else {
                 member.account_id = Some("personal".to_string());
             }
@@ -1449,6 +1455,7 @@ mod tests {
             .clone();
         scribe.name = "scribe".to_string();
         scribe.cli_tool = CliTool::Claude;
+        scribe.model = Some("opus".to_string());
         scribe.account_id = None;
         config.members.push(scribe);
         TeamConfigStore::save(temp.path(), "arch", &config).expect("seed the mixed roster");
@@ -1535,6 +1542,7 @@ mod tests {
         let mut config = TeamConfigStore::load(temp.path(), "arch").expect("config");
         for member in &mut config.members {
             member.cli_tool = CliTool::Codex;
+            member.model = Some("gpt-5.4".to_string());
             member.account_id = Some("personal".to_string());
             MemberRuntimeStore::update(temp.path(), "arch", &member.name, |runtime| {
                 runtime.launch_account.account_id = Some("personal".to_string());

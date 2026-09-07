@@ -883,6 +883,11 @@ mod tests {
         assert_eq!(state.root_orchestrators.lock().expect("root map").len(), 1);
     }
 
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/common/project_fixture.rs"
+    ));
+
     fn sample_member(name: &str, role: MemberRole, tool: CliTool, project_path: &str) -> Member {
         Member {
             name: name.to_string(),
@@ -904,7 +909,7 @@ mod tests {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
-            model: None,
+            model: crate::models::ModelCatalog::default_for(tool).map(|entry| entry.id.clone()),
             reasoning_effort: None,
             account_id: None,
             project_path: PathBuf::from(project_path),
@@ -1394,7 +1399,7 @@ mod tests {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead",
+                fixture_project("lead").as_str(),
             )],
         );
 
@@ -1428,7 +1433,7 @@ mod tests {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead",
+                fixture_project("lead").as_str(),
             )],
         );
         let current_exe = std::env::current_exe().expect("current exe");
@@ -1465,7 +1470,7 @@ mod tests {
                 "builder",
                 MemberRole::Agent,
                 CliTool::Codex,
-                "/tmp/app",
+                fixture_project("app").as_str(),
             )],
         );
 
@@ -1527,7 +1532,12 @@ mod tests {
                 orch.create_team("architecture-final", None)?;
                 orch.add_member(
                     "architecture-final",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orch.add_member(
                     "architecture-final",
@@ -1535,7 +1545,7 @@ mod tests {
                         "existing-dev",
                         MemberRole::Agent,
                         CliTool::Codex,
-                        "/tmp/app",
+                        fixture_project("app").as_str(),
                     ),
                 )?;
                 Ok(())
@@ -1610,11 +1620,21 @@ mod tests {
                 orchestrator.create_team(team_name, None)?;
                 orchestrator.add_member(
                     team_name,
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orchestrator.add_member(
                     team_name,
-                    sample_member(member_name, MemberRole::Agent, CliTool::Codex, "/tmp/app"),
+                    sample_member(
+                        member_name,
+                        MemberRole::Agent,
+                        CliTool::Codex,
+                        fixture_project("app").as_str(),
+                    ),
                 )
             })
             .expect("seed team through the command orchestrator");
@@ -1634,7 +1654,7 @@ mod tests {
         runtime.set_pane_shell("%old", false);
         runtime.set_pane_current_command("%old", Some("codex"));
         runtime.set_pane_identity("%old", Some(7001), Some(1_755_000_007));
-        runtime.set_pane_current_path("%old", Some("/tmp/app"));
+        runtime.set_pane_current_path("%old", Some(fixture_project("app").as_str()));
         runtime.set_detected_runtime_session(
             "%old",
             CliTool::Codex,
@@ -1707,7 +1727,7 @@ mod tests {
                 },
                 ownership: OperationalOwnershipSnapshot::default(),
                 working_set: OperationalWorkingSetSnapshot {
-                    project_path: "/tmp/app".to_string(),
+                    project_path: fixture_project("app"),
                     focal_files: vec![],
                 },
             },
@@ -1746,10 +1766,19 @@ mod tests {
                 orch.create_team("effort-team", None)?;
                 orch.add_member(
                     "effort-team",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
-                let mut builder =
-                    sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                let mut builder = sample_member(
+                    "builder",
+                    MemberRole::Agent,
+                    CliTool::Codex,
+                    fixture_project("app").as_str(),
+                );
                 builder.reasoning_effort = Some("low".to_string());
                 orch.add_member("effort-team", builder)?;
                 Ok(())
@@ -1778,7 +1807,7 @@ mod tests {
 
         let resumed = state
             .apply_task_effort_for_project(
-                "/tmp/app",
+                fixture_project("app").as_str(),
                 &CliCommandSettings::default(),
                 DEFAULT_TMUX_LAYOUT,
             )
@@ -1814,7 +1843,7 @@ mod tests {
 
         let outcome = state
             .apply_task_effort_for_project(
-                "/tmp/app",
+                fixture_project("app").as_str(),
                 &CliCommandSettings::default(),
                 DEFAULT_TMUX_LAYOUT,
             )
@@ -1856,10 +1885,19 @@ mod tests {
                 orch.create_team("effort-team", None)?;
                 orch.add_member(
                     "effort-team",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
-                let mut builder =
-                    sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                let mut builder = sample_member(
+                    "builder",
+                    MemberRole::Agent,
+                    CliTool::Codex,
+                    fixture_project("app").as_str(),
+                );
                 builder.reasoning_effort = Some("low".to_string());
                 orch.add_member("effort-team", builder)?;
                 Ok(())
@@ -1939,11 +1977,21 @@ mod tests {
                 orch.create_team("deadline-team", None)?;
                 orch.add_member(
                     "deadline-team",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orch.add_member(
                     "deadline-team",
-                    sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app"),
+                    sample_member(
+                        "builder",
+                        MemberRole::Agent,
+                        CliTool::Codex,
+                        fixture_project("app").as_str(),
+                    ),
                 )?;
                 Ok(())
             })
@@ -2072,6 +2120,30 @@ mod tests {
             .expect("serialize activity snapshot"),
         )
         .expect("write activity snapshot");
+    }
+
+    // Regression: 813cad59 let the attribution retry abort the entire deadline
+    // pass on a corrupt snapshot, violating observational telemetry's boundary.
+    #[test]
+    fn wave2_attribution_read_failure_remains_a_per_member_deadline_failure() {
+        let (_tmp, teams, _runtime, _backend, state) = deadline_fixture();
+        seed_deadline_task(&teams, Utc::now(), Some(20));
+        std::fs::write(
+            teams.join("deadline-team/state/operational/builder.json"),
+            "{",
+        )
+        .unwrap();
+        let outcome = state
+            .with_team_orchestrator("deadline-team", |orchestrator| {
+                crate::coordination::task_deadline_pass::apply_task_deadlines(
+                    orchestrator,
+                    "deadline-team",
+                    Utc::now(),
+                )
+            })
+            .unwrap();
+        assert_eq!(outcome.failures.len(), 1);
+        assert_eq!(outcome.failures[0].0, "builder");
     }
 
     fn deadline_notices(fake: &FakeBackend) -> Vec<OperatorNoticeDelivery> {
@@ -2251,7 +2323,7 @@ mod tests {
         )
         .expect("write mesh task");
         let scan = taurhaus_lib::task_scanner::claude::get_tasks_in(
-            "/tmp/app",
+            fixture_project("app").as_str(),
             &[],
             &tasks_base,
             &tmp.path().join("projects"),
@@ -2269,7 +2341,7 @@ mod tests {
         taurhaus_lib::db::task_queries::upsert_task(
             &connection,
             &taurhaus_lib::db::task_queries::PersistedTask {
-                project_path: "/tmp/app".to_string(),
+                project_path: fixture_project("app"),
                 source: scanned.source.to_string(),
                 source_key: scanned.source_key.clone(),
                 source_task_id: scanned.id.clone(),
@@ -2544,10 +2616,19 @@ mod tests {
                 orch.create_team("effort-team", None)?;
                 orch.add_member(
                     "effort-team",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
-                let mut builder =
-                    sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                let mut builder = sample_member(
+                    "builder",
+                    MemberRole::Agent,
+                    CliTool::Codex,
+                    fixture_project("app").as_str(),
+                );
                 builder.reasoning_effort = Some("low".to_string());
                 orch.add_member("effort-team", builder)?;
                 Ok(())
@@ -2579,7 +2660,11 @@ mod tests {
             .account_selector_dirs
             .insert("CODEX_HOME".to_string(), codex_home.path().to_path_buf());
         let resumed = state
-            .apply_task_effort_for_project("/tmp/app", &cli_commands, DEFAULT_TMUX_LAYOUT)
+            .apply_task_effort_for_project(
+                fixture_project("app").as_str(),
+                &cli_commands,
+                DEFAULT_TMUX_LAYOUT,
+            )
             .expect("task-arrival pass succeeds");
 
         assert_eq!(resumed.switched, vec!["builder"]);
@@ -2620,7 +2705,12 @@ mod tests {
                 orch.create_team("idle-team", None)?;
                 orch.add_member(
                     "idle-team",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orch.add_member(
                     "idle-team",
@@ -2628,7 +2718,7 @@ mod tests {
                         "existing-dev",
                         MemberRole::Agent,
                         CliTool::Codex,
-                        "/tmp/app",
+                        fixture_project("app").as_str(),
                     ),
                 )?;
                 Ok(())
@@ -2682,7 +2772,12 @@ mod tests {
                 orch.create_team("architecture-final", None)?;
                 orch.add_member(
                     "architecture-final",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orch.add_member(
                     "architecture-final",
@@ -2690,7 +2785,7 @@ mod tests {
                         "existing-dev",
                         MemberRole::Agent,
                         CliTool::Codex,
-                        "/tmp/app",
+                        fixture_project("app").as_str(),
                     ),
                 )?;
                 Ok(())
@@ -2770,7 +2865,12 @@ mod tests {
                 orch.create_team("architecture-final", None)?;
                 orch.add_member(
                     "architecture-final",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orch.add_member(
                     "architecture-final",
@@ -2778,7 +2878,7 @@ mod tests {
                         "existing-dev",
                         MemberRole::Agent,
                         CliTool::Codex,
-                        "/tmp/app",
+                        fixture_project("app").as_str(),
                     ),
                 )?;
                 Ok(())
@@ -2867,7 +2967,12 @@ mod tests {
                 orch.create_team("architecture-final", None)?;
                 orch.add_member(
                     "architecture-final",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orch.add_member(
                     "architecture-final",
@@ -2875,7 +2980,7 @@ mod tests {
                         "existing-dev",
                         MemberRole::Agent,
                         CliTool::Codex,
-                        "/tmp/app",
+                        fixture_project("app").as_str(),
                     ),
                 )?;
                 Ok(())

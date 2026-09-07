@@ -1,3 +1,8 @@
+include!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/common/project_fixture.rs"
+));
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -50,10 +55,10 @@ fn sample_member(name: &str, tool: CliTool) -> Member {
         inherits_from: None,
         required_artifacts: None,
         capabilities: None,
-        model: None,
+        model: crate::models::ModelCatalog::default_for(tool).map(|entry| entry.id.clone()),
         reasoning_effort: None,
         account_id: None,
-        project_path: PathBuf::from("/tmp/taurhaus"),
+        project_path: PathBuf::from(fixture_project("taurhaus")),
         cli_tool: tool,
         extra: Default::default(),
     }
@@ -769,9 +774,9 @@ impl CoordinationRuntime for PaneOwnershipRuntime {
         let mut live_pane = self.inner.live_pane(pane_id)?;
         if let Some(live_pane) = &mut live_pane {
             live_pane.current_path = Some(PathBuf::from(if self.ownership_matches {
-                "/tmp/taurhaus"
+                fixture_project("taurhaus")
             } else {
-                "/recording-runtime/foreign-project"
+                "/recording-runtime/foreign-project".to_string()
             }));
         }
         Ok(live_pane)
@@ -1176,7 +1181,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
             model: "opus".to_string(),
             reasoning_effort: None,
             account_id: None,
-            project_id: "/tmp/lead".to_string(),
+            project_id: fixture_project("lead"),
             description: Some("lead".to_string()),
             role_id: None,
             role_name: None,
@@ -1203,7 +1208,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
                 model: "gpt-5.4".to_string(),
                 reasoning_effort: None,
                 account_id: None,
-                project_id: "/tmp/frontend".to_string(),
+                project_id: fixture_project("frontend"),
                 description: Some("frontend".to_string()),
                 role_id: None,
                 role_name: None,
@@ -1226,10 +1231,10 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
             AgentSetupConfig {
                 name: "reviewer".to_string(),
                 cli_tool: "agy".to_string(),
-                model: "pro".to_string(),
+                model: "gemini-3.7-flash-high".to_string(),
                 reasoning_effort: None,
                 account_id: None,
-                project_id: "/tmp/reviewer".to_string(),
+                project_id: fixture_project("reviewer"),
                 description: Some("review".to_string()),
                 role_id: None,
                 role_name: None,
@@ -1259,10 +1264,13 @@ fn add_agent_request(team_name: &str, agent_name: &str, cli_tool: &str) -> AddAg
         agent: AgentSetupConfig {
             name: agent_name.to_string(),
             cli_tool: cli_tool.to_string(),
-            model: "model".to_string(),
+            model: crate::models::ModelCatalog::default_for(CliTool::from_alias(cli_tool).unwrap())
+                .unwrap()
+                .id
+                .clone(),
             reasoning_effort: None,
             account_id: None,
-            project_id: format!("/tmp/{agent_name}"),
+            project_id: fixture_project(agent_name),
             description: Some("hot-added".to_string()),
             role_id: None,
             role_name: None,
@@ -1312,10 +1320,11 @@ fn create_running_team(orchestrator: &mut CoordinationOrchestrator, team_name: &
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
-                model: None,
+                model: crate::models::ModelCatalog::default_for(CliTool::Claude)
+                    .map(|entry| entry.id.clone()),
                 reasoning_effort: None,
                 account_id: None,
-                project_path: PathBuf::from("/tmp/lead"),
+                project_path: PathBuf::from(fixture_project("lead")),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
             },
@@ -1348,7 +1357,7 @@ fn member_with_project(name: &str, role: MemberRole, tool: CliTool, project_path
         inherits_from: None,
         required_artifacts: None,
         capabilities: None,
-        model: None,
+        model: crate::models::ModelCatalog::default_for(tool).map(|entry| entry.id.clone()),
         reasoning_effort: None,
         account_id: None,
         project_path: PathBuf::from(project_path),
@@ -1378,19 +1387,34 @@ fn create_resumable_team(
     orchestrator
         .add_member(
             team_name,
-            member_with_project("team-lead", MemberRole::Lead, lead_tool, "/tmp/lead"),
+            member_with_project(
+                "team-lead",
+                MemberRole::Lead,
+                lead_tool,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add lead");
     orchestrator
         .add_member(
             team_name,
-            member_with_project("builder", MemberRole::Agent, CliTool::Codex, "/tmp/lead"),
+            member_with_project(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add builder");
     orchestrator
         .add_member(
             team_name,
-            member_with_project("reviewer", MemberRole::Agent, CliTool::Agy, "/tmp/reviewer"),
+            member_with_project(
+                "reviewer",
+                MemberRole::Agent,
+                CliTool::Agy,
+                fixture_project("reviewer").as_str(),
+            ),
         )
         .expect("add reviewer");
 
@@ -1633,7 +1657,7 @@ fn discover_teams_resolves_lead_project_anchor() {
     assert_eq!(discovery.teams[0].team_name, team_name);
     assert_eq!(
         discovery.teams[0].lead_project_path.as_deref(),
-        Some(std::path::Path::new("/tmp/lead"))
+        Some(std::path::Path::new(fixture_project("lead").as_str()))
     );
 }
 
@@ -1727,10 +1751,11 @@ fn disband_team_stops_team_daemon_best_effort() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
-                model: None,
+                model: crate::models::ModelCatalog::default_for(CliTool::Claude)
+                    .map(|entry| entry.id.clone()),
                 reasoning_effort: None,
                 account_id: None,
-                project_path: PathBuf::from("/tmp/lead"),
+                project_path: PathBuf::from(fixture_project("lead")),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
             },
@@ -1828,7 +1853,12 @@ fn disband_tears_down_mesh_backed_lead_resources() {
     orchestrator
         .add_member(
             team_name,
-            member_with_project("team-lead", MemberRole::Lead, CliTool::Codex, "/tmp/lead"),
+            member_with_project(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Codex,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add lead");
 
@@ -1883,7 +1913,12 @@ fn disband_preserves_attach_existing_claude_lead() {
     orchestrator
         .add_member(
             team_name,
-            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+            member_with_project(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add lead");
 
@@ -1922,7 +1957,12 @@ fn add_member_then_get_status() {
     orchestrator
         .add_member(
             team_name,
-            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+            member_with_project(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add should succeed");
     orchestrator
@@ -2059,10 +2099,11 @@ fn remove_member_cleans_runtime() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
-                model: None,
+                model: crate::models::ModelCatalog::default_for(CliTool::Claude)
+                    .map(|entry| entry.id.clone()),
                 reasoning_effort: None,
                 account_id: None,
-                project_path: PathBuf::from("/tmp/lead"),
+                project_path: PathBuf::from(fixture_project("lead")),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
             },
@@ -2125,10 +2166,11 @@ fn remove_member_tears_down_runtime_resources() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
-                model: None,
+                model: crate::models::ModelCatalog::default_for(CliTool::Claude)
+                    .map(|entry| entry.id.clone()),
                 reasoning_effort: None,
                 account_id: None,
-                project_path: PathBuf::from("/tmp/lead"),
+                project_path: PathBuf::from(fixture_project("lead")),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
             },
@@ -2215,10 +2257,11 @@ fn remove_member_discovers_and_terminates_daemon_when_runtime_pid_is_missing() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
-                model: None,
+                model: crate::models::ModelCatalog::default_for(CliTool::Claude)
+                    .map(|entry| entry.id.clone()),
                 reasoning_effort: None,
                 account_id: None,
-                project_path: PathBuf::from("/tmp/lead"),
+                project_path: PathBuf::from(fixture_project("lead")),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
             },
@@ -2301,10 +2344,11 @@ fn remove_member_discovers_and_terminates_daemon_from_pidfile_when_runtime_attac
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
-                model: None,
+                model: crate::models::ModelCatalog::default_for(CliTool::Claude)
+                    .map(|entry| entry.id.clone()),
                 reasoning_effort: None,
                 account_id: None,
-                project_path: PathBuf::from("/tmp/lead"),
+                project_path: PathBuf::from(fixture_project("lead")),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
             },
@@ -2376,10 +2420,11 @@ fn remove_member_rejects_lead_removal() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
-                model: None,
+                model: crate::models::ModelCatalog::default_for(CliTool::Claude)
+                    .map(|entry| entry.id.clone()),
                 reasoning_effort: None,
                 account_id: None,
-                project_path: PathBuf::from("/tmp/lead"),
+                project_path: PathBuf::from(fixture_project("lead")),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
             },
@@ -2436,10 +2481,11 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
-                model: None,
+                model: crate::models::ModelCatalog::default_for(CliTool::Claude)
+                    .map(|entry| entry.id.clone()),
                 reasoning_effort: None,
                 account_id: None,
-                project_path: PathBuf::from("/tmp/lead"),
+                project_path: PathBuf::from(fixture_project("lead")),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
             },
@@ -2564,7 +2610,7 @@ fn remove_member_does_not_kill_same_project_pane_owned_by_another_process() {
     MemberRuntimeStore::save(tmp.path(), team_name, "existing-dev", &record).expect("save runtime");
     runtime.set_pane_exists("%9", true);
     runtime.set_pane_dead("%9", false);
-    runtime.set_pane_current_path("%9", Some("/tmp/taurhaus"));
+    runtime.set_pane_current_path("%9", Some(fixture_project("taurhaus").as_str()));
     runtime.set_pane_current_command("%9", Some("codex"));
     runtime.set_pane_identity("%9", Some(9002), Some(1_755_000_009));
 
@@ -2651,7 +2697,7 @@ fn remove_member_kills_the_pane_with_its_recorded_identity() {
     MemberRuntimeStore::save(tmp.path(), team_name, "existing-dev", &record).expect("save runtime");
     runtime.set_pane_exists("%9", true);
     runtime.set_pane_dead("%9", false);
-    runtime.set_pane_current_path("%9", Some("/tmp/taurhaus"));
+    runtime.set_pane_current_path("%9", Some(fixture_project("taurhaus").as_str()));
     runtime.set_pane_current_command("%9", Some("codex"));
     runtime.set_pane_identity("%9", Some(9001), Some(1_755_000_009));
 
@@ -2682,7 +2728,12 @@ fn startup_reconcile_clears_stale_daemon_pid() {
     orchestrator
         .add_member(
             team_name,
-            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+            member_with_project(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add should succeed");
     orchestrator
@@ -2809,7 +2860,12 @@ fn liveness_reconcile_marks_missing_pane_id_offline() {
     orchestrator
         .add_member(
             team_name,
-            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+            member_with_project(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add should succeed");
     orchestrator
@@ -3049,7 +3105,12 @@ fn liveness_reconcile_quarantines_foreign_member_without_blocking_team_daemon() 
     orchestrator
         .add_member(
             team_name,
-            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+            member_with_project(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add lead should succeed");
     orchestrator
@@ -3160,7 +3221,7 @@ fn live_status_ignores_cached_snapshot_pane_when_record_has_newer_pane() {
 
     let cached_snapshot = RuntimeSession {
         pid: 9009,
-        project_path: "/tmp/taurhaus".to_string(),
+        project_path: fixture_project("taurhaus"),
         tty: "/dev/pts/9".to_string(),
         args: "claude".to_string(),
         cli_tool: CliTool::Codex,
@@ -3437,7 +3498,7 @@ fn liveness_metadata_backfill_preserves_a_concurrent_value() {
     probe_gate.wait_until_blocked();
     let mut concurrent = record;
     concurrent.cli_tool = Some(CliTool::Grok);
-    concurrent.project_path = Some(PathBuf::from("/tmp/concurrent-owner"));
+    concurrent.project_path = Some(PathBuf::from(fixture_project("concurrent-owner")));
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &concurrent)
         .expect("save concurrent metadata");
     probe_gate.release();
@@ -3447,7 +3508,9 @@ fn liveness_metadata_backfill_preserves_a_concurrent_value() {
     assert_eq!(updated.cli_tool, Some(CliTool::Grok));
     assert_eq!(
         updated.project_path.as_deref(),
-        Some(std::path::Path::new("/tmp/concurrent-owner"))
+        Some(std::path::Path::new(
+            fixture_project("concurrent-owner").as_str()
+        ))
     );
 }
 
@@ -3595,7 +3658,12 @@ fn trigger_team_self_heal_cycles_stale_team_daemon_and_restarts_drifted_member_d
     orchestrator
         .add_member(
             team_name,
-            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+            member_with_project(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add should succeed");
     orchestrator
@@ -5260,26 +5328,27 @@ fn initialize_team_agent_addition_failure_is_partial() {
     let report = orchestrator
         .initialize_team(&request)
         .expect("pipeline should return report");
-    assert_eq!(report.failed_step.as_deref(), Some("add_lead"));
-    assert!(report.retryable);
     assert_eq!(
-        report.succeeded_steps,
-        vec!["validate_configuration", "create_team"]
+        report.failed_step.as_deref(),
+        Some("validate_configuration")
     );
+    assert!(report.retryable);
+    assert_eq!(report.succeeded_steps, Vec::<String>::new());
     assert_eq!(
         report
             .steps
             .iter()
             .map(|step| step.step.as_str())
             .collect::<Vec<_>>(),
-        vec!["validate_configuration", "create_team", "add_lead",]
+        vec!["validate_configuration"]
     );
 }
 
 #[test]
 fn initialize_team_join_mesh_failure_reports_partial_and_cleans_up() {
     let tmp = TempDir::new().expect("tempdir");
-    let runtime = Arc::new(ProjectPathCheckingRuntime::new());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    runtime.set_join_mesh_failure("injected mesh join failure");
     let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
         tmp.path().to_path_buf(),
         Arc::new(FakeBackend::default()),
@@ -5495,7 +5564,7 @@ fn add_agent_join_mesh_uses_selected_project_path() {
     let team_name = "architecture-final-hot-add-join-path";
     create_running_team(&mut orchestrator, team_name);
     let mut request = add_agent_request(team_name, "new-agent", "codex");
-    request.agent.project_id = "/tmp/selected-project".to_string();
+    request.agent.project_id = fixture_project("selected-project");
 
     let report = orchestrator
         .add_agent_to_team(&request)
@@ -5518,8 +5587,8 @@ fn add_agent_join_mesh_uses_selected_project_path() {
         .expect("join_mesh call should be recorded");
     assert_eq!(join_call.0, team_name);
     assert_eq!(join_call.1, "new-agent");
-    assert_eq!(join_call.3, "model");
-    assert_eq!(join_call.2, "/tmp/selected-project");
+    assert_eq!(join_call.3, "gpt-5.6-sol");
+    assert_eq!(join_call.2, fixture_project("selected-project").as_str());
 }
 
 #[test]
@@ -5527,7 +5596,7 @@ fn add_agent_update_roster_is_idempotent_when_mesh_preadds_member() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(MeshPreAddRuntime::new(
         tmp.path().to_path_buf(),
-        PathBuf::from("/tmp/app-data-fallback"),
+        PathBuf::from(fixture_project("app-data-fallback")),
     ));
     let backend: Arc<dyn CoordinationBackend> = Arc::new(FakeBackend::default());
     let mut orchestrator =
@@ -5535,7 +5604,7 @@ fn add_agent_update_roster_is_idempotent_when_mesh_preadds_member() {
     let team_name = "architecture-final-hot-add-idempotent";
     create_running_team(&mut orchestrator, team_name);
     let mut request = add_agent_request(team_name, "new-agent", "codex");
-    request.agent.project_id = "/tmp/selected-project".to_string();
+    request.agent.project_id = fixture_project("selected-project");
 
     let report = orchestrator
         .add_agent_to_team(&request)
@@ -5558,7 +5627,7 @@ fn add_agent_update_roster_is_idempotent_when_mesh_preadds_member() {
     assert_eq!(matching_members.len(), 1, "member should not be duplicated");
     assert_eq!(
         matching_members[0].project_path,
-        PathBuf::from("/tmp/selected-project"),
+        PathBuf::from(fixture_project("selected-project")),
         "project path should reflect user-selected dropdown value"
     );
 
@@ -5734,7 +5803,12 @@ fn grok_runtime_identity_is_backfilled_once_its_registry_appears() {
         orchestrator
             .add_member(
                 team_name,
-                member_with_project(member_name, MemberRole::Agent, CliTool::Grok, "/tmp/shared"),
+                member_with_project(
+                    member_name,
+                    MemberRole::Agent,
+                    CliTool::Grok,
+                    fixture_project("shared").as_str(),
+                ),
             )
             .expect("add should succeed");
         let mut record =

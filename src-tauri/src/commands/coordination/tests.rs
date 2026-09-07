@@ -1,3 +1,8 @@
+include!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/common/project_fixture.rs"
+));
+
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -1564,7 +1569,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
             behavior_summary: Some("Coordinates specialists and escalates blockers.".to_string()),
             communication_style: None,
             runtime_compact_summary: None,
-            project_id: "proj-core".to_string(),
+            project_id: fixture_project("proj-core"),
             description: Some("Own orchestration".to_string()),
             instructions: None,
             behavioral_contract: None,
@@ -1595,7 +1600,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
                 ),
                 communication_style: None,
                 runtime_compact_summary: None,
-                project_id: "proj-web".to_string(),
+                project_id: fixture_project("proj-web"),
                 description: Some("UI implementation".to_string()),
                 instructions: None,
                 behavioral_contract: None,
@@ -1613,7 +1618,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
             AgentSetupConfig {
                 name: "reviewer".to_string(),
                 cli_tool: "agy".to_string(),
-                model: "pro".to_string(),
+                model: "gemini-3.7-flash-high".to_string(),
                 role_id: None,
                 role_name: None,
                 focus_area: None,
@@ -1621,7 +1626,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
                 behavior_summary: None,
                 communication_style: None,
                 runtime_compact_summary: None,
-                project_id: "proj-api".to_string(),
+                project_id: fixture_project("proj-api"),
                 description: None,
                 instructions: None,
                 behavioral_contract: None,
@@ -1654,7 +1659,7 @@ fn sample_add_agent_request(team_name: &str, member_name: &str) -> AddAgentReque
             behavior_summary: None,
             communication_style: None,
             runtime_compact_summary: None,
-            project_id: "proj-api".to_string(),
+            project_id: fixture_project("proj-api"),
             description: Some("API ownership".to_string()),
             instructions: None,
             behavioral_contract: None,
@@ -1863,6 +1868,36 @@ fn feature_availability_reports_ready_when_required_tools_exist() {
     assert!(report.mesh_available);
     assert!(report.tmux_available);
     assert!(report.blocking_errors.is_empty());
+}
+
+// Regression: a79d392 allowed an unresolved declared model through creation;
+// F13 requires rejection even when a role offers a valid default.
+#[test]
+fn wave2_create_does_not_hide_an_external_model_behind_role_defaults() {
+    let tmp = TempDir::new().unwrap();
+    let state = test_state(tmp.path().to_path_buf());
+    let mut request = sample_preflight_request();
+    request.lead.model = "external".to_string();
+    request.lead.role_id = Some("v3-lead-claude".to_string());
+    let hydrated = hydrate_initialize_request_role_metadata(&state, request.clone()).unwrap();
+    assert_eq!(
+        hydrated.lead.model, "external",
+        "invalid declarations must reach validation intact"
+    );
+    let report = initialize_team_pipeline_test_fixture(
+        &state,
+        None,
+        request,
+        &CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        report.failed_step.as_deref(),
+        Some("validate_configuration")
+    );
+    assert!(report.message.contains("team-lead") && report.message.contains("model"));
 }
 
 #[test]
@@ -2769,7 +2804,10 @@ fn add_member_defaults_to_lead_project_path_instead_of_process_cwd() {
         })
         .expect("member should be persisted");
 
-    assert_eq!(member_project_path, PathBuf::from("proj-core"));
+    assert_eq!(
+        member_project_path,
+        PathBuf::from(fixture_project("proj-core"))
+    );
 }
 
 #[test]
@@ -2917,7 +2955,7 @@ fn list_teams_includes_lead_project_anchor() {
     assert_eq!(discovery.teams[0].team_name, "architecture-final");
     assert_eq!(
         discovery.teams[0].lead_project_path.as_deref(),
-        Some("proj-core")
+        Some(fixture_project("proj-core").as_str())
     );
 }
 
@@ -3011,9 +3049,12 @@ fn project_mesh_snapshot_discovers_a_team_in_its_registered_account_root() {
         .expect("register account root");
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
 
-    let snapshot =
-        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
-            .expect("snapshot should discover registered root");
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        fixture_project("proj-web"),
+        &lookup,
+    )
+    .expect("snapshot should discover registered root");
 
     assert_eq!(snapshot.team_name.as_deref(), Some("architecture-final"));
     assert_eq!(
@@ -3072,9 +3113,12 @@ fn project_mesh_snapshot_classifies_active_when_all_members_are_live() {
     )
     .expect("initialize should succeed");
 
-    let snapshot =
-        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
-            .expect("snapshot should succeed");
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        fixture_project("proj-web"),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
 
     assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::Active);
 }
@@ -3115,9 +3159,12 @@ fn project_mesh_snapshot_classifies_degraded_when_live_and_offline_members_mix()
     )
     .expect("persist offline runtime");
 
-    let snapshot =
-        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
-            .expect("snapshot should succeed");
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        fixture_project("proj-web"),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
 
     assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::Degraded);
     let team_status = snapshot.team_status.expect("team status");
@@ -3164,9 +3211,12 @@ fn project_mesh_snapshot_classifies_cold_resume_when_all_members_are_offline() {
         .expect("persist offline runtime");
     }
 
-    let snapshot =
-        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
-            .expect("snapshot should succeed");
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        fixture_project("proj-web"),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
 
     assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::ColdResume);
     let team_status = snapshot.team_status.expect("team status");
@@ -3209,9 +3259,12 @@ fn project_mesh_snapshot_uses_fast_snapshot_without_runtime_reconcile_calls() {
     runtime.set_matching_daemon_pids(&pane_id, "architecture-final", "frontend-dev", &[5555]);
     let call_count_before = runtime.calls().len();
 
-    let snapshot =
-        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
-            .expect("snapshot should succeed");
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        fixture_project("proj-web"),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
 
     let frontend_dev = snapshot
         .team_status
@@ -3264,9 +3317,12 @@ fn project_mesh_snapshot_returns_fast_team_snapshot_for_matching_project() {
     MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
         .expect("save runtime");
 
-    let snapshot =
-        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
-            .expect("snapshot should succeed");
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        fixture_project("proj-web"),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
 
     assert_eq!(snapshot.team_runtime_state, TeamRuntimeState::Active);
     assert_eq!(snapshot.team_name.as_deref(), Some("architecture-final"));
@@ -3283,7 +3339,10 @@ fn project_mesh_snapshot_returns_fast_team_snapshot_for_matching_project() {
         .expect("frontend-dev should be present");
     assert_eq!(frontend_dev.role, AgentRole::Member);
     assert_eq!(frontend_dev.cli_tool, "codex");
-    assert_eq!(frontend_dev.project_id, "proj-web");
+    assert_eq!(
+        frontend_dev.project_id,
+        fixture_project("proj-web").as_str()
+    );
     assert!(frontend_dev.is_cross_project);
     assert_eq!(frontend_dev.project_label, "proj-web");
     assert_eq!(frontend_dev.session_status, SessionStatus::Active);
@@ -3334,9 +3393,12 @@ fn project_mesh_snapshot_prefers_persisted_active_team_when_multiple_teams_match
     )
     .expect("initialize active team");
 
-    let snapshot =
-        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
-            .expect("snapshot should succeed");
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        fixture_project("proj-web"),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
 
     assert_eq!(snapshot.team_name.as_deref(), Some("taurhaus-team"));
     assert!(snapshot.team_status.is_some());
@@ -3372,9 +3434,11 @@ fn project_mesh_snapshot_recovers_missing_active_team_mapping_from_runtime_signa
     )
     .expect("initialize active team");
 
-    ActiveProjectTeamStore::clear_project(tmp.path(), "proj-web").expect("clear active mapping");
+    ActiveProjectTeamStore::clear_project(tmp.path(), fixture_project("proj-web").as_str())
+        .expect("clear active mapping");
     assert_eq!(
-        ActiveProjectTeamStore::load_active_team(tmp.path(), "proj-web").expect("load active team"),
+        ActiveProjectTeamStore::load_active_team(tmp.path(), fixture_project("proj-web").as_str())
+            .expect("load active team"),
         None
     );
 
@@ -3416,14 +3480,17 @@ fn project_mesh_snapshot_recovers_missing_active_team_mapping_from_runtime_signa
 
     // Regression: commit 439d04b preferred persisted active-team mappings but still fell back to
     // first-match folder order when the mapping file was missing, so a stale older team could win.
-    let snapshot =
-        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
-            .expect("snapshot should succeed");
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        fixture_project("proj-web"),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
 
     assert_eq!(snapshot.team_name.as_deref(), Some("taurhaus-team"));
     assert!(snapshot.team_status.is_some());
     assert_eq!(
-        ActiveProjectTeamStore::load_active_team(tmp.path(), "proj-web")
+        ActiveProjectTeamStore::load_active_team(tmp.path(), fixture_project("proj-web").as_str())
             .expect("load repaired active team")
             .as_deref(),
         Some("taurhaus-team")
@@ -3452,7 +3519,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
             behavior_summary: None,
             communication_style: None,
             runtime_compact_summary: None,
-            project_id: "proj-core".to_string(),
+            project_id: fixture_project("proj-core"),
             description: None,
             instructions: None,
             behavioral_contract: None,
@@ -3479,7 +3546,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
                 behavior_summary: None,
                 communication_style: None,
                 runtime_compact_summary: None,
-                project_id: "proj-web".to_string(),
+                project_id: fixture_project("proj-web"),
                 description: None,
                 instructions: None,
                 behavioral_contract: None,
@@ -3505,7 +3572,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
                 behavior_summary: None,
                 communication_style: None,
                 runtime_compact_summary: None,
-                project_id: "proj-web".to_string(),
+                project_id: fixture_project("proj-web"),
                 description: None,
                 instructions: None,
                 behavioral_contract: None,
@@ -3533,9 +3600,12 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
     )
     .expect("initialize should succeed");
 
-    let snapshot =
-        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
-            .expect("snapshot should succeed");
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        fixture_project("proj-web"),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
     let team_status = snapshot.team_status.expect("team status");
 
     let reviewer = team_status
@@ -3667,7 +3737,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
             behavior_summary: None,
             communication_style: None,
             runtime_compact_summary: None,
-            project_id: "proj-core".to_string(),
+            project_id: fixture_project("proj-core"),
             description: None,
             instructions: None,
             behavioral_contract: None,
@@ -3694,7 +3764,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
                 behavior_summary: None,
                 communication_style: None,
                 runtime_compact_summary: None,
-                project_id: "proj-core".to_string(),
+                project_id: fixture_project("proj-core"),
                 description: None,
                 instructions: None,
                 behavioral_contract: None,
@@ -3720,7 +3790,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
                 behavior_summary: None,
                 communication_style: None,
                 runtime_compact_summary: None,
-                project_id: "proj-core".to_string(),
+                project_id: fixture_project("proj-core"),
                 description: None,
                 instructions: None,
                 behavioral_contract: None,
@@ -3787,10 +3857,7 @@ fn project_mesh_snapshot_matches_windows_project_path_to_linux_team_config() {
     let state = test_state(tmp.path().to_path_buf());
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
 
-    let mut request = sample_preflight_request();
-    request.lead.project_id = "/home/user/projects/lead".to_string();
-    request.agents[0].project_id = "/mnt/c/Users/me/code/taurhaus".to_string();
-    request.agents[1].project_id = "/home/user/projects/reviewer".to_string();
+    let request = sample_preflight_request();
 
     initialize_team_pipeline_test_fixture(
         &state,
@@ -3801,6 +3868,11 @@ fn project_mesh_snapshot_matches_windows_project_path_to_linux_team_config() {
         None,
     )
     .expect("initialize should succeed");
+
+    // Projection accepts legacy/remote paths without launching those seats.
+    let mut config = TeamConfigStore::load(tmp.path(), "architecture-final").unwrap();
+    config.members[1].project_path = "/mnt/c/Users/me/code/taurhaus".into();
+    TeamConfigStore::save(tmp.path(), "architecture-final", &config).unwrap();
 
     let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
         &state,
@@ -3822,7 +3894,7 @@ fn project_mesh_snapshot_reports_mesh_unavailable_when_binary_is_missing() {
 
     let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
         &state,
-        "proj-core".to_string(),
+        fixture_project("proj-core"),
         &lookup,
     )
     .expect("snapshot should succeed");
@@ -3861,7 +3933,7 @@ fn project_mesh_snapshot_skips_missing_config_dirs_without_warning() {
 
     let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
         &state,
-        "proj-core".to_string(),
+        fixture_project("proj-core"),
         &lookup,
     )
     .expect("snapshot should succeed");
@@ -3891,7 +3963,7 @@ fn initialize_team_request_round_trip() {
             behavior_summary: None,
             communication_style: None,
             runtime_compact_summary: None,
-            project_id: "proj-core".to_string(),
+            project_id: fixture_project("proj-core"),
             description: Some("Own orchestration".to_string()),
             instructions: None,
             behavioral_contract: None,
@@ -3918,7 +3990,7 @@ fn initialize_team_request_round_trip() {
                 behavior_summary: None,
                 communication_style: None,
                 runtime_compact_summary: None,
-                project_id: "proj-web".to_string(),
+                project_id: fixture_project("proj-web"),
                 description: Some("UI implementation".to_string()),
                 instructions: None,
                 behavioral_contract: None,
@@ -3936,7 +4008,7 @@ fn initialize_team_request_round_trip() {
             AgentSetupConfig {
                 name: "reviewer".to_string(),
                 cli_tool: "agy".to_string(),
-                model: "pro".to_string(),
+                model: "gemini-3.7-flash-high".to_string(),
                 role_id: None,
                 role_name: None,
                 focus_area: None,
@@ -3944,7 +4016,7 @@ fn initialize_team_request_round_trip() {
                 behavior_summary: None,
                 communication_style: None,
                 runtime_compact_summary: None,
-                project_id: "proj-api".to_string(),
+                project_id: fixture_project("proj-api"),
                 description: None,
                 instructions: None,
                 behavioral_contract: None,
@@ -4015,7 +4087,7 @@ fn add_agent_request_and_report_round_trip() {
             behavior_summary: None,
             communication_style: None,
             runtime_compact_summary: None,
-            project_id: "proj-api".to_string(),
+            project_id: fixture_project("proj-api"),
             description: Some("API ownership".to_string()),
             instructions: None,
             behavioral_contract: None,
@@ -4172,7 +4244,7 @@ fn live_team_status_round_trip() {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
-                project_id: "proj-core".to_string(),
+                project_id: fixture_project("proj-core"),
                 is_cross_project: false,
                 project_label: String::new(),
                 description: Some("orchestrates work".to_string()),
@@ -4200,7 +4272,7 @@ fn live_team_status_round_trip() {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
-                project_id: "proj-web".to_string(),
+                project_id: fixture_project("proj-web"),
                 is_cross_project: true,
                 project_label: "proj-web".to_string(),
                 description: None,
@@ -4246,7 +4318,7 @@ fn project_mesh_snapshot_round_trip() {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
-                project_id: "proj-web".to_string(),
+                project_id: fixture_project("proj-web"),
                 is_cross_project: true,
                 project_label: "proj-web".to_string(),
                 description: Some("UI implementation".to_string()),
@@ -4676,6 +4748,7 @@ fn add_agent_onboarding_routes_through_deliver_message_audit_trail() {
 
     let mut claude_agent = sample_add_agent_request("arch", "claude-dev");
     claude_agent.agent.cli_tool = "claude".to_string();
+    claude_agent.agent.model = "opus".to_string();
     claude_agent.agent.focus_area = Some("backend".to_string());
     claude_agent.agent.context_summary = Some("Rust backend developer".to_string());
 
@@ -4864,9 +4937,12 @@ fn project_mesh_snapshot_carries_the_task_effort_the_lead_asked_for() {
 
     seed_assignment_effort(tmp.path(), "frontend-dev", "medium", "routine lane work");
 
-    let snapshot =
-        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
-            .expect("snapshot should succeed");
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        fixture_project("proj-web"),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
 
     let member = snapshot
         .team_status
@@ -4957,9 +5033,12 @@ fn project_mesh_snapshot_carries_the_member_runtime_session_id() {
     MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
         .expect("save runtime");
 
-    let snapshot =
-        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
-            .expect("snapshot should succeed");
+    let snapshot = coordination_get_project_mesh_snapshot_with_lookup(
+        &state,
+        fixture_project("proj-web"),
+        &lookup,
+    )
+    .expect("snapshot should succeed");
 
     let member = snapshot
         .team_status

@@ -114,20 +114,31 @@ the launch seam. When it does not, the rendered launch is retained in
 `_unattributed.jsonl` with `task_id: null`. If a later daemon-owned snapshot
 first names a task for that running member, taurhaus copies the member's latest
 render-authoritative launch fields into the task sidecar at that attribution
-time. Thus a launch-once member's later work appears in the report without
+time. Attribution is retried on later publications and on daemon deadline passes,
+even if the task ID did not change, so a render arriving after the first snapshot
+is not stranded (Wave-1 F9c; Astra §4). After a boot is attributed, its exact
+record is removed from `_unattributed` under lock; newer or other members'
+boots remain. Later tasks can reuse the attributed task sidecar. Every terminal task receives a completion
+observation even without an existing sidecar; repeated scans deduplicate under
+lock and oversized sidecars remain read-only. Thus a launch-once member's later work appears in the report without
 inventing a requested model or requiring another relaunch.
 
 `just routing-report [DAYS]` (30 days by default) enumerates the default and all
 registered team roots, tolerantly reads the sidecars, and rejoins every task to
 the current mesh ledger record. It prints per `(role, model)` rows and a
 per-model rollup with tasks touched, accepted, completed-but-unruled,
-oversize-diff incidents, relaunches, completed effort switches, nudges, stale
+oversize-diff incidents, budget raises, relaunches, completed effort switches, nudges, stale
 actions, and median elapsed
 time from first render to the terminal state-change timestamp. Acceptance follows Amendment
 4 exactly: only ledger status `completed` with a sequenced review ruling counts,
 and an oversize-failure ruling (`field: oversize_diff`, `value: failed`) is not
 a review ruling for that purpose — it is counted in the `oversize_diffs` column
 instead, attributed to the task owner's launch active at the ruling's time.
+A `field: budget_raised` ruling (old→new in `value`, reason in `note`) is likewise
+excluded from review acceptance and counted separately in `budget_raises`, using
+the same owner-at-ruling-time attribution. Ownerless rulings are dropped. These
+shared scanner/report predicates keep counting and acceptance exclusions aligned
+(Wave-1 F5; Astra §6).
 A bare completed status is `completed_unruled`, never accepted. Tokens are not
 collected in Stage 1; the report header identifies wall-time as the cost proxy.
 Rulings are recordable today (`mesh task ruling`, mesh >= 0.2.28); a window

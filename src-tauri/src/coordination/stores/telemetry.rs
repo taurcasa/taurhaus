@@ -193,6 +193,7 @@ pub fn attribute_latest_launch_to_task(
             .filter_map(|event| match event {
                 RoutingTelemetryEvent::LaunchRendered {
                     timestamp,
+                    task_id: source_task_id,
                     member: launched_member,
                     role,
                     tool,
@@ -203,6 +204,7 @@ pub fn attribute_latest_launch_to_task(
                     ..
                 } if launched_member == member => Some((
                     timestamp,
+                    source_task_id.is_none(),
                     role,
                     tool,
                     model,
@@ -213,7 +215,16 @@ pub fn attribute_latest_launch_to_task(
                 _ => None,
             })
             .max_by_key(|(timestamp, ..)| *timestamp);
-        let Some((_, role, tool, model, applied_effort, capability_tier, tier_rank)) = latest
+        let Some((
+            rendered_at,
+            taskless,
+            role,
+            tool,
+            model,
+            applied_effort,
+            capability_tier,
+            tier_rank,
+        )) = latest
         else {
             return Ok(());
         };
@@ -232,11 +243,42 @@ pub fn attribute_latest_launch_to_task(
                 capability_tier,
                 tier_rank,
             },
-        )
+        )?;
+        if taskless {
+            remove_attributed_boot(teams_dir, team_name, member, rendered_at)?;
+        }
+        Ok(())
     })();
     if let Err(error) = result {
         report_write_failure(team_name, Some(task_id), &error);
     }
+}
+
+/// Remove only the boot we copied; a concurrent newer render stays taskless.
+fn remove_attributed_boot(
+    teams_dir: &Path,
+    team_name: &str,
+    member: &str,
+    rendered_at: DateTime<Utc>,
+) -> std::io::Result<()> {
+    let path = task_telemetry_path(teams_dir, team_name, None)?;
+    let mut file = OpenOptions::new().read(true).append(true).open(&path)?;
+    file.lock_exclusive()?;
+    if let Some(mut events) = read_locked_task_telemetry(&mut file, &path)? {
+        let before = events.len();
+        events.retain(|event| {
+            !matches!(event,
+            RoutingTelemetryEvent::LaunchRendered { timestamp, member: launched_member, .. }
+            if *timestamp == rendered_at && launched_member == member)
+        });
+        if events.len() != before {
+            file.set_len(0)?;
+            for event in events {
+                append_locked(&mut file, &event)?;
+            }
+        }
+    }
+    FileExt::unlock(&file)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -645,6 +687,50 @@ mod tests {
 
         assert_eq!(read_task_telemetry(&path), vec![event]);
         assert!(std::fs::metadata(path).expect("sidecar metadata").len() < 1024);
+    }
+
+    // Regression: c9c6c49b copied roster boots to tasks but left them in the
+    // taskless cache forever, so F9c's unattributed set overstated missing work.
+    #[test]
+    fn wave2_attributed_boot_leaves_only_genuinely_taskless_launches() {
+        let root = tempfile::tempdir().unwrap();
+        for member in ["builder", "waiting-seat"] {
+            append_task_telemetry(
+                root.path(),
+                "team",
+                None,
+                &RoutingTelemetryEvent::LaunchRendered {
+                    timestamp: Utc::now(),
+                    task_id: None,
+                    member: member.to_string(),
+                    role: "developer".to_string(),
+                    tool: "codex".to_string(),
+                    model: Some("gpt-6-astra".to_string()),
+                    applied_effort: None,
+                    capability_tier: None,
+                    tier_rank: None,
+                },
+            )
+            .unwrap();
+        }
+        for _ in 0..2 {
+            attribute_latest_launch_to_task(root.path(), "team", "first-task", "builder");
+        }
+        let remaining =
+            read_task_telemetry(&root.path().join("team/state/telemetry/_unattributed.jsonl"));
+        assert!(
+            matches!(remaining.as_slice(), [RoutingTelemetryEvent::LaunchRendered { member, .. }]
+            if member == "waiting-seat")
+        );
+        assert_eq!(
+            read_task_telemetry(&root.path().join("team/state/telemetry/first-task.jsonl")).len(),
+            1
+        );
+        attribute_latest_launch_to_task(root.path(), "team", "second-task", "builder");
+        assert_eq!(
+            read_task_telemetry(&root.path().join("team/state/telemetry/second-task.jsonl")).len(),
+            1
+        );
     }
 
     // Regression: c9c6c49b searched only `_unattributed.jsonl`, so a member's
