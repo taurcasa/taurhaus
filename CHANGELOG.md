@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-09-07
+
+### Fixed
+
+- **Teams on a non-default Claude root are mesh-reachable**: every
+  member launch now carries `CLAUDE_DIR=<the team's registry-resolved
+  root>`, and onboarding paths render from the same root — previously
+  nothing set the variable mesh reads, so every seat of an
+  account2-rooted team failed with "team not found".
+
 ## [0.9.6] - 2026-09-07
 
 ### Fixed
