@@ -6,6 +6,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-09-07
+
+### Fixed
+
+- **Nine-seat team launch**: the tmux pane launcher rebalances a
+  project's pane group between member launches instead of halving one
+  pane per split, so large same-project teams no longer fail with "no
+  space for new pane" (regression-tested at nine members across three
+  window sizes). A failed split cleans up only the new pane.
+- The initialization error for pane-space exhaustion states the real
+  condition instead of claiming tmux is not installed.
+
+### Changed
+
+- Catalog revision **8**: the asset-generator seat gains its
+  machine-conditional 3D annex — where the host provides the
+  `$blender-agent` skill, 3D assets are in scope through that skill's
+  CLI, with regeneration records (build script + export settings) on
+  file; elsewhere the seat is imagery-only.
+
 ## [0.9.5] - 2026-09-07
 
 ### Added
