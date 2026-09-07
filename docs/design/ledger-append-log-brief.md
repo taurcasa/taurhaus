@@ -86,3 +86,18 @@ real boundaries. Improve on it freely.
 - Label claims with the corpus vocabulary (S/D/P/I/U); separate
   measurement from judgment; state confidence honestly; open questions
   are first-class deliverables.
+
+---
+
+**Operator constraint (2026-09-07, added after lane launch — binding on
+the review pass, not seen by the running researcher).** Entry authoring
+must not push long prose through shell arguments: agents write a
+markdown-with-front-matter file (or heredoc stdin) and mesh ingests it
+(`mesh ledger entry --from <file>`), validates, assigns id/sequence,
+and remains the ONLY writer of the canonical JSONL. Models write files
+losslessly and escape argv badly — the interface follows the model's
+strengths (house precedent: workflow prompt files, heredoc commit
+messages, markdown+front-matter handoffs). File-based entries carry the
+idempotency key, making ingestion retry-safe. If the study's verb
+sketch conflicts with this, the constraint wins and the sketch is
+amended at review.
