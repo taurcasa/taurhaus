@@ -16,6 +16,9 @@ use crate::coordination::stores::{
 };
 use crate::coordination::task_deadline::{decide, DeadlineAction, DeadlineInput, Timestamp};
 
+// Mesh IdleMonitor owns statusState/statusSetAt liveness (30 minutes).
+const MEMBER_STATUS_TTL: Duration = Duration::minutes(30);
+
 const ACTIVITY_FRESHNESS: Duration = Duration::seconds(120);
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -37,6 +40,7 @@ pub(crate) fn apply_task_deadlines(
         .map(|member| member.name.clone());
     let mut outcome = DeadlinePassOutcome::default();
 
+    let mut waiting_members = 0u32;
     for member in &config.members {
         // Retry roster-boot attribution even if the app's task projection has
         // not changed since the render arrived (F9c).
@@ -52,13 +56,24 @@ pub(crate) fn apply_task_deadlines(
                 );
             }
         }
-        if crate::coordination::stores::mesh_task::declares_wait(
-            member
+        let blocked_is_live = member
+            .extra
+            .get("statusState")
+            .and_then(serde_json::Value::as_str)
+            == Some("blocked")
+            && member
                 .extra
-                .get("statusState")
-                .and_then(serde_json::Value::as_str),
-            member.extra.get("metadata"),
-        ) {
+                .get("statusSetAt")
+                .and_then(serde_json::Value::as_str)
+                .and_then(parse_timestamp)
+                .is_some_and(|set_at| {
+                    let age = now - set_at;
+                    age >= Duration::zero() && age < MEMBER_STATUS_TTL
+                });
+        if blocked_is_live
+            || crate::coordination::stores::mesh_task::awaiting_go(member.extra.get("metadata"))
+        {
+            waiting_members += 1;
             continue;
         }
         let result = apply_member_deadline(
@@ -75,6 +90,19 @@ pub(crate) fn apply_task_deadlines(
         }
     }
 
+    if waiting_members > 0 {
+        // One debug summary per pass, rather than one record per waiting seat.
+        taurhaus_lib::logging::emit_global(
+            "debug",
+            "coordination",
+            "deadline.wait.skipped",
+            Some("Deadline pass respected declared member waits".into()),
+            serde_json::Map::from_iter([
+                ("team".into(), serde_json::json!(team_name)),
+                ("waiting_members".into(), serde_json::json!(waiting_members)),
+            ]),
+        );
+    }
     Ok(outcome)
 }
 

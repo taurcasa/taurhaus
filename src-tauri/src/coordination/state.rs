@@ -2338,6 +2338,7 @@ mod tests {
                     _ => {
                         member["statusState"] = serde_json::json!("blocked");
                         member["statusReason"] = serde_json::json!("Awaiting candidate");
+                        member["statusSetAt"] = serde_json::json!(assigned_at.to_rfc3339());
                     }
                 }
                 // This is the assignment record, before any pass can observe it.
@@ -2388,6 +2389,58 @@ mod tests {
                         )
                         .unwrap();
                     assert_eq!(deadline_notices(&fake).len(), 1, "released {wait}");
+                }
+            }
+        }
+    }
+
+    // Regression: 63636a05 treated mesh's blocked status as permanent,
+    // bypassing both nudge and stale after its owning monitor's 30-minute TTL.
+    #[test]
+    fn wave2_expired_member_block_does_not_disable_deadlines() {
+        for status_age in [Some(30), Some(31), None] {
+            for awaiting_go in [false, true] {
+                for minutes in [10, 20] {
+                    let (_tmp, teams, runtime, fake, state) = deadline_fixture();
+                    let assigned_at = DateTime::parse_from_rfc3339("2026-09-03T19:47:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc);
+                    let now = assigned_at + chrono::Duration::minutes(minutes);
+                    seed_deadline_task(&teams, assigned_at, Some(20));
+                    let path = teams.join("deadline-team/config.json");
+                    let mut config: serde_json::Value =
+                        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+                    let member = config["members"]
+                        .as_array_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .find(|member| member["name"] == "builder")
+                        .unwrap();
+                    member["statusState"] = serde_json::json!("blocked");
+                    member["statusSetAt"] =
+                        serde_json::json!(status_age
+                            .map(|age| (now - chrono::Duration::minutes(age)).to_rfc3339()));
+                    member["metadata"] = serde_json::json!({"awaiting_go":awaiting_go});
+                    std::fs::write(&path, config.to_string()).unwrap();
+                    state.run_background_task_deadline_pass_at(now).unwrap();
+                    let snapshot = deadline_snapshot(&teams);
+                    if awaiting_go {
+                        assert!(deadline_notices(&fake).is_empty());
+                        assert_eq!(snapshot.task.stale_at, None);
+                    } else if minutes == 10 {
+                        assert_eq!(
+                            deadline_notices(&fake).len(),
+                            1,
+                            "status age {status_age:?}"
+                        );
+                    } else {
+                        assert!(
+                            snapshot.task.stale_at.is_some(),
+                            "status age {status_age:?}"
+                        );
+                        assert_eq!(mesh_task_status(&teams), "stale");
+                    }
+                    assert_no_deadline_termination(&runtime);
                 }
             }
         }

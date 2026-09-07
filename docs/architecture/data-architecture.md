@@ -169,7 +169,11 @@ Mesh-owned extension values. This is an explicit boolean, not a parser for assig
 inbox prose. A member-wide wait uses the same marker under the member's
 `metadata` in team config. Existing task `status: blocked` and member
 `statusState: blocked` also suppress deadline actions; their reason stays in
-the existing mesh record. Waits do not expire just because activity is old.
+the existing mesh record. The member status applies only while `statusSetAt`
+is live (30-minute TTL, matching Mesh's IdleMonitor). Missing, invalid, or
+expired timestamps do not suppress actions. Explicit `metadata.awaiting_go`
+markers do not expire just because activity is old. A pass that skips members
+emits one debug `deadline.wait.skipped` summary with the waiting-member count.
 
 Taurhaus's deadline pass reads these declarations even when its operational
 snapshot still says `in_progress`, and the locked stale-status write checks the

@@ -14,12 +14,11 @@ const MAX_TASK_RECORD_BYTES: u64 = 1_048_576;
 /// Explicit assignment/member waits, independent of activity or elapsed time.
 /// `metadata.awaiting_go` must be set by the assignment writer before delivery
 /// and cleared on GO; never infer release from free-form messages (Astra §8).
-pub(crate) fn declares_wait(status: Option<&str>, metadata: Option<&serde_json::Value>) -> bool {
-    status == Some("blocked")
-        || metadata
-            .and_then(|metadata| metadata.get("awaiting_go"))
-            .and_then(serde_json::Value::as_bool)
-            == Some(true)
+pub(crate) fn awaiting_go(metadata: Option<&serde_json::Value>) -> bool {
+    metadata
+        .and_then(|metadata| metadata.get("awaiting_go"))
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
 }
 
 /// Change a task status only while its identity, owner, and previous status
@@ -50,10 +49,7 @@ pub(crate) fn commit_status_if_unchanged(
     if task.get("id").and_then(serde_json::Value::as_str) != Some(task_id)
         || task.get("owner").and_then(serde_json::Value::as_str) != Some(member)
         || task.get("status").and_then(serde_json::Value::as_str) != Some(expected_status)
-        || declares_wait(
-            task.get("status").and_then(serde_json::Value::as_str),
-            task.get("metadata"),
-        )
+        || awaiting_go(task.get("metadata"))
     {
         return Err(CoordinationError::Conflict(format!(
             "mesh task '{task_id}' changed before its status update committed"
@@ -107,10 +103,7 @@ pub(crate) fn is_still_open(teams_dir: &Path, team: &str, member: &str, task_id:
     task.get("id").and_then(serde_json::Value::as_str) == Some(task_id)
         && task.get("owner").and_then(serde_json::Value::as_str) == Some(member)
         && task.get("status").and_then(serde_json::Value::as_str) == Some("in_progress")
-        && !declares_wait(
-            task.get("status").and_then(serde_json::Value::as_str),
-            task.get("metadata"),
-        )
+        && !awaiting_go(task.get("metadata"))
 }
 
 fn task_path(teams_dir: &Path, team: &str, task_id: &str) -> Result<PathBuf, CoordinationError> {
