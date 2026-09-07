@@ -1,3 +1,5 @@
+use crate::coordination::state::test_support::fixture_project;
+
 use super::session_listing::{persist_local_account_observations, CliSessionFreshness};
 use super::*;
 use crate::commands::logging::{install_global_sink, LogFileState};
@@ -246,7 +248,8 @@ fn save_team_member(
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
-                model: None,
+                model: crate::models::ModelCatalog::default_for(cli_tool)
+                    .map(|entry| entry.id.clone()),
                 reasoning_effort: None,
                 account_id: None,
                 project_path: project_path.into(),
@@ -2158,7 +2161,7 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
     runtime.set_pane_exists("%9", false);
     runtime.set_pid_running(4242, true);
     let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
-    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    let (db, _db_file) = setup_db_with_project("p1", fixture_project("project").as_str());
     let provider = ProviderState {
         local: crate::provider::local::LocalProvider,
         daemon: None,
@@ -2170,7 +2173,7 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
         tmp.path(),
         "architecture-final",
         "developer2",
-        "/tmp/project",
+        fixture_project("project").as_str(),
         CliTool::Codex,
     );
     save_member_runtime_record(
@@ -2181,7 +2184,7 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
             schema_version: 3,
             member_name: "developer2".to_string(),
             cli_tool: Some(CliTool::Codex),
-            project_path: Some(PathBuf::from("/tmp/project")),
+            project_path: Some(PathBuf::from(fixture_project("project"))),
             pane_id: Some("%9".to_string()),
             pane_pid: None,
             pane_start_time: None,
@@ -2229,7 +2232,7 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
         pane_id: "%9".to_string(),
     }));
     assert!(calls.contains(&RuntimeCall::CreatePane {
-        project_id: "/tmp/project".to_string(),
+        project_id: fixture_project("project"),
     }));
     assert!(calls.contains(&RuntimeCall::TerminatePid { pid: 4242 }));
     assert!(calls.contains(&RuntimeCall::SpawnDaemon {
@@ -2240,7 +2243,7 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
     assert!(calls.contains(&RuntimeCall::JoinMesh {
         team_name: "architecture-final".to_string(),
         member_name: "developer2".to_string(),
-        project_id: "/tmp/project".to_string(),
+        project_id: fixture_project("project"),
         member_type: "general-purpose".to_string(),
         model: "gpt-5.6-sol".to_string(),
         claude_dir: crate::session_scanner::accounts::to_launch_namespace(
@@ -2452,7 +2455,8 @@ fn delegated_resume_reports_the_account_it_could_not_apply() {
     let tmp = TempDir::new().expect("temp teams dir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
-    let (db, _db_file) = setup_db_with_project("p-team-account", "/tmp/project");
+    let (db, _db_file) =
+        setup_db_with_project("p-team-account", fixture_project("project").as_str());
     {
         let conn = db.0.lock().expect("db lock");
         let mut settings = crate::db::settings_queries::get_all_settings(&conn).expect("settings");
@@ -2472,7 +2476,7 @@ fn delegated_resume_reports_the_account_it_could_not_apply() {
         tmp.path(),
         "architecture-final",
         "developer2",
-        "/tmp/project",
+        fixture_project("project").as_str(),
         CliTool::Claude,
     );
     save_member_runtime_record(
@@ -2483,7 +2487,7 @@ fn delegated_resume_reports_the_account_it_could_not_apply() {
             schema_version: 3,
             member_name: "developer2".to_string(),
             cli_tool: Some(CliTool::Claude),
-            project_path: Some(PathBuf::from("/tmp/project")),
+            project_path: Some(PathBuf::from(fixture_project("project"))),
             pane_id: Some("%9".to_string()),
             pane_pid: None,
             pane_start_time: None,
@@ -2534,7 +2538,7 @@ fn delegated_resume_without_a_requested_account_reports_nothing() {
     let tmp = TempDir::new().expect("temp teams dir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
-    let (db, _db_file) = setup_db_with_project("p-team-plain", "/tmp/project");
+    let (db, _db_file) = setup_db_with_project("p-team-plain", fixture_project("project").as_str());
     let provider = ProviderState {
         local: crate::provider::local::LocalProvider,
         daemon: None,
@@ -2546,7 +2550,7 @@ fn delegated_resume_without_a_requested_account_reports_nothing() {
         tmp.path(),
         "architecture-final",
         "developer2",
-        "/tmp/project",
+        fixture_project("project").as_str(),
         CliTool::Claude,
     );
     save_member_runtime_record(
@@ -2557,7 +2561,7 @@ fn delegated_resume_without_a_requested_account_reports_nothing() {
             schema_version: 3,
             member_name: "developer2".to_string(),
             cli_tool: Some(CliTool::Claude),
-            project_path: Some(PathBuf::from("/tmp/project")),
+            project_path: Some(PathBuf::from(fixture_project("project"))),
             pane_id: Some("%9".to_string()),
             pane_pid: None,
             pane_start_time: None,
@@ -2600,7 +2604,8 @@ fn delegated_resume_with_an_opaque_base_reports_that_account_selection_is_not_gu
     let tmp = TempDir::new().expect("temp teams dir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
-    let (db, _db_file) = setup_db_with_project("p-team-wrapper", "/tmp/project");
+    let (db, _db_file) =
+        setup_db_with_project("p-team-wrapper", fixture_project("project").as_str());
     {
         let conn = db.0.lock().expect("db lock");
         let mut settings = crate::db::settings_queries::get_all_settings(&conn).expect("settings");
@@ -2619,7 +2624,7 @@ fn delegated_resume_with_an_opaque_base_reports_that_account_selection_is_not_gu
         tmp.path(),
         "architecture-final",
         "developer2",
-        "/tmp/project",
+        fixture_project("project").as_str(),
         CliTool::Claude,
     );
     save_member_runtime_record(
@@ -2630,7 +2635,7 @@ fn delegated_resume_with_an_opaque_base_reports_that_account_selection_is_not_gu
             schema_version: 3,
             member_name: "developer2".to_string(),
             cli_tool: Some(CliTool::Claude),
-            project_path: Some(PathBuf::from("/tmp/project")),
+            project_path: Some(PathBuf::from(fixture_project("project"))),
             pane_id: Some("%9".to_string()),
             pane_pid: None,
             pane_start_time: None,
@@ -2674,7 +2679,8 @@ fn delegated_resume_does_not_report_a_wrapper_from_the_unused_resume_base() {
     let tmp = TempDir::new().expect("temp teams dir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
-    let (db, _db_file) = setup_db_with_project("p-team-resume-wrapper", "/tmp/project");
+    let (db, _db_file) =
+        setup_db_with_project("p-team-resume-wrapper", fixture_project("project").as_str());
     {
         let conn = db.0.lock().expect("db lock");
         let mut settings = crate::db::settings_queries::get_all_settings(&conn).expect("settings");
@@ -2693,7 +2699,7 @@ fn delegated_resume_does_not_report_a_wrapper_from_the_unused_resume_base() {
         tmp.path(),
         "architecture-final",
         "developer2",
-        "/tmp/project",
+        fixture_project("project").as_str(),
         CliTool::Claude,
     );
     save_member_runtime_record(
@@ -2704,7 +2710,7 @@ fn delegated_resume_does_not_report_a_wrapper_from_the_unused_resume_base() {
             schema_version: 3,
             member_name: "developer2".to_string(),
             cli_tool: Some(CliTool::Claude),
-            project_path: Some(PathBuf::from("/tmp/project")),
+            project_path: Some(PathBuf::from(fixture_project("project"))),
             pane_id: Some("%9".to_string()),
             pane_pid: None,
             pane_start_time: None,

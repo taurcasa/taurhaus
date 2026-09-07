@@ -54,6 +54,18 @@ pub(super) fn normalize_initialize_request_paths(
     Ok(request)
 }
 
+pub(super) fn normalize_add_member_request_path(
+    db: &DbState,
+    mut request: crate::coordination::requests::AddMemberRequest,
+) -> Result<crate::coordination::requests::AddMemberRequest, String> {
+    request.project_path = request
+        .project_path
+        .as_deref()
+        .map(|path| resolve_project_reference(db, path))
+        .transpose()?;
+    Ok(request)
+}
+
 pub(super) fn normalize_add_agent_request_path(
     db: &DbState,
     mut request: AddAgentRequest,
@@ -439,5 +451,6 @@ fn resolve_project_reference(db: &DbState, project_ref: &str) -> Result<String, 
 #[cfg(test)]
 fn resolve_project_reference(_db: &DbState, project_ref: &str) -> Result<String, String> {
     super::validate_non_empty("project_id", project_ref)?;
-    Ok(project_ref.trim().to_string())
+    let path = project_ref.trim().to_string();
+    Ok(crate::provider::path::to_linux(&path).unwrap_or(path))
 }

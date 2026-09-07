@@ -42,6 +42,156 @@ use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::templates::storage::TemplateStore;
 use crate::templates::types::BehavioralContract;
 
+// Regression: 216e51e9 used a repairing hydration predicate to reject seats,
+// emitting a catalog-substitution event even though validation refuses launch.
+#[test]
+fn wave2_review_validation_does_not_claim_model_substitution() {
+    let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().unwrap();
+    let log_path = tmp.path().join("validation.jsonl");
+    let sink = LogFileState::new(log_path.clone()).unwrap();
+    install_global_sink(&sink);
+    let mut seat = member(
+        "builder",
+        MemberRole::Agent,
+        CliTool::Codex,
+        tmp.path().to_str().unwrap(),
+    );
+    seat.model = Some("opus".into());
+    let error = crate::coordination::validation::validate_member_configuration(&seat, tmp.path())
+        .unwrap_err();
+    assert!(matches!(error, CoordinationError::Validation(_)));
+    sink.flush_for_test().unwrap();
+    assert!(
+        !fs::read_to_string(&log_path)
+            .unwrap_or_default()
+            .contains("launch.model.invalid"),
+        "rejection must not claim that a default was substituted"
+    );
+    assert!(
+        crate::coordination::member_activation::validated_role_model(
+            CliTool::Codex,
+            "opus",
+            "builder",
+            "resume_hydration"
+        )
+        .is_none()
+    );
+    sink.flush_for_test().unwrap();
+    assert!(fs::read_to_string(&log_path)
+        .unwrap()
+        .contains("launch.model.invalid"));
+}
+
+// Regression: 216e51e9 put seat filesystem/template checks before the existing
+// agent-name validation, masking empty and duplicate names with cwd errors.
+#[test]
+fn wave2_review_initialize_checks_names_before_seat_configuration() {
+    for (name, expected) in [
+        ("", "agent name must not be empty"),
+        ("lead", "duplicate member name 'lead'"),
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator =
+            new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+        let request = InitializeTeamRequest {
+            team_name: "invalid-team".into(),
+            team_description: None,
+            lead: setup_config("lead", "claude", "opus", tmp.path().to_str().unwrap()),
+            lead_mode: LeadMode::LaunchNew,
+            agents: vec![setup_config(
+                name,
+                "codex",
+                "gpt-6-astra",
+                tmp.path().join("missing").to_str().unwrap(),
+            )],
+        };
+        let report = orchestrator.initialize_team(&request).unwrap();
+        assert!(format!("{report:?}").contains(expected), "{report:?}");
+        assert!(runtime.calls().is_empty());
+    }
+}
+
+// Regression: a79d392 allowed recreation/resume to retain dead cwd and
+// unresolved models (F2/F13), and silently hydrated incoherent role/tool seats.
+// Regression: 0f973a63 erased persisted `external` declarations on load,
+// making an invalid model indistinguishable from an absent, defaultable model.
+#[test]
+fn wave2_member_validation_rejects_invalid_create_add_and_resume_before_launch() {
+    for (field, value) in [
+        ("cwd", "missing"),
+        ("model", "external"),
+        ("model", " ExTeRnAl "),
+        ("model", "opus"),
+        ("cli_tool", "mismatch"),
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let backend = Arc::new(FakeBackend::default());
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+        let project = tmp.path().to_str().unwrap();
+        let mut agent = setup_config("invalid-seat", "codex", "gpt-6-astra", project);
+        match field {
+            "cwd" => agent.project_id = tmp.path().join(value).to_string_lossy().into_owned(),
+            "model" => agent.model = value.to_string(),
+            _ => {
+                agent.role_id = Some("v3-lead-claude".to_string());
+            }
+        }
+        let request = InitializeTeamRequest {
+            team_name: "invalid-team".to_string(),
+            team_description: None,
+            lead: setup_config("lead", "claude", "opus", project),
+            lead_mode: LeadMode::LaunchNew,
+            agents: vec![agent.clone()],
+        };
+        let report = orchestrator.initialize_team(&request).unwrap();
+        assert!(
+            report.failed_step.is_some(),
+            "create accepted invalid {field}"
+        );
+        let rendered = format!("{report:?}");
+        assert!(
+            rendered.contains("invalid-seat") && rendered.contains(field),
+            "{rendered}"
+        );
+        assert!(!tmp.path().join("invalid-team/config.json").exists());
+
+        orchestrator.create_team("existing-team", None).unwrap();
+        let report = orchestrator
+            .add_agent_to_team(&AddAgentRequest {
+                team_name: "existing-team".to_string(),
+                agent: agent.clone(),
+            })
+            .unwrap();
+        assert!(report.failed_step.is_some(), "add accepted invalid {field}");
+
+        // Recreate the archived config through the store, bypassing today's
+        // create validation exactly as an older writer would.
+        let member = member_from_agent_setup(&agent, MemberRole::Agent).unwrap();
+        let mut config = TeamConfigStore::load(tmp.path(), "existing-team").unwrap();
+        config.members.push(member);
+        TeamConfigStore::save(tmp.path(), "existing-team", &config).unwrap();
+        let report = orchestrator
+            .resume_member("existing-team", "invalid-seat")
+            .unwrap();
+        assert!(
+            report.failed_step.is_some(),
+            "resume accepted invalid {field}"
+        );
+        let rendered = format!("{report:?}");
+        assert!(
+            rendered.contains("invalid-seat") && rendered.contains(field),
+            "{rendered}"
+        );
+        assert!(
+            runtime.calls().is_empty(),
+            "invalid configuration reached runtime"
+        );
+    }
+}
+
 #[test]
 fn optional_pane_identity_capture_failure_does_not_abort_activation() {
     // Regression: aecc8ac made optional pane identity capture fatal after the
@@ -599,6 +749,8 @@ impl CoordinationRuntime for DeliveryWakePipelineRuntime {
     }
 }
 
+use crate::coordination::state::test_support::fixture_project;
+
 fn member(name: &str, role: MemberRole, cli_tool: CliTool, project: &str) -> Member {
     Member {
         name: name.to_string(),
@@ -620,7 +772,7 @@ fn member(name: &str, role: MemberRole, cli_tool: CliTool, project: &str) -> Mem
         inherits_from: None,
         required_artifacts: None,
         capabilities: None,
-        model: None,
+        model: crate::models::ModelCatalog::default_for(cli_tool).map(|entry| entry.id.clone()),
         reasoning_effort: None,
         account_id: None,
         project_path: PathBuf::from(project),
@@ -721,12 +873,17 @@ fn staged_runtime_commit_merges_partial_updates_without_syncing_team_metadata() 
                 member_name,
                 MemberRole::Agent,
                 CliTool::Codex,
-                "/tmp/builder",
+                fixture_project("builder").as_str(),
             ),
         )
         .expect("add member");
 
-    let member_config = setup_config(member_name, "codex", "gpt-5.4", "/tmp/builder");
+    let member_config = setup_config(
+        member_name,
+        "codex",
+        "gpt-5.4",
+        fixture_project("builder").as_str(),
+    );
     let context = MemberActivationContext::for_initialize_member(
         team_name,
         "team-lead",
@@ -816,7 +973,7 @@ fn activation_runtime_commit_skips_a_stale_dependency_snapshot() {
                 member_name,
                 MemberRole::Agent,
                 CliTool::Codex,
-                "/tmp/builder",
+                fixture_project("builder").as_str(),
             ),
         )
         .expect("add member");
@@ -833,7 +990,12 @@ fn activation_runtime_commit_skips_a_stale_dependency_snapshot() {
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &concurrent)
         .expect("concurrent liveness save");
 
-    let member_config = setup_config(member_name, "codex", "gpt-5.4", "/tmp/builder");
+    let member_config = setup_config(
+        member_name,
+        "codex",
+        "gpt-5.4",
+        fixture_project("builder").as_str(),
+    );
     let context = MemberActivationContext::for_initialize_member(
         team_name,
         "team-lead",
@@ -883,7 +1045,7 @@ fn skipped_activation_runtime_commit_is_reported_as_a_conflict() {
                 member_name,
                 MemberRole::Agent,
                 CliTool::Codex,
-                "/tmp/builder",
+                fixture_project("builder").as_str(),
             ),
         )
         .expect("add member");
@@ -905,7 +1067,12 @@ fn skipped_activation_runtime_commit_is_reported_as_a_conflict() {
     let target_lock = TargetFileLock::acquire_if_exists(&runtime_path)
         .expect("acquire target lock")
         .expect("runtime target exists");
-    let member_config = setup_config(member_name, "codex", "gpt-5.4", "/tmp/builder");
+    let member_config = setup_config(
+        member_name,
+        "codex",
+        "gpt-5.4",
+        fixture_project("builder").as_str(),
+    );
     let context = MemberActivationContext::for_initialize_member(
         team_name,
         "team-lead",
@@ -978,12 +1145,17 @@ fn finalized_runtime_commit_syncs_team_metadata() {
                 member_name,
                 MemberRole::Agent,
                 CliTool::Codex,
-                "/tmp/builder",
+                fixture_project("builder").as_str(),
             ),
         )
         .expect("add member");
 
-    let member_config = setup_config(member_name, "codex", "gpt-5.4", "/tmp/builder");
+    let member_config = setup_config(
+        member_name,
+        "codex",
+        "gpt-5.4",
+        fixture_project("builder").as_str(),
+    );
     let context = MemberActivationContext::for_add_agent(team_name, "team-lead", &member_config)
         .expect("context");
 
@@ -1044,7 +1216,7 @@ fn finalized_runtime_commit_preserves_mesh_owned_member_fields() {
                 member_name,
                 MemberRole::Agent,
                 CliTool::Codex,
-                "/tmp/builder",
+                fixture_project("builder").as_str(),
             ),
         )
         .expect("add member");
@@ -1062,7 +1234,12 @@ fn finalized_runtime_commit_preserves_mesh_owned_member_fields() {
     )
     .expect("write injected config");
 
-    let member_config = setup_config(member_name, "codex", "gpt-5.4", "/tmp/builder");
+    let member_config = setup_config(
+        member_name,
+        "codex",
+        "gpt-5.4",
+        fixture_project("builder").as_str(),
+    );
     let context = MemberActivationContext::for_add_agent(team_name, "team-lead", &member_config)
         .expect("context");
     orchestrator
@@ -1109,7 +1286,12 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
                 team_name: "initialize-team".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
-                lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
+                lead: setup_config(
+                    "team-lead",
+                    "codex",
+                    "gpt-5.4",
+                    fixture_project("lead").as_str(),
+                ),
                 agents: vec![],
             },
             &cli_commands,
@@ -1159,7 +1341,7 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -1167,7 +1349,12 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
         .add_agent_to_team_with_cli_commands_and_layout(
             &AddAgentRequest {
                 team_name: "add-agent-team".to_string(),
-                agent: setup_config("builder", "codex", "gpt-5.4", "/tmp/builder"),
+                agent: setup_config(
+                    "builder",
+                    "codex",
+                    "gpt-5.4",
+                    fixture_project("builder").as_str(),
+                ),
             },
             &cli_commands,
             "new_window",
@@ -1216,14 +1403,19 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
     resume_orchestrator
         .add_member(
             "resume-team",
-            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+            member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                fixture_project("builder").as_str(),
+            ),
         )
         .expect("add builder");
     mark_member_offline(&resume_tmp, "resume-team", "builder", "%11", Some(55));
@@ -1285,7 +1477,12 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
                 team_name: "initialize-claude".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
-                lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/lead"),
+                lead: setup_config(
+                    "team-lead",
+                    "claude",
+                    "claude-opus-4-6",
+                    fixture_project("lead").as_str(),
+                ),
                 agents: vec![],
             },
             &CliCommandSettings::default(),
@@ -1356,7 +1553,12 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
                 team_name: "initialize-sidecar".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
-                lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
+                lead: setup_config(
+                    "team-lead",
+                    "codex",
+                    "gpt-5.4",
+                    fixture_project("lead").as_str(),
+                ),
                 agents: vec![],
             },
             &CliCommandSettings::default(),
@@ -1393,7 +1595,7 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -1401,7 +1603,12 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
         .add_agent_to_team_with_cli_commands_and_layout(
             &AddAgentRequest {
                 team_name: "add-agent-team".to_string(),
-                agent: setup_config("researcher", "claude", "claude-opus-4-6", "/tmp/research"),
+                agent: setup_config(
+                    "researcher",
+                    "claude",
+                    "claude-opus-4-6",
+                    fixture_project("research").as_str(),
+                ),
             },
             &CliCommandSettings::default(),
             "new_window",
@@ -1437,7 +1644,7 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -1445,7 +1652,12 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
         .add_agent_to_team_with_cli_commands_and_layout(
             &AddAgentRequest {
                 team_name: "add-agent-sidecar".to_string(),
-                agent: setup_config("builder", "codex", "gpt-5.4", "/tmp/builder"),
+                agent: setup_config(
+                    "builder",
+                    "codex",
+                    "gpt-5.4",
+                    fixture_project("builder").as_str(),
+                ),
             },
             &CliCommandSettings::default(),
             "new_window",
@@ -1481,7 +1693,7 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -1492,7 +1704,7 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
                 "researcher",
                 MemberRole::Agent,
                 CliTool::Claude,
-                "/tmp/research",
+                fixture_project("research").as_str(),
             ),
         )
         .expect("add member");
@@ -1537,14 +1749,19 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
     resume_sidecar_orchestrator
         .add_member(
             "resume-sidecar",
-            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+            member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                fixture_project("builder").as_str(),
+            ),
         )
         .expect("add member");
     mark_member_offline(
@@ -1591,12 +1808,17 @@ fn shared_stage_onboarding_and_runtime_commit_policies_assert_wrapper_difference
         team_name: "initialize-team".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
+        lead: setup_config(
+            "team-lead",
+            "codex",
+            "gpt-5.4",
+            fixture_project("lead").as_str(),
+        ),
         agents: vec![setup_config(
             "init-builder",
             "codex",
             "gpt-5.4",
-            "/tmp/init-builder",
+            fixture_project("init-builder").as_str(),
         )],
     };
     let initialize_entries = orchestrator
@@ -1616,7 +1838,7 @@ fn shared_stage_onboarding_and_runtime_commit_policies_assert_wrapper_difference
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -1627,7 +1849,7 @@ fn shared_stage_onboarding_and_runtime_commit_policies_assert_wrapper_difference
                 "init-builder",
                 MemberRole::Agent,
                 CliTool::Codex,
-                "/tmp/init-builder",
+                fixture_project("init-builder").as_str(),
             ),
         )
         .expect("add initialize member");
@@ -1638,7 +1860,7 @@ fn shared_stage_onboarding_and_runtime_commit_policies_assert_wrapper_difference
                 "add-builder",
                 MemberRole::Agent,
                 CliTool::Codex,
-                "/tmp/add-builder",
+                fixture_project("add-builder").as_str(),
             ),
         )
         .expect("add add-agent member");
@@ -1649,14 +1871,19 @@ fn shared_stage_onboarding_and_runtime_commit_policies_assert_wrapper_difference
                 "resume-builder",
                 MemberRole::Agent,
                 CliTool::Codex,
-                "/tmp/resume-builder",
+                fixture_project("resume-builder").as_str(),
             ),
         )
         .expect("add resume member");
 
     let add_agent_request = AddAgentRequest {
         team_name: "parity-team".to_string(),
-        agent: setup_config("add-builder", "codex", "gpt-5.4", "/tmp/add-builder"),
+        agent: setup_config(
+            "add-builder",
+            "codex",
+            "gpt-5.4",
+            fixture_project("add-builder").as_str(),
+        ),
     };
     let add_agent_entry = orchestrator
         .prepare_add_agent_onboarding_entry(&add_agent_request)
@@ -1686,7 +1913,12 @@ fn shared_stage_onboarding_and_runtime_commit_policies_assert_wrapper_difference
     let initialize_context = MemberActivationContext::for_initialize_member(
         "parity-team",
         "team-lead",
-        &setup_config("init-builder", "codex", "gpt-5.4", "/tmp/init-builder"),
+        &setup_config(
+            "init-builder",
+            "codex",
+            "gpt-5.4",
+            fixture_project("init-builder").as_str(),
+        ),
         MemberRole::Agent,
     )
     .expect("initialize context");
@@ -1712,7 +1944,12 @@ fn shared_stage_onboarding_and_runtime_commit_policies_assert_wrapper_difference
     let add_context = MemberActivationContext::for_add_agent(
         "parity-team",
         "team-lead",
-        &setup_config("add-builder", "codex", "gpt-5.4", "/tmp/add-builder"),
+        &setup_config(
+            "add-builder",
+            "codex",
+            "gpt-5.4",
+            fixture_project("add-builder").as_str(),
+        ),
     )
     .expect("add-agent context");
     orchestrator
@@ -1764,7 +2001,7 @@ fn join_mesh_if_required_skips_non_lead_claude_and_joins_required_members() {
         &runtime,
         "architecture-final",
         "team-lead",
-        "/tmp/lead",
+        fixture_project("lead").as_str(),
         MemberRole::Agent,
         CliTool::Claude,
         "opus",
@@ -1775,7 +2012,7 @@ fn join_mesh_if_required_skips_non_lead_claude_and_joins_required_members() {
         &runtime,
         "architecture-final",
         "builder",
-        "/tmp/builder",
+        fixture_project("builder").as_str(),
         MemberRole::Agent,
         CliTool::Codex,
         "gpt-5.6-sol",
@@ -1805,7 +2042,7 @@ fn join_mesh_if_required_skips_non_lead_claude_and_joins_required_members() {
             ..
         } if team_name == "architecture-final"
             && member_name == "builder"
-            && project_id == "/tmp/builder"
+            && project_id == fixture_project("builder").as_str()
             && model == "gpt-5.6-sol"
     )));
 }
@@ -1861,7 +2098,7 @@ fn build_cli_launch_command_uses_configured_fresh_command() {
         name: "reviewer".to_string(),
         cli_tool: "agy".to_string(),
         model: "gemini-3.7-flash-high".to_string(),
-        project_id: "/tmp/project".to_string(),
+        project_id: fixture_project("project"),
         description: None,
         role_id: None,
         role_name: None,
@@ -1897,7 +2134,7 @@ fn build_cli_launch_command_for_codex_appends_model_when_missing() {
         name: "builder".to_string(),
         cli_tool: "codex".to_string(),
         model: "gpt-5.4".to_string(),
-        project_id: "/tmp/project".to_string(),
+        project_id: fixture_project("project"),
         description: None,
         role_id: None,
         role_name: None,
@@ -1937,7 +2174,12 @@ fn a_managed_launch_never_carries_the_frozen_effort_variable() {
         .capabilities
         .runtime_effort_frozen_env
         .expect("Claude freezes its effort through an environment variable");
-    let agent = setup_config("builder", "claude", "opus", "/tmp/project");
+    let agent = setup_config(
+        "builder",
+        "claude",
+        "opus",
+        fixture_project("project").as_str(),
+    );
     let mut commands = crate::models::CliCommandSettings::default();
     commands.claude.fresh = format!("{variable}=low claude --dangerously-skip-permissions");
 
@@ -1963,7 +2205,12 @@ fn a_frozen_effort_variable_the_renderer_cannot_strip_is_refused() {
         .capabilities
         .runtime_effort_frozen_env
         .expect("Claude freezes its effort through an environment variable");
-    let agent = setup_config("builder", "claude", "opus", "/tmp/project");
+    let agent = setup_config(
+        "builder",
+        "claude",
+        "opus",
+        fixture_project("project").as_str(),
+    );
     let mut commands = crate::models::CliCommandSettings::default();
     commands.claude.fresh = format!("export {variable}=low && claude");
 
@@ -1983,7 +2230,12 @@ fn team_launch_rendering_does_not_probe_ambient_codex_home() {
     let helpers_source = include_str!("helpers.rs");
     assert!(!helpers_source.contains("codex_compact_hook_is_installed"));
 
-    let agent = setup_config("builder", "codex", "gpt-5.4", "/tmp/project");
+    let agent = setup_config(
+        "builder",
+        "codex",
+        "gpt-5.4",
+        fixture_project("project").as_str(),
+    );
     let mut commands = crate::models::CliCommandSettings::default();
     let untrusted =
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
@@ -2003,7 +2255,12 @@ fn team_launch_rendering_does_not_probe_ambient_codex_home() {
 fn managed_codex_team_launch_carries_the_account_selector() {
     // Regression: 08c3961 registered CODEX_HOME for direct launches but left
     // coordination sidecars on the process-implicit account directory.
-    let agent = setup_config("builder", "codex", "gpt-5.4", "/tmp/project");
+    let agent = setup_config(
+        "builder",
+        "codex",
+        "gpt-5.4",
+        fixture_project("project").as_str(),
+    );
     let mut commands = crate::models::CliCommandSettings::default();
     let selector = spec(CliTool::Codex)
         .capabilities
@@ -2026,7 +2283,12 @@ fn managed_codex_team_launch_carries_the_account_selector() {
 
 #[test]
 fn managed_codex_member_launch_resolves_its_persisted_account_id() {
-    let mut agent = setup_config("builder", "codex", "gpt-5.4", "/tmp/project");
+    let mut agent = setup_config(
+        "builder",
+        "codex",
+        "gpt-5.4",
+        fixture_project("project").as_str(),
+    );
     agent.account_id = Some("codex-work".to_string());
     let mut commands = crate::models::CliCommandSettings::default();
     commands.managed_accounts.insert(
@@ -2304,7 +2566,12 @@ fn selectorless_member_without_detected_account_has_no_fabricated_account_result
 fn managed_team_launch_defeats_a_base_alias_account_selector() {
     // Regression: commit 0f2bfbb0 resolved aliases only on the app-launch path,
     // so a managed member still ran on the account selected inside `claude2`.
-    let agent = setup_config("builder", "claude", "opus", "/tmp/project");
+    let agent = setup_config(
+        "builder",
+        "claude",
+        "opus",
+        fixture_project("project").as_str(),
+    );
     let mut commands = crate::models::CliCommandSettings::default();
     commands.claude.fresh = "claude2 --dangerously-skip-permissions".to_string();
     commands.account_selector_dirs.insert(
@@ -2346,7 +2613,12 @@ fn unavailable_team_base_resolution_launches_the_literal_and_logs_once() {
     let log_path = tmp.path().join("team-base-unresolved.log.jsonl");
     let log_state = LogFileState::new(log_path.clone()).expect("log state");
     install_global_sink(&log_state);
-    let agent = setup_config("base-unresolved-member", "claude", "opus", "/tmp/project");
+    let agent = setup_config(
+        "base-unresolved-member",
+        "claude",
+        "opus",
+        fixture_project("project").as_str(),
+    );
     let mut commands = crate::models::CliCommandSettings::default();
     commands.claude.fresh = "claude2 --dangerously-skip-permissions".to_string();
 
@@ -2469,7 +2741,12 @@ fn initialized_member_persists_the_opaque_base_account_note() {
                 team_name: "opaque-runtime-team".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
-                lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
+                lead: setup_config(
+                    "team-lead",
+                    "codex",
+                    "gpt-5.4",
+                    fixture_project("lead").as_str(),
+                ),
                 agents: Vec::new(),
             },
             &commands,
@@ -2493,7 +2770,12 @@ fn initialized_member_persists_the_opaque_base_account_note() {
 // Codex notify input, so the pipeline could not opt into native idle edges.
 #[test]
 fn managed_codex_team_launch_includes_native_notify_sink() {
-    let agent = setup_config("builder", "codex", "gpt-5.4", "/tmp/project");
+    let agent = setup_config(
+        "builder",
+        "codex",
+        "gpt-5.4",
+        fixture_project("project").as_str(),
+    );
     let commands = crate::models::CliCommandSettings {
         codex_notify_executable: Some(std::path::PathBuf::from(
             "/home/test/.local/bin/taurhaus-daemon",
@@ -2518,7 +2800,7 @@ fn managed_codex_team_launch_includes_native_notify_sink() {
 // changing the command after activation instead of preserving the CLI's configured effort.
 #[test]
 fn initialize_and_resume_leave_undeclared_effort_to_the_cli() {
-    let mut agent = setup_config("builder", "codex", "", "/tmp/project");
+    let mut agent = setup_config("builder", "codex", "", fixture_project("project").as_str());
     agent.role_id = Some("v3-developer-codex".to_string());
     let initialize = MemberActivationContext::for_initialize_member(
         "architecture-final",
@@ -2528,7 +2810,12 @@ fn initialize_and_resume_leave_undeclared_effort_to_the_cli() {
     )
     .expect("initialize context");
 
-    let mut persisted = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/project");
+    let mut persisted = member(
+        "builder",
+        MemberRole::Agent,
+        CliTool::Codex,
+        fixture_project("project").as_str(),
+    );
     persisted.role_id = Some("v3-developer-codex".to_string());
     let resume =
         MemberActivationContext::for_resume_member("architecture-final", "team-lead", &persisted);
@@ -2559,7 +2846,12 @@ fn launch_then_task_snapshot_attributes_the_rendered_launch() {
 
     let tmp = TempDir::new().expect("tempdir");
     let runtime = RecordingCoordinationRuntime::default();
-    let agent = setup_config("builder", "codex", "gpt-5.6-sol", "/tmp/project");
+    let agent = setup_config(
+        "builder",
+        "codex",
+        "gpt-5.6-sol",
+        fixture_project("project").as_str(),
+    );
     let context = MemberActivationContext::for_initialize_member(
         "routing-team",
         "team-lead",
@@ -2607,7 +2899,7 @@ fn launch_then_task_snapshot_attributes_the_rendered_launch() {
             assignment_footer: OperationalAssignmentFooterSnapshot::default(),
             ownership: OperationalOwnershipSnapshot::default(),
             working_set: OperationalWorkingSetSnapshot {
-                project_path: "/tmp/project".to_string(),
+                project_path: fixture_project("project"),
                 focal_files: Vec::new(),
             },
         },
@@ -2636,7 +2928,7 @@ fn build_cli_launch_command_for_codex_emits_legacy_reasoning_effort() {
         name: "builder".to_string(),
         cli_tool: "codex".to_string(),
         model: "gpt-5.4 high".to_string(),
-        project_id: "/tmp/project".to_string(),
+        project_id: fixture_project("project"),
         description: None,
         role_id: None,
         role_name: None,
@@ -2673,7 +2965,7 @@ fn team_agent(cli_tool: &str) -> AgentSetupConfig {
         name: "team-lead".to_string(),
         cli_tool: cli_tool.to_string(),
         model: String::new(),
-        project_id: "/tmp/project".to_string(),
+        project_id: fixture_project("project"),
         description: None,
         role_id: None,
         role_name: None,
@@ -2776,7 +3068,7 @@ fn build_cli_launch_command_for_claude_appends_team_context() {
         name: "team-lead".to_string(),
         cli_tool: "claude".to_string(),
         model: "claude-opus-4-6".to_string(),
-        project_id: "/tmp/project".to_string(),
+        project_id: fixture_project("project"),
         description: None,
         role_id: None,
         role_name: None,
@@ -2821,7 +3113,12 @@ fn build_resume_cli_launch_command_always_uses_fresh_session() {
     // into the rendered selector.
     let _env = taurhaus_lib::test_support::acquire_env_test_guard();
     let cmds = crate::models::CliCommandSettings::default();
-    let codex_agent = setup_config("builder", "codex", "gpt-5.3", "/tmp/project");
+    let codex_agent = setup_config(
+        "builder",
+        "codex",
+        "gpt-5.4",
+        fixture_project("project").as_str(),
+    );
 
     let command = build_resume_cli_launch_command(
         &codex_agent,
@@ -2830,9 +3127,14 @@ fn build_resume_cli_launch_command_always_uses_fresh_session() {
         &cmds,
     )
     .expect("command");
-    assert_eq!(command, "codex --yolo -m 'gpt-5.3'");
+    assert_eq!(command, "codex --yolo -m 'gpt-5.4'");
 
-    let claude_agent = setup_config("team-lead", "claude", "opus", "/tmp/project");
+    let claude_agent = setup_config(
+        "team-lead",
+        "claude",
+        "opus",
+        fixture_project("project").as_str(),
+    );
 
     let command = build_resume_cli_launch_command(
         &claude_agent,
@@ -2855,7 +3157,12 @@ fn build_resume_cli_launch_command_always_uses_fresh_session() {
 
 #[test]
 fn member_from_agent_setup_maps_role_template_context() {
-    let mut setup = setup_config("codex-dev", "codex", "gpt-5.3", "/tmp/project");
+    let mut setup = setup_config(
+        "codex-dev",
+        "codex",
+        "gpt-5.4",
+        fixture_project("project").as_str(),
+    );
     setup.description = Some("fallback instructions".to_string());
     setup.role_id = Some("codex-developer".to_string());
     setup.instructions = Some("template instructions".to_string());
@@ -2895,8 +3202,13 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime);
 
-    let mut claude_agent = setup_config("researcher", "claude", "claude-opus-4-6", "/tmp/research");
-    claude_agent.role_id = Some("claude-researcher".to_string());
+    let mut claude_agent = setup_config(
+        "researcher",
+        "claude",
+        "claude-opus-4-6",
+        fixture_project("research").as_str(),
+    );
+    claude_agent.role_id = Some("adversarial-reviewer-claude".to_string());
     claude_agent.instructions = Some("Investigate architecture tradeoffs.".to_string());
     claude_agent.behavioral_contract = Some(BehavioralContract {
         communication: vec!["post concise findings".to_string()],
@@ -2909,7 +3221,12 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "codex", "gpt-5.3", "/tmp/lead"),
+        lead: setup_config(
+            "team-lead",
+            "codex",
+            "gpt-5.4",
+            fixture_project("lead").as_str(),
+        ),
         agents: vec![claude_agent],
     };
 
@@ -2940,7 +3257,9 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
         DeliveryRequest::OperatorNotice(payload) => {
             assert_eq!(payload.member_name, "researcher");
             assert!(payload.message.contains("[taurhaus] role_context"));
-            assert!(payload.message.contains("Role: claude-researcher"));
+            assert!(payload
+                .message
+                .contains("Role: adversarial-reviewer-claude"));
             assert!(payload.message.contains("Capabilities:"));
             assert!(payload.message.contains("- analysis"));
             assert!(payload.message.contains("- research"));
@@ -2961,12 +3280,17 @@ fn initialize_pipeline_claude_agent_without_role_context_stays_skipped() {
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "codex", "gpt-5.3", "/tmp/lead"),
+        lead: setup_config(
+            "team-lead",
+            "codex",
+            "gpt-5.4",
+            fixture_project("lead").as_str(),
+        ),
         agents: vec![setup_config(
             "researcher",
             "claude",
             "claude-opus-4-6",
-            "/tmp/research",
+            fixture_project("research").as_str(),
         )],
     };
 
@@ -3003,8 +3327,18 @@ fn initialize_onboarding_entries_use_deferred_barrier_policy() {
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "codex", "gpt-5.3", "/tmp/lead"),
-        agents: vec![setup_config("builder", "codex", "gpt-5.4", "/tmp/builder")],
+        lead: setup_config(
+            "team-lead",
+            "codex",
+            "gpt-5.4",
+            fixture_project("lead").as_str(),
+        ),
+        agents: vec![setup_config(
+            "builder",
+            "codex",
+            "gpt-5.4",
+            fixture_project("builder").as_str(),
+        )],
     };
 
     let entries = orchestrator
@@ -3034,8 +3368,18 @@ fn initialize_onboarding_waits_for_member_activation_barrier() {
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
-        agents: vec![setup_config("builder", "codex", "gpt-5.4", "/tmp/builder")],
+        lead: setup_config(
+            "team-lead",
+            "codex",
+            "gpt-5.4",
+            fixture_project("lead").as_str(),
+        ),
+        agents: vec![setup_config(
+            "builder",
+            "codex",
+            "gpt-5.4",
+            fixture_project("builder").as_str(),
+        )],
     };
 
     let report = orchestrator
@@ -3092,8 +3436,18 @@ fn initialize_pipeline_persists_codex_agent_session_id() {
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/lead"),
-        agents: vec![setup_config("builder", "codex", "gpt-5.4", "/tmp/builder")],
+        lead: setup_config(
+            "team-lead",
+            "claude",
+            "claude-opus-4-6",
+            fixture_project("lead").as_str(),
+        ),
+        agents: vec![setup_config(
+            "builder",
+            "codex",
+            "gpt-5.4",
+            fixture_project("builder").as_str(),
+        )],
     };
 
     let report = orchestrator
@@ -3133,11 +3487,31 @@ fn initialize_pipeline_per_project_layout_reuses_anchor_pane() {
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/project"),
+        lead: setup_config(
+            "team-lead",
+            "claude",
+            "claude-opus-4-6",
+            fixture_project("project").as_str(),
+        ),
         agents: vec![
-            setup_config("dev-1", "codex", "gpt-5.4", "/tmp/project"),
-            setup_config("dev-2", "codex", "gpt-5.4", "/tmp/project"),
-            setup_config("architect-1", "codex", "gpt-5.4", "/tmp/project"),
+            setup_config(
+                "dev-1",
+                "codex",
+                "gpt-5.4",
+                fixture_project("project").as_str(),
+            ),
+            setup_config(
+                "dev-2",
+                "codex",
+                "gpt-5.4",
+                fixture_project("project").as_str(),
+            ),
+            setup_config(
+                "architect-1",
+                "codex",
+                "gpt-5.4",
+                fixture_project("project").as_str(),
+            ),
         ],
     };
 
@@ -3164,18 +3538,18 @@ fn initialize_pipeline_per_project_layout_reuses_anchor_pane() {
         pane_calls,
         vec![
             RuntimeCall::CreatePane {
-                project_id: "/tmp/project".to_string(),
+                project_id: fixture_project("project"),
             },
             RuntimeCall::CreatePaneInTarget {
-                project_id: "/tmp/project".to_string(),
+                project_id: fixture_project("project"),
                 target_pane: "test-pane-1".to_string(),
             },
             RuntimeCall::CreatePaneInTarget {
-                project_id: "/tmp/project".to_string(),
+                project_id: fixture_project("project"),
                 target_pane: "test-pane-1".to_string(),
             },
             RuntimeCall::CreatePaneInTarget {
-                project_id: "/tmp/project".to_string(),
+                project_id: fixture_project("project"),
                 target_pane: "test-pane-1".to_string(),
             },
         ]
@@ -3204,8 +3578,18 @@ fn initialize_pipeline_retries_transient_send_keys_failure_for_codex_agent() {
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/lead"),
-        agents: vec![setup_config("builder", "codex", "gpt-5.4", "/tmp/builder")],
+        lead: setup_config(
+            "team-lead",
+            "claude",
+            "claude-opus-4-6",
+            fixture_project("lead").as_str(),
+        ),
+        agents: vec![setup_config(
+            "builder",
+            "codex",
+            "gpt-5.4",
+            fixture_project("builder").as_str(),
+        )],
     };
 
     let report = orchestrator
@@ -3250,8 +3634,18 @@ fn initialize_pipeline_reports_pane_diagnostics_after_send_keys_retries_exhaust(
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/lead"),
-        agents: vec![setup_config("builder", "codex", "gpt-5.4", "/tmp/builder")],
+        lead: setup_config(
+            "team-lead",
+            "claude",
+            "claude-opus-4-6",
+            fixture_project("lead").as_str(),
+        ),
+        agents: vec![setup_config(
+            "builder",
+            "codex",
+            "gpt-5.4",
+            fixture_project("builder").as_str(),
+        )],
     };
 
     let report = orchestrator
@@ -3288,12 +3682,17 @@ fn initialize_pipeline_persists_claude_agent_session_id() {
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "codex", "gpt-5.3", "/tmp/lead"),
+        lead: setup_config(
+            "team-lead",
+            "codex",
+            "gpt-5.4",
+            fixture_project("lead").as_str(),
+        ),
         agents: vec![setup_config(
             "researcher",
             "claude",
             "claude-opus-4-6",
-            "/tmp/research",
+            fixture_project("research").as_str(),
         )],
     };
 
@@ -3334,10 +3733,25 @@ fn initialize_pipeline_seeds_full_roster_before_reload_dependent_steps() {
         team_name: "architecture-final".to_string(),
         team_description: Some("Review pipeline".to_string()),
         lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "codex", "gpt-5.3", "/tmp/lead"),
+        lead: setup_config(
+            "team-lead",
+            "codex",
+            "gpt-5.4",
+            fixture_project("lead").as_str(),
+        ),
         agents: vec![
-            setup_config("builder", "codex", "gpt-5.4", "/tmp/builder"),
-            setup_config("reviewer", "claude", "claude-opus-4-6", "/tmp/reviewer"),
+            setup_config(
+                "builder",
+                "codex",
+                "gpt-5.4",
+                fixture_project("builder").as_str(),
+            ),
+            setup_config(
+                "reviewer",
+                "claude",
+                "claude-opus-4-6",
+                fixture_project("reviewer").as_str(),
+            ),
         ],
     };
 
@@ -3367,7 +3781,7 @@ fn initialize_pipeline_seeds_full_roster_before_reload_dependent_steps() {
     assert_eq!(lead_runtime.cli_tool, Some(CliTool::Codex));
     assert_eq!(
         lead_runtime.project_path.as_deref(),
-        Some(std::path::Path::new("/tmp/lead"))
+        Some(std::path::Path::new(fixture_project("lead").as_str()))
     );
 
     let reviewer_runtime =
@@ -3375,7 +3789,7 @@ fn initialize_pipeline_seeds_full_roster_before_reload_dependent_steps() {
     assert_eq!(reviewer_runtime.cli_tool, Some(CliTool::Claude));
     assert_eq!(
         reviewer_runtime.project_path.as_deref(),
-        Some(std::path::Path::new("/tmp/reviewer"))
+        Some(std::path::Path::new(fixture_project("reviewer").as_str()))
     );
 }
 
@@ -3390,12 +3804,17 @@ fn initialize_pipeline_progress_callback_preserves_batch_step_order() {
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
+        lead: setup_config(
+            "team-lead",
+            "codex",
+            "gpt-5.4",
+            fixture_project("lead").as_str(),
+        ),
         agents: vec![setup_config(
             "builder",
             "claude",
             "claude-opus-4-6",
-            "/tmp/builder",
+            fixture_project("builder").as_str(),
         )],
     };
 
@@ -3441,7 +3860,7 @@ fn load_resume_member_state_preserves_role_template_context() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -3472,10 +3891,10 @@ fn load_resume_member_state_preserves_role_template_context() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: Some(vec!["implementation".to_string(), "testing".to_string()]),
-                model: None,
+                model: Some("gpt-5.6-sol".to_string()),
                 reasoning_effort: None,
                 account_id: None,
-                project_path: PathBuf::from("/tmp/builder"),
+                project_path: PathBuf::from(fixture_project("builder")),
                 cli_tool: CliTool::Codex,
                 extra: Default::default(),
             },
@@ -3516,7 +3935,7 @@ fn load_resume_member_state_preserves_role_template_context() {
     );
     // Regression: ff40911 discarded the role effort during relaunch, while
     // resume also replaced the model with an empty string.
-    assert_eq!(loaded_member.model.as_deref(), Some("gpt-6-astra"));
+    assert_eq!(loaded_member.model.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(loaded_member.reasoning_effort.as_deref(), Some("high"));
 
     mark_member_offline(&tmp, "architecture-final", "builder", "%61", Some(55));
@@ -3529,12 +3948,12 @@ fn load_resume_member_state_preserves_role_template_context() {
     assert!(calls.iter().any(|call| matches!(
         call,
         RuntimeCall::JoinMesh { member_name, model, .. }
-            if member_name == "builder" && model == "gpt-6-astra"
+            if member_name == "builder" && model == "gpt-5.6-sol"
     )));
     assert!(calls.iter().any(|call| matches!(
         call,
         RuntimeCall::SendKeys { keys, .. }
-            if keys.contains("-m 'gpt-6-astra'")
+            if keys.contains("-m 'gpt-5.6-sol'")
                 && keys.contains("model_reasoning_effort=\"high\"")
     )));
 }
@@ -3554,13 +3973,23 @@ fn resume_accepts_a_minimal_runtime_record_written_by_mesh() {
     orchestrator
         .add_member(
             "minimal-runtime",
-            member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add lead");
     orchestrator
         .add_member(
             "minimal-runtime",
-            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+            member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                fixture_project("builder").as_str(),
+            ),
         )
         .expect("add builder");
     fs::write(
@@ -3583,10 +4012,67 @@ fn resume_accepts_a_minimal_runtime_record_written_by_mesh() {
     assert_eq!(report.failed_step, None);
 }
 
-// Regression: a79d392 treated mesh's pre-existing `external` placeholder as a model
-// declaration, so resume rendered `-m 'external'` instead of the member role's model.
+// Regression: 216e51e9 rejected persisted null/empty models before the
+// existing role -> catalog hydration, and turned catalog suggestions into an allowlist.
 #[test]
-fn resume_external_placeholder_hydrates_the_role_model() {
+fn wave2_resolved_seats_preserve_defaults_and_custom_models() {
+    for declared in [None, Some(""), Some("custom-model-2027")] {
+        for role_model in [None, Some("custom-role-model-2027")] {
+            let tmp = TempDir::new().unwrap();
+            let mut orchestrator = new_orchestrator(
+                &tmp,
+                Arc::new(FakeBackend::default()),
+                Arc::new(RecordingCoordinationRuntime::default()),
+            );
+            let mut seat = member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                tmp.path().to_str().unwrap(),
+            );
+            seat.model = declared.map(str::to_string);
+            if let Some(model) = role_model {
+                let store = TemplateStore::new(orchestrator.template_root.clone());
+                let mut role = store.get_role("v4-developer-codex").unwrap().template;
+                role.role_id = "custom-builder".into();
+                role.defaults.model = model.into();
+                store.create_role(&role).unwrap();
+                seat.role_id = Some(role.role_id);
+            }
+            // The same preflight is used for create/add seats.
+            crate::coordination::validation::validate_member_configuration(
+                &seat,
+                &orchestrator.template_root,
+            )
+            .expect("resolvable seat");
+            orchestrator.create_team("resolved-seat", None).unwrap();
+            orchestrator.add_member("resolved-seat", seat).unwrap();
+            let (resolved, _, _) = orchestrator
+                .load_resume_member_state(&ResumeMemberRequest {
+                    team_name: "resolved-seat".into(),
+                    member_name: "builder".into(),
+                    reasoning_effort_override: Some("high".into()),
+                })
+                .expect("persisted seat must resume, including effort relaunch");
+            let expected = declared
+                .filter(|model| !model.is_empty())
+                .or(role_model)
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    crate::models::ModelCatalog::default_for(CliTool::Codex)
+                        .unwrap()
+                        .id
+                        .clone()
+                });
+            assert_eq!(resolved.model.as_deref(), Some(expected.as_str()));
+        }
+    }
+}
+
+// Regression: 0f973a63 silently repaired the external placeholder on load,
+// hiding the invalid persisted seat observed in F13.
+#[test]
+fn resume_external_placeholder_is_rejected_before_hydration() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -3598,10 +4084,20 @@ fn resume_external_placeholder_hydrates_the_role_model() {
     orchestrator
         .add_member(
             "external-placeholder",
-            member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add lead");
-    let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder");
+    let mut builder = member(
+        "builder",
+        MemberRole::Agent,
+        CliTool::Codex,
+        fixture_project("builder").as_str(),
+    );
     builder.role_id = Some("v4-developer-codex".to_string());
     builder.model = Some("external".to_string());
     orchestrator
@@ -3619,24 +4115,9 @@ fn resume_external_placeholder_hydrates_the_role_model() {
             &CliCommandSettings::default(),
         )
         .expect("resume member");
-    assert!(report.resumed, "resume should succeed: {report:?}");
-
-    let calls = runtime.calls();
-    let launch = calls
-        .iter()
-        .find_map(|call| match call {
-            RuntimeCall::SendKeys { keys, .. } => Some(keys.as_str()),
-            _ => None,
-        })
-        .expect("launch command");
-    assert_eq!(
-        launch,
-        "codex --yolo -m 'gpt-6-astra' -c 'model_reasoning_effort=\"high\"'"
-    );
-    assert!(calls.iter().any(|call| matches!(
-        call,
-        RuntimeCall::JoinMesh { model, .. } if model == "gpt-6-astra"
-    )));
+    assert!(!report.resumed);
+    assert!(report.message.contains("builder") && report.message.contains("model"));
+    assert!(runtime.calls().is_empty());
 }
 
 // Regression: a79d392 derived the template root from the Claude-owned teams path,
@@ -3670,8 +4151,14 @@ fn resume_hydrates_user_role_from_app_data_template_root() {
     orchestrator
         .create_team("user-root", None)
         .expect("create team");
-    let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder");
+    let mut builder = member(
+        "builder",
+        MemberRole::Agent,
+        CliTool::Codex,
+        fixture_project("builder").as_str(),
+    );
     builder.role_id = Some("user-root-builder".to_string());
+    builder.model = Some("gpt-5.5".to_string());
     orchestrator
         .add_member("user-root", builder)
         .expect("add builder");
@@ -3707,7 +4194,12 @@ fn resume_falls_back_when_user_role_is_corrupt() {
     orchestrator
         .create_team("corrupt-role", None)
         .expect("create team");
-    let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder");
+    let mut builder = member(
+        "builder",
+        MemberRole::Agent,
+        CliTool::Codex,
+        fixture_project("builder").as_str(),
+    );
     builder.role_id = Some("v3-developer-codex".to_string());
     orchestrator
         .add_member("corrupt-role", builder)
@@ -3742,7 +4234,7 @@ fn resume_pipeline_claude_lead_joins_mesh_but_skips_member_daemon() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -3837,7 +4329,12 @@ fn claude_lead_join_failure_is_nonfatal_after_activation_commit() {
                 team_name: "lead-join-initialize".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
-                lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/lead"),
+                lead: setup_config(
+                    "team-lead",
+                    "claude",
+                    "claude-opus-4-6",
+                    fixture_project("lead").as_str(),
+                ),
                 agents: vec![],
             },
             &CliCommandSettings::default(),
@@ -3876,7 +4373,12 @@ fn claude_lead_join_failure_is_nonfatal_after_activation_commit() {
     resume_orchestrator
         .add_member(
             "lead-join-resume",
-            member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add lead");
     mark_member_offline(&resume_tmp, "lead-join-resume", "team-lead", "%stale", None);
@@ -3926,7 +4428,7 @@ fn resume_pipeline_claude_member_sends_onboarding_and_skips_mesh_daemon() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -3937,7 +4439,7 @@ fn resume_pipeline_claude_member_sends_onboarding_and_skips_mesh_daemon() {
                 "researcher",
                 MemberRole::Agent,
                 CliTool::Claude,
-                "/tmp/research",
+                fixture_project("research").as_str(),
             ),
         )
         .expect("add member");
@@ -3994,7 +4496,7 @@ fn resume_onboarding_entry_uses_immediate_policy() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -4004,7 +4506,7 @@ fn resume_onboarding_entry_uses_immediate_policy() {
             Member {
                 name: "researcher".to_string(),
                 role: MemberRole::Agent,
-                role_id: Some("claude-researcher".to_string()),
+                role_id: Some("adversarial-reviewer-claude".to_string()),
                 role_name: None,
                 focus_area: None,
                 context_summary: None,
@@ -4021,10 +4523,10 @@ fn resume_onboarding_entry_uses_immediate_policy() {
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
-                model: None,
+                model: Some("opus".to_string()),
                 reasoning_effort: None,
                 account_id: None,
-                project_path: PathBuf::from("/tmp/research"),
+                project_path: PathBuf::from(fixture_project("research")),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
             },
@@ -4085,14 +4587,19 @@ fn resume_onboarding_delivers_immediately_per_member() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
     orchestrator
         .add_member(
             "architecture-final",
-            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+            member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                fixture_project("builder").as_str(),
+            ),
         )
         .expect("add builder");
     mark_member_offline(&tmp, "architecture-final", "team-lead", "%11", None);
@@ -4173,7 +4680,7 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -4183,7 +4690,7 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
             Member {
                 name: "researcher".to_string(),
                 role: MemberRole::Agent,
-                role_id: Some("claude-researcher".to_string()),
+                role_id: Some("adversarial-reviewer-claude".to_string()),
                 role_name: None,
                 focus_area: None,
                 context_summary: None,
@@ -4204,10 +4711,10 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: Some(vec!["analysis".to_string()]),
-                model: None,
+                model: Some("opus".to_string()),
                 reasoning_effort: None,
                 account_id: None,
-                project_path: PathBuf::from("/tmp/research"),
+                project_path: PathBuf::from(fixture_project("research")),
                 cli_tool: CliTool::Claude,
                 extra: Default::default(),
             },
@@ -4236,7 +4743,9 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
     match &delivered[0] {
         DeliveryRequest::OperatorNotice(payload) => {
             assert!(payload.message.contains("[taurhaus] role_context"));
-            assert!(payload.message.contains("Role: claude-researcher"));
+            assert!(payload
+                .message
+                .contains("Role: adversarial-reviewer-claude"));
             assert!(payload.message.contains("Capabilities:"));
             assert!(payload.message.contains("- analysis"));
         }
@@ -4267,14 +4776,19 @@ fn resume_pipeline_non_claude_reuses_pane_but_starts_fresh_session_and_updates_r
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
     orchestrator
         .add_member(
             "architecture-final",
-            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+            member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                fixture_project("builder").as_str(),
+            ),
         )
         .expect("add member");
 
@@ -4341,7 +4855,7 @@ fn resume_report_carries_onboarding_wake_failure() {
     runtime.inner.set_pane_current_command("%11", Some("codex"));
     runtime
         .inner
-        .set_pane_current_path("%11", Some("/tmp/builder"));
+        .set_pane_current_path("%11", Some(fixture_project("builder").as_str()));
     let backend: Arc<dyn CoordinationBackend> = Arc::new(MeshBridgedBackend::new_with_teams_dir(
         tmp.path().to_path_buf(),
     ));
@@ -4358,14 +4872,19 @@ fn resume_report_carries_onboarding_wake_failure() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
     orchestrator
         .add_member(
             "wake-warning-resume",
-            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+            member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                fixture_project("builder").as_str(),
+            ),
         )
         .expect("add member");
     let mut member_runtime =
@@ -4427,7 +4946,7 @@ fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_with_session_capture()
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Codex,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -4507,14 +5026,19 @@ fn resume_pipeline_recreates_mismatched_pane_and_syncs_config_tmux_pane_id() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
     orchestrator
         .add_member(
             "architecture-final",
-            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+            member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                fixture_project("builder").as_str(),
+            ),
         )
         .expect("add member");
 
@@ -4571,13 +5095,23 @@ fn newly_created_pane_does_not_inherit_identity_when_capture_probe_fails() {
     orchestrator
         .add_member(
             "new-pane-identity",
-            member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                fixture_project("lead").as_str(),
+            ),
         )
         .expect("add lead");
     orchestrator
         .add_member(
             "new-pane-identity",
-            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+            member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                fixture_project("builder").as_str(),
+            ),
         )
         .expect("add builder");
 
@@ -4624,14 +5158,19 @@ fn resume_foreign_pane_launch_failure_leaves_runtime_dead_without_daemon() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
     orchestrator
         .add_member(
             "architecture-final",
-            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+            member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                fixture_project("builder").as_str(),
+            ),
         )
         .expect("add member");
 
@@ -4691,7 +5230,7 @@ fn stale_foreign_pane_decision_cannot_overwrite_a_concurrent_runtime_commit() {
                 member_name,
                 MemberRole::Agent,
                 CliTool::Codex,
-                "/tmp/builder",
+                fixture_project("builder").as_str(),
             ),
         )
         .expect("add member");
@@ -4760,7 +5299,7 @@ fn foreign_pane_commit_error_cleans_the_new_resume_pane() {
                 member_name,
                 MemberRole::Agent,
                 CliTool::Codex,
-                "/tmp/builder",
+                fixture_project("builder").as_str(),
             ),
         )
         .expect("add member");
@@ -4825,14 +5364,19 @@ fn resume_failure_cleans_created_resources_and_keeps_member_config() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
     orchestrator
         .add_member(
             "architecture-final",
-            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+            member(
+                "builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                fixture_project("builder").as_str(),
+            ),
         )
         .expect("add member");
 
@@ -4891,7 +5435,7 @@ fn add_agent_failure_clears_daemon_pid_file() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -4899,7 +5443,12 @@ fn add_agent_failure_clears_daemon_pid_file() {
     let report = orchestrator
         .add_agent_to_team(&AddAgentRequest {
             team_name: "architecture-final".to_string(),
-            agent: setup_config("builder", "codex", "gpt-5.4", "/tmp/builder"),
+            agent: setup_config(
+                "builder",
+                "codex",
+                "gpt-5.4",
+                fixture_project("builder").as_str(),
+            ),
         })
         .expect("add-agent report");
     assert_eq!(report.failed_step.as_deref(), Some("send_onboarding"));
@@ -4945,7 +5494,7 @@ fn add_agent_report_carries_onboarding_wake_failure() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -4953,7 +5502,12 @@ fn add_agent_report_carries_onboarding_wake_failure() {
     let report = orchestrator
         .add_agent_to_team(&AddAgentRequest {
             team_name: "wake-warning-add".to_string(),
-            agent: setup_config("builder", "codex", "gpt-5.4", "/tmp/builder"),
+            agent: setup_config(
+                "builder",
+                "codex",
+                "gpt-5.4",
+                fixture_project("builder").as_str(),
+            ),
         })
         .expect("add-agent report");
 
@@ -4994,7 +5548,7 @@ fn add_agent_onboarding_entry_uses_immediate_policy() {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
@@ -5002,7 +5556,12 @@ fn add_agent_onboarding_entry_uses_immediate_policy() {
     let entry = orchestrator
         .prepare_add_agent_onboarding_entry(&AddAgentRequest {
             team_name: "architecture-final".to_string(),
-            agent: setup_config("builder", "codex", "gpt-5.4", "/tmp/builder"),
+            agent: setup_config(
+                "builder",
+                "codex",
+                "gpt-5.4",
+                fixture_project("builder").as_str(),
+            ),
         })
         .expect("prepare add-agent onboarding")
         .expect("add-agent onboarding entry");
@@ -5055,11 +5614,16 @@ fn effort_team(
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
-    let mut builder = member("builder", MemberRole::Agent, cli_tool, "/tmp/builder");
+    let mut builder = member(
+        "builder",
+        MemberRole::Agent,
+        cli_tool,
+        fixture_project("builder").as_str(),
+    );
     builder.reasoning_effort = launch_effort.map(ToString::to_string);
     orchestrator
         .add_member("effort-team", builder)
@@ -5094,11 +5658,16 @@ fn canonical_effort_team(
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead-project",
+                fixture_project("lead-project").as_str(),
             ),
         )
         .expect("add lead");
-    let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder");
+    let mut builder = member(
+        "builder",
+        MemberRole::Agent,
+        CliTool::Codex,
+        fixture_project("builder").as_str(),
+    );
     builder.reasoning_effort = Some("low".to_string());
     orchestrator
         .add_member("effort-team", builder)
@@ -5249,7 +5818,7 @@ fn write_member_snapshot_at(
             },
             ownership: OperationalOwnershipSnapshot::default(),
             working_set: OperationalWorkingSetSnapshot {
-                project_path: "/tmp/builder".to_string(),
+                project_path: fixture_project("builder"),
                 focal_files: vec![],
             },
         },
@@ -6229,6 +6798,67 @@ fn a_pinning_resume_base_does_not_claim_the_ignored_requested_effort() {
         Some("low"),
         "applied effort comes from the rendered command, not the request"
     );
+}
+
+// Regression: 216e51e9 added resume seat validation after the effort pass
+// stopped the member; 535badc5 preserved invalid external models on load.
+#[test]
+fn wave2_effort_validation_keeps_invalid_persisted_members_running() {
+    for model in ["external", "opus"] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+        mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+        orchestrator
+            .resume_member_with_cli_commands(
+                &ResumeMemberRequest {
+                    team_name: "effort-team".into(),
+                    member_name: "builder".into(),
+                    reasoning_effort_override: None,
+                },
+                &CliCommandSettings::default(),
+            )
+            .unwrap();
+        assign_task(&tmp, "builder", "high", "migration requires review");
+        let mut config = TeamConfigStore::load(tmp.path(), "effort-team").unwrap();
+        config
+            .members
+            .iter_mut()
+            .find(|member| member.name == "builder")
+            .unwrap()
+            .model = Some(model.into());
+        TeamConfigStore::save(tmp.path(), "effort-team", &config).unwrap();
+        let before = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").unwrap();
+        let calls_before = runtime.calls().len();
+        let outcome = orchestrator
+            .apply_pending_task_effort_outcome(
+                "effort-team",
+                &mut CliCommandSettings::default(),
+                "new_window",
+                EffortPassScope::TaskChanged,
+                &mut |_, _| {},
+            )
+            .unwrap();
+        assert!(
+            runtime.calls()[calls_before..]
+                .iter()
+                .all(|call| !matches!(call, RuntimeCall::KillPane { .. })),
+            "invalid {model} must never stop the pane"
+        );
+        assert!(outcome.switched.is_empty());
+        assert!(
+            outcome
+                .failed
+                .iter()
+                .any(|(member, reason)| member == "builder" && reason.contains("model")),
+            "{outcome:?}"
+        );
+        let after = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").unwrap();
+        assert_eq!(after.pane_id, before.pane_id);
+        assert_eq!(after.health, before.health);
+        assert_eq!(after.applied_effort, before.applied_effort);
+        assert_eq!(after.effort_resume_failure.unwrap().attempts, 1);
+    }
 }
 
 #[test]

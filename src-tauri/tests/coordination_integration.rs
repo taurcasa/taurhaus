@@ -3,7 +3,7 @@
 #![cfg(feature = "mesh-bridged-backend")]
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tempfile::TempDir;
@@ -357,7 +357,13 @@ fn test_state_with_runtime(
     (state, runtime)
 }
 
-fn make_request(team_name: &str) -> InitializeTeamRequest {
+fn fixture_project(root: &Path, name: &str) -> String {
+    let path = root.join("projects").join(name);
+    std::fs::create_dir_all(&path).expect("project fixture");
+    path.display().to_string()
+}
+
+fn make_request(root: &Path, team_name: &str) -> InitializeTeamRequest {
     InitializeTeamRequest {
         team_name: team_name.to_string(),
         team_description: Some("integration".to_string()),
@@ -366,7 +372,7 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
             name: "team-lead".to_string(),
             cli_tool: "claude".to_string(),
             model: "opus".to_string(),
-            project_id: "proj-core".to_string(),
+            project_id: fixture_project(root, "proj-core"),
             description: Some("lead".to_string()),
             role_id: None,
             role_name: None,
@@ -393,7 +399,7 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
                 name: "frontend-dev".to_string(),
                 cli_tool: "codex".to_string(),
                 model: "gpt-5.3".to_string(),
-                project_id: "proj-web".to_string(),
+                project_id: fixture_project(root, "proj-web"),
                 description: Some("ui".to_string()),
                 role_id: None,
                 role_name: None,
@@ -419,7 +425,7 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
                 name: "reviewer".to_string(),
                 cli_tool: "agy".to_string(),
                 model: "pro".to_string(),
-                project_id: "proj-api".to_string(),
+                project_id: fixture_project(root, "proj-api"),
                 description: None,
                 role_id: None,
                 role_name: None,
@@ -445,8 +451,8 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
     }
 }
 
-fn make_ipc_request(team_name: &str) -> commands::coordination::InitializeTeamRequest {
-    let request = make_request(team_name);
+fn make_ipc_request(root: &Path, team_name: &str) -> commands::coordination::InitializeTeamRequest {
+    let request = make_request(root, team_name);
     commands::coordination::InitializeTeamRequest {
         team_name: request.team_name,
         team_description: request.team_description,
@@ -511,14 +517,14 @@ fn make_ipc_request(team_name: &str) -> commands::coordination::InitializeTeamRe
     }
 }
 
-fn make_add_request(team_name: &str, member_name: &str) -> AddAgentRequest {
+fn make_add_request(root: &Path, team_name: &str, member_name: &str) -> AddAgentRequest {
     AddAgentRequest {
         team_name: team_name.to_string(),
         agent: AgentSetupConfig {
             name: member_name.to_string(),
             cli_tool: "codex".to_string(),
             model: "gpt-5.3".to_string(),
-            project_id: "proj-ops".to_string(),
+            project_id: fixture_project(root, "proj-ops"),
             description: Some("hot-add".to_string()),
             role_id: None,
             role_name: None,
@@ -543,12 +549,38 @@ fn make_add_request(team_name: &str, member_name: &str) -> AddAgentRequest {
     }
 }
 
+// Regression: 216e51e9 required existing member cwds, leaving these initialize
+// and hot-add fixtures with bare project ids and breaking six lifecycle tests.
+#[test]
+fn wave2_lifecycle_fixtures_use_distinct_existing_project_directories() {
+    let tmp = TempDir::new().expect("tempdir");
+    let request = make_request(tmp.path(), "fixture-projects");
+    let add = make_add_request(tmp.path(), "fixture-projects", "qa-dev");
+    let mut paths = std::collections::HashSet::new();
+    for member in std::iter::once(&request.lead)
+        .chain(&request.agents)
+        .chain(std::iter::once(&add.agent))
+    {
+        let path = PathBuf::from(&member.project_id);
+        assert!(
+            path.is_dir(),
+            "{} needs an existing cwd: {path:?}",
+            member.name
+        );
+        assert!(
+            path.starts_with(tmp.path()),
+            "cwd must be owned by the test"
+        );
+        assert!(paths.insert(path), "members must keep distinct projects");
+    }
+}
+
 #[test]
 fn initialize_team_end_to_end() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
     let team_name = "integration-init";
-    let request = make_request(team_name);
+    let request = make_request(tmp.path(), team_name);
 
     let report = state
         .with_orchestrator(|orchestrator| orchestrator.initialize_team(&request))
@@ -575,12 +607,12 @@ fn hot_add_agent_to_running_team() {
     let state = test_state(tmp.path().to_path_buf());
     let team_name = "integration-hot-add";
 
-    let init = make_request(team_name);
+    let init = make_request(tmp.path(), team_name);
     state
         .with_orchestrator(|orchestrator| orchestrator.initialize_team(&init))
         .expect("initialize should succeed");
 
-    let add = make_add_request(team_name, "qa-dev");
+    let add = make_add_request(tmp.path(), team_name, "qa-dev");
     let add_report = state
         .with_orchestrator(|orchestrator| orchestrator.add_agent_to_team(&add))
         .expect("hot-add should succeed");
@@ -603,7 +635,7 @@ fn disband_end_to_end_and_reopen() {
     let state = test_state(tmp.path().to_path_buf());
     let team_name = "integration-disband";
 
-    let init = make_request(team_name);
+    let init = make_request(tmp.path(), team_name);
     state
         .with_orchestrator(|orchestrator| orchestrator.initialize_team(&init))
         .expect("initialize should succeed");
@@ -621,7 +653,7 @@ fn disband_end_to_end_and_reopen() {
         .expect("discover should succeed");
     assert!(discovery.teams.is_empty());
 
-    let reopen = make_request(team_name);
+    let reopen = make_request(tmp.path(), team_name);
     let reopen_report = state
         .with_orchestrator(|orchestrator| orchestrator.initialize_team(&reopen))
         .expect("reopen initialize should succeed");
@@ -634,7 +666,7 @@ fn disband_is_idempotent() {
     let state = test_state(tmp.path().to_path_buf());
     let team_name = "integration-idempotent";
 
-    let init = make_request(team_name);
+    let init = make_request(tmp.path(), team_name);
     state
         .with_orchestrator(|orchestrator| orchestrator.initialize_team(&init))
         .expect("initialize should succeed");
@@ -657,13 +689,13 @@ fn initialize_with_duplicate_team_name_fails_partially() {
     let state = test_state(tmp.path().to_path_buf());
     let team_name = "integration-duplicate";
 
-    let first = make_request(team_name);
+    let first = make_request(tmp.path(), team_name);
     let first_report = state
         .with_orchestrator(|orchestrator| orchestrator.initialize_team(&first))
         .expect("first initialize should succeed");
     assert!(first_report.failed_step.is_none());
 
-    let second = make_request(team_name);
+    let second = make_request(tmp.path(), team_name);
     let second_report = state
         .with_orchestrator(|orchestrator| orchestrator.initialize_team(&second))
         .expect("second initialize should return structured failure");
@@ -677,9 +709,12 @@ fn initialize_with_duplicate_team_name_fails_partially() {
 
 #[test]
 fn preflight_check_with_real_lookup_returns_stable_shape() {
-    let report =
-        commands::coordination::coordination_preflight_check(make_ipc_request("preflight"))
-            .expect("preflight should succeed");
+    let tmp = TempDir::new().expect("tempdir");
+    let report = commands::coordination::coordination_preflight_check(make_ipc_request(
+        tmp.path(),
+        "preflight",
+    ))
+    .expect("preflight should succeed");
     assert_eq!(report.can_initialize, report.blocking_errors.is_empty());
     for err in &report.blocking_errors {
         assert!(!err.trim().is_empty());
@@ -697,7 +732,7 @@ fn live_status_reconciles_member_to_offline_when_pane_disappears() {
     let (state, runtime) = test_state_with_runtime(tmp.path().to_path_buf());
     let team_name = "integration-live-status-reconcile";
 
-    let init = make_request(team_name);
+    let init = make_request(tmp.path(), team_name);
     state
         .with_orchestrator(|orchestrator| orchestrator.initialize_team(&init))
         .expect("initialize should succeed");

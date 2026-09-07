@@ -22,6 +22,22 @@ use crate::models::CliCommandSettings;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 
+#[cfg(test)]
+pub(crate) mod test_support {
+    // Activation fixtures own real directories, isolated per test thread.
+    thread_local! {
+        static PROJECT_ROOT: tempfile::TempDir = tempfile::TempDir::new().expect("project fixture root");
+    }
+
+    pub(crate) fn fixture_project(name: &str) -> String {
+        PROJECT_ROOT.with(|root| {
+            let path = root.path().join(name);
+            std::fs::create_dir_all(&path).expect("project fixture");
+            path.to_string_lossy().into_owned()
+        })
+    }
+}
+
 type BackendFactory = dyn Fn(BackendKind, &Path) -> Result<Arc<dyn CoordinationBackend>, CoordinationError>
     + Send
     + Sync;
@@ -883,6 +899,8 @@ mod tests {
         assert_eq!(state.root_orchestrators.lock().expect("root map").len(), 1);
     }
 
+    use crate::coordination::state::test_support::fixture_project;
+
     fn sample_member(name: &str, role: MemberRole, tool: CliTool, project_path: &str) -> Member {
         Member {
             name: name.to_string(),
@@ -904,7 +922,7 @@ mod tests {
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
-            model: None,
+            model: crate::models::ModelCatalog::default_for(tool).map(|entry| entry.id.clone()),
             reasoning_effort: None,
             account_id: None,
             project_path: PathBuf::from(project_path),
@@ -1394,7 +1412,7 @@ mod tests {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead",
+                fixture_project("lead").as_str(),
             )],
         );
 
@@ -1428,7 +1446,7 @@ mod tests {
                 "team-lead",
                 MemberRole::Lead,
                 CliTool::Claude,
-                "/tmp/lead",
+                fixture_project("lead").as_str(),
             )],
         );
         let current_exe = std::env::current_exe().expect("current exe");
@@ -1465,7 +1483,7 @@ mod tests {
                 "builder",
                 MemberRole::Agent,
                 CliTool::Codex,
-                "/tmp/app",
+                fixture_project("app").as_str(),
             )],
         );
 
@@ -1527,7 +1545,12 @@ mod tests {
                 orch.create_team("architecture-final", None)?;
                 orch.add_member(
                     "architecture-final",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orch.add_member(
                     "architecture-final",
@@ -1535,7 +1558,7 @@ mod tests {
                         "existing-dev",
                         MemberRole::Agent,
                         CliTool::Codex,
-                        "/tmp/app",
+                        fixture_project("app").as_str(),
                     ),
                 )?;
                 Ok(())
@@ -1610,11 +1633,21 @@ mod tests {
                 orchestrator.create_team(team_name, None)?;
                 orchestrator.add_member(
                     team_name,
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orchestrator.add_member(
                     team_name,
-                    sample_member(member_name, MemberRole::Agent, CliTool::Codex, "/tmp/app"),
+                    sample_member(
+                        member_name,
+                        MemberRole::Agent,
+                        CliTool::Codex,
+                        fixture_project("app").as_str(),
+                    ),
                 )
             })
             .expect("seed team through the command orchestrator");
@@ -1634,7 +1667,7 @@ mod tests {
         runtime.set_pane_shell("%old", false);
         runtime.set_pane_current_command("%old", Some("codex"));
         runtime.set_pane_identity("%old", Some(7001), Some(1_755_000_007));
-        runtime.set_pane_current_path("%old", Some("/tmp/app"));
+        runtime.set_pane_current_path("%old", Some(fixture_project("app").as_str()));
         runtime.set_detected_runtime_session(
             "%old",
             CliTool::Codex,
@@ -1707,7 +1740,7 @@ mod tests {
                 },
                 ownership: OperationalOwnershipSnapshot::default(),
                 working_set: OperationalWorkingSetSnapshot {
-                    project_path: "/tmp/app".to_string(),
+                    project_path: fixture_project("app"),
                     focal_files: vec![],
                 },
             },
@@ -1746,10 +1779,19 @@ mod tests {
                 orch.create_team("effort-team", None)?;
                 orch.add_member(
                     "effort-team",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
-                let mut builder =
-                    sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                let mut builder = sample_member(
+                    "builder",
+                    MemberRole::Agent,
+                    CliTool::Codex,
+                    fixture_project("app").as_str(),
+                );
                 builder.reasoning_effort = Some("low".to_string());
                 orch.add_member("effort-team", builder)?;
                 Ok(())
@@ -1778,7 +1820,7 @@ mod tests {
 
         let resumed = state
             .apply_task_effort_for_project(
-                "/tmp/app",
+                fixture_project("app").as_str(),
                 &CliCommandSettings::default(),
                 DEFAULT_TMUX_LAYOUT,
             )
@@ -1814,7 +1856,7 @@ mod tests {
 
         let outcome = state
             .apply_task_effort_for_project(
-                "/tmp/app",
+                fixture_project("app").as_str(),
                 &CliCommandSettings::default(),
                 DEFAULT_TMUX_LAYOUT,
             )
@@ -1856,10 +1898,19 @@ mod tests {
                 orch.create_team("effort-team", None)?;
                 orch.add_member(
                     "effort-team",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
-                let mut builder =
-                    sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                let mut builder = sample_member(
+                    "builder",
+                    MemberRole::Agent,
+                    CliTool::Codex,
+                    fixture_project("app").as_str(),
+                );
                 builder.reasoning_effort = Some("low".to_string());
                 orch.add_member("effort-team", builder)?;
                 Ok(())
@@ -1939,11 +1990,21 @@ mod tests {
                 orch.create_team("deadline-team", None)?;
                 orch.add_member(
                     "deadline-team",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orch.add_member(
                     "deadline-team",
-                    sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app"),
+                    sample_member(
+                        "builder",
+                        MemberRole::Agent,
+                        CliTool::Codex,
+                        fixture_project("app").as_str(),
+                    ),
                 )?;
                 Ok(())
             })
@@ -2072,6 +2133,30 @@ mod tests {
             .expect("serialize activity snapshot"),
         )
         .expect("write activity snapshot");
+    }
+
+    // Regression: 813cad59 let the attribution retry abort the entire deadline
+    // pass on a corrupt snapshot, violating observational telemetry's boundary.
+    #[test]
+    fn wave2_attribution_read_failure_remains_a_per_member_deadline_failure() {
+        let (_tmp, teams, _runtime, _backend, state) = deadline_fixture();
+        seed_deadline_task(&teams, Utc::now(), Some(20));
+        std::fs::write(
+            teams.join("deadline-team/state/operational/builder.json"),
+            "{",
+        )
+        .unwrap();
+        let outcome = state
+            .with_team_orchestrator("deadline-team", |orchestrator| {
+                crate::coordination::task_deadline_pass::apply_task_deadlines(
+                    orchestrator,
+                    "deadline-team",
+                    Utc::now(),
+                )
+            })
+            .unwrap();
+        assert_eq!(outcome.failures.len(), 1);
+        assert_eq!(outcome.failures[0].0, "builder");
     }
 
     fn deadline_notices(fake: &FakeBackend) -> Vec<OperatorNoticeDelivery> {
@@ -2226,6 +2311,154 @@ mod tests {
         assert_eq!(runtime_record.pane_id.as_deref(), Some("%41"));
     }
 
+    // Regression: 008536ec gated deadline actions only by in_progress, so an
+    // assignment waiting for GO was actionable before release (Astra §3/§8,
+    // T9 19:57 nudge before 19:58 GO; F12). No real CLI or member is launched.
+    #[test]
+    fn wave2_deadline_pass_respects_declared_waits_before_go() {
+        for wait in ["task_go", "task_blocked", "member_go", "member_blocked"] {
+            for minutes in [10, 20] {
+                let (_tmp, teams, runtime, fake, state) = deadline_fixture();
+                let assigned_at = DateTime::parse_from_rfc3339("2026-09-03T19:47:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc);
+                seed_deadline_task(&teams, assigned_at, Some(20));
+                let path = teams.parent().unwrap().join("tasks/deadline-team/42.json");
+                let mut task: serde_json::Value =
+                    serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+                let config_path = teams.join("deadline-team/config.json");
+                let mut config: serde_json::Value =
+                    serde_json::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
+                let member = config["members"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .find(|member| member["name"] == "builder")
+                    .unwrap();
+                match wait {
+                    "task_go" => {
+                        task["description"] = serde_json::json!("Review starts on GO");
+                        task["metadata"]["awaiting_go"] = serde_json::json!(true);
+                    }
+                    "task_blocked" => {
+                        task["status"] = serde_json::json!("blocked");
+                        task["metadata"]["blocked_reason"] =
+                            serde_json::json!("Awaiting candidate from builder");
+                    }
+                    "member_go" => {
+                        member["metadata"] = serde_json::json!({"awaiting_go":true});
+                    }
+                    _ => {
+                        member["statusState"] = serde_json::json!("blocked");
+                        member["statusReason"] = serde_json::json!("Awaiting candidate");
+                        member["statusSetAt"] = serde_json::json!(assigned_at.to_rfc3339());
+                    }
+                }
+                // This is the assignment record, before any pass can observe it.
+                std::fs::write(&path, task.to_string()).unwrap();
+                std::fs::write(&config_path, config.to_string()).unwrap();
+                for _ in 0..2 {
+                    state
+                        .run_background_task_deadline_pass_at(
+                            assigned_at + chrono::Duration::minutes(minutes),
+                        )
+                        .unwrap();
+                }
+                assert!(
+                    deadline_notices(&fake).is_empty(),
+                    "{wait} at {minutes} minutes"
+                );
+                let snapshot = deadline_snapshot(&teams);
+                assert_eq!(snapshot.task.nudged_at, None, "{wait}");
+                assert_eq!(snapshot.task.stale_at, None, "{wait}");
+                assert_eq!(
+                    mesh_task_status(&teams),
+                    if wait == "task_blocked" {
+                        "blocked"
+                    } else {
+                        "in_progress"
+                    }
+                );
+                assert_no_deadline_termination(&runtime);
+
+                if minutes == 10 {
+                    // GO at 19:58 clears the explicit marker; prose is not a parser.
+                    task["status"] = serde_json::json!("in_progress");
+                    task["metadata"]["awaiting_go"] = serde_json::json!(false);
+                    std::fs::write(&path, task.to_string()).unwrap();
+                    // Simulate the Mesh writer: Taurhaus saves preserve existing extension values.
+                    let member = config["members"]
+                        .as_array_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .find(|member| member["name"] == "builder")
+                        .unwrap();
+                    member["statusState"] = serde_json::json!("working");
+                    member["metadata"] = serde_json::json!({"awaiting_go":false});
+                    std::fs::write(&config_path, config.to_string()).unwrap();
+                    state
+                        .run_background_task_deadline_pass_at(
+                            assigned_at + chrono::Duration::minutes(11),
+                        )
+                        .unwrap();
+                    assert_eq!(deadline_notices(&fake).len(), 1, "released {wait}");
+                }
+            }
+        }
+    }
+
+    // Regression: 63636a05 treated mesh's blocked status as permanent,
+    // bypassing both nudge and stale after its owning monitor's 30-minute TTL.
+    #[test]
+    fn wave2_expired_member_block_does_not_disable_deadlines() {
+        for status_age in [Some(30), Some(31), None] {
+            for awaiting_go in [false, true] {
+                for minutes in [10, 20] {
+                    let (_tmp, teams, runtime, fake, state) = deadline_fixture();
+                    let assigned_at = DateTime::parse_from_rfc3339("2026-09-03T19:47:00Z")
+                        .unwrap()
+                        .with_timezone(&Utc);
+                    let now = assigned_at + chrono::Duration::minutes(minutes);
+                    seed_deadline_task(&teams, assigned_at, Some(20));
+                    let path = teams.join("deadline-team/config.json");
+                    let mut config: serde_json::Value =
+                        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+                    let member = config["members"]
+                        .as_array_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .find(|member| member["name"] == "builder")
+                        .unwrap();
+                    member["statusState"] = serde_json::json!("blocked");
+                    member["statusSetAt"] =
+                        serde_json::json!(status_age
+                            .map(|age| (now - chrono::Duration::minutes(age)).to_rfc3339()));
+                    member["metadata"] = serde_json::json!({"awaiting_go":awaiting_go});
+                    std::fs::write(&path, config.to_string()).unwrap();
+                    state.run_background_task_deadline_pass_at(now).unwrap();
+                    let snapshot = deadline_snapshot(&teams);
+                    if awaiting_go {
+                        assert!(deadline_notices(&fake).is_empty());
+                        assert_eq!(snapshot.task.stale_at, None);
+                    } else if minutes == 10 {
+                        assert_eq!(
+                            deadline_notices(&fake).len(),
+                            1,
+                            "status age {status_age:?}"
+                        );
+                    } else {
+                        assert!(
+                            snapshot.task.stale_at.is_some(),
+                            "status age {status_age:?}"
+                        );
+                        assert_eq!(mesh_task_status(&teams), "stale");
+                    }
+                    assert_no_deadline_termination(&runtime);
+                }
+            }
+        }
+    }
+
     #[test]
     fn imported_mesh_deadline_drives_nudge_then_stale_from_assigned_at() {
         // Regression: 7fb03376 used a numeric deadline fixture, masking that
@@ -2251,7 +2484,7 @@ mod tests {
         )
         .expect("write mesh task");
         let scan = taurhaus_lib::task_scanner::claude::get_tasks_in(
-            "/tmp/app",
+            fixture_project("app").as_str(),
             &[],
             &tasks_base,
             &tmp.path().join("projects"),
@@ -2269,7 +2502,7 @@ mod tests {
         taurhaus_lib::db::task_queries::upsert_task(
             &connection,
             &taurhaus_lib::db::task_queries::PersistedTask {
-                project_path: "/tmp/app".to_string(),
+                project_path: fixture_project("app"),
                 source: scanned.source.to_string(),
                 source_key: scanned.source_key.clone(),
                 source_task_id: scanned.id.clone(),
@@ -2544,10 +2777,19 @@ mod tests {
                 orch.create_team("effort-team", None)?;
                 orch.add_member(
                     "effort-team",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
-                let mut builder =
-                    sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                let mut builder = sample_member(
+                    "builder",
+                    MemberRole::Agent,
+                    CliTool::Codex,
+                    fixture_project("app").as_str(),
+                );
                 builder.reasoning_effort = Some("low".to_string());
                 orch.add_member("effort-team", builder)?;
                 Ok(())
@@ -2579,7 +2821,11 @@ mod tests {
             .account_selector_dirs
             .insert("CODEX_HOME".to_string(), codex_home.path().to_path_buf());
         let resumed = state
-            .apply_task_effort_for_project("/tmp/app", &cli_commands, DEFAULT_TMUX_LAYOUT)
+            .apply_task_effort_for_project(
+                fixture_project("app").as_str(),
+                &cli_commands,
+                DEFAULT_TMUX_LAYOUT,
+            )
             .expect("task-arrival pass succeeds");
 
         assert_eq!(resumed.switched, vec!["builder"]);
@@ -2620,7 +2866,12 @@ mod tests {
                 orch.create_team("idle-team", None)?;
                 orch.add_member(
                     "idle-team",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orch.add_member(
                     "idle-team",
@@ -2628,7 +2879,7 @@ mod tests {
                         "existing-dev",
                         MemberRole::Agent,
                         CliTool::Codex,
-                        "/tmp/app",
+                        fixture_project("app").as_str(),
                     ),
                 )?;
                 Ok(())
@@ -2682,7 +2933,12 @@ mod tests {
                 orch.create_team("architecture-final", None)?;
                 orch.add_member(
                     "architecture-final",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orch.add_member(
                     "architecture-final",
@@ -2690,7 +2946,7 @@ mod tests {
                         "existing-dev",
                         MemberRole::Agent,
                         CliTool::Codex,
-                        "/tmp/app",
+                        fixture_project("app").as_str(),
                     ),
                 )?;
                 Ok(())
@@ -2770,7 +3026,12 @@ mod tests {
                 orch.create_team("architecture-final", None)?;
                 orch.add_member(
                     "architecture-final",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orch.add_member(
                     "architecture-final",
@@ -2778,7 +3039,7 @@ mod tests {
                         "existing-dev",
                         MemberRole::Agent,
                         CliTool::Codex,
-                        "/tmp/app",
+                        fixture_project("app").as_str(),
                     ),
                 )?;
                 Ok(())
@@ -2867,7 +3128,12 @@ mod tests {
                 orch.create_team("architecture-final", None)?;
                 orch.add_member(
                     "architecture-final",
-                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                    sample_member(
+                        "team-lead",
+                        MemberRole::Lead,
+                        CliTool::Claude,
+                        fixture_project("lead").as_str(),
+                    ),
                 )?;
                 orch.add_member(
                     "architecture-final",
@@ -2875,7 +3141,7 @@ mod tests {
                         "existing-dev",
                         MemberRole::Agent,
                         CliTool::Codex,
-                        "/tmp/app",
+                        fixture_project("app").as_str(),
                     ),
                 )?;
                 Ok(())

@@ -33,6 +33,15 @@ pub enum EffortSwitchOutcome {
     BudgetExhausted,
 }
 
+/// Old sidecars contain deadline nudges without an explicit source.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NudgeSource {
+    #[default]
+    Deadline,
+    IdleMonitor,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum RoutingTelemetryEvent {
@@ -60,7 +69,10 @@ pub enum RoutingTelemetryEvent {
         timestamp: DateTime<Utc>,
         task_id: String,
         member: String,
-        deadline_minutes: u32,
+        #[serde(default)]
+        source: NudgeSource,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        deadline_minutes: Option<u32>,
     },
     TaskStaled {
         timestamp: DateTime<Utc>,
@@ -119,9 +131,7 @@ pub fn record_completion_observed(
 ) {
     let result = (|| -> std::io::Result<()> {
         let path = task_telemetry_path(teams_dir, team_name, Some(task_id))?;
-        let Some(mut file) = open_existing_sidecar(&path)? else {
-            return Ok(());
-        };
+        let mut file = open_sidecar(&path)?;
         file.lock_exclusive()?;
         let Some(events) = read_locked_task_telemetry(&mut file, &path)? else {
             FileExt::unlock(&file)?;
@@ -195,6 +205,7 @@ pub fn attribute_latest_launch_to_task(
             .filter_map(|event| match event {
                 RoutingTelemetryEvent::LaunchRendered {
                     timestamp,
+                    task_id: source_task_id,
                     member: launched_member,
                     role,
                     tool,
@@ -205,6 +216,7 @@ pub fn attribute_latest_launch_to_task(
                     ..
                 } if launched_member == member => Some((
                     timestamp,
+                    source_task_id.is_none(),
                     role,
                     tool,
                     model,
@@ -215,14 +227,24 @@ pub fn attribute_latest_launch_to_task(
                 _ => None,
             })
             .max_by_key(|(timestamp, ..)| *timestamp);
-        let Some((_, role, tool, model, applied_effort, capability_tier, tier_rank)) = latest
+        let Some((
+            rendered_at,
+            taskless,
+            role,
+            tool,
+            model,
+            applied_effort,
+            capability_tier,
+            tier_rank,
+        )) = latest
         else {
             return Ok(());
         };
-        append_task_telemetry(
+        let attributed = append_attributed_launch(
             teams_dir,
             team_name,
-            Some(task_id),
+            task_id,
+            member,
             &RoutingTelemetryEvent::LaunchRendered {
                 timestamp: Utc::now(),
                 task_id: Some(task_id.to_string()),
@@ -234,11 +256,74 @@ pub fn attribute_latest_launch_to_task(
                 capability_tier,
                 tier_rank,
             },
-        )
+        )?;
+        if attributed && taskless {
+            remove_attributed_boot(teams_dir, team_name, member, rendered_at)?;
+        }
+        Ok(())
     })();
     if let Err(error) = result {
         report_write_failure(team_name, Some(task_id), &error);
     }
+}
+
+// The unlocked directory probe is advisory: recheck the target under the same
+// exclusive lock as the append so concurrent callers cannot invent a relaunch.
+fn append_attributed_launch(
+    teams_dir: &Path,
+    team_name: &str,
+    task_id: &str,
+    member: &str,
+    event: &RoutingTelemetryEvent,
+) -> std::io::Result<bool> {
+    let path = task_telemetry_path(teams_dir, team_name, Some(task_id))?;
+    let mut file = open_sidecar(&path)?;
+    file.lock_exclusive()?;
+    let Some(events) = read_locked_task_telemetry(&mut file, &path)? else {
+        FileExt::unlock(&file)?;
+        return Ok(false);
+    };
+    let duplicate = events.iter().any(|event| {
+        matches!(event,
+        RoutingTelemetryEvent::LaunchRendered { member: launched_member, .. }
+            if launched_member == member)
+    });
+    if !duplicate {
+        append_locked(&mut file, event)?;
+    }
+    FileExt::unlock(&file)?;
+    Ok(!duplicate)
+}
+
+/// Remove only the boot we copied; a concurrent newer render stays taskless.
+fn remove_attributed_boot(
+    teams_dir: &Path,
+    team_name: &str,
+    member: &str,
+    rendered_at: DateTime<Utc>,
+) -> std::io::Result<()> {
+    let path = task_telemetry_path(teams_dir, team_name, None)?;
+    let mut file = match OpenOptions::new().read(true).append(true).open(&path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    file.lock_exclusive()?;
+    if let Some(mut events) = read_locked_task_telemetry(&mut file, &path)? {
+        let before = events.len();
+        events.retain(|event| {
+            !matches!(event,
+            RoutingTelemetryEvent::LaunchRendered { timestamp, member: launched_member, .. }
+            if *timestamp == rendered_at && launched_member == member)
+        });
+        if events.len() != before {
+            file.set_len(0)?;
+            for event in events {
+                append_locked(&mut file, &event)?;
+            }
+        }
+    }
+    FileExt::unlock(&file)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -325,7 +410,8 @@ pub fn record_deadline_action(
             timestamp: Utc::now(),
             task_id: task_id.to_string(),
             member: member.to_string(),
-            deadline_minutes,
+            source: NudgeSource::Deadline,
+            deadline_minutes: Some(deadline_minutes),
         }
     };
     append_task_telemetry_fail_soft(teams_dir, team_name, Some(task_id), &event);
@@ -350,14 +436,6 @@ fn open_sidecar(path: &Path) -> std::io::Result<File> {
     #[cfg(unix)]
     options.mode(0o600);
     options.open(path)
-}
-
-fn open_existing_sidecar(path: &Path) -> std::io::Result<Option<File>> {
-    match OpenOptions::new().append(true).read(true).open(path) {
-        Ok(file) => Ok(Some(file)),
-        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error),
-    }
 }
 
 fn read_locked_task_telemetry(
@@ -560,7 +638,8 @@ mod tests {
             timestamp: Utc.with_ymd_and_hms(2026, 9, 4, 10, 0, 0).unwrap(),
             task_id: "42".to_string(),
             member: "builder".to_string(),
-            deadline_minutes: 20,
+            source: super::NudgeSource::Deadline,
+            deadline_minutes: Some(20),
         };
 
         let error = append_task_telemetry(&teams_dir, "routing-team", None, &event)
@@ -655,6 +734,98 @@ mod tests {
 
         assert_eq!(read_task_telemetry(&path), vec![event]);
         assert!(std::fs::metadata(path).expect("sidecar metadata").len() < 1024);
+    }
+
+    // Regression: 813cad59 reported a successful attribution as a write failure
+    // when its optional unattributed cache disappeared before cleanup.
+    #[test]
+    fn wave2_missing_boot_cache_cleanup_is_a_noop() {
+        use super::remove_attributed_boot;
+        let root = tempfile::tempdir().unwrap();
+        remove_attributed_boot(root.path(), "team", "builder", Utc::now()).unwrap();
+        assert!(!root
+            .path()
+            .join("team/state/telemetry/_unattributed.jsonl")
+            .exists());
+    }
+
+    // Regression: 813cad59 added concurrent deadline/snapshot callers whose
+    // unlocked duplicate probes could copy the same launch twice (phantom relaunch).
+    #[test]
+    fn wave2_concurrent_attribution_records_one_launch() {
+        use super::{append_attributed_launch, task_telemetry_path};
+        let root = tempfile::tempdir().unwrap();
+        // Both callers have already probed an empty target and found this launch.
+        let candidate = RoutingTelemetryEvent::LaunchRendered {
+            timestamp: Utc::now(),
+            task_id: Some("new-task".into()),
+            member: "builder".into(),
+            role: "developer".into(),
+            tool: "codex".into(),
+            model: Some("gpt-6-astra".into()),
+            applied_effort: None,
+            capability_tier: None,
+            tier_rank: None,
+        };
+        let barrier = std::sync::Barrier::new(2);
+        std::thread::scope(|scope| {
+            for _ in 0..2 {
+                let candidate = &candidate;
+                let root = &root;
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    barrier.wait();
+                    append_attributed_launch(root.path(), "team", "new-task", "builder", candidate)
+                        .unwrap();
+                });
+            }
+        });
+        let path = task_telemetry_path(root.path(), "team", Some("new-task")).unwrap();
+        assert_eq!(read_task_telemetry(&path).len(), 1);
+    }
+
+    // Regression: c9c6c49b copied roster boots to tasks but left them in the
+    // taskless cache forever, so F9c's unattributed set overstated missing work.
+    #[test]
+    fn wave2_attributed_boot_leaves_only_genuinely_taskless_launches() {
+        let root = tempfile::tempdir().unwrap();
+        for member in ["builder", "waiting-seat"] {
+            append_task_telemetry(
+                root.path(),
+                "team",
+                None,
+                &RoutingTelemetryEvent::LaunchRendered {
+                    timestamp: Utc::now(),
+                    task_id: None,
+                    member: member.to_string(),
+                    role: "developer".to_string(),
+                    tool: "codex".to_string(),
+                    model: Some("gpt-6-astra".to_string()),
+                    applied_effort: None,
+                    capability_tier: None,
+                    tier_rank: None,
+                },
+            )
+            .unwrap();
+        }
+        for _ in 0..2 {
+            attribute_latest_launch_to_task(root.path(), "team", "first-task", "builder");
+        }
+        let remaining =
+            read_task_telemetry(&root.path().join("team/state/telemetry/_unattributed.jsonl"));
+        assert!(
+            matches!(remaining.as_slice(), [RoutingTelemetryEvent::LaunchRendered { member, .. }]
+            if member == "waiting-seat")
+        );
+        assert_eq!(
+            read_task_telemetry(&root.path().join("team/state/telemetry/first-task.jsonl")).len(),
+            1
+        );
+        attribute_latest_launch_to_task(root.path(), "team", "second-task", "builder");
+        assert_eq!(
+            read_task_telemetry(&root.path().join("team/state/telemetry/second-task.jsonl")).len(),
+            1
+        );
     }
 
     // Regression: c9c6c49b searched only `_unattributed.jsonl`, so a member's
@@ -792,11 +963,10 @@ mod tests {
         ));
     }
 
-    // Regression: 13111833 created a sidecar for every historical terminal
-    // task and treated an oversized sidecar as empty, making repeated scans
-    // append forever after the reader's safety cap was crossed.
+    // Regression: c9c6c49b suppressed missing completion sidecars (F9c).
+    // Keep the 13111833 oversized-file guard: unreadable is not empty.
     #[test]
-    fn completion_observation_requires_existing_bounded_telemetry() {
+    fn completion_observation_creates_missing_but_preserves_oversized_telemetry() {
         let root = tempfile::tempdir().expect("tempdir");
         let teams_dir = root.path().join("teams");
         let absent = teams_dir.join("routing-team/state/telemetry/old-task.jsonl");
@@ -809,7 +979,11 @@ mod tests {
             true,
             Utc::now(),
         );
-        assert!(!absent.exists(), "historical tasks must not gain sidecars");
+        assert_eq!(
+            read_task_telemetry(&absent).len(),
+            1,
+            "every terminal task gets an observation"
+        );
 
         let oversized = teams_dir.join("routing-team/state/telemetry/large-task.jsonl");
         std::fs::create_dir_all(oversized.parent().expect("telemetry dir"))
@@ -895,7 +1069,8 @@ mod tests {
         assert!(matches!(
             &events[1],
             RoutingTelemetryEvent::NudgeSent {
-                deadline_minutes: 20,
+                source: super::NudgeSource::Deadline,
+                deadline_minutes: Some(20),
                 ..
             }
         ));

@@ -102,8 +102,10 @@ warning. The event vocabulary is:
   `RenderedLaunch`, plus the model catalog's capability tier and rank.
 - `effort_switch`: the existing assignment-effort outcome, attempt number, and
   previous/requested effort.
-- `nudge_sent` and `task_staled`: the already-committed deadline action and its
-  deadline fields.
+- `nudge_sent`: the committed nudge, its recipient (`member`) and `task_id`,
+  with `source: deadline` or `source: idle_monitor`. Deadline nudges also carry
+  `deadline_minutes`; monitor nudges omit it. Older records without `source`
+  decode as deadline nudges. `task_staled` retains its deadline fields.
 - `completion_observed`: a terminal status seen by the daemon task scanner and
   whether that parsed ledger record carried a review ruling. Its `timestamp`
   is the task's state-change time (falling back to task update time, then scan
@@ -114,20 +116,32 @@ the launch seam. When it does not, the rendered launch is retained in
 `_unattributed.jsonl` with `task_id: null`. If a later daemon-owned snapshot
 first names a task for that running member, taurhaus copies the member's latest
 render-authoritative launch fields into the task sidecar at that attribution
-time. Thus a launch-once member's later work appears in the report without
+time. Attribution is retried on later publications and on daemon deadline passes,
+even if the task ID did not change, so a render arriving after the first snapshot
+is not stranded (Wave-1 F9c; Astra §4). After a boot is attributed, its exact
+record is removed from `_unattributed` under lock; newer or other members'
+boots remain. Later tasks can reuse the attributed task sidecar. Every terminal task receives a completion
+observation even without an existing sidecar; repeated scans deduplicate under
+lock and oversized sidecars remain read-only. Thus a launch-once member's later work appears in the report without
 inventing a requested model or requiring another relaunch.
 
 `just routing-report [DAYS]` (30 days by default) enumerates the default and all
 registered team roots, tolerantly reads the sidecars, and rejoins every task to
 the current mesh ledger record. It prints per `(role, model)` rows and a
 per-model rollup with tasks touched, accepted, completed-but-unruled,
-oversize-diff incidents, relaunches, completed effort switches, nudges, stale
+oversize-diff incidents, budget raises, relaunches, completed effort switches,
+`deadline_nudges`, `monitor_nudges`, stale
 actions, and median elapsed
 time from first render to the terminal state-change timestamp. Acceptance follows Amendment
 4 exactly: only ledger status `completed` with a sequenced review ruling counts,
 and an oversize-failure ruling (`field: oversize_diff`, `value: failed`) is not
 a review ruling for that purpose — it is counted in the `oversize_diffs` column
 instead, attributed to the task owner's launch active at the ruling's time.
+A `field: budget_raised` ruling (old→new in `value`, reason in `note`) is likewise
+excluded from review acceptance and counted separately in `budget_raises`, using
+the same owner-at-ruling-time attribution. Ownerless rulings are dropped. These
+shared scanner/report predicates keep counting and acceptance exclusions aligned
+(Wave-1 F5; Astra §6).
 A bare completed status is `completed_unruled`, never accepted. Tokens are not
 collected in Stage 1; the report header identifies wall-time as the cost proxy.
 Rulings are recordable today (`mesh task ruling`, mesh >= 0.2.28); a window
@@ -135,6 +149,46 @@ whose ledger records carry none reports `accepted` = 0 with completions under
 `completed_unruled`. A task sidecar holding events but no `launch_rendered`
 (possible for pre-telemetry teams) is omitted from the per-role table — a
 thin first-wave report is expected, not a bug.
+
+The two nudge columns keep numeric counts without a compound cell format
+(Wave-1 F9b; Astra §4). Actions use the recipient's launch active at the event
+time; an unknown recipient is never charged to another member's newer launch.
+The reader accepts monitor observations, but the Mesh-owned idle monitor must
+write them at delivery time. This reader change does not install a monitor or
+recover historical nudges by guessing from inbox prose. The monitor's producer,
+declared-wait suppression and two-failed-nudge stop rule remain Mesh integration
+requirements under the [existing ownership split](orchestration-practical-auto-idle-and-communication.md#mesh-vs-taurhaus-responsibility-split).
+
+#### Declared waits at the Taurhaus deadline boundary
+
+A task may carry `metadata.awaiting_go: true`. The assignment writer must set
+it on the assignment record **before delivery**, including assignments whose
+contract says "starts on GO"; the same writer sets it to `false` when issuing
+GO. Mesh owns marker updates: Taurhaus config saves preserve existing
+Mesh-owned extension values. This is an explicit boolean, not a parser for assignment or
+inbox prose. A member-wide wait uses the same marker under the member's
+`metadata` in team config. Existing task `status: blocked` and member
+`statusState: blocked` also suppress deadline actions; their reason stays in
+the existing mesh record. The member status applies only while `statusSetAt`
+is live. Mesh's team-daemon IdleMonitor owns the TTL; Taurhaus's compatibility
+value is named once as `MESH_IDLE_MONITOR_DEFAULT_STATUS_TTL` in
+`coordination/task_deadline_pass.rs` (30 minutes). A Mesh TTL policy change
+requires this constant to move with it. Deployments can set
+`TAURHAUS_MESH_MEMBER_STATUS_TTL_SECONDS` to the monitor's positive TTL in
+seconds; absent, invalid, non-positive, or overflowing values use the default.
+Missing, invalid, or
+expired timestamps do not suppress actions. Explicit `metadata.awaiting_go`
+markers do not expire just because activity is old. A pass that skips members
+emits one debug `deadline.wait.skipped` summary with the waiting-member count.
+
+Taurhaus's deadline pass reads these declarations even when its operational
+snapshot still says `in_progress`, and the locked stale-status write checks the
+task again so a newly declared wait wins over an earlier probe. Releasing a
+wait restores the existing deadline policy; it does not silently reset
+`assigned_at` or extend the configured deadline. This closes the Taurhaus-side
+pre-GO nudge path (Wave-1 F12; Astra §3/§8). Mesh must apply the same declarations
+in its idle monitor and assignment writer to close the idle-monitor T9 path;
+Taurhaus does not forge active-process evidence to suppress that monitor.
 
 ### 3. External Tool Data Taurhaus Observes But Does Not Own
 

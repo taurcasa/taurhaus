@@ -270,36 +270,38 @@ fn execute_add_member(
             &team_status.config.members,
             request.project_path.as_deref(),
         )?;
-        orchestrator.add_member(
-            &request.team_name,
-            Member {
-                name: request.member_name.clone(),
-                role: MemberRole::Agent,
-                role_id: None,
-                role_name: None,
-                focus_area: None,
-                context_summary: None,
-                behavior_summary: None,
-                communication_style: None,
-                runtime_compact_summary: None,
-                instructions: None,
-                behavioral_contract: None,
-                quality_gates: None,
-                handoff_expectations: None,
-                definition_of_done: None,
-                phase_scope: None,
-                mode: None,
-                inherits_from: None,
-                required_artifacts: None,
-                capabilities: None,
-                model: None,
-                reasoning_effort: None,
-                account_id: None,
-                project_path,
-                cli_tool,
-                extra: Default::default(),
-            },
-        )
+        let member = Member {
+            name: request.member_name.clone(),
+            role: MemberRole::Agent,
+            role_id: None,
+            role_name: None,
+            focus_area: None,
+            context_summary: None,
+            behavior_summary: None,
+            communication_style: None,
+            runtime_compact_summary: None,
+            instructions: None,
+            behavioral_contract: None,
+            quality_gates: None,
+            handoff_expectations: None,
+            definition_of_done: None,
+            phase_scope: None,
+            mode: None,
+            inherits_from: None,
+            required_artifacts: None,
+            capabilities: None,
+            model: crate::models::ModelCatalog::default_for(cli_tool).map(|entry| entry.id.clone()),
+            reasoning_effort: None,
+            account_id: None,
+            project_path,
+            cli_tool,
+            extra: Default::default(),
+        };
+        crate::coordination::validation::validate_member_configuration(
+            &member,
+            &orchestrator.template_root,
+        )?;
+        orchestrator.add_member(&request.team_name, member)
     })
 }
 
@@ -416,6 +418,37 @@ mod tests {
         assert!(roster.remove_member_status(&remove_run).is_some());
     }
 
+    // Regression: f8d08a21 (roster daemon extraction) persisted unchecked cwd
+    // and an absent model; F13 requires the same validation as activation.
+    #[test]
+    fn wave2_roster_add_validates_cwd_and_persists_a_resolved_model() {
+        let temp = tempfile::tempdir().unwrap();
+        let (service, runtime) = service(temp.path());
+        service
+            .state
+            .with_team_orchestrator("roster", |orchestrator| {
+                orchestrator.create_team("roster", None)
+            })
+            .unwrap();
+        let mut request = AddMemberRequest {
+            team_name: "roster".to_string(),
+            member_name: "builder".to_string(),
+            backend_kind: "codex".to_string(),
+            project_path: Some(temp.path().join("missing").display().to_string()),
+        };
+        let error = super::execute_add_member(&service.state, &request).unwrap_err();
+        assert!(matches!(
+            error,
+            crate::coordination::errors::CoordinationError::Validation(_)
+        ));
+        assert!(error.to_string().contains("builder") && error.to_string().contains("cwd"));
+        request.project_path = Some(temp.path().display().to_string());
+        super::execute_add_member(&service.state, &request).unwrap();
+        let config = TeamConfigStore::load(temp.path(), "roster").unwrap();
+        assert_eq!(config.members[0].model.as_deref(), Some("gpt-5.6-sol"));
+        assert!(runtime.calls().is_empty());
+    }
+
     #[test]
     fn add_member_without_project_path_inherits_the_first_members() {
         // The legacy add-member project-path rule moved into the daemon with
@@ -424,6 +457,7 @@ mod tests {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let (service, _runtime) = service(temp.path());
         let project = temp.path().join("project");
+        std::fs::create_dir_all(&project).unwrap();
 
         let run_id = service
             .start_create_team(CoordinationCreateTeamParams {
@@ -493,6 +527,7 @@ mod tests {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let (service, _runtime) = service(temp.path());
         let project = temp.path().join("project");
+        std::fs::create_dir_all(&project).unwrap();
 
         let run_id = service
             .start_create_team(CoordinationCreateTeamParams {

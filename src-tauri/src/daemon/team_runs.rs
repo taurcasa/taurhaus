@@ -912,6 +912,7 @@ mod tests {
     use crate::session_scanner::cli_tool::CliTool;
 
     fn agent(name: &str, project: &std::path::Path) -> AgentDefinition {
+        std::fs::create_dir_all(project).expect("project fixture");
         AgentDefinition {
             name: name.to_string(),
             cli_tool: "codex".to_string(),
@@ -992,7 +993,20 @@ mod tests {
     fn resume_team_executes_in_daemon_state_and_streams_canonical_member_stages() {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let (state, _backend, _runtime) = state(temp.path());
-        initialize_team(state.as_ref(), temp.path());
+        let projects = tempfile::TempDir::new().expect("projects tempdir");
+        initialize_team(state.as_ref(), projects.path());
+        // Regression: 216e51e9 collapsed the fixture's lead and builder cwds,
+        // removing mixed-project coverage from the daemon resume workflow.
+        let config = TeamConfigStore::load(temp.path(), "arch").expect("team config");
+        for (name, directory) in [("team-lead", "lead"), ("builder", "builder")] {
+            let member = config
+                .members
+                .iter()
+                .find(|member| member.name == name)
+                .unwrap();
+            assert_eq!(member.project_path, projects.path().join(directory));
+            assert!(member.project_path.is_dir());
+        }
         for member_name in ["team-lead", "builder"] {
             let mut runtime =
                 MemberRuntimeStore::load(temp.path(), "arch", member_name).expect("runtime");
@@ -1046,7 +1060,8 @@ mod tests {
     fn reonboard_executes_delivery_and_publishes_the_fat_intent_snapshot() {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let (state, backend, _runtime) = state(temp.path());
-        initialize_team(state.as_ref(), temp.path());
+        let projects = tempfile::TempDir::new().expect("projects tempdir");
+        initialize_team(state.as_ref(), projects.path());
         let leases_dir = temp.path().join("arch").join("state").join("leases");
         std::fs::create_dir_all(&leases_dir).expect("create leases dir");
         std::fs::write(
@@ -1064,7 +1079,7 @@ mod tests {
             assignment_footer: Default::default(),
             ownership: Default::default(),
             working_set: crate::coordination::stores::OperationalWorkingSetSnapshot {
-                project_path: temp.path().join("builder").display().to_string(),
+                project_path: projects.path().join("builder").display().to_string(),
                 focal_files: vec!["src/current.rs".to_string()],
             },
         };
@@ -1118,12 +1133,14 @@ mod tests {
     fn switch_team_account_stops_rewrites_resumes_and_accumulates_pointer_handoffs() {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let (state, backend, _runtime) = state(temp.path());
-        initialize_team(state.as_ref(), temp.path());
+        let projects = tempfile::TempDir::new().expect("projects tempdir");
+        initialize_team(state.as_ref(), projects.path());
 
         let mut config = TeamConfigStore::load(temp.path(), "arch").expect("config");
         for member in &mut config.members {
             if member.role == crate::coordination::domain::MemberRole::Lead {
                 member.cli_tool = CliTool::Claude;
+                member.model = Some("opus".to_string());
             } else {
                 member.account_id = Some("personal".to_string());
             }
@@ -1243,7 +1260,8 @@ mod tests {
         let target_account = temp.path().join("claude-work");
         let target_teams = target_account.join("teams");
         let (state, _backend, runtime) = state(&default_teams);
-        initialize_team(state.as_ref(), temp.path());
+        let projects = tempfile::TempDir::new().expect("projects tempdir");
+        initialize_team(state.as_ref(), projects.path());
         let transcript = temp.path().join("transcripts/team-lead.jsonl");
         std::fs::create_dir_all(transcript.parent().expect("transcript parent"))
             .expect("transcript dir");
@@ -1251,6 +1269,7 @@ mod tests {
         let mut config = TeamConfigStore::load(&default_teams, "arch").expect("config");
         for member in &mut config.members {
             member.cli_tool = CliTool::Claude;
+            member.model = Some("opus".to_string());
             member.account_id = Some("claude-default".to_string());
         }
         TeamConfigStore::save(&default_teams, "arch", &config).expect("Claude config");
@@ -1308,10 +1327,12 @@ mod tests {
         let target_account = temp.path().join("claude-work");
         let target_teams = target_account.join("teams");
         let (state, _backend, runtime) = state(&default_teams);
-        initialize_team(state.as_ref(), temp.path());
+        let projects = tempfile::TempDir::new().expect("projects tempdir");
+        initialize_team(state.as_ref(), projects.path());
         let mut config = TeamConfigStore::load(&default_teams, "arch").expect("config");
         for member in &mut config.members {
             member.cli_tool = CliTool::Claude;
+            member.model = Some("opus".to_string());
             member.account_id = Some("claude-default".to_string());
         }
         TeamConfigStore::save(&default_teams, "arch", &config).expect("Claude config");
@@ -1370,11 +1391,13 @@ mod tests {
     fn switch_team_account_retries_when_runtime_says_the_member_fell_back() {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let (state, _backend, _runtime) = state(temp.path());
-        initialize_team(state.as_ref(), temp.path());
+        let projects = tempfile::TempDir::new().expect("projects tempdir");
+        initialize_team(state.as_ref(), projects.path());
         let mut config = TeamConfigStore::load(temp.path(), "arch").expect("config");
         for member in &mut config.members {
             if member.role == crate::coordination::domain::MemberRole::Lead {
                 member.cli_tool = CliTool::Claude;
+                member.model = Some("opus".to_string());
             } else {
                 member.account_id = Some("work".to_string());
             }
@@ -1431,12 +1454,14 @@ mod tests {
     fn switch_team_account_snapshots_and_onboards_every_restarted_member() {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let (state, _backend, _runtime) = state(temp.path());
-        initialize_team(state.as_ref(), temp.path());
+        let projects = tempfile::TempDir::new().expect("projects tempdir");
+        initialize_team(state.as_ref(), projects.path());
 
         let mut config = TeamConfigStore::load(temp.path(), "arch").expect("config");
         for member in &mut config.members {
             if member.role == crate::coordination::domain::MemberRole::Lead {
                 member.cli_tool = CliTool::Claude;
+                member.model = Some("opus".to_string());
             } else {
                 member.account_id = Some("personal".to_string());
             }
@@ -1449,6 +1474,7 @@ mod tests {
             .clone();
         scribe.name = "scribe".to_string();
         scribe.cli_tool = CliTool::Claude;
+        scribe.model = Some("opus".to_string());
         scribe.account_id = None;
         config.members.push(scribe);
         TeamConfigStore::save(temp.path(), "arch", &config).expect("seed the mixed roster");
@@ -1531,10 +1557,12 @@ mod tests {
     fn switched_tool_lead_receives_only_the_team_handoff_map() {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let (state, backend, _runtime) = state(temp.path());
-        initialize_team(state.as_ref(), temp.path());
+        let projects = tempfile::TempDir::new().expect("projects tempdir");
+        initialize_team(state.as_ref(), projects.path());
         let mut config = TeamConfigStore::load(temp.path(), "arch").expect("config");
         for member in &mut config.members {
             member.cli_tool = CliTool::Codex;
+            member.model = Some("gpt-5.4".to_string());
             member.account_id = Some("personal".to_string());
             MemberRuntimeStore::update(temp.path(), "arch", &member.name, |runtime| {
                 runtime.launch_account.account_id = Some("personal".to_string());

@@ -1,5 +1,67 @@
 use crate::coordination::errors::CoordinationError;
 
+/// Validate the effective seat before any create/resume side effects.
+/// Missing declarations use the existing hydration authority; explicit invalid
+/// values and incoherent role/tool seats still require an actionable rejection.
+pub(crate) fn validate_member_configuration(
+    member: &crate::coordination::domain::Member,
+    template_root: &std::path::Path,
+) -> Result<(), CoordinationError> {
+    let invalid = |field: &str, reason: String| {
+        CoordinationError::Validation(format!(
+            "member '{}' field '{field}': {reason}",
+            member.name
+        ))
+    };
+    if !member.project_path.is_dir() {
+        return Err(invalid(
+            "cwd",
+            format!(
+                "'{}' is not an existing directory; choose an existing checkout",
+                member.project_path.display()
+            ),
+        ));
+    }
+    let role = member.role_id.as_deref().and_then(|role_id| {
+        crate::coordination::member_activation::load_role_for_member_hydration(
+            template_root,
+            role_id,
+            &member.name,
+            "validation",
+        )
+    });
+    if let Some(role) = role.as_ref() {
+        if role.defaults.cli_tool != member.cli_tool {
+            return Err(invalid(
+                "cli_tool",
+                format!(
+                    "{} disagrees with role '{}' tool {}; select a matching role or tool",
+                    member.cli_tool, role.role_id, role.defaults.cli_tool
+                ),
+            ));
+        }
+    }
+    let mut resolved = member.clone();
+    crate::coordination::member_activation::hydrate_member_model_fields(
+        &mut resolved,
+        role.as_ref(),
+    );
+    if !resolved.model.as_deref().is_some_and(|model| {
+        !model.eq_ignore_ascii_case("external")
+            && !model.trim().is_empty()
+            && crate::coordination::member_activation::model_is_valid_for(member.cli_tool, model)
+    }) {
+        return Err(invalid(
+            "model",
+            format!(
+                "choose a resolvable model for {}; 'external' is not a managed model",
+                member.cli_tool,
+            ),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_team_name(name: &str) -> Result<(), CoordinationError> {
     validate_non_empty("team name", name)?;
     if has_path_separator(name) || is_reserved_path_component(name) {

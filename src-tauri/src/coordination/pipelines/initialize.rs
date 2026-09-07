@@ -337,6 +337,19 @@ impl CoordinationOrchestrator {
             }
         }
 
+        for (setup, role) in std::iter::once((&request.lead, MemberRole::Lead)).chain(
+            request
+                .agents
+                .iter()
+                .map(|agent| (agent, MemberRole::Agent)),
+        ) {
+            let member = member_from_agent_setup(setup, role)?;
+            crate::coordination::validation::validate_member_configuration(
+                &member,
+                &self.template_root,
+            )?;
+        }
+
         Ok(())
     }
 

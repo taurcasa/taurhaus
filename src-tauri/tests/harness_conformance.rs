@@ -654,7 +654,7 @@ fn absent_catalog_and_launch_flags_use_the_declared_floor() {
     );
 }
 
-fn setup_config(tool: CliTool) -> AgentSetupConfig {
+fn setup_config(tool: CliTool, project: &std::path::Path) -> AgentSetupConfig {
     let default = ModelCatalog::default_for(tool).expect("conformance catalog default");
     AgentSetupConfig {
         name: "team-lead".to_string(),
@@ -662,7 +662,7 @@ fn setup_config(tool: CliTool) -> AgentSetupConfig {
         model: default.id.clone(),
         reasoning_effort: default.default_effort.clone(),
         account_id: None,
-        project_id: "/tmp/taurhaus-conformance-project".to_string(),
+        project_id: project.display().to_string(),
         description: None,
         role_id: None,
         role_name: None,
@@ -718,7 +718,7 @@ fn every_registry_entry_launches_and_receives_an_operator_notice_through_the_flo
                 team_name: team_name.clone(),
                 team_description: Some("harness conformance".to_string()),
                 lead_mode: LeadMode::LaunchNew,
-                lead: setup_config(entry.tool),
+                lead: setup_config(entry.tool, temp.path()),
                 agents: vec![],
             })
             .expect("team launch");

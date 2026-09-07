@@ -6,10 +6,12 @@ use chrono::{DateTime, Duration, Utc};
 
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::telemetry::{
-    read_task_telemetry, EffortSwitchOutcome, RoutingTelemetryEvent,
+    read_task_telemetry, EffortSwitchOutcome, NudgeSource, RoutingTelemetryEvent,
 };
 use crate::coordination::stores::TeamRootRegistry;
-use taurhaus_lib::task_scanner::claude::{is_oversize_failure, parse_task_content, MAX_FILE_SIZE};
+use taurhaus_lib::task_scanner::claude::{
+    is_budget_raise, is_oversize_failure, parse_task_content, MAX_FILE_SIZE,
+};
 use taurhaus_lib::task_scanner::claude_index::ClaudeSourceIndex;
 use taurhaus_lib::task_scanner::types::TaskStatus;
 
@@ -19,9 +21,11 @@ struct ReportStats {
     accepted: BTreeSet<String>,
     completed_unruled: BTreeSet<String>,
     oversize_diffs: usize,
+    budget_raises: usize,
     relaunches: usize,
     effort_switches: usize,
-    nudges: usize,
+    deadline_nudges: usize,
+    monitor_nudges: usize,
     staled: usize,
     wall_times: BTreeMap<String, i64>,
 }
@@ -30,13 +34,14 @@ struct ReportStats {
 struct LedgerVerdict {
     accepted_eligible: bool,
     has_review_ruling: bool,
-    oversize_rulings: Vec<OversizeRuling>,
+    oversize_rulings: Vec<OwnerRuling>,
+    budget_rulings: Vec<OwnerRuling>,
 }
 
-/// One oversize-diff failure ruling, carried per ruling (not aggregated) so
+/// One budget/oversize ruling, carried per ruling (not aggregated) so
 /// attribution can select the owner's launch active at the ruling's `at`.
 #[derive(Debug)]
-struct OversizeRuling {
+struct OwnerRuling {
     owner: String,
     at: Option<DateTime<Utc>>,
 }
@@ -113,15 +118,16 @@ pub fn render_routing_report(
     }
     output.push_str(
         "Role/model\n\
-         role | model | tasks_touched | accepted | completed_unruled | oversize_diffs | relaunches | effort_switches | nudges | staled | median_wall_time\n",
+         role | model | tasks_touched | accepted | completed_unruled | oversize_diffs | budget_raises | relaunches | effort_switches | deadline_nudges | monitor_nudges | staled | median_wall_time\n",
     );
     for ((role, model), stats) in &role_rows {
         push_row(&mut output, Some(role), model, stats);
     }
-    output.push_str("\nModel rollup\nmodel | tasks_touched | accepted | completed_unruled | oversize_diffs | relaunches | effort_switches | nudges | staled | median_wall_time\n");
+    output.push_str("\nModel rollup\nmodel | tasks_touched | accepted | completed_unruled | oversize_diffs | budget_raises | relaunches | effort_switches | deadline_nudges | monitor_nudges | staled | median_wall_time\n");
     for (model, stats) in &model_rows {
         push_row(&mut output, None, model, stats);
     }
+    output.push_str("\nEvents without recipient launch telemetry are omitted from both rollups.\n");
     Ok(output)
 }
 
@@ -192,7 +198,12 @@ fn accumulate_task(
         record_wall_time(stats, task_key, launch_times.into_iter().min(), completion);
     }
     if let Some(ledger) = ledger {
-        for ruling in &ledger.oversize_rulings {
+        for (ruling, budget_raise) in ledger
+            .oversize_rulings
+            .iter()
+            .map(|ruling| (ruling, false))
+            .chain(ledger.budget_rulings.iter().map(|ruling| (ruling, true)))
+        {
             let owned = launches
                 .iter()
                 .filter(|launch| launch.member == ruling.owner)
@@ -214,33 +225,41 @@ fn accumulate_task(
             let Some(launch) = selected else {
                 continue;
             };
-            role_rows
+            let role_stats = role_rows
                 .entry((launch.role.clone(), launch.model.clone()))
-                .or_default()
-                .oversize_diffs += 1;
-            model_rows
-                .entry(launch.model.clone())
-                .or_default()
-                .oversize_diffs += 1;
+                .or_default();
+            let model_stats = model_rows.entry(launch.model.clone()).or_default();
+            for stats in [role_stats, model_stats] {
+                if budget_raise {
+                    stats.budget_raises += 1;
+                } else {
+                    stats.oversize_diffs += 1;
+                }
+            }
         }
     }
 
     for event in events {
-        let (counts_effort, counts_nudge, counts_stale) = match event {
+        let member = match event {
             RoutingTelemetryEvent::EffortSwitch {
                 outcome: EffortSwitchOutcome::Completed,
+                member,
                 ..
-            } => (true, false, false),
-            RoutingTelemetryEvent::NudgeSent { .. } => (false, true, false),
-            RoutingTelemetryEvent::TaskStaled { .. } => (false, false, true),
+            }
+            | RoutingTelemetryEvent::NudgeSent { member, .. }
+            | RoutingTelemetryEvent::TaskStaled { member, .. } => member,
             _ => continue,
         };
+        let owned = launches
+            .iter()
+            .filter(|launch| &launch.member == member)
+            .collect::<Vec<_>>();
         let timestamp = event_timestamp(event);
-        let selected = launches
+        let selected = owned
             .iter()
             .filter(|launch| launch.timestamp <= timestamp)
             .max_by_key(|launch| launch.timestamp)
-            .or_else(|| launches.first());
+            .or_else(|| owned.iter().min_by_key(|launch| launch.timestamp));
         let Some(launch) = selected else {
             continue;
         };
@@ -248,16 +267,9 @@ fn accumulate_task(
             role_rows
                 .entry((launch.role.clone(), launch.model.clone()))
                 .or_default(),
-            counts_effort,
-            counts_nudge,
-            counts_stale,
+            event,
         );
-        increment_counts(
-            model_rows.entry(launch.model.clone()).or_default(),
-            counts_effort,
-            counts_nudge,
-            counts_stale,
-        );
+        increment_counts(model_rows.entry(launch.model.clone()).or_default(), event);
     }
 }
 
@@ -289,10 +301,23 @@ fn record_wall_time(
     }
 }
 
-fn increment_counts(stats: &mut ReportStats, effort: bool, nudge: bool, stale: bool) {
-    stats.effort_switches += usize::from(effort);
-    stats.nudges += usize::from(nudge);
-    stats.staled += usize::from(stale);
+fn increment_counts(stats: &mut ReportStats, event: &RoutingTelemetryEvent) {
+    match event {
+        RoutingTelemetryEvent::EffortSwitch {
+            outcome: EffortSwitchOutcome::Completed,
+            ..
+        } => stats.effort_switches += 1,
+        RoutingTelemetryEvent::NudgeSent {
+            source: NudgeSource::Deadline,
+            ..
+        } => stats.deadline_nudges += 1,
+        RoutingTelemetryEvent::NudgeSent {
+            source: NudgeSource::IdleMonitor,
+            ..
+        } => stats.monitor_nudges += 1,
+        RoutingTelemetryEvent::TaskStaled { .. } => stats.staled += 1,
+        _ => {}
+    }
 }
 
 fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Option<LedgerVerdict> {
@@ -318,17 +343,26 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
         .map(str::trim)
         .filter(|owner| !owner.is_empty());
     let mut oversize_rulings = Vec::new();
+    let mut budget_rulings = Vec::new();
     // The diff's producer is the task owner; `by` names the filing reviewer,
     // so a ruling on an ownerless task is dropped rather than charged to a
     // reviewer's row.
     if let Some(owner) = owner {
-        for ruling in rulings.iter().filter(|ruling| is_oversize_failure(ruling)) {
+        for ruling in rulings
+            .iter()
+            .filter(|ruling| is_oversize_failure(ruling) || is_budget_raise(ruling))
+        {
             let at = ruling
                 .get("at")
                 .and_then(serde_json::Value::as_str)
                 .and_then(|at| DateTime::parse_from_rfc3339(at).ok())
                 .map(|at| at.with_timezone(&Utc));
-            oversize_rulings.push(OversizeRuling {
+            let target = if is_budget_raise(ruling) {
+                &mut budget_rulings
+            } else {
+                &mut oversize_rulings
+            };
+            target.push(OwnerRuling {
                 owner: owner.to_string(),
                 at,
             });
@@ -338,6 +372,7 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
         accepted_eligible: task.status == TaskStatus::Completed,
         has_review_ruling: task.has_review_ruling,
         oversize_rulings,
+        budget_rulings,
     })
 }
 
@@ -356,14 +391,16 @@ fn push_row(output: &mut String, role: Option<&str>, model: &str, stats: &Report
         output.push_str(&format!("{role} | "));
     }
     output.push_str(&format!(
-        "{model} | {} | {} | {} | {} | {} | {} | {} | {} | {}\n",
+        "{model} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {}\n",
         stats.tasks.len(),
         stats.accepted.len(),
         stats.completed_unruled.len(),
         stats.oversize_diffs,
+        stats.budget_raises,
         stats.relaunches,
         stats.effort_switches,
-        stats.nudges,
+        stats.deadline_nudges,
+        stats.monitor_nudges,
         stats.staled,
         median_wall_time(&stats.wall_times)
     ));
@@ -386,6 +423,69 @@ fn median_wall_time(values: &BTreeMap<String, i64>) -> String {
 
 #[cfg(test)]
 mod tests {
+    // Regression: c9c6c49b only decoded deadline nudges and attributed actions
+    // to the latest launch of any member (Wave-1 F9b; Astra §4).
+    #[test]
+    fn wave2_monitor_nudges_are_decoded_split_and_attributed_to_the_recipient() {
+        let root = tempfile::tempdir().unwrap();
+        let teams = root.path().join("teams");
+        write_json(
+            &teams.join("routing-team/config.json"),
+            serde_json::json!({"name":"routing-team","members":[]}),
+        );
+        let path = teams.join("routing-team/state/telemetry/9.jsonl");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let records = [
+            serde_json::json!({"event":"launch_rendered","timestamp":"2026-09-03T19:40:00Z",
+                "task_id":"9","member":"judge","role":"judge","tool":"codex","model":"gpt-6-astra"}),
+            serde_json::json!({"event":"launch_rendered","timestamp":"2026-09-03T19:50:00Z",
+                "task_id":"9","member":"builder","role":"developer","tool":"codex","model":"gpt-5.6-sol"}),
+            serde_json::json!({"event":"nudge_sent","timestamp":"2026-09-03T19:57:01Z",
+                "task_id":"9","member":"judge","source":"idle_monitor"}),
+            // Records written before Wave 2 have no source and remain deadlines.
+            serde_json::json!({"event":"nudge_sent","timestamp":"2026-09-03T19:58:00Z",
+                "task_id":"9","member":"builder","deadline_minutes":20}),
+            serde_json::json!({"event":"nudge_sent","timestamp":"2026-09-03T19:59:00Z",
+                "task_id":"9","member":"unknown-seat","source":"idle_monitor"}),
+        ];
+        std::fs::write(
+            &path,
+            records
+                .iter()
+                .map(|record| format!("{record}\n"))
+                .collect::<String>(),
+        )
+        .unwrap();
+        let events = crate::coordination::stores::telemetry::read_task_telemetry(&path);
+        assert_eq!(events.len(), 5, "monitor events must survive decoding");
+        let report = render_routing_report(
+            &teams,
+            30,
+            Utc.with_ymd_and_hms(2026, 9, 4, 12, 0, 0).unwrap(),
+        )
+        .unwrap();
+        // Regression: 6a6c14a9 dropped unknown-seat nudges without disclosing
+        // that missing recipient launch telemetry suppresses report counts.
+        assert!(
+            report.contains(
+                "Events without recipient launch telemetry are omitted from both rollups."
+            ),
+            "{report}"
+        );
+        assert!(
+            report.contains("deadline_nudges | monitor_nudges"),
+            "{report}"
+        );
+        assert!(
+            report.contains("judge | gpt-6-astra | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | -"),
+            "{report}"
+        );
+        assert!(
+            report.contains("developer | gpt-5.6-sol | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | -"),
+            "{report}"
+        );
+    }
+
     use chrono::{TimeZone, Utc};
 
     use super::render_routing_report;
@@ -433,6 +533,57 @@ mod tests {
             ruled = ruled,
         );
         std::fs::write(path, lines).expect("write sidecar");
+    }
+
+    // Regression: 5ebf28b9 counted oversize rulings but hid F5 budget raises
+    // and let a budget-only ruling manufacture review acceptance.
+    #[test]
+    fn wave2_budget_raises_are_owner_attributed_and_not_reviews_or_oversize() {
+        let root = tempfile::tempdir().unwrap();
+        let teams = root.path().join("teams");
+        write_json(
+            &teams.join("routing-team/config.json"),
+            serde_json::json!({"name":"routing-team", "members":[]}),
+        );
+        for (id, owner, raises) in [("1", Some("builder"), "1"), ("2", None, "0")] {
+            write_sidecar(
+                &teams,
+                "routing-team",
+                id,
+                "heavy",
+                "gpt-6-astra",
+                "2026-09-03T10:10:00Z",
+                false,
+            );
+            write_json(
+                &root.path().join(format!("tasks/routing-team/{id}.json")),
+                serde_json::json!({"id":id,"subject":"Raise budget","status":"completed",
+                    "owner":owner,"metadata":{"rulings":[{"kind":"ruling",
+                    "field":"budget_raised","value":"400→450","note":"scope clarified",
+                    "by":"reviewer","at":"2026-09-03T10:09:00Z"}]}}),
+            );
+            let verdict = super::read_ledger_verdict(&teams, "routing-team", id).unwrap();
+            assert!(!verdict.has_review_ruling, "a raise is not a review");
+            let mut rows = std::collections::BTreeMap::new();
+            let mut models = std::collections::BTreeMap::new();
+            let events = crate::coordination::stores::telemetry::read_task_telemetry(
+                &teams.join(format!("routing-team/state/telemetry/{id}.jsonl")),
+            );
+            super::accumulate_task(&mut rows, &mut models, id, &events, Some(&verdict));
+            let mut row = String::new();
+            super::push_row(
+                &mut row,
+                Some("heavy"),
+                "gpt-6-astra",
+                rows.values().next().unwrap(),
+            );
+            assert_eq!(
+                row,
+                format!(
+                    "heavy | gpt-6-astra | 1 | 0 | 1 | 0 | {raises} | 0 | 0 | 0 | 0 | 0 | 10m 00s\n"
+                )
+            );
+        }
     }
 
     #[test]
@@ -516,12 +667,14 @@ mod tests {
         // column (this fixture records a ruling).
         assert!(!report.contains("none are recorded in this window yet"));
         assert!(report.contains(
-            "role | model | tasks_touched | accepted | completed_unruled | oversize_diffs | relaunches"
+            "role | model | tasks_touched | accepted | completed_unruled | oversize_diffs | budget_raises | relaunches"
         ));
-        assert!(report
-            .contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 2 | 0 | 0 | 0 | 0 | 10m 00s"));
-        assert!(report
-            .contains("test-developer | gpt-5.6-luna | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 5m 00s"));
+        assert!(report.contains(
+            "rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+        ));
+        assert!(report.contains(
+            "test-developer | gpt-5.6-luna | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5m 00s"
+        ));
         assert!(report.contains("gpt-5.6-sol | 1 | 1 | 0 | 2"));
         assert!(report.contains("gpt-5.6-luna | 1 | 0 | 1 | 0"));
     }
@@ -578,7 +731,8 @@ mod tests {
                 timestamp: now,
                 task_id: "task-b".to_string(),
                 member: "builder".to_string(),
-                deadline_minutes: 20,
+                source: crate::coordination::stores::telemetry::NudgeSource::Deadline,
+                deadline_minutes: Some(20),
             },
             crate::coordination::stores::telemetry::RoutingTelemetryEvent::CompletionObserved {
                 timestamp: now,
@@ -614,7 +768,7 @@ mod tests {
         let report = render_routing_report(&default_teams, 30, now + chrono::Duration::minutes(1))
             .expect("render report");
 
-        assert!(report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 0 | 0 | 1 | 0"));
+        assert!(report.contains("rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 0"));
     }
 
     // Regression: 24854270 credited an oversize ruling to its filing reviewer
@@ -695,12 +849,13 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
         assert!(report.contains(
-            "adversarial-reviewer-claude | claude-opus-4-6 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 9m 00s"
+            "adversarial-reviewer-claude | claude-opus-4-6 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 9m 00s"
         ));
-        assert!(report.contains("v3-lead-claude | fable | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 8m 00s"));
+        assert!(report
+            .contains("v3-lead-claude | fable | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 8m 00s"));
         assert!(report.contains("gpt-6-astra | 1 | 1 | 0 | 1"));
         assert!(report.contains("claude-opus-4-6 | 1 | 1 | 0 | 0"));
         assert!(report.contains("fable | 1 | 1 | 0 | 0"));
@@ -756,7 +911,7 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
     }
 
@@ -828,10 +983,10 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
         assert!(report.contains(
-            "adversarial-reviewer-claude | claude-opus-4-6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 9m 00s"
+            "adversarial-reviewer-claude | claude-opus-4-6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 9m 00s"
         ));
     }
 
@@ -905,13 +1060,92 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-5.6-sol | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-5.6-sol | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 4m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 4m 00s"
         ));
         assert!(report.contains("gpt-5.6-sol | 1 | 1 | 0 | 1"));
         assert!(report.contains("gpt-6-astra | 1 | 1 | 0 | 1"));
+    }
+
+    // Regression: 52505603 charged every oversize ruling to the owner's
+    // LATEST launch, so a mid-task relaunch under another model absorbed the
+    // earlier model's incidents — the comparison the column exists to inform.
+    #[test]
+    fn wave2_budget_rulings_attribute_to_the_launch_active_at_the_ruling_time() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let default_teams = root.path().join("personal/teams");
+        write_json(
+            &default_teams.join("routing-team/config.json"),
+            serde_json::json!({"name": "routing-team", "members": []}),
+        );
+        for (minute, model) in [(0, "gpt-5.6-sol"), (6, "gpt-6-astra")] {
+            crate::coordination::stores::telemetry::append_task_telemetry(
+                &default_teams,
+                "routing-team",
+                Some("48"),
+                &crate::coordination::stores::telemetry::RoutingTelemetryEvent::LaunchRendered {
+                    timestamp: Utc.with_ymd_and_hms(2026, 9, 3, 10, minute, 0).unwrap(),
+                    task_id: Some("48".to_string()),
+                    member: "builder".to_string(),
+                    role: "astra-heavy-implementer".to_string(),
+                    tool: "codex".to_string(),
+                    model: Some(model.to_string()),
+                    applied_effort: Some("high".to_string()),
+                    capability_tier: Some("frontier".to_string()),
+                    tier_rank: Some(0),
+                },
+            )
+            .expect("record launch");
+        }
+        crate::coordination::stores::telemetry::append_task_telemetry(
+            &default_teams,
+            "routing-team",
+            Some("48"),
+            &crate::coordination::stores::telemetry::RoutingTelemetryEvent::CompletionObserved {
+                timestamp: Utc.with_ymd_and_hms(2026, 9, 3, 10, 10, 0).unwrap(),
+                observed_at: Some(Utc.with_ymd_and_hms(2026, 9, 3, 10, 10, 0).unwrap()),
+                task_id: "48".to_string(),
+                status: "completed".to_string(),
+                has_review_ruling: true,
+            },
+        )
+        .expect("record completion");
+        write_json(
+            &root.path().join("personal/tasks/routing-team/48.json"),
+            serde_json::json!({
+                "id": "48",
+                "subject": "Relaunched under another model mid-task",
+                "description": null,
+                "activeForm": null,
+                "status": "completed",
+                "blocks": [],
+                "blockedBy": [],
+                "owner": "builder",
+                "metadata": {"rulings": [
+                    {"seq": 1, "kind": "ruling", "field": "budget_raised", "value": "200→260", "by": "reviewer", "at": "2026-09-03T10:03:00Z", "note": "budget 200 lines; actual 260"},
+                    {"seq": 2, "kind": "verdict", "value": "accepted", "by": "reviewer", "at": "2026-09-03T10:08:00Z"},
+                    {"seq": 3, "kind": "ruling", "field": "budget_raised", "value": "200→260", "by": "reviewer", "at": "2026-09-03T10:09:00Z", "note": "budget 200 lines; actual 240"}
+                ]}
+            }),
+        );
+
+        let report = render_routing_report(
+            &default_teams,
+            30,
+            Utc.with_ymd_and_hms(2026, 9, 4, 12, 0, 0).unwrap(),
+        )
+        .expect("render report");
+
+        assert!(report.contains(
+            "astra-heavy-implementer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+        ));
+        assert!(report.contains(
+            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 4m 00s"
+        ));
+        assert!(report.contains("gpt-5.6-sol | 1 | 1 | 0 | 0 | 1"));
+        assert!(report.contains("gpt-6-astra | 1 | 1 | 0 | 0 | 1"));
     }
 
     // Regression: 52505603 counted any `field: oversize_diff` ruling as an
@@ -966,7 +1200,7 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
     }
 
@@ -1021,7 +1255,8 @@ mod tests {
         )
         .expect("render report");
 
-        assert!(report
-            .contains("rust-developer | gpt-5.6-sol | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 10m 00s"));
+        assert!(report.contains(
+            "rust-developer | gpt-5.6-sol | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 10m 00s"
+        ));
     }
 }

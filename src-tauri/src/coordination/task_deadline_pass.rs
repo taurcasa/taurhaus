@@ -16,6 +16,19 @@ use crate::coordination::stores::{
 };
 use crate::coordination::task_deadline::{decide, DeadlineAction, DeadlineInput, Timestamp};
 
+// Mesh team-daemon IdleMonitor owns statusState/statusSetAt expiry.
+// Keep this compatibility default synchronized with Mesh; deployments can
+// override it via TAURHAUS_MESH_MEMBER_STATUS_TTL_SECONDS (see data-architecture.md).
+const MESH_IDLE_MONITOR_DEFAULT_STATUS_TTL: Duration = Duration::minutes(30);
+
+fn member_status_ttl(override_seconds: Option<&str>) -> Duration {
+    override_seconds
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|seconds| *seconds > 0)
+        .and_then(Duration::try_seconds)
+        .unwrap_or(MESH_IDLE_MONITOR_DEFAULT_STATUS_TTL)
+}
+
 const ACTIVITY_FRESHNESS: Duration = Duration::seconds(120);
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -37,7 +50,44 @@ pub(crate) fn apply_task_deadlines(
         .map(|member| member.name.clone());
     let mut outcome = DeadlinePassOutcome::default();
 
+    let ttl_override = std::env::var("TAURHAUS_MESH_MEMBER_STATUS_TTL_SECONDS").ok();
+    let status_ttl = member_status_ttl(ttl_override.as_deref());
+    let mut waiting_members = 0u32;
     for member in &config.members {
+        // Retry roster-boot attribution even if the app's task projection has
+        // not changed since the render arrived (F9c).
+        if let Ok(Some(snapshot)) =
+            OperationalContextSnapshotStore::load(&orchestrator.teams_dir, team_name, &member.name)
+        {
+            if !snapshot.task.id.trim().is_empty() {
+                crate::coordination::stores::telemetry::attribute_latest_launch_to_task(
+                    &orchestrator.teams_dir,
+                    team_name,
+                    &snapshot.task.id,
+                    &member.name,
+                );
+            }
+        }
+        let blocked_is_live = member
+            .extra
+            .get("statusState")
+            .and_then(serde_json::Value::as_str)
+            == Some("blocked")
+            && member
+                .extra
+                .get("statusSetAt")
+                .and_then(serde_json::Value::as_str)
+                .and_then(parse_timestamp)
+                .is_some_and(|set_at| {
+                    let age = now - set_at;
+                    age >= Duration::zero() && age < status_ttl
+                });
+        if blocked_is_live
+            || crate::coordination::stores::mesh_task::awaiting_go(member.extra.get("metadata"))
+        {
+            waiting_members += 1;
+            continue;
+        }
         let result = apply_member_deadline(
             orchestrator,
             team_name,
@@ -52,14 +102,25 @@ pub(crate) fn apply_task_deadlines(
         }
     }
 
+    if waiting_members > 0 {
+        // One debug summary per pass, rather than one record per waiting seat.
+        taurhaus_lib::logging::emit_global(
+            "debug",
+            "coordination",
+            "deadline.wait.skipped",
+            Some("Deadline pass respected declared member waits".into()),
+            serde_json::Map::from_iter([
+                ("team".into(), serde_json::json!(team_name)),
+                ("waiting_members".into(), serde_json::json!(waiting_members)),
+            ]),
+        );
+    }
     Ok(outcome)
 }
 
-// Cost bound stated: this re-parses the team's task files each pass, but the
-// completion writer dedupes per (status, ruling) under flock and only appends
-// to sidecars telemetry already opened, so passes after the first observation
-// are read-only. A last-pass mtime skip was considered and rejected as state
-// for negligible gain at team-sized task counts.
+// Each pass scans task history and checks terminal sidecars under flock.
+// Dedupe bounds appended observations, not read/lock work; a sweep cursor
+// would need to preserve retries and later rulings on historical tasks.
 fn observe_terminal_tasks(teams_dir: &Path, team_name: &str, now: DateTime<Utc>) {
     let Some(tasks_dir) =
         taurhaus_lib::task_scanner::claude_index::ClaudeSourceIndex::team_tasks_dir(
@@ -399,6 +460,52 @@ mod tests {
         OperationalAssignmentFooterSnapshot, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
         OperationalWorkingSetSnapshot,
     };
+
+    // Regression: 51923397 copied Mesh IdleMonitor's expiry with no way to
+    // follow a deployment whose mesh-owned TTL differs from the default.
+    #[test]
+    fn wave2_review_mesh_status_ttl_can_follow_the_monitor_policy() {
+        assert_eq!(member_status_ttl(Some("3600")), Duration::hours(1));
+        for value in [
+            None,
+            Some("bad"),
+            Some("0"),
+            Some("-1"),
+            Some("9223372036854775807"),
+        ] {
+            assert_eq!(member_status_ttl(value), Duration::minutes(30));
+        }
+    }
+
+    // Regression: c9c6c49b required a pre-existing launch sidecar, so F9c
+    // terminal tasks missed between daemon snapshots never got an observation.
+    #[test]
+    fn wave2_terminal_observer_creates_missing_sidecars_once() {
+        let root = TempDir::new().unwrap();
+        let teams = root.path().join("teams");
+        let tasks = root.path().join("tasks/completion-team");
+        std::fs::create_dir_all(&tasks).unwrap();
+        for (id, status) in [("3", "completed"), ("4", "stale"), ("5", "pending")] {
+            std::fs::write(
+                tasks.join(format!("{id}.json")),
+                serde_json::json!({"id":id,"subject":"Observed task","status":status,
+                    "stateChangedAt":"2026-09-03T10:10:00Z"})
+                .to_string(),
+            )
+            .unwrap();
+        }
+        super::observe_terminal_tasks(&teams, "completion-team", Utc::now());
+        super::observe_terminal_tasks(&teams, "completion-team", Utc::now());
+        for id in ["3", "4"] {
+            let events = crate::coordination::stores::telemetry::read_task_telemetry(
+                &teams.join(format!("completion-team/state/telemetry/{id}.jsonl")),
+            );
+            assert_eq!(events.len(), 1, "terminal task {id}");
+        }
+        assert!(!teams
+            .join("completion-team/state/telemetry/5.jsonl")
+            .exists());
+    }
 
     #[test]
     fn deadline_events_carry_the_bounded_action_context() {
