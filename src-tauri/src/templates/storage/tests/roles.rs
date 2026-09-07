@@ -239,7 +239,7 @@ fn bundled_roles_use_canonical_model_and_reasoning_effort() {
         }
     }
 
-    assert_eq!(high_effort_roles.len(), 15);
+    assert_eq!(high_effort_roles.len(), 16);
     assert!(high_effort_roles
         .iter()
         .any(|role| role == "v3-architect-codex"));
