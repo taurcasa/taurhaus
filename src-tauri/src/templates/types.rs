@@ -1276,6 +1276,7 @@ mod tests {
             "adversarial-reviewer-claude",
             "antigravity-orchestrator",
             "astra-architect",
+            "astra-asset-generator",
             "astra-crossfile-reviewer",
             "astra-heavy-implementer",
             "astra-security-auditor",
@@ -1535,7 +1536,7 @@ mod tests {
     }
 
     #[test]
-    fn wave2_preset_has_eight_standing_seats_and_no_overflow_seat() {
+    fn wave2_preset_has_nine_standing_seats_and_no_overflow_seat() {
         use sha2::{Digest, Sha256};
         let old_product = fs::read(templates_dir().join("presets/product-build.yaml")).unwrap();
         assert_eq!(
@@ -1560,6 +1561,7 @@ mod tests {
                 ("fable-altitude-reviewer", 1),
                 ("claude-design-lead", 1),
                 ("frontend-design-skill-developer", 1),
+                ("astra-asset-generator", 1),
                 ("astra-heavy-implementer", 2)
             ]
         );
@@ -2313,6 +2315,7 @@ mod tests {
             "fable-altitude-reviewer",
             "product-build-w2",
             "astra-architect",
+            "astra-asset-generator",
             "astra-crossfile-reviewer",
             "astra-heavy-implementer",
             "astra-security-auditor",

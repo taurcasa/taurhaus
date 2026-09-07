@@ -207,7 +207,7 @@ fn bundled_roles_use_canonical_model_and_reasoning_effort() {
         .collect::<Vec<_>>();
     paths.sort();
 
-    assert_eq!(paths.len(), 23, "bundled role count changed");
+    assert_eq!(paths.len(), 24, "bundled role count changed");
 
     let mut high_effort_roles = Vec::new();
     for path in paths {
@@ -239,7 +239,7 @@ fn bundled_roles_use_canonical_model_and_reasoning_effort() {
         }
     }
 
-    assert_eq!(high_effort_roles.len(), 17);
+    assert_eq!(high_effort_roles.len(), 18);
     assert!(high_effort_roles
         .iter()
         .any(|role| role == "v3-architect-codex"));
@@ -609,6 +609,7 @@ fn frontier_catalog_reconciles_revision_four_roles_and_seeds_new_roles() {
     }
     for role_id in [
         "astra-architect",
+        "astra-asset-generator",
         "astra-crossfile-reviewer",
         "astra-heavy-implementer",
         "astra-security-auditor",
@@ -675,6 +676,7 @@ fn previous_release_builtins_reconcile_before_catalog_reads_and_export() {
         "adversarial-reviewer-claude",
         "antigravity-orchestrator",
         "astra-architect",
+        "astra-asset-generator",
         "astra-crossfile-reviewer",
         "astra-heavy-implementer",
         "astra-security-auditor",
@@ -840,6 +842,7 @@ fn v0_8_3_seeded_presets_reconcile_to_the_canonical_catalog() {
             "adversarial-reviewer-claude",
             "antigravity-orchestrator",
             "astra-architect",
+            "astra-asset-generator",
             "astra-crossfile-reviewer",
             "astra-heavy-implementer",
             "astra-security-auditor",
