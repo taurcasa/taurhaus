@@ -336,7 +336,7 @@ mod tests {
 
         fn run(&self, args: &[&str]) -> String {
             let output = scratch_tmux_command()
-                .unwrap()
+                .expect("scratch tmux override must be installed")
                 .args(args)
                 .output()
                 .unwrap_or_else(|err| {
@@ -354,7 +354,10 @@ mod tests {
     impl Drop for ScratchTmux {
         fn drop(&mut self) {
             // The private socket root is still installed, including during unwinding.
-            let _ = scratch_tmux_command().unwrap().arg("kill-server").output();
+            let _ = scratch_tmux_command()
+                .expect("scratch tmux override must be installed")
+                .arg("kill-server")
+                .output();
             TEST_TMUX_ROOT.with(|root| *root.borrow_mut() = None);
         }
     }

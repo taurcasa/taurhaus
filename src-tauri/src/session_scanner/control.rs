@@ -880,9 +880,13 @@ mod tests {
         }
 
         fn run(&self, args: &[&str]) -> String {
-            let output = tmux_command().args(args).output().unwrap_or_else(|err| {
-                panic!("Scratch tmux tests require tmux installed on PATH: {err}")
-            });
+            let output = scratch_tmux_command()
+                .expect("scratch tmux override must be installed")
+                .args(args)
+                .output()
+                .unwrap_or_else(|err| {
+                    panic!("Scratch tmux tests require tmux installed on PATH: {err}")
+                });
             assert!(
                 output.status.success(),
                 "{args:?}: {}",
@@ -896,8 +900,37 @@ mod tests {
     impl Drop for ScratchTmux {
         fn drop(&mut self) {
             // The private socket root is still installed, including during unwinding.
-            let _ = tmux_command().arg("kill-server").output();
+            let _ = scratch_tmux_command()
+                .expect("scratch tmux override must be installed")
+                .arg("kill-server")
+                .output();
             TEST_TMUX_ROOT.with(|root| *root.borrow_mut() = None);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn scratch_fixture_commands_never_use_production_fallback() {
+        // Regression: 0a0005a9 routed fixture run/drop through tmux_command,
+        // allowing a missing override to reach the operator's server (even kill-server).
+        // Inspect this boundary without executing that unsafe fallback to prove red.
+        let source = include_str!("control.rs");
+        for implementation in ["impl ScratchTmux {", "impl Drop for ScratchTmux {"] {
+            let body = source
+                .split_once(implementation)
+                .unwrap()
+                .1
+                .split("\n    }")
+                .next()
+                .unwrap();
+            assert!(
+                body.contains("scratch_tmux_command()"),
+                "{implementation} must require the scratch override"
+            );
+            assert!(
+                !body.contains("= tmux_command()"),
+                "{implementation} must not fall back to the operator's tmux server"
+            );
         }
     }
 
