@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scope</title>
+<style>
+  :root{
+    --frame:#0b2b29; --panel:#10201f; --panel-2:#152826; --ink:#d7e2e0; --ink-dim:#7e9491;
+    --paper-line:#2a403d; --paper-live:#1a312e; --manila:#e8d9b0; --manila-ink:#3d3416;
+    --green:#4ade80; --amber:#f5c15c; --red:#e5484d; --teal:#2dd4bf; --chipbg:#0e1c1b;
+  }
+  .light{
+    --frame:#0e3532; --panel:#f4f3ee; --panel-2:#eceae2; --ink:#20302e; --ink-dim:#6b7d7a;
+    --paper-line:#d8d4c6; --paper-live:#fffdf6; --manila:#e3cf97; --chipbg:#e7e4da;
+  }
+  *{box-sizing:border-box; margin:0}
+  html,body{height:100%}
+  body{
+    font-family:Geist,"Geist Sans",ui-sans-serif,system-ui,sans-serif;
+    background:var(--frame); color:var(--ink); padding:14px; font-size:13px;
+  }
+  .window{max-width:1180px; margin:0 auto}
+  .titlebar{display:flex; align-items:center; gap:10px; padding:4px 4px 10px}
+  .titlebar .app{font-weight:600; letter-spacing:.2px; font-size:13px; color:#cfe0dd}
+  .light .titlebar .app{color:#e9f2f0}
+  .tabs{display:flex; gap:2px; margin-left:14px}
+  .tab{padding:7px 14px; border-radius:9px 9px 0 0; color:#9db3b0; font-size:12.5px}
+  .tab.on{background:var(--panel); color:var(--ink); font-weight:600}
+  .spacer{flex:1}
+  .switch{display:flex; gap:6px; align-items:center}
+  .vbtn{background:transparent; border:1px solid #35504c; color:#9db3b0; border-radius:7px;
+    padding:5px 11px; font:inherit; font-size:12px; cursor:pointer}
+  .vbtn.on{background:var(--panel); color:var(--ink); border-color:transparent; font-weight:600}
+  .vbtn:focus-visible,.walk-toggle:focus-visible,.theme:focus-visible{outline:2px solid var(--teal); outline-offset:2px}
+  .theme{background:transparent;border:none;color:#9db3b0;font:inherit;font-size:12px;cursor:pointer;padding:5px 8px}
+
+  .panel{background:var(--panel); border-radius:0 12px 12px 12px; padding:18px 20px 20px}
+
+  /* ── the walk: chips at rest, prose on demand ─────────────── */
+  .walk{display:flex; align-items:center; gap:8px; margin-bottom:16px; min-height:30px}
+  .wchip{display:inline-flex; align-items:center; gap:6px; background:var(--chipbg);
+    border-radius:15px; padding:4px 11px 4px 8px; font-size:12px; color:var(--ink)}
+  .wchip .dot{width:7px;height:7px;border-radius:50%}
+  .since{color:var(--ink-dim); font-size:12px}
+  .walk-toggle{margin-left:auto; background:none; border:none; color:var(--teal); font:inherit;
+    font-size:12px; cursor:pointer; padding:4px 6px}
+  .walklist{display:none; margin:-6px 0 16px; padding:10px 14px; background:var(--panel-2);
+    border-radius:10px; max-width:62ch}
+  .walklist.open{display:block}
+  .walklist li{list-style:none; padding:5px 0; display:flex; gap:9px; align-items:baseline; font-size:12.5px}
+  .walklist .dot{width:7px;height:7px;border-radius:50%;flex:none;transform:translateY(-1px)}
+  .walklist .who{color:var(--ink-dim); margin-left:auto; font-size:11.5px; white-space:nowrap}
+  .caughtup{margin-top:6px; text-align:right}
+  .caughtup button{background:none;border:1px solid #35504c;border-radius:7px;color:var(--ink-dim);
+    font:inherit;font-size:11.5px;padding:3px 10px;cursor:pointer}
+
+  /* ── the map ──────────────────────────────────────────────── */
+  .map{display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px}
+  .sheet{position:relative; border-radius:10px; padding:38px 14px 12px; min-height:118px;
+    border:1px dashed var(--paper-line); background:transparent; transition:none}
+  .sheet.live{border:1px solid transparent; background:var(--paper-live);
+    box-shadow:0 3px 14px rgba(0,0,0,.28)}
+  .light .sheet.live{box-shadow:0 2px 10px rgba(40,40,20,.14)}
+  .sheet.changed{box-shadow:0 0 0 1.5px var(--teal), 0 3px 14px rgba(0,0,0,.28)}
+  .sheet h2{font-size:14px; font-weight:600; position:absolute; top:12px; left:14px; right:44px}
+  .sheet .sid{color:var(--ink-dim); font-weight:400; font-size:11px; margin-right:5px}
+  .sheet.quiet h2{color:var(--ink-dim); font-weight:500}
+
+  /* filed: the manila folder tab — the one loud element */
+  .sheet.filed{border:1px solid transparent; background:
+    color-mix(in oklab, var(--manila) 14%, var(--panel))}
+  .filedtab{position:absolute; top:-9px; left:12px; background:var(--manila); color:var(--manila-ink);
+    font-size:10.5px; font-weight:600; padding:2px 10px 1px; border-radius:6px 6px 0 0}
+  .sheet.filed h2{color:var(--ink)}
+
+  /* dispute: a folded red corner */
+  .fold{position:absolute; top:0; right:0; width:0; height:0; border-radius:0 10px 0 0;
+    border-top:20px solid var(--red); border-left:20px solid transparent}
+  .fold::after{content:""; }
+
+  /* chips */
+  .crew{display:flex; flex-wrap:wrap; gap:7px; margin-top:4px}
+  .chip{position:relative; width:26px; height:26px; border-radius:50%; background:var(--chipbg);
+    display:grid; place-items:center; font-size:10px; font-weight:600; color:var(--ink)}
+  .chip::after{content:""; position:absolute; inset:-2.5px; border-radius:50%;
+    border:2px solid transparent}
+  .chip.working::after{border-color:var(--green)}
+  .chip.idle::after{border-color:color-mix(in oklab, var(--amber) 65%, transparent)}
+  .chip.off{opacity:.42}
+  .chip .wait{position:absolute; right:-4px; bottom:-4px; width:13px; height:13px; border-radius:50%;
+    background:var(--amber); color:#3a2b05; font-size:8.5px; display:grid; place-items:center}
+  .gpt{box-shadow:inset 0 0 0 1.5px #7c8fd6}
+  .cl{box-shadow:inset 0 0 0 1.5px #c98f66}
+
+  .frac{position:absolute; right:12px; bottom:10px; font-size:11px; color:var(--ink-dim);
+    font-variant-numeric:tabular-nums}
+  .lastline{margin-top:8px; font-size:11.5px; color:var(--ink-dim); max-width:34ch}
+
+  /* bottom rail: unplaced + roster */
+  .rail{display:flex; align-items:center; gap:14px; margin-top:18px; padding-top:12px;
+    border-top:1px solid var(--paper-line)}
+  .tray{display:inline-flex; gap:7px; align-items:center; color:var(--ink-dim); font-size:12px}
+  .tray b{color:var(--ink); font-weight:600}
+  .roster{margin-left:auto; display:flex; gap:7px}
+
+  /* variant visibility: rules only ever HIDE, so natural display values survive */
+  .vA [data-v]:not([data-v~="A"]),
+  .vB [data-v]:not([data-v~="B"]),
+  .vC [data-v]:not([data-v~="C"]){display:none}
+  .vA .frac,.vA .since,.vA .walk-toggle{display:none}
+  .vA .sheet{min-height:132px}
+  .vC .walklist{display:block}
+  .vC .lastline{display:block}
+  .vA .lastline,.vB .lastline{display:none}
+  @media (prefers-reduced-motion: no-preference){
+    .sheet.changed{transition:box-shadow .5s ease}
+  }
+</style>
+</head>
+<body class="vB">
+<div class="window">
+  <div class="titlebar">
+    <span class="app">taurhaus</span>
+    <nav class="tabs">
+      <span class="tab">Overview</span><span class="tab">Tasks</span>
+      <span class="tab on">Scope</span><span class="tab">Files</span><span class="tab">Git</span>
+    </nav>
+    <span class="spacer"></span>
+    <div class="switch" role="group" aria-label="density variant">
+      <button class="vbtn" data-set="vA">A · Glance</button>
+      <button class="vbtn on" data-set="vB">B · Working</button>
+      <button class="vbtn" data-set="vC">C · Detail</button>
+      <button class="theme" id="th">Light</button>
+    </div>
+  </div>
+
+  <main class="panel">
+    <!-- the walk, collapsed to chips -->
+    <div class="walk">
+      <span class="wchip"><span class="dot" style="background:var(--manila)"></span>2 filed</span>
+      <span class="wchip"><span class="dot" style="background:var(--red)"></span>1 contested</span>
+      <span class="wchip" data-v="B C"><span class="dot" style="background:var(--amber)"></span>1 waiting on you</span>
+      <span class="since" data-v="B C">since 13:05</span>
+      <button class="walk-toggle" id="wt">show what happened</button>
+    </div>
+    <ul class="walklist" id="wl">
+      <li><span class="dot" style="background:var(--red)"></span>Run work: reviewer rejected the API packet — oversize <span class="who">14:12 · sol</span></li>
+      <li><span class="dot" style="background:var(--manila)"></span>Enter a workspace filed <span class="who">13:47 · nia</span></li>
+      <li><span class="dot" style="background:var(--manila)"></span>Shared foundation filed <span class="who">13:12 · nia</span></li>
+      <li><span class="dot" style="background:var(--amber)"></span>Recover interrupted work: no movement for 52 minutes <span class="who">ivo</span></li>
+      <li class="since">3 quieter events</li>
+      <div class="caughtup"><button>Mark caught up</button></div>
+    </ul>
+
+    <!-- the map -->
+    <section class="map">
+      <div class="sheet filed">
+        <span class="filedtab">filed · nia · 13:47</span>
+        <h2><span class="sid">S1</span>Enter a workspace</h2>
+        <div class="crew"><span class="chip cl off">mi</span></div>
+        <span class="frac">6/6</span>
+        <p class="lastline">Filed after acceptance, 38/40.</p>
+      </div>
+
+      <div class="sheet live changed">
+        <span class="fold" title="contested"></span>
+        <h2><span class="sid">S2</span>Run work</h2>
+        <div class="crew">
+          <span class="chip gpt working">so</span>
+          <span class="chip gpt working">te</span>
+          <span class="chip cl idle">bo</span>
+        </div>
+        <span class="frac">4/9</span>
+        <p class="lastline">Reviewer rejected the API packet, 14:12.</p>
+      </div>
+
+      <div class="sheet live">
+        <h2><span class="sid">S3</span>Inspect results</h2>
+        <div class="crew">
+          <span class="chip cl working">ay</span>
+          <span class="chip gpt idle">de<span class="wait" title="awaiting go">◷</span></span>
+        </div>
+        <span class="frac">2/5</span>
+        <p class="lastline">Result browser in progress.</p>
+      </div>
+
+      <div class="sheet live">
+        <h2><span class="sid">S4</span>Install and start</h2>
+        <div class="crew"><span class="chip gpt working">iv</span></div>
+        <span class="frac">1/3</span>
+        <p class="lastline">Packaging under way.</p>
+      </div>
+
+      <div class="sheet quiet">
+        <h2><span class="sid">S5</span>Recover interrupted work</h2>
+        <div class="crew"><span class="chip gpt idle">iv<span class="wait" title="awaiting dependency">◷</span></span></div>
+        <span class="frac">0/2</span>
+        <p class="lastline">Waiting on S2's runner protocol.</p>
+      </div>
+
+      <div class="sheet filed">
+        <span class="filedtab">filed · nia · 13:12</span>
+        <h2><span class="sid">S6</span>Shared foundation</h2>
+        <div class="crew"></div>
+        <span class="frac">3/3</span>
+        <p class="lastline">Architecture accepted and frozen.</p>
+      </div>
+
+      <div class="sheet quiet">
+        <h2><span class="sid">S7</span>App shell</h2>
+        <div class="crew"></div>
+        <span class="frac">0/4</span>
+        <p class="lastline">Not started.</p>
+      </div>
+    </section>
+
+    <!-- bottom rail -->
+    <div class="rail">
+      <span class="tray"><b>3</b> tasks without a place</span>
+      <div class="roster" data-v="B C">
+        <span class="chip cl working" title="lead">le</span>
+        <span class="chip gpt working">so</span>
+        <span class="chip gpt working">te</span>
+        <span class="chip cl working">ay</span>
+        <span class="chip gpt working">iv</span>
+        <span class="chip cl idle">bo</span>
+        <span class="chip gpt idle">de<span class="wait">◷</span></span>
+        <span class="chip cl off" title="offline">mi</span>
+        <span class="chip cl off">ni</span>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+  const body=document.body;
+  document.querySelectorAll('.vbtn').forEach(b=>b.addEventListener('click',()=>{
+    body.classList.remove('vA','vB','vC'); body.classList.add(b.dataset.set);
+    document.querySelectorAll('.vbtn').forEach(x=>x.classList.toggle('on',x===b));
+    if(b.dataset.set==='vC') wl.classList.add('open'); else wl.classList.remove('open');
+  }));
+  wt.addEventListener('click',()=>wl.classList.toggle('open'));
+  th.addEventListener('click',()=>{body.classList.toggle('light');
+    th.textContent=body.classList.contains('light')?'Dark':'Light';});
+</script>
+</body>
+</html>
