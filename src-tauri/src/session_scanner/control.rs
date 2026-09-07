@@ -30,7 +30,24 @@ fn wsl_exec_command(program: &str) -> Command {
     cmd
 }
 
+#[cfg(all(test, target_os = "linux"))]
+thread_local! {
+    static TEST_TMUX_ROOT: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
 fn tmux_command() -> Command {
+    #[cfg(all(test, target_os = "linux"))]
+    if let Some(root) = TEST_TMUX_ROOT.with(|root| root.borrow().clone()) {
+        let mut cmd = Command::new("/usr/bin/tmux");
+        cmd.env_clear()
+            .env("HOME", &root)
+            .env("TMUX_TMPDIR", &root)
+            .env("PATH", "/usr/bin:/bin")
+            .env("SHELL", "/bin/sh")
+            .args(["-L", "team-pane-regression", "-f", "/dev/null"]);
+        return cmd;
+    }
+
     #[cfg(target_os = "windows")]
     let mut cmd = { wsl_exec_command("tmux") };
 
@@ -134,7 +151,11 @@ pub fn launch_command_in_tmux_with_layout(
         }
         TmuxLayoutAllocation::SplitExisting { window_index, .. } => {
             let target_pane = resolve_split_target_pane_for_window(&tmux_session, &window_index)?;
-            split_pane(&target_pane, &shell_cmd)?
+            if policy == TmuxLayoutPolicy::PerProject {
+                split_tiled_pane(&target_pane, &shell_cmd)?
+            } else {
+                split_pane(&target_pane, &shell_cmd)?
+            }
         }
     };
     crate::session_scanner::notify_tmux_changed();
@@ -157,7 +178,7 @@ pub fn split_command_in_tmux_target_pane(
     }
 
     let shell_cmd = build_tmux_shell_command(project_path, command);
-    let pane_id = split_pane(target_pane, &shell_cmd)?;
+    let pane_id = split_tiled_pane(target_pane, &shell_cmd)?;
     crate::session_scanner::notify_tmux_changed();
     Ok(pane_id)
 }
@@ -265,6 +286,32 @@ fn create_new_window_pane(
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Rebalance project-grouped panes after each insertion so the next split of
+/// the same anchor has room. Window size alone cannot prevent repeated halving.
+fn split_tiled_pane(target_pane: &str, shell_cmd: &str) -> Result<String, String> {
+    let pane_id = split_pane(target_pane, shell_cmd)?;
+    let layout = tmux_command()
+        .args(["select-layout", "-t", &pane_id, "tiled"])
+        .output()
+        .map_err(|e| format!("Failed to tile tmux window: {e}"))
+        .and_then(|output| {
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "tmux select-layout failed: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ))
+            }
+        });
+    if let Err(err) = layout {
+        // The caller cannot record or clean up a pane whose launch returns Err.
+        let _ = tmux_command().args(["kill-pane", "-t", &pane_id]).output();
+        return Err(err);
+    }
+    Ok(pane_id)
 }
 
 /// Split an existing pane horizontally and run a command in the new pane.
@@ -782,6 +829,104 @@ mod tests {
     use super::*;
 
     use crate::session_scanner::process::ProcessInfo;
+
+    #[cfg(target_os = "linux")]
+    struct ScratchTmux(tempfile::TempDir);
+
+    #[cfg(target_os = "linux")]
+    impl ScratchTmux {
+        fn new(width: &str, height: &str) -> Self {
+            let scratch = Self(tempfile::tempdir().unwrap());
+            TEST_TMUX_ROOT.with(|root| *root.borrow_mut() = Some(scratch.0.path().to_path_buf()));
+            scratch.run(&[
+                "new-session",
+                "-d",
+                "-s",
+                TMUX_SESSION_NAME,
+                "-x",
+                width,
+                "-y",
+                height,
+                "-n",
+                "team",
+                "/bin/sh",
+            ]);
+            scratch
+        }
+
+        fn run(&self, args: &[&str]) -> String {
+            let output = tmux_command().args(args).output().unwrap();
+            assert!(
+                output.status.success(),
+                "{args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    impl Drop for ScratchTmux {
+        fn drop(&mut self) {
+            // The private socket root is still installed, including during unwinding.
+            let _ = tmux_command().arg("kill-server").output();
+            TEST_TMUX_ROOT.with(|root| *root.borrow_mut() = None);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn nine_same_project_members_share_one_window() {
+        // Regression: a53ad3115 pinned every team split to the original project
+        // anchor without rebalancing; 847720c8 exposed it with the ninth seat.
+        // Even 240x60 exhausts the repeatedly halved anchor before nine panes.
+        for (width, height) in [("240", "60"), ("252", "62"), ("80", "24")] {
+            let scratch = ScratchTmux::new(width, height);
+            let project = scratch.0.path().to_str().unwrap();
+            let anchor =
+                scratch.run(&["display-message", "-p", "-t", "taurhaus:team", "#{pane_id}"]);
+            let window = scratch.run(&["display-message", "-p", "-t", &anchor, "#{window_id}"]);
+            let mut members = std::collections::HashSet::from([anchor.clone()]);
+            for member in 1..9 {
+                let pane = split_command_in_tmux_target_pane(project, &anchor, "exec /bin/sh")
+                    .unwrap_or_else(|err| {
+                        panic!("member {} at {width}x{height}: {err}", member + 1)
+                    });
+                assert!(members.insert(pane.clone()));
+                assert_eq!(
+                    scratch.run(&["display-message", "-p", "-t", &pane, "#{window_id}"]),
+                    window
+                );
+            }
+            assert_eq!(
+                scratch.run(&[
+                    "list-windows",
+                    "-t",
+                    TMUX_SESSION_NAME,
+                    "-F",
+                    "#{window_panes}"
+                ]),
+                "9"
+            );
+            let dimensions = scratch.run(&[
+                "list-panes",
+                "-t",
+                &window,
+                "-F",
+                "#{pane_width} #{pane_height}",
+            ]);
+            for dimension in dimensions.lines() {
+                let values: Vec<u32> = dimension
+                    .split_whitespace()
+                    .map(|v| v.parse().unwrap())
+                    .collect();
+                assert!(
+                    values[0] >= 10 && values[1] >= 3,
+                    "unusable pane: {dimension}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn agy_stop_waits_for_presence_lock_release() {
