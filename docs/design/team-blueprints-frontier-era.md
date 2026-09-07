@@ -173,6 +173,30 @@ Shipping bundled role changes pays the `BUILTIN_CATALOG_REVISION` cost
    Claude-family review); the bet is pre-registered in the wave-2 box
    score — Astra holds ~0.5M compute tokens per accepted task at A-grade
    quality, or this decision is revisited.
+8. **Wave-2 composition (operator decisions, 2026-09-07, post-retro).**
+   (a) The frontend-design-skill lane is restored: a Fable seat with the
+   frontend-design skill owns UI implementation (the skill is Claude-only;
+   wave 1's generalist-built UI needed fix rounds to reach 45/50) — the
+   one deliberate exception to Decision 7's full-Astra implementation.
+   (b) Review runs TWO scoped lanes, superseding Decision 4: Fable
+   structural (arch-bearing depth + per-slice acceptance semantics on
+   GPT-authored code) and the Astra reviewer (Claude-authored code,
+   evidence audits) — Opus is unstaffed this wave. The product lens's
+   signature duties (acceptance semantics, "can this check fail?",
+   per-root-zeros reporting) move into both reviewer role texts
+   explicitly; box-score tripwire: a shipped defect of the class only the
+   product lens caught in wave 1 returns the Opus seat. Capacity note:
+   the freed Claude window approximately funds the UI lane.
+   (c) Security folds into the architect: post-freeze portfolio is GPT
+   reviewer + security owner, including ownership of the privacy
+   instrument contract (frozen before certification). Guard: a security
+   finding implicating the architect's own architecture decision
+   escalates to the lead and Fable structural, never self-ruled.
+   Resulting roster: lead (Fable) · architect+security (Astra) · Fable
+   structural · design lead (Fable) · frontend-design-skill-dev (Fable) ·
+   Astra heavy ×1 (+1 conditional on a third parallel slice) · Sol
+   overflow. One round per review lane by default; a second requires the
+   lead's recorded "worth another round?" ruling.
 
 Execution order: Astra calibration lane concludes → operator tier sign-off →
 role-template lane (Astra Architect / Cross-File Reviewer / leashed Heavy
