@@ -102,8 +102,10 @@ warning. The event vocabulary is:
   `RenderedLaunch`, plus the model catalog's capability tier and rank.
 - `effort_switch`: the existing assignment-effort outcome, attempt number, and
   previous/requested effort.
-- `nudge_sent` and `task_staled`: the already-committed deadline action and its
-  deadline fields.
+- `nudge_sent`: the committed nudge, its recipient (`member`) and `task_id`,
+  with `source: deadline` or `source: idle_monitor`. Deadline nudges also carry
+  `deadline_minutes`; monitor nudges omit it. Older records without `source`
+  decode as deadline nudges. `task_staled` retains its deadline fields.
 - `completion_observed`: a terminal status seen by the daemon task scanner and
   whether that parsed ledger record carried a review ruling. Its `timestamp`
   is the task's state-change time (falling back to task update time, then scan
@@ -127,7 +129,8 @@ inventing a requested model or requiring another relaunch.
 registered team roots, tolerantly reads the sidecars, and rejoins every task to
 the current mesh ledger record. It prints per `(role, model)` rows and a
 per-model rollup with tasks touched, accepted, completed-but-unruled,
-oversize-diff incidents, budget raises, relaunches, completed effort switches, nudges, stale
+oversize-diff incidents, budget raises, relaunches, completed effort switches,
+`deadline_nudges`, `monitor_nudges`, stale
 actions, and median elapsed
 time from first render to the terminal state-change timestamp. Acceptance follows Amendment
 4 exactly: only ledger status `completed` with a sequenced review ruling counts,
@@ -146,6 +149,15 @@ whose ledger records carry none reports `accepted` = 0 with completions under
 `completed_unruled`. A task sidecar holding events but no `launch_rendered`
 (possible for pre-telemetry teams) is omitted from the per-role table — a
 thin first-wave report is expected, not a bug.
+
+The two nudge columns keep numeric counts without a compound cell format
+(Wave-1 F9b; Astra §4). Actions use the recipient's launch active at the event
+time; an unknown recipient is never charged to another member's newer launch.
+The reader accepts monitor observations, but the Mesh-owned idle monitor must
+write them at delivery time. This reader change does not install a monitor or
+recover historical nudges by guessing from inbox prose. The monitor's producer,
+declared-wait suppression and two-failed-nudge stop rule remain Mesh integration
+requirements under the [existing ownership split](orchestration-practical-auto-idle-and-communication.md#mesh-vs-taurhaus-responsibility-split).
 
 ### 3. External Tool Data Taurhaus Observes But Does Not Own
 

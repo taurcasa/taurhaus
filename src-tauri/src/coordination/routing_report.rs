@@ -6,7 +6,7 @@ use chrono::{DateTime, Duration, Utc};
 
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::telemetry::{
-    read_task_telemetry, EffortSwitchOutcome, RoutingTelemetryEvent,
+    read_task_telemetry, EffortSwitchOutcome, NudgeSource, RoutingTelemetryEvent,
 };
 use crate::coordination::stores::TeamRootRegistry;
 use taurhaus_lib::task_scanner::claude::{
@@ -25,6 +25,7 @@ struct ReportStats {
     relaunches: usize,
     effort_switches: usize,
     nudges: usize,
+    monitor_nudges: usize,
     staled: usize,
     wall_times: BTreeMap<String, i64>,
 }
@@ -117,12 +118,12 @@ pub fn render_routing_report(
     }
     output.push_str(
         "Role/model\n\
-         role | model | tasks_touched | accepted | completed_unruled | oversize_diffs | budget_raises | relaunches | effort_switches | nudges | staled | median_wall_time\n",
+         role | model | tasks_touched | accepted | completed_unruled | oversize_diffs | budget_raises | relaunches | effort_switches | deadline_nudges | monitor_nudges | staled | median_wall_time\n",
     );
     for ((role, model), stats) in &role_rows {
         push_row(&mut output, Some(role), model, stats);
     }
-    output.push_str("\nModel rollup\nmodel | tasks_touched | accepted | completed_unruled | oversize_diffs | budget_raises | relaunches | effort_switches | nudges | staled | median_wall_time\n");
+    output.push_str("\nModel rollup\nmodel | tasks_touched | accepted | completed_unruled | oversize_diffs | budget_raises | relaunches | effort_switches | deadline_nudges | monitor_nudges | staled | median_wall_time\n");
     for (model, stats) in &model_rows {
         push_row(&mut output, None, model, stats);
     }
@@ -238,21 +239,26 @@ fn accumulate_task(
     }
 
     for event in events {
-        let (counts_effort, counts_nudge, counts_stale) = match event {
+        let member = match event {
             RoutingTelemetryEvent::EffortSwitch {
                 outcome: EffortSwitchOutcome::Completed,
+                member,
                 ..
-            } => (true, false, false),
-            RoutingTelemetryEvent::NudgeSent { .. } => (false, true, false),
-            RoutingTelemetryEvent::TaskStaled { .. } => (false, false, true),
+            }
+            | RoutingTelemetryEvent::NudgeSent { member, .. }
+            | RoutingTelemetryEvent::TaskStaled { member, .. } => member,
             _ => continue,
         };
+        let owned = launches
+            .iter()
+            .filter(|launch| &launch.member == member)
+            .collect::<Vec<_>>();
         let timestamp = event_timestamp(event);
-        let selected = launches
+        let selected = owned
             .iter()
             .filter(|launch| launch.timestamp <= timestamp)
             .max_by_key(|launch| launch.timestamp)
-            .or_else(|| launches.first());
+            .or_else(|| owned.iter().min_by_key(|launch| launch.timestamp));
         let Some(launch) = selected else {
             continue;
         };
@@ -260,16 +266,9 @@ fn accumulate_task(
             role_rows
                 .entry((launch.role.clone(), launch.model.clone()))
                 .or_default(),
-            counts_effort,
-            counts_nudge,
-            counts_stale,
+            event,
         );
-        increment_counts(
-            model_rows.entry(launch.model.clone()).or_default(),
-            counts_effort,
-            counts_nudge,
-            counts_stale,
-        );
+        increment_counts(model_rows.entry(launch.model.clone()).or_default(), event);
     }
 }
 
@@ -301,10 +300,23 @@ fn record_wall_time(
     }
 }
 
-fn increment_counts(stats: &mut ReportStats, effort: bool, nudge: bool, stale: bool) {
-    stats.effort_switches += usize::from(effort);
-    stats.nudges += usize::from(nudge);
-    stats.staled += usize::from(stale);
+fn increment_counts(stats: &mut ReportStats, event: &RoutingTelemetryEvent) {
+    match event {
+        RoutingTelemetryEvent::EffortSwitch {
+            outcome: EffortSwitchOutcome::Completed,
+            ..
+        } => stats.effort_switches += 1,
+        RoutingTelemetryEvent::NudgeSent {
+            source: NudgeSource::Deadline,
+            ..
+        } => stats.nudges += 1,
+        RoutingTelemetryEvent::NudgeSent {
+            source: NudgeSource::IdleMonitor,
+            ..
+        } => stats.monitor_nudges += 1,
+        RoutingTelemetryEvent::TaskStaled { .. } => stats.staled += 1,
+        _ => {}
+    }
 }
 
 fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Option<LedgerVerdict> {
@@ -378,7 +390,7 @@ fn push_row(output: &mut String, role: Option<&str>, model: &str, stats: &Report
         output.push_str(&format!("{role} | "));
     }
     output.push_str(&format!(
-        "{model} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {}\n",
+        "{model} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {}\n",
         stats.tasks.len(),
         stats.accepted.len(),
         stats.completed_unruled.len(),
@@ -387,6 +399,7 @@ fn push_row(output: &mut String, role: Option<&str>, model: &str, stats: &Report
         stats.relaunches,
         stats.effort_switches,
         stats.nudges,
+        stats.monitor_nudges,
         stats.staled,
         median_wall_time(&stats.wall_times)
     ));
@@ -409,6 +422,61 @@ fn median_wall_time(values: &BTreeMap<String, i64>) -> String {
 
 #[cfg(test)]
 mod tests {
+    // Regression: c9c6c49b only decoded deadline nudges and attributed actions
+    // to the latest launch of any member (Wave-1 F9b; Astra §4).
+    #[test]
+    fn wave2_monitor_nudges_are_decoded_split_and_attributed_to_the_recipient() {
+        let root = tempfile::tempdir().unwrap();
+        let teams = root.path().join("teams");
+        write_json(
+            &teams.join("routing-team/config.json"),
+            serde_json::json!({"name":"routing-team","members":[]}),
+        );
+        let path = teams.join("routing-team/state/telemetry/9.jsonl");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let records = [
+            serde_json::json!({"event":"launch_rendered","timestamp":"2026-09-03T19:40:00Z",
+                "task_id":"9","member":"judge","role":"judge","tool":"codex","model":"gpt-6-astra"}),
+            serde_json::json!({"event":"launch_rendered","timestamp":"2026-09-03T19:50:00Z",
+                "task_id":"9","member":"builder","role":"developer","tool":"codex","model":"gpt-5.6-sol"}),
+            serde_json::json!({"event":"nudge_sent","timestamp":"2026-09-03T19:57:01Z",
+                "task_id":"9","member":"judge","source":"idle_monitor"}),
+            // Records written before Wave 2 have no source and remain deadlines.
+            serde_json::json!({"event":"nudge_sent","timestamp":"2026-09-03T19:58:00Z",
+                "task_id":"9","member":"builder","deadline_minutes":20}),
+            serde_json::json!({"event":"nudge_sent","timestamp":"2026-09-03T19:59:00Z",
+                "task_id":"9","member":"unknown-seat","source":"idle_monitor"}),
+        ];
+        std::fs::write(
+            &path,
+            records
+                .iter()
+                .map(|record| format!("{record}\n"))
+                .collect::<String>(),
+        )
+        .unwrap();
+        let events = crate::coordination::stores::telemetry::read_task_telemetry(&path);
+        assert_eq!(events.len(), 5, "monitor events must survive decoding");
+        let report = render_routing_report(
+            &teams,
+            30,
+            Utc.with_ymd_and_hms(2026, 9, 4, 12, 0, 0).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            report.contains("deadline_nudges | monitor_nudges"),
+            "{report}"
+        );
+        assert!(
+            report.contains("judge | gpt-6-astra | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | -"),
+            "{report}"
+        );
+        assert!(
+            report.contains("developer | gpt-5.6-sol | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | -"),
+            "{report}"
+        );
+    }
+
     use chrono::{TimeZone, Utc};
 
     use super::render_routing_report;
@@ -503,7 +571,7 @@ mod tests {
             assert_eq!(
                 row,
                 format!(
-                    "heavy | gpt-6-astra | 1 | 0 | 1 | 0 | {raises} | 0 | 0 | 0 | 0 | 10m 00s\n"
+                    "heavy | gpt-6-astra | 1 | 0 | 1 | 0 | {raises} | 0 | 0 | 0 | 0 | 0 | 10m 00s\n"
                 )
             );
         }
@@ -593,10 +661,10 @@ mod tests {
             "role | model | tasks_touched | accepted | completed_unruled | oversize_diffs | budget_raises | relaunches"
         ));
         assert!(report.contains(
-            "rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+            "rust-developer | gpt-5.6-sol | 1 | 1 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
         assert!(report.contains(
-            "test-developer | gpt-5.6-luna | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 5m 00s"
+            "test-developer | gpt-5.6-luna | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5m 00s"
         ));
         assert!(report.contains("gpt-5.6-sol | 1 | 1 | 0 | 2"));
         assert!(report.contains("gpt-5.6-luna | 1 | 0 | 1 | 0"));
@@ -654,7 +722,8 @@ mod tests {
                 timestamp: now,
                 task_id: "task-b".to_string(),
                 member: "builder".to_string(),
-                deadline_minutes: 20,
+                source: crate::coordination::stores::telemetry::NudgeSource::Deadline,
+                deadline_minutes: Some(20),
             },
             crate::coordination::stores::telemetry::RoutingTelemetryEvent::CompletionObserved {
                 timestamp: now,
@@ -771,14 +840,13 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
         assert!(report.contains(
-            "adversarial-reviewer-claude | claude-opus-4-6 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 9m 00s"
+            "adversarial-reviewer-claude | claude-opus-4-6 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 9m 00s"
         ));
-        assert!(
-            report.contains("v3-lead-claude | fable | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 8m 00s")
-        );
+        assert!(report
+            .contains("v3-lead-claude | fable | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 8m 00s"));
         assert!(report.contains("gpt-6-astra | 1 | 1 | 0 | 1"));
         assert!(report.contains("claude-opus-4-6 | 1 | 1 | 0 | 0"));
         assert!(report.contains("fable | 1 | 1 | 0 | 0"));
@@ -834,7 +902,7 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
     }
 
@@ -906,10 +974,10 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
         assert!(report.contains(
-            "adversarial-reviewer-claude | claude-opus-4-6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 9m 00s"
+            "adversarial-reviewer-claude | claude-opus-4-6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 9m 00s"
         ));
     }
 
@@ -983,10 +1051,10 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-5.6-sol | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-5.6-sol | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 4m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 4m 00s"
         ));
         assert!(report.contains("gpt-5.6-sol | 1 | 1 | 0 | 1"));
         assert!(report.contains("gpt-6-astra | 1 | 1 | 0 | 1"));
@@ -1062,10 +1130,10 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-5.6-sol | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 4m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 4m 00s"
         ));
         assert!(report.contains("gpt-5.6-sol | 1 | 1 | 0 | 0 | 1"));
         assert!(report.contains("gpt-6-astra | 1 | 1 | 0 | 0 | 1"));
@@ -1123,7 +1191,7 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
     }
 
@@ -1179,7 +1247,7 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "rust-developer | gpt-5.6-sol | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 10m 00s"
+            "rust-developer | gpt-5.6-sol | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 10m 00s"
         ));
     }
 }

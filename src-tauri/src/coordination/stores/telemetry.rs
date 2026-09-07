@@ -33,6 +33,15 @@ pub enum EffortSwitchOutcome {
     BudgetExhausted,
 }
 
+/// Old sidecars contain deadline nudges without an explicit source.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NudgeSource {
+    #[default]
+    Deadline,
+    IdleMonitor,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum RoutingTelemetryEvent {
@@ -60,7 +69,10 @@ pub enum RoutingTelemetryEvent {
         timestamp: DateTime<Utc>,
         task_id: String,
         member: String,
-        deadline_minutes: u32,
+        #[serde(default)]
+        source: NudgeSource,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        deadline_minutes: Option<u32>,
     },
     TaskStaled {
         timestamp: DateTime<Utc>,
@@ -365,7 +377,8 @@ pub fn record_deadline_action(
             timestamp: Utc::now(),
             task_id: task_id.to_string(),
             member: member.to_string(),
-            deadline_minutes,
+            source: NudgeSource::Deadline,
+            deadline_minutes: Some(deadline_minutes),
         }
     };
     append_task_telemetry_fail_soft(teams_dir, team_name, Some(task_id), &event);
@@ -592,7 +605,8 @@ mod tests {
             timestamp: Utc.with_ymd_and_hms(2026, 9, 4, 10, 0, 0).unwrap(),
             task_id: "42".to_string(),
             member: "builder".to_string(),
-            deadline_minutes: 20,
+            source: super::NudgeSource::Deadline,
+            deadline_minutes: Some(20),
         };
 
         let error = append_task_telemetry(&teams_dir, "routing-team", None, &event)
@@ -974,7 +988,8 @@ mod tests {
         assert!(matches!(
             &events[1],
             RoutingTelemetryEvent::NudgeSent {
-                deadline_minutes: 20,
+                source: super::NudgeSource::Deadline,
+                deadline_minutes: Some(20),
                 ..
             }
         ));
