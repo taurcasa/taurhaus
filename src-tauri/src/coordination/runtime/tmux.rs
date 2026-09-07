@@ -14,7 +14,6 @@ fn tmux_command_invocation(args: &[String]) -> CommandInvocation {
 }
 
 pub(super) fn run_tmux(args: &[String]) -> Result<String, CoordinationError> {
-    let invocation = tmux_command_invocation(args);
     let output = run_tmux_output(args)?;
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -22,9 +21,8 @@ pub(super) fn run_tmux(args: &[String]) -> Result<String, CoordinationError> {
         Ok(stdout)
     } else {
         Err(CoordinationError::Backend(format!(
-            "tmux command failed ({} {}): {}",
-            invocation.program,
-            invocation.args.join(" "),
+            "tmux command failed (tmux {}): {}",
+            args.join(" "),
             stderr
         )))
     }
