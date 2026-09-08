@@ -1,0 +1,37 @@
+{
+  "status": "ok",
+  "scope": "Document/source/archive verification only; no production gates or harness tests",
+  "commands_observed": 31,
+  "zero_exits": 27,
+  "expected_diagnostic_nonzero": [
+    15,
+    16,
+    17,
+    20
+  ],
+  "source_files_rechecked": 29,
+  "changed_since_initial": [
+    "/home/mstie/projects/taurhaus/CLAUDE.md",
+    "/home/mstie/projects/taurhaus/src-tauri/src/coordination/task_deadline_pass.rs"
+  ],
+  "archive_counts_reproduced": true,
+  "eight_cited_work_changing_messages_match_proposed_lint": true,
+  "offline_lint_match_count": 9,
+  "report_sha256": "8365ec2b4d8ff6efd7cbd85c067207b296d2c718e83492aecd3180c0ab893227",
+  "findings_recorded": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+  ],
+  "production_conformance": "UNVERIFIED",
+  "orchestrator_acceptance": "UNVERIFIED"
+}

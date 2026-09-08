@@ -1,0 +1,8 @@
+{
+  "subprocess_count": 27,
+  "running_children": 0,
+  "timeout_kills": 0,
+  "fixture_removed": true,
+  "writes_root": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0",
+  "process_cleanup": "Each Popen communicate(timeout=10) had a finally: kill/wait only its own child if still running."
+}

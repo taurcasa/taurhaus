@@ -1,0 +1,25 @@
+{
+  "candidate_units": 3777,
+  "note": "Syntactic units, NOT a verified exhaustive semantic proposition denominator. Compound clauses and mirrors need adjudication.",
+  "by_population": {
+    "W1": 1236,
+    "R1": 735,
+    "W2": 1806
+  },
+  "literal_source_classes": {
+    "UNRESOLVED": 3736,
+    "source-adapter/link gap": 13,
+    "retained-structured": 28
+  },
+  "exact_text_mirror_occurrences": 4,
+  "by_stratum": {
+    "governance and rulings": 1123,
+    "hero implementation and review; other task rows": 230,
+    "T25 rubric chronology": 74,
+    "T26 integration": 305,
+    "T27/T28 closure": 203,
+    "short measure results": 36,
+    "wave-2 live capture": 1806
+  },
+  "structural_lines": 261
+}

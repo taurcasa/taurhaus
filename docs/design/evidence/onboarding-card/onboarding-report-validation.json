@@ -1,0 +1,25 @@
+{
+  "checks": {
+    "report_exists": true,
+    "required_sections": true,
+    "labels_present": true,
+    "identity_tuple": true,
+    "correction_rule": true,
+    "receipt_section": true,
+    "measurement": true,
+    "open_questions": true,
+    "fixture_removed": true,
+    "hashed_sources_unchanged": true,
+    "evidence_links_exist": true,
+    "all_probes_empty_environment": true,
+    "all_probes_explicit_absolute_binary_and_root": true
+  },
+  "report_lines": 257,
+  "report_words": 6750,
+  "probe_exit_counts": {
+    "0": 25,
+    "2": 2
+  },
+  "all_passed": true,
+  "report_sha256": "0d27e2b6ad277706a7460a00c7f470fb5cb69cd829fc458a33750d8281b63e9f"
+}

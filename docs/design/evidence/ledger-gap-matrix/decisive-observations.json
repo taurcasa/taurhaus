@@ -1,0 +1,450 @@
+[
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H01",
+    "claim": "T1’s final complete/frozen 652bb36 is outside the retained in_progress snapshot.",
+    "source_class": "retention gap",
+    "evidence": "W1:154; render.json tasks[id=1].snapshot_status=in_progress; tasks/1.json:1",
+    "payload_implication": "No completion event may be synthesized from the final board."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H02",
+    "claim": "T2’s b659546 closure follows the archive’s rejected 8f97e28 candidate.",
+    "source_class": "retention gap",
+    "evidence": "W1:173; render.json tasks[id=2].rulings seq 3 rejected ref 8f97e28; tasks/2.json:1",
+    "payload_implication": "Keep candidate-scoped rejection; request later structured cut for final lifecycle."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H03",
+    "claim": "T6’s completed archive has summary candidate 06ffc9b and accepted ruling ae61684; the final gate trio is later.",
+    "source_class": "retention gap",
+    "evidence": "W1:179; completion be84dfd3-265c-483b-89c2-880efd2e3a5a; task 6 ruling seq 2",
+    "payload_implication": "Do not substitute eff4770/276a347/45cf956 into the early completion."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H04",
+    "claim": "T6a is a separate document row, not an independently mapped task snapshot.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:160; census-verified.json task_snapshots=11; render.json tasks ids 1–11",
+    "payload_implication": "Require an explicit alias/subscope association; never invent task 6a."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H05",
+    "claim": "T7’s completion reports both the lead substitute 8df7fed and independent d966220 review.",
+    "source_class": "retained-structured",
+    "evidence": "W1:181; completion d99efb98-bfa5-4864-ad9b-b2303feb4f1c",
+    "payload_implication": "One completion statement; the multi-author owner cell is not sole-owner equality."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H06",
+    "claim": "A completed T7 is not a positive verdict on T1.",
+    "source_class": "existing-authority schema gap",
+    "evidence": "W1:181 remaining; render.json tasks[id=7].rulings contain two notes; task 1 seq 4 is rejected",
+    "payload_implication": "Cross-task review association must name review task, reviewed task, candidate, ruling; do not infer acceptance."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H07",
+    "claim": "T9’s independent reject/10 findings and review candidate 6cda054 are retained.",
+    "source_class": "retained-structured",
+    "evidence": "W1:178; completion 992f361f-0bda-41df-a600-3fa93ef94792",
+    "payload_implication": "Reuse the existing completion body; no outcome duplication."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H08",
+    "claim": "T9’s verdict is recorded on task 2, not task 9.",
+    "source_class": "existing-authority schema gap",
+    "evidence": "completion 992f361f-0bda-41df-a600-3fa93ef94792; render.json tasks[id=2].rulings seq 3 ref=8f97e28; tasks[id=9].contract.completion_signal",
+    "payload_implication": "A typed review-target join is missing; the relationship is stated in existing prose, not absent evidence."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H09",
+    "claim": "T10 has architect acceptance at b825b54 while still in_progress.",
+    "source_class": "retained-structured",
+    "evidence": "W1:182; render.json tasks[id=10].snapshot_status; ruling seq 2 accepted ref=b825b54",
+    "payload_implication": "Keep acceptance and lifecycle independent. The final complete claim remains a retention gap."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H10",
+    "claim": "T11’s 400→430 raise for rustfmt tests is already recorded.",
+    "source_class": "retained-structured",
+    "evidence": "W1:18–19; render.json tasks[id=11].rulings seq 1 value=budget-430 note",
+    "payload_implication": "Do not add a ledger budget-raise kind."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H11",
+    "claim": "That budget ruling has no typed old/new/counting-basis carrier.",
+    "source_class": "existing-authority schema gap",
+    "evidence": "census-verified.json budget_related_rulings[0].field=null; mesh-ledger/src/task_lifecycle.rs:384–393",
+    "payload_implication": "If machine budget arithmetic is required, extend the task/ruling authority deliberately; preserve its prose in the meantime."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H12",
+    "claim": "T19’s initial acceptance is bounded to layout/copy, not DTO→UI integration.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:163; A/docs/wave-1/reviews/T19-acceptance.md:6–8,20–29",
+    "payload_implication": "Link immutable review scope and limitations; source_checked of the artifact is not a fresh app test."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H13",
+    "claim": "The T21 product artifact declares its own isolation and candidate 49fd43b, while the board’s final row is 6a0cb89.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:171; A/docs/wave-1/reviews/T21-acceptance.md:1–7",
+    "payload_implication": "Do not rebind the initial artifact to final candidate. Later addenda/confirmations need their own source locator."
+  },
+  {
+    "stratum": "hero implementation and review; other task rows",
+    "id": "H14",
+    "claim": "T12–T24 task identities, owners and lifecycle do not have corresponding retained snapshots.",
+    "source_class": "retention gap",
+    "evidence": "W1:155–166,171–172; render.json tasks ids 1–11",
+    "payload_implication": "Late committed reviews are a separate artifact-source arm, never structured task coverage."
+  },
+  {
+    "stratum": "T25 rubric chronology",
+    "id": "P01",
+    "claim": "The board records a sequence of rubric amendments rather than one operative immutable rubric.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:167; A/docs/wave-1/reviews/T26-rerun-evidence.md:3; A/docs/wave-1/reviews/T26-certification.md:3",
+    "payload_implication": "Render the rubric revision actually cited by each submitted RESULT; do not resolve HEAD at read time."
+  },
+  {
+    "stratum": "T25 rubric chronology",
+    "id": "P02",
+    "claim": "The rerun report names rubric 044c57d.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:167–168; A/docs/wave-1/reviews/T26-rerun-evidence.md:3",
+    "payload_implication": "A stale earlier copied rubric pin must not override the result’s own declaration."
+  },
+  {
+    "stratum": "T25 rubric chronology",
+    "id": "P03",
+    "claim": "Certification names rubric 1423a3c and exact scanner 7ef221827328fee7f6064a8a5c6134157d77fb4c.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:167–168; A/docs/wave-1/reviews/T26-certification.md:3",
+    "payload_implication": "Use separate rubric and instrument references, not a generic commit slot."
+  },
+  {
+    "stratum": "T25 rubric chronology",
+    "id": "P04",
+    "claim": "T25 has no retained Mesh task in this cut.",
+    "source_class": "retention gap",
+    "evidence": "W1:167; census-verified.json task_snapshots=11",
+    "payload_implication": "No inference that all its 6,801 characters require new fields; the final status/chronology remains unverified structurally."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I01",
+    "claim": "The matrix-run report certifies pre-batch code, not every subsequently listed fix.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:168; A/docs/wave-1/wave-closure-report.md:48–52",
+    "payload_implication": "Keep app candidate separate from later landing and report revision."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I02",
+    "claim": "Product ACCEPT for executed rows coexists with GPT REJECT of an unqualified PASS.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:168; A/docs/wave-1/wave-closure-report.md:56–61",
+    "payload_implication": "Preserve reviewer, scope and qualifications; no global Boolean PASS."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I03",
+    "claim": "Rerun row 25r is explicitly unmeasured, not zero or passed.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:168 remaining; A/docs/wave-1/reviews/T26-rerun-evidence.md:18",
+    "payload_implication": "Evidence assessment must preserve unmeasured and its controlled-scenario follow-up."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I04",
+    "claim": "Final rerun residuals are R1=106,R5c=22,R5e=33,R2=0,R3=1, total 162.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "R1:803–918; A/docs/wave-1/reviews/T26-rerun-evidence.md:22,55–56",
+    "payload_implication": "Keep per-root population/counts in the result artifact. Do not add one ledger field per scanner counter."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I05",
+    "claim": "The returning 56 is not the original 56: index cells changed from unscanned to scanned-and-empty.",
+    "source_class": "new authored declaration (note), artifact-carried",
+    "evidence": "R1:868–872; W1:167; A/docs/wave-1/reviews/T26-rerun-evidence.md:22",
+    "payload_implication": "Append observation with instrument/population/prior_observation references; do not deduplicate by numeric value."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I06",
+    "claim": "R36a’s index-page wording was corrected when R36c landed.",
+    "source_class": "new authored declaration (decision/note), artifact-carried",
+    "evidence": "R1:620–624; R1:920–930; W1:167",
+    "payload_implication": "Amend the identified interpretive claim, with a reason; keep independent measurements."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I07",
+    "claim": "Certification’s initial R5c scan remains FAIL with 410 generic WAL hits.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:168; A/docs/wave-1/reviews/T26-certification.md:20",
+    "payload_implication": "A later clean-exit scan is a new observation; no tombstone of valid red evidence."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I08",
+    "claim": "The subsequent same-root clean-exit scan has zero-byte WAL and a clean result.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "A/docs/wave-1/reviews/T26-certification.md:20; A/docs/wave-1/reviews/T26-cert-product-acceptance.md:48",
+    "payload_implication": "Reference the separate observation and preconditions. Do not claim the earlier scan passed."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I09",
+    "claim": "Product certification checks four scoped rows: four PASS.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:168; A/docs/wave-1/reviews/T26-cert-product-acceptance.md:3,33",
+    "payload_implication": "Keep scope 25r/39/40/42; no whole-project acceptance."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I10",
+    "claim": "Of eleven checklist items, nine are checked from artifacts and two accepted on citation.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "A/docs/wave-1/reviews/T26-cert-product-acceptance.md:22–33",
+    "payload_implication": "Evidence assessment is per claim/reference, not just per result document."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I11",
+    "claim": "Certification cites pre-rebase report 2eba1b1 and landed report 5ad82ca separately.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "A/docs/wave-1/reviews/T26-cert-product-acceptance.md:3; A/docs/wave-1/wave-closure-report.md:163",
+    "payload_implication": "Retain immutable submitted report bytes; identical-tree/rebase claims are artifact statements here, not freshly verified Git equivalence."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I12",
+    "claim": "The Run-side withholding clause was confirmed only after relaunch.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "A/docs/wave-1/reviews/T26-cert-product-acceptance.md:35–44; A/docs/wave-1/wave-closure-report.md:175–181",
+    "payload_implication": "A PASS must carry timing/state limitations and any remaining live-snapshot issue."
+  },
+  {
+    "stratum": "T26 integration",
+    "id": "I13",
+    "claim": "T26’s GO on 6a0cb89 is claimed by the board but has no retained task 26 authority.",
+    "source_class": "retention gap",
+    "evidence": "W1:168 state; render.json tasks ids 1–11",
+    "payload_implication": "U: obtain the authoritative GO/assignment export. A committed app revision cannot authenticate GO."
+  },
+  {
+    "stratum": "T27/T28 closure",
+    "id": "C01",
+    "claim": "T27 is reported closed at 9edf5bf with 1,503/1,550 lines.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:169; A/docs/wave-1/wave-closure-report.md:37–38",
+    "payload_implication": "Keep result artifact and counting basis; Mesh terminal transition itself remains outside the cut."
+  },
+  {
+    "stratum": "T27/T28 closure",
+    "id": "C02",
+    "claim": "T28 reports 1,108 delivered lines versus 1,161 authored.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:170; A/docs/wave-1/wave-closure-report.md:39–41",
+    "payload_implication": "Authored and landed delivery are different scopes; do not copy one into the other."
+  },
+  {
+    "stratum": "T27/T28 closure",
+    "id": "C03",
+    "claim": "The difference includes a stopped, unlanded 53-line test.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W1:170; A/docs/wave-1/wave-closure-report.md:40–41",
+    "payload_implication": "A stopped/deferred remaining item persists after task completion."
+  },
+  {
+    "stratum": "T27/T28 closure",
+    "id": "C04",
+    "claim": "R41 defers T28-11 and T28-12 initially.",
+    "source_class": "new authored declaration (remaining/decision), artifact-carried",
+    "evidence": "R1:1079–1084; W1:170",
+    "payload_implication": "Stable remaining identities, disposition and explicit revisit/release condition are load-bearing."
+  },
+  {
+    "stratum": "T27/T28 closure",
+    "id": "C05",
+    "claim": "R41 exception 5 un-defers only T28-12, with a ≤30-line fix and one verdict.",
+    "source_class": "new authored declaration (decision), artifact-carried",
+    "evidence": "R1:1089–1095",
+    "payload_implication": "Amend exactly the named deferral, preserve authorized exception and reason; do not reopen all frozen scope."
+  },
+  {
+    "stratum": "T27/T28 closure",
+    "id": "C06",
+    "claim": "The current closure artifact later records a wave-2 port of T28-11.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "A/docs/wave-1/wave-closure-report.md:330–331 @ captured revision",
+    "payload_implication": "Do not backdate this later resolution into the pinned wave-1 ledger. Artifact capture time differs from wave-1 closure."
+  },
+  {
+    "stratum": "T27/T28 closure",
+    "id": "C07",
+    "claim": "The same current closure artifact retires the dedicated capture-driver item without claiming it ran.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "A/docs/wave-1/wave-closure-report.md:334",
+    "payload_implication": "withdrawn/resolved needs evidence and a precise subject; an alternate capture run is not execution of the missing script."
+  },
+  {
+    "stratum": "T27/T28 closure",
+    "id": "C08",
+    "claim": "T27/T28 source tasks are not in the archive.",
+    "source_class": "retention gap",
+    "evidence": "W1:169–170; census-verified.json task_snapshots=11",
+    "payload_implication": "A proposed scope outcome is not permission to complete either task."
+  },
+  {
+    "stratum": "governance and rulings",
+    "id": "G01",
+    "claim": "R41 freezes the scope following an explicit product-versus-instrument-maintenance judgment.",
+    "source_class": "new authored declaration (decision), artifact-carried",
+    "evidence": "R1:1063–1077",
+    "payload_implication": "Preserve question, decision, applicability, consequence and claimed authority. This historical document is not a native authenticated ledger event."
+  },
+  {
+    "stratum": "governance and rulings",
+    "id": "G02",
+    "claim": "R41 says certification FAIL is recorded with cause and does not trigger further wave-1 instrument work.",
+    "source_class": "new authored declaration (decision), artifact-carried",
+    "evidence": "R1:1085–1088",
+    "payload_implication": "Keep disposition separate from observed test result; a stop is an authored governance act."
+  },
+  {
+    "stratum": "governance and rulings",
+    "id": "G03",
+    "claim": "The original E5 seat-inactivity explanation is retained as a Mesh note.",
+    "source_class": "retained-structured",
+    "evidence": "W1:113; task 7 ruling seq 1; workflow event 86fa9b40-6456-46b0-96b4-006290d4570c",
+    "payload_implication": "Render as attributed historical explanation, not verified causal truth."
+  },
+  {
+    "stratum": "governance and rulings",
+    "id": "G04",
+    "claim": "The final ledger records that the orchestrator overturned E5 and cited waiting for GO.",
+    "source_class": "new authored declaration (note), artifact-carried",
+    "evidence": "W1:515; task 7 ruling seq 1 is the earlier explanation",
+    "payload_implication": "Link correction to original note. U: inbox timing and claimed orchestrator authority not independently checked; require permitted exported evidence and authority record."
+  },
+  {
+    "stratum": "governance and rulings",
+    "id": "G05",
+    "claim": "E16 distinguishes original code author from the docs committer who swept it in.",
+    "source_class": "new authored declaration (note/decision), artifact-carried",
+    "evidence": "W1:118–146",
+    "payload_implication": "Authorship, source/landing identity and causal correction must remain distinct. Do not infer authorship from Git committer."
+  },
+  {
+    "stratum": "governance and rulings",
+    "id": "G06",
+    "claim": "R12’s 10/13 verify+text, 11/13 verify and HiBob loss are already in task 10’s retained note.",
+    "source_class": "retained-structured",
+    "evidence": "R1:124–133; task 10 ruling seq 1; workflow a9009605-f06f-4817-a1f5-61d88258b62c",
+    "payload_implication": "Reuse recorded measurement; count its mirrors once, not once per ledger/ruling copy."
+  },
+  {
+    "stratum": "governance and rulings",
+    "id": "G07",
+    "claim": "The no-browser-helper decision is also stated in that retained note.",
+    "source_class": "retained-structured",
+    "evidence": "R1:129–133; task 10 ruling seq 1 note names Lead decision R12",
+    "payload_implication": "No mandatory duplicate ledger decision. Typed wave applicability can be linked if required."
+  },
+  {
+    "stratum": "governance and rulings",
+    "id": "G08",
+    "claim": "The mutation journal records changed field names without old/new values.",
+    "source_class": "existing-authority schema gap",
+    "evidence": "mesh-ledger/src/task_journal.rs:13–18",
+    "payload_implication": "Missing historical values cannot be recovered by adding a ledger snapshot mirror."
+  },
+  {
+    "stratum": "wave-2 live capture",
+    "id": "W201",
+    "claim": "The committed T60 judge report declares limited independence after exposure to a mutable owner RESULT.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W2:168; A/docs/wave-2/reviews/T60-review-judge.md:3–7",
+    "payload_implication": "Freeze submitted artifact revision and expose review independence/waiver qualification. Do not claim two independent accepts."
+  },
+  {
+    "stratum": "wave-2 live capture",
+    "id": "W202",
+    "claim": "The same review’s default gate fails while its serial gate passes.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W2:168; A/docs/wave-2/reviews/T60-review-judge.md:8",
+    "payload_implication": "Render the gate configuration and qualification, not unqualified PASS."
+  },
+  {
+    "stratum": "wave-2 live capture",
+    "id": "W203",
+    "claim": "The same review does not credit later landed source.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "A/docs/wave-2/reviews/T60-review-judge.md:31",
+    "payload_implication": "Candidate, gated, reviewed and landed references remain distinct."
+  },
+  {
+    "stratum": "wave-2 live capture",
+    "id": "W204",
+    "claim": "T49’s review explicitly reports a candidate gate at 6312b12 while landing is pending.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W2:162; A/docs/wave-2/reviews/T49-review-judge.md:4,17,29",
+    "payload_implication": "The later board landing cannot replace the original gated candidate."
+  },
+  {
+    "stratum": "wave-2 live capture",
+    "id": "W205",
+    "claim": "T49’s native capture lacks independent binary-digest confirmation.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "A/docs/wave-2/reviews/T49-review-judge.md:9,25–29",
+    "payload_implication": "Preserve evidence limitation; inspected pixels and a reproduced native build are different claims."
+  },
+  {
+    "stratum": "wave-2 live capture",
+    "id": "W206",
+    "claim": "The live capture says all tasks #1–#92 complete, while an older restart cursor remains below.",
+    "source_class": "retention gap",
+    "evidence": "W2:359–364; no wave-2 bundle used",
+    "payload_implication": "U: this is an authored statement and stale narrative coexistence, not fresh Mesh runtime verification."
+  },
+  {
+    "stratum": "wave-2 live capture",
+    "id": "W207",
+    "claim": "The main board has 68 task rows; B1 adds a separately shaped 3-row table.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W2:112–180,347–351; wave2-census.json",
+    "payload_implication": "Do not silently count #88/#89/#92 as part of the ten-column 68-row board; include them in narrative/second-table inventory."
+  },
+  {
+    "stratum": "wave-2 live capture",
+    "id": "W208",
+    "claim": "Seven malformed-width rows persist in both the historic closure fixture and current main board.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "fixtures/renderer-cases.json; wave2-census.json",
+    "payload_implication": "Historical importer must fail positional inference; generated schema cannot emit surplus/missing cells."
+  },
+  {
+    "stratum": "wave-2 live capture",
+    "id": "W209",
+    "claim": "The live code-landings paragraph is 6,106 characters versus 5,881 at the historic closure cut.",
+    "source_class": "source-adapter/link gap",
+    "evidence": "W2:8; fixtures/wave2-closed-ledger.md:8; wave2-census.json",
+    "payload_implication": "Renderer acceptance must cover non-table accumulation and source-cut-consistent narrative."
+  }
+]

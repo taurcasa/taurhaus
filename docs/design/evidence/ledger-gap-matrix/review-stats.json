@@ -1,0 +1,23 @@
+{
+  "candidate_units": 3777,
+  "by_population": {
+    "W1": 1236,
+    "R1": 735,
+    "W2": 1806
+  },
+  "coding_counts": {
+    "UNRESOLVED": 3726,
+    "retained-structured": 43,
+    "source-adapter/link gap": 4,
+    "new authored declaration (outcome)": 4
+  },
+  "manually_checked_short_result_units": 36,
+  "exact_text_mirror_occurrences": 4,
+  "unresolved_units": 3726,
+  "semantic_denominator": "UNVERIFIED: syntactic candidates are not an exhaustive unique-proposition count",
+  "coded_units": 51,
+  "coded_short_result_units": 36,
+  "coded_hero_units": 15,
+  "coded_coverage_percent": 1.35,
+  "t8_reconciliation": "W1-0892 remains a contradicted authored outcome claim; its completion limitation is retained-structured secondary evidence, not an additional candidate."
+}

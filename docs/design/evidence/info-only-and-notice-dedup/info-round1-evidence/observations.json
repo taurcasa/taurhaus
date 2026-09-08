@@ -1,0 +1,11 @@
+{
+  "go": {
+    "worker_inbox_byte_identical": true,
+    "before_sha256": "6b8aa54aefa8234d696defcec0acab8063456973254d3ffa6b3ad6776607e51f",
+    "after_sha256": "6b8aa54aefa8234d696defcec0acab8063456973254d3ffa6b3ad6776607e51f"
+  },
+  "old_writer": {
+    "extension_stripped": true,
+    "original_prefix_preserved": true
+  }
+}

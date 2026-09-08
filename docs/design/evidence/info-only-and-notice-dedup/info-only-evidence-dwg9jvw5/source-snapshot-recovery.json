@@ -1,0 +1,26 @@
+[
+  {
+    "original": "/home/mstie/projects/taurhaus-contractfix/src-tauri/src/coordination/routing_report/mesh.rs",
+    "verified_identical_current_source": "/home/mstie/projects/taurhaus/src-tauri/src/coordination/routing_report/mesh.rs",
+    "snapshot": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/source-snapshots/src-tauri/src/coordination/routing_report/mesh.rs",
+    "sha256": "53939fe4c78073624949fa2b81c8868b54167d0f15a3579311c33b666634dc04"
+  },
+  {
+    "original": "/home/mstie/projects/taurhaus-contractfix/docs/operations/telemetry-contracts.md",
+    "verified_identical_current_source": "/home/mstie/projects/taurhaus/docs/operations/telemetry-contracts.md",
+    "snapshot": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/source-snapshots/docs/operations/telemetry-contracts.md",
+    "sha256": "066fbc39b486baed1b08525e1fdb24be9db987c6117256c3277a1830f0c517d3"
+  },
+  {
+    "original": "/home/mstie/projects/taurhaus/CLAUDE.md",
+    "revision": "9dd8427e2c084aa1a47a63d338083f1df21c5f78",
+    "snapshot": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/source-snapshots/CLAUDE.md",
+    "sha256": "e16a1f20c265999571e2fab55fc55402948522bf7cadee3ae37c6ba5fbf57f35"
+  },
+  {
+    "original": "/home/mstie/projects/taurhaus/src-tauri/src/coordination/task_deadline_pass.rs",
+    "revision": "9dd8427e2c084aa1a47a63d338083f1df21c5f78",
+    "snapshot": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/source-snapshots/src-tauri/src/coordination/task_deadline_pass.rs",
+    "sha256": "99ce2cb06fe432da90b49852e1a32586f491d65279d2c1f0bd292ff9eb793ee2"
+  }
+]

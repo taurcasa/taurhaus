@@ -1,0 +1,13 @@
+{
+  "CLAUDE.md": "e16a1f20c265999571e2fab55fc55402948522bf7cadee3ae37c6ba5fbf57f35",
+  "docs/design/onboarding-card-brief.md": "122aca1c773ce92eb432a9796dbb13709f99f89d3be834b41bbad02bde5783d0",
+  "src-tauri/src/coordination/delivery.rs": "7f4375d2d81e19e1994b661e9171b1b8d12123f31c977359a54b8a57b0cafa40",
+  "src-tauri/src/coordination/reinjection.rs": "db1aab025ea05bf1abaa5aa12b91ff9d4618c8307538df1fd9060c0e264cc90b",
+  "src-tauri/src/coordination/pipelines/lifecycle.rs": "d706016bce9d838fb113e62546fdc97cd947b1627eaa128173b8168092f80d45",
+  "src-tauri/src/coordination/pipelines/members.rs": "2b26adf09cd6422365137edb31d8aea1a66576c94164e3a3ae911030f5243628",
+  "src-tauri/src/coordination/pipelines/effort.rs": "580f356386cbc34ce7b978f27372e29f63856bfb0c009e13713e3281ae5ff3a2",
+  "src-tauri/src/coordination/compact_hook.rs": "928306ab2dd5cc4a8c24511eb6a0e5dd738cfd6c22a88eea9fffe489d325f541",
+  "src-tauri/src/daemon/team_runs.rs": "35fd3265955e6c618ab52fba677b688970cc337fa390284fc2985174684afb49",
+  "src-tauri/resources/mesh.lock.json": "c35e575b4aeea063a3030533b716235e3038270f6fc050a649aa80892f521116",
+  "/home/mstie/.local/bin/mesh": "408c7e0cc7ed5302f4e5fb9a2be3b8e47f75b4c14ab9e2127e6bad4572f2f672"
+}

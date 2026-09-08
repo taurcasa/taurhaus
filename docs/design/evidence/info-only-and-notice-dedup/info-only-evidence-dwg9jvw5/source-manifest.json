@@ -1,0 +1,152 @@
+{
+  "taurhaus_branch": "main",
+  "taurhaus_head": "9dd8427e2c084aa1a47a63d338083f1df21c5f78",
+  "mesh_binary_sha256": "408c7e0cc7ed5302f4e5fb9a2be3b8e47f75b4c14ab9e2127e6bad4572f2f672",
+  "files": [
+    {
+      "path": "/home/mstie/projects/taurhaus/CLAUDE.md",
+      "sha256": "e16a1f20c265999571e2fab55fc55402948522bf7cadee3ae37c6ba5fbf57f35",
+      "lines": 447
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/docs/design/info-only-and-notice-dedup-brief.md",
+      "sha256": "55754591481b708381e5bb124532a0f9f6acf3863b92ef6f0c29e309d811567e",
+      "lines": 136
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/docs/design/mesh-messaging-overhaul-research.md",
+      "sha256": "748a05832eb3ef80bed1e5c44274f05776a47979ab3b417aef83544950b06eff",
+      "lines": 279
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/docs/design/native-push-probe-report.md",
+      "sha256": "dabe9dcc09f0b6ccc9350fec8d7ba355cf6c7a35186d341c3c349f1fe8918c46",
+      "lines": 198
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/docs/design/field-test-wave2/machinery-review-astra.md",
+      "sha256": "7195e865ca4ae16a1cccd80dcce6f1b5192f5ed50e2a6cfa959b10599f2f556f",
+      "lines": 344
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/docs/team-delivery-standard.md",
+      "sha256": "e0195b65b27a91c85a543b5f44a95e06199d50fc01e0d2a0955b290fcc622511",
+      "lines": 131
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/src-tauri/resources/mesh.lock.json",
+      "sha256": "c35e575b4aeea063a3030533b716235e3038270f6fc050a649aa80892f521116",
+      "lines": 6
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/src-tauri/src/coordination/task_deadline_pass.rs",
+      "sha256": "99ce2cb06fe432da90b49852e1a32586f491d65279d2c1f0bd292ff9eb793ee2",
+      "lines": 580
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/src-tauri/src/coordination/backend/claude.rs",
+      "sha256": "d273f0024204d94b9c11fab0788757886849fc6a32206fb568551ef0bdf105c3",
+      "lines": 163
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/src-tauri/src/coordination/backend/bridged.rs",
+      "sha256": "afc7c47ceca468d15f068df9ff806d4716cf0f1a69ace8896d4079e00e1afa4e",
+      "lines": 1024
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/src-tauri/src/coordination/orchestrator/delivery.rs",
+      "sha256": "96bf8a4867dfcf53fbed92ebd8aaf74cdc5ef0808d655d1f0e9536f7a7d5df92",
+      "lines": 363
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/src-tauri/src/coordination/compact_hook.rs",
+      "sha256": "928306ab2dd5cc4a8c24511eb6a0e5dd738cfd6c22a88eea9fffe489d325f541",
+      "lines": 3206
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/src-tauri/src/coordination/stores/inbox.rs",
+      "sha256": "9bb4ffc1315d036a932a26222f8dd26e979a22bec0a07ff9f579ae99a24a5034",
+      "lines": 663
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/src-tauri/src/templates/types.rs",
+      "sha256": "c9c182c559e53d44a3955e36082be1c3df69cd96829717d07dbacfe1a09377a1",
+      "lines": 3078
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/daemon.rs",
+      "sha256": "f5157cb94f47996d6b04641196777f45b5a5626278a621000f5644ed05a8ed84",
+      "lines": 5290
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/main.rs",
+      "sha256": "339006c76358d2aa1b13d2f678fed15309051fd3919f93ab9692aeb8275ae810",
+      "lines": 4713
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/cli.rs",
+      "sha256": "a05b576f5cd7d472b81b7f58ba0f5f2be1853fd7be9f5e2877551cdd45b20635",
+      "lines": 751
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/types.rs",
+      "sha256": "0b37f6b1589753f6a0cf04cd34cb1ce2bbc2a9d59556901a291a5c28570ccf40",
+      "lines": 561
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/watch.rs",
+      "sha256": "83b35dee1d7fd60efe13338970c9fc1fdba1bcb8cf6ce99e1f205a392ca76a73",
+      "lines": 205
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/idle_monitor.rs",
+      "sha256": "6243543e51d345f3a7df00ff8a4d69d4d63d6d072fbaebb47533b7b0a18bb7e3",
+      "lines": 2917
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/inbox.rs",
+      "sha256": "ebcc13624817c3d4472ecff1eb19df5aee2aae65a0f5eb1f279e12bc2c9ce368",
+      "lines": 1002
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/workflow.rs",
+      "sha256": "21d92ab9b881404de3e0920716045c66bc6a559e0a189ba1df981589f17a0410",
+      "lines": 2606
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/version_info.rs",
+      "sha256": "b20a252dd8b8420ac0ce8bb412045e84ce01c1e8c12c3f3354bcbf3101a2329e",
+      "lines": 60
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/leases.rs",
+      "sha256": "325a4c3695485d86ab04a59fce303d21c77fb5810ac035a81df5b2aadc8f9094",
+      "lines": 1543
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/timer.rs",
+      "sha256": "c8cbce47279130c1fb2332ac0e9783779437597ce4d475ccfaae9cbc99425762",
+      "lines": 545
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/team_daemon/external_relay.rs",
+      "sha256": "d131e731fcf91875cbca82e68ab0c65dc6ca76e25356c2442184bcc964a6c332",
+      "lines": 478
+    },
+    {
+      "path": "/home/mstie/projects/mesh/src/config.rs",
+      "sha256": "d00279d24b632cf70c6002b65463249e5d425c083ce15fe8440ad6c94897530f",
+      "lines": 665
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus-contractfix/src-tauri/src/coordination/routing_report/mesh.rs",
+      "sha256": "53939fe4c78073624949fa2b81c8868b54167d0f15a3579311c33b666634dc04",
+      "lines": 182
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus-contractfix/docs/operations/telemetry-contracts.md",
+      "sha256": "066fbc39b486baed1b08525e1fdb24be9db987c6117256c3277a1830f0c517d3",
+      "lines": 69
+    }
+  ]
+}

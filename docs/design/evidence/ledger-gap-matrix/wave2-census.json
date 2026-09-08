@@ -1,0 +1,52 @@
+{
+  "rows": 68,
+  "cell_fragments": 687,
+  "cell_fragment_chars": 39959,
+  "widths": {
+    "10": 61,
+    "11": 4,
+    "12": 2,
+    "9": 1
+  },
+  "malformed": [
+    {
+      "line": 120,
+      "task": "#7",
+      "width": 11
+    },
+    {
+      "line": 122,
+      "task": "#9",
+      "width": 12
+    },
+    {
+      "line": 127,
+      "task": "#14",
+      "width": 12
+    },
+    {
+      "line": 144,
+      "task": "#31",
+      "width": 11
+    },
+    {
+      "line": 163,
+      "task": "#52",
+      "width": 9
+    },
+    {
+      "line": 179,
+      "task": "#53",
+      "width": 11
+    },
+    {
+      "line": 180,
+      "task": "#50",
+      "width": 11
+    }
+  ],
+  "largest_line": {
+    "line": 8,
+    "chars": 6106
+  }
+}

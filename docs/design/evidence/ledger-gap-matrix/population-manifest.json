@@ -1,0 +1,42 @@
+{
+  "captured_at": "2026-09-08T02:43:40.365947+00:00",
+  "taurjob_revision": "99a1c4a0a3075258e82364dbd1328383eb34623b",
+  "files": [
+    {
+      "source": "/home/mstie/projects/taurjob/docs/wave-1/ledger.md",
+      "capture": ".check-logs/mesh-next-phase0/population/docs/wave-1/ledger.md",
+      "bytes": 87272,
+      "sha256": "d9272cf638e3071509f4b6767e57cd674257a43a768b5ce5df2a62726e7656bb",
+      "unicode_chars": 86890,
+      "lines": 516,
+      "live_capture": false
+    },
+    {
+      "source": "/home/mstie/projects/taurjob/docs/wave-1/rulings.md",
+      "capture": ".check-logs/mesh-next-phase0/population/docs/wave-1/rulings.md",
+      "bytes": 73560,
+      "sha256": "c08329fb30537d2e63b1af0bc212d830edd5a1d482ff5b3250053ebba07bc0ac",
+      "unicode_chars": 73349,
+      "lines": 1095,
+      "live_capture": false
+    },
+    {
+      "source": "/home/mstie/projects/taurjob/docs/wave-1/mesh-archive/taurjob-team-archive.tar.gz",
+      "capture": ".check-logs/mesh-next-phase0/population/docs/wave-1/mesh-archive/taurjob-team-archive.tar.gz",
+      "bytes": 169655,
+      "sha256": "60bd9ba90b941211821c14b36b10dc583ddf21e961ff80547ff223141d2643e1",
+      "unicode_chars": null,
+      "lines": null,
+      "live_capture": false
+    },
+    {
+      "source": "/home/mstie/projects/taurjob/docs/wave-2/ledger.md",
+      "capture": ".check-logs/mesh-next-phase0/population/docs/wave-2/ledger.md",
+      "bytes": 87579,
+      "sha256": "edd716719280492a966f0204f3f455e97385e52deb684a8ed203306f5c602f06",
+      "unicode_chars": 86499,
+      "lines": 364,
+      "live_capture": true
+    }
+  ]
+}

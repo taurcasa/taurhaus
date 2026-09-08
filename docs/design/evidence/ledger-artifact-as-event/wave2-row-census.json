@@ -1,0 +1,434 @@
+[
+  {
+    "line": 114,
+    "bytes": 308,
+    "cells": 10,
+    "text": "| #1 | S2 | review | judge-astra | lead | \u2014 (is the review; same-family over GPT-authored code, recorded) | \u2264250 lines `docs/wave-2/reviews/S2-sweep-judge.md` | **complete; accepted**, 153/250; 9 findings (3 P1, 5 P2, 1 P3), executed probes | a64ca84 | dispositions in `reviews/S2-findings-register.md` |"
+  },
+  {
+    "line": 115,
+    "bytes": 374,
+    "cells": 10,
+    "text": "| #2 | S2 | review | altitude-reviewer | lead | \u2014 (cross-family lens) | \u2264250 lines `docs/wave-2/reviews/S2-sweep-altitude.md` | **complete; accepted**, 241/250; 14 findings (1 high, 6 medium, 7 low), 5 questions; no probe executed (builds running), cancel-path findings traced | c465946 + 2c8b6af (delta 1: #15, #16) | dispositions in `reviews/S2-findings-register.md` |"
+  },
+  {
+    "line": 116,
+    "bytes": 411,
+    "cells": 10,
+    "text": "| #3 | S3/S4 | spec-delta | architect | lead | altitude-reviewer (altitude pass) | \u2264300 lines `docs/wave-2/architecture-delta.md` | **accepted** (2ad478f, 298/300) + **3c d93d007** (10 gross lines; 300/300): `009_schedules_notices.sql` after #34's 008; plan-order admission inherited; R9 counts child processes, native verifies excluded from global slots; row 51 crate inventory | 2ad478f \u2192 d93d007 | none |"
+  },
+  {
+    "line": 117,
+    "bytes": 240,
+    "cells": 10,
+    "text": "| #4 | S2 | spec-delta (design) | design-lead | lead | one round, lead | \u2264200 lines `docs/wave-2/design/vocabulary.md` | **complete; accepted (R42)**, 197/200 lines | a819454 \u2192 72c648d \u2192 6e5764e | none; #8 budget \u226460 from its \u00a7 4 |"
+  },
+  {
+    "line": 118,
+    "bytes": 207,
+    "cells": 10,
+    "text": "| #5 | S5 | spec-delta (design) | design-lead | lead | \u2014 | none communicated (authored ahead of assignment; 128 lines) | **complete; accepted** as the first brief | a819454 | GO on #9 released 2026-09-07 |"
+  },
+  {
+    "line": 119,
+    "bytes": 493,
+    "cells": 10,
+    "text": "| #6 | S3/S4 | spec-delta (design) | design-lead | lead | judge-astra (#32) | \u2264300 lines `docs/wave-2/design/s3-s4.md` + \u22643 mockups | **complete; accepted by both families** \u2014 final tip 9c6d37a (246/300; 78/78 strings; 30 states \u00d7 2 themes): 6c closed judge #32 F5\u2013F8, named the five review categories with anchors and the 9/10 floor, applied the held lines; \u00a7 9 decisions stand | 0eadd7f \u2192 b2bf2f6 \u2192 9c6d37a | none; implementation cut as #18/#19 (backend) + #37/#38 (frontend) |"
+  },
+  {
+    "line": 120,
+    "bytes": 541,
+    "cells": 11,
+    "text": "| #7 | S1 | implement | ui-implementer | lead + design-lead (residuals) | judge-astra (#26, GO released) | \u2264160 | **RESULT 874874e**: 52/160; Start disabled with run context; reader tag + per-reader ranks; T28-12 parity cited at results.test.ts:70; red-first observed; gate PASS; native captures | **complete; landed on master at 1ddb652** from 15a7fd4 (7c: F1\u2013F3 fixed; 60/160; judge confirmed with an independent gate 62/128+1; design-lead accepted residual and re-taken captures) | 874874e \u2192 0d994d7 \u2192 15a7fd4 \u2192 1ddb652 | none |"
+  },
+  {
+    "line": 121,
+    "bytes": 838,
+    "cells": 10,
+    "text": "| #8 | S2 | implement | ui-implementer | design-lead (copy) + lead | judge-astra | \u2264120 (**budget_raised** 60\u2192120: counting method, 60 changed lines \u00d7 2 gross; scope unchanged) | **RESULT a82d967**: 68 rows / 84 sites / 60 lines / 120 gross; identifiers untouched; residual grep = \u00a7 3 only; seven test assertions; harness no-hunt check; tests-path clock pin; gate PASS (first attempt OOM-killed under overlapping builds, rerun is the evidence); **complete; landed on master at 95b56c6** from 962e923 (69 rows / 85 sites / 61 lines / 122 gross under two raises; judge confirmed the correction: 13 files reconstructed, 0 mismatches, 13/13 mutants caught; design-lead copy accepted; code+tests tree identical to the gated candidate) | a82d967 \u2192 962e923 \u2192 95b56c6 | 68 rows, six test assertions, grep list, one capture per surface |"
+  },
+  {
+    "line": 122,
+    "bytes": 1297,
+    "cells": 12,
+    "text": "| #9 | S5 | implement (imagery) | asset-generator | design-lead | operator picks at style gate | per brief \u00a7 3\u20134: gate 6 masters + 64 px downscales | gate set **landed 0afb648** (A/B/C \u00d7 light/dark, 64 px inspection files, NOTES.md 244 lines; untagged RGB, fields approximate, corners reported); declared wait on design-lead pre-screen #25 | 0afb648 (gate) \u2192 d35ddbf (E1 set) | pick **B** ruled by the lead 2026-09-07 (operator's autonomy instruction; reason: the pre-screen); **E1 promoted byte-identically** to `imagery/set/` (RESULT 9-E1 d35ddbf; design-lead cmp-verified; gate PASS); finishing extended to the four E2/E3 64 px files; sRGB tagging none (brief 2); **E2/E3 accepted at ec1f9fb** (RESULT 9-E2E3; design-lead acceptance in brief-1 \u00a7 5 order, keyed to the commit; E3 stays imagery \u2014 two shapes visible at 64 px in both themes; lead placement acceptance under E17; exact-commit gate PASS 66 / 171); set complete: E1\u2013E3 \u00d7 light/dark; wiring is #50 (ui-implementer, after #49); run/results moments are a later brief, not this wave; stale blockedBy #48 on the task is the corrected brief id (#46 governs), mesh cannot remove it | ec1f9fb | **complete** (owner summary 21:2xZ: set NOTES.md 263 lines, gate NOTES.md 340 lines; seat released, no further assignment this wave) |"
+  },
+  {
+    "line": 123,
+    "bytes": 583,
+    "cells": 10,
+    "text": "| #10 | S1 | implement | heavy-implementer-1 | lead | altitude-reviewer | \u2264250 (both sides) | **complete; landed at bd839ef**, evidence closed by RESULT 10b (native capture 181 ms after the counts event with the run and Reader B still running; verified by altitude-reviewer); finding 2 \u2192 #19; finding 3 \u2192 register row 33; Q1 Chromium documented; Q2 \u2192 design-lead (report not re-read on task-terminal change; RunSnapshot carries no report fields; frontend refresh is the layer); scope ruling mesh #10 `scope` | \u2014 | red-first vitest, stale-response guard test, live capture |"
+  },
+  {
+    "line": 124,
+    "bytes": 251,
+    "cells": 10,
+    "text": "| #11 | S1 | implement | heavy-implementer-2 | lead | altitude-reviewer (#24) | \u2264350 | **complete; landed on master at f996ecd** (RESULT 11b f78e5df: correction 14 lines, 177/350; altitude confirmed by diff; gate PASS) | f78e5df \u2192 f996ecd | none |"
+  },
+  {
+    "line": 125,
+    "bytes": 594,
+    "cells": 10,
+    "text": "| #12 | S1 | implement | heavy-implementer-2 | lead | altitude-reviewer (queued) | \u2264200 (base f53ba44) | **landed on master at 918149b** from 41a4754 (136/200; review #35 ACCEPT 2b3b4cb, four reds replayed; three LOW \u2192 register rows 35\u201337; still_present policy ruled on the task); lead gate on the merge queued for a build slot | 41a4754 \u2192 918149b | six items: leader-less reap (R34 check), PDEATHSIG thread binding, cfg(linux) call site lib.rs:26 vs run/mod.rs:4, one signal_group (sweep #10), T26-fix-2 lows 14/15 locate-or-record, unresolved-lease dispatch block (#18 prerequisite) |"
+  },
+  {
+    "line": 126,
+    "bytes": 958,
+    "cells": 10,
+    "text": "| #13 | S1 | implement | heavy-implementer-1 | lead | altitude-reviewer | \u2264120 | **RESULT 3e4a26d** (base 8300bad; 2026-09-08): already correct at 8300bad (historical fix 66ff83b is an ancestor) \u2014 0/120 production, 210 test lines inside enrich/mod.rs's cfg(test); two cross-layer documenting tests PASS on base and candidate; controls M13-any-withheld-fails-pass and M13-drop-withheld-dto-marker red, patches beside logs; exact gate PASS 76 / 196+1; ResultCell unchanged \u2192 #59 altitude **ACCEPT** 1bc9c90 (0/120 confirmed; both controls red on a scratch; documenting label present; matched text absent from DTO/event/SQLite/WAL/SHM; 1 LOW \u2192 row 89) \u2192 **landed 4a50b5c** (lead gate PASS on re-run 78 / 210+1); **complete**; R32 p3 carried item closed as 'already correct, proven'. Contract was: per-cell withholding across enrich \u2192 persist \u2192 query \u2192 DTO, two failing-first tests, \u2264120; review altitude-reviewer | \u2014 | per-cell withholding |"
+  },
+  {
+    "line": 127,
+    "bytes": 1903,
+    "cells": 12,
+    "text": "| #14 | S1 | implement | ui-implementer | lead + design-lead (Set up capture) | judge-astra | \u2264180 | **RESULT adcf7eb** (base 8300bad; 2026-09-08): 120/180 raw (84 excl. the inline migration test); seen.md rows lift url + first seen only into the existing record() validation; identity {url, canonicalKey}; unresolved reasons reused, never name-matched; migration 010 rebuilds `imports` widening source_kind with the FK-linked legacy_seen rows parked and re-inserted (drop/rename recipes proven to fail under FK inside the migration transaction); rows 67 + 74 folded; three reds on base; text-column + preview dumps assert no ledger text, 0 log sites; synthetic cfg(test) fixture (lead spot-check: no identifying cell shared with the read-only reference); exact gate PASS 76 / 197+1 \u2192 **review #55 (judge)** + design-lead **accepted** layout/states/themes (row 74 closed) with bounded copy corrections **14b 1a69a24** ('ledger' \u2192 'file', two strings; gate PASS 76 / 197+1 with 0 foreign builds) and **14c** (filter label \u2192 'Seen postings list (seen.md)', pending); \u2192 **14c 1e73c42** (filter label 'list'); #55 judge **ACCEPT** f4ca425 (45 lines; 14b/14c confirmed; independent FK-recipe replay 4/4 fail + 010 preserves the linked row; all-table privacy 0 hits; one P3 \u2192 row 76 \u2192 #37) \u2192 **landed 661e42f** (lead gate PASS 78 / 208+1); **complete**; process note: the adcf7eb gate started with three foreign builds up (third time on the seat; rule reminder sent; owner now prefixes every gate with the wait loop) | 661e42f | review judge-astra; no document content persisted; pre-read found `imports.source_kind` CHECK fixed to roles_jsonl \u2192 **R46**: table-rebuild migration 010 authorised; identity amended on the architect's check to {url, canonicalKey} (the current roles projection; no company/title retention; ambiguous URL \u2192 unresolved, never name-matched) | \u2014 | seen.md lens |"
+  },
+  {
+    "line": 128,
+    "bytes": 1660,
+    "cells": 10,
+    "text": "| #15 | S1 | verification (supporting) | judge-astra | lead (doc items) | altitude-reviewer (ported test, GPT-authored) | \u2264120 test + \u226430 doc lines | **assigned 2026-09-07** (after #48): port T28-11 from fc01b7f onto 469aca6 (branch 61 files stale \u2014 port, not merge), replay baseline-green/mutation-red; annotate acceptance.md checks 17/24/50 (annotations only, ruled); scanner limits line; run-or-retire the T28-10 driver; RESULT reviews preempt \u2192 **RESULT dbfaf6e** (base 469aca6): 53/120 test lines (exact R40 port from fc01b7f; baseline green / mutation red / restored green), 14/30 doc lines (acceptance.md +8 annotations, rubric bytes unchanged; wave-1 closure +6 dispositions), 1-line scanner grammar literal (AST otherwise identical), T28-10 dedicated driver retired with reason (none retained; maintained Results driver PASS 52 on exact 469aca6, capture cited by check 24); exact gate 66 / 179+1 \u2192 **docs accepted by lead on condition** (cited evidence committed under `reviews/evidence/t15/` as docs-only 15b); test \u2192 #53 altitude **ACCEPT** 24b414d (53 lines byte-identical to fc01b7f; R40 items traced; three own mutants red; 2 LOW \u2192 rows 72\u201373); scanner literal **lead-verified** (AST identical modulo string constants; successor sha256 82f03f6d459bae474c39cc881d3c5b82271a5cb09d010082cf0d3c4c1b569f73, base = certified 15dd1ec9\u2026); 15b **0478549** (docs-only: twelve evidence files + SHA256 manifest + reconstructed mutation.patch under `reviews/evidence/t15/`, links repointed, code bytes identical) \u2192 **landed 284c839** (lead gate PASS 73 / 194+1); **complete** | 284c839 | T28-11, checks 24/50, limits line, capture driver |"
+  },
+  {
+    "line": 129,
+    "bytes": 412,
+    "cells": 10,
+    "text": "| #16 | S1 | diagnose (triage) | judge-astra | lead | \u2014 | \u226480 lines `docs/wave-2/reviews/S1-triage.md` | **complete; accepted** 196d2fe (43/80): rejection history \u2192 #34 (\u2264200); per-appearance reuse re-deferred (needs real overlap/cost; 220\u2013320); Range read re-deferred (206 unsupported; needs bounded evidence strategy; 120\u2013220); incremental gzip closed at 0 lines (decoder probed) | 196d2fe | none |"
+  },
+  {
+    "line": 130,
+    "bytes": 87,
+    "cells": 10,
+    "text": "| #17 | S1 | docs | lead | lead | \u2014 | \u2014 | complete | 4e283ff + this commit | none |"
+  },
+  {
+    "line": 131,
+    "bytes": 4362,
+    "cells": 10,
+    "text": "| #18 | S3 backend | implement (hero) | heavy-implementer-2 | lead | altitude-reviewer + judge-astra (evidence audit) | phase A **\u22641900 (budget_raised 600\u21921900 before any edit; four-block forecast 1400\u20131900; checkpoints 18a-1 \u2264900 and 18a-2)** base 208162c | **in progress, phase A**: **RESULT 18a-1 6009bab** (483/900 owned; 53 generated lock; 462 tests; schema 009 after 008; rule union; CAS receipts; four commands; fixture table with reds/controls; gate PASS 73 / 180+1) \u2192 #47 altitude ACCEPT for the checkpoint (6dfe549); #48 judge audit **complete** (bounded correction, finding 1 P2: registration instrument gap) \u2192 **18a-1b** on a branch off 6009bab (production-registration must-flag check failing under the judge's `01_registry` mutant; test-only unless a small pub(crate) seam is needed; counts to the \u2264900 checkpoint; judge confirms by diff); landing = 6009bab + 18a-1b; **R45** recorded: additive `ErrorCode::ReadinessUnknown` for AuthUnknown / unfinished Checking at bounded preflight end, copy final at 71ec7cf ('The app could not tell whether this tool is ready. Check it on Set up.'; vocabulary.md 206/208), TS fixedError entry in this lane, never inputsUnavailable; **RESULT 18a-1b c09b8a2** (branch off 6009bab; +29 test-only lines in schedule_tests.rs; `production_handler_registers_every_schedule_command` fails under the real registration-deletion mutant, passes restored; exact gate 73 / 181+1; merge-tree vs master clean) \u2192 judge **confirmed** (01_registry mutant red, restored green; supplement 5e2cf9e, audit 80 lines; #48 finding 1 closed) \u2192 **18a-1 landed 6b1654c** (lead merge; lead gate PASS 73 / 189+1); #19 boundary settled: #18 keeps list_runs one SELECT and the cursor's direct pending COUNT, #19 consumes; **RESULT 18a-2 3a81d70** (2026-09-08; contains 35bdfff via 84ed3f0, not #19/#14 \u2014 merge-tree vs master conflicts in lib.rs, run/mod.rs, ipc.ts: owner merges master in parallel with review, reviewers confirm the merged tip by diff): exact gate PASS 75 / 218+1, **6 ignored** (sixth = new `run::ownership::tests::owner_child_attempt`, reviewers judge); 1690/1900 cumulative conservative (483 + 1207 vs 35bdfff), lock 53; phase-2 tests 1698 lines; real 208162c reds incl. the readiness-cache lease race; twelve named mutation controls; R47 applied; #19 seams preserved; integration test (notice \u2192 cursor \u2192 ack), rows 53/77, terminal settlement, continue_without \u2192 phase B \u2192 #57 altitude **ACCEPT** 4f4496c (rows 82\u201388) + #58 judge audit **bounded correction** d6f982d \u2192 **18a-2b ad57b37** (test-only privacy matrix with stored output; rows 90\u201391) confirmed with the landing diff (cece290) \u2192 **landed 21f4fc3** (lead gate PASS 80 / 236+1); phase A complete; **phase B GO** on 21f4fc3 \u2192 ceiling **2050** (raise before edits; task-filtered recovery seam granted) \u2192 **RESULT 18b 0c12915** (2026-09-08): 274 gross production + 471 test lines; cumulative 1964/2050; exact gate PASS 80 / 245+1, 6 ignored; classified atomic settlement, task-filtered panic recovery, all-dispatchable shutdown, bounded Conflict retry, startup=false, folds 77/82/83/85/86/88/99, continue_without registered; seven reds + wide-recovery mutant \u2192 #62 altitude **ACCEPT** 898a0a2 (rows 101\u2013103) + #63 judge audit **ACCEPT** 9e46eaf (D11/S0/I0; row 106) \u2192 **landed c959f6d** (lead gate PASS 107 / 245+1); **#18 complete** \u2014 [S3] backend closed. **R47** lease seam ruled (runActive skip; get_schedule carries processCleanupPending; cursor untouched); earlier: 18a-2 at 1684/1900 with 35bdfff merged at 84ed3f0, six scheduler transaction fixtures green; 18a-2 continues (earlier interim 715/1900 cumulative owned production, Rust 183 PASS; scheduler core added; row-61 clock answered by the architect: reuse #31's `now(&Connection)`, test-only per-connection override behind cfg(test), no Utc::now fallback; row 64 latch: successful remove clears after commit; #29 landed, supervisor/sqlite additive functions may proceed); plan accepted; evidence contract ruled (missing-command/schema baseline reds + a named mutation or negative control per fixture row); prerequisite: 009 assumes #34's 008, merge master after #34 lands (no rebase); additive claim-transaction seam in supervisor/sqlite granted after #29; folds rows 52, 54; phase B after #31; ship prereqs #12, #23 landed | \u2014 | RESULT 18a-1, then 18a-2 |"
+  },
+  {
+    "line": 132,
+    "bytes": 1392,
+    "cells": 10,
+    "text": "| #19 | S4 backend | implement | heavy-implementer-1 | lead | altitude-reviewer (one cross-family round) | \u2264450 (forecast at start; raise before excess) | **RESULT 5daed29** (base 35bdfff; 2026-09-08): 238/450 gross production, 496 test lines excluded; atomic immutable notices in the terminal operation, get/acknowledge + noticeNotFound + ipc.ts types, #52 folds (row 66 Conflict retry, row 68 dead append removed, Q2 exactly-one notice on replay); exact gate PASS 75 / 204+1; eleven reds \u2192 green; cursor-integration limit stated per rulings \u2192 #56 altitude **ACCEPT** (ae39010: budget reproduced exactly; 11 reds replayed; notice insert traced at sqlite.rs:360 inside commit_run_event; summary derivation vs delta; no free text; ipc.ts 22 names; 3 LOW + Q1/Q2 \u2192 rows 77\u201381) \u2192 **landed 630feff** (lead gate PASS 78 / 205+1); **complete**. Contract was: notice insert inside the #31 terminal operation with the derived summary, get_completion_notices + acknowledge_completion_notice + noticeNotFound; boundary amended on both heavies' pre-read \u2014 #18 keeps list_runs one SELECT and the cursor's direct pending COUNT, #19 consumes and evidences insert/ack effects on them (ruling on #19) | \u2014 | completion_notices row in the atomic terminal operation, task settlement, get_completion_notices, acknowledge_completion_notice, get_update_cursor with changeSeq, list_runs one SELECT |"
+  },
+  {
+    "line": 133,
+    "bytes": 271,
+    "cells": 10,
+    "text": "| #20 | closure | docs | lead | operator | \u2014 | \u2014 | **draft opened** `docs/wave-2/wave-closure-report.md` (landings table, S1 coverage state, S2 register summary, S3\u2013S5 state, process findings so far); fills as lanes close | \u2014 | final tip smoke; measurement pass |"
+  },
+  {
+    "line": 134,
+    "bytes": 225,
+    "cells": 10,
+    "text": "| #21 | S2 (privacy) | spec-delta | architect | lead | \u2014 (security portfolio) | \u2264120 lines `docs/wave-2/privacy-r7-delta.md` | **complete; accepted** 2717b3d (120/120); check-40 amendment adopted as R44 | 2717b3d | none |"
+  },
+  {
+    "line": 135,
+    "bytes": 406,
+    "cells": 10,
+    "text": "| #22 | S3/S4 | review (altitude) | altitude-reviewer | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/S3-S4-architecture-altitude.md` | **complete; accepted** 1a52616: accept-with-findings (3 medium, 4 low, 4 questions); three lead questions answered (SQLite stays the authority, polling cheapened; migration = next position \u2192 008; #18 may implement in parallel with #23 but not ship) | 1a52616 | none |"
+  },
+  {
+    "line": 136,
+    "bytes": 667,
+    "cells": 10,
+    "text": "| #23 | S2 (privacy) | implement | heavy-implementer-1 | lead | altitude-reviewer | \u2264340 production + \u2264100 instrument | RESULT d7a457f \u2192 review #41 accept with bounded corrections (c64e899; F1 F2 MEDIUM; F3/F5 fold; F4/F6 \u2192 rows 48\u201349; scanner 15dd1ec9 verdicted) \u2192 23b f172cf7 confirmed by altitude on candidate bytes \u2192 **complete; landed on master at d21239b** (323/340 + 82/100; scanner 15dd1ec9 the R44 instrument; Q3 ruled: exact house-number token is the bound; lead gate on the merge **PASS** 63/164+1, exit 0). **R43 closed; #18 ship prerequisite met.** | d7a457f \u2192 f172cf7 \u2192 d21239b | R43/R44 fix + J3 case fold; prerequisite for #18 ship |"
+  },
+  {
+    "line": 137,
+    "bytes": 271,
+    "cells": 10,
+    "text": "| #24 | S1 | review | altitude-reviewer | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/T11-review-altitude.md` | **complete; accepted** 56580eb: ACCEPT, 4 LOW (noun on pass tasks; third serializer; residual as_str \u2192 register; \"temporary workspace\") | 56580eb | none |"
+  },
+  {
+    "line": 138,
+    "bytes": 242,
+    "cells": 10,
+    "text": "| #25 | S5 | review (design pre-screen) | design-lead | lead | \u2014 | NOTES.md entry | **complete; accepted** 0ff55ef: B and A may be shown, C screened out (64 px, dark legibility); recommendation B | 0ff55ef | operator pick \u2192 ruling on #9 |"
+  },
+  {
+    "line": 139,
+    "bytes": 492,
+    "cells": 10,
+    "text": "| #26 | S1 | review | judge-astra | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/T7-review-judge.md` | **complete; accepted** 3dca465 (70/120): bounded correction on 0d994d7 \u2014 F1 Watch-the-run link fails on the second round trip (hash unchanged by tabs); F2 active-run area label follows the editable config, not the run snapshot; F3 a stale live-run parent suppresses Setup polling so Start can stay disabled; 52/160 and red reproduced; candidate and report gates PASS | 3dca465 | none |"
+  },
+  {
+    "line": 140,
+    "bytes": 414,
+    "cells": 10,
+    "text": "| #27 | S2 | implement (refactor) | heavy-implementer-2 | lead | altitude-reviewer | \u2264400 (base 41a4754) | **complete; landed on master at 19ad18b** from 6c7c3a1 (review #40 accept + 27b confirmed by altitude on candidate bytes; 341/400; nine rows + row 46 closed; lead gate on the merge PASS 63/142+1) | bb198b2 \u2192 6c7c3a1 \u2192 19ad18b | register rows 3\u201310, 28: process ownership, cancel path, DbError class |"
+  },
+  {
+    "line": 141,
+    "bytes": 460,
+    "cells": 10,
+    "text": "| #28 | S2 | implement (refactor) | heavy-implementer-2 | lead | altitude-reviewer | \u2264120 (budget_raised 80\u2192120 before excess; base 04d078a) | **complete; landed on master at 444d9f8** from 208162c (review #44 ACCEPT c679a77: budget reproduced with cfg lines named; both reds replayed behaviourally; atomicity traced; two LOW \u2192 register rows 54\u201356; lead gate on the merge **PASS** 63/149+1, exit 0) | 208162c \u2192 444d9f8 | register rows 11, 47 closed |"
+  },
+  {
+    "line": 142,
+    "bytes": 621,
+    "cells": 10,
+    "text": "| #29 | S2 | implement (refactor) | heavy-implementer-1 | lead | altitude-reviewer | \u2264200 (180 + 20 for row 41; base 19ad18b) | RESULT 28ca95c \u2192 review #45 **ACCEPT** (b96b251: 86/200 reproduced; reds replayed by grafting base regions; three LOW \u2192 rows 57\u201358 + one-line fold; Q1/Q2 \u2192 rows 59\u201360) \u2192 merged tip **1fe5fb2** (28ca95c + master + one-line fold `StoppedByYou` at supervisor.rs:186; row-13 assertion sqlite.rs:620 red-then-green; 87/200; isolated gate 66 / 178+1) \u2192 altitude confirmed by diff \u2192 **landed 469aca6** (lead merge; lead gate PASS) | 469aca6 | register rows 12\u201316, 9-seen, 37, 41 |"
+  },
+  {
+    "line": 143,
+    "bytes": 383,
+    "cells": 10,
+    "text": "| #30 | S2 | implement (refactor) | heavy-implementer-2 | lead | altitude-reviewer | \u2264220 (base bb198b2) | **complete; landed on master at da77a0a** from 04d078a (review #42 ACCEPT b644bbd: budget reproduced, both reds replayed, accounting traced; two LOW \u2192 register rows 52\u201353; lead gate on the merge **PASS** 63/146+1, exit 0) | 04d078a \u2192 da77a0a | register row 17 closed |"
+  },
+  {
+    "line": 144,
+    "bytes": 1694,
+    "cells": 11,
+    "text": "| #31 | S2 | implement (refactor) | heavy-implementer-1 | lead | altitude-reviewer | \u2264350 (**budget_raised** 200\u2192280 before excess: 162 gross measured at the seam + stores + supervisor with four baseline reds; atomic terminal entry/settlement adds validation + idempotence; then **oversize_diff recorded** \u2014 working draft 332/280 after cargo fmt expanded the dispatch transaction closure 54\u219299 lines, uncommitted, owner stopped \u2014 and **budget_raised** 280\u2192350 for that formatter expansion, scope unchanged, no rustfmt skip; reviewer judges closure vs named function); owner then found a corrective narrowing without suppression (named-local RunEvent constructors, early return in allowed()): pre-merge 5cdc638 **278/350**, merged master cacac21 \u2192 **RESULT 20ab2c2**: 303/350 gross production (278 owned + 25 integration), 162 test lines excluded; exact isolated gate PASS 66 / 182+1, 5 ignored; four baseline reds \u2192 greens; identical-writer + activity-batch rollback tests; dispatch closure 90 lines for shape review; breach 332/280 stays in evidence \u2192 #52 altitude **ACCEPT** (94b0c6f: budget reproduced exactly, four reds replayed on 28ca95c, seam traced as the only writer, closure kept \u2014 named-fn lift = 189 gross for zero semantic change; 4 LOW \u2192 register rows 66\u201369, Q1/Q2 \u2192 rows 70\u201371) \u2192 **landed 35bdfff** (lead gate PASS 73 / 193+1) | 35bdfff | in progress; seam design approved (append_task_event; commit_run_event atomic + idempotent with settle_terminal and notice hooks; now(&Connection); dispatch substitutions only; forecast 180\u2013200, raise before excess) | \u2014 | register row 18: one task-event writer seam; terminal operation in one transaction |"
+  },
+  {
+    "line": 145,
+    "bytes": 605,
+    "cells": 10,
+    "text": "| #32 | S3/S4 | review (design, cross-family) | judge-astra | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/S3-S4-design-review-judge.md` | **complete; accepted** 50b9bd1 (98/120): frozen round + bounded delta; F1\u2013F4 closed by b2bf2f6; verdict bounded correction on b2bf2f6 \u2014 F5 state inventory (custom/invalid/ack-failure), F6 no-schedule mockup (native select; missing-input fixture vs populated inputs), F7 older-run fixture date order, F8 \u00a7 7 aligned to get_update_cursor; routed to design-lead as one bounded correction with their held lines | 50b9bd1 | design-lead correction \u2192 #18/#19 cut |"
+  },
+  {
+    "line": 146,
+    "bytes": 269,
+    "cells": 10,
+    "text": "| #33 | S1 | review | altitude-reviewer | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/T10-review-altitude.md` | **complete; accepted** 896c87e (113/120): accept with a bounded evidence correction; 3 findings (1 medium evidence, 2 low), 2 questions | 896c87e | none |"
+  },
+  {
+    "line": 147,
+    "bytes": 1442,
+    "cells": 10,
+    "text": "| #34 | S1 | implement | ui-implementer | lead + design-lead (copy) | judge-astra | \u2264220 (200 per #16 + rows 31, 35, 39) | **RESULT e85e6ec** on 00f0b78: 218/220; migration `008_connection_checks.sql` (schedules \u2192 009 by the position rule); attempt-guarded finalize; resetHistory/historyReset; lastChecks overlay after the cache; hints never enter readiness; rows 31/35/39; reds Rust + TS + browser; gate PASS 65 / 132+1; native captures with real overlay; review #43 (judge-astra); design-lead copy acceptance requested; landing overlap with master: `commands/run_tests.rs` only | e85e6ec \u2192 **34b 4eb4ec5** (template-only; bytes unchanged; 218/220; gate PASS) \u2014 **design acceptance closed** (list form verified, row 39 verified, no bullets by design) | review #43 **accepted** cf603e6 (79/150): bounded correction on 4eb4ec5 \u2014 F1 reset path skips the bounded request validation (oversize model/reader id, relative path, unsupported effort accepted); F2 `resetHistory: null` in ordinary requests changes receipt hashes so pre-#34 receipts replay as `requestConflict`; template delta, copy, rows 31/35/39, storage/cap/attempt/overlay controls confirmed (3/3 mutants) \u2192 34c a4c657a confirmed by judge on candidate bytes \u2192 **complete; landed on master at b9fb370** (236/236 under raises 220\u2192235\u2192236; migration 008 taken; register rows 31, 35, 39 closed; triage item 1 closed; lead gate on the merge **PASS** 66/170+1, exit 0) |"
+  },
+  {
+    "line": 148,
+    "bytes": 202,
+    "cells": 10,
+    "text": "| #35 | S1 | review | altitude-reviewer | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/T12-review-altitude.md` | **complete; accepted** 2b3b4cb (120/120): accept; 3 LOW; 3 questions | 2b3b4cb | none |"
+  },
+  {
+    "line": 149,
+    "bytes": 316,
+    "cells": 10,
+    "text": "| #36 | S2 | review | judge-astra | lead | \u2014 | \u2264100 lines `docs/wave-2/reviews/T8-review-judge.md` | **complete; accepted** d89b661 (62/100): 68/68 rows exact, 120/120, wires unchanged, 12/12 mutations flagged; bounded correction = the copied-log literal, applied in 15e923d | d89b661 | diff-confirm of 15e923d |"
+  },
+  {
+    "line": 150,
+    "bytes": 2200,
+    "cells": 10,
+    "text": "| #37 | S4 frontend | implement | ui-implementer | lead + design-lead (copy/layout) | judge-astra (one cross-family round) | \u2264450 (forecast at start) | **RESULT dfef0cd** (base 630feff; 2026-09-08): 238/450 owned; coordinator (2 s visible tick; heavy reads only on changeSeq / initial / focus / own mutation; stale replies discarded; keyed run seqs; Results timer, RunPage fan-out and Set up 7c poll retired; 'no cursor value' until 18a-2 lands), N1 strip with every designed state and byte-exact \u00a7 4/\u00a7 6 copy, exact-run Results with the older-run dateline + 'Show the latest run', row 80 via the existing enrichmentBlockedBy sentence, row 20 = judge's app-race.mjs ported verbatim; reds red on base; exact gate PASS 97 / 205+1 behind the wait loop; harnesses notice 40 / setup 40 / run 52 / results 52; nine strip states captured light/dark \u2192 **review #61 (judge)**; tip moved to **bb667f6** (ipc.ts aligned to 18a-2's bytes; 236/450; gate PASS 97 / 205+1; the reviewed commit was amended rather than appended \u2014 rule restated: append only under review); design-lead \u00a7 8 review of the strip **REQUEST CHANGES 43/50** (`reviews/S4-notice-design-review.md` 777d2e6): two one-class corrections \u2192 **37b** (stamp tone per state; bad tone on the failure line) with the row 76 bytes; re-look on four strips expected APPROVE 45/50; lead product read accepted; \u2192 **RESULT b410114** (final: bb667f6 + 37b 0fe6eaa + merge of master 001a741 \u2287 21f4fc3 + test-only provenance fixtures; 282/450 vs master; gate PASS 98 / 236+1; real cursor gated) \u2192 #61 judge **bounded correction** (six P2, rows 93\u201398) \u2192 **37c c4f2aa4** (generation-keyed tick; per-run seqs + view-scoped events; select() true only on a fresh get_results; reads.run vs reads.active; RunPage effect removed, transition refresh through the coordinator; summary fallback with origin; eight ported reds; owned 339\u2013345/450; gate PASS 107 / 236+1) \u2192 judge **confirmed** (18/18 probes; row 100 carry-over) \u2192 **landed 45cc9d0** (lead gate PASS 107 / 236+1); **complete**; [S4] closed | \u2014 | App read coordinator on get_update_cursor (pollers retire; register rows 20, 21, 32, 33), N1 strip (ten states), exact-run Results open |"
+  },
+  {
+    "line": 151,
+    "bytes": 1947,
+    "cells": 10,
+    "text": "| #38 | S3 frontend (hero) | implement | ui-implementer | lead + design-lead (\u00a7 8 final review) | judge-astra + altitude-reviewer (per checkpoint) | \u2264450 (split 2026-09-08: Set up half; Run/Results half \u2192 #60 \u2264250) | **RESULT 0f021d4** (2026-09-08; base 45cc9d0): 178/450 gross (24 = #60's run-view.ts block verbatim); C6 zone with fifteen states, c5 side-card lines + lease-disabled Start, reads.schedule/errorCodes through the coordinator, #60 prop wiring, row 100 fold; 16/16 reds; gate PASS (svelte 0/0, 123, Rust 236); 68 captures \u2192 **38b ad1e0ec** (row 107 zoneSuffix, 185/450) \u2192 design-lead \u00a7 8 **APPROVE 45/50** 1b48504 (rows 111\u2013113 \u2192 the merge append) + side-card zone form ruled 8c1c721 (row 114 \u2192 the merge append) \u2192 #68 altitude **ACCEPT** a41002f (0f021d4 + ad1e0ec by diff); lead product read accepted \u2192 **38c f499fad** (merge of master 38a437c \u2287 7aeb2b1 as 2df70f3 with rows 111\u2013113; #60 seam test aligned; run-view.ts/Run.svelte took master's hunks; 156/450 vs master; gate PASS first attempt 141 / 245+6 ignored; 68 captures re-taken) \u2192 judge #67 **REQUEST CHANGES** 804e8bf (four P2: localDatabase read shown as no-schedule; Remove/Keep reachable in error-lease; every(nonblank) area predicate; mismatch banner hidden while paused \u2014 rows 115\u2013118) \u2192 **38d 609acdb** (F1\u2013F4 fixed with red-first browser cases; row 114 side-card form per 8c1c721; row 109 strictPort in schedule-live; citation; 31 gross; gate PASS first attempt 145 / 245) \u2192 judge **confirmed** (26/26 probes + tests; rows 115\u2013118 closed) + altitude **confirmed** line by line (verdict ACCEPT stands) \u2192 38e 4c028cc (captures of the three changed states) \u2192 **38f dd29d79** (merge of master 5cac0da; the one test-only conflict keeps both sides; 161/450; gate PASS 147 / 245) \u2192 both reviewers **confirmed** by diff \u2192 **landed cdc3ec6**; **complete**; [S3] closed | \u2014 | Set up C6 (13 states), Run R0/R1/R6, Results B1 |"
+  },
+  {
+    "line": 152,
+    "bytes": 354,
+    "cells": 10,
+    "text": "| #39 | S1 | spec-delta | architect | lead | \u2014 | \u226440 lines `docs/wave-2/connection-history-seam.md` | **complete; accepted** 8a0ba77 (40/40): `connection_checks` table, 32-row cap, migration by landing position, additive lastChecks / resetHistory / historyReset, one-transaction finalize, privacy bounds; id slip #40\u2192#39 recorded | 8a0ba77 | none |"
+  },
+  {
+    "line": 153,
+    "bytes": 278,
+    "cells": 10,
+    "text": "| #40 | S2 | review | altitude-reviewer | lead | \u2014 | \u2264150 lines `docs/wave-2/reviews/T27-review-altitude.md` | **complete; accepted** 00f0b78 (146/150): accept with a bounded correction; 1 medium (lead-caused), 4 low, 3 questions; 27b confirmed on 6c7c3a1 | 00f0b78 | none |"
+  },
+  {
+    "line": 154,
+    "bytes": 306,
+    "cells": 10,
+    "text": "| #41 | S2 (privacy) | review | altitude-reviewer | lead | \u2014 | \u2264150 lines `docs/wave-2/reviews/T23-review-altitude.md` | **complete; accepted** c64e899 (143/150): accept with bounded corrections; 2 medium, 4 low; twenty source-shaped probes; scanner 15dd1ec9 verdicted | c64e899 | diff-confirm of 23b |"
+  },
+  {
+    "line": 155,
+    "bytes": 201,
+    "cells": 10,
+    "text": "| #42 | S2 | review | altitude-reviewer | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/T30-review-altitude.md` | **complete; accepted** b644bbd (91/120): accept; 2 LOW; 2 questions | b644bbd | none |"
+  },
+  {
+    "line": 156,
+    "bytes": 267,
+    "cells": 10,
+    "text": "| #43 | S1 | review | judge-astra | lead | \u2014 | \u2264150 lines `docs/wave-2/reviews/T34-review-judge.md` | **complete; accepted** cf603e6 \u2192 supplement a42b83d (96 lines): 34c confirmed, F1/F2 closed, hash chain to the landed merge b9fb370 verified | a42b83d | none |"
+  },
+  {
+    "line": 157,
+    "bytes": 201,
+    "cells": 10,
+    "text": "| #44 | S2 | review | altitude-reviewer | lead | \u2014 | \u2264100 lines `docs/wave-2/reviews/T28-review-altitude.md` | **complete; accepted** c679a77 (87/100): accept; 2 LOW; 2 questions | c679a77 | none |"
+  },
+  {
+    "line": 158,
+    "bytes": 231,
+    "cells": 10,
+    "text": "| #45 | S2 | review | altitude-reviewer | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/T29-review-altitude.md` | **complete; accepted** b96b251 (106/120): accept; 3 LOW; 2 questions | b96b251 | confirm the one-line fold by diff |"
+  },
+  {
+    "line": 159,
+    "bytes": 294,
+    "cells": 10,
+    "text": "| #47 | S3 backend (hero) | review | altitude-reviewer | lead | \u2014 | \u2264150 lines `docs/wave-2/reviews/T18a1-review-altitude.md` | **complete; accepted** 6dfe549 (131/150): ACCEPT for checkpoint 18a-1; 4 LOW (\u2192 18a-2 requirements, register rows 61\u201364); 3 questions ruled | 6dfe549 | none |"
+  },
+  {
+    "line": 160,
+    "bytes": 788,
+    "cells": 10,
+    "text": "| #48 | S3 backend (hero) | review (evidence audit) | judge-astra | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/T18a1-audit-judge.md` | **complete; accepted**: RESULT 3387b08 (72 lines, written before reading #47); verdict **bounded correction** \u2014 finding 1 (P2): the private-handler IPC fixture stays green when the four production registrations are removed (instrument gap, not a runtime bug); 11 mutants / 10 detected / 1 survivor / 0 invalid; 6 invalid rules + 2 stale revisions rejected on real IPC envelopes; schema and DST reds replayed; budget 483 + 53 lock + 462 tests reproduced; independent exact gate 73 / 180+1 \u2192 correction **18a-1b** routed to heavy-implementer-2, judge confirms by diff (register row 65) | 3387b08 | can each fixture row fail; controls; provenance |"
+  },
+  {
+    "line": 161,
+    "bytes": 614,
+    "cells": 10,
+    "text": "| #49 | S1 | implement | ui-implementer | lead + design-lead (if copy changes) | judge-astra | \u226440 | **RESULT 6312b12** (base 469aca6): 8/40 (setup-state.ts 4/2, RunPage.svelte 1/1); reds retained (unit runContext titled tasks; browser rename-while-running with a persisted save_config stub); exact gate PASS 66 / 178+1; harnesses setup 40 / run 52; native captures stamped \u2192 #51 judge **ACCEPT** (75d7073, 0 defects, both reds reproduced, isolated Run red proves the persisted-stub sensitivity) \u2192 **landed 4ef892c** | 4ef892c | register row 41 UI half: geoTitle read on Set up context and RunPage areaName |"
+  },
+  {
+    "line": 162,
+    "bytes": 263,
+    "cells": 10,
+    "text": "| #51 | S1 | review | judge-astra | lead | \u2014 | \u226460 lines `docs/wave-2/reviews/T49-review-judge.md` | **complete; ACCEPT** 75d7073 (29 lines; 0 defects; 8/40 reproduced; base 2 red / 9 controls; candidate and report gates PASS) | 75d7073 | #49 RESULT 6312b12 |"
+  },
+  {
+    "line": 163,
+    "bytes": 255,
+    "cells": 9,
+    "text": "| #52 | S2 | review (altitude) | altitude-reviewer | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/T31-review-altitude.md` | **complete; ACCEPT** 94b0c6f (4 LOW, 0 blockers; oversize telemetry disclosed; raises precede the first owned commit) | 94b0c6f |"
+  },
+  {
+    "line": 164,
+    "bytes": 406,
+    "cells": 10,
+    "text": "| #67 | S3 frontend (hero) | review (judge, first) | judge-astra | lead | \u2014 | \u226490 lines `docs/wave-2/reviews/T38-review-judge.md` | **complete; REQUEST CHANGES \u2192 ACCEPT** 804e8bf + confirms (four P2 \u2192 rows 115\u2013118 fixed in 38d, 26/26 probes + tests; 4c028cc and dd29d79 confirmed by diff) | 804e8bf | #38 0f021d4 (+ 38b): mutations with expectedRevision, error recovery, coordinator seams, reds |"
+  },
+  {
+    "line": 165,
+    "bytes": 330,
+    "cells": 10,
+    "text": "| #68 | S3 frontend (hero) | review (altitude, second) | altitude-reviewer | lead | \u2014 | \u226480 lines `docs/wave-2/reviews/T38-review-altitude.md` | **complete; ACCEPT** a41002f (0f021d4 + ad1e0ec; 2 LOW closed/resolved in the append) | a41002f | fifteen states traced; 41 strings byte-equal; no invoke beyond the four mutations |"
+  },
+  {
+    "line": 166,
+    "bytes": 848,
+    "cells": 10,
+    "text": "| #66 | S3 frontend | implement (polish batch) | heavy-implementer-1 | lead + design-lead (two byte rows) | altitude-reviewer (diff-confirm only) | \u226420 (+ test-only rows 109/110) | **RESULT d3a1489** (one commit on 7aeb2b1): rows 42/104/105/108 (12/20 production), 109 (strictPort dropped in six live tests; the seventh \u2192 38d; two capture harnesses keep it, noted), 110 (timeouts 30 \u2192 60 s, 2 lines); 33 test lines; six baseline reds; gate PASS 127 / 245+1 at load 15; 20 captures \u2192 altitude **diff-confirmed** (12/20 exactly the ruled rows) + design-lead **confirmed** rows 105/108/104/42 from the pixels (note \u2192 row 119) \u2192 **landed 5cac0da** (lead gate PASS first attempt 127 / 245+1); **complete** | 5cac0da | duplicate Run empty heading; history date via humanDate; R0 line muted mono + one Set up link; singular one-hour interval |"
+  },
+  {
+    "line": 167,
+    "bytes": 401,
+    "cells": 10,
+    "text": "| #64 | S3 frontend (hero) | review (altitude, first) | altitude-reviewer | lead | \u2014 | \u226480 lines `docs/wave-2/reviews/T60-review-altitude.md` | **complete; ACCEPT** 0e052a0 (72 lines; 18/18 reds; strings byte-equal; row 99 flake in the gate run belongs to master pre-18b; 2 LOW \u2192 rows 107\u2013108) | 0e052a0 | #60 86668f8 vs s3-s4.md 35d8467 \u00a7 Run/\u00a7 Results B1; coordinator reads; reds; budget |"
+  },
+  {
+    "line": 168,
+    "bytes": 301,
+    "cells": 10,
+    "text": "| #65 | S3 frontend (hero) | review (judge, second) | judge-astra | lead | \u2014 | \u226460 lines `docs/wave-2/reviews/T60-review-judge.md` | **complete; ACCEPT** f35574f (31 lines; disclosed supplement; 0 new findings; serial gate 125 / 236+1) | f35574f | bytes vs packet; browser reds; capture coverage |"
+  },
+  {
+    "line": 169,
+    "bytes": 424,
+    "cells": 10,
+    "text": "| #62 | S3 backend (hero) | review (altitude) | altitude-reviewer | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/T18b-review-altitude.md` | **complete; ACCEPT** 898a0a2 (104 lines; budget 261\u2013274 reproduced; 6/7 reds + guard control; mutant red; workspaces-at-quit hard-rule check closed; 3 LOW \u2192 rows 101\u2013103) | 898a0a2 | 18b 0c12915 vs delta: settlement classes, panic recovery, shutdown, folds, budget 1964/2050 |"
+  },
+  {
+    "line": 170,
+    "bytes": 386,
+    "cells": 10,
+    "text": "| #63 | S3 backend (hero) | review (evidence audit) | judge-astra | lead | \u2014 | \u2264100 lines `docs/wave-2/reviews/T18b-audit-judge.md` | **complete; ACCEPT** 9e46eaf (61 lines; eleven mutants detected, zero survivors; seven reds; budget 1964/2050; OS fork probe; P3 \u2192 row 106) | 9e46eaf | seven reds, wide-recovery mutant, per-behaviour controls, row 99 evidence, budget provenance |"
+  },
+  {
+    "line": 171,
+    "bytes": 493,
+    "cells": 10,
+    "text": "| #61 | S4 frontend | review | judge-astra | lead | \u2014 | \u226490 lines `docs/wave-2/reviews/T37-review-judge.md` | **complete; bounded correction** ece588d (44 lines; six P2 \u2192 rows 93\u201398; 37b, the master merge and b410114 confirmed by diff; budget 236\u2192245/450 reproduced; two inherited Rust gate failures triaged: rows 92, 99) | ece588d | #37 RESULT dfef0cd: coordinator semantics, N1 copy bytes, exact-run open, row 20 race port, row 80; row 76 + 18a-2 merge confirmed by diff in-round |"
+  },
+  {
+    "line": 172,
+    "bytes": 269,
+    "cells": 10,
+    "text": "| #59 | S1 | review (altitude) | altitude-reviewer | lead | \u2014 | \u226450 lines `docs/wave-2/reviews/T13-review-altitude.md` | **complete; ACCEPT** 1bc9c90 (50 lines; 1 LOW) | 1bc9c90 | #13 RESULT 3e4a26d: documenting tests, two mutation controls replayed, 0 production |"
+  },
+  {
+    "line": 173,
+    "bytes": 1122,
+    "cells": 10,
+    "text": "| #60 | S3 frontend (hero, half 2) | implement | heavy-implementer-1 | lead + design-lead (\u00a7 8) | altitude-reviewer + judge-astra (second) | \u2264250 (split from #38) | **GO released early** on master 21f4fc3 (2026-09-08): derivations + markup first, no own polling \u2192 merged 45cc9d0 (dc6454b) \u2192 **RESULT 86668f8** (2026-09-08): 60/250 gross production (run-view.ts +25, results.ts +5, RunPage 11/9, Run 3/3, Results 2/2), 123 test/harness lines excluded; 18 reds on base; exact gate PASS 125 / 236+1; 60 build-stamped captures (15 cases \u00d7 light/dark \u00d7 1440/1000); schedule stays a prop for #38 \u2192 #64 altitude **ACCEPT** 0e052a0 + #65 judge **ACCEPT** f35574f (disclosed supplement: the owner's mutable RESULT.md exposed #64 before the lock; pre-exposure measurements kept) + design-lead \u00a7 8 **APPROVE 45/50** 5b50dd6 (rows 42/104/105 \u2192 polish #66) + lead product read \u2192 **landed 7aeb2b1** (lead gate PASS on attempt 4: 125 / 245+1); **complete** | 7aeb2b1 | Run R0 schedule line, scheduled eyebrow, history tag, no-decision-wait failure card (readiness_unknown bytes 71ec7cf); Results B1 dateline with origin |"
+  },
+  {
+    "line": 174,
+    "bytes": 420,
+    "cells": 10,
+    "text": "| #57 | S3 backend (hero) | review (altitude) | altitude-reviewer | lead | \u2014 | \u2264160 lines `docs/wave-2/reviews/T18a2-review-altitude.md` | **complete; ACCEPT** 4f4496c (budget reproduced exactly; 7/7 baseline reds; 6/6 mutants; sixth ignored justified; 5 LOW + Q1/Q2 \u2192 rows 82\u201388) | 4f4496c | 18a-2 3a81d70 vs delta, #47 requirements, R45/R47, folds 52/54/61/62/64, row 81, sixth ignored test, budget 1690/1900 |"
+  },
+  {
+    "line": 175,
+    "bytes": 473,
+    "cells": 10,
+    "text": "| #58 | S3 backend (hero) | review (evidence audit) | judge-astra | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/T18a2-audit-judge.md` | **complete; bounded correction** d6f982d (76 lines; D12/S0/I0; seven baseline reds; IPC probes; budget 1690/1900 reproduced; F1 P2 privacy success cases vacuous \u2192 18a-2b; credential/notice measurement caveat) | d6f982d | twelve mutation controls per row; 208162c reds; IPC probes; privacy ten cases; budget provenance; R47 fixture |"
+  },
+  {
+    "line": 176,
+    "bytes": 284,
+    "cells": 10,
+    "text": "| #56 | S4 backend | review (altitude) | altitude-reviewer | lead | \u2014 | \u2264120 lines `docs/wave-2/reviews/T19-review-altitude.md` | **complete; ACCEPT** ae39010 (3 LOW, 0 blockers) | ae39010 | #19 RESULT 5daed29: summary derivation, no free text, R30, recovery, folds, eleven reds |"
+  },
+  {
+    "line": 177,
+    "bytes": 271,
+    "cells": 10,
+    "text": "| #55 | S1 | review | judge-astra | lead | \u2014 | \u226480 lines `docs/wave-2/reviews/T14-review-judge.md` | **complete; ACCEPT** f4ca425 (1 P3 non-blocking) | f4ca425 | #14 RESULT adcf7eb: identity projection, privacy dumps, migration 010 under FK, reds, budget convention |"
+  },
+  {
+    "line": 178,
+    "bytes": 342,
+    "cells": 10,
+    "text": "| #54 | S5 | review | judge-astra | lead | \u2014 | \u226450 lines `docs/wave-2/reviews/T50-review-judge.md` | **complete; ACCEPT** 522d433 (34 lines; 0 corrections; 18/90, six PNGs, three reds reproduced; 50b delta = three alt substitutions) | 522d433 | #50 RESULT 72c5333: picture/source pattern, only-on-its-state assertions, tokens-only rules |"
+  },
+  {
+    "line": 179,
+    "bytes": 359,
+    "cells": 11,
+    "text": "| #53 | S1 | review (altitude) | altitude-reviewer | lead | \u2014 | \u226460 lines `docs/wave-2/reviews/T15-review-altitude.md` | **ACCEPT** 24b414d (73 lines; test only \u2014 scanner literal verified by the lead) | 24b414d | #15 test port at dbfaf6e | #31 RESULT 20ab2c2: four reds replayed, seam grep, closure shape, budget 303/350 with the 332 telemetry visible |"
+  },
+  {
+    "line": 180,
+    "bytes": 1192,
+    "cells": 11,
+    "text": "| #50 | S5 | implement | ui-implementer | lead (placement) + design-lead (captures, brief-1 \u00a7 5) | judge-astra | \u226490 owned lines excl. binaries | **RESULT 72c5333** (base 4ef892c): 18/90 + six PNGs byte-identical (lead cmp \u00d76); E1 288 px, E2 176 px, E3 128 px; `<picture>` dark source on the token-swap query; three red-first browser tests; gate PASS 69 / 178+1; ~5.0 MB PNG under the bytes-unchanged contract \u2192 **review #54 (judge)**; design-lead \u00a7 5 **accepted in-surface** (E3-light passes the five-second read at 128 px, stays imagery) with one **bounded correction 50b**: three alt-text strings describing the drawing (verbatim bytes on the task), judge confirms by diff; low \u2192 register row 74 (E2 card alignment, folded into #14); lead placement accepted on the context captures \u2192 **50b 44294a9** (alt bytes verbatim; gate PASS 69 / 178+1) \u2192 #54 judge **ACCEPT** 522d433 (0 corrections; 50b confirmed by diff) \u2192 **landed 8300bad** (lead gate PASS 76 / 194+1) | 8300bad | \u2014 | brief-1 \u00a7 4 wiring: six accepted masters (ec1f9fb) to `src/assets/imagery/`, E1 Results empty, E2 Set up first-run side card, E3 Set up zero-usable-tools; alt from \u00a7 1; one vitest per moment |"
+  },
+  {
+    "line": 181,
+    "bytes": 367,
+    "cells": 10,
+    "text": "| #46 | S5 | spec-delta (design) | design-lead | lead | \u2014 | \u226440 lines `docs/wave-2/design/imagery-brief-2.md` | **complete; accepted** ab69e54 (40/40; content 23294a0): E2 two closed forms + one paper-2 rectangle; E3 both seats empty with the 64 px two-shape condition; sRGB tagging none; E1 dark overlap accepted; mixture rule for dark prompts | ab69e54 | none |"
+  },
+  {
+    "line": 195,
+    "bytes": 126,
+    "cells": 3,
+    "text": "| T28-11, check\u2192architecture follow-ups, scanner limits line, T28-10 driver | #15 | gate on the landed test; measured pass |"
+  },
+  {
+    "line": 349,
+    "bytes": 451,
+    "cells": 5,
+    "text": "| 88 | Rust: `%PDF-` detection + pdf-extract text in `run/documents.rs`; `inspect` validity = extractable text; reds fail on base; process-wide payload-free panic hook; `reason` field (R48 amendments b, c; ceiling 150) | heavy-implementer-1 | altitude-reviewer (#90) | **landed 82ab82a** (tip bd311ad; #90 PASS all points incl. two privacy checks; lead gate on the merge exit 0 at 02:04:11Z, debug build exit 0 at 02:04:30Z; register rows 120\u2013121) |"
+  },
+  {
+    "line": 350,
+    "bytes": 407,
+    "cells": 5,
+    "text": "| 89 | Frontend: `DOCUMENT_PICKER_FILTERS` (Documents md/txt/pdf + All files) in `setup-state.ts`, Setup.svelte uses it, hint copy \"Markdown, text or PDF\", `noText` reason words (R48 c; ceiling 60), unit test | ui-implementer | judge-astra (#91) | **landed 2ebe338** (tip 53c3e22; #91 PASS, judge's own full gate exit 0 by 01:56:53Z; lead gate on the merge exit 0 at 01:59:21Z, /tmp/lead-gate-2ebe338.log) |"
+  },
+  {
+    "line": 351,
+    "bytes": 176,
+    "cells": 5,
+    "text": "| 92 | Wording confirm: hint \"Markdown, text or PDF\"; generic sentence stays; scanned-PDF words proposed with a reason field | design-lead | \u2014 | complete (RESULT, no edits) |"
+  }
+]

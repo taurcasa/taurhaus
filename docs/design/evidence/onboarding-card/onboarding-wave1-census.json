@@ -1,0 +1,623 @@
+{
+  "archive_sha256": "60bd9ba90b941211821c14b36b10dc583ddf21e961ff80547ff223141d2643e1",
+  "all_envelopes": 106,
+  "all_characters": 200190,
+  "onboarding_count": 15,
+  "onboarding_characters": 79700,
+  "onboarding_share": 0.39812178430491035,
+  "all_exact_surplus_characters": 56768,
+  "same_seat_onboarding_surplus_characters": 53508,
+  "cards": [
+    {
+      "seat": "heavy-implementer",
+      "index": 0,
+      "origin": "taurjob-team/inboxes/heavy-implementer.json",
+      "timestamp": "2026-09-06T19:34:31.797Z",
+      "id": "5f222826-f940-4e72-b5ce-1a78cd130450",
+      "msg_id": null,
+      "read": true,
+      "characters": 5231,
+      "sha256": "9a36c7fc432ab1e9f851d2cec8409154f0d2c07857f9e52a5017cbd665e1bed2",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "heavy-implementer",
+      "index": 1,
+      "origin": "taurjob-team/inboxes/heavy-implementer.json",
+      "timestamp": "2026-09-06T19:35:46.397Z",
+      "id": "563c09c7-6a3a-4125-9080-fc25a9d97a9e",
+      "msg_id": null,
+      "read": true,
+      "characters": 5231,
+      "sha256": "9a36c7fc432ab1e9f851d2cec8409154f0d2c07857f9e52a5017cbd665e1bed2",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "heavy-implementer",
+      "index": 2,
+      "origin": "taurjob-team/inboxes/heavy-implementer.json",
+      "timestamp": "2026-09-06T19:36:13.303Z",
+      "id": "e7d2dc67-01a1-47b8-8102-ad4282d4e84d",
+      "msg_id": null,
+      "read": true,
+      "characters": 5231,
+      "sha256": "9a36c7fc432ab1e9f851d2cec8409154f0d2c07857f9e52a5017cbd665e1bed2",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "heavy-implementer-1",
+      "index": 0,
+      "origin": "taurjob-team/inboxes/heavy-implementer-1.json",
+      "timestamp": "2026-09-06T19:34:31.837Z",
+      "id": "9763ce62-9f4a-4e65-b9f3-b50058775541",
+      "msg_id": null,
+      "read": true,
+      "characters": 5253,
+      "sha256": "21f3d41b3b4d5d32575587a87fa6a7d4c94887ddee3895a0dfb4fd63a404e079",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "heavy-implementer-1",
+      "index": 1,
+      "origin": "taurjob-team/inboxes/heavy-implementer-1.json",
+      "timestamp": "2026-09-06T19:35:48.028Z",
+      "id": "536054a2-a56f-436c-a1e8-06aca6d09cdf",
+      "msg_id": null,
+      "read": true,
+      "characters": 5253,
+      "sha256": "21f3d41b3b4d5d32575587a87fa6a7d4c94887ddee3895a0dfb4fd63a404e079",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "heavy-implementer-1",
+      "index": 2,
+      "origin": "taurjob-team/inboxes/heavy-implementer-1.json",
+      "timestamp": "2026-09-06T19:36:14.917Z",
+      "id": "99c34ddb-808a-41e6-85e5-4f55ac535a06",
+      "msg_id": null,
+      "read": true,
+      "characters": 5253,
+      "sha256": "21f3d41b3b4d5d32575587a87fa6a7d4c94887ddee3895a0dfb4fd63a404e079",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "heavy-implementer-1",
+      "index": 12,
+      "origin": "taurjob-team/inboxes/heavy-implementer-1.json",
+      "timestamp": "2026-09-06T20:02:17.924Z",
+      "id": "3d601f89-51ba-4e5b-a12d-0eacdbd1c2f6",
+      "msg_id": null,
+      "read": false,
+      "characters": 5253,
+      "sha256": "21f3d41b3b4d5d32575587a87fa6a7d4c94887ddee3895a0dfb4fd63a404e079",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "heavy-implementer-1",
+      "index": 13,
+      "origin": "taurjob-team/inboxes/heavy-implementer-1.json",
+      "timestamp": "2026-09-06T20:02:21.283Z",
+      "id": "e34a3ac0-ebe8-46d8-b563-eff88f12a7d7",
+      "msg_id": null,
+      "read": false,
+      "characters": 5253,
+      "sha256": "21f3d41b3b4d5d32575587a87fa6a7d4c94887ddee3895a0dfb4fd63a404e079",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "architect",
+      "index": 0,
+      "origin": "taurjob-team/inboxes/architect.json",
+      "timestamp": "2026-09-06T19:34:31.772Z",
+      "id": "821db3d1-d1ae-4308-84a4-c5a6cb9b27a5",
+      "msg_id": null,
+      "read": true,
+      "characters": 5216,
+      "sha256": "9a1bd8c155462d74d047d1af1fcdf368ad5c68d49fb1f95d33d6ea71a3b199b9",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "architect",
+      "index": 1,
+      "origin": "taurjob-team/inboxes/architect.json",
+      "timestamp": "2026-09-06T19:35:44.668Z",
+      "id": "406e04be-fba0-4c90-9db1-9fc5f97e3cb2",
+      "msg_id": null,
+      "read": true,
+      "characters": 5216,
+      "sha256": "9a1bd8c155462d74d047d1af1fcdf368ad5c68d49fb1f95d33d6ea71a3b199b9",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "architect",
+      "index": 2,
+      "origin": "taurjob-team/inboxes/architect.json",
+      "timestamp": "2026-09-06T19:36:10.159Z",
+      "id": "7030869d-8564-41f2-bd0d-63a00b41b612",
+      "msg_id": null,
+      "read": true,
+      "characters": 5216,
+      "sha256": "9a1bd8c155462d74d047d1af1fcdf368ad5c68d49fb1f95d33d6ea71a3b199b9",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "implementer-1",
+      "index": 0,
+      "origin": "taurjob-team/inboxes/implementer-1.json",
+      "timestamp": "2026-09-06T19:34:31.785Z",
+      "id": "3f83bd1d-2437-49ef-8e3e-8cfcb2a82e85",
+      "msg_id": null,
+      "read": true,
+      "characters": 5801,
+      "sha256": "1f4897994b7e6954dd289267808981547baa0e9a5605e8760e391b8aa550a457",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "implementer-1",
+      "index": 1,
+      "origin": "taurjob-team/inboxes/implementer-1.json",
+      "timestamp": "2026-09-06T19:35:44.827Z",
+      "id": "9a7e3513-325f-4fc7-9f2b-dc43a0c36cd5",
+      "msg_id": null,
+      "read": true,
+      "characters": 5801,
+      "sha256": "1f4897994b7e6954dd289267808981547baa0e9a5605e8760e391b8aa550a457",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "implementer-1",
+      "index": 2,
+      "origin": "taurjob-team/inboxes/implementer-1.json",
+      "timestamp": "2026-09-06T19:36:11.731Z",
+      "id": "29a3d671-ace8-480a-bb2c-3de74763571c",
+      "msg_id": null,
+      "read": true,
+      "characters": 5801,
+      "sha256": "1f4897994b7e6954dd289267808981547baa0e9a5605e8760e391b8aa550a457",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    },
+    {
+      "seat": "judge-astra-1",
+      "index": 0,
+      "origin": "taurjob-team/inboxes/judge-astra-1.json",
+      "timestamp": "2026-09-06T19:38:50.755Z",
+      "id": "cca1f565-8a91-4ec0-b823-666c56a15909",
+      "msg_id": null,
+      "read": true,
+      "characters": 4691,
+      "sha256": "5eb2e40050b6de33fb9ae12636edc340e6a776773371de45988d5fbc65ba9379",
+      "acknowledgment_lines": [
+        "Acknowledge assignment, execute, then report completion with artifacts and test results."
+      ]
+    }
+  ],
+  "journal_counts": {
+    "workflow_events": 321,
+    "protocol_index": 53,
+    "task_mutations": 98
+  },
+  "workflow_event_types": {
+    "message_delivery_recorded": 36,
+    "message_read": 37,
+    "message_sent": 86,
+    "task_created": 11,
+    "task_state_updated": 72,
+    "task_assigned": 12,
+    "assignment_started": 13,
+    "progress_reported": 5,
+    "assignment_accepted": 8,
+    "review_requested": 7,
+    "ruling_recorded": 23,
+    "task_completed": 7,
+    "assignment_superseded": 1,
+    "lead_admin_task_action_recorded": 2,
+    "task_blocked": 1
+  },
+  "workflow_schema_keys": [
+    "accepted_by",
+    "acting_lead",
+    "action",
+    "action_required",
+    "active_form",
+    "actor",
+    "admin_reason",
+    "assigned_by",
+    "assignee",
+    "assignment_id",
+    "assignment_id_after",
+    "assignment_id_before",
+    "by",
+    "channel",
+    "completion_signal",
+    "created_by_actor_id",
+    "deliverable",
+    "description",
+    "description_state",
+    "eventId",
+    "eventType",
+    "first_step",
+    "kind",
+    "message_id",
+    "new_stage",
+    "new_status",
+    "no_response_needed",
+    "note",
+    "origin",
+    "original_owner",
+    "outcome",
+    "owner",
+    "previous_stage",
+    "previous_status",
+    "protocolVersion",
+    "reader",
+    "reason",
+    "recipient",
+    "reference",
+    "resulting_owner",
+    "sender",
+    "seq",
+    "source",
+    "started_by",
+    "subject",
+    "summary",
+    "superseded_by_actor_id",
+    "superseded_by_assignment_id",
+    "target",
+    "task_id",
+    "task_owner",
+    "task_status",
+    "timestamp",
+    "value"
+  ],
+  "card_workflow_joins": [
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "821db3d1-d1ae-4308-84a4-c5a6cb9b27a5",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:34:32.013Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "5f222826-f940-4e72-b5ce-1a78cd130450",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:34:32.376Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "9763ce62-9f4a-4e65-b9f3-b50058775541",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:34:32.380Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "3f83bd1d-2437-49ef-8e3e-8cfcb2a82e85",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:34:32.384Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "406e04be-fba0-4c90-9db1-9fc5f97e3cb2",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:35:45.280Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "9a7e3513-325f-4fc7-9f2b-dc43a0c36cd5",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:35:45.442Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "563c09c7-6a3a-4125-9080-fc25a9d97a9e",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:35:47.011Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "536054a2-a56f-436c-a1e8-06aca6d09cdf",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:35:48.642Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "7030869d-8564-41f2-bd0d-63a00b41b612",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:36:10.773Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "29a3d671-ace8-480a-bb2c-3de74763571c",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:36:12.344Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "e7d2dc67-01a1-47b8-8102-ad4282d4e84d",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:36:13.915Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "99c34ddb-808a-41e6-85e5-4f55ac535a06",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:36:15.528Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "821db3d1-d1ae-4308-84a4-c5a6cb9b27a5",
+      "timestamp": "2026-09-06T19:36:15.713Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "406e04be-fba0-4c90-9db1-9fc5f97e3cb2",
+      "timestamp": "2026-09-06T19:36:15.713Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "7030869d-8564-41f2-bd0d-63a00b41b612",
+      "timestamp": "2026-09-06T19:36:15.713Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "3f83bd1d-2437-49ef-8e3e-8cfcb2a82e85",
+      "timestamp": "2026-09-06T19:36:15.898Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "9a7e3513-325f-4fc7-9f2b-dc43a0c36cd5",
+      "timestamp": "2026-09-06T19:36:15.898Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "29a3d671-ace8-480a-bb2c-3de74763571c",
+      "timestamp": "2026-09-06T19:36:15.898Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "9763ce62-9f4a-4e65-b9f3-b50058775541",
+      "timestamp": "2026-09-06T19:36:18.817Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "536054a2-a56f-436c-a1e8-06aca6d09cdf",
+      "timestamp": "2026-09-06T19:36:18.817Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "99c34ddb-808a-41e6-85e5-4f55ac535a06",
+      "timestamp": "2026-09-06T19:36:18.817Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "5f222826-f940-4e72-b5ce-1a78cd130450",
+      "timestamp": "2026-09-06T19:36:18.876Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "563c09c7-6a3a-4125-9080-fc25a9d97a9e",
+      "timestamp": "2026-09-06T19:36:18.876Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "e7d2dc67-01a1-47b8-8102-ad4282d4e84d",
+      "timestamp": "2026-09-06T19:36:18.876Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "cca1f565-8a91-4ec0-b823-666c56a15909",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:38:51.378Z"
+    },
+    {
+      "eventType": "message_read",
+      "message_id": "cca1f565-8a91-4ec0-b823-666c56a15909",
+      "timestamp": "2026-09-06T19:38:56.744Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "3d601f89-51ba-4e5b-a12d-0eacdbd1c2f6",
+      "source": "inbox",
+      "timestamp": "2026-09-06T20:02:18.570Z"
+    },
+    {
+      "eventType": "message_delivery_recorded",
+      "message_id": "e34a3ac0-ebe8-46d8-b563-eff88f12a7d7",
+      "source": "inbox",
+      "timestamp": "2026-09-06T20:02:21.900Z"
+    }
+  ],
+  "lifecycle_events": [
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T19:42:48.992Z"
+    },
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T19:42:50.530Z"
+    },
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T19:43:41.135Z"
+    },
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T19:46:11.930Z"
+    },
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T19:46:12.123Z"
+    },
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T19:46:57.082Z"
+    },
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T19:49:29.856Z"
+    },
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T19:51:38.507Z"
+    },
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T19:53:13.853Z"
+    },
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T19:53:27.706Z"
+    },
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T19:56:42.788Z"
+    },
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T19:58:23.098Z"
+    },
+    {
+      "eventType": "assignment_started",
+      "timestamp": "2026-09-06T20:02:23.736Z"
+    }
+  ],
+  "delivery_outcomes": {
+    "tmux_injected": 15
+  },
+  "delivery_receipts": [
+    {
+      "message_id": "821db3d1-d1ae-4308-84a4-c5a6cb9b27a5",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:34:32.013Z",
+      "target": "%2079"
+    },
+    {
+      "message_id": "5f222826-f940-4e72-b5ce-1a78cd130450",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:34:32.376Z",
+      "target": "%2081"
+    },
+    {
+      "message_id": "9763ce62-9f4a-4e65-b9f3-b50058775541",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:34:32.380Z",
+      "target": "%2085"
+    },
+    {
+      "message_id": "3f83bd1d-2437-49ef-8e3e-8cfcb2a82e85",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:34:32.384Z",
+      "target": "%2080"
+    },
+    {
+      "message_id": "406e04be-fba0-4c90-9db1-9fc5f97e3cb2",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:35:45.280Z",
+      "target": "%2079"
+    },
+    {
+      "message_id": "9a7e3513-325f-4fc7-9f2b-dc43a0c36cd5",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:35:45.442Z",
+      "target": "%2080"
+    },
+    {
+      "message_id": "563c09c7-6a3a-4125-9080-fc25a9d97a9e",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:35:47.011Z",
+      "target": "%2081"
+    },
+    {
+      "message_id": "536054a2-a56f-436c-a1e8-06aca6d09cdf",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:35:48.642Z",
+      "target": "%2085"
+    },
+    {
+      "message_id": "7030869d-8564-41f2-bd0d-63a00b41b612",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:36:10.773Z",
+      "target": "%2079"
+    },
+    {
+      "message_id": "29a3d671-ace8-480a-bb2c-3de74763571c",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:36:12.344Z",
+      "target": "%2080"
+    },
+    {
+      "message_id": "e7d2dc67-01a1-47b8-8102-ad4282d4e84d",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:36:13.915Z",
+      "target": "%2081"
+    },
+    {
+      "message_id": "99c34ddb-808a-41e6-85e5-4f55ac535a06",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:36:15.528Z",
+      "target": "%2085"
+    },
+    {
+      "message_id": "cca1f565-8a91-4ec0-b823-666c56a15909",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T19:38:51.378Z",
+      "target": "%2086"
+    },
+    {
+      "message_id": "3d601f89-51ba-4e5b-a12d-0eacdbd1c2f6",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T20:02:18.570Z",
+      "target": "%2085"
+    },
+    {
+      "message_id": "e34a3ac0-ebe8-46d8-b563-eff88f12a7d7",
+      "outcome": "tmux_injected",
+      "source": "inbox",
+      "timestamp": "2026-09-06T20:02:21.900Z",
+      "target": "%2085"
+    }
+  ],
+  "all_sent_count": 86,
+  "context_generation_evidence": "No workflow event type for launch/resume/relaunch/compaction; no session_id/context_generation fields in inspected workflow rows."
+}

@@ -1,0 +1,190 @@
+PAIR 1: architect prose[3] card[6]
+PROSE 2026-09-06T19:37:40.029Z 2200 characters
+ACTION REQUIRED: T1 — write the wave-1 architecture decision packet for taurjobs.
+
+Working repo: `~/projects/taurjobs` (not the empty `~/projects/taurjob` cwd). Standard: `~/projects/taurhaus/docs/team-delivery-standard.md`. Ledger: `~/projects/taurjobs/docs/wave-1/ledger.md`.
+
+1. Objective: decide the reserved decisions in BRIEF.md § "Decisions reserved for the team" so implementation can start with one accountable owner per surface.
+2. Deliverable: `~/projects/taurjobs/docs/wave-1/architecture.md`, committed on main. Sections: (a) process supervision and progress architecture per CLI, grounded in `docs/reference/headless-cli-facts.md`; (b) run/persistence model and storage schema, including seen-state migration from `seen.md` and `state/*.jsonl`; (c) how the existing pipeline prompts/stages are packaged and invoked; (d) CLI and model discovery plus model-per-task config shape; (e) milestone slicing within wave 1 (configure → run once with live progress → browse results) with one implementer and one acceptance owner named per surface; (f) the per-task gate command the repo will use (CLAUDE.md names none yet); (g) a 5-line repo scaffold recipe for the fixed stack (Tauri 2 + Rust + Svelte 5 + Tailwind v4, bun only). Each decision states the alternative rejected and why in one or two sentences. Stack challenge only with a written concrete reason.
+3. First action: read `~/projects/taurjobs/BRIEF.md`, then `~/projects/job-hunt/SPEC.md` in full (read-only repo; never copy `inputs/` content anywhere).
+4. Completion signal: message lead-taurjob `RESULT T1 <commit hash>` with the decision list as bullets, or `BLOCKED T1 <reason>`. Inputs from T3 (real CLI stream samples), T4 (taurhaus prior-art pointers), T5 (pipeline stage inventory) will be routed to you as they land; do not wait for them to start, revise when they arrive.
+5. Review route: spec-delta; acceptance owner lead-taurjob; altitude-reviewer does a Claude altitude pass after RESULT. Seam: you decide architecture; implementers decide in-scope details; the design packet (T2, design-taurjob) owns UI/UX and you consume its surface list, not the reverse. Commit only your file; `git pull --rebase` before committing.
+
+CARD 2026-09-06T19:42:22.271Z 638 characters
+[#1 T1: Wave-1 architecture decision packet · owner: architect]
+ACTION REQUIRED: Start task #1 now: T1: Wave-1 architecture decision packet.
+Task ID: #1
+Assignment: a42960aa-ca81-4339-8a24-def1a09aa80f
+Start now: Read ~/projects/taurjobs/BRIEF.md then ~/projects/job-hunt/SPEC.md in full (read-only).
+Deliverable: ~/projects/taurjobs/docs/wave-1/architecture.md committed on master
+Only reply after: Message lead-taurjob: RESULT T1 <commit> with decision bullets, or BLOCKED T1 <reason>. Review: altitude-reviewer (Claude family) altitude pass, acceptance lead-taurjob.
+Do not send an acknowledgment or task summary before doing the work.
+
+PAIR 2: heavy-implementer prose[3] card[5]
+PROSE 2026-09-06T19:38:06.078Z 1466 characters
+ACTION REQUIRED: T4 — inventory the taurhaus prior art the architect may borrow.
+
+Working repo: `~/projects/taurjobs` (not the empty `~/projects/taurjob` cwd). Standard: `~/projects/taurhaus/docs/team-delivery-standard.md`. Ledger: `~/projects/taurjobs/docs/wave-1/ledger.md`.
+
+1. Objective: a factual map of taurhaus code for CLI detection, process supervision, streaming JSONL parsing, SQLite persistence, and Tauri command layout, so T1 borrows patterns deliberately instead of cargo-culting or rediscovering them.
+2. Deliverable: `~/projects/taurjobs/docs/reference/taurhaus-prior-art.md` committed on main. For each of the five areas: the file:line pointers, a three-sentence description of the mechanism, its tests, and a verdict of borrow as-is / adapt / do not borrow with one sentence of reason. Also record the model and effort flag spellings in `~/projects/taurhaus/src-tauri/src/session_scanner/cli_tool.rs` since model-per-task must mirror them. Diagnose kind: read-only, no product code.
+3. First action: `grep -rn` in `~/projects/taurhaus/src-tauri/src` for process spawning and JSONL parsing entry points, then read `~/projects/taurhaus/CLAUDE.md` for its build and test recipes.
+4. Completion signal: message lead-taurjob `RESULT T4 <commit hash>` with the five verdicts as bullets, or `BLOCKED T4 <reason>`.
+5. Review route: diagnose; acceptance owner architect. Commit only your file; `git pull --rebase` before committing. Do not modify taurhaus.
+
+CARD 2026-09-06T19:42:22.624Z 656 characters
+[#4 T4: Taurhaus prior-art inventory for borrowable patterns · owner: heavy-implementer]
+ACTION REQUIRED: Start task #4 now: T4: Taurhaus prior-art inventory for borrowable patterns.
+Task ID: #4
+Assignment: b7def64e-5c01-4b66-9e9e-1ace6db9645d
+Start now: grep -rn ~/projects/taurhaus/src-tauri/src for process spawning and JSONL parsing entry points, then read taurhaus CLAUDE.md.
+Deliverable: ~/projects/taurjobs/docs/reference/taurhaus-prior-art.md committed on master
+Only reply after: Message lead-taurjob: RESULT T4 <commit> with five verdicts, or BLOCKED T4. Acceptance: architect.
+Do not send an acknowledgment or task summary before doing the work.
+
+PAIR 3: heavy-implementer prose[8] card[7]
+PROSE 2026-09-06T19:45:58.085Z 1347 characters
+ACTION REQUIRED: T4 received at c563ff3 and lead-verified (169/180 lines, one file); the architect owes the acceptance ruling on #4, after which run `mesh task complete 4`. Your next assignment is mesh task #8 (T8), start now in parallel.
+
+1. Objective: establish on this machine that the fixed stack (Tauri 2 + Rust + Svelte 5 + Tailwind v4, bun only, never npm or npx) scaffolds and dev-builds, so the first implement task starts from verified commands.
+2. Deliverable: `~/projects/taurjobs/docs/reference/toolchain.md`, ≤ 80 added lines, committed on master with an explicit pathspec. Contents: version per tool (bun, rustc, cargo, tauri CLI, WebKitGTK and other deps that `tauri info` reports), the exact command sequence that produced a running dev build in a `/tmp` scratch directory, dev-build wall time, and any failure verbatim. The scratch scaffold is never committed anywhere.
+3. First action: run `bun --version`, `rustc --version`, `cargo --version`, `bunx @tauri-apps/cli --version`, then read `~/projects/taurhaus/CLAUDE.md` for the house build recipe to mirror.
+4. Completion signal: `RESULT T8 <commit>` with per-tool status and the verified command list, or `BLOCKED T8 <reason>`.
+5. Review route: measure kind; acceptance owner architect, who consumes it into the T1 scaffold recipe. No product code in the repo under this task.
+
+CARD 2026-09-06T19:45:41.420Z 833 characters
+[#8 T8: Toolchain readiness for Tauri 2 + Svelte 5 + Tailwind v4 (bun-only) · owner: heavy-implementer]
+ACTION REQUIRED: Start task #8 now: T8: Toolchain readiness for Tauri 2 + Svelte 5 + Tailwind v4 (bun-only).
+Task ID: #8
+Assignment: 1665fd25-9329-44b7-a8cb-3cfcf1323585
+Start now: Run bun --version, rustc --version, cargo --version, bunx @tauri-apps/cli --version, and check WebKitGTK/system deps that tauri info reports.
+Deliverable: ~/projects/taurjobs/docs/reference/toolchain.md (<=80 lines) committed on master; scratch scaffold under /tmp only, never committed
+Only reply after: Message lead-taurjob: RESULT T8 <commit> with per-tool status and the verified scaffold command list, or BLOCKED T8. Acceptance: architect (consumes into T1 scaffold recipe).
+Do not send an acknowledgment or task summary before doing the work.
+
+PAIR 4: heavy-implementer prose[11] card[12]
+PROSE 2026-09-06T19:55:32.660Z 1997 characters
+ACTION REQUIRED: T8 received at bfc2cca and lead-verified (77/80 lines); the architect owes its acceptance ruling, then `mesh task complete 8`. The operator approved the architecture packet, so M0 starts now as mesh task #11. Start in parallel with the #8 closeout.
+
+1. Objective: a committed, buildable app shell on the fixed stack with the per-task gate working, so M1 to M3 start from one baseline instead of three.
+2. Deliverable: on master in `~/projects/taurjobs`: `src/` with a Svelte 5 runes-only empty shell and Tailwind v4 `@theme` semantic tokens (no sample components, no mock data); `src-tauri/` with Tauri 2, minimal capabilities, rusqlite dependency, a forward-only numbered migration runner with an empty v1; `src/lib/ipc.ts` typed wrapper baseline with the command names from architecture § 6 as stubs that return a typed not-implemented error; `package.json` script `check:task` running svelte-check, vitest run, `cargo fmt --check`, `cargo clippy` with warnings denied, and `cargo test --manifest-path src-tauri/Cargo.toml`; `bun.lock` and `Cargo.lock`. Never touch BRIEF.md, CLAUDE.md, docs/, or the nested `.git`. Budget: ≤ 400 hand-written lines excluding generated and lock files; list the generated files in the RESULT.
+3. First action: read `docs/reference/toolchain.md` and architecture § 6 and § 7, run the plain Svelte/Vite plus `tauri init --ci` sequence exactly as toolchain.md records in a /tmp sibling, then merge only generated app files into the repo. Implement kind, scaffolding: red-first skipped, say so in the RESULT.
+4. Completion signal: `RESULT T11 <commit>` with the tail of `bun run check:task` and the result of `bunx tauri build --debug --no-bundle`, or `BLOCKED T11 <reason>`.
+5. Review route: acceptance owner lead-taurjob; structural review by altitude-reviewer (Claude family, cross-family on your Astra code). Seam: after M0 you continue into M1 (configure, settings, db, commands); the schema v1 tables from architecture § 3 belong to M1, not M0.
+
+CARD 2026-09-06T19:55:59.514Z 1216 characters
+[#11 T11 / M0: app scaffold, per-task gate, IPC type baseline · owner: heavy-implementer]
+ACTION REQUIRED: Start task #11 now: T11 / M0: app scaffold, per-task gate, IPC type baseline.
+Task ID: #11
+Assignment: fd8716fc-8e3f-4e94-b6a7-82fd5c89e159
+Start now: Read docs/reference/toolchain.md and docs/wave-1/architecture.md sections 6-7; run the plain Svelte/Vite + tauri init sequence in a /tmp sibling exactly as toolchain.md records, then merge only generated app files into ~/projects/taurjobs.
+Deliverable: M0 scaffold on master: src/ (Svelte 5 runes-only shell, Tailwind v4 @theme tokens), src-tauri/ (Tauri 2, minimal capabilities, rusqlite, migration runner with empty v1), src/lib/ipc.ts typed stubs, package.json check:task (svelte-check, vitest run, cargo fmt --check, cargo clippy -D warnings, cargo test --manifest-path src-tauri/Cargo.toml), bun.lock, Cargo.lock. Budget <=400 hand-written lines excluding generated and lock files.
+Only reply after: Message lead-taurjob: RESULT T11 <commit> with check:task tail and tauri build --debug --no-bundle result, or BLOCKED T11. Acceptance lead-taurjob; structural review altitude-reviewer.
+Do not send an acknowledgment or task summary before doing the work.
+
+PAIR 5: heavy-implementer-1 prose[3] card[5]
+PROSE 2026-09-06T19:38:14.789Z 1633 characters
+ACTION REQUIRED: T5 — inventory the job-hunt pipeline stage by stage for packaging into the app.
+
+Working repo: `~/projects/taurjobs` (not the empty `~/projects/taurjob` cwd). Standard: `~/projects/taurhaus/docs/team-delivery-standard.md`. Ledger: `~/projects/taurjobs/docs/wave-1/ledger.md`.
+
+1. Objective: a factual, per-stage contract of the existing pipeline so the architect can decide what is invoked verbatim, what is restructured, and what Python survives.
+2. Deliverable: `~/projects/taurjobs/docs/reference/pipeline-stages.md` committed on main. For each of the eight stages in SPEC § 2: inputs (which documents, which prior-stage outputs), the prompt file in `pipeline/prompts/`, the runner and exact CLI invocation in `pipeline/jh/runners.py`, the output file and its parsed shape, expected duration, and failure modes noted in SPEC or HANDOVER. Plus the schemas of `state/roles.jsonl`, `state/runs.jsonl`, and the `seen.md` table, with one redacted example row each. Diagnose kind: read-only, no product code.
+3. First action: read `~/projects/job-hunt/SPEC.md` § 2 through § 9, then `~/projects/job-hunt/pipeline/jh/runners.py`. `~/projects/job-hunt` is read-only reference; never modify it, and never copy anything from `inputs/` or personal data from `seen.md`, `runs/`, or `opportunities.md` into your deliverable.
+4. Completion signal: message lead-taurjob `RESULT T5 <commit hash>` with a one-line verdict per stage on whether it can run unchanged from a Rust supervisor, or `BLOCKED T5 <reason>`.
+5. Review route: diagnose; acceptance owner architect. Commit only your file; `git pull --rebase` before committing.
+
+CARD 2026-09-06T19:42:22.748Z 615 characters
+[#5 T5: Job-hunt pipeline stage inventory · owner: heavy-implementer-1]
+ACTION REQUIRED: Start task #5 now: T5: Job-hunt pipeline stage inventory.
+Task ID: #5
+Assignment: c1bb2a6a-b6f4-40ef-a51e-bf98c0942496
+Start now: Read ~/projects/job-hunt/SPEC.md sections 2-9, then pipeline/jh/runners.py.
+Deliverable: ~/projects/taurjobs/docs/reference/pipeline-stages.md committed on master
+Only reply after: Message lead-taurjob: RESULT T5 <commit> with per-stage verdict on running unchanged from a Rust supervisor, or BLOCKED T5. Acceptance: architect.
+Do not send an acknowledgment or task summary before doing the work.
+
+PAIR 6: heavy-implementer-1 prose[8] card[7]
+PROSE 2026-09-06T19:47:02.573Z 1481 characters
+ACTION REQUIRED: T5 received at 79d3657 and lead-verified (304/350 lines, one file, no personal strings); the architect owes the acceptance ruling on #5, after which run `mesh task complete 5`. Your next assignment is mesh task #9 (T9); pre-read starts now, the review itself waits for my go.
+
+1. Objective: the GPT-family review of the Claude-authored T2 design packet, so the two-family route holds on a hero-surface design.
+2. Deliverable: `~/projects/taurjobs/docs/wave-1/reviews/T2-gpt-review.md`, ≤ 120 lines, committed on master with an explicit pathspec. Numbered findings in severity order with evidence, impact, and action; open questions separate from defects; score table Finding / Severity / Confidence / Action; verdict line accept, bounded correction, or reject.
+3. First action: pre-read `BRIEF.md`, `docs/wave-1/acceptance.md` sections 1 to 3 and 6 to 7, job-hunt `SPEC.md` § 0, and the rendered page under `~/projects/job-hunt/site/` now. I will send `T9 go <commit>` when design-taurjob reports T2.
+4. Completion signal: `RESULT T9 <commit>` with verdict line and finding count, then `mesh task ruling 2 --kind verdict --value accepted|rejected --ref <T2 commit>`; or `BLOCKED T9 <reason>`.
+5. Review route: review kind, cross-family. Acceptance owner for T2 stays product-reviewer; you are the second, independent reviewer because run-progress and results browser are declared hero surfaces. Do not read product-reviewer's T2 findings before recording your own.
+
+CARD 2026-09-06T19:46:35.786Z 862 characters
+[#9 T9: GPT-family review of T2 design packet · owner: heavy-implementer-1]
+ACTION REQUIRED: Start task #9 now: T9: GPT-family review of T2 design packet.
+Task ID: #9
+Assignment: a387dac0-eae6-43e6-bb04-3d80880a36c6
+Start now: Pre-read now: BRIEF.md, docs/wave-1/acceptance.md sections 1-3 and 6-7, job-hunt SPEC.md section 0, and the rendered page under ~/projects/job-hunt/site/. Review starts when lead sends 'T9 go <commit>'.
+Deliverable: ~/projects/taurjobs/docs/wave-1/reviews/T2-gpt-review.md (<=120 lines) committed on master
+Only reply after: Message lead-taurjob: RESULT T9 <commit> with verdict line and finding count, or BLOCKED T9. Then mesh task ruling 2 --kind verdict --value accepted|rejected. Acceptance owner for T2 remains product-reviewer; you are the GPT-family reviewer.
+Do not send an acknowledgment or task summary before doing the work.
+
+PAIR 7: implementer-1 prose[3] card[6]
+PROSE 2026-09-06T19:37:58.233Z 1744 characters
+ACTION REQUIRED: T3 — capture real headless streaming samples from the installed CLIs.
+
+Working repo: `~/projects/taurjobs` (not the empty `~/projects/taurjob` cwd). Standard: `~/projects/taurhaus/docs/team-delivery-standard.md`. Ledger: `~/projects/taurjobs/docs/wave-1/ledger.md`.
+
+1. Objective: give the architect and the supervisor implementer verified, on-disk event streams per CLI so the progress architecture is designed and tested against real output, not the docs.
+2. Deliverable: `~/projects/taurjobs/docs/reference/cli-stream-samples/<cli>.jsonl` (raw stdout, one file per CLI that works) plus `docs/reference/cli-stream-samples/README.md` recording for each CLI: exact command run, exit code, whether output arrived incrementally (timestamp the first and last line), the event types observed, and how the final answer and any error are represented. Update `docs/reference/headless-cli-facts.md` where it says unverified and you now have evidence. Committed on main.
+3. First action: run `claude -p "Reply with the single word ready" --output-format stream-json --include-partial-messages --verbose` with stdout teed to the sample file and a per-line timestamp, then the codex equivalent from the facts table (`codex exec --json ... </dev/null`), then probe agy and grok. Use a trivial prompt; never include CV, reference, or any personal document. Measure kind: no product code, no scaffolding.
+4. Completion signal: message lead-taurjob `RESULT T3 <commit hash>` with a one-line verdict per CLI (streams / whole-response / not installed / not logged in), or `BLOCKED T3 <reason>`.
+5. Review route: measure; acceptance owner architect (they consume the samples in T1). Commit only your files; `git pull --rebase` before committing.
+
+CARD 2026-09-06T19:42:22.506Z 692 characters
+[#3 T3: Capture real headless stream samples per CLI · owner: implementer-1]
+ACTION REQUIRED: Start task #3 now: T3: Capture real headless stream samples per CLI.
+Task ID: #3
+Assignment: 0a285384-f5e3-42f8-a2ef-dbd47deeb000
+Start now: Run claude -p 'Reply with the single word ready' --output-format stream-json --include-partial-messages --verbose, teeing stdout with per-line timestamps.
+Deliverable: ~/projects/taurjobs/docs/reference/cli-stream-samples/ plus facts update committed on master
+Only reply after: Message lead-taurjob: RESULT T3 <commit> with one-line verdict per CLI, or BLOCKED T3. Acceptance: architect.
+Do not send an acknowledgment or task summary before doing the work.
+
+PAIR 8: implementer-1 prose[10] card[9]
+PROSE 2026-09-06T19:53:20.671Z 1534 characters
+ACTION REQUIRED: T10 (mesh task #10) — measure whether Rust-side plain HTTP verification recovers the existing pipeline's portal coverage. This is the gate the architecture packet left unowned.
+
+1. Objective: a number the lead can decide on: how much of the job-hunt pipeline's posting verification and text capture survives a pure HTTP(S) port, and which portal types are lost.
+2. Deliverable: `~/projects/taurjobs/docs/reference/portal-coverage.md`, ≤ 120 lines, `git add` then pathspec commit on master. Per portal type from T5's inventory (Ashby, Greenhouse, SmartRecruiters, Personio, Workday, Lever, plus the browser-only ones T5 lists): endpoint used, whether verification and posting-text capture succeed with plain requests, failure text verbatim, and a summary line of recovered vs lost coverage against the existing pipeline.
+3. First action: read `docs/reference/pipeline-stages.md` for the browser-only portal list and `docs/wave-1/architecture.md` § 4 for the ported verification design, then probe with curl or a short script in /tmp against public postings only. No candidate documents, no CLI agents, no product code, bounded fetch sizes.
+4. Completion signal: `RESULT T10 <commit>` with the recovered/lost summary, or `BLOCKED T10 <reason>`.
+5. Review route: measure kind; acceptance owner architect. Report facts, not a recommendation; the lead decides on a bounded browser helper from your number. You remain the named M2 implementer (run lifecycle, CLI adapters, run-progress surface) once the packet is approved.
+
+CARD 2026-09-06T19:53:13.604Z 1130 characters
+[#10 T10: Portal coverage parity measure for Rust-side ATS verification · owner: implementer-1]
+ACTION REQUIRED: Start task #10 now: T10: Portal coverage parity measure for Rust-side ATS verification.
+Task ID: #10
+Assignment: 402eff75-ceeb-486a-a500-e4088eeaf42d
+Start now: Read docs/reference/pipeline-stages.md (T5) for the browser-only portal list and docs/wave-1/architecture.md section 4 for the ported ATS HTTP verification design; then probe each listed public portal type with plain HTTP(S) requests (curl or a short script in /tmp) against public postings only.
+Deliverable: ~/projects/taurjobs/docs/reference/portal-coverage.md (<=120 lines) committed on master: per portal type, whether plain HTTP verification and posting-text capture succeed, the endpoint used, and the failure verbatim; a summary line of recovered vs lost coverage vs the existing pipeline
+Only reply after: Message lead-taurjob: RESULT T10 <commit> with the recovered/lost summary, or BLOCKED T10. Acceptance: architect. Lead decides on a bounded browser helper from this number.
+Do not send an acknowledgment or task summary before doing the work.
+
+PAIR 9: judge-astra-1 prose[3] card[2]
+PROSE 2026-09-06T19:51:31.380Z 2214 characters
+ACTION REQUIRED: T9 (mesh task #9) — the GPT-family review of the wave-1 design packet, single-sided visual review under verdict isolation. Pre-read now; the review itself starts on my go.
+
+Working repo: `~/projects/taurjobs` on `master` (not the empty `~/projects/taurjob` cwd; no remote; pathspec commits only). Standard: `~/projects/taurhaus/docs/team-delivery-standard.md` (canonical for this wave). Repo instructions: `~/projects/taurjobs/CLAUDE.md`, no per-task gate yet because there is no code. No bake-off runs this wave, so there is no second judge; you review the artifact alone.
+
+1. Objective: judge whether design-taurjob's packet (configure, run-progress, results browser) satisfies the acceptance gate and the inherited product principles, and whether it is buildable as specified.
+2. Deliverable: `~/projects/taurjobs/docs/wave-1/reviews/T2-gpt-review.md`, ≤ 120 lines, committed on master. Numbered findings in severity order, each citing the mockup file or design.md line as evidence with impact and action; open questions separate from defects; score table Finding / Severity / Confidence / Action; a confidence and uncertainty record; verdict line accept, bounded correction, or reject.
+3. First action: read `docs/wave-1/acceptance.md` (57 checks; that is your rubric, applied literally, checks 1 to 28, 44 to 51, and 54 apply), `docs/wave-1/rulings.md` R1 to R5, `BRIEF.md`, job-hunt `SPEC.md` § 0, and the rendered reference page under `~/projects/job-hunt/site/`. Material arrives as `T9 go <commit>`: `docs/wave-1/design.md` plus `docs/wave-1/mockups/*.html`, which you open in a browser at desktop and narrow widths.
+4. Completion signal: `RESULT T9 <commit>` with verdict line and finding count, then `mesh task ruling 2 --kind verdict --value accepted|rejected --ref <T2 commit>`; or `BLOCKED T9 <reason>`.
+5. Review route: review kind, cross-family (Astra on Claude-authored design). Acceptance owner for T2 is product-reviewer, who reviews independently. Isolation: do not read product-reviewer's T2 findings or any member's opinion of the packet before your verdict is committed. Stopping condition: verdict committed; no repair of the design, no invented criteria beyond the rubric.
+
+CARD 2026-09-06T19:51:20.081Z 843 characters
+[#9 T9: GPT-family review of T2 design packet · owner: judge-astra-1]
+ACTION REQUIRED: Start task #9 now: T9: GPT-family review of T2 design packet.
+Task ID: #9
+Assignment: 49f0e0e3-6833-40f8-906a-78419909a5b1
+Start now: Pre-read BRIEF.md, docs/wave-1/acceptance.md (57 checks, your rubric), docs/wave-1/rulings.md R1-R5, job-hunt SPEC.md section 0, and the rendered page under ~/projects/job-hunt/site/. Review starts when lead sends 'T9 go <commit>'.
+Deliverable: ~/projects/taurjobs/docs/wave-1/reviews/T2-gpt-review.md (<=120 lines) committed on master with a pathspec commit
+Only reply after: Message lead-taurjob: RESULT T9 <commit> with verdict line and finding count, then mesh task ruling 2 --kind verdict --value accepted|rejected --ref <T2 commit>; or BLOCKED T9.
+Do not send an acknowledgment or task summary before doing the work.
+

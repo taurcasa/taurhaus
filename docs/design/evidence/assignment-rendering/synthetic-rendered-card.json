@@ -1,0 +1,25 @@
+{
+  "task_id": "synthetic-1",
+  "subject": "Illustrative frozen review",
+  "owner": "fixture-reviewer",
+  "team": "fixture-only",
+  "assignment_id": "22222222-2222-4222-8222-222222222222",
+  "assigned_by": "fixture-lead",
+  "assigned_at": "2026-09-08T12:00:00Z",
+  "Effort": "high \u2014 synthetic isolation-sensitive review",
+  "action": "Pre-read only; execution waits for fixture-lead release.",
+  "execution": "WAIT awaiting_go=22222222-2222-4222-8222-222222222222 matches assignment; owner fixture-lead; artifact fixture-candidate; since 2026-09-08T12:00:00Z, age 0 at issuance; release fixture manifest verified.",
+  "fields": {
+    "Objective": "Review the synthetic fixture against its frozen rubric.",
+    "Deliverable": "fixture-result.md with findings and score table.",
+    "First action": "Read fixture-rubric.md now; inspect fixture-candidate only after GO.",
+    "Completion signal": "RESULT with evidence or BLOCKED with task/generation/artifact/owner/release condition.",
+    "Review route": "review; acceptance fixture-lead; reviewer fixture-reviewer; handoff fixture-result.md."
+  },
+  "References": "accepted base fixture-base object aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; candidate pending; rubric fixture-rubric.md sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; packet fixture-packet sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "Deadline": "30 minutes",
+  "Budget": "baseline fixture-base; paths fixture-result.md; counting final file lines; tool fixture-count.py; exclusions none; ceiling 120.",
+  "Context": "checkout fixture-only; manifest stopping=verdict committed; allowed evidence=own candidate/rubric only; no peer opinions.",
+  "Change": "supersedes 11111111-1111-4111-8111-111111111111 because synthetic admin reason=replace reviewer; changed owner, candidate availability and wait.",
+  "body": "[#synthetic-1 Illustrative frozen review \u00b7 owner: fixture-reviewer \u00b7 team: fixture-only]\nAssignment: 22222222-2222-4222-8222-222222222222 \u00b7 issued by fixture-lead at 2026-09-08T12:00:00Z\nEffort: high \u2014 synthetic isolation-sensitive review\nACTION REQUIRED: Pre-read only; execution waits for fixture-lead release.\nExecution: WAIT awaiting_go=22222222-2222-4222-8222-222222222222 matches assignment; owner fixture-lead; artifact fixture-candidate; since 2026-09-08T12:00:00Z, age 0 at issuance; release fixture manifest verified.\nObjective: Review the synthetic fixture against its frozen rubric.\nDeliverable: fixture-result.md with findings and score table.\nFirst action: Read fixture-rubric.md now; inspect fixture-candidate only after GO.\nCompletion signal: RESULT with evidence or BLOCKED with task/generation/artifact/owner/release condition.\nReview route: review; acceptance fixture-lead; reviewer fixture-reviewer; handoff fixture-result.md.\nReferences: accepted base fixture-base object aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; candidate pending; rubric fixture-rubric.md sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; packet fixture-packet sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\nDeadline: 30 minutes\nBudget: baseline fixture-base; paths fixture-result.md; counting final file lines; tool fixture-count.py; exclusions none; ceiling 120.\nContext: checkout fixture-only; manifest stopping=verdict committed; allowed evidence=own candidate/rubric only; no peer opinions.\nChange: supersedes 11111111-1111-4111-8111-111111111111 because synthetic admin reason=replace reviewer; changed owner, candidate availability and wait.\nNo pure acknowledgment. Follow the completion signal; report an execution blocker as specified."
+}

@@ -137,13 +137,30 @@ fn metadata_u32(metadata: Option<&serde_json::Value>, key: &str) -> Option<u32> 
         .filter(|value| *value > 0)
 }
 
-/// A ledger ruling recording an oversize-diff failure (the leash's shape:
-/// `--kind ruling --value failed --field oversize_diff`). The one predicate
-/// shared by review acceptance (which excludes these) and the routing report
-/// (which counts them), so the two sets agree by construction.
-pub fn is_oversize_failure(ruling: &serde_json::Value) -> bool {
+/// Oversize telemetry is identified by field, regardless of the free-text value.
+/// Shared by review acceptance (which excludes these) and report accounting.
+pub fn is_oversize_ruling(ruling: &serde_json::Value) -> bool {
     ruling.get("field").and_then(serde_json::Value::as_str) == Some("oversize_diff")
-        && ruling.get("value").and_then(serde_json::Value::as_str) == Some("failed")
+}
+
+/// Keep each spelling visible, including unexpected or missing values. JSON
+/// encoding prevents free-text newlines from manufacturing report rows.
+pub fn oversize_ruling_value(ruling: &serde_json::Value) -> Option<(&'static str, String)> {
+    if !is_oversize_ruling(ruling) {
+        return None;
+    }
+    let value = ruling.get("value");
+    let category = match value.and_then(serde_json::Value::as_str) {
+        Some("failed") => "failed",
+        Some("recorded") => "recorded",
+        _ => "other",
+    };
+    Some((
+        category,
+        value
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "<missing>".into()),
+    ))
 }
 
 /// Budget approvals are telemetry, not review acceptance (Wave-1 F5).
@@ -158,7 +175,7 @@ fn metadata_has_review_ruling(metadata: Option<&serde_json::Value>) -> bool {
         .and_then(serde_json::Value::as_array)
         .is_some_and(|rulings| {
             rulings.iter().any(|ruling| {
-                !is_oversize_failure(ruling)
+                !is_oversize_ruling(ruling)
                     && !is_budget_raise(ruling)
                     && matches!(
                         ruling.get("kind").and_then(serde_json::Value::as_str),
@@ -744,6 +761,38 @@ mod tests {
 
         let tasks = parse_task_directory_for_test(&task_dir);
         assert!(!tasks[0].has_review_ruling);
+    }
+
+    // Regression: 5ebf28b93 matched only `failed`, so task #31's `recorded`
+    // ruling could accept a task (docs/design/m3-oversize-encoding-brief.md).
+    #[test]
+    fn m3_oversize_values_never_supply_review_acceptance() {
+        for value in [
+            serde_json::json!("recorded"),
+            serde_json::json!("failed"),
+            serde_json::json!("waived"),
+            serde_json::json!("unfamiliar"),
+            serde_json::Value::Null,
+            serde_json::json!(7),
+        ] {
+            let mut metadata = serde_json::json!({"rulings": [{
+                "kind": "ruling", "field": "oversize_diff", "value": value
+            }]});
+            assert!(
+                !super::metadata_has_review_ruling(Some(&metadata)),
+                "{value}"
+            );
+            metadata["rulings"]
+                .as_array_mut()
+                .unwrap()
+                .push(serde_json::json!({"kind": "verdict", "value": "accepted"}));
+            assert!(super::metadata_has_review_ruling(Some(&metadata)));
+        }
+        assert!(!super::metadata_has_review_ruling(Some(
+            &serde_json::json!({
+                "rulings": [{"kind": "ruling", "field": "oversize_diff"}]
+            })
+        )));
     }
 
     #[test]

@@ -1,0 +1,57 @@
+GO inbox counts before={'seat2.json': 4, 'lead.json': 4, 'seat.json': 3}; after={'seat2.json': 4, 'lead.json': 4, 'seat.json': 3}; equal=True
+INBOX seat id=ef79a82b-cc34-44fe-ac18-9b92af535ec3
+[#1 Measure assignment rendering · owner: seat]
+Effort: medium — bounded replacement
+ACTION REQUIRED: Task #1 is yours but WAITS FOR GO: Measure assignment rendering.
+Task ID: #1
+Assignment: b74f2ac9-6cb5-4d5b-b40b-3648a9545054
+Do not start: the lead releases this task with `mesh task update 1 --go`. You may pre-read context now.
+First step after GO: Read scratch replacement.txt
+Deliverable: scratch replacement-result.md
+Only reply after: RESULT replacement or BLOCKED
+Do not send an acknowledgment or task summary before doing the work.
+
+INBOX seat2 id=27c0afa9-0bf4-4546-aabf-04ff96de545f
+[#1 Measure assignment rendering · owner: seat2]
+Effort: medium — bounded replacement
+ACTION REQUIRED: Task #1 is yours but WAITS FOR GO: Measure assignment rendering.
+Task ID: #1
+Assignment: 91766efb-7bbd-4e18-b8f7-ba1287909409
+Do not start: the lead releases this task with `mesh task update 1 --go`. You may pre-read context now.
+First step after GO: Read scratch replacement.txt
+Deliverable: scratch replacement-result.md
+Only reply after: RESULT replacement or BLOCKED
+Do not send an acknowledgment or task summary before doing the work.
+
+INBOX seat2 id=acaf59e8-399a-4c91-b2d2-9843280fedfa
+[#2 Optional override omission · owner: seat2]
+ACTION REQUIRED: Start task #2 now: Optional override omission.
+Task ID: #2
+Assignment: c6233691-cecf-4bcc-8652-981a82ac9e12
+Start now: Read fixture
+Deliverable: result.md
+Only reply after: RESULT
+Do not send an acknowledgment or task summary before doing the work.
+
+INBOX seat2 id=dd734c1e-30b4-4f83-b4d8-fdf49adcf220
+[#3 Effort without reason · owner: seat2]
+Effort: low — optional supplied reason
+ACTION REQUIRED: Start task #3 now: Effort without reason.
+Task ID: #3
+Assignment: 84b312bf-fe6e-482a-a928-22adf185c11f
+Start now: Read fixture
+Deliverable: result.md
+Only reply after: RESULT
+Do not send an acknowledgment or task summary before doing the work.
+
+INBOX seat2 id=533c9a26-4d43-4e7b-a5b2-127a5f449a1d
+[#4 GO delivery observation · owner: seat2]
+ACTION REQUIRED: Task #4 is yours but WAITS FOR GO: GO delivery observation.
+Task ID: #4
+Assignment: d2928bba-5b47-435e-a04f-64e3a9ae44c0
+Do not start: the lead releases this task with `mesh task update 4 --go`. You may pre-read context now.
+First step after GO: Read isolated artifact
+Deliverable: result.md
+Only reply after: RESULT
+Do not send an acknowledgment or task summary before doing the work.
+

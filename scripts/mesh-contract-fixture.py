@@ -178,6 +178,7 @@ elif scenario == "wait":
 
 elif scenario == "ruling":
     run("task", "ruling", task_id, "--kind", "ruling", "--field", "oversize_diff", "--value", "failed")
+    run("task", "ruling", task_id, "--kind", "ruling", "--field", "oversize_diff", "--value", "recorded")
     run("task", "ruling", task_id, "--kind", "ruling", "--field", "budget_raised", "--value", "approved")
 
 else:

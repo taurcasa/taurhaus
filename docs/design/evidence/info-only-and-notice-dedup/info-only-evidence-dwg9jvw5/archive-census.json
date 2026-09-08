@@ -1,0 +1,269 @@
+{
+  "archive": "/home/mstie/projects/taurjob/docs/wave-1/mesh-archive/taurjob-team-archive.tar.gz",
+  "archive_sha256": "60bd9ba90b941211821c14b36b10dc583ddf21e961ff80547ff223141d2643e1",
+  "extraction_root": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e",
+  "manifest": [
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/state/workflow_events.jsonl",
+      "archive_member": "taurjob-team/state/workflow_events.jsonl",
+      "bytes": 107122,
+      "sha256": "907075d8fbaa2d9cbaa5424ecbc17880bf7aff135821134585d8d6b56c3dbe38"
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/design-taurjob.json",
+      "archive_member": "taurjob-team/inboxes/design-taurjob.json",
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/heavy-implementer.json",
+      "archive_member": "taurjob-team/inboxes/heavy-implementer.json",
+      "bytes": 29583,
+      "sha256": "37084b97c59e84919670e607c49d616e17040d677ca57288e81555ce603e2b9a"
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/team-lead.json",
+      "archive_member": "taurjob-team/inboxes/team-lead.json",
+      "bytes": 74332,
+      "sha256": "184a3d7deaf6946bda4845c64b2190fff1081c8844f215543d6e2f47a378fdc9"
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/product-reviewer.json",
+      "archive_member": "taurjob-team/inboxes/product-reviewer.json",
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/heavy-implementer-1.json",
+      "archive_member": "taurjob-team/inboxes/heavy-implementer-1.json",
+      "bytes": 36932,
+      "sha256": "6486b0ea72dae41b42b8211fe19d0b8af7f7786ed1362e8f55d42d353908af90"
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/architect.json",
+      "archive_member": "taurjob-team/inboxes/architect.json",
+      "bytes": 43738,
+      "sha256": "e7bfaac71546839209f801c77b6da925f398dcdc5e05c212fa84d0bf517fdfe9"
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/implementer-1.json",
+      "archive_member": "taurjob-team/inboxes/implementer-1.json",
+      "bytes": 28481,
+      "sha256": "006d85ac5666e7f3f0443029cceeb9f7b5ce3016ec3d33667b3c5f1394a9537f"
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/lead-taurjob.json",
+      "archive_member": "taurjob-team/inboxes/lead-taurjob.json",
+      "bytes": 1222,
+      "sha256": "136d975b37af171fdd5d1cb1644ab46f8524e2d3554be65e476d60a11d313126"
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/judge-astra-1.json",
+      "archive_member": "taurjob-team/inboxes/judge-astra-1.json",
+      "bytes": 12988,
+      "sha256": "547b6e0314de486aed5765cd1a3fdcffd9e74d34c2586337a33399544a2111a1"
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/altitude-reviewer.json",
+      "archive_member": "taurjob-team/inboxes/altitude-reviewer.json",
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  ],
+  "envelopes": 106,
+  "info_prefix_envelopes": 10,
+  "info_prefix_percent": 9.433962264150944,
+  "info_chars": 4283,
+  "all_body_chars": 200190,
+  "by_recipient": {
+    "architect": 20,
+    "heavy-implementer-1": 14,
+    "heavy-implementer": 15,
+    "implementer-1": 13,
+    "judge-astra-1": 8,
+    "lead-taurjob": 2,
+    "team-lead": 34
+  },
+  "info_by_recipient": {
+    "architect": 3,
+    "heavy-implementer-1": 2,
+    "heavy-implementer": 1,
+    "implementer-1": 3,
+    "judge-astra-1": 1
+  },
+  "workflow_message_sent_rows": 86,
+  "distinct_send_ids": 86,
+  "retained_send_id_joins": 28,
+  "lead_envelopes": 36,
+  "lead_id_bearing": 2,
+  "lead_send_echo_joins": [
+    {
+      "workflow_line": 319,
+      "event": {
+        "eventId": "6d9cccd8-a565-4461-a402-d9ee7120d39c",
+        "protocolVersion": 1,
+        "eventType": "message_sent",
+        "message_id": "a93dd110-8297-456a-a2f1-9cfaad4e2860",
+        "sender": "mesh-idle-monitor",
+        "recipient": "lead-taurjob",
+        "kind": "escalation",
+        "task_id": "11",
+        "task_owner": "heavy-implementer",
+        "timestamp": "2026-09-06T20:06:35.853Z",
+        "action_required": true,
+        "no_response_needed": false
+      }
+    },
+    {
+      "workflow_line": 321,
+      "event": {
+        "eventId": "fc682f74-cb32-44a5-86c6-b3e635849b06",
+        "protocolVersion": 1,
+        "eventType": "message_sent",
+        "message_id": "3c1e852c-c30d-4db0-bb9e-a70a6dcc6f4f",
+        "sender": "mesh-idle-monitor",
+        "recipient": "lead-taurjob",
+        "kind": "escalation",
+        "task_id": "2",
+        "task_owner": "design-taurjob",
+        "timestamp": "2026-09-06T20:11:26.180Z",
+        "action_required": true,
+        "no_response_needed": false
+      }
+    }
+  ],
+  "explicit_info_reply_id_matches": [],
+  "info_records": [
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/architect.json",
+      "index": 4,
+      "recipient": "architect",
+      "message": {
+        "from": "lead-taurjob",
+        "text": "INFO ONLY: T1 correction \u2014 commit on `master` (the repo's only branch, no remote); ignore the earlier `main` and `pull --rebase` instruction. Commit only `docs/wave-1/architecture.md`; never rebase, reset, or amend others' commits. Diff budget: \u2264 400 added lines. Ledger updated at commit HEAD of `~/projects/taurjobs`. no response needed",
+        "timestamp": "2026-09-06T19:39:16.811Z",
+        "read": true,
+        "summary": "T1 correction: branch master, budget 400"
+      }
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/architect.json",
+      "index": 8,
+      "recipient": "architect",
+      "message": {
+        "id": "6ddcd156-35b4-4220-b8c9-9b8aedd46f0f",
+        "from": "lead-taurjob",
+        "text": "INFO ONLY: all seats share one working tree in ~/projects/taurjobs on master. Commit with an explicit pathspec only: git commit -m '...' -- <your files>. Never git add -A or git add . (one seat nearly swept up two other lanes' uncommitted work). Rule recorded in docs/wave-1/ledger.md. no response needed\n\n[orchestration_v1]\nintent: info\nno_response_needed: true\n[/orchestration_v1]",
+        "timestamp": "2026-09-06T19:44:59.457Z",
+        "read": true,
+        "summary": "Commit hygiene: pathspec commits only",
+        "priority": "low"
+      }
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/architect.json",
+      "index": 15,
+      "recipient": "architect",
+      "message": {
+        "from": "lead-taurjob",
+        "text": "INFO ONLY: the operator approved the six reserved decisions as stated (mesh ruling on #1, ref 1ee252f). M0 scaffold is assigned to heavy-implementer as #11 on the T8-verified recipe. M1, M2, M3a/M3b assignments go out on your `RESULT T1r` plus T2; T1r is now the critical path for those three seats. The acceptance gate moved to 6a44056 (60 checks: product-reviewer added 58 to 60 from the altitude review). no response needed",
+        "timestamp": "2026-09-06T19:55:35.329Z",
+        "read": true,
+        "summary": "Operator approved the packet; M0 started; T1r gates M1\u2013M3"
+      }
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/heavy-implementer-1.json",
+      "index": 6,
+      "recipient": "heavy-implementer-1",
+      "message": {
+        "id": "9abd14fe-60c7-403c-aed0-ace62f233652",
+        "from": "lead-taurjob",
+        "text": "INFO ONLY: all seats share one working tree in ~/projects/taurjobs on master. Commit with an explicit pathspec only: git commit -m '...' -- <your files>. Never git add -A or git add . (one seat nearly swept up two other lanes' uncommitted work). Rule recorded in docs/wave-1/ledger.md. no response needed\n\n[orchestration_v1]\nintent: info\nno_response_needed: true\n[/orchestration_v1]",
+        "timestamp": "2026-09-06T19:44:59.553Z",
+        "read": true,
+        "summary": "Commit hygiene: pathspec commits only",
+        "priority": "low"
+      }
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/heavy-implementer-1.json",
+      "index": 10,
+      "recipient": "heavy-implementer-1",
+      "message": {
+        "from": "lead-taurjob",
+        "text": "INFO ONLY: T9 is withdrawn from you by taurhaus ruling: heavy-implementer seats stay on implementation lanes, so judge-astra-1 takes the T2 review. Your pre-read is not wasted; the architecture packet at fd25749 (`docs/wave-1/architecture.md` \u00a7 6) names you accountable implementer for M3: pipeline execution, result query, and the results browser, a declared hero surface, with product-reviewer as acceptance owner. The M3 assignment with its diff budget follows the operator's decision on the packet and the T7 altitude pass. Until then, read \u00a7 3, \u00a7 4, and \u00a7 6 of the packet and your own T5 inventory against each other and note any parity gap you would need resolved before M3; send those notes only when the assignment arrives. Owned diff stays 0 until assigned. no response needed",
+        "timestamp": "2026-09-06T19:51:36.217Z",
+        "read": true,
+        "summary": "T9 withdrawn per taurhaus; you are M3 implementer, pre-read now"
+      }
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/heavy-implementer.json",
+      "index": 6,
+      "recipient": "heavy-implementer",
+      "message": {
+        "id": "aec4a955-38d5-4d60-b87c-bcde6bfb80ff",
+        "from": "lead-taurjob",
+        "text": "INFO ONLY: all seats share one working tree in ~/projects/taurjobs on master. Commit with an explicit pathspec only: git commit -m '...' -- <your files>. Never git add -A or git add . (one seat nearly swept up two other lanes' uncommitted work). Rule recorded in docs/wave-1/ledger.md. no response needed\n\n[orchestration_v1]\nintent: info\nno_response_needed: true\n[/orchestration_v1]",
+        "timestamp": "2026-09-06T19:44:59.490Z",
+        "read": true,
+        "summary": "Commit hygiene: pathspec commits only",
+        "priority": "low"
+      }
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/implementer-1.json",
+      "index": 4,
+      "recipient": "implementer-1",
+      "message": {
+        "id": "5ec35e01-2ee8-4a18-882b-b1625dc0717c",
+        "from": "architect",
+        "text": "INFO ONLY: T1 needs T3 evidence for exact Claude stream --verbose requirement, Codex JSON event shapes and private prompt retention controls (Codex --ephemeral if supported; Claude --no-session-persistence). Never probe private inputs. Architecture will disable adapters for private runs unless retention and stdin invocation are verified. agy/grok remain detection-only absent verified research/retention contracts. no response needed\n\n[orchestration_v1]\nintent: info\nno_response_needed: true\n[/orchestration_v1]",
+        "timestamp": "2026-09-06T19:39:10.059Z",
+        "read": true,
+        "summary": "T3 needed privacy and event capabilities"
+      }
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/implementer-1.json",
+      "index": 5,
+      "recipient": "implementer-1",
+      "message": {
+        "from": "lead-taurjob",
+        "text": "INFO ONLY: T3 correction \u2014 commit on `master` (the repo's only branch, no remote); ignore the earlier `main` and `pull --rebase` instruction. Commit only your sample files, README, and the facts-table edits; never rebase or reset. Budget: raw sample files as captured plus README \u2264 150 lines. no response needed",
+        "timestamp": "2026-09-06T19:39:22.442Z",
+        "read": true,
+        "summary": "T3 correction: branch master, budget"
+      }
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/implementer-1.json",
+      "index": 7,
+      "recipient": "implementer-1",
+      "message": {
+        "id": "73a8c7f9-18cc-4fc6-837b-ff2c0809aa54",
+        "from": "lead-taurjob",
+        "text": "INFO ONLY: all seats share one working tree in ~/projects/taurjobs on master. Commit with an explicit pathspec only: git commit -m '...' -- <your files>. Never git add -A or git add . (one seat nearly swept up two other lanes' uncommitted work). Rule recorded in docs/wave-1/ledger.md. no response needed\n\n[orchestration_v1]\nintent: info\nno_response_needed: true\n[/orchestration_v1]",
+        "timestamp": "2026-09-06T19:44:59.473Z",
+        "read": true,
+        "summary": "Commit hygiene: pathspec commits only",
+        "priority": "low"
+      }
+    },
+    {
+      "path": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/wave1-psvrxa6e/taurjob-team/inboxes/judge-astra-1.json",
+      "index": 1,
+      "recipient": "judge-astra-1",
+      "message": {
+        "id": "09396dab-692f-4538-bdb4-ac7f44d7891a",
+        "from": "lead-taurjob",
+        "text": "INFO ONLY: all seats share one working tree in ~/projects/taurjobs on master. Commit with an explicit pathspec only: git commit -m '...' -- <your files>. Never git add -A or git add . (one seat nearly swept up two other lanes' uncommitted work). Rule recorded in docs/wave-1/ledger.md. no response needed\n\n[orchestration_v1]\nintent: info\nno_response_needed: true\n[/orchestration_v1]",
+        "timestamp": "2026-09-06T19:44:59.569Z",
+        "read": true,
+        "summary": "Commit hygiene: pathspec commits only",
+        "priority": "low"
+      }
+    }
+  ]
+}

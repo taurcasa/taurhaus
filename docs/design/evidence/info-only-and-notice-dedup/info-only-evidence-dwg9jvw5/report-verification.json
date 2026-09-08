@@ -1,0 +1,40 @@
+{
+  "checks": {
+    "## Result": true,
+    "## Evidence": true,
+    "## Recommendation": true,
+    "response_expectation": true,
+    "deferred-info": true,
+    "ignored-nudge": true,
+    "cache-write": true,
+    "UNVERIFIED": true,
+    "all_source_citations_available_as_initial_bytes": true,
+    "all_mesh_invocations_isolated": true,
+    "transcript_exists": true,
+    "all_required_sections_present": true
+  },
+  "command_count": 28,
+  "exit_zero_count": 24,
+  "diagnostic_nonzero_results": [
+    {
+      "command_index": 15,
+      "exit_code": 2
+    },
+    {
+      "command_index": 16,
+      "exit_code": 2
+    },
+    {
+      "command_index": 17,
+      "exit_code": 1
+    },
+    {
+      "command_index": 20,
+      "exit_code": 2
+    }
+  ],
+  "report_sha256": "3ce5e1f352c90b816189d3fe4ccaf5ead1bd3e24a726c8b298ee2f5d4ea867aa",
+  "report_bytes": 57400,
+  "scope": "Artifact structure, evidence availability and source-integrity review only; no product gate, review approval or model-wake test.",
+  "verification_note": "Validated each executed command against its recorded cwd and environment; an independently mutable shared scratch pointer is not evidence of command identity."
+}
