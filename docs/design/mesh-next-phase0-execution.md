@@ -785,3 +785,20 @@ path MeshPaths owns; the expectation decision is recomputed per message
 per pass; cron/recovery vector rows have no in-crate producer (keep as
 the shared contract, assert via the normalizer, say so); the conflict
 message wording. Nits ride along.
+
+### C1 — closure: `complete` after four review rounds; orchestrator-verified
+
+`feature-pr` returned **complete** (2026-09-08 ~07:50 UTC): Opus
+conformance + operational lenses, four rounds, seven majors found and
+closed (malformed-Markdown panic → structured `invalid_input`; JSON
+adapter with surrogate escapes; Git verification pinned to the
+declared root; the `none`/limitation rule narrowed to declared
+limitations; USAGE drift; NFC-folded `bundle` paths; non-NFC retry
+identity), the T8 visibility half implemented (`7bb13de` — cited
+completion statements rendered beside declarations), final re-review
+**approve** (1 minor: `bundle: self` still escapes the self-digest
+exclusion so a lost-response retry conflicts — carried to C2; nits),
+gate **pass** on all four commands. Branch `feat/ledger-writer` at
+`20a4ee9`, 20 commits, 3,971 inserted lines of 4,000, dependencies
+`yaml-rust2` + `unicode-normalization`; not merged. Branch
+`feat/ledger-submission` cut from that tip for C2.
