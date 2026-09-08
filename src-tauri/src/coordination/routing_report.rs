@@ -12,7 +12,7 @@ use crate::coordination::stores::telemetry::{
 };
 use crate::coordination::stores::TeamRootRegistry;
 use taurhaus_lib::task_scanner::claude::{
-    is_budget_raise, is_oversize_failure, parse_task_content, MAX_FILE_SIZE,
+    is_budget_raise, is_oversize_ruling, oversize_ruling_value, parse_task_content, MAX_FILE_SIZE,
 };
 use taurhaus_lib::task_scanner::claude_index::ClaudeSourceIndex;
 use taurhaus_lib::task_scanner::types::TaskStatus;
@@ -23,6 +23,7 @@ struct ReportStats {
     accepted: BTreeSet<String>,
     completed_unruled: BTreeSet<String>,
     oversize_diffs: usize,
+    oversize_values: BTreeMap<(&'static str, String), usize>,
     budget_raises: usize,
     relaunches: usize,
     effort_switches: usize,
@@ -47,6 +48,7 @@ struct LedgerVerdict {
 #[derive(Debug)]
 struct OwnerRuling {
     owner: String,
+    oversize_value: Option<(&'static str, String)>,
     at: Option<DateTime<Utc>>,
 }
 
@@ -143,6 +145,19 @@ pub fn render_routing_report(
     output.push_str("\nModel rollup\nmodel | tasks_touched | accepted | completed_unruled | oversize_diffs | budget_raises | relaunches | effort_switches | deadline_nudges | monitor_nudges | staled | median_wall_time\n");
     for (model, stats) in &model_rows {
         push_row(&mut output, None, model, stats);
+    }
+    let mut oversize_values = BTreeMap::new();
+    for stats in role_rows.values() {
+        for (value, count) in &stats.oversize_values {
+            *oversize_values.entry(value.clone()).or_insert(0) += count;
+        }
+    }
+    let total: usize = oversize_values.values().sum();
+    output.push_str(&format!(
+        "\nOversize rulings: {total} total (owner-attributed)\ncategory | value | count\n"
+    ));
+    for ((category, value), count) in oversize_values {
+        output.push_str(&format!("{category} | {value} | {count}\n"));
     }
     let health: usize = role_rows.values().map(|stats| stats.launch_health).sum();
     output.push_str(&format!("\nLaunch-health records: {health} (attributed to the affected seat; excluded from monitor_nudges).\n"));
@@ -252,8 +267,9 @@ fn accumulate_task(
             for stats in [role_stats, model_stats] {
                 if budget_raise {
                     stats.budget_raises += 1;
-                } else {
+                } else if let Some(value) = &ruling.oversize_value {
                     stats.oversize_diffs += 1;
+                    *stats.oversize_values.entry(value.clone()).or_default() += 1;
                 }
             }
         }
@@ -398,7 +414,7 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
     if let Some(owner) = owner {
         for ruling in rulings
             .iter()
-            .filter(|ruling| is_oversize_failure(ruling) || is_budget_raise(ruling))
+            .filter(|ruling| is_oversize_ruling(ruling) || is_budget_raise(ruling))
         {
             let at = ruling
                 .get("at")
@@ -412,6 +428,7 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
             };
             target.push(OwnerRuling {
                 owner: owner.to_string(),
+                oversize_value: oversize_ruling_value(ruling),
                 at,
             });
         }
@@ -535,6 +552,8 @@ mod tests {
         );
     }
 
+    // Regression: 5ebf28b93 missed task #31's `recorded` encoding; see
+    // docs/design/m3-oversize-encoding-brief.md. Cover both producer values.
     // Regression: a9fea658 selected tasks by sidecar timestamps alone,
     // omitting a newly recorded ruling on an older launched task.
     #[cfg(target_os = "linux")]
@@ -554,20 +573,24 @@ mod tests {
             assert!(!task.has_review_ruling, "budget records are not acceptance");
             assert_eq!(task.owner.as_deref(), Some("builder"));
             let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
-            assert!(taurhaus_lib::task_scanner::claude::is_oversize_failure(
+            assert!(taurhaus_lib::task_scanner::claude::is_oversize_ruling(
                 &value["metadata"]["rulings"][0]
             ));
+            assert_eq!(value["metadata"]["rulings"][1]["value"], "recorded");
             assert!(taurhaus_lib::task_scanner::claude::is_budget_raise(
-                &value["metadata"]["rulings"][1]
+                &value["metadata"]["rulings"][2]
             ));
             mesh_launch(&fixture, Utc::now() - chrono::Duration::days(launch_age));
             let report = render_routing_report(&fixture.teams(), 30, Utc::now()).unwrap();
             assert!(
                 report.contains(
-                    "developer | fixture-model | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | -"
+                    "developer | fixture-model | 1 | 0 | 0 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | -"
                 ),
                 "launch age {launch_age}: {report}"
             );
+            assert!(report.contains("Oversize rulings: 2 total"), "{report}");
+            assert!(report.contains(r#"failed | "failed" | 1"#), "{report}");
+            assert!(report.contains(r#"recorded | "recorded" | 1"#), "{report}");
             std::fs::remove_file(fixture.teams().join(format!(
                 "deadline-team/state/telemetry/{}.jsonl",
                 fixture.task_id
@@ -689,6 +712,68 @@ mod tests {
             ruled = ruled,
         );
         std::fs::write(path, lines).expect("write sidecar");
+    }
+
+    // Regression: 5ebf28b93 recognized only `failed`, zeroing task #31's
+    // `recorded` breach; docs/design/m3-oversize-encoding-brief.md.
+    #[test]
+    fn m3_recorded_and_other_oversize_values_count_without_accepting() {
+        let root = tempfile::tempdir().unwrap();
+        let teams = root.path().join("teams");
+        write_json(
+            &teams.join("routing-team/config.json"),
+            serde_json::json!({"name": "routing-team", "members": []}),
+        );
+        for (owner, total) in [(Some("builder"), 5), (None, 0), (Some("absent"), 0)] {
+            write_sidecar(
+                &teams,
+                "routing-team",
+                "31",
+                "developer",
+                "model",
+                "2026-09-03T10:10:00Z",
+                true,
+            );
+            write_json(
+                &root.path().join("tasks/routing-team/31.json"),
+                serde_json::json!({"id": "31", "subject": "Working diff breach",
+                "status": "completed", "owner": owner, "metadata": {"rulings": [
+                    {"kind": "ruling", "field": "oversize_diff", "value": "recorded"},
+                    {"kind": "ruling", "field": "oversize_diff", "value": "recorded"},
+                    {"kind": "ruling", "field": "oversize_diff", "value": "failed"},
+                    {"kind": "ruling", "field": "oversize_diff", "value": "waived"},
+                    {"kind": "ruling", "field": "oversize_diff", "value": "unfamiliar"}
+                ]}}),
+            );
+            let report = render_routing_report(
+                &teams,
+                30,
+                Utc.with_ymd_and_hms(2026, 9, 4, 12, 0, 0).unwrap(),
+            )
+            .unwrap();
+            assert!(
+                report.contains(&format!(
+                    "developer | model | 1 | 0 | 1 | {total} | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+                )),
+                "{report}"
+            );
+            assert!(
+                report.contains(&format!("Oversize rulings: {total} total")),
+                "{report}"
+            );
+            if total > 0 {
+                for row in [
+                    r#"failed | "failed" | 1"#,
+                    r#"recorded | "recorded" | 2"#,
+                    r#"other | "waived" | 1"#,
+                    r#"other | "unfamiliar" | 1"#,
+                ] {
+                    assert!(report.contains(row), "{report}");
+                }
+            } else {
+                assert!(!report.contains(r#"recorded | "recorded""#), "{report}");
+            }
+        }
     }
 
     // Regression: 5ebf28b9 counted oversize rulings but hid F5 budget raises
@@ -1304,12 +1389,10 @@ mod tests {
         assert!(report.contains("gpt-6-astra | 1 | 1 | 0 | 0 | 1"));
     }
 
-    // Regression: 52505603 counted any `field: oversize_diff` ruling as an
-    // incident while the scanner only excluded `value: failed` from review
-    // acceptance — the two layers disagreed about a waived ruling. Both now
-    // share task_scanner::claude::is_oversize_failure.
+    // Regression: 5ebf28b93 hid waived rulings and let them supply review
+    // acceptance. M3 now counts all values and excludes them consistently.
     #[test]
-    fn waived_oversize_rulings_neither_count_as_incidents_nor_block_acceptance() {
+    fn waived_oversize_rulings_count_as_other_and_never_supply_acceptance() {
         let root = tempfile::tempdir().expect("tempdir");
         let default_teams = root.path().join("personal/teams");
         write_json(
@@ -1356,7 +1439,7 @@ mod tests {
         .expect("render report");
 
         assert!(report.contains(
-            "astra-heavy-implementer | gpt-6-astra | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
+            "astra-heavy-implementer | gpt-6-astra | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 10m 00s"
         ));
     }
 
