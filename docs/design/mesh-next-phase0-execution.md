@@ -802,3 +802,35 @@ gate **pass** on all four commands. Branch `feat/ledger-writer` at
 `20a4ee9`, 20 commits, 3,971 inserted lines of 4,000, dependencies
 `yaml-rust2` + `unicode-normalization`; not merged. Branch
 `feat/ledger-submission` cut from that tip for C2.
+
+### Assignment card — closure: `complete` after two rounds; budget excess recorded
+
+`feature-pr` returned **complete** (2026-09-08 ~08:05 UTC): two rounds,
+five majors closed (assign-time `--description` so legacy tasks stay
+assignable; the "undelivered" notice reserved for a missing inbox
+record; `task go` persists delivery outcomes and retries a committed
+release; block descriptors cleared with the block they describe; the
+Reconciliation line only on a real conflict), final re-review
+**approve** (4 minors: the reassignment card says "changed fields []"
+when the objective was replaced; USAGE still says assign cannot
+override the description; a corrupt cursor sidecar makes `mesh nudge`
+exit 1 where other readers degrade; `task ruling --kind budget_raised`
+is scope beyond the minimum; 2 nits), gate **pass**. Branch
+`feat/assignment-card` at `00e3f9d`, seven commits, not merged.
+Orchestrator re-check on the final candidate (S): a task created
+without a description is assignable with `--description` at assign; a
+plain `--awaiting-go` card carries no Reconciliation line; `task get`
+prints no "undelivered" notice for an inbox-appended assignment; after
+`block` and `start` the blocked state and descriptor are gone and the
+card reports the recorded `in_progress` stage.
+
+**Budget ruling (acceptance owner):** the diff is 2,290 inserted lines
+against the brief's 1,800 ceiling, with no raise recorded before the
+crossing. The excess is review-driven (delivery-outcome persistence,
+the GO retry path, legacy-cursor coverage, the descriptor lifetime),
+not scope creep, except the `budget_raised` ruling surface, which the
+minimum did not ask for and which is carried as a minor. Recorded as
+a post-hoc exception per the delivery standard — accepted, not erased;
+the next mesh lane briefs raise the ceiling explicitly where review
+rounds are expected. The four minors go to one house `fix-round` when
+the stage-1 fix-round frees a slot.
