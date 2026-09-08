@@ -874,3 +874,138 @@ message still wakes the remote recipient through the relay path; 2
 nits), gate **pass**. Branch `feat/info-only-stage1` at `5d31d6e`. The
 three residual minors go to one more bounded fix-round (the cross-team
 wake is a real stage-1 gap).
+
+### C2 — round-1 lenses (fix round r1 running)
+
+Opus conformance **fix_required** (2 majors, 4 minors, 1 nit) and
+operational **fix_required** (1 blocker, 2 majors, 3 minors, 3 nits):
+BLOCKER — the attachment sniff UTF-8-validates the whole file, so an
+artifact with a valid `ledger` namespace and a later invalid byte is
+silently dropped with exit 0; majors — every `.md` attachment warns on
+teams that never initialized a ledger (noise on non-ledger teams);
+`--summary-file` rejects any path outside the ledger/cwd root with an
+opaque error; the documented standalone repair admits an event without
+the `audience_ref` the submission route captured (and the captured
+`audience_ref` omits the SD4 fields it should prove); minors — oversize
+attachments bounded only after the source commit; a hand-parsed
+manifest instead of the Manifest authority; split receipts advertising
+a repair for error classes the repair cannot fix; `submission_ref` is a
+new envelope field outside the design's vocabulary; a duplicate-batch
+identity when the same file is both summary and artifact; nits (a
+stale clippy allow; an ordinary submission can block on the ledger
+flock after the source commit; pre-commit summary-file errors surface
+as ledger JSON on plain task commands). Fix round r1 on `gpt-6-astra`
+high; the procedure allows three.
+
+### Assignment card — residual fix-round closure: DONE
+
+`fix-round` returned **complete** (2026-09-08 ~08:40 UTC): the three
+residual minors fixed (the reassignment card now reports a replaced
+objective in its changed fields; USAGE says assign overrides every
+contract field including the description; `mesh nudge` degrades on an
+unreadable cursor sidecar with a warning like every other reader),
+conformance re-review **approve**, gate **pass**. Remaining: the diff
+budget (2,340 gross inserted lines, ~1,110 of them tests, against the
+1,800 ceiling — the exception recorded above stands) and three nits
+(an untrimmed `--description` can announce a no-op change; USAGE's
+cursor-readers sentence omits nudge; the card's description diff
+duplicates the task writer's). Branch `feat/assignment-card` at
+`ff000f2`, not merged. The lane is closed for phase 0.
+
+## Operator decisions and the finish-lane turn (2026-09-08 ~09:00 UTC)
+
+The operator's course correction stands as a ruling: reviews and fixes
+that no longer buy product behavior are theater. From here a lane
+closes at **no majors + gate green**; minors are recorded, not
+re-rounded; phase 0 drives to closure, not in circles. Four answers:
+
+1. **Onboarding card — GO** on branches, nothing installed.
+2. **Wave-2 archive** — the orchestrator produces it read-only from the
+   live root ("everything is on this machine").
+3. **Mesh repo** — clean it up and handle branches per the
+   orchestrator's recommendation.
+4. **No mesh-core team**; phase 0 to the finish lane.
+
+### Onboarding card (item 1) — taurhaus lane LAUNCHED
+
+Brief `docs/design/onboarding-card-lane-brief.md` (increment 1 of the
+accepted design: identity tuple, one `RecoveryCard` compiler with a new
+bounded `render_card_steering`, baseline-once delivery under the
+runtime lock, accepted/consumed receipts, `reonboard --force`
+generation, pending skipped-compaction obligation, deadline nudge
+without the card; `render_role_sections` byte-stable). `feature-pr` on
+worktree `~/projects/taurhaus-onboard`, branch `feat/onboarding-card`
+off main `7dc6b827`; Astra high implements, Opus lenses, gates
+`check-quick`/`lint`/`test-contracts` plus the Rust-diff rule's
+`test-rust-unit`; diff budget 3,500. Run `wf_7d874e28-dd3`. The mesh
+half (projection, delivery identities) waits for the card and ledger
+branches and is not launched.
+
+### Wave-2 archive — capture-1 PRODUCED (live capture)
+
+Read-only copy of `~/.claude-account2/teams/taurjob-team` taken
+2026-09-08T06:52:22Z while the team still stood (B2 bug-lane packet in
+progress) → `~/projects/taurjob/docs/wave-2/mesh-archive/` (tarball
+sha256 `a59b5aca…33be0`, `control_auth` excluded; team config; 99 task
+snapshots; 94 telemetry sidecars; `capture-manifest.json` with per-
+journal row counts and digests: workflow_events 2,052 rows,
+task_mutations 863, protocol_telemetry 750, protocol_index 397).
+Committed in taurjob as `df75391` (pathspec-only). It is labeled a
+LIVE capture: every wave-2 number measured on it is a lower bound; a
+closed capture after the team disbands supersedes it for closure
+figures.
+
+### Measurement lanes LAUNCHED (machinery review §8)
+
+Five read-only Astra-high researchers on the offline copies (capture-1
+plus the closed wave-1 archive, both unpacked under
+`.check-logs/mesh-next-phase0/wave2-measure/`), briefs `lane-MA..ME.md`
+with `COMMON.md` (estimator, labels, coverage rules): M-A onboarding
+replay census (same estimator as the threads memo, wave 1 recomputed);
+M-B lead exposure / multi-surface events; M-C info-only bodies,
+provoked replies, lint-rejectable share; M-D #31 oversize
+reconciliation against the merged #148 scanner; M-E gap-matrix
+increment B continuation (≥300 items, exact resume point). Run
+`wf_0da85e15-367` (`research-sweep-fix.js`, no resume). Reports are
+promoted to `docs/design/evidence/wave-2-measurements/` after a direct
+orchestrator check; measurement, not design, so no Opus lens.
+
+### Mesh repository cleanup — DONE
+
+Merged into master and deleted: `feat/wave2-lifecycle` (+ worktree
+`mesh-w2fixes`), `feat/task-deadline` (+ `mesh-w4b`),
+`codex/mesh-daemon-recovery`. The two stale March review worktrees
+(`mesh-first-live-candidate`, `mesh-x3-close-review`) removed. The four
+unmerged March-2026 branches — `review/first-live-m1-candidate-2026-03-11`
+(289 ahead), `review/x3-close-candidate-2026-03-11` (269),
+`task-1244-mesh-bump` (130), `task-1255-mesh-rollout` (125) — were
+never merged and predate the 0.2.x line; archived as annotated tags
+`archive/<branch>` (982b406, d8cb861, 0909d34, 47615d7) and deleted
+(reversible from the tags). Three untracked fixture scratch dirs
+(`1411026HOME`, `1440540HOME`, `2415095HOME`, 12 K each) removed. The
+repo has no remote. Remaining branches: master (lock commit) and the
+five phase-0 branches. Worktrees `mesh-card` and `mesh-info` are
+pruned when their lanes' runners are dead; branches stay parked.
+
+### Info-only stage 1 — residual round r5 DONE; branch FROZEN
+
+`gpt-6-astra` high fixed the three residual minors (conflicting foreign
+relays no longer stall the relay cycle; duplicate relay markers gone;
+strict inbox diagnostics with a corrupt-inbox warning), one regression
+each, 32 net insertions, `check-quick`/`lint`/`test` green (702 passed).
+Branch `feat/info-only-stage1` at `878644f`. No further rounds under
+the finish-lane rule.
+
+### C2 — round-1 fixed; round 2 on ONE real major
+
+Fix r1 landed five commits to `5c888ea`. The round-2 lenses found one
+major that is product behavior, not theater: `--summary-file` carrying
+a `ledger` namespace on a team that never ran `ledger init` fails the
+whole submission with exit 5 ("not repairable by re-submission") while
+the identical bytes as an attachment are silent and exit 0 — a managed
+seat's completion would report failure to its harness on a non-ledger
+team. Round 2 fixes it (guard the summary capture on `root.is_some()`,
+red-first test on the uninitialized fixture) and takes the trivial
+minors (out-of-root header diagnostic; `--submission-event` required
+with `--task`/`--assignment` on the repair). C2 closes at no majors +
+gate green; D launches on `feat/ledger-boundary` immediately after.
