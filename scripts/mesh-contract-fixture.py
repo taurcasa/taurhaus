@@ -45,6 +45,7 @@ run("task", "assign", task_id, "--owner", "builder", "--status", "in_progress", 
 shutil.copyfile(path, root / "awaiting.json")
 run("task", "update", task_id, "--go")
 shutil.copyfile(path, root / "go.json")
+shutil.copyfile(root / "teams/deadline-team/config.json", root / "go-config.json")
 
 if scenario == "monitor":
     source = root / "clock.c"
@@ -84,6 +85,16 @@ int clock_gettime(clockid_t id, struct timespec *ts) {
                     process.wait()
     records = json.loads(path.read_text())["metadata"].get("idle_monitor_records", [])
     assert [record["kind"] for record in records] == ["nudge", "nudge", "launch_health"], records
+
+elif scenario == "wait":
+    run("task", "assign", task_id, "--owner", "builder", "--status", "in_progress",
+        "--awaiting-go", "--admin-reason", "Exercise a new wait")
+    shutil.copyfile(path, root / "new-wait.json")
+    run("task", "assign", task_id, "--owner", "builder", "--status", "in_progress",
+        "--admin-reason", "Exercise reassignment")
+    shutil.copyfile(path, root / "reassigned.json")
+    run("status", "set", "--name", "builder", "--state", "blocked", "--reason", "Awaiting candidate")
+    shutil.copyfile(root / "teams/deadline-team/config.json", root / "blocked-config.json")
 
 else:
     raise ValueError(scenario)

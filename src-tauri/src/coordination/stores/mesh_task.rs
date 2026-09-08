@@ -15,10 +15,24 @@ const MAX_TASK_RECORD_BYTES: u64 = 1_048_576;
 /// `metadata.awaiting_go` must be set by the assignment writer before delivery
 /// and cleared on GO; never infer release from free-form messages (Astra §8).
 pub(crate) fn awaiting_go(metadata: Option<&serde_json::Value>) -> bool {
-    metadata
-        .and_then(|metadata| metadata.get("awaiting_go"))
-        .and_then(serde_json::Value::as_bool)
-        == Some(true)
+    let Some(metadata) = metadata else {
+        return false;
+    };
+    match metadata.get("awaiting_go") {
+        Some(serde_json::Value::Bool(value)) => *value,
+        Some(serde_json::Value::String(marker)) => {
+            let marker = marker.trim();
+            let assignment = ["assignment_id", "assignmentId"].iter().find_map(|key| {
+                metadata
+                    .get(*key)
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+            });
+            !marker.is_empty() && assignment == Some(marker)
+        }
+        _ => false,
+    }
 }
 
 /// Change a task status only while its identity, owner, and previous status

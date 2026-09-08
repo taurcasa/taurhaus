@@ -161,25 +161,25 @@ requirements under the [existing ownership split](orchestration-practical-auto-i
 
 #### Declared waits at the Taurhaus deadline boundary
 
-A task may carry `metadata.awaiting_go: true`. The assignment writer must set
-it on the assignment record **before delivery**, including assignments whose
-contract says "starts on GO"; the same writer sets it to `false` when issuing
-GO. Mesh owns marker updates: Taurhaus config saves preserve existing
-Mesh-owned extension values. This is an explicit boolean, not a parser for assignment or
-inbox prose. A member-wide wait uses the same marker under the member's
-`metadata` in team config. Existing task `status: blocked` and member
-`statusState: blocked` also suppress deadline actions; their reason stays in
-the existing mesh record. The member status applies only while `statusSetAt`
-is live. Mesh's team-daemon IdleMonitor owns the TTL; Taurhaus's compatibility
-value is named once as `MESH_IDLE_MONITOR_DEFAULT_STATUS_TTL` in
-`coordination/task_deadline_pass.rs` (30 minutes). A Mesh TTL policy change
-requires this constant to move with it. Deployments can set
-`TAURHAUS_MESH_MEMBER_STATUS_TTL_SECONDS` to the monitor's positive TTL in
-seconds; absent, invalid, non-positive, or overflowing values use the default.
-Missing, invalid, or
-expired timestamps do not suppress actions. Explicit `metadata.awaiting_go`
-markers do not expire just because activity is old. A pass that skips members
-emits one debug `deadline.wait.skipped` summary with the waiting-member count.
+Mesh 0.2.29 writes `metadata.awaiting_go` as the current assignment ID string
+before delivery. GO removes the key. Taurhaus uses Mesh's trimmed, non-empty
+comparison with `assignment_id` (or `assignmentId`): a stale marker cannot park
+a later assignment. The legacy boolean form remains supported, including
+member-wide waits under the member's `metadata` in team config. No wait is
+inferred from assignment or inbox prose. Mesh owns marker updates; Taurhaus
+config saves preserve Mesh-owned extension values.
+
+Task `status: blocked` suppresses deadline actions. Member `statusState: blocked`
+with a non-empty `statusReason` is also an explicit wait and **does not expire**,
+matching Mesh's `declared_wait` predicate. This deliberately corrects the earlier
+30-minute expiry for reason-bearing blocks; old activity is not a GO signal.
+A reasonless member block retains the activity TTL compatibility behavior:
+`MESH_IDLE_MONITOR_DEFAULT_STATUS_TTL` in `coordination/task_deadline_pass.rs`
+defaults to 30 minutes. `TAURHAUS_MESH_MEMBER_STATUS_TTL_SECONDS` may override
+that positive TTL; invalid values use the default. Missing, invalid or expired
+timestamps do not keep a reasonless block live. Assignment GO waits never expire
+with activity age. A pass that skips members emits one debug
+`deadline.wait.skipped` summary with the waiting-member count.
 
 Taurhaus's deadline pass reads these declarations even when its operational
 snapshot still says `in_progress`, and the locked stale-status write checks the
