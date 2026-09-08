@@ -58,6 +58,16 @@ impl CoordinationOrchestrator {
             extra: Default::default(),
         };
         TeamConfigStore::save(&self.teams_dir, name, &config)?;
+        // Creation owns the new root before activation can deliver its baseline.
+        if !crate::coordination::stores::team_roots::same_teams_root(
+            &self.root_registry.resolve(name)?,
+            &self.teams_dir,
+        ) {
+            if let Err(error) = self.root_registry.set(name, &self.teams_dir) {
+                TeamConfigStore::delete(&self.teams_dir, name)?;
+                return Err(error);
+            }
+        }
 
         self.audit_log
             .push(AuditEvent::TeamCreated(TeamCreatedEvent {

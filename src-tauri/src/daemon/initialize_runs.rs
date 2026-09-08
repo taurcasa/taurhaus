@@ -115,8 +115,18 @@ impl InitializeTeamService {
                             }
                             Ok((report, target_root))
                         }
-                        Ok(report) => Ok((report, target_root)),
-                        Err(error) => Err(error),
+                        Ok(report) => {
+                            state
+                                .team_root_registry()
+                                .set(&params.request.team_name, &previous_root)?;
+                            Ok((report, target_root))
+                        }
+                        Err(error) => {
+                            state
+                                .team_root_registry()
+                                .set(&params.request.team_name, &previous_root)?;
+                            Err(error)
+                        }
                     }
                 }));
                 match result {
@@ -573,6 +583,7 @@ mod tests {
 
     #[test]
     fn initialize_places_a_claude_team_in_the_selected_account_root() {
+        // Regression: 25ba6532 validated baseline roots before creation published selected-root authority.
         let temp = tempfile::TempDir::new().expect("tempdir");
         let default_teams = temp.path().join("default/teams");
         let work_account = temp.path().join("claude-work");

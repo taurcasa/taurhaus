@@ -781,50 +781,33 @@ mod tests {
         let rendered = CompactionReinjectionService::render_additional_context_text(&card)
             .expect("render text");
 
-        assert!(rendered.contains("[taurhaus] restored_working_context_after_compaction"));
-        assert!(
-            rendered.contains("Continue the active assignment using the restored context below.")
-        );
-        assert!(rendered.contains("Do not stop to summarize or acknowledge this card."));
+        assert!(rendered.starts_with("[taurhaus] recovery_card"));
         assert!(rendered.contains("Current task: #673"));
-        assert!(rendered.contains(
-            "Run: mesh task get 673 --team taurhaus-team --name architect for your assignment token, rulings, artifacts, and restart cursor."
-        ));
+        assert!(rendered.contains("Identity: architect on taurhaus-team"));
+        assert!(!rendered.contains("Run: mesh task get"));
         assert!(rendered.contains("Execution mode: recommend"));
         assert!(rendered.contains("Validation expectation: report-only"));
         assert!(rendered.contains("Response expectation: report-on-completion"));
-        assert!(rendered.contains("Role: Taurhaus Architect (taurhaus-architect)"));
-        assert!(rendered.contains("Focus area: Cross-layer diagnosis"));
-        assert!(rendered.contains("Context summary: Keeps architecture context warm."));
-        assert!(rendered.contains(
-            "Behavior: Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
-        ));
-        assert!(rendered.contains("Communication style: Short, evidence-backed progress notes."));
-        assert!(rendered.contains("Full role instructions:"));
-        assert!(rendered.contains("Review architecture edges"));
-        assert!(rendered.contains("Mode: analysis"));
-        assert!(rendered.contains("Inherits from: taurhaus-architect-base"));
-        assert!(rendered.contains("Quality gates:"));
-        assert!(rendered.contains("- Tie conclusions to concrete repo evidence."));
-        assert!(rendered.contains("Definition of done:"));
-        assert!(rendered.contains("Phase scope:"));
-        assert!(rendered.contains("Required artifacts:"));
-        assert!(rendered.contains(
-            "Role purpose: Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction."
-        ));
-        assert!(rendered.contains("Keep doing:"));
-        assert!(rendered.contains("Workflow sequence:"));
-        assert!(rendered.contains("Avoid:"));
-        assert!(rendered.contains("Escalate when:"));
-        assert!(rendered.contains("Project: /home/user/projects/taurhaus"));
-        assert!(rendered.contains("Focal files:"));
-        assert!(rendered.contains("- docs/architecture/post-compaction-reinjection.md"));
-        assert!(rendered.contains("File ownership boundary:"));
+        assert!(rendered.contains("Role: taurhaus-architect"));
+        assert!(!rendered.contains("Full role instructions:"));
+        assert!(rendered.contains("Gate: Tie conclusions to concrete repo evidence."));
+        assert!(rendered.contains("Purpose: Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction."));
+        for label in [
+            "Boundary:",
+            "Sequence:",
+            "Constraint:",
+            "Escalation:",
+            "Completion:",
+        ] {
+            assert!(rendered.contains(label));
+        }
+        assert!(rendered.contains("Project cwd: /home/user/projects/taurhaus"));
+        assert!(rendered.contains("docs/architecture/post-compaction-reinjection.md"));
+        assert!(rendered.contains("File boundary:"));
         assert!(rendered.contains("Adjacent fix policy: no"));
-        assert!(rendered.contains("Override allowed: no"));
-        assert!(rendered.contains(
-            "Next action: continue the current task immediately with this restored context."
-        ));
+        assert!(rendered.contains("Override allowed: false"));
+        assert!(rendered.contains("Next action: preserve the stated wait"));
+        assert!(!rendered.contains("continue the current task immediately"));
     }
 
     #[test]
@@ -983,7 +966,10 @@ mod tests {
 
         let rendered = CompactionReinjectionService::render_additional_context_text(&card)
             .expect("render text");
-        assert!(rendered.contains("Effort: high — the migration is irreversible"));
+        assert!(
+            rendered.contains("Requested effort: high")
+                && rendered.contains("Effort rationale: the migration is irreversible")
+        );
     }
 
     #[test]
@@ -1016,7 +1002,7 @@ mod tests {
 
         let rendered = CompactionReinjectionService::render_additional_context_text(&card)
             .expect("render text");
-        assert!(rendered.contains("Effort: medium"));
+        assert!(rendered.contains("Requested effort: medium"));
         assert!(!rendered.contains("Effort: medium —"));
     }
 
@@ -1048,15 +1034,13 @@ mod tests {
         let rendered = CompactionReinjectionService::render_additional_context_text(&card)
             .expect("render text");
 
-        assert!(!rendered.contains("Role:"));
-        assert!(!rendered.contains("Execution mode:"));
-        assert!(!rendered.contains("Validation expectation:"));
-        assert!(!rendered.contains("Response expectation:"));
-        assert!(!rendered.contains("Run: mesh task get"));
-        assert!(rendered.contains("Focal files: Use the current task context if these are empty."));
-        assert!(rendered.contains("File ownership boundary: No explicit file boundary recorded."));
-        assert!(rendered.contains("Override allowed: yes"));
+        assert!(rendered.contains("Role: unavailable"));
+        assert!(rendered.contains("HOLD: minimal role steering unavailable"));
+        assert!(rendered.contains("File boundary: unavailable"));
+        assert!(rendered.contains("Focal files: unavailable"));
+        assert!(rendered.contains("Override allowed: true"));
         assert!(rendered.contains("Active override reason: lead-approved adjacent fix"));
+        assert!(!rendered.contains("Run: mesh task get"));
     }
 
     #[test]
@@ -1117,13 +1101,13 @@ mod tests {
         assert_ne!(architect_rendered, lead_rendered);
 
         assert!(developer_rendered.contains(
-            "Role purpose: Build one user-visible behavior with real data and a compact evidence-backed result."
+            "Purpose: Build one user-visible behavior with real data and a compact evidence-backed result."
         ));
         assert!(architect_rendered.contains(
-            "Role purpose: Architecture review — structural coherence, functional honesty, and complexity justification."
+            "Purpose: Architecture review — structural coherence, functional honesty, and complexity justification."
         ));
         assert!(lead_rendered.contains(
-            "Role purpose: Preserve task protocol, product gating, and review routing after compaction."
+            "Purpose: Preserve task protocol, product gating, and review routing after compaction."
         ));
     }
 

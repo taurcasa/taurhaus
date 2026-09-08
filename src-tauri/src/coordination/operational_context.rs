@@ -135,6 +135,7 @@ fn publish_snapshot(
 
     let mut candidate = snapshot.clone();
     if let Some(current) = current {
+        candidate.recovery_card = current.recovery_card;
         candidate.version = current.version;
         candidate.task = preserve_task_deadline_markers(
             Some(&current.task),
@@ -264,7 +265,7 @@ pub fn apply_delivery_context(
         })?;
     let existing = OperationalContextSnapshotStore::load(teams_dir, team_name, member_name)?;
     let snapshot = OperationalContextSnapshot {
-        recovery_card: None,
+        recovery_card: existing.as_ref().and_then(|s| s.recovery_card.clone()),
         version: existing.as_ref().map_or(1, |snapshot| snapshot.version),
         team_name: team_name.to_string(),
         member_name: member_name.to_string(),
@@ -411,7 +412,7 @@ fn build_member_snapshot(
     task_state_changed_at: Option<DateTime<Utc>>,
 ) -> OperationalContextSnapshot {
     OperationalContextSnapshot {
-        recovery_card: None,
+        recovery_card: existing.and_then(|s| s.recovery_card.clone()),
         version: existing.map_or(1, |snapshot| snapshot.version),
         team_name: team_name.to_string(),
         member_name: member_name.to_string(),

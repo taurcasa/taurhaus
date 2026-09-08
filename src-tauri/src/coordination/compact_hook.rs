@@ -2197,7 +2197,7 @@ mod tests {
         assert_eq!(output.hook_event_name, "SessionStart");
         assert!(output
             .additional_context
-            .contains("[taurhaus] restored_working_context_after_compaction"));
+            .contains("[taurhaus] recovery_card"));
         assert!(output.additional_context.contains("Current task: #680"));
     }
 
@@ -2373,7 +2373,7 @@ mod tests {
         assert!(output.additional_context.contains("Current task: #680"));
         assert!(output
             .additional_context
-            .contains("Role: Taurhaus Architect"));
+            .contains("Role: taurhaus-architect"));
         assert!(output
             .additional_context
             .contains("Validation expectation: cargo check --tests"));
@@ -2967,7 +2967,7 @@ mod tests {
             let context = response["hookSpecificOutput"]["additionalContext"]
                 .as_str()
                 .expect("additional context");
-            assert!(context.contains("[taurhaus] restored_working_context_after_compaction"));
+            assert!(context.contains("[taurhaus] recovery_card"));
 
             let post_compact = handle_compact_hook(
                 &json!({

@@ -1110,18 +1110,6 @@ fn detect_member_session_identity(
     runtime.detect_runtime_session(pane_id, context.member.cli_tool)
 }
 
-pub(super) fn has_non_empty_capabilities(capabilities: Option<&[String]>) -> bool {
-    capabilities
-        .map(|items| items.iter().any(|item| !item.trim().is_empty()))
-        .unwrap_or(false)
-}
-
-fn has_non_empty_list(items: Option<&[String]>) -> bool {
-    items
-        .map(|values| values.iter().any(|value| !value.trim().is_empty()))
-        .unwrap_or(false)
-}
-
 fn pane_launch_diagnostics(runtime: &dyn CoordinationRuntime, pane_id: &str) -> String {
     let exists = bool_diagnostic(runtime.pane_exists(pane_id));
     let dead = bool_diagnostic(runtime.pane_is_dead(pane_id));
@@ -1143,80 +1131,6 @@ fn option_diagnostic(result: Result<Option<String>, CoordinationError>) -> Strin
         Ok(None) => "none".to_string(),
         Err(err) => format!("error({err})"),
     }
-}
-
-pub(super) fn agent_instructions(agent: &AgentSetupConfig) -> Option<&str> {
-    agent
-        .instructions
-        .as_deref()
-        .or(agent.description.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-}
-
-pub(super) fn agent_has_role_context(agent: &AgentSetupConfig) -> bool {
-    agent
-        .role_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .is_some()
-        || agent_instructions(agent).is_some()
-        || agent
-            .communication_style
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_some()
-        || agent.runtime_compact_summary.is_some()
-        || agent
-            .behavioral_contract
-            .as_ref()
-            .map(|contract| {
-                !contract.communication.is_empty()
-                    || !contract.execution.is_empty()
-                    || !contract.escalation.is_empty()
-            })
-            .unwrap_or(false)
-        || has_non_empty_list(agent.quality_gates.as_deref())
-        || has_non_empty_list(agent.handoff_expectations.as_deref())
-        || has_non_empty_list(agent.definition_of_done.as_deref())
-        || has_non_empty_capabilities(agent.capabilities.as_deref())
-}
-
-pub(super) fn member_has_role_context(member: &Member) -> bool {
-    member
-        .role_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .is_some()
-        || member
-            .instructions
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_some()
-        || member
-            .communication_style
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_some()
-        || member.runtime_compact_summary.is_some()
-        || member
-            .behavioral_contract
-            .as_ref()
-            .map(|contract| {
-                !contract.communication.is_empty()
-                    || !contract.execution.is_empty()
-                    || !contract.escalation.is_empty()
-            })
-            .unwrap_or(false)
-        || has_non_empty_list(member.quality_gates.as_deref())
-        || has_non_empty_list(member.handoff_expectations.as_deref())
-        || has_non_empty_list(member.definition_of_done.as_deref())
-        || has_non_empty_capabilities(member.capabilities.as_deref())
 }
 
 pub(super) fn member_from_agent_setup(

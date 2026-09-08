@@ -1073,7 +1073,7 @@ mod tests {
         else {
             panic!("expected operator notice")
         };
-        assert!(delivery.message.starts_with("[taurhaus] onboarding"));
+        assert!(delivery.message.starts_with("[taurhaus] recovery_card"));
         assert!(delivery.message.contains("mesh read --unread --mark-read"));
         assert!(delivery.message.contains("Leases: held delivery-renderer."));
         assert_eq!(

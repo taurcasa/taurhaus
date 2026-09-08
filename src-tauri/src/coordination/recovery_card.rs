@@ -175,6 +175,8 @@ impl RecoveryState {
             .is_none_or(|r| r.card_key.context != self.context())
         {
             self.claim = None;
+        } else {
+            self.baseline_binding = self.claim.as_ref().map(|r| r.obligation_key.clone());
         }
     }
 
@@ -300,6 +302,9 @@ pub struct RecoveryCard {
     pub lease_context: String,
     pub assignment: AssignmentFacts,
     pub requested_effort: String,
+    pub effective_effort: String,
+    pub effort_hold: String,
+    pub focal_files: Vec<String>,
     pub boundaries: Vec<String>,
 }
 
@@ -393,6 +398,7 @@ impl RecoveryCard {
             generated_at: chrono::Utc::now(), lease_context: String::new(),
             constraints: snapshot.map(|s| format!("Execution mode: {}; Validation expectation: {}; Response expectation: {}; Adjacent fix policy: {}; Override allowed: {}; Override reason: {}",s.assignment_footer.execution_mode,s.assignment_footer.validation_expectation,s.assignment_footer.response_expectation,s.assignment_footer.adjacent_fix_policy,s.ownership.override_allowed,s.ownership.active_override_reason.as_deref().unwrap_or("none"))).unwrap_or_else(|| "Operational constraints: unavailable".into()),
             assignment,
+            effective_effort: String::new(), effort_hold: String::new(), focal_files: snapshot.map(|s| s.working_set.focal_files.clone()).unwrap_or_default(),
             requested_effort: snapshot
                 .map(|s| s.assignment_footer.task_effort.clone())
                 .unwrap_or_default(),
@@ -411,8 +417,9 @@ impl RecoveryCard {
             generated_at: card.generated_at,
             steering: steering(&card.role.role_id,&card.role.runtime_compact_summary,&Some(card.role.quality_gates.clone()),&Some(card.role.handoff_expectations.clone()),&Some(card.role.definition_of_done.clone())),
             assignment: AssignmentFacts { task_id: card.task.id.clone(), objective: card.task.subject.clone(), state: card.task.status.clone(), wait: "release_unavailable".into(), ..Default::default() },
+            effective_effort: String::new(), effort_hold: String::new(), focal_files: card.working_set.focal_files.clone(),
             requested_effort: card.task.effort.clone(), boundaries: card.boundaries.file_ownership_boundary.clone(),
-            constraints: format!("Execution mode: {}; Validation expectation: {}; Response expectation: {}; Adjacent fix policy: {}; Override allowed: {}", card.task.execution_mode,card.task.validation_expectation,card.task.response_expectation,card.boundaries.adjacent_fix_policy,card.boundaries.override_allowed),
+            constraints: format!("Execution mode: {}; Validation expectation: {}; Response expectation: {}; Adjacent fix policy: {}; Override allowed: {}; Active override reason: {}; Effort rationale: {}", card.task.execution_mode,card.task.validation_expectation,card.task.response_expectation,card.boundaries.adjacent_fix_policy,card.boundaries.override_allowed,card.boundaries.active_override_reason.as_deref().unwrap_or("none"),card.task.effort_why),
             lease_context: crate::coordination::reinjection::render_lease_context_line(&card.leases).unwrap_or_default(),
         }
     }
@@ -462,8 +469,10 @@ impl RecoveryCard {
             lines.push(format!("{title}: {}", unavailable(fact)));
         }
         lines.push(format!(
-            "Requested effort: {}; effective effort/hold: unavailable",
-            unavailable(&self.requested_effort)
+            "Requested effort: {}; effective effort: {}; hold: {}",
+            unavailable(&self.requested_effort),
+            unavailable(&self.effective_effort),
+            unavailable(&self.effort_hold)
         ));
         lines.push(format!(
             "File boundary: {}",
@@ -473,6 +482,10 @@ impl RecoveryCard {
         lines.push(format!("Generated: {}", self.generated_at));
         lines.push(format!("Current task: #{} — {}", a.task_id, a.objective));
         lines.push(self.constraints.clone());
+        lines.push(format!(
+            "Focal files: {}",
+            unavailable(&self.focal_files.join(", "))
+        ));
         if !self.lease_context.is_empty() {
             lines.push(self.lease_context.clone());
         }
@@ -700,5 +713,23 @@ mod tests {
         let card = RecoveryCard::compile("team", &member, None, None, facts);
         assert!(card.render().contains("HOLD"));
         assert!(!card.render().contains("Next action: edit now"));
+    }
+    #[test]
+    fn recovery_hook_admission_retains_claimed_baseline_binding() {
+        // Regression: f0a5bad7 reset the preview claim's binding while admitting its boundary.
+        let mut state = RecoveryState::default();
+        state.reserve_activation("attachment");
+        let mut preview = key(&state);
+        preview.context.1 += 1;
+        state.claim(&preview, "hook-view", "hook_stdout").unwrap();
+        state.admit_compaction("boundary");
+        preview.contract.packet_revision = "changed".into();
+        assert_eq!(
+            state
+                .claim(&preview, "replacement", "hook_stdout")
+                .unwrap()
+                .kind,
+            DeliveryKind::Correction
+        );
     }
 }

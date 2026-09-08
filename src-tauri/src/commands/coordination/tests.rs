@@ -2125,7 +2125,7 @@ fn reonboard_succeeds_for_existing_member() {
     };
     // Regression: commit efcd7d2 silently replaced Claude re-onboarding with
     // the lifecycle-only role-context block, dropping the explicit mesh loop.
-    assert!(delivery.message.starts_with("[taurhaus] onboarding"));
+    assert!(delivery.message.starts_with("[taurhaus] recovery_card"));
     assert!(delivery.message.contains("mesh read --unread --mark-read"));
 }
 

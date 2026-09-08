@@ -3,7 +3,6 @@ use super::*;
 use serde_json::{Map, Value};
 use taurhaus_lib::logging::emit_global;
 
-use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::{
@@ -20,7 +19,6 @@ use crate::coordination::stores::lock::acquire_team_lock;
 use crate::coordination::stores::{
     MemberRuntimeSnapshot, MemberRuntimeStore, RuntimeCommitOutcome, TeamConfigStore,
 };
-use crate::session_scanner::cli_tool::CliTool;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct PreparedOnboardingDelivery {
@@ -357,86 +355,34 @@ impl CoordinationOrchestrator {
 
 fn prepare_agent_onboarding_delivery(
     context: MemberActivationContext,
-    member: &AgentSetupConfig,
+    setup: &AgentSetupConfig,
 ) -> Option<PreparedOnboardingDelivery> {
-    let role_context = RoleContext {
-        role_id: member.role_id.as_deref(),
-        communication_style: member.communication_style.as_deref(),
-        instructions: agent_instructions(member),
-        behavioral_contract: member.behavioral_contract.as_ref(),
-        quality_gates: member.quality_gates.as_deref(),
-        handoff_expectations: member.handoff_expectations.as_deref(),
-        definition_of_done: member.definition_of_done.as_deref(),
-        capabilities: member.capabilities.as_deref(),
-    };
-    let has_role_context = agent_has_role_context(member);
-    prepare_onboarding_delivery(context, has_role_context, role_context)
+    let member = member_from_agent_setup(setup, context.member.role).ok()?;
+    prepare_member_onboarding_delivery(context, &member)
 }
 
 fn prepare_member_onboarding_delivery(
     context: MemberActivationContext,
     member: &Member,
 ) -> Option<PreparedOnboardingDelivery> {
-    let role_context = RoleContext {
-        role_id: member.role_id.as_deref(),
-        communication_style: member.communication_style.as_deref(),
-        instructions: member.instructions.as_deref(),
-        behavioral_contract: member.behavioral_contract.as_ref(),
-        quality_gates: member.quality_gates.as_deref(),
-        handoff_expectations: member.handoff_expectations.as_deref(),
-        definition_of_done: member.definition_of_done.as_deref(),
-        capabilities: member.capabilities.as_deref(),
-    };
-    let has_role_context = member_has_role_context(member);
-    prepare_onboarding_delivery(context, has_role_context, role_context)
-}
-
-fn prepare_onboarding_delivery(
-    context: MemberActivationContext,
-    has_role_context: bool,
-    role_context: RoleContext<'_>,
-) -> Option<PreparedOnboardingDelivery> {
-    let MemberActivationContext {
-        team_name,
-        lead,
-        member,
-        delivery_policy,
-        ..
-    } = context;
-    let message = render_onboarding_message(
-        &team_name,
-        &member.name,
-        &lead.name,
-        member.cli_tool,
-        has_role_context,
-        role_context,
-    )
-    .unwrap_or_default();
     Some(PreparedOnboardingDelivery {
-        policy: delivery_policy,
-        member_name: member.name,
-        team_name,
-        sender_name: lead.name,
-        message,
+        message: render_onboarding_message(&context.team_name, member),
+        policy: context.delivery_policy,
+        member_name: member.name.clone(),
+        team_name: context.team_name,
+        sender_name: context.lead.name,
     })
 }
 
-fn render_onboarding_message(
-    team_name: &str,
-    member_name: &str,
-    lead_name: &str,
-    cli_tool: CliTool,
-    has_role_context: bool,
-    role_context: RoleContext<'_>,
-) -> Option<String> {
-    DeliveryRenderer::render_for_tool(
-        cli_tool,
-        team_name,
-        member_name,
-        lead_name,
-        has_role_context,
-        role_context,
+fn render_onboarding_message(team: &str, member: &Member) -> String {
+    crate::coordination::recovery_card::RecoveryCard::compile(
+        team,
+        member,
+        None,
+        None,
+        Default::default(),
     )
+    .render()
 }
 
 fn log_team_config_sync_error(

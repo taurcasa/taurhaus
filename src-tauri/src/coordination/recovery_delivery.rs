@@ -130,6 +130,12 @@ fn prepare_inner(
             },
         });
     let mut card = RecoveryCard::compile(team, member, snapshot.as_ref(), key.clone(), facts);
+    card.effective_effort = runtime.applied_effort.clone().unwrap_or_default();
+    card.effort_hold = runtime
+        .effort_resume_failure
+        .as_ref()
+        .map(|_| "assignment held after failed effort relaunch".into())
+        .unwrap_or_else(|| "none recorded".into());
     crate::coordination::reinjection::CompactionReinjectionService::append_member_lease_context(
         &mut card.lease_context,
         root,
@@ -718,5 +724,31 @@ mod tests {
             .unwrap();
         assert_ne!(rollback.receipt.delivery_id, first.receipt.delivery_id);
         assert_eq!(rollback.receipt.kind, DeliveryKind::Correction);
+    }
+    #[test]
+    fn recovery_task_delta_preserves_descriptor_and_effective_effort() {
+        // Regression: edf94e2c's task snapshot writes erased the app-owned descriptor.
+        let (_temp, root, registry) = fixture();
+        reserve_activation(&root, "team", "seat", "activation").unwrap();
+        MemberRuntimeStore::update(&root, "team", "seat", |r| {
+            r.applied_effort = Some("high".into())
+        })
+        .unwrap();
+        let first = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        assert!(first.text.contains("effective effort: high"));
+        crate::coordination::operational_context::apply_delivery_context(
+            &root,
+            "team",
+            "seat",
+            &Default::default(),
+        )
+        .unwrap();
+        assert!(OperationalContextSnapshotStore::load(&root, "team", "seat")
+            .unwrap()
+            .unwrap()
+            .recovery_card
+            .is_some());
     }
 }

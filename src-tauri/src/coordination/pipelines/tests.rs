@@ -3266,13 +3266,14 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
     match &delivered[1] {
         DeliveryRequest::OperatorNotice(payload) => {
             assert_eq!(payload.member_name, "researcher");
-            assert!(payload.message.contains("[taurhaus] role_context"));
+            assert!(payload.message.contains("[taurhaus] recovery_card"));
             assert!(payload
                 .message
                 .contains("Role: adversarial-reviewer-claude"));
-            assert!(payload.message.contains("Capabilities:"));
-            assert!(payload.message.contains("- analysis"));
-            assert!(payload.message.contains("- research"));
+            assert!(!payload.message.contains("Capabilities:"));
+            assert!(payload
+                .message
+                .contains("HOLD: minimal role steering unavailable"));
             assert!(!payload.message.contains("mesh read --unread"));
         }
         other => panic!("unexpected delivery payload for agent: {other:?}"),
@@ -3280,7 +3281,7 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
 }
 
 #[test]
-fn initialize_pipeline_claude_agent_without_role_context_stays_skipped() {
+fn initialize_pipeline_claude_agent_without_role_context_receives_unassigned_card() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -3315,8 +3316,8 @@ fn initialize_pipeline_claude_agent_without_role_context_stays_skipped() {
     let delivered = backend.delivered_requests();
     assert_eq!(
         delivered.len(),
-        1,
-        "lead should receive onboarding even when claude agent has no role context"
+        2,
+        "lead and unassigned Claude seat each receive a baseline"
     );
     match &delivered[0] {
         DeliveryRequest::OperatorNotice(payload) => {
@@ -4752,12 +4753,14 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
     assert_eq!(delivered.len(), 1);
     match &delivered[0] {
         DeliveryRequest::OperatorNotice(payload) => {
-            assert!(payload.message.contains("[taurhaus] role_context"));
+            assert!(payload.message.contains("[taurhaus] recovery_card"));
             assert!(payload
                 .message
                 .contains("Role: adversarial-reviewer-claude"));
-            assert!(payload.message.contains("Capabilities:"));
-            assert!(payload.message.contains("- analysis"));
+            assert!(!payload.message.contains("Capabilities:"));
+            assert!(payload
+                .message
+                .contains("HOLD: minimal role steering unavailable"));
         }
         other => panic!("unexpected delivery payload: {other:?}"),
     }
@@ -8161,4 +8164,27 @@ fn recovery_team_recreation_and_seat_replacement_mint_distinct_recipients() {
     assert_eq!(recipients[0].0, recipients[1].0);
     assert_ne!(recipients[0].1, recipients[1].1);
     assert_ne!(recipients[1].0, recipients[2].0);
+}
+
+#[test]
+fn recovery_prepared_onboarding_also_uses_the_common_compiler() {
+    // Regression: 25ba6532 left full-role replay in the prepared onboarding renderer.
+    let tmp = TempDir::new().unwrap();
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        Arc::new(FakeBackend::default()),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    let request = AddAgentRequest {
+        team_name: "team".into(),
+        agent: setup_config("seat", "codex", "gpt-6-astra", tmp.path().to_str().unwrap()),
+    };
+    orchestrator.create_team("team", None).unwrap();
+    let entry = orchestrator
+        .prepare_add_agent_onboarding_entry(&request)
+        .unwrap()
+        .unwrap();
+    assert!(entry.message.starts_with("[taurhaus] recovery_card"));
+    assert!(!entry.message.contains("mesh read"));
+    drop(orchestrator);
 }
