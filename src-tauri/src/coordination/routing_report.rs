@@ -1,3 +1,5 @@
+mod mesh;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
@@ -26,6 +28,7 @@ struct ReportStats {
     effort_switches: usize,
     deadline_nudges: usize,
     monitor_nudges: usize,
+    launch_health: usize,
     staled: usize,
     wall_times: BTreeMap<String, i64>,
 }
@@ -71,6 +74,7 @@ pub fn render_routing_report(
     let mut model_rows = BTreeMap::<String, ReportStats>::new();
 
     for (teams_dir, team_name) in registry.team_locations()? {
+        let workflow = mesh::workflow_records(&teams_dir.join(&team_name));
         let telemetry_dir = teams_dir.join(&team_name).join("state/telemetry");
         let Ok(entries) = fs::read_dir(&telemetry_dir) else {
             continue;
@@ -88,7 +92,14 @@ pub fn render_routing_report(
                 continue;
             };
             let events = read_task_telemetry(&path);
-            if !events.iter().any(|event| event_timestamp(event) >= cutoff) {
+            let monitor = ClaudeSourceIndex::team_tasks_dir(&teams_dir, &team_name)
+                .map(|tasks| {
+                    mesh::task_records(&tasks.join(format!("{task_id}.json")), task_id, &workflow)
+                })
+                .unwrap_or_default();
+            if !events.iter().any(|event| event_timestamp(event) >= cutoff)
+                && !monitor.iter().any(|record| record.timestamp >= cutoff)
+            {
                 continue;
             }
             let ledger = read_ledger_verdict(&teams_dir, &team_name, task_id);
@@ -98,6 +109,7 @@ pub fn render_routing_report(
                 &format!("{team_name}/{task_id}"),
                 &events,
                 ledger.as_ref(),
+                &monitor,
             );
         }
     }
@@ -127,6 +139,8 @@ pub fn render_routing_report(
     for (model, stats) in &model_rows {
         push_row(&mut output, None, model, stats);
     }
+    let health: usize = role_rows.values().map(|stats| stats.launch_health).sum();
+    output.push_str(&format!("\nLaunch-health records: {health} (attributed to the affected seat; excluded from monitor_nudges).\n"));
     output.push_str("\nEvents without recipient launch telemetry are omitted from both rollups.\n");
     Ok(output)
 }
@@ -137,6 +151,7 @@ fn accumulate_task(
     task_key: &str,
     events: &[RoutingTelemetryEvent],
     ledger: Option<&LedgerVerdict>,
+    monitor: &[mesh::MonitorRecord],
 ) {
     let launches = events
         .iter()
@@ -235,6 +250,34 @@ fn accumulate_task(
                 } else {
                     stats.oversize_diffs += 1;
                 }
+            }
+        }
+    }
+
+    for record in monitor {
+        let selected = launches
+            .iter()
+            .filter(|launch| launch.member == record.member && launch.timestamp <= record.timestamp)
+            .max_by_key(|launch| launch.timestamp)
+            .or_else(|| {
+                launches
+                    .iter()
+                    .filter(|launch| launch.member == record.member)
+                    .min_by_key(|launch| launch.timestamp)
+            });
+        let Some(launch) = selected else {
+            continue;
+        };
+        for stats in [
+            role_rows
+                .entry((launch.role.clone(), launch.model.clone()))
+                .or_default(),
+            model_rows.entry(launch.model.clone()).or_default(),
+        ] {
+            if record.launch_health {
+                stats.launch_health += 1;
+            } else {
+                stats.monitor_nudges += 1;
             }
         }
     }
@@ -423,6 +466,58 @@ fn median_wall_time(values: &BTreeMap<String, i64>) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    fn mesh_launch(fixture: &crate::test_support::mesh_contract::MeshFixture) {
+        use crate::coordination::stores::telemetry::{
+            append_task_telemetry, RoutingTelemetryEvent,
+        };
+        append_task_telemetry(
+            &fixture.teams(),
+            "deadline-team",
+            Some(&fixture.task_id),
+            &RoutingTelemetryEvent::LaunchRendered {
+                timestamp: Utc::now() - chrono::Duration::minutes(1),
+                task_id: Some(fixture.task_id.clone()),
+                member: "builder".into(),
+                role: "developer".into(),
+                tool: "codex".into(),
+                model: Some("fixture-model".into()),
+                applied_effort: None,
+                capability_tier: None,
+                tier_rank: None,
+            },
+        )
+        .unwrap();
+    }
+
+    // Regression: 10f294bd added sidecar-only monitor accounting, but Mesh
+    // 6789201c writes metadata plus workflow echoes, never that sidecar shape.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn mesh_binary_monitor_records_are_counted_once_across_workflow_echoes() {
+        let fixture = crate::test_support::mesh_contract::MeshFixture::new("monitor");
+        mesh_launch(&fixture);
+        let now = Utc::now() + chrono::Duration::hours(1);
+        let report = render_routing_report(&fixture.teams(), 30, now).unwrap();
+        assert!(
+            report
+                .contains("developer | fixture-model | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | -"),
+            "{report}"
+        );
+        assert!(report.contains("Launch-health records: 1"), "{report}");
+        // Re-reading cannot multiply emissions. Workflow echoes also remain
+        // sufficient when the task-metadata copy is unavailable.
+        assert_eq!(
+            report,
+            render_routing_report(&fixture.teams(), 30, now).unwrap()
+        );
+        std::fs::remove_file(fixture.task_path()).unwrap();
+        assert_eq!(
+            report,
+            render_routing_report(&fixture.teams(), 30, now).unwrap()
+        );
+    }
+
     // Regression: c9c6c49b only decoded deadline nudges and attributed actions
     // to the latest launch of any member (Wave-1 F9b; Astra §4).
     #[test]
@@ -569,7 +664,7 @@ mod tests {
             let events = crate::coordination::stores::telemetry::read_task_telemetry(
                 &teams.join(format!("routing-team/state/telemetry/{id}.jsonl")),
             );
-            super::accumulate_task(&mut rows, &mut models, id, &events, Some(&verdict));
+            super::accumulate_task(&mut rows, &mut models, id, &events, Some(&verdict), &[]);
             let mut row = String::new();
             super::push_row(
                 &mut row,
