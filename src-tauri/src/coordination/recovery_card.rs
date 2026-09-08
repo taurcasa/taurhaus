@@ -316,9 +316,41 @@ pub struct RecoveryCard {
 }
 
 pub fn render_card_steering(member: &crate::coordination::domain::Member) -> String {
+    let mut summary = member.runtime_compact_summary.clone();
+    if summary.is_none() {
+        let mut authorized = Vec::new();
+        for text in [&member.instructions, &member.communication_style]
+            .into_iter()
+            .flatten()
+        {
+            if !text.trim().is_empty() {
+                authorized.push(text.clone());
+            }
+        }
+        if let Some(contract) = &member.behavioral_contract {
+            authorized.extend(
+                contract
+                    .communication
+                    .iter()
+                    .chain(&contract.execution)
+                    .chain(&contract.escalation)
+                    .filter(|s| !s.trim().is_empty())
+                    .cloned(),
+            );
+        }
+        if !authorized.is_empty() {
+            summary = Some(crate::templates::types::RuntimeCompactSummary {
+                role_purpose: authorized.remove(0),
+                keep_doing: authorized,
+                workflow_sequence: Vec::new(),
+                avoid: Vec::new(),
+                escalate_when: Vec::new(),
+            });
+        }
+    }
     steering(
         &member.role_id,
-        &member.runtime_compact_summary,
+        &summary,
         &member.quality_gates,
         &member.handoff_expectations,
         &member.definition_of_done,
@@ -503,12 +535,19 @@ impl RecoveryCard {
             && !a.assignment_token.is_empty()
             && a.wait == "released"
             && !a.first_action.is_empty()
-            && self.card_key.is_some()
             && !self.steering.contains("HOLD:");
         lines.push(if executable { format!("Next action: {}", a.first_action) } else { "Next action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.".into() });
+        // Focal links and lease context are optional; reserve all operative facts first.
+        if lines.join("\n").len() > CARD_BYTE_CAP {
+            lines.retain(|line| !line.starts_with("Focal files:") && line != &self.lease_context);
+            lines.insert(
+                1,
+                "Optional focal files/leases omitted to fit the card budget.".into(),
+            );
+        }
         let text = lines.join("\n");
         if text.len() > CARD_BYTE_CAP {
-            format!("[taurhaus] recovery_card HOLD: required identity/assignment/steering exceeds the byte budget; owner: team lead. Revision: {}. Do not infer GO; request a bounded authorized replacement.", self.content_revision)
+            format!("[taurhaus] recovery_card\nIdentity: {} on {}\nAssignment: task={} token={} state={}\nWait/release: {}\nHOLD: identity key, assignment detail, file boundary and role steering could not fit together; owner: team lead; request a bounded authorized replacement. Revision: {}.\nCorrections replace only named instructions; reminders cannot release GO.\nNext action: preserve the stated wait; ask the team lead for the oversized field group.", self.member_name, self.team_name, a.task_id, a.assignment_token, a.state, unavailable(&a.wait), self.content_revision)
         } else {
             text
         }
@@ -536,6 +575,62 @@ pub(crate) fn assert_control_golden(text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recovery_custom_role_keeps_authorized_steering_without_compact_summary() {
+        // Regression: 2760e88a discarded custom role instructions without a compact summary.
+        let member = serde_json::from_value(serde_json::json!({
+            "name":"seat","role":"agent","project_path":"/scratch","cli_tool":"codex",
+            "instructions":"Inspect the assigned diff.","communication_style":"Report evidence.",
+            "behavioral_contract":{"communication":["Name the commit."],"execution":["Run the tests."],"escalation":["Ask the lead about missing requirements."]}
+        })).unwrap();
+        let text = render_card_steering(&member);
+        for required in [
+            "Inspect the assigned diff.",
+            "Report evidence.",
+            "Name the commit.",
+            "Run the tests.",
+            "Ask the lead about missing requirements.",
+        ] {
+            assert!(text.contains(required), "missing {required}: {text}");
+        }
+        assert!(!text.contains("HOLD:"));
+        assert!(text.len() <= STEERING_BYTE_CAP);
+    }
+
+    #[test]
+    fn recovery_optional_overflow_preserves_identity_assignment_and_next_action() {
+        // Regression: 2760e88a discarded the entire reserved block on optional-list overflow.
+        let member = serde_json::from_value(serde_json::json!({"name":"seat","role":"agent","project_path":"/scratch","cli_tool":"codex"})).unwrap();
+        let facts = AssignmentFacts {
+            task_id: "1".into(),
+            owner: "seat".into(),
+            assignment_token: "a1".into(),
+            state: "in_progress".into(),
+            wait: "released".into(),
+            first_action: "Run the review".into(),
+            ..Default::default()
+        };
+        let mut card = RecoveryCard::compile(
+            "team",
+            &member,
+            None,
+            Some(key(&RecoveryState::default())),
+            facts,
+        );
+        card.steering = "s".repeat(STEERING_BYTE_CAP);
+        card.focal_files = (0..120)
+            .map(|i| format!("src/components/recovery/long_component_name_{i}.svelte"))
+            .collect();
+        card.lease_context = "lease ".repeat(1500);
+        let text = card.render();
+        assert!(text.len() <= CARD_BYTE_CAP);
+        assert!(text.contains("Identity: seat on team; key="));
+        assert!(text.contains("Assignment: task=1 token=a1"));
+        assert!(text.contains("Wait/release: released"));
+        assert!(text.contains("Corrections replace only named instructions"));
+        assert!(text.ends_with("Next action: Run the review"));
+    }
 
     fn key(state: &RecoveryState) -> CardKey {
         CardKey {

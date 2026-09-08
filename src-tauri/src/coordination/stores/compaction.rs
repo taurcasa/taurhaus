@@ -209,7 +209,9 @@ pub fn record_delivery_at(
                 .and_then(|c| c.team_incarnation_id)
                 .zip(runtime.recovery.member_incarnation_id.clone())
             {
-                pending_obligation = Some(((team_id, member_id), runtime.recovery.context()));
+                if result == CompactionDeliveryResult::Skipped {
+                    pending_obligation = Some(((team_id, member_id), runtime.recovery.context()));
+                }
             }
             super::MemberRuntimeStore::save_recovery_locked(
                 &guard,
@@ -228,10 +230,13 @@ pub fn record_delivery_at(
         pending: if same_boundary || result == CompactionDeliveryResult::Failed {
             previous.as_ref().is_some_and(|s| s.pending)
         } else {
-            true
+            pending_obligation.is_some()
         },
-        pending_obligation: pending_obligation
-            .or_else(|| previous.as_ref().and_then(|s| s.pending_obligation.clone())),
+        pending_obligation: if same_boundary || result == CompactionDeliveryResult::Failed {
+            previous.as_ref().and_then(|s| s.pending_obligation.clone())
+        } else {
+            pending_obligation
+        },
         satisfied_by: if same_boundary || result == CompactionDeliveryResult::Failed {
             previous.and_then(|s| s.satisfied_by)
         } else {

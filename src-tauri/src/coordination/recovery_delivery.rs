@@ -129,6 +129,7 @@ fn prepare_inner(
             contract: Contract {
                 role_id: member.role_id.clone().unwrap_or_default(),
                 effective_role_revision: digest(&(
+                    &member.communication_style,
                     &member.instructions,
                     &member.behavioral_contract,
                     &member.runtime_compact_summary,
@@ -435,6 +436,7 @@ pub fn assignment_facts(
     snapshot: Option<&crate::coordination::stores::OperationalContextSnapshot>,
 ) -> AssignmentFacts {
     let mut facts = AssignmentFacts {
+        wait: "unavailable".into(),
         source_revision: digest(
             &snapshot
                 .map(|s| {
@@ -486,37 +488,37 @@ pub fn assignment_facts(
     facts.task_id = snapshot.task.id.clone();
     facts.owner = member.into();
     let metadata = &task["metadata"];
-    let get = |key: &str| metadata[key].as_str().unwrap_or_default().to_string();
-    facts.assignment_token = get("assignment_id");
-    facts.stage_id = get("stage_id");
+    let get = |keys: &[&str]| {
+        keys.iter()
+            .find_map(|key| {
+                metadata[*key]
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+            })
+            .unwrap_or_default()
+            .to_string()
+    };
+    facts.assignment_token = get(&["assignment_id", "assignmentId"]);
     facts.state = task["status"].as_str().unwrap_or("unavailable").into();
+    // Mesh owns release: its writer clears awaiting_go when an assignment is open.
     facts.wait = if crate::coordination::stores::mesh_task::awaiting_go(Some(metadata)) {
         "awaiting_go"
     } else {
-        "release_unavailable"
+        match facts.state.as_str() {
+            "pending" | "in_progress" if !facts.assignment_token.is_empty() => "released",
+            "pending" | "in_progress" => "unassigned",
+            "blocked" => "blocked",
+            "completed" | "cancelled" | "canceled" | "stale" | "failed" => "terminal",
+            _ => "unavailable",
+        }
     }
     .into();
-    // No wait marker is not proof of a token-bound GO.
-    if facts.wait != "awaiting_go"
-        && metadata["released_assignment"].as_str() == Some(facts.assignment_token.as_str())
-        && !facts.assignment_token.is_empty()
-    {
-        facts.wait = "released".into();
-    }
-    let contract = &metadata["assignment_contract"];
-    for (field, target) in [
-        ("objective", &mut facts.objective),
-        ("deliverable", &mut facts.deliverable),
-        ("first_action", &mut facts.first_action),
-        ("completion_signal", &mut facts.completion_signal),
-        ("review_route", &mut facts.review_route),
-    ] {
-        *target = contract[field].as_str().unwrap_or_default().into();
-    }
-    facts.candidate_ref = get("candidate_ref");
-    facts.rubric_ref = get("rubric_ref");
-    facts.packet_revision = get("packet_revision");
-    facts.restart_cursor_ref = get("restart_cursor_ref");
+    facts.objective = task["subject"].as_str().unwrap_or_default().into();
+    facts.deliverable = get(&["deliverable"]);
+    facts.first_action = get(&["first_step", "firstStep"]);
+    facts.completion_signal = get(&["completion_signal", "completionSignal"]);
+    // Stage, review route, candidate/rubric and cursor references await the Mesh projection.
     facts.audience_policy_revision = "recipient-only:no-peer-evidence:v1".into();
     facts.source_revision = digest(&facts);
     facts
@@ -560,6 +562,134 @@ mod tests {
             serde_json::to_value(&prepared.receipt).unwrap(),
         );
         MeshInboxStore::append(root, "team", "seat", &message).unwrap();
+    }
+
+    fn assigned_snapshot(
+        root: &Path,
+        metadata: serde_json::Value,
+        status: &str,
+    ) -> crate::coordination::stores::OperationalContextSnapshot {
+        let snapshot = serde_json::from_value(json!({"version":1,"team_name":"team","member_name":"seat","updated_at":Utc::now(),"task":{"id":"1","subject":"Review","status":status},"assignment_footer":{},"ownership":{"override_allowed":false},"working_set":{"project_path":root,"focal_files":[]}})).unwrap();
+        let path = crate::coordination::stores::mesh_task::task_path(root, "team", "1").unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            path,
+            json!({"id":"1","owner":"seat","status":status,"metadata":metadata}).to_string(),
+        )
+        .unwrap();
+        snapshot
+    }
+
+    #[test]
+    fn recovery_mesh_flat_contract_and_aliases_are_projected() {
+        // Regression: 2760e88a read an assignment_contract object the owning writer never stores.
+        let (_temp, root, _) = fixture();
+        for metadata in [
+            json!({"assignment_id":"a1","first_step":"Run the review","deliverable":"Review report","completion_signal":"Submit report"}),
+            json!({"assignmentId":"a1","firstStep":"Run the review","deliverable":"Review report","completionSignal":"Submit report"}),
+        ] {
+            let snapshot = assigned_snapshot(&root, metadata, "in_progress");
+            let facts = assignment_facts(&root, "team", "seat", Some(&snapshot));
+            assert_eq!(facts.assignment_token, "a1");
+            assert_eq!(facts.first_action, "Run the review");
+            assert_eq!(facts.deliverable, "Review report");
+            assert_eq!(facts.completion_signal, "Submit report");
+            assert!(facts.stage_id.is_empty() && facts.review_route.is_empty());
+            assert!(
+                facts.candidate_ref.is_empty()
+                    && facts.rubric_ref.is_empty()
+                    && facts.restart_cursor_ref.is_empty()
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_pending_requires_skipped_boundary_with_known_identity() {
+        // Regression: bd853b4f latched pending even for injected or unversioned boundaries.
+        use crate::coordination::stores::compaction::{
+            record_delivery_at, CompactionDeliveryResult,
+        };
+        for versioned in [false, true] {
+            for result in [
+                CompactionDeliveryResult::Skipped,
+                CompactionDeliveryResult::Injected,
+            ] {
+                let (_temp, root, _) = fixture();
+                if versioned {
+                    reserve_activation(&root, "team", "seat", "activation").unwrap();
+                }
+                record_delivery_at(
+                    &root,
+                    "team",
+                    "seat",
+                    crate::session_scanner::cli_tool::CliTool::Codex,
+                    "session-1",
+                    Utc::now(),
+                    result,
+                )
+                .unwrap();
+                let state =
+                    crate::coordination::stores::MemberCompactionStore::load(&root, "team", "seat")
+                        .unwrap()
+                        .unwrap();
+                let expected = versioned && result == CompactionDeliveryResult::Skipped;
+                assert_eq!(state.pending, expected);
+                assert_eq!(state.pending_obligation.is_some(), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn recovery_mesh_wait_marker_is_the_release_authority() {
+        // Regression: 2760e88a required an unwritten released_assignment marker, holding every working seat.
+        let (_temp, root, _) = fixture();
+        for (status, marker, expected) in [
+            ("in_progress", json!(null), "released"),
+            ("pending", json!(false), "released"),
+            ("in_progress", json!(true), "awaiting_go"),
+            ("in_progress", json!("a1"), "awaiting_go"),
+            ("completed", json!(null), "terminal"),
+            ("blocked", json!(null), "blocked"),
+        ] {
+            let snapshot = assigned_snapshot(
+                &root,
+                json!({"assignment_id":"a1","awaiting_go":marker}),
+                status,
+            );
+            assert_eq!(
+                assignment_facts(&root, "team", "seat", Some(&snapshot)).wait,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_compaction_continues_owned_work_even_without_versioned_identity() {
+        // Regression: 2760e88a gated execution on card_key, although legacy identity only disables suppression.
+        let (_temp, root, registry) = fixture();
+        let mut config = TeamConfigStore::load(&root, "team").unwrap();
+        config.members[0].runtime_compact_summary = Some(serde_json::from_value(json!({"rolePurpose":"Review the assigned change","keepDoing":[],"workflowSequence":[],"avoid":[],"escalateWhen":[]})).unwrap());
+        TeamConfigStore::save(&root, "team", &config).unwrap();
+        let snapshot = assigned_snapshot(
+            &root,
+            json!({"assignment_id":"a1","first_step":"Run the review"}),
+            "in_progress",
+        );
+        OperationalContextSnapshotStore::save(&root, &snapshot).unwrap();
+        for versioned in [false, true] {
+            if versioned {
+                reserve_activation(&root, "team", "seat", "activation").unwrap();
+            }
+            let card = prepare_compaction(&registry, &root, "team", "seat", "hook_stdout")
+                .unwrap()
+                .unwrap();
+            assert_eq!(!card.receipt.card_key.recipient.0.is_empty(), versioned);
+            assert!(
+                card.text.ends_with("Next action: Run the review"),
+                "{}",
+                card.text
+            );
+        }
     }
 
     #[test]
