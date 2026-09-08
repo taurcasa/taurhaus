@@ -1,3 +1,5 @@
+mod mesh;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
@@ -26,12 +28,14 @@ struct ReportStats {
     effort_switches: usize,
     deadline_nudges: usize,
     monitor_nudges: usize,
+    launch_health: usize,
     staled: usize,
     wall_times: BTreeMap<String, i64>,
 }
 
 #[derive(Debug)]
 struct LedgerVerdict {
+    latest_ruling_at: Option<DateTime<Utc>>,
     accepted_eligible: bool,
     has_review_ruling: bool,
     oversize_rulings: Vec<OwnerRuling>,
@@ -75,6 +79,7 @@ pub fn render_routing_report(
         let Ok(entries) = fs::read_dir(&telemetry_dir) else {
             continue;
         };
+        let workflow = mesh::workflow_records(&teams_dir.join(&team_name));
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
             if path.extension().and_then(|extension| extension.to_str()) != Some("jsonl") {
@@ -88,16 +93,28 @@ pub fn render_routing_report(
                 continue;
             };
             let events = read_task_telemetry(&path);
-            if !events.iter().any(|event| event_timestamp(event) >= cutoff) {
+            let monitor = ClaudeSourceIndex::team_tasks_dir(&teams_dir, &team_name)
+                .map(|tasks| {
+                    mesh::task_records(&tasks.join(format!("{task_id}.json")), task_id, &workflow)
+                })
+                .unwrap_or_default();
+            let ledger = read_ledger_verdict(&teams_dir, &team_name, task_id);
+            if !events.iter().any(|event| event_timestamp(event) >= cutoff)
+                && !monitor.iter().any(|record| record.timestamp >= cutoff)
+                && ledger
+                    .as_ref()
+                    .and_then(|ledger| ledger.latest_ruling_at)
+                    .is_none_or(|at| at < cutoff)
+            {
                 continue;
             }
-            let ledger = read_ledger_verdict(&teams_dir, &team_name, task_id);
             accumulate_task(
                 &mut role_rows,
                 &mut model_rows,
                 &format!("{team_name}/{task_id}"),
                 &events,
                 ledger.as_ref(),
+                &monitor,
             );
         }
     }
@@ -127,6 +144,8 @@ pub fn render_routing_report(
     for (model, stats) in &model_rows {
         push_row(&mut output, None, model, stats);
     }
+    let health: usize = role_rows.values().map(|stats| stats.launch_health).sum();
+    output.push_str(&format!("\nLaunch-health records: {health} (attributed to the affected seat; excluded from monitor_nudges).\n"));
     output.push_str("\nEvents without recipient launch telemetry are omitted from both rollups.\n");
     Ok(output)
 }
@@ -137,6 +156,7 @@ fn accumulate_task(
     task_key: &str,
     events: &[RoutingTelemetryEvent],
     ledger: Option<&LedgerVerdict>,
+    monitor: &[mesh::MonitorRecord],
 ) {
     let launches = events
         .iter()
@@ -235,6 +255,34 @@ fn accumulate_task(
                 } else {
                     stats.oversize_diffs += 1;
                 }
+            }
+        }
+    }
+
+    for record in monitor {
+        let selected = launches
+            .iter()
+            .filter(|launch| launch.member == record.member && launch.timestamp <= record.timestamp)
+            .max_by_key(|launch| launch.timestamp)
+            .or_else(|| {
+                launches
+                    .iter()
+                    .filter(|launch| launch.member == record.member)
+                    .min_by_key(|launch| launch.timestamp)
+            });
+        let Some(launch) = selected else {
+            continue;
+        };
+        for stats in [
+            role_rows
+                .entry((launch.role.clone(), launch.model.clone()))
+                .or_default(),
+            model_rows.entry(launch.model.clone()).or_default(),
+        ] {
+            if record.launch_health {
+                stats.launch_health += 1;
+            } else {
+                stats.monitor_nudges += 1;
             }
         }
     }
@@ -369,6 +417,14 @@ fn read_ledger_verdict(teams_dir: &Path, team_name: &str, task_id: &str) -> Opti
         }
     }
     Some(LedgerVerdict {
+        latest_ruling_at: rulings
+            .iter()
+            .filter_map(|ruling| {
+                DateTime::parse_from_rfc3339(ruling.get("at")?.as_str()?)
+                    .ok()
+                    .map(|at| at.with_timezone(&Utc))
+            })
+            .max(),
         accepted_eligible: task.status == TaskStatus::Completed,
         has_review_ruling: task.has_review_ruling,
         oversize_rulings,
@@ -423,6 +479,106 @@ fn median_wall_time(values: &BTreeMap<String, i64>) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    fn mesh_launch(
+        fixture: &crate::coordination::mesh_contract_fixture::MeshFixture,
+        launched_at: chrono::DateTime<Utc>,
+    ) {
+        use crate::coordination::stores::telemetry::{
+            append_task_telemetry, RoutingTelemetryEvent,
+        };
+        append_task_telemetry(
+            &fixture.teams(),
+            "deadline-team",
+            Some(&fixture.task_id),
+            &RoutingTelemetryEvent::LaunchRendered {
+                timestamp: launched_at,
+                task_id: Some(fixture.task_id.clone()),
+                member: "builder".into(),
+                role: "developer".into(),
+                tool: "codex".into(),
+                model: Some("fixture-model".into()),
+                applied_effort: None,
+                capability_tier: None,
+                tier_rank: None,
+            },
+        )
+        .unwrap();
+    }
+
+    // Regression: 10f294bd added sidecar-only monitor accounting, but Mesh
+    // 6789201c writes metadata plus workflow echoes, never that sidecar shape.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires locked Mesh, Python 3 and cc; run just test-mesh-contracts"]
+    fn mesh_binary_monitor_records_are_counted_once_across_workflow_echoes() {
+        let fixture = crate::coordination::mesh_contract_fixture::MeshFixture::new("monitor");
+        mesh_launch(&fixture, Utc::now() - chrono::Duration::minutes(1));
+        let now = Utc::now() + chrono::Duration::hours(1);
+        let report = render_routing_report(&fixture.teams(), 30, now).unwrap();
+        assert!(
+            report
+                .contains("developer | fixture-model | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | -"),
+            "{report}"
+        );
+        assert!(report.contains("Launch-health records: 1"), "{report}");
+        // Re-reading cannot multiply emissions. Workflow echoes also remain
+        // sufficient when the task-metadata copy is unavailable.
+        assert_eq!(
+            report,
+            render_routing_report(&fixture.teams(), 30, now).unwrap()
+        );
+        std::fs::remove_file(fixture.task_path()).unwrap();
+        assert_eq!(
+            report,
+            render_routing_report(&fixture.teams(), 30, now).unwrap()
+        );
+    }
+
+    // Regression: a9fea658 selected tasks by sidecar timestamps alone,
+    // omitting a newly recorded ruling on an older launched task.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires locked Mesh, Python 3 and cc; run just test-mesh-contracts"]
+    fn mesh_binary_oversize_and_subsequent_raise_count_even_with_an_old_launch() {
+        for launch_age in [0, 31] {
+            let fixture = crate::coordination::mesh_contract_fixture::MeshFixture::new("ruling");
+            let raw = std::fs::read_to_string(fixture.task_path()).unwrap();
+            let task = taurhaus_lib::task_scanner::claude::parse_task_content(
+                &fixture.task_path(),
+                &raw,
+                Some("deadline-team".into()),
+            )
+            .unwrap()
+            .unwrap();
+            assert!(!task.has_review_ruling, "budget records are not acceptance");
+            assert_eq!(task.owner.as_deref(), Some("builder"));
+            let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+            assert!(taurhaus_lib::task_scanner::claude::is_oversize_failure(
+                &value["metadata"]["rulings"][0]
+            ));
+            assert!(taurhaus_lib::task_scanner::claude::is_budget_raise(
+                &value["metadata"]["rulings"][1]
+            ));
+            mesh_launch(&fixture, Utc::now() - chrono::Duration::days(launch_age));
+            let report = render_routing_report(&fixture.teams(), 30, Utc::now()).unwrap();
+            assert!(
+                report.contains(
+                    "developer | fixture-model | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | -"
+                ),
+                "launch age {launch_age}: {report}"
+            );
+            std::fs::remove_file(fixture.teams().join(format!(
+                "deadline-team/state/telemetry/{}.jsonl",
+                fixture.task_id
+            )))
+            .unwrap();
+            let unattributed = render_routing_report(&fixture.teams(), 30, Utc::now()).unwrap();
+            assert!(!unattributed.contains("developer | fixture-model"));
+            assert!(unattributed.contains("Events without recipient launch telemetry are omitted"));
+        }
+    }
+
     // Regression: c9c6c49b only decoded deadline nudges and attributed actions
     // to the latest launch of any member (Wave-1 F9b; Astra §4).
     #[test]
@@ -569,7 +725,7 @@ mod tests {
             let events = crate::coordination::stores::telemetry::read_task_telemetry(
                 &teams.join(format!("routing-team/state/telemetry/{id}.jsonl")),
             );
-            super::accumulate_task(&mut rows, &mut models, id, &events, Some(&verdict));
+            super::accumulate_task(&mut rows, &mut models, id, &events, Some(&verdict), &[]);
             let mut row = String::new();
             super::push_row(
                 &mut row,

@@ -16,7 +16,8 @@ use crate::coordination::stores::{
 };
 use crate::coordination::task_deadline::{decide, DeadlineAction, DeadlineInput, Timestamp};
 
-// Mesh team-daemon IdleMonitor owns statusState/statusSetAt expiry.
+// Reasonless activity status follows Mesh's statusState/statusSetAt expiry.
+// A blocked status WITH a reason is a declared wait and never expires.
 // Keep this compatibility default synchronized with Mesh; deployments can
 // override it via TAURHAUS_MESH_MEMBER_STATUS_TTL_SECONDS (see data-architecture.md).
 const MESH_IDLE_MONITOR_DEFAULT_STATUS_TTL: Duration = Duration::minutes(30);
@@ -72,16 +73,21 @@ pub(crate) fn apply_task_deadlines(
             .extra
             .get("statusState")
             .and_then(serde_json::Value::as_str)
-            == Some("blocked")
-            && member
+            .is_some_and(|state| state.eq_ignore_ascii_case("blocked"))
+            && (member
                 .extra
-                .get("statusSetAt")
+                .get("statusReason")
                 .and_then(serde_json::Value::as_str)
-                .and_then(parse_timestamp)
-                .is_some_and(|set_at| {
-                    let age = now - set_at;
-                    age >= Duration::zero() && age < status_ttl
-                });
+                .is_some_and(|reason| !reason.trim().is_empty())
+                || member
+                    .extra
+                    .get("statusSetAt")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(parse_timestamp)
+                    .is_some_and(|set_at| {
+                        let age = now - set_at;
+                        age >= Duration::zero() && age < status_ttl
+                    }));
         if blocked_is_live
             || crate::coordination::stores::mesh_task::awaiting_go(member.extra.get("metadata"))
         {

@@ -2256,6 +2256,120 @@ mod tests {
         )));
     }
 
+    // Regression: 10f294bd consumed only boolean GO markers, and applied an
+    // activity TTL to Mesh 6789201c's permanent blocked-with-reason wait.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires locked Mesh, Python 3 and cc; run just test-mesh-contracts"]
+    fn mesh_binary_waits_guard_half_full_deadlines_go_and_reassignment() {
+        let fixture = crate::coordination::mesh_contract_fixture::MeshFixture::new("wait");
+        for (source, waiting) in [
+            ("awaiting.json", true),
+            ("new-wait.json", true),
+            ("go.json", false),
+            ("reassigned.json", false),
+        ] {
+            for minutes in [10, 20] {
+                let (_tmp, teams, runtime, fake, state) = deadline_fixture();
+                std::fs::copy(
+                    fixture.root.path().join("go-config.json"),
+                    teams.join("deadline-team/config.json"),
+                )
+                .unwrap();
+                let raw = std::fs::read_to_string(fixture.root.path().join(source)).unwrap();
+                let task: serde_json::Value = serde_json::from_str(&raw).unwrap();
+                let assigned_at =
+                    DateTime::parse_from_rfc3339(task["metadata"]["assigned_at"].as_str().unwrap())
+                        .unwrap()
+                        .with_timezone(&Utc);
+                let target = teams
+                    .parent()
+                    .unwrap()
+                    .join("tasks/deadline-team")
+                    .join(format!("{}.json", fixture.task_id));
+                std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+                std::fs::write(&target, &raw).unwrap();
+                assign_task(&teams, "deadline-team", "builder", "");
+                let mut snapshot = deadline_snapshot(&teams);
+                snapshot.task.id = fixture.task_id.clone();
+                snapshot.task.assigned_at = Some(assigned_at);
+                snapshot.task.deadline_minutes = Some(20);
+                crate::coordination::stores::OperationalContextSnapshotStore::save(
+                    &teams, &snapshot,
+                )
+                .unwrap();
+                for _ in 0..2 {
+                    let result = state
+                        .run_background_task_deadline_pass_at(
+                            assigned_at + chrono::Duration::minutes(minutes),
+                        )
+                        .unwrap();
+                    assert_eq!(result.team_errors, 0);
+                }
+                if waiting {
+                    assert!(deadline_notices(&fake).is_empty(), "{source} at {minutes}");
+                    assert_eq!(std::fs::read_to_string(&target).unwrap(), raw);
+                    assert!(
+                        crate::coordination::stores::mesh_task::commit_status_if_unchanged(
+                            &teams,
+                            "deadline-team",
+                            "builder",
+                            &fixture.task_id,
+                            "in_progress",
+                            "stale"
+                        )
+                        .is_err()
+                    );
+                } else if minutes == 10 {
+                    assert_eq!(deadline_notices(&fake).len(), 1, "{source}");
+                } else {
+                    assert!(
+                        deadline_snapshot(&teams).task.stale_at.is_some(),
+                        "{source}"
+                    );
+                }
+                assert_no_deadline_termination(&runtime);
+            }
+        }
+    }
+
+    // Regression: 10f294bd expired a declared blocked-with-reason wait after
+    // 30 minutes, though the locked Mesh monitor deliberately never does.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires locked Mesh, Python 3 and cc; run just test-mesh-contracts"]
+    fn mesh_binary_member_block_with_reason_survives_the_activity_ttl() {
+        let fixture = crate::coordination::mesh_contract_fixture::MeshFixture::new("wait");
+        let (_tmp, teams, runtime, fake, state) = deadline_fixture();
+        std::fs::copy(
+            fixture.root.path().join("blocked-config.json"),
+            teams.join("deadline-team/config.json"),
+        )
+        .unwrap();
+        let raw = std::fs::read_to_string(fixture.root.path().join("go.json")).unwrap();
+        let target = teams
+            .parent()
+            .unwrap()
+            .join("tasks/deadline-team")
+            .join(format!("{}.json", fixture.task_id));
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(target, raw).unwrap();
+        assign_task(&teams, "deadline-team", "builder", "");
+        let mut snapshot = deadline_snapshot(&teams);
+        snapshot.task.id = fixture.task_id.clone();
+        snapshot.task.assigned_at = Some(Utc::now() - chrono::Duration::hours(1));
+        snapshot.task.deadline_minutes = Some(20);
+        crate::coordination::stores::OperationalContextSnapshotStore::save(&teams, &snapshot)
+            .unwrap();
+        let result = state
+            .run_background_task_deadline_pass_at(Utc::now() + chrono::Duration::hours(1))
+            .unwrap();
+        assert_eq!(result.team_errors, 0);
+        assert!(deadline_snapshot(&teams).task.stale_at.is_none());
+        assert!(deadline_notices(&fake).is_empty());
+        assert_no_deadline_termination(&runtime);
+    }
+
     #[test]
     fn deadline_pass_nudges_once_then_stales_once_without_stopping_the_session() {
         let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();

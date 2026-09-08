@@ -355,8 +355,14 @@ test-rust-fast: ensure-tauri-resources
 test-contracts: ensure-tauri-resources
     cd src-tauri && cargo test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1
 
-# Rust unit-test execution lane (excludes heavy daemon/network/watcher suites).
+# Linux operator lane: requires lock-matching Mesh, Python 3, and cc.
+test-mesh-contracts: ensure-tauri-resources
+    @test "$(uname -s)" = Linux || { echo "Mesh binary contracts require Linux" >&2; exit 1; }
+    cd src-tauri && cargo test --lib mesh_binary_ -- --ignored --test-threads=1
+
+# Rust unit-test execution lane (excludes heavy suites and operator Mesh fixtures).
 test-rust-unit: ensure-tauri-resources
+    @echo "NOT RUN: Mesh binary contracts; run just test-mesh-contracts with locked Mesh, Python 3, and cc."
     cd src-tauri && heavy_test_filters="{{heavy_rust_test_filters}}"; skip_args=""; for test_filter in $heavy_test_filters; do skip_args="$skip_args --skip $test_filter"; done; cargo test --lib --bins -- --test-threads=1 $skip_args
 
 # Rust integration/system lane. Test binaries and genuinely shared heavy suites
