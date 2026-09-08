@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "scope": "document coverage and evidence consistency only; no product gate",
+  "finding_records": 13,
+  "role_rule_count": 3,
+  "mesh_invocations": 28,
+  "expected_failures": [
+    "C3",
+    "C22"
+  ],
+  "all_processes_exited": true,
+  "scratch_root_removed": true,
+  "report_sha256": "1d16f7eddf9cfb461adc88b88ea763bdd47901fe6e1638954f3c269bac68231d"
+}

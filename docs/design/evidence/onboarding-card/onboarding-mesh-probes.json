@@ -1,0 +1,490 @@
+[
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "--version"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "mesh 0.2.29\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "--help"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "Filesystem-based IPC for co-located AI agents\n\nUsage: mesh [OPTIONS] <COMMAND>\n\nCommands:\n  join          Register presence and create inbox\n  leave         Remove presence (set inactive)\n  send          Send a direct message to another agent's inbox\n  broadcast     Broadcast a message to all other active team members\n  xteam         Lead-only cross-team operator commands\n  ack           Acknowledge a received message by ID\n  ack-status    Query acknowledgment status for a message ID\n  read          Read inbox messages\n  who           List online team members\n  heartbeat     Record an explicit activity heartbeat for this member\n  status        Set/get explicit member status for stall detection suppression\n  team-daemon   Team-level background daemon for orchestration concerns\n  nudge         Send a generated actionable nudge for an owner/task pair\n  version       Show mesh build/version metadata\n  tasks         List tasks\n  task          Task sub-operations\n  lease         Seam lease sub-operations\n  watch         Watch inbox for new messages\n  daemon        Watch inbox and deliver messages to a tmux pane\n  timer         Set a delayed message delivery timer\n  timer-cancel  Cancel all timers for the team\n  help          Print this message or the help of the given subcommand(s)\n\nOptions:\n      --team <TEAM>              Team name [env: MESH_TEAM=]\n      --name <NAME>              Agent name (your handle) [env: MESH_NAME=]\n      --claude-dir <CLAUDE_DIR>  Claude config directory [env: CLAUDE_DIR=]\n  -h, --help                     Print help\n  -V, --version                  Print version\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "team",
+      "create",
+      "--help"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "error: unrecognized subcommand 'team'\n\n  tip: some similar subcommands exist: 'team-daemon', 'xteam'\n\nUsage: mesh [OPTIONS] <COMMAND>\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "join",
+      "--help"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "Register presence and create inbox\n\nUsage: mesh join [OPTIONS]\n\nOptions:\n      --team <TEAM>              Team name (required, overrides global --team)\n      --name <NAME>              Agent name (required, overrides global --name)\n      --claude-dir <CLAUDE_DIR>  Claude config directory [env: CLAUDE_DIR=]\n      --type <TYPE>              Agent type [default: general-purpose]\n      --model <MODEL>            Model name [default: external]\n      --color <COLOR>            Display color\n  -h, --help                     Print help\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "send",
+      "--help"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "Send a direct message to another agent's inbox\n\nUsage: mesh send [OPTIONS] <RECIPIENT> <MESSAGE>\n\nArguments:\n  <RECIPIENT>  Recipient agent name\n  <MESSAGE>    Message text\n\nOptions:\n      --summary <SUMMARY>        Short summary for UI preview\n      --team <TEAM>              Team name [env: MESH_TEAM=]\n      --name <NAME>              Agent name (your handle) [env: MESH_NAME=]\n      --priority <PRIORITY>      Message priority: urgent (default) or low [default: urgent]\n      --claude-dir <CLAUDE_DIR>  Claude config directory [env: CLAUDE_DIR=]\n  -h, --help                     Print help\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "task",
+      "create",
+      "--help"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "Create a new task\n\nUsage: mesh task create [OPTIONS] --subject <SUBJECT>\n\nOptions:\n      --subject <SUBJECT>\n          Task subject\n      --team <TEAM>\n          Team name [env: MESH_TEAM=]\n      --json\n          Output the created task record as JSON\n      --name <NAME>\n          Agent name (your handle) [env: MESH_NAME=]\n      --claude-dir <CLAUDE_DIR>\n          Claude config directory [env: CLAUDE_DIR=]\n      --description <DESCRIPTION>\n          Task description [default: ]\n      --active-form <ACTIVE_FORM>\n          Active form (present-continuous, e.g. \"Running tests\")\n      --first-step <FIRST_STEP>\n          Required first action for the assignee\n      --deliverable <DELIVERABLE>\n          Required deliverable or output contract\n      --completion-signal <COMPLETION_SIGNAL>\n          Completion signal for the assignment\n      --lane-id <LANE_ID>\n          Orchestration lane identifier\n      --work-kind <WORK_KIND>\n          Work kind: runtime, verification, scaffolding, docs, review\n      --criticality <CRITICALITY>\n          Criticality: `critical_path`, supporting, `scaffolding_only`\n      --parent <PARENT>\n          Parent task ID for scaffold anchoring\n      --anchor <ANCHOR>\n          Anchor task ID for scaffold anchoring\n      --scaffold-class <SCAFFOLD_CLASS>\n          Scaffold class: checklist, handoff, wrapper, `fixture_note`, `implementation_note`, none\n      --sunset-decision <SUNSET_DECISION>\n          Sunset decision: merge, archive, delete, `not_applicable`\n      --sunset-owner <SUNSET_OWNER>\n          Sunset owner\n      --sunset-trigger <SUNSET_TRIGGER>\n          Sunset trigger\n      --effort <EFFORT>\n          Runtime effort the assignee should work at: low, medium, high, xhigh\n      --why <WHY>\n          Why that effort level fits this task (one line)\n      --deadline <DEADLINE>\n          Deadline in positive whole minutes\n  -h, --help\n          Print help\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "task",
+      "assign",
+      "--help"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "Assign a task to an owner and send generated actionable instructions\n\nUsage: mesh task assign [OPTIONS] --owner <OWNER> <ID>\n\nArguments:\n  <ID>  Task ID\n\nOptions:\n      --owner <OWNER>\n          Owner/member name\n      --team <TEAM>\n          Team name [env: MESH_TEAM=]\n      --name <NAME>\n          Agent name (your handle) [env: MESH_NAME=]\n      --reopen\n          Explicitly reopen a completed task with a fresh assignment (lead-only; requires --admin-reason)\n      --awaiting-go\n          Wait for explicit GO before idle nudges (lead-only; clear with task update --go)\n      --claude-dir <CLAUDE_DIR>\n          Claude config directory [env: CLAUDE_DIR=]\n      --status <STATUS>\n          Assignment status (`pending` or `in_progress`) [default: pending]\n      --first-step <FIRST_STEP>\n          Required first action for the assignee\n      --deliverable <DELIVERABLE>\n          Required deliverable or output contract\n      --completion-signal <COMPLETION_SIGNAL>\n          Completion signal for the assignment\n      --override-lane-limit\n          Explicitly bypass the one-active-lane-per-person guardrail\n      --override-reason <OVERRIDE_REASON>\n          Durable reason for bypassing the lane guardrail\n      --admin-reason <ADMIN_REASON>\n          Explicit admin reason when superseding an existing owner or assignment\n      --effort <EFFORT>\n          Optional runtime effort override for the assignee: low, medium, high, xhigh\n      --why <WHY>\n          Optional reason for the chosen effort level (one line)\n      --deadline <DEADLINE>\n          Deadline in positive whole minutes\n  -h, --help\n          Print help\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "task",
+      "get",
+      "--help"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "Get a task by ID\n\nUsage: mesh task get [OPTIONS] <ID>\n\nArguments:\n  <ID>  Task ID\n\nOptions:\n      --json                     Output as JSON\n      --team <TEAM>              Team name [env: MESH_TEAM=]\n      --name <NAME>              Agent name (your handle) [env: MESH_NAME=]\n      --verbose                  Show the full pretty-printed task record\n      --claude-dir <CLAUDE_DIR>  Claude config directory [env: CLAUDE_DIR=]\n  -h, --help                     Print help\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "read",
+      "--help"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "Read inbox messages\n\nUsage: mesh read [OPTIONS]\n\nOptions:\n      --team <TEAM>              Team name [env: MESH_TEAM=]\n      --unread                   Show only unread messages\n      --last <LAST>              Number of messages to show [default: 20]\n      --name <NAME>              Agent name (your handle) [env: MESH_NAME=]\n      --claude-dir <CLAUDE_DIR>  Claude config directory [env: CLAUDE_DIR=]\n      --json                     Output as JSON\n      --mark-read                Mark displayed messages as read\n      --short                    Truncate message text to 120 characters\n      --guide                    Show the read-decision guide footer\n      --priority <PRIORITY>      Filter by priority (urgent or low)\n  -h, --help                     Print help\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "version",
+      "--json"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "{\n  \"version\": \"0.2.29\",\n  \"git_commit\": \"6789201c5511b51be704fe30c6e4d025f3e64f8c\",\n  \"git_dirty\": false,\n  \"build_time_utc\": \"2026-09-07T13:25:52Z\",\n  \"protocol_version\": 1,\n  \"schema_version\": 1\n}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "join",
+      "--team",
+      "card-fixture",
+      "--name",
+      "lead",
+      "--type",
+      "lead"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "[mesh] lead joined team card-fixture\n",
+    "stderr": "bootstrapped new team config\n"
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "join",
+      "--team",
+      "card-fixture",
+      "--name",
+      "seat"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "[mesh] seat joined team card-fixture\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "join",
+      "--team",
+      "card-fixture",
+      "--name",
+      "seat"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "[mesh] seat joined team card-fixture\n",
+    "stderr": "already a member of this team, updating presence\n"
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "read",
+      "--team",
+      "card-fixture",
+      "--name",
+      "seat",
+      "--unread",
+      "--json"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "[]\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "send",
+      "seat",
+      "INFO ONLY: Card reference changed; no response needed",
+      "--summary",
+      "card reference",
+      "--priority",
+      "low",
+      "--team",
+      "card-fixture",
+      "--name",
+      "lead"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "[mesh] lead -> seat: sent [low] (id: a1f46e63-1ab1-4a8b-af73-4d52172f8c4d)\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "read",
+      "--team",
+      "card-fixture",
+      "--name",
+      "seat",
+      "--unread",
+      "--mark-read",
+      "--json"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "[\n  {\n    \"id\": \"a1f46e63-1ab1-4a8b-af73-4d52172f8c4d\",\n    \"from\": \"lead\",\n    \"text\": \"INFO ONLY: Card reference changed; no response needed\\n\\n[orchestration_v1]\\nintent: info\\nno_response_needed: true\\n[/orchestration_v1]\",\n    \"timestamp\": \"2026-09-08T02:11:56.696Z\",\n    \"read\": false,\n    \"summary\": \"card reference\",\n    \"priority\": \"low\"\n  }\n]\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "task",
+      "create",
+      "--subject",
+      "Fixture card recovery",
+      "--description",
+      "Scratch-only command contract",
+      "--first-step",
+      "Inspect fixture.txt",
+      "--deliverable",
+      "Fixture result",
+      "--completion-signal",
+      "Report fixture result",
+      "--team",
+      "card-fixture",
+      "--name",
+      "lead",
+      "--json"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "{\n  \"id\": \"1\",\n  \"subject\": \"Fixture card recovery\",\n  \"description\": \"Scratch-only command contract\",\n  \"status\": \"pending\",\n  \"metadata\": {\n    \"completion_signal\": \"Report fixture result\",\n    \"deliverable\": \"Fixture result\",\n    \"first_step\": \"Inspect fixture.txt\"\n  }\n}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "task",
+      "assign",
+      "1",
+      "--owner",
+      "seat",
+      "--awaiting-go",
+      "--team",
+      "card-fixture",
+      "--name",
+      "lead"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "[mesh] assigned task #1 -> seat (pending) (id: 5ed1d397-42e8-43c2-b006-cbdfc7b18509)\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "task",
+      "get",
+      "1",
+      "--team",
+      "card-fixture",
+      "--name",
+      "seat"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "#1 [pending] Fixture card recovery\nLifecycle: assigned\nOwner: seat\nAssignment: 5dfe4b79-40f7-487b-9cf9-dd9e0458f730\nCounts as active lane: no\nDescription: Scratch-only command contract\nFirst step: Inspect fixture.txt\nDeliverable: Fixture result\nCompletion: Report fixture result\nMetadata keys: assigned_at, assigned_by, awaiting_go\nUse --json or --verbose for the full task record.\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "read",
+      "--team",
+      "card-fixture",
+      "--name",
+      "seat",
+      "--unread",
+      "--mark-read",
+      "--json"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "[\n  {\n    \"id\": \"5ed1d397-42e8-43c2-b006-cbdfc7b18509\",\n    \"from\": \"lead\",\n    \"text\": \"[#1 Fixture card recovery \u00b7 owner: seat]\\nACTION REQUIRED: Task #1 is yours but WAITS FOR GO: Fixture card recovery.\\nTask ID: #1\\nAssignment: 5dfe4b79-40f7-487b-9cf9-dd9e0458f730\\nDo not start: the lead releases this task with `mesh task update 1 --go`. You may pre-read context now.\\nFirst step after GO: Inspect fixture.txt\\nDeliverable: Fixture result\\nOnly reply after: Report fixture result\\nDo not send an acknowledgment or task summary before doing the work.\",\n    \"timestamp\": \"2026-09-08T02:11:56.746Z\",\n    \"read\": false,\n    \"summary\": \"task #1 assignment\",\n    \"taskId\": \"1\",\n    \"taskSubject\": \"Fixture card recovery\",\n    \"kind\": \"assignment\"\n  }\n]\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "task",
+      "get",
+      "1",
+      "--json",
+      "--team",
+      "card-fixture",
+      "--name",
+      "seat"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "{\n  \"id\": \"1\",\n  \"subject\": \"Fixture card recovery\",\n  \"description\": \"Scratch-only command contract\",\n  \"status\": \"pending\",\n  \"owner\": \"seat\",\n  \"metadata\": {\n    \"assigned_at\": \"2026-09-08T02:11:56.746Z\",\n    \"assigned_by\": \"lead\",\n    \"assignment_id\": \"5dfe4b79-40f7-487b-9cf9-dd9e0458f730\",\n    \"awaiting_go\": \"5dfe4b79-40f7-487b-9cf9-dd9e0458f730\",\n    \"completion_signal\": \"Report fixture result\",\n    \"deliverable\": \"Fixture result\",\n    \"first_step\": \"Inspect fixture.txt\"\n  },\n  \"lifecycleStage\": \"assigned\",\n  \"countsAsActiveLane\": false,\n  \"pendingEffort\": false\n}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "nudge",
+      "seat",
+      "--task",
+      "1",
+      "--team",
+      "card-fixture",
+      "--name",
+      "lead"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "error: unexpected argument 'seat' found\n\nUsage: mesh nudge [OPTIONS] --owner <OWNER> --task <TASK>\n\nFor more information, try '--help'.\n"
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "read",
+      "--unread",
+      "--mark-read",
+      "--json",
+      "--team",
+      "card-fixture",
+      "--name",
+      "seat"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "[]\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "nudge",
+      "--owner",
+      "seat",
+      "--task",
+      "1",
+      "--team",
+      "card-fixture",
+      "--name",
+      "lead"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "[mesh] nudged seat for task #1 (id: 672180d2-db89-4003-9d01-1a166d297a56)\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "read",
+      "--unread",
+      "--mark-read",
+      "--json",
+      "--team",
+      "card-fixture",
+      "--name",
+      "seat"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "[\n  {\n    \"id\": \"672180d2-db89-4003-9d01-1a166d297a56\",\n    \"from\": \"lead\",\n    \"text\": \"[#1 Fixture card recovery \u00b7 owner: seat]\\nACTION REQUIRED: Resume task #1 now: Fixture card recovery.\\nTask ID: #1\\nStart now: Inspect fixture.txt\\nDeliverable: Fixture result\\nOnly reply after: Report fixture result\\nDo not send an acknowledgment or task summary before doing the work.\",\n    \"timestamp\": \"2026-09-08T02:14:08.485Z\",\n    \"read\": false,\n    \"summary\": \"idle nudge task #1\",\n    \"taskId\": \"1\",\n    \"taskSubject\": \"Fixture card recovery\",\n    \"kind\": \"nudge\"\n  }\n]\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "task",
+      "get",
+      "1",
+      "--json",
+      "--team",
+      "card-fixture",
+      "--name",
+      "seat"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "{\n  \"id\": \"1\",\n  \"subject\": \"Fixture card recovery\",\n  \"description\": \"Scratch-only command contract\",\n  \"status\": \"pending\",\n  \"owner\": \"seat\",\n  \"metadata\": {\n    \"assigned_at\": \"2026-09-08T02:11:56.746Z\",\n    \"assigned_by\": \"lead\",\n    \"assignment_id\": \"5dfe4b79-40f7-487b-9cf9-dd9e0458f730\",\n    \"awaiting_go\": \"5dfe4b79-40f7-487b-9cf9-dd9e0458f730\",\n    \"completion_signal\": \"Report fixture result\",\n    \"deliverable\": \"Fixture result\",\n    \"first_step\": \"Inspect fixture.txt\"\n  },\n  \"lifecycleStage\": \"assigned\",\n  \"countsAsActiveLane\": false,\n  \"pendingEffort\": false\n}\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "/home/mstie/.local/bin/mesh",
+      "--claude-dir",
+      "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+      "task",
+      "update",
+      "1",
+      "--go",
+      "--team",
+      "card-fixture",
+      "--name",
+      "lead"
+    ],
+    "environment": {},
+    "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/onboarding-probe-zrs28an7",
+    "exit_code": 0,
+    "stdout": "updated task #1 -> pending\n",
+    "stderr": ""
+  }
+]

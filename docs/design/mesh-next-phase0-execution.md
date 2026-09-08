@@ -286,3 +286,34 @@ SD2a bounds / SD2b atomic batch / SD2c `invalid_input`; SD3 boundary
 retention; SD4 `audience_ref`; SD5 trailing body + section selector;
 SD6 expected-head transport) become increment C's contract; the
 ledger study's next revision folds them in.
+
+### D3 — adjudication: ACCEPTED (design of record for the onboarding / recovery card lanes)
+
+Round-1 fix verified directly by the orchestrator against
+`d3-opus-findings.md` (2026-09-08 ~04:58 UTC): three fixed keys
+(`obligation_key = (recipient, context)`, `delivery_id = hash(card_key,
+delivery_kind)` stable across recomposition, `content_revision` as a
+receipt field); coalescing, replaced-revision ranges and per-revision
+budgets dropped for latest-version-wins with one attempt plus one retry
+per delivery id on the single runtime pointer; a separate
+`render_card_steering` with `render_role_sections` byte-stable for the
+agent export and a new golden; operator-authorized `reonboard --force`
+minting a generation and logging `onboarding.generation.forced`,
+excluded from the dedup fixture, Antigravity's manual path; "admitted"
+= delivered-or-recorded with a `pending` obligation satisfied by the
+next delivery; root move restated against `team_move.rs` (whole tree
+travels; pre-/post-flip root tuple rule); byte cap tied to the minimal
+steering card and left UNVERIFIED until the bundled-role fixture; three
+role rules pointing at the card; `accepted` as the only durable-append
+receipt; citations fixed; OQ-A/B/C settled with safe defaults. 28 mesh
+probes re-run in a tempdir. Promoted to
+`docs/design/onboarding-card-design.md` with evidence under
+`docs/design/evidence/onboarding-card/`.
+
+Implementation shape (not launched in phase 0): two bounded lanes —
+taurhaus (card schema, activation generation, steering renderer, forced
+reonboard, pending skipped-compaction recovery, deadline-nudge content)
+and mesh (assignment/wait/correction projection, delivery identities,
+receipts) — with joint fixtures at the existing state boundary. The
+ordering decision stays with the operator: it touches the live
+compaction path and both binaries' release trains.
