@@ -10,7 +10,6 @@ use crate::coordination::member_activation::{
     MemberActivationRuntimeCommitPolicy,
 };
 use crate::coordination::orchestrator::CoordinationOrchestrator;
-use crate::coordination::reinjection::CompactionReinjectionService;
 use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryRequest, DeliveryResult, InitializeTeamRequest,
     OperatorNoticeDelivery, ResumeMemberRequest, TeardownMode, TeardownRequest,
@@ -26,7 +25,6 @@ pub(super) struct PreparedOnboardingDelivery {
     pub(super) member_name: String,
     pub(super) team_name: String,
     pub(super) sender_name: String,
-    pub(super) message: String,
 }
 
 impl CoordinationOrchestrator {
@@ -366,23 +364,11 @@ fn prepare_member_onboarding_delivery(
     member: &Member,
 ) -> Option<PreparedOnboardingDelivery> {
     Some(PreparedOnboardingDelivery {
-        message: render_onboarding_message(&context.team_name, member),
         policy: context.delivery_policy,
         member_name: member.name.clone(),
         team_name: context.team_name,
         sender_name: context.lead.name,
     })
-}
-
-fn render_onboarding_message(team: &str, member: &Member) -> String {
-    crate::coordination::recovery_card::RecoveryCard::compile(
-        team,
-        member,
-        None,
-        None,
-        Default::default(),
-    )
-    .render()
 }
 
 fn log_team_config_sync_error(
@@ -491,14 +477,7 @@ impl CoordinationOrchestrator {
     ) -> Option<PreparedOnboardingDelivery> {
         let context =
             MemberActivationContext::for_resume_member(&request.team_name, lead_name, member);
-        let mut entry = prepare_member_onboarding_delivery(context, member)?;
-        CompactionReinjectionService::append_member_lease_context(
-            &mut entry.message,
-            &self.teams_dir,
-            &request.team_name,
-            &member.name,
-        );
-        Some(entry)
+        prepare_member_onboarding_delivery(context, member)
     }
 
     pub(super) fn prepare_add_agent_onboarding_entry(

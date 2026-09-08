@@ -22,7 +22,7 @@ On every platform the daemon process hosts the single session hub: the app reads
 | Transport | TCP |
 | Default address | `127.0.0.1:17233` ([authoritative source](../../src-tauri/src/daemon/server.rs)) |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 24 (current) |
+| Protocol version | 25 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication

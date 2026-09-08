@@ -3271,9 +3271,10 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
                 .message
                 .contains("Role: adversarial-reviewer-claude"));
             assert!(!payload.message.contains("Capabilities:"));
-            assert!(payload
+            assert!(!payload
                 .message
                 .contains("HOLD: minimal role steering unavailable"));
+            assert!(payload.message.contains("Investigate"));
             assert!(!payload.message.contains("mesh read --unread"));
         }
         other => panic!("unexpected delivery payload for agent: {other:?}"),
@@ -4495,7 +4496,7 @@ fn resume_onboarding_entry_uses_immediate_policy() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime);
 
     orchestrator
         .create_team("architecture-final", None)
@@ -4570,7 +4571,14 @@ fn resume_onboarding_entry_uses_immediate_policy() {
         .expect("resume onboarding entry");
 
     assert_eq!(entry.policy, MemberActivationDeliveryPolicy::Immediate);
-    assert!(entry.message.contains("Leases: held delivery-renderer."));
+    orchestrator
+        .deliver_onboarding_entries(vec![entry])
+        .unwrap();
+    let delivered = backend.delivered_requests();
+    let DeliveryRequest::OperatorNotice(notice) = &delivered[0] else {
+        panic!("notice")
+    };
+    assert!(notice.message.contains("Leases: held delivery-renderer."));
 }
 
 // Regression: commit 3b17397 fixed the resume race by delivering onboarding as
@@ -4758,9 +4766,10 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
                 .message
                 .contains("Role: adversarial-reviewer-claude"));
             assert!(!payload.message.contains("Capabilities:"));
-            assert!(payload
+            assert!(!payload
                 .message
                 .contains("HOLD: minimal role steering unavailable"));
+            assert!(payload.message.contains("Investigate"));
         }
         other => panic!("unexpected delivery payload: {other:?}"),
     }
@@ -8168,12 +8177,13 @@ fn recovery_team_recreation_and_seat_replacement_mint_distinct_recipients() {
 }
 
 #[test]
-fn recovery_prepared_onboarding_also_uses_the_common_compiler() {
-    // Regression: 25ba6532 left full-role replay in the prepared onboarding renderer.
+fn recovery_delivered_onboarding_uses_the_common_compiler() {
+    // Regression: 25ba6532 left full-role replay in the onboarding path.
     let tmp = TempDir::new().unwrap();
+    let backend = Arc::new(FakeBackend::default());
     let mut orchestrator = new_orchestrator(
         &tmp,
-        Arc::new(FakeBackend::default()),
+        backend.clone(),
         Arc::new(RecordingCoordinationRuntime::default()),
     );
     let request = AddAgentRequest {
@@ -8181,13 +8191,30 @@ fn recovery_prepared_onboarding_also_uses_the_common_compiler() {
         agent: setup_config("seat", "codex", "gpt-6-astra", tmp.path().to_str().unwrap()),
     };
     orchestrator.create_team("team", None).unwrap();
+    orchestrator
+        .add_member(
+            "team",
+            member(
+                "seat",
+                MemberRole::Agent,
+                CliTool::Codex,
+                tmp.path().to_str().unwrap(),
+            ),
+        )
+        .unwrap();
     let entry = orchestrator
         .prepare_add_agent_onboarding_entry(&request)
         .unwrap()
         .unwrap();
-    assert!(entry.message.starts_with("[taurhaus] recovery_card"));
-    assert!(!entry.message.contains("mesh read"));
-    drop(orchestrator);
+    orchestrator
+        .deliver_onboarding_entries(vec![entry])
+        .unwrap();
+    let delivered = backend.delivered_requests();
+    let DeliveryRequest::OperatorNotice(notice) = &delivered[0] else {
+        panic!("notice")
+    };
+    assert!(notice.message.starts_with("[taurhaus] recovery_card"));
+    assert!(!notice.message.contains("mesh read"));
 }
 
 #[test]

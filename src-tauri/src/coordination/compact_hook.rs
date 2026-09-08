@@ -961,14 +961,17 @@ pub fn run_compact_hook_cli<R: Read, W: Write>(
     stdout.write_all(b"\n")?;
     stdout.flush()?;
     if let Some((root, team, member, receipt)) = response.receipt {
-        crate::coordination::recovery_delivery::observe(
+        if let Err(error) = crate::coordination::recovery_delivery::observe(
             &crate::coordination::stores::TeamRootRegistry::new(teams_dir.to_path_buf()),
             &root,
             &team,
             &member,
             &receipt,
             crate::coordination::recovery_card::ReceiptStage::HookResponseOffered,
-        )?;
+        ) {
+            // Stdout is already offered. Keep the receipt unknown without failing the hook.
+            tracing::warn!(team, member, %error, "hook response offered; recovery receipt commit failed");
+        }
     }
     Ok(())
 }
@@ -3245,6 +3248,59 @@ mod tests {
         );
         contents
     }
+    #[test]
+    fn recovery_hook_receipt_failure_after_flush_keeps_successful_output() {
+        // Regression: f0a5bad7 propagated receipt errors after offering valid hook stdout.
+        struct MoveRootAfterFlush<'a> {
+            root: &'a Path,
+            bytes: Vec<u8>,
+        }
+        impl Write for MoveRootAfterFlush<'_> {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.bytes.extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                crate::coordination::stores::TeamRootRegistry::new(self.root.to_path_buf())
+                    .set("team", &self.root.join("moved/teams"))
+                    .unwrap();
+                Ok(())
+            }
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        let member = sample_member(&project);
+        write_team_fixture(tmp.path(), "team", &member, "session");
+        write_snapshot_fixture(tmp.path(), "team", &member.name);
+        let mut config = TeamConfigStore::load(tmp.path(), "team").unwrap();
+        config.team_incarnation_id = Some("team-1".into());
+        TeamConfigStore::save(tmp.path(), "team", &config).unwrap();
+        crate::coordination::recovery_delivery::reserve_activation(
+            tmp.path(),
+            "team",
+            &member.name,
+            "activation",
+        )
+        .unwrap();
+        let payload = json!({"hook_event_name":"SessionStart","session_id":"session","source":"compact","cwd":project,"transcript_path":tmp.path().join(".claude/projects/transcript.jsonl")}).to_string();
+        let mut out = MoveRootAfterFlush {
+            root: tmp.path(),
+            bytes: Vec::new(),
+        };
+        assert!(run_compact_hook_cli(payload.as_bytes(), &mut out, tmp.path()).is_ok());
+        let response: serde_json::Value = serde_json::from_slice(&out.bytes).unwrap();
+        assert!(response["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap()
+            .contains("[taurhaus] recovery_card"));
+        let runtime = MemberRuntimeStore::load(tmp.path(), "team", &member.name).unwrap();
+        assert_eq!(
+            runtime.recovery.claim.unwrap().stage,
+            crate::coordination::recovery_card::ReceiptStage::OutcomeUnknown
+        );
+    }
+
     #[test]
     fn recovery_hook_output_failure_is_unknown_and_success_is_only_offered() {
         struct Broken;

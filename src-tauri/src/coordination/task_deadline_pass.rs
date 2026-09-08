@@ -243,25 +243,27 @@ fn apply_member_deadline(
         rollback_claim(&orchestrator.teams_dir, &claimed, action, now)?;
         return Ok(());
     }
-    let mut recovery_facts = crate::coordination::recovery_delivery::assignment_facts(
-        &orchestrator.teams_dir,
-        team_name,
-        member_name,
-        Some(&snapshot),
-    );
-    recovery_facts.task_id = snapshot.task.id.clone();
     let action_result = match action {
         DeadlineAction::Nothing => Ok(()),
-        DeadlineAction::Nudge => orchestrator
-            .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-                recovery_card: None,
-                team_name: team_name.to_string(),
-                member_name: member_name.to_string(),
-                message: render_deadline_nudge(&recovery_facts, deadline_minutes),
-                sender_name: sender_name.map(ToString::to_string),
-                operational_context: None,
-            }))
-            .map(|_| ()),
+        DeadlineAction::Nudge => {
+            let mut recovery_facts = crate::coordination::recovery_delivery::assignment_facts(
+                &orchestrator.teams_dir,
+                team_name,
+                member_name,
+                Some(&snapshot),
+            );
+            recovery_facts.task_id = snapshot.task.id.clone();
+            orchestrator
+                .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                    recovery_card: None,
+                    team_name: team_name.to_string(),
+                    member_name: member_name.to_string(),
+                    message: render_deadline_nudge(&recovery_facts, deadline_minutes),
+                    sender_name: sender_name.map(ToString::to_string),
+                    operational_context: None,
+                }))
+                .map(|_| ())
+        }
         DeadlineAction::MarkStale => {
             crate::coordination::stores::mesh_task::commit_status_if_unchanged(
                 &orchestrator.teams_dir,
