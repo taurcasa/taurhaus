@@ -51,6 +51,27 @@ pub fn prepare(
     member_name: &str,
     path: &str,
 ) -> Result<Option<PreparedCard>, CoordinationError> {
+    prepare_inner(registry, root, team, member_name, path, false)
+}
+
+pub(crate) fn prepare_compaction(
+    registry: &TeamRootRegistry,
+    root: &Path,
+    team: &str,
+    member_name: &str,
+    path: &str,
+) -> Result<Option<PreparedCard>, CoordinationError> {
+    prepare_inner(registry, root, team, member_name, path, true)
+}
+
+fn prepare_inner(
+    registry: &TeamRootRegistry,
+    root: &Path,
+    team: &str,
+    member_name: &str,
+    path: &str,
+    compaction: bool,
+) -> Result<Option<PreparedCard>, CoordinationError> {
     validate_root(registry, root, team)?;
     crate::coordination::validation::validate_member_name(member_name)?;
     let guard = crate::coordination::stores::lock::acquire_team_lock(root, team)?;
@@ -73,7 +94,10 @@ pub fn prepare(
         .map(|(team_id, member_id)| CardKey {
             card_schema: CARD_SCHEMA,
             recipient: (team_id.clone(), member_id.clone()),
-            context: runtime.recovery.context(),
+            context: (
+                runtime.recovery.activation_generation,
+                runtime.recovery.compaction_generation + u64::from(compaction),
+            ),
             roots: Roots {
                 root_authority_revision: registry.revision(team).unwrap_or_default().to_string(),
                 resolved_teams_root: normalize(root),
@@ -96,7 +120,13 @@ pub fn prepare(
                 packet_revision: facts.packet_revision.clone(),
             },
         });
-    let card = RecoveryCard::compile(team, member, snapshot.as_ref(), key.clone(), facts);
+    let mut card = RecoveryCard::compile(team, member, snapshot.as_ref(), key.clone(), facts);
+    crate::coordination::reinjection::CompactionReinjectionService::append_member_lease_context(
+        &mut card.lease_context,
+        root,
+        team,
+        member_name,
+    );
     let mut text = card.render();
     let mut receipt = if let Some(key) = key {
         // The durable append is the authority after an interrupted runtime commit.
@@ -163,6 +193,10 @@ pub fn prepare(
         }
     }
     receipt.generated_bytes = text.len();
+    if !receipt.card_key.recipient.0.is_empty() {
+        runtime.recovery.claim = Some(receipt.clone());
+        MemberRuntimeStore::save_recovery_locked(&guard, root, team, member_name, &runtime)?;
+    }
     Ok(Some(PreparedCard { receipt, text }))
 }
 
@@ -283,7 +317,8 @@ pub fn assignment_facts(
     }
     .into();
     // No wait marker is not proof of a token-bound GO.
-    if metadata["released_assignment"].as_str() == Some(facts.assignment_token.as_str())
+    if facts.wait != "awaiting_go"
+        && metadata["released_assignment"].as_str() == Some(facts.assignment_token.as_str())
         && !facts.assignment_token.is_empty()
     {
         facts.wait = "released".into();
@@ -445,5 +480,16 @@ mod tests {
         let request: crate::coordination::requests::ReonboardRequest =
             serde_json::from_value(wire.clone()).unwrap();
         assert_eq!(serde_json::to_value(request).unwrap(), wire);
+    }
+    #[test]
+    fn recovery_audience_projection_preserves_go_despite_contradictory_release_metadata() {
+        let (_temp, root, _registry) = fixture();
+        let snapshot: crate::coordination::stores::OperationalContextSnapshot=serde_json::from_value(json!({"version":1,"team_name":"team","member_name":"seat","updated_at":Utc::now(),"task":{"id":"1","subject":"Review","status":"in_progress"},"assignment_footer":{},"ownership":{"override_allowed":false,"active_override_reason":null},"working_set":{"project_path":"/scratch","focal_files":[]}})).unwrap();
+        let path = crate::coordination::stores::mesh_task::task_path(&root, "team", "1").unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path,json!({"id":"1","owner":"seat","status":"in_progress","metadata":{"assignment_id":"a1","awaiting_go":true,"released_assignment":"a1","peer_verdict":"PRIVATE-VERDICT","peer_summary":"PRIVATE-DERIVATIVE"}}).to_string()).unwrap();
+        let facts = assignment_facts(&root, "team", "seat", Some(&snapshot));
+        assert_eq!(facts.wait, "awaiting_go");
+        assert!(!serde_json::to_string(&facts).unwrap().contains("PRIVATE-"));
     }
 }

@@ -289,6 +289,7 @@ pub(super) fn run_member_session_phase(
             let launch = build_member_activation_launch_command(teams_dir, context, cli_commands)?;
             record_context_launch_telemetry(teams_dir, context, &launch);
             send_launch_command_with_retry(runtime, pane_id, launch.command.as_str())?;
+            runtime_state.attached_at = Some(Utc::now());
             let account = launch.account_result();
             runtime_state.launch_account = (!account.is_empty()).then_some(account);
             runtime_state.applied_effort = launch.applied_effort.clone();

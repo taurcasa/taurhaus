@@ -136,7 +136,13 @@ impl RecoveryState {
         self.admitted_boundary = Some(boundary.to_string());
         self.compaction_generation += 1;
         self.baseline_binding = None;
-        self.claim = None;
+        if self
+            .claim
+            .as_ref()
+            .is_none_or(|r| r.card_key.context != self.context())
+        {
+            self.claim = None;
+        }
     }
 
     pub fn claim(&mut self, key: &CardKey, revision: &str, path: &str) -> Option<CardReceipt> {
@@ -146,7 +152,9 @@ impl RecoveryState {
                 return None;
             }
         }
-        let kind = if self.baseline_binding.as_ref() == Some(&obligation) {
+        let kind = if let Some(previous) = self.claim.as_ref().filter(|r| r.card_key == *key) {
+            previous.kind
+        } else if self.baseline_binding.as_ref() == Some(&obligation) {
             DeliveryKind::Correction
         } else {
             DeliveryKind::Baseline
@@ -185,6 +193,7 @@ impl RecoveryState {
             generated_bytes: 0,
             accepted_bytes: 0,
         };
+        self.baseline_binding = Some(receipt.obligation_key.clone());
         self.claim = Some(receipt.clone());
         Some(receipt)
     }
@@ -247,17 +256,36 @@ pub struct RecoveryCard {
     pub member_name: String,
     pub project_path: String,
     pub steering: String,
+    pub generated_at: chrono::DateTime<chrono::Utc>,
+    pub constraints: String,
+    pub lease_context: String,
     pub assignment: AssignmentFacts,
     pub requested_effort: String,
     pub boundaries: Vec<String>,
 }
 
 pub fn render_card_steering(member: &crate::coordination::domain::Member) -> String {
+    steering(
+        &member.role_id,
+        &member.runtime_compact_summary,
+        &member.quality_gates,
+        &member.handoff_expectations,
+        &member.definition_of_done,
+    )
+}
+
+fn steering(
+    role_id: &Option<String>,
+    summary: &Option<crate::templates::types::RuntimeCompactSummary>,
+    gates: &Option<Vec<String>>,
+    handoff: &Option<Vec<String>>,
+    done: &Option<Vec<String>>,
+) -> String {
     let mut lines = vec![format!(
         "Role: {}",
-        member.role_id.as_deref().unwrap_or("unavailable")
+        role_id.as_deref().unwrap_or("unavailable")
     )];
-    if let Some(summary) = &member.runtime_compact_summary {
+    if let Some(summary) = summary {
         lines.push(format!("Purpose: {}", summary.role_purpose));
         for (title, facts) in [
             ("Boundary", &summary.keep_doing),
@@ -270,11 +298,7 @@ pub fn render_card_steering(member: &crate::coordination::domain::Member) -> Str
     } else {
         lines.push("HOLD: minimal role steering unavailable; owner: team lead.".into());
     }
-    for (title, facts) in [
-        ("Gate", &member.quality_gates),
-        ("Handoff", &member.handoff_expectations),
-        ("Completion", &member.definition_of_done),
-    ] {
+    for (title, facts) in [("Gate", gates), ("Handoff", handoff), ("Completion", done)] {
         lines.extend(
             facts
                 .iter()
@@ -327,6 +351,8 @@ impl RecoveryCard {
             member_name: member.name.clone(),
             project_path: member.project_path.to_string_lossy().into_owned(),
             steering: render_card_steering(member),
+            generated_at: chrono::Utc::now(), lease_context: String::new(),
+            constraints: snapshot.map(|s| format!("Execution mode: {}; Validation expectation: {}; Response expectation: {}; Adjacent fix policy: {}; Override allowed: {}; Override reason: {}",s.assignment_footer.execution_mode,s.assignment_footer.validation_expectation,s.assignment_footer.response_expectation,s.assignment_footer.adjacent_fix_policy,s.ownership.override_allowed,s.ownership.active_override_reason.as_deref().unwrap_or("none"))).unwrap_or_else(|| "Operational constraints: unavailable".into()),
             assignment,
             requested_effort: snapshot
                 .map(|s| s.assignment_footer.task_effort.clone())
@@ -334,6 +360,21 @@ impl RecoveryCard {
             boundaries: snapshot
                 .map(|s| s.assignment_footer.file_ownership_boundary.clone())
                 .unwrap_or_default(),
+        }
+    }
+
+    pub fn from_reinjection(
+        card: &crate::coordination::reinjection::OperationalReinjectionCard,
+    ) -> Self {
+        Self {
+            card_key: None, content_revision: digest(&(&card.task,&card.boundaries,&card.working_set)),
+            team_name: card.team_name.clone(), member_name: card.member_name.clone(), project_path: card.working_set.project_path.clone(),
+            generated_at: card.generated_at,
+            steering: steering(&card.role.role_id,&card.role.runtime_compact_summary,&Some(card.role.quality_gates.clone()),&Some(card.role.handoff_expectations.clone()),&Some(card.role.definition_of_done.clone())),
+            assignment: AssignmentFacts { task_id: card.task.id.clone(), objective: card.task.subject.clone(), state: card.task.status.clone(), wait: "release_unavailable".into(), ..Default::default() },
+            requested_effort: card.task.effort.clone(), boundaries: card.boundaries.file_ownership_boundary.clone(),
+            constraints: format!("Execution mode: {}; Validation expectation: {}; Response expectation: {}; Adjacent fix policy: {}; Override allowed: {}", card.task.execution_mode,card.task.validation_expectation,card.task.response_expectation,card.boundaries.adjacent_fix_policy,card.boundaries.override_allowed),
+            lease_context: crate::coordination::reinjection::render_lease_context_line(&card.leases).unwrap_or_default(),
         }
     }
 
@@ -390,6 +431,12 @@ impl RecoveryCard {
             unavailable(&self.boundaries.join(", "))
         ));
         lines.push("Evidence/handoff retention: unavailable; references do not prove archival preservation.".into());
+        lines.push(format!("Generated: {}", self.generated_at));
+        lines.push(format!("Current task: #{} — {}", a.task_id, a.objective));
+        lines.push(self.constraints.clone());
+        if !self.lease_context.is_empty() {
+            lines.push(self.lease_context.clone());
+        }
         lines.push(self.steering.clone());
         lines.push(FIRST_ACTION.into());
         lines.push("Corrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.".into());
@@ -585,5 +632,17 @@ mod tests {
         assert!(count > 20);
         eprintln!("bundled steering: {count} roles, maximum {maximum} UTF-8 bytes");
         assert!(maximum <= STEERING_BYTE_CAP);
+    }
+    #[test]
+    fn recovery_root_change_after_claim_cannot_open_a_second_baseline() {
+        let mut state = RecoveryState::default();
+        state.reserve_activation("attachment");
+        let mut k = key(&state);
+        state.claim(&k, "first", "inbox").unwrap();
+        k.roots.resolved_teams_root = "/moved".into();
+        assert_eq!(
+            state.claim(&k, "moved", "inbox").unwrap().kind,
+            DeliveryKind::Correction
+        );
     }
 }

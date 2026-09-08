@@ -61,6 +61,8 @@ pub struct OperationalReinjectionRole {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct OperationalReinjectionTask {
+    #[serde(default)]
+    pub status: String,
     pub id: String,
     pub subject: String,
     pub execution_mode: String,
@@ -208,6 +210,7 @@ impl CompactionReinjectionService {
                 ),
             },
             task: OperationalReinjectionTask {
+                status: snapshot.task.status.clone(),
                 id: snapshot.task.id.trim().to_string(),
                 subject: snapshot.task.subject.trim().to_string(),
                 execution_mode: snapshot.assignment_footer.execution_mode.trim().to_string(),
@@ -277,177 +280,11 @@ impl CompactionReinjectionService {
     pub fn render_additional_context_text(
         card: &OperationalReinjectionCard,
     ) -> Result<String, serde_json::Error> {
-        let mut lines = vec![
-            "[taurhaus] restored_working_context_after_compaction".to_string(),
-            "Continue the active assignment using the restored context below.".to_string(),
-            "Do not stop to summarize or acknowledge this card.".to_string(),
-            "Reply only if blocked, the context is still insufficient, or the task is complete."
-                .to_string(),
-            String::new(),
-            format!("Current task: #{} — {}", card.task.id, card.task.subject),
-        ];
-
-        if !card.task.effort.is_empty() {
-            lines.push(if card.task.effort_why.is_empty() {
-                format!("Effort: {}", card.task.effort)
-            } else {
-                format!("Effort: {} — {}", card.task.effort, card.task.effort_why)
-            });
-        }
-        if !card.task.id.is_empty() {
-            lines.push(format!(
-                "Run: mesh task get {} --team {} --name {} for your assignment token, rulings, artifacts, and restart cursor.",
-                card.task.id, card.team_name, card.member_name
-            ));
-        }
-        if let Some(lease_line) = render_lease_context_line(&card.leases) {
-            lines.push(lease_line);
-        }
-        if !card.task.execution_mode.is_empty() {
-            lines.push(format!("Execution mode: {}", card.task.execution_mode));
-        }
-        if !card.task.validation_expectation.is_empty() {
-            lines.push(format!(
-                "Validation expectation: {}",
-                card.task.validation_expectation
-            ));
-        }
-        if !card.task.response_expectation.is_empty() {
-            lines.push(format!(
-                "Response expectation: {}",
-                card.task.response_expectation
-            ));
-        }
-        if let Some(role_line) = format_role_line(&card.role) {
-            lines.push(format!("Role: {role_line}"));
-        }
-        if let Some(focus_area) = card.role.focus_area.as_deref() {
-            lines.push(format!("Focus area: {focus_area}"));
-        }
-        if let Some(context_summary) = card.role.context_summary.as_deref() {
-            lines.push(format!("Context summary: {context_summary}"));
-        }
-        if let Some(behavior_summary) = card.role.behavior_summary.as_deref() {
-            lines.push(format!("Behavior: {behavior_summary}"));
-        }
-        if let Some(communication_style) = card.role.communication_style.as_deref() {
-            lines.push(format!("Communication style: {communication_style}"));
-        }
-        if let Some(instructions) = card.role.instructions.as_deref() {
-            lines.push(String::new());
-            lines.push("Full role instructions:".to_string());
-            lines.push(instructions.to_string());
-            lines.push(String::new());
-        }
-        if let Some(mode) = card.role.mode.as_deref() {
-            lines.push(format!("Mode: {mode}"));
-        }
-        if let Some(inherits_from) = card.role.inherits_from.as_deref() {
-            lines.push(format!("Inherits from: {inherits_from}"));
-        }
-        append_bullet_section(
-            &mut lines,
-            "Quality gates",
-            &card.role.quality_gates,
-            "No explicit quality gates recorded.",
-        );
-        append_bullet_section(
-            &mut lines,
-            "Handoff expectations",
-            &card.role.handoff_expectations,
-            "No explicit handoff expectations recorded.",
-        );
-        append_bullet_section(
-            &mut lines,
-            "Definition of done",
-            &card.role.definition_of_done,
-            "No explicit definition of done recorded.",
-        );
-        append_bullet_section(
-            &mut lines,
-            "Phase scope",
-            &card.role.phase_scope,
-            "No explicit phase scope recorded.",
-        );
-        append_bullet_section(
-            &mut lines,
-            "Required artifacts",
-            &card.role.required_artifacts,
-            "No explicit required artifacts recorded.",
-        );
-        if let Some(summary) = card.role.runtime_compact_summary.as_ref() {
-            lines.push(format!("Role purpose: {}", summary.role_purpose));
-            append_bullet_section(
-                &mut lines,
-                "Keep doing",
-                &summary.keep_doing,
-                "No keep-doing guidance recorded.",
-            );
-            append_bullet_section(
-                &mut lines,
-                "Workflow sequence",
-                &summary.workflow_sequence,
-                "No workflow sequence recorded.",
-            );
-            append_bullet_section(
-                &mut lines,
-                "Avoid",
-                &summary.avoid,
-                "No avoid guidance recorded.",
-            );
-            append_bullet_section(
-                &mut lines,
-                "Escalate when",
-                &summary.escalate_when,
-                "No escalation guidance recorded.",
-            );
-        }
-        if !card.working_set.project_path.is_empty() {
-            lines.push(format!("Project: {}", card.working_set.project_path));
-        }
-
-        append_bullet_section(
-            &mut lines,
-            "Focal files",
-            &card.working_set.focal_files,
-            "Use the current task context if these are empty.",
-        );
-        append_bullet_section(
-            &mut lines,
-            "File ownership boundary",
-            &card.boundaries.file_ownership_boundary,
-            "No explicit file boundary recorded.",
-        );
-
-        if !card.boundaries.adjacent_fix_policy.is_empty() {
-            lines.push(format!(
-                "Adjacent fix policy: {}",
-                card.boundaries.adjacent_fix_policy
-            ));
-        }
-        lines.push(format!(
-            "Override allowed: {}",
-            if card.boundaries.override_allowed {
-                "yes"
-            } else {
-                "no"
-            }
-        ));
-        if let Some(active_override_reason) = card.boundaries.active_override_reason.as_deref() {
-            lines.push(format!("Active override reason: {active_override_reason}"));
-        }
-
-        lines.push(String::new());
-        lines.push(
-            "Next action: continue the current task immediately with this restored context."
-                .to_string(),
-        );
-
-        Ok(lines.join("\n"))
+        Ok(crate::coordination::recovery_card::RecoveryCard::from_reinjection(card).render())
     }
 }
 
-fn render_lease_context_line(leases: &OperationalReinjectionLeases) -> Option<String> {
+pub(crate) fn render_lease_context_line(leases: &OperationalReinjectionLeases) -> Option<String> {
     let held = (!leases.held.is_empty()).then(|| format!("held {}", leases.held.join(", ")));
     let waiting = (!leases.waiting.is_empty()).then(|| {
         format!(
@@ -840,6 +677,7 @@ mod tests {
                     ],
                 },
                 task: OperationalReinjectionTask {
+                    status: snapshot.task.status.clone(),
                     id: "673".to_string(),
                     subject: "Architecture: post-compaction operational re-injection".to_string(),
                     execution_mode: "recommend".to_string(),
@@ -1342,5 +1180,18 @@ mod tests {
         assert!(!CompactionReinjectionService::snapshot_has_resumable_task(
             &snapshot
         ));
+    }
+    #[test]
+    fn recovery_compaction_renderer_uses_the_common_bounded_card() {
+        // Regression: 9b857060a emitted unconditional continuation and replayed full role instructions.
+        let card = CompactionReinjectionService::compose_at(
+            &sample_member(),
+            &sample_snapshot(),
+            Utc::now(),
+        );
+        let text = CompactionReinjectionService::render_additional_context_text(&card).unwrap();
+        assert!(text.starts_with("[taurhaus] recovery_card"));
+        assert!(!text.contains("Full role instructions:"));
+        assert!(!text.contains("continue the current task immediately"));
     }
 }

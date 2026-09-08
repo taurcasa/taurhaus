@@ -8050,3 +8050,32 @@ fn recovery_managed_onboarding_retry_uses_one_baseline() {
     };
     assert!(notice.message.contains("[taurhaus] recovery_card"));
 }
+
+#[test]
+fn recovery_actual_launch_changes_attachment_stamp_even_for_the_same_session() {
+    let temp = TempDir::new().unwrap();
+    let runtime = RecordingCoordinationRuntime::default();
+    let agent = setup_config(
+        "seat",
+        "codex",
+        "gpt-6-astra",
+        temp.path().to_str().unwrap(),
+    );
+    let context =
+        MemberActivationContext::for_initialize_member("team", "lead", &agent, MemberRole::Agent)
+            .unwrap();
+    let mut pending = MemberActivationRuntimeState::default();
+    for _ in 0..2 {
+        let previous = pending.attached_at;
+        run_member_session_phase(
+            &runtime,
+            temp.path(),
+            &context,
+            "%1",
+            MemberSessionPhase::LaunchOnly(&CliCommandSettings::default()),
+            &mut pending,
+        )
+        .unwrap();
+        assert_ne!(pending.attached_at, previous);
+    }
+}

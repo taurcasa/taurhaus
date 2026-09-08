@@ -98,6 +98,13 @@ fn tool_from_hook_environment() -> Option<CliTool> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 pub struct CompactHookResponse {
+    #[serde(skip)]
+    receipt: Option<(
+        PathBuf,
+        String,
+        String,
+        crate::coordination::recovery_card::CardReceipt,
+    )>,
     #[serde(rename = "hookSpecificOutput", skip_serializing_if = "Option::is_none")]
     hook_specific_output: Option<CompactHookSpecificOutput>,
 }
@@ -572,34 +579,40 @@ pub fn handle_compact_hook(
         return Ok(CompactHookResponse::default());
     }
 
-    let card =
-        CompactionReinjectionService::compose(&matched.teams_dir, &matched.member, &snapshot);
-    let additional_context = CompactionReinjectionService::render_additional_context_text(&card)
-        .map_err(|err| {
-            emit_compact_hook_failed(
-                CompactHookFailureStage::RenderAdditionalContext,
-                Some(&payload),
-                Some(&matched),
-                None,
-                None,
-                None,
-                &err.to_string(),
-            );
-            CoordinationError::StoreError(format!(
-                "failed to render compact hook additional context for '{}': {err}",
-                matched.member.name
-            ))
-        })?;
+    let registry = crate::coordination::stores::TeamRootRegistry::new(teams_dir.to_path_buf());
+    let path = if delivery == CompactionDelivery::MeshInbox {
+        "inbox"
+    } else {
+        "hook_stdout"
+    };
+    let Some(card) = crate::coordination::recovery_delivery::prepare_compaction(
+        &registry,
+        &matched.teams_dir,
+        &matched.team_name,
+        &matched.member.name,
+        path,
+    )?
+    else {
+        return Ok(CompactHookResponse::default());
+    };
+    let additional_context = card.text.clone();
 
     // A harness that ignores passive-hook stdout has to be handed the card
     // before the delivery is recorded — the hook answer would go nowhere.
     if delivery == CompactionDelivery::MeshInbox {
-        if let Err(error) = CompactionReinjectionService::deliver_to_inbox(
+        let mut message = crate::coordination::stores::MeshInboxMessage::operator_originated(
+            &matched.member.name,
+            card.text.clone(),
+            Some(crate::coordination::reinjection::POST_COMPACTION_INBOX_SUMMARY.into()),
+            Utc::now(),
+            None,
+        );
+        crate::coordination::recovery_delivery::attach_receipt(&mut message, Some(&card.receipt));
+        if let Err(error) = crate::coordination::stores::MeshInboxStore::append(
             &matched.teams_dir,
             &matched.team_name,
             &matched.member.name,
-            &card,
-            Utc::now(),
+            &message,
         ) {
             let _ = record_delivery_at(
                 &matched.teams_dir,
@@ -644,10 +657,26 @@ pub fn handle_compact_hook(
         );
     })?;
 
+    if delivery == CompactionDelivery::MeshInbox {
+        crate::coordination::recovery_delivery::observe(
+            &registry,
+            &matched.teams_dir,
+            &matched.team_name,
+            &matched.member.name,
+            &card.receipt,
+            crate::coordination::recovery_card::ReceiptStage::Accepted,
+        )?;
+    }
     emit_compact_hook_delivered(&payload, &matched, additional_context.len());
 
     Ok(match delivery {
         CompactionDelivery::HookStdout => CompactHookResponse {
+            receipt: Some((
+                matched.teams_dir.clone(),
+                matched.team_name.clone(),
+                matched.member.name.clone(),
+                card.receipt,
+            )),
             hook_specific_output: Some(CompactHookSpecificOutput {
                 hook_event_name: SESSION_START_HOOK_EVENT.to_string(),
                 additional_context,
@@ -933,6 +962,16 @@ pub fn run_compact_hook_cli<R: Read, W: Write>(
     })?;
     stdout.write_all(b"\n")?;
     stdout.flush()?;
+    if let Some((root, team, member, receipt)) = response.receipt {
+        crate::coordination::recovery_delivery::observe(
+            &crate::coordination::stores::TeamRootRegistry::new(teams_dir.to_path_buf()),
+            &root,
+            &team,
+            &member,
+            &receipt,
+            crate::coordination::recovery_card::ReceiptStage::HookResponseOffered,
+        )?;
+    }
     Ok(())
 }
 
@@ -3206,5 +3245,57 @@ mod tests {
             "expected structured log to contain {needle}: {contents}"
         );
         contents
+    }
+    #[test]
+    fn recovery_hook_output_failure_is_unknown_and_success_is_only_offered() {
+        struct Broken;
+        impl std::io::Write for Broken {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        for broken in [true, false] {
+            let tmp = tempfile::tempdir().unwrap();
+            let project = tmp.path().join("project");
+            fs::create_dir_all(&project).unwrap();
+            let member = sample_member(&project);
+            write_team_fixture(tmp.path(), "team", &member, "session");
+            write_snapshot_fixture(tmp.path(), "team", &member.name);
+            let mut config = TeamConfigStore::load(tmp.path(), "team").unwrap();
+            config.team_incarnation_id = Some("team-1".into());
+            TeamConfigStore::save(tmp.path(), "team", &config).unwrap();
+            crate::coordination::recovery_delivery::reserve_activation(
+                tmp.path(),
+                "team",
+                &member.name,
+                "activation",
+            )
+            .unwrap();
+            let payload = json!({"hook_event_name":"SessionStart","session_id":"session","source":"compact","cwd":project,"transcript_path":tmp.path().join(".claude/projects/transcript.jsonl")}).to_string();
+            if broken {
+                assert!(run_compact_hook_cli(payload.as_bytes(), Broken, tmp.path()).is_err());
+            } else {
+                let mut out = Vec::new();
+                run_compact_hook_cli(payload.as_bytes(), &mut out, tmp.path()).unwrap();
+                assert!(String::from_utf8(out).unwrap().contains("recovery_card"));
+            }
+            let runtime = MemberRuntimeStore::load(tmp.path(), "team", &member.name).unwrap();
+            let receipt = runtime.recovery.claim.expect("persisted hook receipt");
+            assert_eq!(
+                receipt.stage,
+                if broken {
+                    crate::coordination::recovery_card::ReceiptStage::OutcomeUnknown
+                } else {
+                    crate::coordination::recovery_card::ReceiptStage::HookResponseOffered
+                }
+            );
+            assert_eq!(receipt.accepted_bytes, 0);
+            assert!(MeshInboxStore::load(tmp.path(), "team", &member.name)
+                .unwrap()
+                .is_empty());
+        }
     }
 }
