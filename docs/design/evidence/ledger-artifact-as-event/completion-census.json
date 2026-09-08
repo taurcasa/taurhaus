@@ -1,0 +1,72 @@
+[
+  {
+    "eventId": "4f28477b-4cba-4c3b-a337-81c7bd886e25",
+    "protocolVersion": 1,
+    "eventType": "task_completed",
+    "task_id": "3",
+    "assignment_id": "0a285384-f5e3-42f8-a2ef-dbd47deeb000",
+    "actor": "implementer-1",
+    "summary": "Accepted measurement at 8a7375b. Claude: streams (12 lines/2.67s). Codex: streams (4 lifecycle lines/4.02s). agy: streams (5 lifecycle/delta lines/about 3s). Grok: batched in this probe (36 delta-shaped lines/206ms after reported 2.5s run). Samples and facts update validated and committed.",
+    "timestamp": "2026-09-06T19:45:42.112Z"
+  },
+  {
+    "eventId": "521117ca-8671-4682-8a79-bf3f04c71cfa",
+    "protocolVersion": 1,
+    "eventType": "task_completed",
+    "task_id": "4",
+    "assignment_id": "b7def64e-5c01-4b66-9e9e-1ace6db9645d",
+    "actor": "heavy-implementer",
+    "summary": "Accepted by architect; c563ff30d39cb786e37228129ec9a94ab895b06e; one file 169/180 added lines; 65 source pointers and whitespace validated",
+    "timestamp": "2026-09-06T19:46:35.007Z"
+  },
+  {
+    "eventId": "77faa1e4-7a91-459a-8d2f-7fa35ff4595d",
+    "protocolVersion": 1,
+    "eventType": "task_completed",
+    "task_id": "5",
+    "assignment_id": "c1bb2a6a-b6f4-40ef-a51e-bf98c0942496",
+    "actor": "heavy-implementer-1",
+    "summary": "Accepted by architect at 79d3657; docs/reference/pipeline-stages.md committed as 79d36571ee2fdfa5b687c377e256f5f57df93c83, one file +304/-0 within 350-line budget; 29 synthetic/static assertions and diff check pass; RESULT previously sent to lead.",
+    "timestamp": "2026-09-06T19:47:39.772Z"
+  },
+  {
+    "eventId": "be84dfd3-265c-483b-89c2-880efd2e3a5a",
+    "protocolVersion": 1,
+    "eventType": "task_completed",
+    "task_id": "6",
+    "assignment_id": "f5f665f8-6d99-43b3-b1d4-bbdc524b3b45",
+    "actor": "product-reviewer",
+    "summary": "T6a: acceptance.md at 06ffc9b \u2014 57 numbered checks, 205 lines (budget 260). Checks 48-51 added for SPEC 0.6/0.4/0.5-0.7 per ruling R2; 52-57 added per privacy ruling R1; check 16 patched to T3's verified result (agy streams, grok batched). T1/T6 seam review corrected six checks that contradicted T1/T3/R1 evidence - checks 32 and 19 as originally written would have forced a privacy violation. One open seam recorded: R1 rule 4 implies raw stream text may be displayed in the live view, T1 forbids displaying token text; checks 15 and 19 follow the stricter T1 reading.",
+    "timestamp": "2026-09-06T19:49:29.886Z"
+  },
+  {
+    "eventId": "3c5d02db-f5a4-4529-9c05-84778c5ccf20",
+    "protocolVersion": 1,
+    "eventType": "task_completed",
+    "task_id": "8",
+    "assignment_id": "1665fd25-9329-44b7-a8cb-3cfcf1323585",
+    "actor": "heavy-implementer",
+    "summary": "Accepted by architect; bfc2cca0cba17609e21f10538ad5396c864e0955; docs/reference/toolchain.md 77/80 added lines; native Linux debug build 44.12 s, warmed dev window 12.91 s; Tailwind compilation verified; recipe incorporated in T1r. Visual quality, production build, and native Windows support not validated.",
+    "timestamp": "2026-09-06T19:55:27.747Z"
+  },
+  {
+    "eventId": "d99efb98-bfa5-4864-ad9b-b2303feb4f1c",
+    "protocolVersion": 1,
+    "eventType": "task_completed",
+    "task_id": "7",
+    "assignment_id": "dae4fe59-8c9c-44f2-8979-89c12d71fa26",
+    "actor": "lead-taurjob",
+    "summary": "T1 altitude review: lead substitute (8df7fed) and altitude-reviewer independent pass (d966220), both bounded correction, concordant",
+    "timestamp": "2026-09-06T20:03:10.633Z"
+  },
+  {
+    "eventId": "992f361f-0bda-41df-a600-3fa93ef94792",
+    "protocolVersion": 1,
+    "eventType": "task_completed",
+    "task_id": "9",
+    "assignment_id": "49f0e0e3-6833-40f8-906a-78419909a5b1",
+    "actor": "judge-astra-1",
+    "summary": "RESULT T9 6cda054: independent verdict reject, 10 findings; T2 ruling rejected at 8f97e28; 120 browser renders; check:task unavailable and recorded.",
+    "timestamp": "2026-09-06T20:04:07.628Z"
+  }
+]

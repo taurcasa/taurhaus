@@ -1,0 +1,122 @@
+{
+  "at": "2026-09-08T02:37:16.949035+00:00",
+  "env": {},
+  "cwd": "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/artifact-fix-probe-wwf0ggps",
+  "binary_sha256": "408c7e0cc7ed5302f4e5fb9a2be3b8e47f75b4c14ab9e2127e6bad4572f2f672",
+  "remaining_files": [],
+  "root_removed": true,
+  "probes": [
+    {
+      "argv": [
+        "/home/mstie/.local/bin/mesh",
+        "--claude-dir",
+        "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/artifact-fix-probe-wwf0ggps",
+        "version"
+      ],
+      "exit_code": 0,
+      "stdout": "mesh 0.2.29 (commit 6789201c5511b51be704fe30c6e4d025f3e64f8c, protocol 1, schema 1, dirty: false)\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/home/mstie/.local/bin/mesh",
+        "--claude-dir",
+        "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/artifact-fix-probe-wwf0ggps",
+        "task",
+        "complete",
+        "--help"
+      ],
+      "exit_code": 0,
+      "stdout": "Complete with required --summary evidence; an unstarted task records an implied start and completion in one action\n\nUsage: mesh task complete [OPTIONS] --summary <SUMMARY> <ID>\n\nArguments:\n  <ID>  Task ID\n\nOptions:\n      --summary <SUMMARY>            Completion summary\n      --team <TEAM>                  Team name [env: MESH_TEAM=]\n      --assignment <ASSIGNMENT>      Optionally require the current assignment ID\n      --name <NAME>                  Agent name (your handle) [env: MESH_NAME=]\n      --artifact <ARTIFACT>          Evidence path to append to the task record\n      --claude-dir <CLAUDE_DIR>      Claude config directory [env: CLAUDE_DIR=]\n      --as-lead                      Confirm this is an explicit team-lead repair mutation\n      --admin-reason <ADMIN_REASON>  Explicit admin reason for a team-lead repair mutation\n  -h, --help                         Print help\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/home/mstie/.local/bin/mesh",
+        "--claude-dir",
+        "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/artifact-fix-probe-wwf0ggps",
+        "task",
+        "progress",
+        "--help"
+      ],
+      "exit_code": 0,
+      "stdout": "Record progress for the current owner; prior start is not required\n\nUsage: mesh task progress [OPTIONS] --summary <SUMMARY> <ID>\n\nArguments:\n  <ID>  Task ID\n\nOptions:\n      --summary <SUMMARY>        Progress summary\n      --team <TEAM>              Team name [env: MESH_TEAM=]\n      --assignment <ASSIGNMENT>  Optionally require the current assignment ID\n      --name <NAME>              Agent name (your handle) [env: MESH_NAME=]\n      --artifact <ARTIFACT>      Evidence path to append to the task record\n      --claude-dir <CLAUDE_DIR>  Claude config directory [env: CLAUDE_DIR=]\n  -h, --help                     Print help\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/home/mstie/.local/bin/mesh",
+        "--claude-dir",
+        "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/artifact-fix-probe-wwf0ggps",
+        "task",
+        "review",
+        "--help"
+      ],
+      "exit_code": 0,
+      "stdout": "Record a review or handoff request (requires start --assignment first, unless --as-lead)\n\nUsage: mesh task review [OPTIONS] --summary <SUMMARY> <ID>\n\nArguments:\n  <ID>  Task ID\n\nOptions:\n      --summary <SUMMARY>            Review summary\n      --team <TEAM>                  Team name [env: MESH_TEAM=]\n      --assignment <ASSIGNMENT>      Optionally require the current assignment ID\n      --name <NAME>                  Agent name (your handle) [env: MESH_NAME=]\n      --artifact <ARTIFACT>          Evidence path to append to the task record\n      --claude-dir <CLAUDE_DIR>      Claude config directory [env: CLAUDE_DIR=]\n      --as-lead                      Confirm this is an explicit team-lead repair mutation\n      --admin-reason <ADMIN_REASON>  Explicit admin reason for a team-lead repair mutation\n  -h, --help                         Print help\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/home/mstie/.local/bin/mesh",
+        "--claude-dir",
+        "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/artifact-fix-probe-wwf0ggps",
+        "task",
+        "ruling",
+        "--help"
+      ],
+      "exit_code": 0,
+      "stdout": "Append an attributed, sequenced ruling to a task\n\nUsage: mesh task ruling [OPTIONS] --kind <KIND> --value <VALUE> <ID>\n\nArguments:\n  <ID>  Task ID\n\nOptions:\n      --kind <KIND>              Ruling kind: verdict, score, ruling, or note\n      --team <TEAM>              Team name [env: MESH_TEAM=]\n      --name <NAME>              Agent name (your handle) [env: MESH_NAME=]\n      --value <VALUE>            Exact ruling value\n      --claude-dir <CLAUDE_DIR>  Claude config directory [env: CLAUDE_DIR=]\n      --field <FIELD>            Optional field the ruling addresses\n      --ref <REFERENCE>          Optional commit, packet, or assignment reference\n      --note <NOTE>              Optional explanatory note\n  -h, --help                     Print help\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/home/mstie/.local/bin/mesh",
+        "--claude-dir",
+        "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/artifact-fix-probe-wwf0ggps",
+        "ledger",
+        "--help"
+      ],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "error: unrecognized subcommand 'ledger'\n\n  tip: some similar subcommands exist: 'leave', 'nudge', 'lease'\n\nUsage: mesh [OPTIONS] <COMMAND>\n\nFor more information, try '--help'.\n"
+    },
+    {
+      "argv": [
+        "/home/mstie/.local/bin/mesh",
+        "--claude-dir",
+        "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/artifact-fix-probe-wwf0ggps",
+        "ledger",
+        "entry",
+        "--file",
+        "artifact.md",
+        "--team",
+        "fixture",
+        "--name",
+        "seat"
+      ],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "error: unrecognized subcommand 'ledger'\n\n  tip: some similar subcommands exist: 'leave', 'nudge', 'lease'\n\nUsage: mesh [OPTIONS] <COMMAND>\n\nFor more information, try '--help'.\n"
+    },
+    {
+      "argv": [
+        "/home/mstie/.local/bin/mesh",
+        "--claude-dir",
+        "/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/artifact-fix-probe-wwf0ggps",
+        "task",
+        "complete",
+        "1",
+        "--summary-file",
+        "RESULT.md",
+        "--team",
+        "fixture",
+        "--name",
+        "seat"
+      ],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "error: unexpected argument '--summary-file' found\n\n  tip: a similar argument exists: '--summary'\n\nUsage: mesh task complete --summary <SUMMARY> <ID>\n\nFor more information, try '--help'.\n"
+    }
+  ]
+}

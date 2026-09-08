@@ -1,0 +1,35 @@
+{
+  "scope": "Document and retained-evidence consistency only; no product gate or review approval",
+  "header_bytes": 426,
+  "header_lines": 18,
+  "retained_inventory_populations": {
+    "wave-1": [
+      54,
+      586909
+    ],
+    "wave-2": [
+      38,
+      381736
+    ]
+  },
+  "retained_row_bytes": {
+    "9": 1297,
+    "49": 614,
+    "51": 263
+  },
+  "mesh_exits": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    2,
+    2,
+    2
+  ],
+  "fix_record_items": 16,
+  "seat_rules": 3,
+  "report_sha256": "69f18f71138524e330f64bbb30d76012d93d625914fa944798b42107be311ed9",
+  "header_sha256": "36e75b8c7f8e0c09283d4d3751e6f958859cec1ae89a9d154d54d2d1a858fb1a",
+  "inventory_sha256": "25879c64ba7fe6dc8f75e26c1c010ee439704ca38d10b7f8a404d08b052c3524"
+}

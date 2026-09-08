@@ -1,0 +1,18 @@
+---
+ledger:
+  adapter_version: 1
+  events:
+    - event_id: 877bdbad-7a91-4bd1-b048-c72516365b23
+      operation: entry
+      entry_key:
+        kind: note
+        slot: asset-generator-E1-limitations
+      references:
+        - authority: artifact
+          role: result_artifact
+          path: self
+          assessment: source_checked
+      payload:
+        body:
+          section: Conformance and accepted deviations
+---
