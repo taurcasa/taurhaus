@@ -130,9 +130,10 @@ fn publish_snapshot(
         .as_ref()
         .and_then(|current| current.recovery_card.as_ref())
         .is_some_and(|descriptor| descriptor.descriptor_only);
-    if !descriptor_only && current
-        .as_ref()
-        .is_some_and(|current| current.updated_at >= snapshot.updated_at)
+    if !descriptor_only
+        && current
+            .as_ref()
+            .is_some_and(|current| current.updated_at >= snapshot.updated_at)
     {
         return Ok(false);
     }
@@ -144,22 +145,22 @@ fn publish_snapshot(
             descriptor.descriptor_only = false;
         }
         if !descriptor_only {
-        candidate.version = current.version;
-        candidate.task = preserve_task_deadline_markers(
-            Some(&current.task),
-            candidate.task,
-            task_state_changed_at,
-        );
-        let task_effort = candidate.assignment_footer.task_effort.clone();
-        let task_effort_why = candidate.assignment_footer.task_effort_why.clone();
-        candidate.assignment_footer = current.assignment_footer;
-        candidate.assignment_footer.task_effort = task_effort;
-        candidate.assignment_footer.task_effort_why = task_effort_why;
-        candidate.ownership = current.ownership;
-        candidate.working_set = current.working_set;
-        if candidate.working_set.project_path.trim().is_empty() {
-            candidate.working_set.project_path = snapshot.working_set.project_path.clone();
-        }
+            candidate.version = current.version;
+            candidate.task = preserve_task_deadline_markers(
+                Some(&current.task),
+                candidate.task,
+                task_state_changed_at,
+            );
+            let task_effort = candidate.assignment_footer.task_effort.clone();
+            let task_effort_why = candidate.assignment_footer.task_effort_why.clone();
+            candidate.assignment_footer = current.assignment_footer;
+            candidate.assignment_footer.task_effort = task_effort;
+            candidate.assignment_footer.task_effort_why = task_effort_why;
+            candidate.ownership = current.ownership;
+            candidate.working_set = current.working_set;
+            if candidate.working_set.project_path.trim().is_empty() {
+                candidate.working_set.project_path = snapshot.working_set.project_path.clone();
+            }
         }
     }
 
@@ -274,10 +275,12 @@ pub fn apply_delivery_context(
         })?;
     let existing = OperationalContextSnapshotStore::load(teams_dir, team_name, member_name)?;
     let snapshot = OperationalContextSnapshot {
-        recovery_card: existing.as_ref().and_then(|s| s.recovery_card.clone()).map(|mut descriptor| {
-            descriptor.descriptor_only = false;
-            descriptor
-        }),
+        recovery_card: existing.as_ref().and_then(|s| s.recovery_card.clone()).map(
+            |mut descriptor| {
+                descriptor.descriptor_only = false;
+                descriptor
+            },
+        ),
         version: existing.as_ref().map_or(1, |snapshot| snapshot.version),
         team_name: team_name.to_string(),
         member_name: member_name.to_string(),
