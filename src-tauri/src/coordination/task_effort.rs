@@ -463,6 +463,7 @@ mod tests {
         };
 
         OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "architecture-final".to_string(),
             member_name: "codex-reviewer".to_string(),

@@ -41,8 +41,59 @@ impl CoordinationOrchestrator {
     /// Route a delivery request through the backend and emit audit events.
     pub fn deliver_message(
         &mut self,
-        request: DeliveryRequest,
+        mut request: DeliveryRequest,
     ) -> Result<DeliveryResult, CoordinationError> {
+        if let DeliveryRequest::OperatorNotice(notice) = &mut request {
+            if notice.recovery_card.is_some() && notice.operational_context.is_none() {
+                let card = crate::coordination::recovery_delivery::refresh(
+                    &self.root_registry,
+                    &self.teams_dir,
+                    &notice.team_name,
+                    &notice.member_name,
+                )?
+                .ok_or_else(|| {
+                    CoordinationError::Conflict(
+                        "recovery delivery already observed; reload its status".into(),
+                    )
+                })?;
+                notice.message = card.text;
+                notice.recovery_card = Some(card.receipt);
+            }
+            match notice.operational_context.as_ref() {
+                Some(context)
+                    if notice.recovery_card.is_none()
+                        && crate::coordination::stores::MemberCompactionStore::load(
+                            &self.teams_dir,
+                            &notice.team_name,
+                            &notice.member_name,
+                        )?
+                        .is_some_and(|s| s.pending) =>
+                {
+                    apply_delivery_context(
+                        &self.teams_dir,
+                        &notice.team_name,
+                        &notice.member_name,
+                        context,
+                    )?;
+                    if let Some(mut card) = crate::coordination::recovery_delivery::prepare(
+                        &self.root_registry,
+                        &self.teams_dir,
+                        &notice.team_name,
+                        &notice.member_name,
+                        "inbox",
+                    )? {
+                        notice.message = format!("{}\n\n{}", card.text, notice.message);
+                        card.receipt.generated_bytes = notice.message.len();
+                        notice.recovery_card = Some(card.receipt);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let recovery_receipt = match &request {
+            DeliveryRequest::OperatorNotice(n) => n.recovery_card.clone(),
+            _ => None,
+        };
         let (team_name, member_name) = delivery_meta(&request);
         let operational_context = delivery_operational_context(&request).cloned();
         let delivery_type = delivery_type_name(&request).to_string();
@@ -108,6 +159,36 @@ impl CoordinationOrchestrator {
                     return Err(error);
                 }
 
+                if let Some(receipt) = recovery_receipt.as_ref() {
+                    let mut observed = receipt.clone();
+                    observed.record(
+                        if result.durable {
+                            crate::coordination::recovery_card::ReceiptStage::Accepted
+                        } else if result.method == DeliveryMethod::TmuxInjection {
+                            crate::coordination::recovery_card::ReceiptStage::Submitted
+                        } else {
+                            crate::coordination::recovery_card::ReceiptStage::OutcomeUnknown
+                        },
+                        receipt.generated_bytes,
+                    );
+                    result.recovery_card = Some(Box::new(observed));
+                    if let Err(error) = crate::coordination::recovery_delivery::observe(
+                        &self.root_registry,
+                        &self.teams_dir,
+                        &team_name_owned,
+                        &member_name_owned,
+                        receipt,
+                        if result.durable {
+                            crate::coordination::recovery_card::ReceiptStage::Accepted
+                        } else if result.method == DeliveryMethod::TmuxInjection {
+                            crate::coordination::recovery_card::ReceiptStage::Submitted
+                        } else {
+                            crate::coordination::recovery_card::ReceiptStage::OutcomeUnknown
+                        },
+                    ) {
+                        result.post_write_warnings.push(error.to_string());
+                    }
+                }
                 let wake = if result.method != DeliveryMethod::InboxFile {
                     WakeDisposition::NotAttempted {
                         reason: "delivery method does not require an inbox wake".to_string(),

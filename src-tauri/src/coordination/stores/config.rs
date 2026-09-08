@@ -41,6 +41,8 @@ fn is_atomic_write_fallback_error(err: &std::io::Error) -> bool {
 /// Team configuration document persisted at `teams/<team>/config.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_incarnation_id: Option<String>,
     pub schema_version: u32,
     pub name: String,
     pub description: Option<String>,
@@ -52,6 +54,8 @@ pub struct TeamConfig {
 
 #[derive(Debug, Serialize)]
 struct MeshCompatibleTeamConfigWire {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    team_incarnation_id: Option<String>,
     schema_version: u32,
     name: String,
     description: Option<String>,
@@ -162,6 +166,8 @@ pub struct TeamConfigStore;
 
 #[derive(Debug, Deserialize)]
 struct MeshTeamConfigWire {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    team_incarnation_id: Option<String>,
     #[serde(default)]
     name: Option<String>,
     #[serde(default)]
@@ -939,6 +945,7 @@ fn mesh_compatible_wire(
     }
 
     MeshCompatibleTeamConfigWire {
+        team_incarnation_id: config.team_incarnation_id.clone(),
         schema_version: config.schema_version,
         name: config.name.clone(),
         description: config.description.clone(),
@@ -961,6 +968,9 @@ fn merge_current_extension_fields(
     }
 
     let current = parse_team_config(current_raw, team_name)?;
+    config.team_incarnation_id = current
+        .team_incarnation_id
+        .or(config.team_incarnation_id.take());
     config.extra.extend(current.extra);
     let current_members = current
         .members
@@ -993,6 +1003,8 @@ fn parse_team_config(raw: &str, team_name: &str) -> Result<TeamConfig, Coordinat
 fn parse_native_config(value: Value, team_name: &str) -> Result<TeamConfig, CoordinationError> {
     #[derive(Debug, Deserialize)]
     struct NativeTeamConfigWire {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        team_incarnation_id: Option<String>,
         #[serde(default = "schema_version_one")]
         schema_version: u32,
         name: String,
@@ -1018,6 +1030,7 @@ fn parse_native_config(value: Value, team_name: &str) -> Result<TeamConfig, Coor
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(TeamConfig {
+        team_incarnation_id: wire.team_incarnation_id,
         schema_version: wire.schema_version,
         name: wire.name,
         description: wire.description,
@@ -1046,6 +1059,7 @@ fn parse_mesh_config(value: Value, team_name: &str) -> Result<TeamConfig, Coordi
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(TeamConfig {
+        team_incarnation_id: wire.team_incarnation_id,
         schema_version: 1,
         name: wire.name.unwrap_or_else(|| team_name.to_string()),
         description: wire.description,
@@ -1153,6 +1167,7 @@ fn native_member_to_domain(member: NativeMemberWire) -> Result<Member, Coordinat
 }
 
 const TEAM_AUTHORED_KEYS: &[&str] = &[
+    "team_incarnation_id",
     "schema_version",
     "schemaVersion",
     "name",
@@ -1278,6 +1293,7 @@ mod tests {
 
     fn sample_config(team_name: &str) -> TeamConfig {
         TeamConfig {
+            team_incarnation_id: None,
             schema_version: 1,
             name: team_name.to_string(),
             description: Some("Architecture team".to_string()),
@@ -1315,6 +1331,7 @@ mod tests {
 
     fn sample_config_with_role_metadata(team_name: &str) -> TeamConfig {
         TeamConfig {
+            team_incarnation_id: None,
             schema_version: 1,
             name: team_name.to_string(),
             description: Some("Architecture team".to_string()),
@@ -2369,6 +2386,7 @@ mod tests {
         let teams_dir = tmp.path();
         let team_name = "agent-only-team";
         let config = TeamConfig {
+            team_incarnation_id: None,
             schema_version: 1,
             name: team_name.to_string(),
             description: None,

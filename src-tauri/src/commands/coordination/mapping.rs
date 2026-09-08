@@ -152,6 +152,10 @@ pub(super) fn map_reonboard_request_to_contract(
     request: &ReonboardRequest,
 ) -> contracts::ReonboardRequest {
     contracts::ReonboardRequest {
+        recovery_read: request.recovery_read,
+        force: request.force,
+        intent_id: request.intent_id.clone(),
+        reason: request.reason.clone(),
         team_name: request.team_name.clone(),
         member_name: request.member_name.clone(),
     }

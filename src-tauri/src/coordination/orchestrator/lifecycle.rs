@@ -49,6 +49,7 @@ impl CoordinationOrchestrator {
 
         let now = Utc::now();
         let config = TeamConfig {
+            team_incarnation_id: Some(uuid::Uuid::new_v4().to_string()),
             schema_version: 1,
             name: name.to_string(),
             description: description.clone(),
@@ -57,6 +58,16 @@ impl CoordinationOrchestrator {
             extra: Default::default(),
         };
         TeamConfigStore::save(&self.teams_dir, name, &config)?;
+        // Creation owns the new root before activation can deliver its baseline.
+        if !crate::coordination::stores::team_roots::same_teams_root(
+            &self.root_registry.resolve(name)?,
+            &self.teams_dir,
+        ) {
+            if let Err(error) = self.root_registry.set(name, &self.teams_dir) {
+                TeamConfigStore::delete(&self.teams_dir, name)?;
+                return Err(error);
+            }
+        }
 
         self.audit_log
             .push(AuditEvent::TeamCreated(TeamCreatedEvent {
@@ -155,6 +166,7 @@ impl CoordinationOrchestrator {
         TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
 
         let runtime = MemberRuntimeRecord {
+            recovery: Default::default(),
             schema_version: 3,
             member_name: member.name.clone(),
             cli_tool: Some(member.cli_tool),
@@ -272,6 +284,7 @@ impl CoordinationOrchestrator {
                 match self.deliver_message(
                     crate::coordination::requests::DeliveryRequest::operator_notice(
                         OperatorNoticeDelivery {
+                            recovery_card: None,
                             member_name: lead_name.clone(),
                             team_name: team_name.to_string(),
                             message: notice,

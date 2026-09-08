@@ -784,6 +784,14 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
     // architecture change.
     const ALLOWED_WRITERS: &[(&str, &str)] = &[
         (
+            "src/coordination/recovery_delivery.rs",
+            "daemon/native-hook recovery delivery owns claims, snapshot descriptors and receipt bookkeeping",
+        ),
+        (
+            "src/coordination/orchestrator/mod.rs",
+            "daemon-hosted orchestrator constructs read-only registry authority for recovery delivery",
+        ),
+        (
             "src/coordination/backend/bridged.rs",
             "daemon-hosted mesh delivery appends inbox records",
         ),
@@ -955,6 +963,8 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         "ActiveProjectTeamStore::clear_project(",
         "ActiveProjectTeamStore::set_active_team(",
         "MemberCompactionStore::save(",
+        "MemberCompactionStore::save_locked(",
+        "recovery_delivery::",
         "MemberCompactionStore::delete(",
         "MemberCompactionStore::delete_without_lock(",
         "prune_state_if_session_mismatch(",
@@ -978,6 +988,7 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         "write_snapshot(",
         "MemberRuntimeStore::save(",
         "MemberRuntimeStore::save_locked(",
+        "MemberRuntimeStore::save_recovery_locked(",
         "MemberRuntimeStore::save_preserving_applied_effort(",
         "MemberRuntimeStore::save_preserving_applied_effort_locked(",
         "MemberRuntimeStore::commit_if_unchanged(",

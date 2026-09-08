@@ -228,6 +228,7 @@ mod tests {
             &teams_dir,
             "deadline-team",
             &TeamConfig {
+                team_incarnation_id: None,
                 schema_version: 1,
                 name: "deadline-team".to_string(),
                 description: None,
@@ -242,6 +243,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             &teams_dir,
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "deadline-team".to_string(),
                 member_name: "builder".to_string(),

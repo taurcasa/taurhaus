@@ -115,6 +115,8 @@ pub struct OperationalContextUpdate {
 /// Typed payload for operator-authored notifications.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorNoticeDelivery {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_card: Option<crate::coordination::recovery_card::CardReceipt>,
     pub member_name: String,
     pub team_name: String,
     pub message: String,
@@ -169,6 +171,10 @@ pub enum WakeDisposition {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeliveryResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_card: Option<Box<crate::coordination::recovery_card::CardReceipt>>,
     /// Whether the backend completed its delivery operation. For inbox-file
     /// delivery this means exactly one append completed.
     pub delivered: bool,
@@ -766,6 +772,17 @@ pub struct SwitchTeamAccountReport {
 /// Request contract for re-sending onboarding to one persisted member.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReonboardRequest {
+    #[serde(
+        default,
+        skip_serializing_if = "crate::coordination::requests::is_false"
+    )]
+    pub recovery_read: bool,
+    #[serde(default)]
+    pub force: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
     pub team_name: String,
     pub member_name: String,
 }
@@ -854,6 +871,10 @@ pub struct StepProgressEvent {
     pub progress: StepProgress,
 }
 
+pub fn is_false(value: &bool) -> bool {
+    !value
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -906,6 +927,7 @@ mod tests {
     #[test]
     fn delivery_request_round_trip() {
         let req = DeliveryRequest::OperatorNotice(Box::new(OperatorNoticeDelivery {
+            recovery_card: None,
             member_name: "agent-1".to_string(),
             team_name: "architecture-final".to_string(),
             message: "Check your inbox".to_string(),
@@ -1057,6 +1079,10 @@ mod tests {
     #[test]
     fn reonboard_request_round_trips() {
         let request = ReonboardRequest {
+            recovery_read: false,
+            force: false,
+            intent_id: None,
+            reason: None,
             team_name: "architecture-final".to_string(),
             member_name: "builder".to_string(),
         };

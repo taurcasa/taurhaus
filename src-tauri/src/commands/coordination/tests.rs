@@ -956,6 +956,10 @@ fn resume_team_daemon_poll_reemits_the_existing_canonical_progress_contract() {
 fn reonboard_daemon_client_uses_its_run_status_method() {
     let params = protocol::CoordinationReonboardParams {
         request: crate::coordination::requests::ReonboardRequest {
+            recovery_read: false,
+            force: false,
+            intent_id: None,
+            reason: None,
             team_name: "arch".to_string(),
             member_name: "builder".to_string(),
         },
@@ -965,6 +969,8 @@ fn reonboard_daemon_client_uses_its_run_status_method() {
         task_state_changed_at: None,
     };
     let report = crate::coordination::requests::DeliveryResult {
+        recovery_text: None,
+        recovery_card: None,
         delivered: true,
         method: crate::coordination::requests::DeliveryMethod::InboxFile,
         durable: true,
@@ -2097,10 +2103,15 @@ fn reonboard_succeeds_for_existing_member() {
     )
     .expect("initialize");
 
+    let deliveries_before = fake.delivered_requests().len();
     let result = coordination_reonboard_impl(
         None,
         &state,
         ReonboardRequest {
+            recovery_read: false,
+            force: false,
+            intent_id: None,
+            reason: None,
             team_name: "architecture-final".to_string(),
             member_name: "team-lead".to_string(),
         },
@@ -2109,14 +2120,14 @@ fn reonboard_succeeds_for_existing_member() {
 
     assert!(result.delivered);
     let requests = fake.delivered_requests();
+    assert_eq!(requests.len(), deliveries_before);
     let DeliveryRequest::OperatorNotice(delivery) = requests.last().expect("reonboard delivery")
     else {
         panic!("expected operator notice")
     };
-    // Regression: commit efcd7d2 silently replaced Claude re-onboarding with
-    // the lifecycle-only role-context block, dropping the explicit mesh loop.
-    assert!(delivery.message.starts_with("[taurhaus] onboarding"));
-    assert!(delivery.message.contains("mesh read --unread --mark-read"));
+    // The bounded card replaces the catalog guarded after efcd7d2; unchanged
+    // unforced recovery returns the prior delivery without replaying it.
+    crate::coordination::recovery_card::assert_control_golden(&delivery.message);
 }
 
 #[test]
@@ -2128,6 +2139,10 @@ fn reonboard_fails_for_nonexistent_team_or_member() {
         None,
         &state,
         ReonboardRequest {
+            recovery_read: false,
+            force: false,
+            intent_id: None,
+            reason: None,
             team_name: "missing".to_string(),
             member_name: "bob".to_string(),
         },
@@ -2140,6 +2155,10 @@ fn reonboard_fails_for_nonexistent_team_or_member() {
         None,
         &state,
         ReonboardRequest {
+            recovery_read: false,
+            force: false,
+            intent_id: None,
+            reason: None,
             team_name: "arch".to_string(),
             member_name: "bob".to_string(),
         },
@@ -2197,6 +2216,10 @@ fn add_agent_and_reonboard_validate_empty_strings() {
         None,
         &state,
         ReonboardRequest {
+            recovery_read: false,
+            force: false,
+            intent_id: None,
+            reason: None,
             team_name: "".to_string(),
             member_name: "bob".to_string(),
         },
@@ -2208,6 +2231,10 @@ fn add_agent_and_reonboard_validate_empty_strings() {
         None,
         &state,
         ReonboardRequest {
+            recovery_read: false,
+            force: false,
+            intent_id: None,
+            reason: None,
             team_name: "arch".to_string(),
             member_name: "  ".to_string(),
         },

@@ -75,6 +75,7 @@ pub struct RemoveMemberStepResult {
 /// Top-level coordination service entrypoint.
 pub struct CoordinationOrchestrator {
     pub(crate) teams_dir: PathBuf,
+    pub(crate) root_registry: crate::coordination::stores::TeamRootRegistry,
     pub(crate) template_root: PathBuf,
     pub(crate) audit_log: Vec<AuditEvent>,
     pub(crate) backend: Arc<dyn CoordinationBackend>,
@@ -118,6 +119,7 @@ impl CoordinationOrchestrator {
         runtime: Arc<dyn CoordinationRuntime>,
     ) -> Self {
         Self {
+            root_registry: crate::coordination::stores::TeamRootRegistry::new(teams_dir.clone()),
             teams_dir,
             template_root,
             audit_log: Vec::new(),

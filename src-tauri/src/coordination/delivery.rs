@@ -282,6 +282,7 @@ mod tests {
     #[test]
     fn render_operator_notice_format() {
         let payload = OperatorNoticeDelivery {
+            recovery_card: None,
             member_name: "codex-reviewer".to_string(),
             team_name: "architecture-final".to_string(),
             message: "Please report status".to_string(),
@@ -339,6 +340,7 @@ mod tests {
             reason: "nudge".to_string(),
         });
         let notice = DeliveryRequest::OperatorNotice(Box::new(OperatorNoticeDelivery {
+            recovery_card: None,
             member_name: "member-c".to_string(),
             team_name: "team-c".to_string(),
             message: "notice".to_string(),

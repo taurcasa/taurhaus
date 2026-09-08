@@ -37,6 +37,8 @@ struct TeamRootRegistryState {
     schema_version: u32,
     #[serde(default)]
     teams: BTreeMap<String, PathBuf>,
+    #[serde(default)]
+    revisions: BTreeMap<String, u64>,
 }
 
 const fn schema_version() -> u32 {
@@ -89,6 +91,15 @@ impl TeamRootRegistry {
             .cloned()
             .map(|root| self.path_for_reader(root))
             .unwrap_or_else(|| self.default_teams_dir.clone()))
+    }
+
+    pub fn revision(&self, team: &str) -> Result<u64, CoordinationError> {
+        Ok(self
+            .load()?
+            .revisions
+            .get(team)
+            .copied()
+            .unwrap_or_default())
     }
 
     pub fn registered(&self) -> Result<BTreeMap<String, PathBuf>, CoordinationError> {
@@ -151,6 +162,13 @@ impl TeamRootRegistry {
 
         let mut state = self.load()?;
         state.schema_version = schema_version();
+        let previous = state
+            .teams
+            .get(team_name)
+            .unwrap_or(&self.default_teams_dir);
+        if !same_teams_root(previous, teams_dir) {
+            *state.revisions.entry(team_name.to_string()).or_default() += 1;
+        }
         if same_teams_root(teams_dir, &self.default_teams_dir) {
             state.teams.remove(team_name);
         } else {

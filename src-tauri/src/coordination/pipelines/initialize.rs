@@ -369,6 +369,7 @@ impl CoordinationOrchestrator {
             &self.teams_dir,
             team_name,
             &TeamConfig {
+                team_incarnation_id: None,
                 schema_version: 1,
                 name: team_name.to_string(),
                 description: team_description,
@@ -384,6 +385,7 @@ impl CoordinationOrchestrator {
                 team_name,
                 &member.name,
                 &crate::coordination::stores::MemberRuntimeRecord {
+                    recovery: Default::default(),
                     schema_version: 3,
                     member_name: member.name.clone(),
                     cli_tool: Some(member.cli_tool),
@@ -436,6 +438,7 @@ impl CoordinationOrchestrator {
             &context.member.project_path.to_string_lossy(),
             &launch.command,
         )?;
+        runtime_state.harness_account_root = launch.harness_account_root.clone();
         let account = launch.account_result();
         runtime_state.launch_account = (!account.is_empty()).then_some(account);
         runtime_state.applied_effort = launch.applied_effort.clone();

@@ -126,30 +126,41 @@ fn publish_snapshot(
         &snapshot.team_name,
         &snapshot.member_name,
     )?;
-    if current
+    let descriptor_only = current
         .as_ref()
-        .is_some_and(|current| current.updated_at >= snapshot.updated_at)
+        .and_then(|current| current.recovery_card.as_ref())
+        .is_some_and(|descriptor| descriptor.descriptor_only);
+    if !descriptor_only
+        && current
+            .as_ref()
+            .is_some_and(|current| current.updated_at >= snapshot.updated_at)
     {
         return Ok(false);
     }
 
     let mut candidate = snapshot.clone();
     if let Some(current) = current {
-        candidate.version = current.version;
-        candidate.task = preserve_task_deadline_markers(
-            Some(&current.task),
-            candidate.task,
-            task_state_changed_at,
-        );
-        let task_effort = candidate.assignment_footer.task_effort.clone();
-        let task_effort_why = candidate.assignment_footer.task_effort_why.clone();
-        candidate.assignment_footer = current.assignment_footer;
-        candidate.assignment_footer.task_effort = task_effort;
-        candidate.assignment_footer.task_effort_why = task_effort_why;
-        candidate.ownership = current.ownership;
-        candidate.working_set = current.working_set;
-        if candidate.working_set.project_path.trim().is_empty() {
-            candidate.working_set.project_path = snapshot.working_set.project_path.clone();
+        candidate.recovery_card = current.recovery_card.clone();
+        if let Some(descriptor) = &mut candidate.recovery_card {
+            descriptor.descriptor_only = false;
+        }
+        if !descriptor_only {
+            candidate.version = current.version;
+            candidate.task = preserve_task_deadline_markers(
+                Some(&current.task),
+                candidate.task,
+                task_state_changed_at,
+            );
+            let task_effort = candidate.assignment_footer.task_effort.clone();
+            let task_effort_why = candidate.assignment_footer.task_effort_why.clone();
+            candidate.assignment_footer = current.assignment_footer;
+            candidate.assignment_footer.task_effort = task_effort;
+            candidate.assignment_footer.task_effort_why = task_effort_why;
+            candidate.ownership = current.ownership;
+            candidate.working_set = current.working_set;
+            if candidate.working_set.project_path.trim().is_empty() {
+                candidate.working_set.project_path = snapshot.working_set.project_path.clone();
+            }
         }
     }
 
@@ -264,6 +275,12 @@ pub fn apply_delivery_context(
         })?;
     let existing = OperationalContextSnapshotStore::load(teams_dir, team_name, member_name)?;
     let snapshot = OperationalContextSnapshot {
+        recovery_card: existing.as_ref().and_then(|s| s.recovery_card.clone()).map(
+            |mut descriptor| {
+                descriptor.descriptor_only = false;
+                descriptor
+            },
+        ),
         version: existing.as_ref().map_or(1, |snapshot| snapshot.version),
         team_name: team_name.to_string(),
         member_name: member_name.to_string(),
@@ -410,6 +427,7 @@ fn build_member_snapshot(
     task_state_changed_at: Option<DateTime<Utc>>,
 ) -> OperationalContextSnapshot {
     OperationalContextSnapshot {
+        recovery_card: existing.and_then(|s| s.recovery_card.clone()),
         version: existing.map_or(1, |snapshot| snapshot.version),
         team_name: team_name.to_string(),
         member_name: member_name.to_string(),
@@ -599,6 +617,7 @@ mod tests {
 
     fn write_team(teams_dir: &Path) {
         let config = TeamConfig {
+            team_incarnation_id: None,
             schema_version: 1,
             name: "architecture-final".to_string(),
             description: None,
@@ -1128,6 +1147,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),
@@ -1191,6 +1211,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),
@@ -1303,6 +1324,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),
@@ -1353,6 +1375,7 @@ mod tests {
             .with_timezone(&Utc);
         let state_changed_at = stale_at + chrono::Duration::minutes(10);
         let existing = OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "architecture-final".to_string(),
             member_name: "frontend-dev".to_string(),
@@ -1413,6 +1436,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),
@@ -1469,6 +1493,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),
@@ -1517,6 +1542,7 @@ mod tests {
             .with_timezone(&Utc);
         let nudged_at = assigned_at + chrono::Duration::minutes(10);
         let original = OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "architecture-final".to_string(),
             member_name: "frontend-dev".to_string(),
@@ -1649,6 +1675,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),

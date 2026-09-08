@@ -2895,6 +2895,7 @@ fn launch_then_task_snapshot_attributes_the_rendered_launch() {
     crate::coordination::operational_context::publish_member_operation_snapshot(
         tmp.path(),
         &OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "routing-team".to_string(),
             member_name: "builder".to_string(),
@@ -3265,13 +3266,15 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
     match &delivered[1] {
         DeliveryRequest::OperatorNotice(payload) => {
             assert_eq!(payload.member_name, "researcher");
-            assert!(payload.message.contains("[taurhaus] role_context"));
+            assert!(payload.message.contains("[taurhaus] recovery_card"));
             assert!(payload
                 .message
                 .contains("Role: adversarial-reviewer-claude"));
-            assert!(payload.message.contains("Capabilities:"));
-            assert!(payload.message.contains("- analysis"));
-            assert!(payload.message.contains("- research"));
+            assert!(!payload.message.contains("Capabilities:"));
+            assert!(!payload
+                .message
+                .contains("HOLD: minimal role steering unavailable"));
+            assert!(payload.message.contains("Investigate"));
             assert!(!payload.message.contains("mesh read --unread"));
         }
         other => panic!("unexpected delivery payload for agent: {other:?}"),
@@ -3279,7 +3282,7 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
 }
 
 #[test]
-fn initialize_pipeline_claude_agent_without_role_context_stays_skipped() {
+fn initialize_pipeline_claude_agent_without_role_context_receives_unassigned_card() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -3314,8 +3317,8 @@ fn initialize_pipeline_claude_agent_without_role_context_stays_skipped() {
     let delivered = backend.delivered_requests();
     assert_eq!(
         delivered.len(),
-        1,
-        "lead should receive onboarding even when claude agent has no role context"
+        2,
+        "lead and unassigned Claude seat each receive a baseline"
     );
     match &delivered[0] {
         DeliveryRequest::OperatorNotice(payload) => {
@@ -4493,7 +4496,7 @@ fn resume_onboarding_entry_uses_immediate_policy() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime);
 
     orchestrator
         .create_team("architecture-final", None)
@@ -4568,7 +4571,14 @@ fn resume_onboarding_entry_uses_immediate_policy() {
         .expect("resume onboarding entry");
 
     assert_eq!(entry.policy, MemberActivationDeliveryPolicy::Immediate);
-    assert!(entry.message.contains("Leases: held delivery-renderer."));
+    orchestrator
+        .deliver_onboarding_entries(vec![entry])
+        .unwrap();
+    let delivered = backend.delivered_requests();
+    let DeliveryRequest::OperatorNotice(notice) = &delivered[0] else {
+        panic!("notice")
+    };
+    assert!(notice.message.contains("Leases: held delivery-renderer."));
 }
 
 // Regression: commit 3b17397 fixed the resume race by delivering onboarding as
@@ -4751,12 +4761,15 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
     assert_eq!(delivered.len(), 1);
     match &delivered[0] {
         DeliveryRequest::OperatorNotice(payload) => {
-            assert!(payload.message.contains("[taurhaus] role_context"));
+            assert!(payload.message.contains("[taurhaus] recovery_card"));
             assert!(payload
                 .message
                 .contains("Role: adversarial-reviewer-claude"));
-            assert!(payload.message.contains("Capabilities:"));
-            assert!(payload.message.contains("- analysis"));
+            assert!(!payload.message.contains("Capabilities:"));
+            assert!(!payload
+                .message
+                .contains("HOLD: minimal role steering unavailable"));
+            assert!(payload.message.contains("Investigate"));
         }
         other => panic!("unexpected delivery payload: {other:?}"),
     }
@@ -5824,6 +5837,7 @@ fn write_member_snapshot_at(
     OperationalContextSnapshotStore::save(
         teams_dir,
         &OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "effort-team".to_string(),
             member_name: member_name.to_string(),
@@ -8007,4 +8021,268 @@ cat "$root/teams/$team/inboxes/$member.json"
             }
         }
     }
+}
+
+#[test]
+fn recovery_managed_onboarding_retry_uses_one_baseline() {
+    let tmp = TempDir::new().unwrap();
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime);
+    orchestrator.create_team("team", None).unwrap();
+    let seat = member(
+        "seat",
+        MemberRole::Agent,
+        CliTool::Codex,
+        tmp.path().to_str().unwrap(),
+    );
+    orchestrator.add_member("team", seat.clone()).unwrap();
+    crate::coordination::recovery_delivery::reserve_activation(
+        tmp.path(),
+        "team",
+        "seat",
+        "attachment-1",
+    )
+    .unwrap();
+    let request = ResumeMemberRequest {
+        team_name: "team".into(),
+        member_name: "seat".into(),
+        reasoning_effort_override: None,
+    };
+    for _ in 0..3 {
+        let entry = orchestrator
+            .prepare_resume_onboarding_entry(&request, &seat, "lead")
+            .unwrap();
+        orchestrator
+            .deliver_onboarding_entries(vec![entry])
+            .unwrap();
+    }
+    assert_eq!(backend.call_counts().1, 1);
+    let records = backend.delivered_requests();
+    let DeliveryRequest::OperatorNotice(notice) = &records[0] else {
+        panic!("notice")
+    };
+    crate::coordination::recovery_card::assert_control_golden(&notice.message);
+}
+
+#[test]
+fn recovery_actual_launch_changes_attachment_stamp_even_for_the_same_session() {
+    // Regression: 25ba6532 reused a generation when a preserved-session relaunch kept its old stamp.
+    let temp = TempDir::new().unwrap();
+    let runtime = RecordingCoordinationRuntime::default();
+    let agent = setup_config(
+        "seat",
+        "codex",
+        "gpt-6-astra",
+        temp.path().to_str().unwrap(),
+    );
+    let context =
+        MemberActivationContext::for_initialize_member("team", "lead", &agent, MemberRole::Agent)
+            .unwrap();
+    let mut pending = MemberActivationRuntimeState::default();
+    for _ in 0..2 {
+        let previous = pending.attached_at;
+        run_member_session_phase(
+            &runtime,
+            temp.path(),
+            &context,
+            "%1",
+            MemberSessionPhase::LaunchOnly(&CliCommandSettings::default()),
+            &mut pending,
+        )
+        .unwrap();
+        assert_ne!(pending.attached_at, previous);
+    }
+}
+
+#[test]
+fn recovery_launch_captures_the_selected_harness_root_separately() {
+    let temp = TempDir::new().unwrap();
+    let runtime = RecordingCoordinationRuntime::default();
+    let agent = setup_config(
+        "seat",
+        "codex",
+        "gpt-6-astra",
+        temp.path().to_str().unwrap(),
+    );
+    let context =
+        MemberActivationContext::for_initialize_member("team", "lead", &agent, MemberRole::Agent)
+            .unwrap();
+    let mut settings = CliCommandSettings::default();
+    let account = temp.path().join("selected-account");
+    settings
+        .account_selector_dirs
+        .insert("CODEX_HOME".into(), account.clone());
+    let mut pending = MemberActivationRuntimeState::default();
+    run_member_session_phase(
+        &runtime,
+        temp.path(),
+        &context,
+        "%1",
+        MemberSessionPhase::LaunchOnly(&settings),
+        &mut pending,
+    )
+    .unwrap();
+    assert_eq!(
+        pending.harness_account_root.as_deref(),
+        Some(account.as_path())
+    );
+}
+
+#[test]
+fn recovery_team_recreation_and_seat_replacement_mint_distinct_recipients() {
+    let tmp = TempDir::new().unwrap();
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let mut recipients = Vec::new();
+    for generation in 0..3 {
+        if generation != 1 {
+            orchestrator.create_team("team", None).unwrap();
+        }
+        orchestrator
+            .add_member(
+                "team",
+                member(
+                    "seat",
+                    MemberRole::Agent,
+                    CliTool::Codex,
+                    tmp.path().to_str().unwrap(),
+                ),
+            )
+            .unwrap();
+        crate::coordination::recovery_delivery::reserve_activation(
+            tmp.path(),
+            "team",
+            "seat",
+            "activation",
+        )
+        .unwrap();
+        let record = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        let team = TeamConfigStore::load(tmp.path(), "team").unwrap();
+        recipients.push((
+            team.team_incarnation_id.unwrap(),
+            record.recovery.member_incarnation_id.unwrap(),
+        ));
+        if generation == 0 {
+            orchestrator.remove_member("team", "seat", None).unwrap();
+        }
+        if generation == 1 {
+            orchestrator.disband_team("team", None).unwrap();
+        }
+    }
+    assert_eq!(recipients[0].0, recipients[1].0);
+    assert_ne!(recipients[0].1, recipients[1].1);
+    assert_ne!(recipients[1].0, recipients[2].0);
+}
+
+#[test]
+fn recovery_delivered_onboarding_uses_the_common_compiler() {
+    // Regression: 25ba6532 left full-role replay in the onboarding path.
+    let tmp = TempDir::new().unwrap();
+    let backend = Arc::new(FakeBackend::default());
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        backend.clone(),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    let request = AddAgentRequest {
+        team_name: "team".into(),
+        agent: setup_config("seat", "codex", "gpt-6-astra", tmp.path().to_str().unwrap()),
+    };
+    orchestrator.create_team("team", None).unwrap();
+    orchestrator
+        .add_member(
+            "team",
+            member(
+                "seat",
+                MemberRole::Agent,
+                CliTool::Codex,
+                tmp.path().to_str().unwrap(),
+            ),
+        )
+        .unwrap();
+    let entry = orchestrator
+        .prepare_add_agent_onboarding_entry(&request)
+        .unwrap()
+        .unwrap();
+    orchestrator
+        .deliver_onboarding_entries(vec![entry])
+        .unwrap();
+    let delivered = backend.delivered_requests();
+    let DeliveryRequest::OperatorNotice(notice) = &delivered[0] else {
+        panic!("notice")
+    };
+    assert!(notice.message.starts_with("[taurhaus] recovery_card"));
+    assert!(!notice.message.contains("mesh read"));
+}
+
+#[test]
+fn recovery_submission_recomposes_a_changed_view_without_spending_a_retry() {
+    use crate::coordination::requests::OperatorNoticeDelivery;
+    // Regression: 25ba6532 submitted prepared content without rechecking current operative facts.
+    let tmp = TempDir::new().unwrap();
+    let backend = Arc::new(FakeBackend::default());
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        backend.clone(),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    orchestrator.create_team("team", None).unwrap();
+    orchestrator
+        .add_member(
+            "team",
+            member(
+                "seat",
+                MemberRole::Agent,
+                CliTool::Codex,
+                tmp.path().to_str().unwrap(),
+            ),
+        )
+        .unwrap();
+    crate::coordination::recovery_delivery::reserve_activation(
+        tmp.path(),
+        "team",
+        "seat",
+        "activation",
+    )
+    .unwrap();
+    let first = crate::coordination::recovery_delivery::prepare(
+        &orchestrator.root_registry,
+        tmp.path(),
+        "team",
+        "seat",
+        "inbox",
+    )
+    .unwrap()
+    .unwrap();
+    let mut snapshot = crate::coordination::stores::OperationalContextSnapshotStore::load(
+        tmp.path(),
+        "team",
+        "seat",
+    )
+    .unwrap()
+    .unwrap();
+    snapshot.assignment_footer.validation_expectation = "CURRENT-VALIDATION".into();
+    crate::coordination::stores::OperationalContextSnapshotStore::save(tmp.path(), &snapshot)
+        .unwrap();
+    orchestrator
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            team_name: "team".into(),
+            member_name: "seat".into(),
+            sender_name: None,
+            message: first.text,
+            recovery_card: Some(first.receipt.clone()),
+            operational_context: None,
+        }))
+        .unwrap();
+    let records = backend.delivered_requests();
+    let DeliveryRequest::OperatorNotice(notice) = &records[0] else {
+        panic!("notice")
+    };
+    assert!(notice.message.contains("CURRENT-VALIDATION"));
+    let receipt = notice.recovery_card.as_ref().unwrap();
+    assert_eq!(receipt.delivery_id, first.receipt.delivery_id);
+    assert_eq!(receipt.attempt, 1);
+    assert_ne!(receipt.content_revision, first.receipt.content_revision);
 }

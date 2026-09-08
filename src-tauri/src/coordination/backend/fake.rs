@@ -132,6 +132,8 @@ impl CoordinationBackend for FakeBackend {
         }
 
         Ok(DeliveryResult {
+            recovery_text: None,
+            recovery_card: None,
             delivered: true,
             method: DeliveryMethod::TmuxInjection,
             durable: false,
@@ -213,6 +215,7 @@ mod tests {
 
         let _ = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                recovery_card: None,
                 team_name: "architecture-final".to_string(),
                 member_name: "alice".to_string(),
                 message: "status?".to_string(),
@@ -248,6 +251,7 @@ mod tests {
         ));
         let err = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                recovery_card: None,
                 team_name: "architecture-final".to_string(),
                 member_name: "alice".to_string(),
                 message: "status?".to_string(),
@@ -265,6 +269,7 @@ mod tests {
         backend.clear_deliver_error();
         let result = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                recovery_card: None,
                 team_name: "architecture-final".to_string(),
                 member_name: "alice".to_string(),
                 message: "status?".to_string(),
@@ -284,6 +289,7 @@ mod tests {
 
         let err = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                recovery_card: None,
                 team_name: "architecture-final".to_string(),
                 member_name: "alice".to_string(),
                 message: "status?".to_string(),

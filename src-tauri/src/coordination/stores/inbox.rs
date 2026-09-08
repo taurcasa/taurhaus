@@ -152,6 +152,13 @@ impl MeshInboxStore {
         for existing in &mut messages {
             existing.remove_authored_keys_from_extra();
         }
+        if message
+            .id
+            .as_ref()
+            .is_some_and(|id| messages.iter().any(|m| m.id.as_ref() == Some(id)))
+        {
+            return Ok(());
+        }
         messages.push(message);
 
         let payload = serde_json::to_string_pretty(&messages).map_err(|err| {

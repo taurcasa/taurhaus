@@ -645,6 +645,7 @@ mod tests {
             teams.path(),
             "architecture-final",
             &TeamConfig {
+                team_incarnation_id: None,
                 schema_version: 1,
                 name: "architecture-final".to_string(),
                 description: None,
@@ -775,6 +776,7 @@ mod tests {
             teams.path(),
             "architecture-final",
             &TeamConfig {
+                team_incarnation_id: None,
                 schema_version: 1,
                 name: "architecture-final".to_string(),
                 description: None,
@@ -817,6 +819,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),

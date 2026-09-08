@@ -387,6 +387,7 @@ fn deliver_inbox_notice(
 ) -> DeliveryResult {
     let result = orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            recovery_card: None,
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "wake disposition preservation".to_string(),
@@ -445,6 +446,8 @@ impl CoordinationBackend for UndeliveredBackend {
 
     fn deliver(&self, _req: DeliveryRequest) -> Result<DeliveryResult, CoordinationError> {
         Ok(DeliveryResult {
+            recovery_text: None,
+            recovery_card: None,
             delivered: false,
             method: DeliveryMethod::NativeMessageApi,
             durable: false,
@@ -486,6 +489,8 @@ impl CoordinationBackend for InboxFileBackend {
 
     fn deliver(&self, _req: DeliveryRequest) -> Result<DeliveryResult, CoordinationError> {
         Ok(DeliveryResult {
+            recovery_text: None,
+            recovery_card: None,
             delivered: true,
             method: DeliveryMethod::InboxFile,
             durable: true,
@@ -2766,6 +2771,7 @@ fn startup_reconcile_removes_orphan_runtime_records() {
         .expect("create should succeed");
 
     let orphan_runtime = MemberRuntimeRecord {
+        recovery: Default::default(),
         schema_version: 3,
         member_name: "orphan-agent".to_string(),
         cli_tool: None,
@@ -4161,6 +4167,7 @@ fn deliver_operator_notice_succeeds() {
 
     let result = orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            recovery_card: None,
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
@@ -4204,6 +4211,7 @@ fn delivery_audit_reports_the_inbox_file_method_that_actually_ran() {
 
     let result = orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            recovery_card: None,
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
@@ -4742,6 +4750,7 @@ fn deliver_to_nonexistent_member_fails() {
 
     let err = orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            recovery_card: None,
             member_name: "missing-member".to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
@@ -4772,6 +4781,7 @@ fn deliver_updates_runtime_last_seen() {
 
     orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            recovery_card: None,
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
@@ -4806,6 +4816,7 @@ fn deliver_backend_failure_emits_failed_event() {
 
     let err = orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            recovery_card: None,
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "status?".to_string(),
@@ -4853,6 +4864,7 @@ fn deliver_false_result_is_treated_as_failure() {
     // state even when the backend explicitly reported `delivered: false`.
     let err = orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            recovery_card: None,
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "ACTION REQUIRED: Review the packet.".to_string(),
@@ -5003,6 +5015,7 @@ fn all_mutations_emit_events() {
         .expect("add should succeed");
     orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            recovery_card: None,
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
             message: "check status".to_string(),
@@ -5079,6 +5092,7 @@ fn deliver_to_nonexistent_team_fails_without_delivery_audit_events() {
 
     let err = orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            recovery_card: None,
             member_name: "codex-reviewer".to_string(),
             team_name: "missing-team".to_string(),
             message: "status?".to_string(),

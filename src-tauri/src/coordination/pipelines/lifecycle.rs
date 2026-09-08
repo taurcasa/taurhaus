@@ -3,7 +3,6 @@ use super::*;
 use serde_json::{Map, Value};
 use taurhaus_lib::logging::emit_global;
 
-use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::{
@@ -11,7 +10,6 @@ use crate::coordination::member_activation::{
     MemberActivationRuntimeCommitPolicy,
 };
 use crate::coordination::orchestrator::CoordinationOrchestrator;
-use crate::coordination::reinjection::CompactionReinjectionService;
 use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryRequest, DeliveryResult, InitializeTeamRequest,
     OperatorNoticeDelivery, ResumeMemberRequest, TeardownMode, TeardownRequest,
@@ -20,7 +18,6 @@ use crate::coordination::stores::lock::acquire_team_lock;
 use crate::coordination::stores::{
     MemberRuntimeSnapshot, MemberRuntimeStore, RuntimeCommitOutcome, TeamConfigStore,
 };
-use crate::session_scanner::cli_tool::CliTool;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct PreparedOnboardingDelivery {
@@ -28,7 +25,6 @@ pub(super) struct PreparedOnboardingDelivery {
     pub(super) member_name: String,
     pub(super) team_name: String,
     pub(super) sender_name: String,
-    pub(super) message: String,
 }
 
 impl CoordinationOrchestrator {
@@ -357,85 +353,22 @@ impl CoordinationOrchestrator {
 
 fn prepare_agent_onboarding_delivery(
     context: MemberActivationContext,
-    member: &AgentSetupConfig,
+    setup: &AgentSetupConfig,
 ) -> Option<PreparedOnboardingDelivery> {
-    let role_context = RoleContext {
-        role_id: member.role_id.as_deref(),
-        communication_style: member.communication_style.as_deref(),
-        instructions: agent_instructions(member),
-        behavioral_contract: member.behavioral_contract.as_ref(),
-        quality_gates: member.quality_gates.as_deref(),
-        handoff_expectations: member.handoff_expectations.as_deref(),
-        definition_of_done: member.definition_of_done.as_deref(),
-        capabilities: member.capabilities.as_deref(),
-    };
-    let has_role_context = agent_has_role_context(member);
-    prepare_onboarding_delivery(context, has_role_context, role_context)
+    let member = member_from_agent_setup(setup, context.member.role).ok()?;
+    prepare_member_onboarding_delivery(context, &member)
 }
 
 fn prepare_member_onboarding_delivery(
     context: MemberActivationContext,
     member: &Member,
 ) -> Option<PreparedOnboardingDelivery> {
-    let role_context = RoleContext {
-        role_id: member.role_id.as_deref(),
-        communication_style: member.communication_style.as_deref(),
-        instructions: member.instructions.as_deref(),
-        behavioral_contract: member.behavioral_contract.as_ref(),
-        quality_gates: member.quality_gates.as_deref(),
-        handoff_expectations: member.handoff_expectations.as_deref(),
-        definition_of_done: member.definition_of_done.as_deref(),
-        capabilities: member.capabilities.as_deref(),
-    };
-    let has_role_context = member_has_role_context(member);
-    prepare_onboarding_delivery(context, has_role_context, role_context)
-}
-
-fn prepare_onboarding_delivery(
-    context: MemberActivationContext,
-    has_role_context: bool,
-    role_context: RoleContext<'_>,
-) -> Option<PreparedOnboardingDelivery> {
-    let MemberActivationContext {
-        team_name,
-        lead,
-        member,
-        delivery_policy,
-        ..
-    } = context;
-    let message = render_onboarding_message(
-        &team_name,
-        &member.name,
-        &lead.name,
-        member.cli_tool,
-        has_role_context,
-        role_context,
-    )?;
     Some(PreparedOnboardingDelivery {
-        policy: delivery_policy,
-        member_name: member.name,
-        team_name,
-        sender_name: lead.name,
-        message,
+        policy: context.delivery_policy,
+        member_name: member.name.clone(),
+        team_name: context.team_name,
+        sender_name: context.lead.name,
     })
-}
-
-fn render_onboarding_message(
-    team_name: &str,
-    member_name: &str,
-    lead_name: &str,
-    cli_tool: CliTool,
-    has_role_context: bool,
-    role_context: RoleContext<'_>,
-) -> Option<String> {
-    DeliveryRenderer::render_for_tool(
-        cli_tool,
-        team_name,
-        member_name,
-        lead_name,
-        has_role_context,
-        role_context,
-    )
 }
 
 fn log_team_config_sync_error(
@@ -544,14 +477,7 @@ impl CoordinationOrchestrator {
     ) -> Option<PreparedOnboardingDelivery> {
         let context =
             MemberActivationContext::for_resume_member(&request.team_name, lead_name, member);
-        let mut entry = prepare_member_onboarding_delivery(context, member)?;
-        CompactionReinjectionService::append_member_lease_context(
-            &mut entry.message,
-            &self.teams_dir,
-            &request.team_name,
-            &member.name,
-        );
-        Some(entry)
+        prepare_member_onboarding_delivery(context, member)
     }
 
     pub(super) fn prepare_add_agent_onboarding_entry(
@@ -574,12 +500,50 @@ impl CoordinationOrchestrator {
         &mut self,
         entry: PreparedOnboardingDelivery,
     ) -> Result<DeliveryResult, CoordinationError> {
-        self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-            member_name: entry.member_name,
-            team_name: entry.team_name,
-            message: entry.message,
-            sender_name: Some(entry.sender_name),
-            operational_context: None,
-        }))
+        self.deliver_recovery_card(&entry.team_name, &entry.member_name, &entry.sender_name)
+    }
+
+    pub(crate) fn deliver_recovery_card(
+        &mut self,
+        team: &str,
+        member: &str,
+        sender: &str,
+    ) -> Result<DeliveryResult, CoordinationError> {
+        use crate::coordination::recovery_delivery::prepare;
+        let Some(card) = prepare(&self.root_registry, &self.teams_dir, team, member, "inbox")?
+        else {
+            let runtime = MemberRuntimeStore::load(&self.teams_dir, team, member)?;
+            let receipt = runtime.recovery.last_delivered.or(runtime.recovery.claim);
+            let accepted = receipt.as_ref().is_some_and(|r| r.stage.satisfies());
+            let durable = receipt.as_ref().is_some_and(|r| r.accepted_bytes > 0);
+            return Ok(DeliveryResult {
+                recovery_text: None,
+                recovery_card: receipt.map(Box::new),
+                delivered: accepted,
+                durable,
+                method: crate::coordination::requests::DeliveryMethod::InboxFile,
+                wake: crate::coordination::requests::WakeDisposition::NotAttempted {
+                    reason: "existing recovery delivery status".into(),
+                },
+                post_write_warnings: Vec::new(),
+            });
+        };
+        let result =
+            self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                recovery_card: Some(card.receipt.clone()),
+                member_name: member.into(),
+                team_name: team.into(),
+                message: card.text,
+                sender_name: Some(sender.into()),
+                operational_context: None,
+            }));
+        let mut result = result?;
+        result.recovery_card = MemberRuntimeStore::load(&self.teams_dir, team, member)
+            .ok()
+            .and_then(|r| r.recovery.claim)
+            .map(Box::new)
+            .or(result.recovery_card)
+            .or(Some(Box::new(card.receipt)));
+        Ok(result)
     }
 }

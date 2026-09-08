@@ -407,6 +407,7 @@ pub mod daemon {
                 };
                 orchestrator.deliver_message(DeliveryRequest::operator_notice(
                     OperatorNoticeDelivery {
+                        recovery_card: None,
                         member_name: request.member_name.clone(),
                         team_name: request.team_name.clone(),
                         message,

@@ -24,6 +24,12 @@ pub enum CompactionDeliveryResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct MemberCompactionState {
+    #[serde(default)]
+    pub pending: bool,
+    #[serde(default)]
+    pub pending_obligation: Option<crate::coordination::recovery_card::ObligationKey>,
+    #[serde(default)]
+    pub satisfied_by: Option<String>,
     pub version: u32,
     pub member_name: String,
     pub last_session_id: String,
@@ -62,8 +68,22 @@ impl MemberCompactionStore {
         member_name: &str,
         state: &MemberCompactionState,
     ) -> Result<(), CoordinationError> {
-        let _lock = super::lock::acquire_team_lock(teams_dir, team_name)?;
+        let guard = super::lock::acquire_team_lock(teams_dir, team_name)?;
+        Self::save_locked(&guard, teams_dir, team_name, member_name, state)
+    }
 
+    pub(crate) fn save_locked(
+        guard: &super::lock::TeamLockGuard,
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+        state: &MemberCompactionState,
+    ) -> Result<(), CoordinationError> {
+        if !guard.covers(teams_dir, team_name) {
+            return Err(CoordinationError::Conflict(
+                "compaction lock mismatch".into(),
+            ));
+        }
         let mut normalized = state.clone();
         normalized.version = COMPACTION_SCHEMA_VERSION;
         normalized.member_name = member_name.to_string();
@@ -177,14 +197,61 @@ pub fn record_delivery_at(
     compaction_timestamp: DateTime<Utc>,
     result: CompactionDeliveryResult,
 ) -> Result<(), CoordinationError> {
+    let guard = super::lock::acquire_team_lock(teams_dir, team_name)?;
+    let mut pending_obligation = None;
+    if result != CompactionDeliveryResult::Failed {
+        if let Ok(mut runtime) = super::MemberRuntimeStore::load(teams_dir, team_name, member_name)
+        {
+            let boundary = format!("{session_id}:{compaction_timestamp}");
+            runtime.recovery.admit_compaction(&boundary);
+            if let Some((team_id, member_id)) = super::TeamConfigStore::load(teams_dir, team_name)
+                .ok()
+                .and_then(|c| c.team_incarnation_id)
+                .zip(runtime.recovery.member_incarnation_id.clone())
+            {
+                if result == CompactionDeliveryResult::Skipped {
+                    pending_obligation = Some(((team_id, member_id), runtime.recovery.context()));
+                }
+            }
+            super::MemberRuntimeStore::save_recovery_locked(
+                &guard,
+                teams_dir,
+                team_name,
+                member_name,
+                &runtime,
+            )?;
+        }
+    }
+    let previous = MemberCompactionStore::load(teams_dir, team_name, member_name)?;
+    let same_boundary = previous.as_ref().is_some_and(|s| {
+        s.last_session_id == session_id && s.last_compaction_timestamp == compaction_timestamp
+    });
+    // Only a new skipped boundary replaces the obligation; receipt observation satisfies it.
+    let preserve_obligation = same_boundary || result != CompactionDeliveryResult::Skipped;
     let state = MemberCompactionState {
+        pending: if preserve_obligation {
+            previous.as_ref().is_some_and(|s| s.pending)
+        } else {
+            pending_obligation.is_some()
+        },
+        pending_obligation: if preserve_obligation {
+            previous.as_ref().and_then(|s| s.pending_obligation.clone())
+        } else {
+            pending_obligation
+        },
+        satisfied_by: if preserve_obligation {
+            previous.and_then(|s| s.satisfied_by)
+        } else {
+            None
+        },
         version: COMPACTION_SCHEMA_VERSION,
-        member_name: member_name.to_string(),
-        last_session_id: session_id.to_string(),
+        member_name: member_name.into(),
+        last_session_id: session_id.into(),
         last_compaction_timestamp: compaction_timestamp,
         last_delivery_result: result,
     };
-    MemberCompactionStore::save(teams_dir, team_name, member_name, &state)?;
+    MemberCompactionStore::save_locked(&guard, teams_dir, team_name, member_name, &state)?;
+    drop(guard);
     emit_compaction_delivery_event(
         team_name,
         member_name,
@@ -294,6 +361,9 @@ mod tests {
 
     fn sample_state() -> MemberCompactionState {
         MemberCompactionState {
+            pending: false,
+            pending_obligation: None,
+            satisfied_by: None,
             version: 99,
             member_name: "developer1".to_string(),
             last_session_id: "session-1".to_string(),
@@ -316,6 +386,9 @@ mod tests {
         assert_eq!(
             stored,
             MemberCompactionState {
+                pending: false,
+                pending_obligation: None,
+                satisfied_by: None,
                 version: COMPACTION_SCHEMA_VERSION,
                 member_name: "developer1".to_string(),
                 ..state

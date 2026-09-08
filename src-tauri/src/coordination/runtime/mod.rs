@@ -705,6 +705,7 @@ mod tests {
 
     fn sample_runtime_with_pane(member_name: &str, pane_id: &str) -> MemberRuntimeRecord {
         MemberRuntimeRecord {
+            recovery: Default::default(),
             schema_version: 3,
             member_name: member_name.to_string(),
             cli_tool: None,

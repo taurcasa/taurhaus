@@ -440,12 +440,16 @@ impl MeshBridgedBackend {
         &self,
         payload: OperatorNoticeDelivery,
     ) -> Result<DeliveryResult, CoordinationError> {
-        let message = MeshInboxMessage::operator_originated(
+        let mut message = MeshInboxMessage::operator_originated(
             &payload.member_name,
             payload.message,
             Some(NOTICE_SUMMARY.to_string()),
             Utc::now(),
             payload.sender_name.as_deref(),
+        );
+        crate::coordination::recovery_delivery::attach_receipt(
+            &mut message,
+            payload.recovery_card.as_ref(),
         );
         MeshInboxStore::append(
             &self.teams_dir,
@@ -454,6 +458,8 @@ impl MeshBridgedBackend {
             &message,
         )?;
         Ok(DeliveryResult {
+            recovery_text: None,
+            recovery_card: payload.recovery_card.map(Box::new),
             delivered: true,
             method: DeliveryMethod::InboxFile,
             durable: true,
@@ -784,6 +790,7 @@ mod tests {
 
         let result = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                recovery_card: None,
                 member_name: "codex-reviewer".to_string(),
                 team_name: "architecture-final".to_string(),
                 message: "check in".to_string(),
@@ -809,6 +816,7 @@ mod tests {
 
         backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                recovery_card: None,
                 member_name: "codex-reviewer".to_string(),
                 team_name: "architecture-final".to_string(),
                 message: "check in".to_string(),
@@ -839,6 +847,7 @@ mod tests {
 
             let delivered =
                 backend.deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                    recovery_card: None,
                     member_name: "fake-agent".to_string(),
                     team_name: "architecture-final".to_string(),
                     message: "hello".to_string(),

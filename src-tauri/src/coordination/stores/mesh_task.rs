@@ -120,7 +120,11 @@ pub(crate) fn is_still_open(teams_dir: &Path, team: &str, member: &str, task_id:
         && !awaiting_go(task.get("metadata"))
 }
 
-fn task_path(teams_dir: &Path, team: &str, task_id: &str) -> Result<PathBuf, CoordinationError> {
+pub(crate) fn task_path(
+    teams_dir: &Path,
+    team: &str,
+    task_id: &str,
+) -> Result<PathBuf, CoordinationError> {
     if task_id.is_empty()
         || !task_id
             .chars()
@@ -176,7 +180,11 @@ mod tests {
 
     use crate::coordination::errors::CoordinationError;
 
-    fn task_path(teams_dir: &std::path::Path, team: &str, task_id: &str) -> std::path::PathBuf {
+    pub(crate) fn task_path(
+        teams_dir: &std::path::Path,
+        team: &str,
+        task_id: &str,
+    ) -> std::path::PathBuf {
         teams_dir
             .parent()
             .expect("teams parent")
