@@ -2232,6 +2232,8 @@ mod tests {
     }
     #[test]
     fn recovery_force_cannot_silently_run_against_a_protocol_24_daemon() {
-        assert!(PROTOCOL_VERSION > 24);
+        const {
+            assert!(PROTOCOL_VERSION > 24);
+        }
     }
 }

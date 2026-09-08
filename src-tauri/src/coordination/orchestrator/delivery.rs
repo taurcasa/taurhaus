@@ -59,19 +59,21 @@ impl CoordinationOrchestrator {
                 notice.message = card.text;
                 notice.recovery_card = Some(card.receipt);
             }
-            if notice.recovery_card.is_none() && notice.operational_context.is_some() {
-                if crate::coordination::stores::MemberCompactionStore::load(
-                    &self.teams_dir,
-                    &notice.team_name,
-                    &notice.member_name,
-                )?
-                .is_some_and(|s| s.pending)
+            match notice.operational_context.as_ref() {
+                Some(context)
+                    if notice.recovery_card.is_none()
+                        && crate::coordination::stores::MemberCompactionStore::load(
+                            &self.teams_dir,
+                            &notice.team_name,
+                            &notice.member_name,
+                        )?
+                        .is_some_and(|s| s.pending) =>
                 {
                     apply_delivery_context(
                         &self.teams_dir,
                         &notice.team_name,
                         &notice.member_name,
-                        notice.operational_context.as_ref().unwrap(),
+                        context,
                     )?;
                     if let Some(mut card) = crate::coordination::recovery_delivery::prepare(
                         &self.root_registry,
@@ -85,6 +87,7 @@ impl CoordinationOrchestrator {
                         notice.recovery_card = Some(card.receipt);
                     }
                 }
+                _ => {}
             }
         }
         let recovery_receipt = match &request {
@@ -168,7 +171,7 @@ impl CoordinationOrchestrator {
                         },
                         receipt.generated_bytes,
                     );
-                    result.recovery_card = Some(observed);
+                    result.recovery_card = Some(Box::new(observed));
                     if let Err(error) = crate::coordination::recovery_delivery::observe(
                         &self.root_registry,
                         &self.teams_dir,

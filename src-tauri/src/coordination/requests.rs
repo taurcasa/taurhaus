@@ -174,7 +174,7 @@ pub struct DeliveryResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery_text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub recovery_card: Option<crate::coordination::recovery_card::CardReceipt>,
+    pub recovery_card: Option<Box<crate::coordination::recovery_card::CardReceipt>>,
     /// Whether the backend completed its delivery operation. For inbox-file
     /// delivery this means exactly one append completed.
     pub delivered: bool,
@@ -871,6 +871,10 @@ pub struct StepProgressEvent {
     pub progress: StepProgress,
 }
 
+pub fn is_false(value: &bool) -> bool {
+    !value
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -1231,8 +1235,4 @@ mod tests {
             &[]
         );
     }
-}
-
-pub fn is_false(value: &bool) -> bool {
-    !value
 }

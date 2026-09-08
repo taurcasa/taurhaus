@@ -51,7 +51,7 @@ impl ClaudeNativeBackend {
 
         Ok(DeliveryResult {
             recovery_text: None,
-            recovery_card: payload.recovery_card,
+            recovery_card: payload.recovery_card.map(Box::new),
             delivered: true,
             method: DeliveryMethod::InboxFile,
             durable: true,

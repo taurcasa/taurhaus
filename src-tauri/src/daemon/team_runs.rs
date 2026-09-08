@@ -793,7 +793,7 @@ pub(crate) fn execute_reonboard_pipeline(
         if request.recovery_read {
             if request.force { return Err(crate::coordination::errors::CoordinationError::Validation("recovery read and force are separate intents".into())); }
             let (text,receipt)=crate::coordination::recovery_delivery::read_current(&orchestrator.root_registry,&orchestrator.teams_dir,&request.team_name,&request.member_name)?;
-            return Ok(DeliveryResult { recovery_text: Some(text), recovery_card: Some(receipt), delivered: true, durable: false, method: crate::coordination::requests::DeliveryMethod::InboxFile, wake: crate::coordination::requests::WakeDisposition::NotAttempted { reason: "explicit recovery read".into() }, post_write_warnings: Vec::new() });
+            return Ok(DeliveryResult { recovery_text: Some(text), recovery_card: Some(Box::new(receipt)), delivered: true, durable: false, method: crate::coordination::requests::DeliveryMethod::InboxFile, wake: crate::coordination::requests::WakeDisposition::NotAttempted { reason: "explicit recovery read".into() }, post_write_warnings: Vec::new() });
         }
         if request.force {
             let intent = request.intent_id.as_deref().filter(|s| !s.trim().is_empty()).ok_or_else(|| crate::coordination::errors::CoordinationError::Validation("forced recovery requires intent_id".into()))?;

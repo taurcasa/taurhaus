@@ -539,7 +539,7 @@ impl CoordinationOrchestrator {
             let durable = receipt.as_ref().is_some_and(|r| r.accepted_bytes > 0);
             return Ok(DeliveryResult {
                 recovery_text: None,
-                recovery_card: receipt,
+                recovery_card: receipt.map(Box::new),
                 delivered: accepted,
                 durable,
                 method: crate::coordination::requests::DeliveryMethod::InboxFile,
@@ -562,8 +562,9 @@ impl CoordinationOrchestrator {
         result.recovery_card = MemberRuntimeStore::load(&self.teams_dir, team, member)
             .ok()
             .and_then(|r| r.recovery.claim)
+            .map(Box::new)
             .or(result.recovery_card)
-            .or(Some(card.receipt));
+            .or(Some(Box::new(card.receipt)));
         Ok(result)
     }
 }
