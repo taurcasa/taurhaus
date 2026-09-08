@@ -510,6 +510,7 @@ mod tests {
     // 6789201c writes metadata plus workflow echoes, never that sidecar shape.
     #[cfg(target_os = "linux")]
     #[test]
+    #[ignore = "requires locked Mesh, Python 3 and cc; run just test-mesh-contracts"]
     fn mesh_binary_monitor_records_are_counted_once_across_workflow_echoes() {
         let fixture = crate::coordination::mesh_contract_fixture::MeshFixture::new("monitor");
         mesh_launch(&fixture, Utc::now() - chrono::Duration::minutes(1));
@@ -538,6 +539,7 @@ mod tests {
     // omitting a newly recorded ruling on an older launched task.
     #[cfg(target_os = "linux")]
     #[test]
+    #[ignore = "requires locked Mesh, Python 3 and cc; run just test-mesh-contracts"]
     fn mesh_binary_oversize_and_subsequent_raise_count_even_with_an_old_launch() {
         for launch_age in [0, 31] {
             let fixture = crate::coordination::mesh_contract_fixture::MeshFixture::new("ruling");

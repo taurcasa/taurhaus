@@ -6,10 +6,11 @@ monitor or workflow records. Install that binary at `~/.local/bin/mesh`, or set
 `MESH_CONTRACT_BIN` to its absolute path. Python 3 and `cc` are also required.
 `just test-mesh-contracts` is the explicit Linux operator gate for changes to
 these readers or fixtures. Missing prerequisites or a lock mismatch fail there.
-The default `just test-rust-unit` recipe excludes `mesh_binary_` tests and prints
-a NOT RUN notice; the integration recipe does not select these lib tests either.
-Neither CI lane needs a host Mesh installation. Direct unfiltered `cargo test`
-still selects the binary tests and therefore needs these prerequisites.
+The four `mesh_binary_` tests carry `#[ignore]` with a prerequisite message;
+the operator recipe explicitly selects them with `--ignored`.
+The default `just test-rust-unit` recipe prints a NOT RUN notice; the integration
+recipe does not select these lib tests either. Neither CI lane nor an unfiltered
+`cargo test` needs a host Mesh installation.
 
 Run from the checkout root:
 

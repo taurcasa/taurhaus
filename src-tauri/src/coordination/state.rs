@@ -2260,6 +2260,7 @@ mod tests {
     // activity TTL to Mesh 6789201c's permanent blocked-with-reason wait.
     #[cfg(target_os = "linux")]
     #[test]
+    #[ignore = "requires locked Mesh, Python 3 and cc; run just test-mesh-contracts"]
     fn mesh_binary_waits_guard_half_full_deadlines_go_and_reassignment() {
         let fixture = crate::coordination::mesh_contract_fixture::MeshFixture::new("wait");
         for (source, waiting) in [
@@ -2336,6 +2337,7 @@ mod tests {
     // 30 minutes, though the locked Mesh monitor deliberately never does.
     #[cfg(target_os = "linux")]
     #[test]
+    #[ignore = "requires locked Mesh, Python 3 and cc; run just test-mesh-contracts"]
     fn mesh_binary_member_block_with_reason_survives_the_activity_ttl() {
         let fixture = crate::coordination::mesh_contract_fixture::MeshFixture::new("wait");
         let (_tmp, teams, runtime, fake, state) = deadline_fixture();
