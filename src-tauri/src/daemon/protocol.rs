@@ -1766,6 +1766,9 @@ mod tests {
         };
         let reonboard = CoordinationReonboardParams {
             request: crate::coordination::requests::ReonboardRequest {
+                force: false,
+                intent_id: None,
+                reason: None,
                 team_name: "arch".to_string(),
                 member_name: "builder".to_string(),
             },

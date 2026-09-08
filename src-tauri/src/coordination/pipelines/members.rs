@@ -2,18 +2,15 @@ use super::*;
 
 use chrono::Utc;
 
-use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::{
     hydrate_member_model_fields, load_role_for_member_hydration, MemberActivationContext,
 };
 use crate::coordination::orchestrator::CoordinationOrchestrator;
-use crate::coordination::reinjection::CompactionReinjectionService;
 use crate::coordination::requests::{
-    AddAgentReport, AddAgentRequest, DeliveryRequest, DeliveryResult, InitializeTeamRequest,
-    MemberActivationStage, OperatorNoticeDelivery, ResumeAgentReport, ResumeMemberRequest,
-    StepProgress, StepStatus, WakeDisposition,
+    AddAgentReport, AddAgentRequest, DeliveryResult, InitializeTeamRequest, MemberActivationStage,
+    ResumeAgentReport, ResumeMemberRequest, StepProgress, StepStatus, WakeDisposition,
 };
 use crate::coordination::runtime::{
     emit_foreign_pane_event, resolve_or_create_pane_for_member, PaneResolution,
@@ -658,6 +655,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         if !deferred_claude_lead_join {
             self.join_mesh(prepared)?;
         }
+        self.reserve_recovery_generation(prepared)?;
         self.start_member_daemon(prepared, &pane_id)?;
         self.deliver_onboarding(prepared)?;
         self.commit_runtime(prepared)?;
@@ -1009,9 +1007,29 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 &pane_id,
                 &mut self.runtime_state,
             ) {
-            Ok(()) => Ok(()),
+            Ok(()) => self.reserve_recovery_generation(prepared),
             Err(err) => Err(("launch_sessions".to_string(), err)),
         }
+    }
+
+    fn reserve_recovery_generation(
+        &self,
+        prepared: &PreparedMemberActivation,
+    ) -> Result<(), (String, CoordinationError)> {
+        let intent = crate::coordination::recovery_card::digest(&(
+            &self.runtime_state.pane_id,
+            self.runtime_state.pane_pid,
+            self.runtime_state.pane_start_time,
+            &self.runtime_state.session_id,
+            self.runtime_state.attached_at,
+        ));
+        crate::coordination::recovery_delivery::reserve_activation(
+            &self.orchestrator.teams_dir,
+            &prepared.activation_context.team_name,
+            &prepared.member.name,
+            &intent,
+        )
+        .map_err(|e| ("reserve_recovery_generation".into(), e))
     }
 
     fn load_initialize_pane_id(
@@ -1387,50 +1405,12 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         request: &ResumeMemberRequest,
         prepared: &PreparedMemberActivation,
     ) -> Result<Vec<DeliveryResult>, CoordinationError> {
-        if let Some(entry) = self.orchestrator.prepare_resume_onboarding_entry(
-            request,
-            &prepared.member,
-            &prepared.lead_name,
-        ) {
-            return self.orchestrator.deliver_onboarding_entries(vec![entry]);
-        }
-
-        if !crate::session_scanner::cli_tool::spec(prepared.member.cli_tool)
-            .capabilities
-            .native_inbox_poller
-        {
-            return Ok(Vec::new());
-        }
-
-        let mut message = DeliveryRenderer::render_onboarding(
-            &request.team_name,
-            &prepared.member.name,
-            &prepared.lead_name,
-            RoleContext {
-                role_id: prepared.member.role_id.as_deref(),
-                communication_style: prepared.member.communication_style.as_deref(),
-                instructions: prepared.member.instructions.as_deref(),
-                behavioral_contract: prepared.member.behavioral_contract.as_ref(),
-                quality_gates: prepared.member.quality_gates.as_deref(),
-                handoff_expectations: prepared.member.handoff_expectations.as_deref(),
-                definition_of_done: prepared.member.definition_of_done.as_deref(),
-                capabilities: prepared.member.capabilities.as_deref(),
-            },
-        );
-        CompactionReinjectionService::append_member_lease_context(
-            &mut message,
-            &self.orchestrator.teams_dir,
-            &request.team_name,
-            &prepared.member.name,
-        );
         self.orchestrator
-            .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-                member_name: prepared.member.name.clone(),
-                team_name: request.team_name.clone(),
-                message,
-                sender_name: Some(prepared.lead_name.clone()),
-                operational_context: None,
-            }))
+            .deliver_recovery_card(
+                &request.team_name,
+                &prepared.member.name,
+                &prepared.lead_name,
+            )
             .map(|result| vec![result])
     }
 

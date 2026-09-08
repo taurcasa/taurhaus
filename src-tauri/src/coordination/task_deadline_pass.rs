@@ -247,6 +247,7 @@ fn apply_member_deadline(
         DeadlineAction::Nothing => Ok(()),
         DeadlineAction::Nudge => orchestrator
             .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                recovery_card: None,
                 team_name: team_name.to_string(),
                 member_name: member_name.to_string(),
                 message: format!(

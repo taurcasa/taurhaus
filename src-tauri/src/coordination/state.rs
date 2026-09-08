@@ -609,6 +609,7 @@ impl CoordinationState {
         // Set dedicated Claude backend for per-member routing: Claude agents get
         // inbox file delivery instead of mesh send, fixing auth failures on
         // Claude-only teams.
+        orchestrator.root_registry = self.team_root_registry.clone();
         orchestrator.claude_backend =
             Some(Arc::new(ClaudeNativeBackend::new(teams_dir.to_path_buf())));
         if let Err(err) = orchestrator.reconcile_runtime_state_on_startup() {
@@ -646,6 +647,7 @@ impl CoordinationState {
         let runtime = (self.runtime_factory)();
         let mut orchestrator =
             CoordinationOrchestrator::new_with_runtime(teams_dir.to_path_buf(), backend, runtime);
+        orchestrator.root_registry = self.team_root_registry.clone();
         orchestrator.claude_backend =
             Some(Arc::new(ClaudeNativeBackend::new(teams_dir.to_path_buf())));
         Ok(orchestrator)
@@ -1256,6 +1258,7 @@ mod tests {
             )?;
             orchestrator.deliver_message(DeliveryRequest::operator_notice(
                 OperatorNoticeDelivery {
+                    recovery_card: None,
                     team_name: "root-authority".to_string(),
                     member_name: "builder".to_string(),
                     message: "status?".to_string(),
@@ -3193,6 +3196,7 @@ mod tests {
         state
             .with_orchestrator(|orch| {
                 orch.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                    recovery_card: None,
                     team_name: "architecture-final".to_string(),
                     member_name: "existing-dev".to_string(),
                     message: "post-upgrade ping".to_string(),

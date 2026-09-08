@@ -410,7 +410,8 @@ fn prepare_onboarding_delivery(
         member.cli_tool,
         has_role_context,
         role_context,
-    )?;
+    )
+    .unwrap_or_default();
     Some(PreparedOnboardingDelivery {
         policy: delivery_policy,
         member_name: member.name,
@@ -574,12 +575,63 @@ impl CoordinationOrchestrator {
         &mut self,
         entry: PreparedOnboardingDelivery,
     ) -> Result<DeliveryResult, CoordinationError> {
-        self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-            member_name: entry.member_name,
-            team_name: entry.team_name,
-            message: entry.message,
-            sender_name: Some(entry.sender_name),
-            operational_context: None,
-        }))
+        self.deliver_recovery_card(&entry.team_name, &entry.member_name, &entry.sender_name)
+    }
+
+    pub(crate) fn deliver_recovery_card(
+        &mut self,
+        team: &str,
+        member: &str,
+        sender: &str,
+    ) -> Result<DeliveryResult, CoordinationError> {
+        use crate::coordination::recovery_card::ReceiptStage;
+        use crate::coordination::recovery_delivery::{observe, prepare};
+        let Some(card) = prepare(&self.root_registry, &self.teams_dir, team, member, "inbox")?
+        else {
+            let runtime = MemberRuntimeStore::load(&self.teams_dir, team, member)?;
+            let receipt = runtime.recovery.last_delivered.or(runtime.recovery.claim);
+            let accepted = receipt.as_ref().is_some_and(|r| r.stage.satisfies());
+            return Ok(DeliveryResult {
+                recovery_card: receipt,
+                delivered: accepted,
+                durable: accepted,
+                method: crate::coordination::requests::DeliveryMethod::InboxFile,
+                wake: crate::coordination::requests::WakeDisposition::NotAttempted {
+                    reason: "existing recovery delivery status".into(),
+                },
+                post_write_warnings: Vec::new(),
+            });
+        };
+        let result =
+            self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                recovery_card: Some(card.receipt.clone()),
+                member_name: member.into(),
+                team_name: team.into(),
+                message: card.text,
+                sender_name: Some(sender.into()),
+                operational_context: None,
+            }));
+        let stage = match &result {
+            Ok(result) if result.durable => ReceiptStage::Accepted,
+            Ok(result) if result.delivered => ReceiptStage::Submitted,
+            _ => ReceiptStage::OutcomeUnknown,
+        };
+        let observed = observe(
+            &self.root_registry,
+            &self.teams_dir,
+            team,
+            member,
+            &card.receipt,
+            stage,
+        );
+        let mut result = result?;
+        if let Err(error) = observed {
+            result.post_write_warnings.push(error.to_string());
+        }
+        result.recovery_card = MemberRuntimeStore::load(&self.teams_dir, team, member)
+            .ok()
+            .and_then(|r| r.recovery.claim)
+            .or(Some(card.receipt));
+        Ok(result)
     }
 }

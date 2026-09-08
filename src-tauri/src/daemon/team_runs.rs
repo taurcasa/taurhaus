@@ -2,13 +2,12 @@
 
 use std::sync::Arc;
 
-use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::MemberRole;
-use crate::coordination::reinjection::CompactionReinjectionService;
 use crate::coordination::requests::{
     DeliveryRequest, DeliveryResult, OperatorNoticeDelivery, ReonboardRequest,
 };
 use crate::coordination::state::CoordinationState;
+use crate::coordination::stores::MemberRuntimeStore;
 use crate::daemon::coordination_runs::{
     prepare_daemon_launch_inputs_for_tools, CoordinationRunKind, CoordinationRunRegistry,
     CoordinationRunReport, RunOutcome,
@@ -676,6 +675,7 @@ pub(crate) fn execute_switch_team_account(
             };
             if let Err(error) = orchestrator.deliver_message(DeliveryRequest::operator_notice(
                 OperatorNoticeDelivery {
+                    recovery_card: None,
                     member_name: handoff.member_name.clone(),
                     team_name: request.team_name.clone(),
                     message,
@@ -733,6 +733,7 @@ pub(crate) fn execute_switch_team_account(
             );
             if let Err(error) = orchestrator.deliver_message(DeliveryRequest::operator_notice(
                 OperatorNoticeDelivery {
+                    recovery_card: None,
                     member_name: lead_name.clone(),
                     team_name: request.team_name.clone(),
                     message,
@@ -789,72 +790,18 @@ pub(crate) fn execute_reonboard_pipeline(
     request: &ReonboardRequest,
 ) -> Result<DeliveryResult, crate::coordination::errors::CoordinationError> {
     state.with_team_orchestrator(&request.team_name, |orchestrator| {
-        let team = orchestrator.get_team_status(&request.team_name)?;
-        let lead_name = team
-            .config
-            .members
-            .iter()
-            .find(|member| member.role == MemberRole::Lead)
-            .map(|member| member.name.clone())
-            .unwrap_or_else(|| "team-lead".to_string());
-        let member = team
-            .config
-            .members
-            .iter()
-            .find(|member| member.name == request.member_name)
-            .ok_or_else(|| {
-                crate::coordination::errors::CoordinationError::NotFound(format!(
-                    "member '{}' not found in team '{}'",
-                    request.member_name, request.team_name
-                ))
-            })?;
-        let role_context = RoleContext {
-            role_id: member.role_id.as_deref(),
-            communication_style: member.communication_style.as_deref(),
-            instructions: member.instructions.as_deref(),
-            behavioral_contract: member.behavioral_contract.as_ref(),
-            quality_gates: member.quality_gates.as_deref(),
-            handoff_expectations: member.handoff_expectations.as_deref(),
-            definition_of_done: member.definition_of_done.as_deref(),
-            capabilities: member.capabilities.as_deref(),
-        };
-        let tool_spec = crate::session_scanner::cli_tool::spec(member.cli_tool);
-        let mut message = if tool_spec.capabilities.native_inbox_poller {
-            DeliveryRenderer::render_onboarding(
-                &request.team_name,
-                &request.member_name,
-                &lead_name,
-                role_context,
-            )
-        } else {
-            DeliveryRenderer::render_for_tool(
-                member.cli_tool,
-                &request.team_name,
-                &request.member_name,
-                &lead_name,
-                true,
-                role_context,
-            )
-            .ok_or_else(|| {
-                crate::coordination::errors::CoordinationError::Validation(
-                    "onboarding is not required for this harness".to_string(),
-                )
-            })?
-        };
-        CompactionReinjectionService::append_member_lease_context(
-            &mut message,
-            &orchestrator.teams_dir,
-            &request.team_name,
-            &request.member_name,
-        );
-
-        orchestrator.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-            member_name: request.member_name.clone(),
-            team_name: request.team_name.clone(),
-            message,
-            sender_name: Some(lead_name),
-            operational_context: None,
-        }))
+        if request.force {
+            let intent = request.intent_id.as_deref().filter(|s| !s.trim().is_empty()).ok_or_else(|| crate::coordination::errors::CoordinationError::Validation("forced recovery requires intent_id".into()))?;
+            let reason = request.reason.as_deref().filter(|s| !s.trim().is_empty() && s.len() <= 256).ok_or_else(|| crate::coordination::errors::CoordinationError::Validation("forced recovery requires a reason (1-256 bytes)".into()))?;
+            let intent = format!("force:{intent}");
+            let before = MemberRuntimeStore::load(&orchestrator.teams_dir, &request.team_name, &request.member_name)?;
+            crate::coordination::recovery_delivery::reserve_activation(&orchestrator.teams_dir, &request.team_name, &request.member_name, &intent)?;
+            if before.recovery.activation_intent.as_deref() != Some(&intent) {
+                taurhaus_lib::logging::emit_global("info", "coordination", "onboarding.generation.forced", None,
+                    serde_json::json!({"team":request.team_name,"member":request.member_name,"reason":reason}).as_object().unwrap().clone());
+            }
+        }
+        orchestrator.deliver_recovery_card(&request.team_name, &request.member_name, "taurhaus")
     })
 }
 
@@ -1087,6 +1034,9 @@ mod tests {
         let run_id = service
             .start_reonboard(CoordinationReonboardParams {
                 request: crate::coordination::requests::ReonboardRequest {
+                    force: false,
+                    intent_id: None,
+                    reason: None,
                     team_name: "arch".to_string(),
                     member_name: "builder".to_string(),
                 },

@@ -274,6 +274,7 @@ impl CoordinationOrchestrator {
                 match self.deliver_message(
                     crate::coordination::requests::DeliveryRequest::operator_notice(
                         OperatorNoticeDelivery {
+                            recovery_card: None,
                             member_name: lead_name.clone(),
                             team_name: team_name.to_string(),
                             message: notice,

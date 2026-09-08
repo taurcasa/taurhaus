@@ -1681,6 +1681,9 @@ mod tests {
             team_name,
             member_name,
             &MemberCompactionState {
+                pending: false,
+                pending_obligation: None,
+                satisfied_by: None,
                 version: 1,
                 member_name: member_name.to_string(),
                 last_session_id: "sess-123".to_string(),

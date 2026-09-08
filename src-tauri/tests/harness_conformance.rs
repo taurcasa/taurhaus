@@ -730,6 +730,7 @@ fn every_registry_entry_launches_and_receives_an_operator_notice_through_the_flo
 
         orchestrator
             .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                recovery_card: None,
                 member_name: "team-lead".to_string(),
                 team_name: team_name.clone(),
                 message: format!("{} conformance notice", entry.name),

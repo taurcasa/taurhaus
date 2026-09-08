@@ -31,12 +31,16 @@ impl ClaudeNativeBackend {
         &self,
         payload: OperatorNoticeDelivery,
     ) -> Result<DeliveryResult, CoordinationError> {
-        let message = MeshInboxMessage::operator_originated(
+        let mut message = MeshInboxMessage::operator_originated(
             &payload.member_name,
             payload.message,
             Some(OPERATOR_NOTICE_SUMMARY.to_string()),
             Utc::now(),
             payload.sender_name.as_deref(),
+        );
+        crate::coordination::recovery_delivery::attach_receipt(
+            &mut message,
+            payload.recovery_card.as_ref(),
         );
         MeshInboxStore::append(
             &self.teams_dir,
@@ -46,6 +50,7 @@ impl ClaudeNativeBackend {
         )?;
 
         Ok(DeliveryResult {
+            recovery_card: payload.recovery_card,
             delivered: true,
             method: DeliveryMethod::InboxFile,
             durable: true,
@@ -115,6 +120,7 @@ mod tests {
         // operator delivery must remain a direct inbox append from the lead.
         let result = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                recovery_card: None,
                 team_name: "taurhaus-team".to_string(),
                 member_name: "design-taurhaus".to_string(),
                 message: "ACTION REQUIRED: Review the design packet.".to_string(),
@@ -142,6 +148,7 @@ mod tests {
 
         let result = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                recovery_card: None,
                 team_name: "taurhaus-team".to_string(),
                 member_name: "product-check-1".to_string(),
                 message: "ACTION REQUIRED: Run the product-check lane.".to_string(),

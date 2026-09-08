@@ -81,6 +81,8 @@ impl ReceiptStage {
 pub struct CardReceipt {
     pub delivery_id: String,
     pub obligation_key: ObligationKey,
+    #[serde(default)]
+    pub satisfied_obligations: Vec<ObligationKey>,
     pub card_key: CardKey,
     pub content_revision: String,
     pub kind: DeliveryKind,
@@ -164,6 +166,7 @@ impl RecoveryState {
         }
         let receipt = CardReceipt {
             delivery_id: id,
+            satisfied_obligations: vec![obligation.clone()],
             obligation_key: obligation,
             card_key: key.clone(),
             content_revision: revision.into(),
@@ -209,8 +212,8 @@ impl RecoveryState {
 }
 
 /// Bounded against the complete bundled-role required-fact fixture.
-pub const STEERING_BYTE_CAP: usize = 16_384;
-pub const CARD_BYTE_CAP: usize = 32_768;
+pub const STEERING_BYTE_CAP: usize = 4_096;
+pub const CARD_BYTE_CAP: usize = 8_192;
 pub const FIRST_ACTION: &str = "work_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -130,6 +130,7 @@ pub fn prepare(
         // Legacy names/session ids are not enough to authorize suppression.
         CardReceipt {
             delivery_id: uuid::Uuid::new_v4().to_string(),
+            satisfied_obligations: Vec::new(),
             obligation_key: ((String::new(), String::new()), (0, 0)),
             card_key: CardKey {
                 card_schema: CARD_SCHEMA,
@@ -150,6 +151,16 @@ pub fn prepare(
     };
     if receipt.kind == DeliveryKind::Correction {
         text = format!("Correction: supersedes_revision={}; authority=taurhaus; scope=roots/role/contract/packet; effective=current recipient/context only. Replaces those instruction groups; assignment and GO authority remain unchanged.\n{text}", receipt.supersedes_revision.as_deref().unwrap_or("unavailable"));
+    }
+    if let Some(pending) =
+        crate::coordination::stores::MemberCompactionStore::load(root, team, member_name)?
+            .and_then(|s| s.pending_obligation)
+    {
+        if pending.0 == receipt.obligation_key.0
+            && !receipt.satisfied_obligations.contains(&pending)
+        {
+            receipt.satisfied_obligations.push(pending);
+        }
     }
     receipt.generated_bytes = text.len();
     Ok(Some(PreparedCard { receipt, text }))
@@ -177,7 +188,54 @@ pub fn observe(
     runtime
         .recovery
         .observe(receipt, stage, receipt.generated_bytes);
-    MemberRuntimeStore::save_recovery_locked(&guard, root, team, member, &runtime)
+    MemberRuntimeStore::save_recovery_locked(&guard, root, team, member, &runtime)?;
+    if stage.satisfies() {
+        if let Some(mut pending) =
+            crate::coordination::stores::MemberCompactionStore::load(root, team, member)?
+        {
+            if pending
+                .pending_obligation
+                .as_ref()
+                .is_some_and(|key| receipt.satisfied_obligations.contains(key))
+            {
+                pending.pending = false;
+                pending.satisfied_by = Some(receipt.delivery_id.clone());
+                crate::coordination::stores::MemberCompactionStore::save_locked(
+                    &guard, root, team, member, &pending,
+                )?;
+            }
+        }
+    }
+    let mut observation = receipt.clone();
+    observation.stage = stage;
+    taurhaus_lib::logging::emit_global(
+        "info",
+        "coordination",
+        "onboarding.delivery.observed",
+        None,
+        serde_json::to_value(observation)
+            .expect("receipt")
+            .as_object()
+            .unwrap()
+            .clone(),
+    );
+    Ok(())
+}
+
+pub fn attach_receipt(
+    message: &mut crate::coordination::stores::MeshInboxMessage,
+    receipt: Option<&CardReceipt>,
+) {
+    if let Some(receipt) = receipt {
+        let mut receipt = receipt.clone();
+        receipt.stage = ReceiptStage::Accepted;
+        receipt.accepted_bytes = message.text.len();
+        message.id = Some(receipt.delivery_id.clone());
+        message.extra.insert(
+            "recovery_card".into(),
+            serde_json::to_value(receipt).expect("receipt"),
+        );
+    }
 }
 
 /// Read only the current owner's typed operational facts. Never copy task prose,
@@ -341,5 +399,51 @@ mod tests {
         assert!(prepare(&registry, &root, "team", "seat", "inbox")
             .unwrap()
             .is_some());
+    }
+    #[test]
+    fn recovery_skipped_hook_persists_pending_and_next_delivery_satisfies_it() {
+        use crate::coordination::stores::compaction::{
+            record_delivery_at, CompactionDeliveryResult,
+        };
+        let (_temp, root, registry) = fixture();
+        reserve_activation(&root, "team", "seat", "attachment-1").unwrap();
+        record_delivery_at(
+            &root,
+            "team",
+            "seat",
+            crate::session_scanner::cli_tool::CliTool::Codex,
+            "session-1",
+            Utc::now(),
+            CompactionDeliveryResult::Skipped,
+        )
+        .unwrap();
+        let path = root.join("team/state/compaction/seat.json");
+        let state: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(state["pending_obligation"].is_array());
+        let card = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        append(&root, &card);
+        observe(
+            &registry,
+            &root,
+            "team",
+            "seat",
+            &card.receipt,
+            ReceiptStage::Accepted,
+        )
+        .unwrap();
+        let state: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(state["satisfied_by"], card.receipt.delivery_id);
+    }
+
+    #[test]
+    fn recovery_forced_wire_intent_retains_reason_and_retry_identity() {
+        let wire = json!({"team_name":"team","member_name":"seat","force":true,"intent_id":"operator-1","reason":"manual clear"});
+        let request: crate::coordination::requests::ReonboardRequest =
+            serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(serde_json::to_value(request).unwrap(), wire);
     }
 }

@@ -8008,3 +8008,45 @@ cat "$root/teams/$team/inboxes/$member.json"
         }
     }
 }
+
+#[test]
+fn recovery_managed_onboarding_retry_uses_one_baseline() {
+    let tmp = TempDir::new().unwrap();
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime);
+    orchestrator.create_team("team", None).unwrap();
+    let seat = member(
+        "seat",
+        MemberRole::Agent,
+        CliTool::Codex,
+        tmp.path().to_str().unwrap(),
+    );
+    orchestrator.add_member("team", seat.clone()).unwrap();
+    crate::coordination::recovery_delivery::reserve_activation(
+        tmp.path(),
+        "team",
+        "seat",
+        "attachment-1",
+    )
+    .unwrap();
+    let request = ResumeMemberRequest {
+        team_name: "team".into(),
+        member_name: "seat".into(),
+        reasoning_effort_override: None,
+    };
+    for _ in 0..3 {
+        let entry = orchestrator
+            .prepare_resume_onboarding_entry(&request, &seat, "lead")
+            .unwrap();
+        orchestrator
+            .deliver_onboarding_entries(vec![entry])
+            .unwrap();
+    }
+    assert_eq!(backend.call_counts().1, 1);
+    let records = backend.delivered_requests();
+    let DeliveryRequest::OperatorNotice(notice) = &records[0] else {
+        panic!("notice")
+    };
+    assert!(notice.message.contains("[taurhaus] recovery_card"));
+}
