@@ -4,12 +4,17 @@ These Linux regression tests generate their inputs with the lock-matching Mesh
 binary (`src-tauri/resources/mesh.lock.json`), never handwritten task, ruling,
 monitor or workflow records. Install that binary at `~/.local/bin/mesh`, or set
 `MESH_CONTRACT_BIN` to its absolute path. Python 3 and `cc` are also required.
-Missing prerequisites or a lock mismatch fail explicitly, including in CI.
+`just test-mesh-contracts` is the explicit Linux operator gate for changes to
+these readers or fixtures. Missing prerequisites or a lock mismatch fail there.
+The default `just test-rust-unit` recipe excludes `mesh_binary_` tests and prints
+a NOT RUN notice; the integration recipe does not select these lib tests either.
+Neither CI lane needs a host Mesh installation. Direct unfiltered `cargo test`
+still selects the binary tests and therefore needs these prerequisites.
 
 Run from the checkout root:
 
 ```sh
-cargo test --manifest-path src-tauri/Cargo.toml --lib mesh_binary_ -- --test-threads=1
+just test-mesh-contracts
 just test-rust-unit
 just check-quick
 just lint

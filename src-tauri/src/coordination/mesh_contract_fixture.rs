@@ -3,6 +3,31 @@
 //! ~/.local/bin (or MESH_CONTRACT_BIN). Missing prerequisites fail explicitly.
 use std::path::{Path, PathBuf};
 
+// Regression: 22d0fc03 (then 38ba6672 and 845aa31c) put binary fixtures in
+// the mandatory unit lane even though CI does not provision locked Mesh.
+#[test]
+fn mesh_contract_lane_is_explicit_and_unit_lane_reports_its_exclusion() {
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let dry_run = |recipe: &str| {
+        let output = std::process::Command::new("just")
+            .current_dir(checkout)
+            .args(["--dry-run", recipe])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{recipe}: {output:?}");
+        String::from_utf8(output.stderr).unwrap()
+    };
+    let unit = dry_run("test-rust-unit");
+    assert!(unit.contains("--skip mesh_binary_"), "{unit}");
+    assert!(unit.contains("NOT RUN: Mesh binary contracts"), "{unit}");
+    let contracts = dry_run("test-mesh-contracts");
+    assert!(
+        contracts.contains("--lib mesh_binary_ -- --test-threads=1"),
+        "{contracts}"
+    );
+    assert!(!contracts.contains("--skip mesh_binary_"), "{contracts}");
+}
+
 pub(crate) struct MeshFixture {
     pub root: tempfile::TempDir,
     pub task_id: String,

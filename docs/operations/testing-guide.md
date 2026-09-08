@@ -172,9 +172,17 @@ just test-rust            # Full Rust lane (fast compile + unit + integration/sy
 just test-rust-fast       # Compile check only (fast feedback)
 just test-contracts       # Execute CLI goldens, module boundaries, harness conformance
 just test-rust-unit       # Unit/bin tests, heavy suites excluded
+just test-mesh-contracts  # Linux operator gate: locked Mesh binary, Python 3, cc
 just test-rust-integration # Every src-tauri/tests/*.rs binary plus the heavy --lib suites
 just test-daemon-connectivity # Manual daemon chain verification (WSL/local)
 ```
+
+The [Mesh telemetry/wait contract lane](telemetry-contracts.md) is required for
+changes to those readers or fixtures. Set `MESH_CONTRACT_BIN` to the absolute
+path of the lock-matching Mesh binary, or install it at `~/.local/bin/mesh`;
+Python 3 and `cc` are required. Default Rust unit/integration recipes exclude
+these binary fixtures; the unit recipe prints an explicit NOT RUN notice.
+The operator recipe fails on missing prerequisites or a lock mismatch.
 
 Test placement follows two patterns:
 
