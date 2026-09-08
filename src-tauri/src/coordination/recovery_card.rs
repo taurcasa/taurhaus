@@ -513,6 +513,24 @@ impl RecoveryCard {
 }
 
 #[cfg(test)]
+pub(crate) fn assert_control_golden(text: &str) {
+    let control = text
+        .lines()
+        .filter(|line| {
+            *line == "[taurhaus] recovery_card"
+                || line.starts_with("work_contract.first_action:")
+                || line.starts_with("Corrections replace")
+                || line.starts_with("Next action:")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(
+        control,
+        "[taurhaus] recovery_card\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context."
+    );
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

@@ -8053,7 +8053,7 @@ fn recovery_managed_onboarding_retry_uses_one_baseline() {
     let DeliveryRequest::OperatorNotice(notice) = &records[0] else {
         panic!("notice")
     };
-    assert!(notice.message.contains("[taurhaus] recovery_card"));
+    crate::coordination::recovery_card::assert_control_golden(&notice.message);
 }
 
 #[test]

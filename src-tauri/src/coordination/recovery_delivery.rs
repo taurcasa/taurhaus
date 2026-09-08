@@ -675,7 +675,7 @@ mod tests {
         let (_temp, root, registry) = fixture();
         reserve_activation(&root, "team", "seat", "activation").unwrap();
         let (text, receipt) = read_current(&registry, &root, "team", "seat").unwrap();
-        assert!(text.contains("recovery_card"));
+        crate::coordination::recovery_card::assert_control_golden(&text);
         assert_eq!(receipt.stage, ReceiptStage::ConsumedByRead);
         assert!(MeshInboxStore::load(&root, "team", "seat")
             .unwrap()

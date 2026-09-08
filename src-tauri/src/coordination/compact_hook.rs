@@ -3279,7 +3279,12 @@ mod tests {
             } else {
                 let mut out = Vec::new();
                 run_compact_hook_cli(payload.as_bytes(), &mut out, tmp.path()).unwrap();
-                assert!(String::from_utf8(out).unwrap().contains("recovery_card"));
+                let output: serde_json::Value = serde_json::from_slice(&out).unwrap();
+                crate::coordination::recovery_card::assert_control_golden(
+                    output["hookSpecificOutput"]["additionalContext"]
+                        .as_str()
+                        .unwrap(),
+                );
             }
             let runtime = MemberRuntimeStore::load(tmp.path(), "team", &member.name).unwrap();
             let receipt = runtime.recovery.claim.expect("persisted hook receipt");

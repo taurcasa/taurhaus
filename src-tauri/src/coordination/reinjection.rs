@@ -1149,7 +1149,7 @@ mod tests {
             Utc::now(),
         );
         let text = CompactionReinjectionService::render_additional_context_text(&card).unwrap();
-        assert!(text.starts_with("[taurhaus] recovery_card"));
+        crate::coordination::recovery_card::assert_control_golden(&text);
         assert!(!text.contains("Full role instructions:"));
         assert!(!text.contains("continue the current task immediately"));
     }
