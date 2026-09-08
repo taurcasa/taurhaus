@@ -3268,33 +3268,41 @@ mod tests {
             }
         }
         let tmp = tempfile::tempdir().unwrap();
-        let project = tmp.path().join("project");
+        let root = tmp.path().join("claude/teams");
+        // Regression: 0e5986bf used a teams root whose registry escaped the fixture.
+        assert!(
+            crate::coordination::stores::TeamRootRegistry::new(root.clone())
+                .path()
+                .starts_with(tmp.path()),
+            "team registry must stay inside its fixture"
+        );
+        let project = root.join("project");
         fs::create_dir_all(&project).unwrap();
         let member = sample_member(&project);
-        write_team_fixture(tmp.path(), "team", &member, "session");
-        write_snapshot_fixture(tmp.path(), "team", &member.name);
-        let mut config = TeamConfigStore::load(tmp.path(), "team").unwrap();
+        write_team_fixture(&root, "team", &member, "session");
+        write_snapshot_fixture(&root, "team", &member.name);
+        let mut config = TeamConfigStore::load(&root, "team").unwrap();
         config.team_incarnation_id = Some("team-1".into());
-        TeamConfigStore::save(tmp.path(), "team", &config).unwrap();
+        TeamConfigStore::save(&root, "team", &config).unwrap();
         crate::coordination::recovery_delivery::reserve_activation(
-            tmp.path(),
+            &root,
             "team",
             &member.name,
             "activation",
         )
         .unwrap();
-        let payload = json!({"hook_event_name":"SessionStart","session_id":"session","source":"compact","cwd":project,"transcript_path":tmp.path().join(".claude/projects/transcript.jsonl")}).to_string();
+        let payload = json!({"hook_event_name":"SessionStart","session_id":"session","source":"compact","cwd":project,"transcript_path":root.join(".claude/projects/transcript.jsonl")}).to_string();
         let mut out = MoveRootAfterFlush {
-            root: tmp.path(),
+            root: &root,
             bytes: Vec::new(),
         };
-        assert!(run_compact_hook_cli(payload.as_bytes(), &mut out, tmp.path()).is_ok());
+        assert!(run_compact_hook_cli(payload.as_bytes(), &mut out, &root).is_ok());
         let response: serde_json::Value = serde_json::from_slice(&out.bytes).unwrap();
         assert!(response["hookSpecificOutput"]["additionalContext"]
             .as_str()
             .unwrap()
             .contains("[taurhaus] recovery_card"));
-        let runtime = MemberRuntimeStore::load(tmp.path(), "team", &member.name).unwrap();
+        let runtime = MemberRuntimeStore::load(&root, "team", &member.name).unwrap();
         assert_eq!(
             runtime.recovery.claim.unwrap().stage,
             crate::coordination::recovery_card::ReceiptStage::OutcomeUnknown
@@ -3314,27 +3322,35 @@ mod tests {
         }
         for broken in [true, false] {
             let tmp = tempfile::tempdir().unwrap();
-            let project = tmp.path().join("project");
+            let root = tmp.path().join("claude/teams");
+            // Regression: 0e5986bf used a teams root whose registry escaped the fixture.
+            assert!(
+                crate::coordination::stores::TeamRootRegistry::new(root.clone())
+                    .path()
+                    .starts_with(tmp.path()),
+                "team registry must stay inside its fixture"
+            );
+            let project = root.join("project");
             fs::create_dir_all(&project).unwrap();
             let member = sample_member(&project);
-            write_team_fixture(tmp.path(), "team", &member, "session");
-            write_snapshot_fixture(tmp.path(), "team", &member.name);
-            let mut config = TeamConfigStore::load(tmp.path(), "team").unwrap();
+            write_team_fixture(&root, "team", &member, "session");
+            write_snapshot_fixture(&root, "team", &member.name);
+            let mut config = TeamConfigStore::load(&root, "team").unwrap();
             config.team_incarnation_id = Some("team-1".into());
-            TeamConfigStore::save(tmp.path(), "team", &config).unwrap();
+            TeamConfigStore::save(&root, "team", &config).unwrap();
             crate::coordination::recovery_delivery::reserve_activation(
-                tmp.path(),
+                &root,
                 "team",
                 &member.name,
                 "activation",
             )
             .unwrap();
-            let payload = json!({"hook_event_name":"SessionStart","session_id":"session","source":"compact","cwd":project,"transcript_path":tmp.path().join(".claude/projects/transcript.jsonl")}).to_string();
+            let payload = json!({"hook_event_name":"SessionStart","session_id":"session","source":"compact","cwd":project,"transcript_path":root.join(".claude/projects/transcript.jsonl")}).to_string();
             if broken {
-                assert!(run_compact_hook_cli(payload.as_bytes(), Broken, tmp.path()).is_err());
+                assert!(run_compact_hook_cli(payload.as_bytes(), Broken, &root).is_err());
             } else {
                 let mut out = Vec::new();
-                run_compact_hook_cli(payload.as_bytes(), &mut out, tmp.path()).unwrap();
+                run_compact_hook_cli(payload.as_bytes(), &mut out, &root).unwrap();
                 let output: serde_json::Value = serde_json::from_slice(&out).unwrap();
                 crate::coordination::recovery_card::assert_control_golden(
                     output["hookSpecificOutput"]["additionalContext"]
@@ -3342,7 +3358,7 @@ mod tests {
                         .unwrap(),
                 );
             }
-            let runtime = MemberRuntimeStore::load(tmp.path(), "team", &member.name).unwrap();
+            let runtime = MemberRuntimeStore::load(&root, "team", &member.name).unwrap();
             let receipt = runtime.recovery.claim.expect("persisted hook receipt");
             assert_eq!(
                 receipt.stage,
@@ -3353,7 +3369,7 @@ mod tests {
                 }
             );
             assert_eq!(receipt.accepted_bytes, 0);
-            assert!(MeshInboxStore::load(tmp.path(), "team", &member.name)
+            assert!(MeshInboxStore::load(&root, "team", &member.name)
                 .unwrap()
                 .is_empty());
         }
