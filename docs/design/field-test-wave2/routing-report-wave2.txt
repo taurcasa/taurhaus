@@ -1,0 +1,21 @@
+cargo run --quiet --manifest-path src-tauri/Cargo.toml --bin routing-report -- '2'
+Routing telemetry: last 2 days
+Wall-time is the Stage 1 cost proxy; tokens are not collected.
+
+Role/model
+role | model | tasks_touched | accepted | completed_unruled | oversize_diffs | budget_raises | relaunches | effort_switches | deadline_nudges | monitor_nudges | staled | median_wall_time
+astra-architect | gpt-6-astra | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 6m 22s
+astra-asset-generator | gpt-6-astra | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 141m 05s
+astra-heavy-implementer | gpt-6-astra | 14 | 14 | 0 | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 27m 49s
+claude-design-lead | fable | 4 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3m 05s
+fable-altitude-reviewer | fable | 18 | 11 | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4m 06s
+frontend-design-skill-developer | fable | 7 | 6 | 1 | 0 | 4 | 0 | 0 | 0 | 0 | 0 | 23m 53s
+judge-astra | gpt-6-astra | 16 | 8 | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 9m 21s
+v3-lead-claude | fable | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 354m 28s
+
+Model rollup
+model | tasks_touched | accepted | completed_unruled | oversize_diffs | budget_raises | relaunches | effort_switches | deadline_nudges | monitor_nudges | staled | median_wall_time
+fable | 30 | 21 | 9 | 0 | 4 | 0 | 0 | 0 | 0 | 0 | 5m 07s
+gpt-6-astra | 34 | 26 | 8 | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 12m 25s
+
+Events without recipient launch telemetry are omitted from both rollups.
