@@ -167,6 +167,20 @@ threads memo's dataset by accident; this team's dataset is deliberate.
 The lead ensures observations are captured at the moment of failure,
 not reconstructed at retro time.
 
+## User review by the wave-2 team (operator-planned, pre-freeze)
+
+Before the corpus freezes for this team's charter: the wave-2 seats —
+all eight members AND the lead — review the mesh/messaging concept from
+their perspective as USERS, with their retro fresh in context. Delivery
+is a purpose-built user-facing concept summary (never the raw studies —
+the read-economics lesson applies to us), commissioned through the lead
+like the retro: each seat answers individually — would it help, would
+it hurt, what else should improve — and is asked explicitly to weigh
+the reading cost it would pay as a user (recency bias toward wave-2
+pain runs toward richer messages and bigger bills). Verdicts land as
+adjudicated input under the architect-charter rules, folded as the
+corpus's final pre-freeze revision.
+
 ## Launch checklist (when the operator says go)
 
 1. Wave-2 retro roster lessons reviewed against the five seats above.
