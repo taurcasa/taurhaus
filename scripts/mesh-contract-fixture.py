@@ -96,5 +96,9 @@ elif scenario == "wait":
     run("status", "set", "--name", "builder", "--state", "blocked", "--reason", "Awaiting candidate")
     shutil.copyfile(root / "teams/deadline-team/config.json", root / "blocked-config.json")
 
+elif scenario == "ruling":
+    run("task", "ruling", task_id, "--kind", "ruling", "--field", "oversize_diff", "--value", "failed")
+    run("task", "ruling", task_id, "--kind", "ruling", "--field", "budget_raised", "--value", "approved")
+
 else:
     raise ValueError(scenario)

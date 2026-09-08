@@ -90,7 +90,7 @@ pub(super) fn task_records(
     task_id: &str,
     workflow: &[MonitorRecord],
 ) -> Vec<MonitorRecord> {
-    let task = bounded_read(task_path, crate::task_scanner::claude::MAX_FILE_SIZE)
+    let task = bounded_read(task_path, taurhaus_lib::task_scanner::claude::MAX_FILE_SIZE)
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
     let mut records = BTreeMap::new();
     for record in task

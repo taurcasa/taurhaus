@@ -2261,7 +2261,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn mesh_binary_waits_guard_half_full_deadlines_go_and_reassignment() {
-        let fixture = crate::test_support::mesh_contract::MeshFixture::new("wait");
+        let fixture = crate::coordination::mesh_contract_fixture::MeshFixture::new("wait");
         for (source, waiting) in [
             ("awaiting.json", true),
             ("new-wait.json", true),
@@ -2337,7 +2337,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn mesh_binary_member_block_with_reason_survives_the_activity_ttl() {
-        let fixture = crate::test_support::mesh_contract::MeshFixture::new("wait");
+        let fixture = crate::coordination::mesh_contract_fixture::MeshFixture::new("wait");
         let (_tmp, teams, runtime, fake, state) = deadline_fixture();
         std::fs::copy(
             fixture.root.path().join("blocked-config.json"),

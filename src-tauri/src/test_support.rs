@@ -244,6 +244,3 @@ impl Drop for StubDaemon {
         }
     }
 }
-
-#[cfg(all(test, target_os = "linux"))]
-pub(crate) mod mesh_contract;
