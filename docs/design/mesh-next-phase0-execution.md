@@ -834,3 +834,43 @@ a post-hoc exception per the delivery standard — accepted, not erased;
 the next mesh lane briefs raise the ceiling explicitly where review
 rounds are expected. The four minors go to one house `fix-round` when
 the stage-1 fix-round frees a slot.
+
+## Lane C2 — submission-route intake (implementer turn complete; orchestrator verification PASS)
+
+`feature-pr` on mesh branch `feat/ledger-submission` (stacked on
+`feat/ledger-writer`), implementer `gpt-6-astra` high, launched
+2026-09-08 07:52 UTC; implementer turn complete 08:09 with six commits
+(`b001df5` … `4ef0df8`), 1,164 inserted lines (budget 1,600), no new
+dependencies, fourteen submission tests, gates green (740 passed). Opus
+lenses in progress.
+
+**Orchestrator verification (S, 08:20 UTC, candidate `4ef0df8`, crate
+binary in tempdir roots):** an owner's `task progress --artifact notes.md`
+whose front matter carries only `{kind, slot}` committed the progress
+AND admitted the note — wave/scope derived from the packet frozen at
+init (an edited packet file is correctly ignored), the selected section
+as the body, artifact/task/scope references and an `audience_ref`, one
+segment row; the identical submission again returned the original
+receipt with no new row. A review submission with a `review_artifact`
+reference committed the review and refused the ledger part with
+`source_incomplete / audience_proof_unavailable` (SD4, exit 5), the
+split receipt naming the exact standalone repair with the frozen task,
+assignment and submission event. An invalid namespace on a progress
+submission committed the progress and returned exit 2 with the same
+repair shape. `task complete --summary-file -` round-tripped quotes,
+pipes, backslashes and newlines byte-exact into `completion_summary`.
+A JSON attachment was string-only and never fatal; a 1.1 MB Markdown
+attachment with a namespace committed the delivery and then failed
+with "limit exceeded; link the complete artifact, never truncate".
+
+### Info-only stage 1 — fix-round closure
+
+`fix-round` returned **complete** (2026-09-08 ~08:15 UTC): three fix
+commits (`d8edfd6`, `2e39ace`, `5d31d6e`), 1,500 inserted lines (at
+budget), conformance re-review **approve** (3 minors: the conflict
+guidance for the `INFO ONLY:` + explicit-action half; `pendingInfoCoverage`
+reports "complete" for an unreadable inbox; a cross-team `INFO ONLY:`
+message still wakes the remote recipient through the relay path; 2
+nits), gate **pass**. Branch `feat/info-only-stage1` at `5d31d6e`. The
+three residual minors go to one more bounded fix-round (the cross-team
+wake is a real stage-1 gap).
