@@ -1,94 +1,19 @@
-//! Post-compaction reinjection payload composition and rendering.
+//! Post-compaction task admission and current lease context.
 
+use crate::coordination::stores::operational::OperationalContextSnapshot;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-
-use crate::coordination::domain::Member;
-use crate::coordination::errors::CoordinationError;
-use crate::coordination::stores::operational::OperationalContextSnapshot;
-use crate::coordination::stores::{MeshInboxMessage, MeshInboxStore};
-use crate::templates::types::RuntimeCompactSummary;
-
 const MAX_LEASE_RECORD_BYTES: u64 = 1_048_576;
-
-pub const OPERATIONAL_REINJECTION_CARD_VERSION: u32 = 1;
-pub const POST_COMPACTION_REASON: &str = "post_compaction";
 /// Inbox summary the mesh member sees for a queued post-compaction card.
 pub const POST_COMPACTION_INBOX_SUMMARY: &str = "post_compaction_context";
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub struct OperationalReinjectionCard {
-    pub version: u32,
-    pub reason: String,
-    pub generated_at: DateTime<Utc>,
-    pub team_name: String,
-    pub member_name: String,
-    pub role: OperationalReinjectionRole,
-    pub task: OperationalReinjectionTask,
-    #[serde(
-        default,
-        skip_serializing_if = "OperationalReinjectionLeases::is_empty"
-    )]
-    pub leases: OperationalReinjectionLeases,
-    pub boundaries: OperationalReinjectionBoundaries,
-    pub working_set: OperationalReinjectionWorkingSet,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub struct OperationalReinjectionRole {
-    pub role_id: Option<String>,
-    pub role_name: Option<String>,
-    pub focus_area: Option<String>,
-    pub context_summary: Option<String>,
-    pub behavior_summary: Option<String>,
-    pub communication_style: Option<String>,
-    pub instructions: Option<String>,
-    pub runtime_compact_summary: Option<RuntimeCompactSummary>,
-    pub quality_gates: Vec<String>,
-    pub handoff_expectations: Vec<String>,
-    pub definition_of_done: Vec<String>,
-    pub phase_scope: Vec<String>,
-    pub mode: Option<String>,
-    pub inherits_from: Option<String>,
-    pub required_artifacts: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub struct OperationalReinjectionTask {
-    #[serde(default)]
-    pub status: String,
-    pub id: String,
-    pub subject: String,
-    pub execution_mode: String,
-    pub validation_expectation: String,
-    pub response_expectation: String,
-    /// Reasoning effort the lead attached to this assignment. Empty when the
-    /// assignment carried none. Additive, so a card written before the field
-    /// existed still decodes.
-    #[serde(default)]
-    pub effort: String,
-    /// Why the lead chose that level.
-    #[serde(default)]
-    pub effort_why: String,
-}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct OperationalReinjectionLeases {
     pub held: Vec<String>,
     pub waiting: Vec<OperationalReinjectionLeaseWait>,
-}
-
-impl OperationalReinjectionLeases {
-    fn is_empty(&self) -> bool {
-        self.held.is_empty() && self.waiting.is_empty()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,22 +37,6 @@ struct MeshLeaseWaiter {
     name: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub struct OperationalReinjectionBoundaries {
-    pub file_ownership_boundary: Vec<String>,
-    pub adjacent_fix_policy: String,
-    pub override_allowed: bool,
-    pub active_override_reason: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub struct OperationalReinjectionWorkingSet {
-    pub project_path: String,
-    pub focal_files: Vec<String>,
-}
-
 #[derive(Debug, Default)]
 pub struct CompactionReinjectionService;
 
@@ -138,130 +47,6 @@ impl CompactionReinjectionService {
             !snapshot.task.id.trim().is_empty() && !snapshot.task.subject.trim().is_empty();
 
         has_task_identity && matches!(status, "pending" | "in_progress")
-    }
-
-    pub fn compose(
-        teams_dir: &Path,
-        member: &Member,
-        snapshot: &OperationalContextSnapshot,
-    ) -> OperationalReinjectionCard {
-        Self::compose_at_with_leases(teams_dir, member, snapshot, Utc::now())
-    }
-
-    /// Queue the card in the member's mesh inbox.
-    ///
-    /// This is the delivery for every harness that does not read a hook's
-    /// stdout — the transcript-signal path Codex uses, and grok, whose passive
-    /// `SessionStart` hook discards whatever the bridge prints.
-    pub fn deliver_to_inbox(
-        teams_dir: &Path,
-        team_name: &str,
-        member_name: &str,
-        card: &OperationalReinjectionCard,
-        now: DateTime<Utc>,
-    ) -> Result<(), CoordinationError> {
-        let rendered_payload = Self::render_additional_context_text(card).map_err(|error| {
-            CoordinationError::StoreError(format!(
-                "failed to serialize post-compaction card for '{member_name}' in '{team_name}': {error}"
-            ))
-        })?;
-        let inbox_message = MeshInboxMessage::operator_originated(
-            member_name,
-            rendered_payload,
-            Some(POST_COMPACTION_INBOX_SUMMARY.to_string()),
-            now,
-            None,
-        );
-        MeshInboxStore::append(teams_dir, team_name, member_name, &inbox_message)
-    }
-
-    pub fn compose_at(
-        member: &Member,
-        snapshot: &OperationalContextSnapshot,
-        generated_at: DateTime<Utc>,
-    ) -> OperationalReinjectionCard {
-        OperationalReinjectionCard {
-            version: OPERATIONAL_REINJECTION_CARD_VERSION,
-            reason: POST_COMPACTION_REASON.to_string(),
-            generated_at,
-            team_name: snapshot.team_name.clone(),
-            member_name: snapshot.member_name.clone(),
-            role: OperationalReinjectionRole {
-                role_id: normalize_optional(member.role_id.as_deref()),
-                role_name: normalize_optional(member.role_name.as_deref()),
-                focus_area: normalize_optional(member.focus_area.as_deref()),
-                context_summary: normalize_optional(member.context_summary.as_deref()),
-                behavior_summary: normalize_optional(member.behavior_summary.as_deref()),
-                communication_style: normalize_optional(member.communication_style.as_deref()),
-                instructions: normalize_optional(member.instructions.as_deref()),
-                runtime_compact_summary: member.runtime_compact_summary.clone(),
-                quality_gates: normalize_list(member.quality_gates.as_deref().unwrap_or(&[])),
-                handoff_expectations: normalize_list(
-                    member.handoff_expectations.as_deref().unwrap_or(&[]),
-                ),
-                definition_of_done: normalize_list(
-                    member.definition_of_done.as_deref().unwrap_or(&[]),
-                ),
-                phase_scope: normalize_list(member.phase_scope.as_deref().unwrap_or(&[])),
-                mode: normalize_optional(member.mode.as_deref()),
-                inherits_from: normalize_optional(member.inherits_from.as_deref()),
-                required_artifacts: normalize_list(
-                    member.required_artifacts.as_deref().unwrap_or(&[]),
-                ),
-            },
-            task: OperationalReinjectionTask {
-                status: snapshot.task.status.clone(),
-                id: snapshot.task.id.trim().to_string(),
-                subject: snapshot.task.subject.trim().to_string(),
-                execution_mode: snapshot.assignment_footer.execution_mode.trim().to_string(),
-                validation_expectation: snapshot
-                    .assignment_footer
-                    .validation_expectation
-                    .trim()
-                    .to_string(),
-                response_expectation: snapshot
-                    .assignment_footer
-                    .response_expectation
-                    .trim()
-                    .to_string(),
-                effort: snapshot.assignment_footer.task_effort.trim().to_string(),
-                effort_why: snapshot
-                    .assignment_footer
-                    .task_effort_why
-                    .trim()
-                    .to_string(),
-            },
-            leases: OperationalReinjectionLeases::default(),
-            boundaries: OperationalReinjectionBoundaries {
-                file_ownership_boundary: normalize_list(
-                    &snapshot.assignment_footer.file_ownership_boundary,
-                ),
-                adjacent_fix_policy: snapshot
-                    .assignment_footer
-                    .adjacent_fix_policy
-                    .trim()
-                    .to_string(),
-                override_allowed: snapshot.ownership.override_allowed,
-                active_override_reason: normalize_optional(
-                    snapshot.ownership.active_override_reason.as_deref(),
-                ),
-            },
-            working_set: OperationalReinjectionWorkingSet {
-                project_path: snapshot.working_set.project_path.trim().to_string(),
-                focal_files: normalize_list(&snapshot.working_set.focal_files),
-            },
-        }
-    }
-
-    fn compose_at_with_leases(
-        teams_dir: &Path,
-        member: &Member,
-        snapshot: &OperationalContextSnapshot,
-        generated_at: DateTime<Utc>,
-    ) -> OperationalReinjectionCard {
-        let mut card = Self::compose_at(member, snapshot, generated_at);
-        card.leases = load_member_leases(teams_dir, &snapshot.team_name, &snapshot.member_name);
-        card
     }
 
     pub fn append_member_lease_context(
@@ -275,12 +60,6 @@ impl CompactionReinjectionService {
             rendered.push_str("\n\n");
             rendered.push_str(&lease_line);
         }
-    }
-
-    pub fn render_additional_context_text(
-        card: &OperationalReinjectionCard,
-    ) -> Result<String, serde_json::Error> {
-        Ok(crate::coordination::recovery_card::RecoveryCard::from_reinjection(card).render())
     }
 }
 
@@ -420,108 +199,14 @@ fn load_member_leases(
     leases
 }
 
-fn normalize_optional(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-}
-
-fn normalize_list(values: &[String]) -> Vec<String> {
-    values
-        .iter()
-        .map(String::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::path::PathBuf;
-
-    use crate::coordination::domain::{Member, MemberRole};
     use crate::coordination::stores::operational::{
         OperationalAssignmentFooterSnapshot, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
         OperationalWorkingSetSnapshot,
     };
-    use crate::session_scanner::cli_tool::CliTool;
-    use crate::templates::types::{RoleKind, RoleTemplate};
-
-    fn sample_member() -> Member {
-        Member {
-            name: "architect".to_string(),
-            role: MemberRole::Agent,
-            role_id: Some("taurhaus-architect".to_string()),
-            role_name: Some("Taurhaus Architect".to_string()),
-            focus_area: Some("Cross-layer diagnosis".to_string()),
-            context_summary: Some("Keeps architecture context warm.".to_string()),
-            behavior_summary: Some(
-                "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
-                    .to_string(),
-            ),
-            communication_style: Some("Short, evidence-backed progress notes.".to_string()),
-            runtime_compact_summary: Some(RuntimeCompactSummary {
-                role_purpose:
-                    "Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction."
-                        .to_string(),
-                keep_doing: vec![
-                    "Tie findings to concrete code paths, runtime evidence, and real failure modes."
-                        .to_string(),
-                    "State clearly whether the current output is review, recommendation, or a narrow fix."
-                        .to_string(),
-                ],
-                workflow_sequence: vec![
-                    "Reconnect the active task, owned surface, and failing behavior before changing scope."
-                        .to_string(),
-                    "Trace the issue across frontend, backend, runtime, and mesh layers until the root cause is explicit."
-                        .to_string(),
-                    "Deliver findings or a bounded fix with exact evidence, validation, and residual risk."
-                        .to_string(),
-                ],
-                avoid: vec![
-                    "Do not drift into generic implementation work or broad refactors during an audit task."
-                        .to_string(),
-                    "Do not blur review-only, recommend-only, and implement-now modes."
-                        .to_string(),
-                ],
-                escalate_when: vec![
-                    "Escalate ownership ambiguity, direction changes, or blocked cross-role boundaries immediately."
-                        .to_string(),
-                ],
-            }),
-            instructions: Some("Review architecture edges".to_string()),
-            behavioral_contract: None,
-            quality_gates: Some(vec![
-                "Tie conclusions to concrete repo evidence.".to_string(),
-                "Avoid speculative architecture changes.".to_string(),
-            ]),
-            handoff_expectations: Some(vec![
-                "Summarize evidence and residual risk.".to_string(),
-            ]),
-            definition_of_done: Some(vec![
-                "Root cause and impact are explicit.".to_string(),
-                "Residual risk is documented.".to_string(),
-            ]),
-            phase_scope: Some(vec!["investigation".to_string(), "recommendation".to_string()]),
-            mode: Some("analysis".to_string()),
-            inherits_from: Some("taurhaus-architect-base".to_string()),
-            required_artifacts: Some(vec![
-                "root-cause summary".to_string(),
-                "validation notes".to_string(),
-            ]),
-            capabilities: None,
-            model: Some("gpt-5.6-sol".to_string()),
-            reasoning_effort: Some("high".to_string()),
-            account_id: None,
-            project_path: PathBuf::from("/home/user/projects/taurhaus"),
-            cli_tool: CliTool::Codex,
-            extra: Default::default(),
-        }
-    }
+    use chrono::{DateTime, Utc};
 
     fn sample_snapshot() -> OperationalContextSnapshot {
         OperationalContextSnapshot {
@@ -560,258 +245,8 @@ mod tests {
         }
     }
 
-    fn load_role_template(role_id: &str) -> RoleTemplate {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("resources")
-            .join("templates")
-            .join("roles")
-            .join(format!("{role_id}.yaml"));
-        let raw = fs::read_to_string(&path).expect("read role template");
-        serde_norway::from_str::<RoleTemplate>(&raw)
-            .unwrap_or_else(|err| panic!("parse role template {}: {err}", path.display()))
-    }
-
-    fn member_from_role(role: &RoleTemplate) -> Member {
-        Member {
-            name: role.role_id.clone(),
-            role: match role.kind {
-                RoleKind::Lead => MemberRole::Lead,
-                RoleKind::Agent => MemberRole::Agent,
-            },
-            role_id: Some(role.role_id.clone()),
-            role_name: Some(role.name.clone()),
-            focus_area: role.focus_area.clone(),
-            context_summary: role.context_summary.clone(),
-            behavior_summary: role.behavior_summary.clone(),
-            communication_style: role.communication_style.clone(),
-            runtime_compact_summary: role.runtime_compact_summary.clone(),
-            instructions: Some(role.instructions.clone()),
-            behavioral_contract: Some(role.behavioral_contract.clone()),
-            quality_gates: role.quality_gates.clone(),
-            handoff_expectations: role.handoff_expectations.clone(),
-            definition_of_done: role.definition_of_done.clone(),
-            phase_scope: role.phase_scope.clone(),
-            mode: role.mode.clone(),
-            inherits_from: role.inherits_from.clone(),
-            required_artifacts: role.required_artifacts.clone(),
-            capabilities: Some(role.capabilities.clone()),
-            model: Some(role.defaults.model.clone()),
-            reasoning_effort: role.defaults.reasoning_effort.clone(),
-            account_id: None,
-            project_path: PathBuf::from("/home/user/projects/taurhaus"),
-            cli_tool: role.defaults.cli_tool,
-            extra: Default::default(),
-        }
-    }
-
     #[test]
-    fn compose_card_uses_member_role_and_operational_snapshot() {
-        let member = sample_member();
-        let snapshot = sample_snapshot();
-        let generated_at = DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
-            .expect("timestamp")
-            .with_timezone(&Utc);
-
-        let card = CompactionReinjectionService::compose_at(&member, &snapshot, generated_at);
-
-        assert_eq!(
-            card,
-            OperationalReinjectionCard {
-                version: 1,
-                reason: "post_compaction".to_string(),
-                generated_at,
-                team_name: "taurhaus-team".to_string(),
-                member_name: "architect".to_string(),
-                role: OperationalReinjectionRole {
-                    role_id: Some("taurhaus-architect".to_string()),
-                    role_name: Some("Taurhaus Architect".to_string()),
-                    focus_area: Some("Cross-layer diagnosis".to_string()),
-                    context_summary: Some("Keeps architecture context warm.".to_string()),
-                    behavior_summary: Some(
-                        "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
-                            .to_string()
-                    ),
-                    communication_style: Some("Short, evidence-backed progress notes.".to_string()),
-                    instructions: Some("Review architecture edges".to_string()),
-                    runtime_compact_summary: sample_member().runtime_compact_summary,
-                    quality_gates: vec![
-                        "Tie conclusions to concrete repo evidence.".to_string(),
-                        "Avoid speculative architecture changes.".to_string(),
-                    ],
-                    handoff_expectations: vec!["Summarize evidence and residual risk.".to_string(),],
-                    definition_of_done: vec![
-                        "Root cause and impact are explicit.".to_string(),
-                        "Residual risk is documented.".to_string(),
-                    ],
-                    phase_scope: vec!["investigation".to_string(), "recommendation".to_string(),],
-                    mode: Some("analysis".to_string()),
-                    inherits_from: Some("taurhaus-architect-base".to_string()),
-                    required_artifacts: vec![
-                        "root-cause summary".to_string(),
-                        "validation notes".to_string(),
-                    ],
-                },
-                task: OperationalReinjectionTask {
-                    status: snapshot.task.status.clone(),
-                    id: "673".to_string(),
-                    subject: "Architecture: post-compaction operational re-injection".to_string(),
-                    execution_mode: "recommend".to_string(),
-                    validation_expectation: "report-only".to_string(),
-                    response_expectation: "report-on-completion".to_string(),
-                    effort: String::new(),
-                    effort_why: String::new(),
-                },
-                leases: OperationalReinjectionLeases::default(),
-                boundaries: OperationalReinjectionBoundaries {
-                    file_ownership_boundary: vec![
-                        "docs/architecture/post-compaction-reinjection.md".to_string(),
-                    ],
-                    adjacent_fix_policy: "no".to_string(),
-                    override_allowed: false,
-                    active_override_reason: None,
-                },
-                working_set: OperationalReinjectionWorkingSet {
-                    project_path: "/home/user/projects/taurhaus".to_string(),
-                    focal_files: vec![
-                        "docs/architecture/post-compaction-reinjection.md".to_string(),
-                    ],
-                },
-            }
-        );
-    }
-
-    #[test]
-    fn compose_card_normalizes_missing_optional_fields() {
-        let mut member = sample_member();
-        member.role_id = Some("  ".to_string());
-        member.role_name = None;
-        member.focus_area = Some(String::new());
-        member.behavior_summary = Some(" ".to_string());
-
-        let mut snapshot = sample_snapshot();
-        snapshot.assignment_footer.execution_mode = " ".to_string();
-        snapshot.assignment_footer.file_ownership_boundary = vec![
-            String::new(),
-            " src/lib/components/MeshTab.svelte ".to_string(),
-            " ".to_string(),
-        ];
-        snapshot.assignment_footer.validation_expectation = String::new();
-        snapshot.assignment_footer.adjacent_fix_policy = "  ".to_string();
-        snapshot.ownership.override_allowed = true;
-        snapshot.ownership.active_override_reason = Some(" ".to_string());
-        snapshot.working_set.project_path = " ".to_string();
-        snapshot.working_set.focal_files = vec![" ".to_string(), "Cargo.toml".to_string()];
-
-        let card = CompactionReinjectionService::compose_at(
-            &member,
-            &snapshot,
-            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
-                .expect("timestamp")
-                .with_timezone(&Utc),
-        );
-
-        assert_eq!(card.role.role_id, None);
-        assert_eq!(card.role.role_name, None);
-        assert_eq!(card.role.focus_area, None);
-        assert_eq!(
-            card.role.context_summary,
-            Some("Keeps architecture context warm.".to_string())
-        );
-        assert_eq!(card.role.behavior_summary, None);
-        assert_eq!(
-            card.role.communication_style,
-            Some("Short, evidence-backed progress notes.".to_string())
-        );
-        assert!(card.role.runtime_compact_summary.is_some());
-        assert_eq!(
-            card.role.quality_gates,
-            vec![
-                "Tie conclusions to concrete repo evidence.".to_string(),
-                "Avoid speculative architecture changes.".to_string(),
-            ]
-        );
-        assert_eq!(
-            card.role.definition_of_done,
-            vec![
-                "Root cause and impact are explicit.".to_string(),
-                "Residual risk is documented.".to_string(),
-            ]
-        );
-        assert_eq!(
-            card.role.phase_scope,
-            vec!["investigation".to_string(), "recommendation".to_string()]
-        );
-        assert_eq!(card.role.mode, Some("analysis".to_string()));
-        assert_eq!(
-            card.role.inherits_from,
-            Some("taurhaus-architect-base".to_string())
-        );
-        assert_eq!(
-            card.role.required_artifacts,
-            vec![
-                "root-cause summary".to_string(),
-                "validation notes".to_string()
-            ]
-        );
-        assert_eq!(card.task.execution_mode, "");
-        assert_eq!(card.task.validation_expectation, "");
-        assert_eq!(card.task.response_expectation, "report-on-completion");
-        assert_eq!(
-            card.boundaries.file_ownership_boundary,
-            vec!["src/lib/components/MeshTab.svelte".to_string()]
-        );
-        assert_eq!(card.boundaries.adjacent_fix_policy, "");
-        assert_eq!(card.boundaries.active_override_reason, None);
-        assert_eq!(card.working_set.project_path, "");
-        assert_eq!(card.working_set.focal_files, vec!["Cargo.toml".to_string()]);
-    }
-
-    #[test]
-    fn render_additional_context_text_is_imperative_resume_card() {
-        // Regression: commit 4c08860d rendered a bare `mesh task get`, but mesh
-        // requires the managed member's explicit team and name on this verb.
-        let card = CompactionReinjectionService::compose_at(
-            &sample_member(),
-            &sample_snapshot(),
-            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
-                .expect("timestamp")
-                .with_timezone(&Utc),
-        );
-
-        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
-            .expect("render text");
-
-        assert!(rendered.starts_with("[taurhaus] recovery_card"));
-        assert!(rendered.contains("Current task: #673"));
-        assert!(rendered.contains("Identity: architect on taurhaus-team"));
-        assert!(!rendered.contains("Run: mesh task get"));
-        assert!(rendered.contains("Execution mode: recommend"));
-        assert!(rendered.contains("Validation expectation: report-only"));
-        assert!(rendered.contains("Response expectation: report-on-completion"));
-        assert!(rendered.contains("Role: taurhaus-architect"));
-        assert!(!rendered.contains("Full role instructions:"));
-        assert!(rendered.contains("Gate: Tie conclusions to concrete repo evidence."));
-        assert!(rendered.contains("Purpose: Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction."));
-        for label in [
-            "Boundary:",
-            "Sequence:",
-            "Constraint:",
-            "Escalation:",
-            "Completion:",
-        ] {
-            assert!(rendered.contains(label));
-        }
-        assert!(rendered.contains("Project cwd: /home/user/projects/taurhaus"));
-        assert!(rendered.contains("docs/architecture/post-compaction-reinjection.md"));
-        assert!(rendered.contains("File boundary:"));
-        assert!(rendered.contains("Adjacent fix policy: no"));
-        assert!(rendered.contains("Override allowed: false"));
-        assert!(rendered.contains("Next action: preserve the stated wait"));
-        assert!(!rendered.contains("continue the current task immediately"));
-    }
-
-    #[test]
-    fn compose_card_lists_held_leases_and_waiting_positions() {
+    fn lease_context_lists_held_leases_and_waiting_positions() {
         // Regression: commit 4c08860d trusted the JSON body's name instead of
         // the filename key and read arbitrarily large mesh lease records.
         let tmp = tempfile::tempdir().expect("temp teams dir");
@@ -871,28 +306,23 @@ mod tests {
             .expect("write oversized lease");
         fs::write(leases_dir.join("unreadable.json"), "not json").expect("write malformed lease");
 
-        let card = CompactionReinjectionService::compose_at_with_leases(
-            tmp.path(),
-            &sample_member(),
-            &sample_snapshot(),
-            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
-                .expect("timestamp")
-                .with_timezone(&Utc),
-        );
+        let leases = load_member_leases(tmp.path(), "taurhaus-team", "architect");
 
+        assert_eq!(leases.held, vec!["canonical-seam", "delivery-renderer"]);
         assert_eq!(
-            card.leases.held,
-            vec!["canonical-seam", "delivery-renderer"]
-        );
-        assert_eq!(
-            card.leases.waiting,
+            leases.waiting,
             vec![OperationalReinjectionLeaseWait {
                 name: "shared-card".to_string(),
                 position: 2,
             }]
         );
-        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
-            .expect("render card");
+        let mut rendered = String::new();
+        CompactionReinjectionService::append_member_lease_context(
+            &mut rendered,
+            tmp.path(),
+            "taurhaus-team",
+            "architect",
+        );
         assert!(rendered.contains(
             "Leases: held canonical-seam, delivery-renderer; waiting #2 for shared-card."
         ));
@@ -901,214 +331,21 @@ mod tests {
     #[test]
     fn absent_or_unreadable_leases_dir_leaves_card_unchanged() {
         let tmp = tempfile::tempdir().expect("temp teams dir");
-        let generated_at = DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
-            .expect("timestamp")
-            .with_timezone(&Utc);
-        let baseline = CompactionReinjectionService::compose_at(
-            &sample_member(),
-            &sample_snapshot(),
-            generated_at,
-        );
-        let baseline_rendered =
-            CompactionReinjectionService::render_additional_context_text(&baseline)
-                .expect("render baseline");
-
-        let missing = CompactionReinjectionService::compose_at_with_leases(
-            tmp.path(),
-            &sample_member(),
-            &sample_snapshot(),
-            generated_at,
-        );
-        assert_eq!(
-            CompactionReinjectionService::render_additional_context_text(&missing)
-                .expect("render missing-dir card"),
-            baseline_rendered
-        );
-
-        let leases_path = tmp
-            .path()
-            .join("taurhaus-team")
-            .join("state")
-            .join("leases");
-        fs::create_dir_all(leases_path.parent().expect("leases parent")).expect("create state dir");
-        fs::write(&leases_path, "not a directory").expect("write unreadable leases path");
-        let unreadable = CompactionReinjectionService::compose_at_with_leases(
-            tmp.path(),
-            &sample_member(),
-            &sample_snapshot(),
-            generated_at,
-        );
-        assert_eq!(
-            CompactionReinjectionService::render_additional_context_text(&unreadable)
-                .expect("render unreadable-dir card"),
-            baseline_rendered
-        );
-    }
-
-    #[test]
-    fn the_card_restates_the_effort_the_lead_asked_for() {
-        // A compaction is exactly where the member loses the `/effort` mesh
-        // typed into the pane and the reason that came with it.
-        let mut snapshot = sample_snapshot();
-        snapshot.assignment_footer.task_effort = "high".to_string();
-        snapshot.assignment_footer.task_effort_why = "the migration is irreversible".to_string();
-
-        let card = CompactionReinjectionService::compose_at(
-            &sample_member(),
-            &snapshot,
-            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
-                .expect("timestamp")
-                .with_timezone(&Utc),
-        );
-
-        assert_eq!(card.task.effort, "high");
-        assert_eq!(card.task.effort_why, "the migration is irreversible");
-
-        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
-            .expect("render text");
-        assert!(
-            rendered.contains("Requested effort: high")
-                && rendered.contains("Effort rationale: the migration is irreversible")
-        );
-    }
-
-    #[test]
-    fn a_card_without_an_effort_says_nothing_about_one() {
-        let card = CompactionReinjectionService::compose_at(
-            &sample_member(),
-            &sample_snapshot(),
-            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
-                .expect("timestamp")
-                .with_timezone(&Utc),
-        );
-
-        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
-            .expect("render text");
-        assert!(!rendered.contains("Effort:"));
-    }
-
-    #[test]
-    fn an_effort_without_a_reason_still_states_the_level() {
-        let mut snapshot = sample_snapshot();
-        snapshot.assignment_footer.task_effort = "medium".to_string();
-
-        let card = CompactionReinjectionService::compose_at(
-            &sample_member(),
-            &snapshot,
-            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
-                .expect("timestamp")
-                .with_timezone(&Utc),
-        );
-
-        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
-            .expect("render text");
-        assert!(rendered.contains("Requested effort: medium"));
-        assert!(!rendered.contains("Effort: medium —"));
-    }
-
-    #[test]
-    fn render_additional_context_text_handles_sparse_cards() {
-        let mut card = CompactionReinjectionService::compose_at(
-            &sample_member(),
-            &sample_snapshot(),
-            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
-                .expect("timestamp")
-                .with_timezone(&Utc),
-        );
-        card.role.role_name = None;
-        card.role.role_id = None;
-        card.role.focus_area = None;
-        card.role.context_summary = None;
-        card.role.behavior_summary = None;
-        card.role.runtime_compact_summary = None;
-        card.task.id.clear();
-        card.task.subject.clear();
-        card.task.execution_mode.clear();
-        card.task.validation_expectation.clear();
-        card.task.response_expectation.clear();
-        card.boundaries.file_ownership_boundary.clear();
-        card.boundaries.override_allowed = true;
-        card.boundaries.active_override_reason = Some("lead-approved adjacent fix".to_string());
-        card.working_set.focal_files.clear();
-
-        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
-            .expect("render text");
-
-        assert!(rendered.contains("Role: unavailable"));
-        assert!(rendered.contains("HOLD: minimal role steering unavailable"));
-        assert!(rendered.contains("File boundary: unavailable"));
-        assert!(rendered.contains("Focal files: unavailable"));
-        assert!(rendered.contains("Override allowed: true"));
-        assert!(rendered.contains("Active override reason: lead-approved adjacent fix"));
-        assert!(!rendered.contains("Run: mesh task get"));
-    }
-
-    #[test]
-    fn render_additional_context_text_preserves_role_id_when_role_name_is_missing() {
-        let mut card = CompactionReinjectionService::compose_at(
-            &sample_member(),
-            &sample_snapshot(),
-            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
-                .expect("timestamp")
-                .with_timezone(&Utc),
-        );
-        card.role.role_name = None;
-
-        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
-            .expect("render text");
-
-        assert!(rendered.contains("Role: taurhaus-architect"));
-    }
-
-    #[test]
-    fn representative_canonical_roles_render_materially_different_compaction_cards() {
-        let snapshot = sample_snapshot();
-        let generated_at = DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
-            .expect("timestamp")
-            .with_timezone(&Utc);
-
-        let developer_role = load_role_template("v4-developer-codex");
-        let architect_role = load_role_template("v3-architect-codex");
-        let lead_role = load_role_template("v3-lead-claude");
-
-        let developer_rendered = CompactionReinjectionService::render_additional_context_text(
-            &CompactionReinjectionService::compose_at(
-                &member_from_role(&developer_role),
-                &snapshot,
-                generated_at,
-            ),
-        )
-        .expect("render developer");
-        let architect_rendered = CompactionReinjectionService::render_additional_context_text(
-            &CompactionReinjectionService::compose_at(
-                &member_from_role(&architect_role),
-                &snapshot,
-                generated_at,
-            ),
-        )
-        .expect("render architect");
-        let lead_rendered = CompactionReinjectionService::render_additional_context_text(
-            &CompactionReinjectionService::compose_at(
-                &member_from_role(&lead_role),
-                &snapshot,
-                generated_at,
-            ),
-        )
-        .expect("render lead");
-
-        assert_ne!(developer_rendered, architect_rendered);
-        assert_ne!(developer_rendered, lead_rendered);
-        assert_ne!(architect_rendered, lead_rendered);
-
-        assert!(developer_rendered.contains(
-            "Purpose: Build one user-visible behavior with real data and a compact evidence-backed result."
-        ));
-        assert!(architect_rendered.contains(
-            "Purpose: Architecture review — structural coherence, functional honesty, and complexity justification."
-        ));
-        assert!(lead_rendered.contains(
-            "Purpose: Preserve task protocol, product gating, and review routing after compaction."
-        ));
+        let leases_path = tmp.path().join("taurhaus-team/state/leases");
+        for unreadable in [false, true] {
+            if unreadable {
+                fs::create_dir_all(leases_path.parent().unwrap()).unwrap();
+                fs::write(&leases_path, "not a directory").unwrap();
+            }
+            let mut rendered = "Current recovery card".to_string();
+            CompactionReinjectionService::append_member_lease_context(
+                &mut rendered,
+                tmp.path(),
+                "taurhaus-team",
+                "architect",
+            );
+            assert_eq!(rendered, "Current recovery card");
+        }
     }
 
     #[test]
@@ -1139,18 +376,5 @@ mod tests {
         assert!(!CompactionReinjectionService::snapshot_has_resumable_task(
             &snapshot
         ));
-    }
-    #[test]
-    fn recovery_compaction_renderer_uses_the_common_bounded_card() {
-        // Regression: 9b857060a emitted unconditional continuation and replayed full role instructions.
-        let card = CompactionReinjectionService::compose_at(
-            &sample_member(),
-            &sample_snapshot(),
-            Utc::now(),
-        );
-        let text = CompactionReinjectionService::render_additional_context_text(&card).unwrap();
-        crate::coordination::recovery_card::assert_control_golden(&text);
-        assert!(!text.contains("Full role instructions:"));
-        assert!(!text.contains("continue the current task immediately"));
     }
 }

@@ -304,6 +304,7 @@ pub struct RecoveryCard {
     pub member_name: String,
     pub project_path: String,
     pub steering: String,
+    steering_hold: bool,
     pub generated_at: chrono::DateTime<chrono::Utc>,
     pub constraints: String,
     pub lease_context: String,
@@ -316,6 +317,10 @@ pub struct RecoveryCard {
 }
 
 pub fn render_card_steering(member: &crate::coordination::domain::Member) -> String {
+    card_steering(member).0
+}
+
+fn card_steering(member: &crate::coordination::domain::Member) -> (String, bool) {
     let mut summary = member.runtime_compact_summary.clone();
     if summary.is_none() {
         let mut authorized = Vec::new();
@@ -363,7 +368,7 @@ fn steering(
     gates: &Option<Vec<String>>,
     handoff: &Option<Vec<String>>,
     done: &Option<Vec<String>>,
-) -> String {
+) -> (String, bool) {
     let mut lines = vec![format!(
         "Role: {}",
         role_id.as_deref().unwrap_or("unavailable")
@@ -391,9 +396,9 @@ fn steering(
     }
     let text = lines.join("\n");
     if text.len() > STEERING_BYTE_CAP {
-        "HOLD: role steering exceeds the byte budget; owner: team lead; provide a bounded authorized role revision.".into()
+        ("HOLD: role steering exceeds the byte budget; owner: team lead; provide a bounded authorized role revision.".into(), true)
     } else {
-        text
+        (text, summary.is_none())
     }
 }
 
@@ -427,39 +432,36 @@ impl RecoveryCard {
             &assignment.source_revision,
             &assignment.audience_policy_revision,
         ));
+        let (steering, steering_hold) = card_steering(member);
         Self {
             card_key,
             content_revision,
             team_name: team_name.into(),
             member_name: member.name.clone(),
             project_path: member.project_path.to_string_lossy().into_owned(),
-            steering: render_card_steering(member),
-            generated_at: chrono::Utc::now(), lease_context: String::new(),
-            constraints: snapshot.map(|s| format!("Execution mode: {}; Validation expectation: {}; Response expectation: {}; Adjacent fix policy: {}; Override allowed: {}; Override reason: {}",s.assignment_footer.execution_mode,s.assignment_footer.validation_expectation,s.assignment_footer.response_expectation,s.assignment_footer.adjacent_fix_policy,s.ownership.override_allowed,s.ownership.active_override_reason.as_deref().unwrap_or("none"))).unwrap_or_else(|| "Operational constraints: unavailable".into()),
+            steering,
+            steering_hold,
+            generated_at: chrono::Utc::now(),
+            lease_context: String::new(),
+            constraints: snapshot.map(|s| format!(
+                "Execution mode: {}; Validation expectation: {}; Response expectation: {}; Adjacent fix policy: {}; Override allowed: {}; Override reason: {}",
+                s.assignment_footer.execution_mode,
+                s.assignment_footer.validation_expectation,
+                s.assignment_footer.response_expectation,
+                s.assignment_footer.adjacent_fix_policy,
+                s.ownership.override_allowed,
+                s.ownership.active_override_reason.as_deref().unwrap_or("none"),
+            )).unwrap_or_else(|| "Operational constraints: unavailable".into()),
             assignment,
-            effective_effort: String::new(), effort_hold: String::new(), focal_files: snapshot.map(|s| s.working_set.focal_files.clone()).unwrap_or_default(),
+            effective_effort: String::new(),
+            effort_hold: String::new(),
+            focal_files: snapshot.map(|s| s.working_set.focal_files.clone()).unwrap_or_default(),
             requested_effort: snapshot
                 .map(|s| s.assignment_footer.task_effort.clone())
                 .unwrap_or_default(),
             boundaries: snapshot
                 .map(|s| s.assignment_footer.file_ownership_boundary.clone())
                 .unwrap_or_default(),
-        }
-    }
-
-    pub fn from_reinjection(
-        card: &crate::coordination::reinjection::OperationalReinjectionCard,
-    ) -> Self {
-        Self {
-            card_key: None, content_revision: digest(&(&card.task,&card.boundaries,&card.working_set)),
-            team_name: card.team_name.clone(), member_name: card.member_name.clone(), project_path: card.working_set.project_path.clone(),
-            generated_at: card.generated_at,
-            steering: steering(&card.role.role_id,&card.role.runtime_compact_summary,&Some(card.role.quality_gates.clone()),&Some(card.role.handoff_expectations.clone()),&Some(card.role.definition_of_done.clone())),
-            assignment: AssignmentFacts { task_id: card.task.id.clone(), objective: card.task.subject.clone(), state: card.task.status.clone(), wait: "release_unavailable".into(), ..Default::default() },
-            effective_effort: String::new(), effort_hold: String::new(), focal_files: card.working_set.focal_files.clone(),
-            requested_effort: card.task.effort.clone(), boundaries: card.boundaries.file_ownership_boundary.clone(),
-            constraints: format!("Execution mode: {}; Validation expectation: {}; Response expectation: {}; Adjacent fix policy: {}; Override allowed: {}; Active override reason: {}; Effort rationale: {}", card.task.execution_mode,card.task.validation_expectation,card.task.response_expectation,card.boundaries.adjacent_fix_policy,card.boundaries.override_allowed,card.boundaries.active_override_reason.as_deref().unwrap_or("none"),card.task.effort_why),
-            lease_context: crate::coordination::reinjection::render_lease_context_line(&card.leases).unwrap_or_default(),
         }
     }
 
@@ -535,7 +537,7 @@ impl RecoveryCard {
             && !a.assignment_token.is_empty()
             && a.wait == "released"
             && !a.first_action.is_empty()
-            && !self.steering.contains("HOLD:");
+            && !self.steering_hold;
         lines.push(if executable { format!("Next action: {}", a.first_action) } else { "Next action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.".into() });
         // Focal links and lease context are optional; reserve all operative facts first.
         if lines.join("\n").len() > CARD_BYTE_CAP {
@@ -601,6 +603,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn recovery_authored_hold_literal_does_not_override_released_assignment() {
+        // Regression: bd853b4f inferred a steering hold from the authored prose's HOLD: literal.
+        let mut member: crate::coordination::domain::Member =
+            serde_json::from_value(serde_json::json!({
+                "name":"seat", "role":"agent", "cli_tool":"codex", "project_path":"/scratch",
+                "instructions":"Report HOLD: when a dependency is missing."
+            }))
+            .unwrap();
+        let facts = AssignmentFacts {
+            state: "in_progress".into(),
+            assignment_token: "a1".into(),
+            wait: "released".into(),
+            first_action: "Run the review".into(),
+            ..Default::default()
+        };
+        let render = |member: &crate::coordination::domain::Member| {
+            RecoveryCard::compile("team", member, None, None, facts.clone()).render()
+        };
+        assert!(render(&member).contains("Next action: Run the review"));
+        member.instructions = None;
+        assert!(render(&member).contains("Next action: preserve the stated wait"));
+        member.instructions = Some("x".repeat(STEERING_BYTE_CAP + 1));
+        assert!(render(&member).contains("Next action: preserve the stated wait"));
+    }
+
+    #[test]
     fn recovery_custom_role_keeps_authorized_steering_without_compact_summary() {
         // Regression: 2760e88a discarded custom role instructions without a compact summary.
         let member = serde_json::from_value(serde_json::json!({
@@ -625,7 +653,7 @@ mod tests {
     #[test]
     fn recovery_optional_overflow_preserves_identity_assignment_and_next_action() {
         // Regression: 2760e88a discarded the entire reserved block on optional-list overflow.
-        let member = serde_json::from_value(serde_json::json!({"name":"seat","role":"agent","project_path":"/scratch","cli_tool":"codex"})).unwrap();
+        let member = serde_json::from_value(serde_json::json!({"name":"seat","role":"agent","project_path":"/scratch","cli_tool":"codex","instructions":"s".repeat(STEERING_BYTE_CAP - "Role: unavailable\nPurpose: ".len())})).unwrap();
         let facts = AssignmentFacts {
             task_id: "1".into(),
             owner: "seat".into(),
@@ -642,7 +670,6 @@ mod tests {
             Some(key(&RecoveryState::default())),
             facts,
         );
-        card.steering = "s".repeat(STEERING_BYTE_CAP);
         card.focal_files = (0..120)
             .map(|i| format!("src/components/recovery/long_component_name_{i}.svelte"))
             .collect();

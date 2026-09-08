@@ -642,6 +642,84 @@ mod tests {
     }
 
     #[test]
+    fn recovery_injected_boundary_keeps_pending_until_its_receipt_is_offered() {
+        // Regression: 78c64894 cleared skipped obligations on Injected before stdout succeeded.
+        use crate::coordination::stores::compaction::{
+            record_delivery_at, CompactionDeliveryResult,
+        };
+        use crate::coordination::stores::MemberCompactionStore;
+        let (_temp, root, registry) = fixture();
+        reserve_activation(&root, "team", "seat", "activation").unwrap();
+        let now = Utc::now();
+        record_delivery_at(
+            &root,
+            "team",
+            "seat",
+            crate::session_scanner::cli_tool::CliTool::Codex,
+            "session-1",
+            now,
+            CompactionDeliveryResult::Skipped,
+        )
+        .unwrap();
+        let pending = MemberCompactionStore::load(&root, "team", "seat")
+            .unwrap()
+            .unwrap();
+        let card = prepare_compaction(&registry, &root, "team", "seat", "hook_stdout")
+            .unwrap()
+            .unwrap();
+        assert!(card
+            .receipt
+            .satisfied_obligations
+            .contains(pending.pending_obligation.as_ref().unwrap()));
+        record_delivery_at(
+            &root,
+            "team",
+            "seat",
+            crate::session_scanner::cli_tool::CliTool::Codex,
+            "session-1",
+            now + chrono::Duration::seconds(1),
+            CompactionDeliveryResult::Injected,
+        )
+        .unwrap();
+        observe(
+            &registry,
+            &root,
+            "team",
+            "seat",
+            &card.receipt,
+            ReceiptStage::OutcomeUnknown,
+        )
+        .unwrap();
+        let unknown = MemberCompactionStore::load(&root, "team", "seat")
+            .unwrap()
+            .unwrap();
+        assert!(
+            unknown.pending,
+            "bookkeeping cannot satisfy an unoffered obligation"
+        );
+        assert_eq!(unknown.pending_obligation, pending.pending_obligation);
+        assert_eq!(unknown.satisfied_by, None);
+        observe(
+            &registry,
+            &root,
+            "team",
+            "seat",
+            &card.receipt,
+            ReceiptStage::HookResponseOffered,
+        )
+        .unwrap();
+        let offered = MemberCompactionStore::load(&root, "team", "seat")
+            .unwrap()
+            .unwrap();
+        assert!(!offered.pending);
+        assert_eq!(offered.pending_obligation, pending.pending_obligation);
+        assert_eq!(
+            offered.satisfied_by.as_deref(),
+            Some(card.receipt.delivery_id.as_str())
+        );
+    }
+
+    #[test]
     fn recovery_mesh_wait_marker_is_the_release_authority() {
         // Regression: 2760e88a required an unwritten released_assignment marker, holding every working seat.
         let (_temp, root, _) = fixture();
@@ -797,10 +875,29 @@ mod tests {
     fn recovery_audience_projection_preserves_go_despite_contradictory_release_metadata() {
         // Regression: 2760e88a let release metadata override an explicit awaiting-GO state.
         let (_temp, root, _registry) = fixture();
-        let snapshot: crate::coordination::stores::OperationalContextSnapshot=serde_json::from_value(json!({"version":1,"team_name":"team","member_name":"seat","updated_at":Utc::now(),"task":{"id":"1","subject":"Review","status":"in_progress"},"assignment_footer":{},"ownership":{"override_allowed":false,"active_override_reason":null},"working_set":{"project_path":"/scratch","focal_files":[]}})).unwrap();
+        let snapshot: crate::coordination::stores::OperationalContextSnapshot =
+            serde_json::from_value(json!({
+                "version": 1, "team_name": "team", "member_name": "seat", "updated_at": Utc::now(),
+                "task": {"id": "1", "subject": "Review", "status": "in_progress"},
+                "assignment_footer": {},
+                "ownership": {"override_allowed": false, "active_override_reason": null},
+                "working_set": {"project_path": "/scratch", "focal_files": []}
+            }))
+            .unwrap();
         let path = crate::coordination::stores::mesh_task::task_path(&root, "team", "1").unwrap();
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(path,json!({"id":"1","owner":"seat","status":"in_progress","metadata":{"assignment_id":"a1","awaiting_go":true,"released_assignment":"a1","peer_verdict":"PRIVATE-VERDICT","peer_summary":"PRIVATE-DERIVATIVE"}}).to_string()).unwrap();
+        std::fs::write(
+            path,
+            json!({
+                "id": "1", "owner": "seat", "status": "in_progress",
+                "metadata": {
+                    "assignment_id": "a1", "awaiting_go": true, "released_assignment": "a1",
+                    "peer_verdict": "PRIVATE-VERDICT", "peer_summary": "PRIVATE-DERIVATIVE"
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
         let facts = assignment_facts(&root, "team", "seat", Some(&snapshot));
         assert_eq!(facts.wait, "awaiting_go");
         assert!(!serde_json::to_string(&facts).unwrap().contains("PRIVATE-"));

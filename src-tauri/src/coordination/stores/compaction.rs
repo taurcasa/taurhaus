@@ -226,18 +226,20 @@ pub fn record_delivery_at(
     let same_boundary = previous.as_ref().is_some_and(|s| {
         s.last_session_id == session_id && s.last_compaction_timestamp == compaction_timestamp
     });
+    // Only a new skipped boundary replaces the obligation; receipt observation satisfies it.
+    let preserve_obligation = same_boundary || result != CompactionDeliveryResult::Skipped;
     let state = MemberCompactionState {
-        pending: if same_boundary || result == CompactionDeliveryResult::Failed {
+        pending: if preserve_obligation {
             previous.as_ref().is_some_and(|s| s.pending)
         } else {
             pending_obligation.is_some()
         },
-        pending_obligation: if same_boundary || result == CompactionDeliveryResult::Failed {
+        pending_obligation: if preserve_obligation {
             previous.as_ref().and_then(|s| s.pending_obligation.clone())
         } else {
             pending_obligation
         },
-        satisfied_by: if same_boundary || result == CompactionDeliveryResult::Failed {
+        satisfied_by: if preserve_obligation {
             previous.and_then(|s| s.satisfied_by)
         } else {
             None
