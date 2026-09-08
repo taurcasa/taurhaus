@@ -185,3 +185,14 @@ The response reported `native_push_probe/0.153.4`, Linux, and the scratch `codex
 **S-source:** Codex native binary SHA-256 is `56ef98ab4032d317ab26e9b5e5a175650717351edb16ed9cde0cb6d1734d62da`, from the installed `@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex` package beneath the CLI installation. Its generated schema and the capability/help captures remain in scratch. Claude source gate excerpts include byte offsets in `evidence/claude-source-excerpts.json`. The MCP log includes additional handshakes from the later no-payload diagnostics; it contains exactly one channel notification write.
 
 **S-runtime / review:** validation consists of the isolated protocol/config probes, exact thread/turn and marker joins, execution-budget audit, evidence hashes, report link checks, and a scoped whitespace/diff check. No `just check-quick` or full gate was run: this task changes only documentation, and formatting/building unrelated implementation would add no probe evidence. No commit was created.
+
+
+---
+
+**Wave-2 evidence addendum (2026-09-08).** The commissioned wave-2
+machinery review — `field-test-wave2/machinery-review-astra.md` —
+grades every decision in this study against the first full wave run
+under the round-5 machinery and records the proposed amendments
+(§6–§7 there). Headlines binding on this document's next revision:
+no new probe; the launch-root and context-generation acceptance tuple from the wave-2 launch failures joins the deployment test matrix; all observed outcomes and NO-GO dispositions stand. The original measurements and models above are unchanged and
+keep their original populations.

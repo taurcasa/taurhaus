@@ -414,3 +414,14 @@ The next decision needs answers to these questions:
 - What are the actual per-model fresh/cache-write/cache-read/output rates and extra-turn costs for the operator's arrangement? Which changes reduce lead coordination output rather than merely moving text to another seat?
 
 **Adapt task threads into a bounded read projection over Mesh's existing authority, retain directed inbox notifications and DMs, and defer new shared-message storage until explicit linking/retention needs are proven.** Commission the offline snapshot projection and three-way reading comparison first. It will produce a reproducible coverage report, current-action correctness results, and per-family payload/cost estimates; only a later controlled wave can establish fewer messages and a lower bill.
+
+
+---
+
+**Wave-2 evidence addendum (2026-09-08).** The commissioned wave-2
+machinery review — `field-test-wave2/machinery-review-astra.md` —
+grades every decision in this study against the first full wave run
+under the round-5 machinery and records the proposed amendments
+(§6–§7 there). Headlines binding on this document's next revision:
+the stale current-view failures (#18/#20/#31) and the #65 mutable-RESULT contamination strengthen the bounded-projection and immutable-submission contracts; five documented wait/release pairs and the 68-rows-vs-64-touches gap join the fixture set. The original measurements and models above are unchanged and
+keep their original populations.

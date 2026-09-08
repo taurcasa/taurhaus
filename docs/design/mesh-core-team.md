@@ -15,6 +15,21 @@ messaging tax while building its replacement.
 
 ## Phase 0 — communication overhead reduction (pre-team, bounded lanes)
 
+**Contract-repair gate (added 2026-09-08, from the wave-2 machinery
+review's findings M1–M3, all source-verified):** before any overhead
+item is measured, repair and conformance-test the existing telemetry
+contracts — (M1) mesh's source-tagged monitor records never reach the
+routing report (no production bridge; the existing test hand-writes the
+desired sidecar instead of consuming mesh's serialization); (M2) mesh
+writes `awaiting_go` as an assignment-id string while the taurhaus
+deadline predicate accepts only boolean `true`, so a real mesh wait is
+invisible to the deadline pass; (M3) #31's recorded `oversize_diff`
+ruling shows as zero in the report — reconcile keying against a
+binary-produced ruling. Every fixture in this gate must be PRODUCED by
+the locked mesh binary, never hand-written — that is how M1/M2 shipped.
+Until this gate closes, wave telemetry zeros are unmeasurable, not
+successes.
+
 The measured items, strongest first (citations: threads memo = mesh-
 task-threads-research.md, overhaul study = mesh-messaging-overhaul-
 research.md; both on the wave-1 archive):
@@ -32,12 +47,13 @@ research.md; both on the wave-1 archive):
    notices that wake a model into generating a reply are pure overhead;
    an empty delta check must not cost a turn (threads memo's read-
    economics note; delivery standard already has the prefix vocabulary).
-4. **Lead notice dedup** — the wave-1 lead's ~1.29B cache reads were
-   attributed to accumulated notices; the same event visible through
-   inbox, workflow event, and task metadata is ONE event with several
-   sources, not three notices (overhaul study's receipt/dedup rules).
+4. **Lead notice dedup** — wave 1 recorded ~1.29B lead cache reads
+   with the removable notice share unmeasured; the same event visible
+   through inbox, workflow event, and task metadata is ONE event with
+   several sources, not three notices (overhaul study's receipt/dedup
+   rules; wording per the wave-2 review).
 
-5. **Ledger as append-log with rendered projections** — operator
+5. **Ledger as append-log with rendered projections** (PROMOTED to co-first priority beside item 1 by the wave-2 review: 39.1%/47.2% of full-wave commits, 48 ledger-only) — operator
    observation, measured 2026-09-07: 283 of 694 commits on taurjob
    (40.8% of the whole project history) touch a ledger file; the lead
    spends a large share of its output re-rendering state into markdown

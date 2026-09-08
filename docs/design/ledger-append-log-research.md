@@ -571,3 +571,14 @@ front-matter costs the parser one small reviewed adapter. Everything
 else in §7 (file-supplied IDs, no argv prose, explicit root/identity,
 structured errors, the execution-validation gate) stands as written and
 already satisfies the constraint's intent.
+
+
+---
+
+**Wave-2 evidence addendum (2026-09-08).** The commissioned wave-2
+machinery review — `field-test-wave2/machinery-review-astra.md` —
+grades every decision in this study against the first full wave run
+under the round-5 machinery and records the proposed amendments
+(§6–§7 there). Headlines binding on this document's next revision:
+the closed-wave census confirms the pathology at full-wave scale (ledger touches 39.1% of all reachable commits, 47.2% of mainline; 48 ledger-only commits; seven malformed-width rows and stale current-view cells at closure) — phase-0 item 5 is promoted alongside onboarding; malformed-row and non-table-accumulation cases join the acceptance fixtures. The original measurements and models above are unchanged and
+keep their original populations.

@@ -266,3 +266,14 @@ indefinitely, and that asymmetry is accepted complexity, not debt.
 Next step commissioned: a version-pinned probe of the two channels on
 this machine's installed harnesses (see
 `native-push-probe-brief.md`).
+
+
+---
+
+**Wave-2 evidence addendum (2026-09-08).** The commissioned wave-2
+machinery review — `field-test-wave2/machinery-review-astra.md` —
+grades every decision in this study against the first full wave run
+under the round-5 machinery and records the proposed amendments
+(§6–§7 there). Headlines binding on this document's next revision:
+findings M1 (mesh monitor records never reach the routing reader — no production bridge exists) and M2 (mesh writes awaiting_go as an assignment-id string, the taurhaus deadline predicate accepts only boolean true) enter stage-0 conformance as mandatory producer-serialized fixtures; launch-root/incarnation identity is elevated to every stage's conformance packet. The original measurements and models above are unchanged and
+keep their original populations.
