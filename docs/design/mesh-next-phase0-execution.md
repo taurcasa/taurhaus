@@ -762,3 +762,26 @@ wake_eligible, provenance, policy_revision}`; the inbox message carries
 field, prefix fallback). The daemon's batch filter and terminal
 key selection are covered by the lane's vector-driven unit tests (no
 tmux in scratch). No notes beyond the lens round.
+
+### Info-only stage 1 — closure: `complete`, 0 majors; minors to a fix-round
+
+`feature-pr` returned **complete** (2026-09-08 ~07:45 UTC): one review
+round, Opus conformance **approve** (10 findings: 6 minor, 4 nit) and
+Opus operational **approve** (13 findings: 9 minor, 3 nit), gate
+**pass** (`just check-quick`, `just lint`, `just test`). Branch
+`feat/info-only-stage1` at `5e75a7d`, not merged. The orchestrator's
+scratch verification above stands. Minors accepted as real pre-release
+defects and routed to ONE house `fix-round` (fix ↔ conformance
+re-review, then gate): an `INFO ONLY:`-prefixed `--cron-message`
+silently drops the reminder (cron kind is authoritative → `action`);
+id-less suppressed messages bypass the skip tracker and emit a receipt
+every 5 s poll; the tracker's clear is keyed by message id across
+sources so a suppressed assignment re-emits per cycle; the `suppressed`
+telemetry stage was renamed instead of retained (keep both or document
+the retirement); `read_inbox`'s error contract widened for every
+caller; `mesh xteam send` bypasses the mandatory INFO lint; the conflict
+branch ignores priority; `record_supersession` re-derives the telemetry
+path MeshPaths owns; the expectation decision is recomputed per message
+per pass; cron/recovery vector rows have no in-crate producer (keep as
+the shared contract, assert via the normalizer, say so); the conflict
+message wording. Nits ride along.
