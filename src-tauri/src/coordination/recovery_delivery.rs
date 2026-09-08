@@ -95,7 +95,7 @@ fn prepare_inner(
         .ok_or_else(|| CoordinationError::NotFound("recovery member not found".into()))?;
     let mut runtime = MemberRuntimeStore::load(root, team, member_name)?;
     let snapshot = OperationalContextSnapshotStore::load(root, team, member_name)?;
-    let facts = assignment_facts(root, team, member_name, snapshot.as_ref());
+    let mut facts = assignment_facts(root, team, member_name, snapshot.as_ref());
     let normalize = |p: &Path| crate::provider::path::normalize_project_path(&p.to_string_lossy());
     let authority_revision = registry.revision(team)?.to_string();
     let key = config
@@ -140,8 +140,19 @@ fn prepare_inner(
                 packet_revision: facts.packet_revision.clone(),
             },
         });
+    let effective_effort = if runtime.attached_at < runtime.recovery.reserved_attachment {
+        runtime.recovery.reserved_effort.clone()
+    } else {
+        runtime.applied_effort.clone()
+    }
+    .unwrap_or_default();
+    facts.source_revision = digest(&(
+        &facts.source_revision,
+        &effective_effort,
+        &runtime.effort_resume_failure,
+    ));
     let mut card = RecoveryCard::compile(team, member, snapshot.as_ref(), key.clone(), facts);
-    card.effective_effort = runtime.applied_effort.clone().unwrap_or_default();
+    card.effective_effort = effective_effort;
     card.effort_hold = runtime
         .effort_resume_failure
         .as_ref()
@@ -756,53 +767,6 @@ mod tests {
     }
 
     #[test]
-    fn recovery_root_move_and_rollback_preserve_recipient_and_fence_stale_receipts() {
-        let (temp, root, registry) = fixture();
-        reserve_activation(&root, "team", "seat", "activation").unwrap();
-        let first = prepare(&registry, &root, "team", "seat", "inbox")
-            .unwrap()
-            .unwrap();
-        append(&root, &first);
-        observe(
-            &registry,
-            &root,
-            "team",
-            "seat",
-            &first.receipt,
-            ReceiptStage::Accepted,
-        )
-        .unwrap();
-        let target = temp.path().join("other/teams");
-        crate::daemon::team_move::move_team_directory(&root, &target, "team").unwrap();
-        registry.set("team", &target).unwrap();
-        assert!(prepare(&registry, &root, "team", "seat", "inbox").is_err());
-        assert!(observe(
-            &registry,
-            &target,
-            "team",
-            "seat",
-            &first.receipt,
-            ReceiptStage::Accepted
-        )
-        .is_err());
-        let moved = prepare(&registry, &target, "team", "seat", "inbox")
-            .unwrap()
-            .unwrap();
-        assert_eq!(moved.receipt.obligation_key, first.receipt.obligation_key);
-        assert_eq!(moved.receipt.kind, DeliveryKind::Correction);
-        assert_eq!(
-            moved.receipt.supersedes_revision.as_ref(),
-            Some(&first.receipt.content_revision)
-        );
-        crate::daemon::team_move::move_team_directory(&target, &root, "team").unwrap();
-        registry.set("team", &root).unwrap();
-        let rollback = prepare(&registry, &root, "team", "seat", "inbox")
-            .unwrap()
-            .unwrap();
-        assert_ne!(rollback.receipt.delivery_id, first.receipt.delivery_id);
-        assert_eq!(rollback.receipt.kind, DeliveryKind::Correction);
-    }
-    #[test]
     fn recovery_task_delta_preserves_descriptor_and_effective_effort() {
         // Regression: edf94e2c's task snapshot writes erased the app-owned descriptor.
         let (_temp, root, registry) = fixture();
@@ -880,5 +844,31 @@ mod tests {
         OperationalContextSnapshotStore::save(&root, &snapshot).unwrap();
         let (_, again) = read_current(&registry, &root, "team", "seat").unwrap();
         assert_eq!(read.content_revision, again.content_revision);
+    }
+    #[test]
+    fn recovery_relaunch_reports_captured_effort_until_runtime_commit() {
+        // Regression: a7ebc2a0 rendered the previous context's effort before activation commit.
+        let (_temp, root, registry) = fixture();
+        reserve_activation(&root, "team", "seat", "activation").unwrap();
+        MemberRuntimeStore::update(&root, "team", "seat", |r| {
+            r.applied_effort = Some("low".into());
+            r.attached_at = Some(Utc::now() - chrono::Duration::hours(1));
+            let mut wire = serde_json::to_value(&r.recovery).unwrap();
+            wire["reserved_attachment"] = json!(Utc::now());
+            wire["reserved_effort"] = json!("high");
+            r.recovery = serde_json::from_value(wire).unwrap();
+        })
+        .unwrap();
+        let (before, first) = read_current(&registry, &root, "team", "seat").unwrap();
+        assert!(before.contains("effective effort: high"));
+        MemberRuntimeStore::update(&root, "team", "seat", |r| {
+            r.attached_at = Some(Utc::now());
+            r.applied_effort = Some("medium".into());
+        })
+        .unwrap();
+        let (after, next) = read_current(&registry, &root, "team", "seat").unwrap();
+        assert!(after.contains("effective effort: medium"));
+        assert_eq!(first.delivery_id, next.delivery_id);
+        assert_ne!(first.content_revision, next.content_revision);
     }
 }

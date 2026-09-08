@@ -133,6 +133,10 @@ pub struct RecoveryState {
     #[serde(default)]
     pub launch_namespace: Option<String>,
     pub activation_intent: Option<String>,
+    #[serde(default)]
+    pub reserved_attachment: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    pub reserved_effort: Option<String>,
     pub activation_generation: u64,
     pub compaction_generation: u64,
     pub admitted_boundary: Option<String>,

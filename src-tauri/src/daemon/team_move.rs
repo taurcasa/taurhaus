@@ -259,4 +259,69 @@ mod tests {
         assert!(source.join("arch/config.json").is_file());
         assert!(!target.join("arch").exists());
     }
+    #[test]
+    fn recovery_root_move_and_rollback_preserve_recipient_and_fence_stale_receipts() {
+        use crate::coordination::recovery_card::{DeliveryKind, ReceiptStage};
+        use crate::coordination::recovery_delivery::{
+            attach_receipt, observe, prepare, reserve_activation,
+        };
+        use crate::coordination::stores::{MeshInboxMessage, MeshInboxStore, TeamRootRegistry};
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("account/teams");
+        fs::create_dir_all(root.join("team")).unwrap();
+        fs::write(root.join("team/config.json"),serde_json::json!({"schema_version":1,"name":"team","created_at":chrono::Utc::now(),"team_incarnation_id":"team-1","members":[{"name":"seat","role":"agent","cli_tool":"codex","project_path":temp.path()}]}).to_string()).unwrap();
+        fs::create_dir_all(root.join("team/runtime")).unwrap();
+        fs::write(
+            root.join("team/runtime/seat.json"),
+            r#"{"member_name":"seat","session_id":"session-1"}"#,
+        )
+        .unwrap();
+        let registry = TeamRootRegistry::new(root.clone());
+        reserve_activation(&root, "team", "seat", "activation").unwrap();
+        let first = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        let mut message =
+            MeshInboxMessage::new("lead", first.text.clone(), None, chrono::Utc::now());
+        attach_receipt(&mut message, Some(&first.receipt));
+        MeshInboxStore::append(&root, "team", "seat", &message).unwrap();
+        observe(
+            &registry,
+            &root,
+            "team",
+            "seat",
+            &first.receipt,
+            ReceiptStage::Accepted,
+        )
+        .unwrap();
+        let target = temp.path().join("other/teams");
+        crate::daemon::team_move::move_team_directory(&root, &target, "team").unwrap();
+        registry.set("team", &target).unwrap();
+        assert!(prepare(&registry, &root, "team", "seat", "inbox").is_err());
+        assert!(observe(
+            &registry,
+            &target,
+            "team",
+            "seat",
+            &first.receipt,
+            ReceiptStage::Accepted
+        )
+        .is_err());
+        let moved = prepare(&registry, &target, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        assert_eq!(moved.receipt.obligation_key, first.receipt.obligation_key);
+        assert_eq!(moved.receipt.kind, DeliveryKind::Correction);
+        assert_eq!(
+            moved.receipt.supersedes_revision.as_ref(),
+            Some(&first.receipt.content_revision)
+        );
+        crate::daemon::team_move::move_team_directory(&target, &root, "team").unwrap();
+        registry.set("team", &root).unwrap();
+        let rollback = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        assert_ne!(rollback.receipt.delivery_id, first.receipt.delivery_id);
+        assert_eq!(rollback.receipt.kind, DeliveryKind::Correction);
+    }
 }

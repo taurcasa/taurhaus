@@ -1029,6 +1029,8 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             &prepared.member.name,
             |record| {
                 record.recovery.reserve_activation(&intent);
+                record.recovery.reserved_attachment = self.runtime_state.attached_at;
+                record.recovery.reserved_effort = self.runtime_state.applied_effort.clone();
                 record.recovery.harness_account_root =
                     self.runtime_state.harness_account_root.as_ref().map(|p| {
                         crate::provider::path::normalize_project_path(&p.to_string_lossy())
