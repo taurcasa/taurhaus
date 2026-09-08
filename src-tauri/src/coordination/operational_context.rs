@@ -126,7 +126,11 @@ fn publish_snapshot(
         &snapshot.team_name,
         &snapshot.member_name,
     )?;
-    if current
+    let descriptor_only = current
+        .as_ref()
+        .and_then(|current| current.recovery_card.as_ref())
+        .is_some_and(|descriptor| descriptor.descriptor_only);
+    if !descriptor_only && current
         .as_ref()
         .is_some_and(|current| current.updated_at >= snapshot.updated_at)
     {
@@ -135,7 +139,11 @@ fn publish_snapshot(
 
     let mut candidate = snapshot.clone();
     if let Some(current) = current {
-        candidate.recovery_card = current.recovery_card;
+        candidate.recovery_card = current.recovery_card.clone();
+        if let Some(descriptor) = &mut candidate.recovery_card {
+            descriptor.descriptor_only = false;
+        }
+        if !descriptor_only {
         candidate.version = current.version;
         candidate.task = preserve_task_deadline_markers(
             Some(&current.task),
@@ -151,6 +159,7 @@ fn publish_snapshot(
         candidate.working_set = current.working_set;
         if candidate.working_set.project_path.trim().is_empty() {
             candidate.working_set.project_path = snapshot.working_set.project_path.clone();
+        }
         }
     }
 
@@ -265,7 +274,10 @@ pub fn apply_delivery_context(
         })?;
     let existing = OperationalContextSnapshotStore::load(teams_dir, team_name, member_name)?;
     let snapshot = OperationalContextSnapshot {
-        recovery_card: existing.as_ref().and_then(|s| s.recovery_card.clone()),
+        recovery_card: existing.as_ref().and_then(|s| s.recovery_card.clone()).map(|mut descriptor| {
+            descriptor.descriptor_only = false;
+            descriptor
+        }),
         version: existing.as_ref().map_or(1, |snapshot| snapshot.version),
         team_name: team_name.to_string(),
         member_name: member_name.to_string(),

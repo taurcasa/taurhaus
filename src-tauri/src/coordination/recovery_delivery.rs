@@ -181,6 +181,9 @@ fn prepare_inner(
         }
     });
     descriptor_snapshot.recovery_card = Some(crate::coordination::recovery_card::CardDescriptor {
+        descriptor_only: snapshot.as_ref().is_none_or(|s| {
+            s.recovery_card.as_ref().is_some_and(|d| d.descriptor_only)
+        }),
         card_schema: CARD_SCHEMA,
         card_key: key.clone(),
         content_revision: card.content_revision.clone(),

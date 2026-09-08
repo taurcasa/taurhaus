@@ -1010,6 +1010,9 @@ mod tests {
 
     #[test]
     fn reonboard_executes_delivery_and_publishes_the_fat_intent_snapshot() {
+        // Regression: 2760e88a made a descriptor-only snapshot suppress real
+        // operational facts during the newer-wins publication merge.
+        let snapshot_at = chrono::Utc::now();
         let temp = tempfile::TempDir::new().expect("tempdir");
         let (state, backend, _runtime) = state(temp.path());
         let projects = tempfile::TempDir::new().expect("projects tempdir");
@@ -1027,7 +1030,7 @@ mod tests {
             version: 1,
             team_name: "arch".to_string(),
             member_name: "builder".to_string(),
-            updated_at: chrono::Utc::now(),
+            updated_at: snapshot_at,
             task: Default::default(),
             assignment_footer: Default::default(),
             ownership: Default::default(),
@@ -1041,9 +1044,9 @@ mod tests {
             .start_reonboard(CoordinationReonboardParams {
                 request: crate::coordination::requests::ReonboardRequest {
                     recovery_read: false,
-                    force: false,
-                    intent_id: None,
-                    reason: None,
+                    force: true,
+                    intent_id: Some("operator-recovery-1".into()),
+                    reason: Some("Recover the current lease context".into()),
                     team_name: "arch".to_string(),
                     member_name: "builder".to_string(),
                 },
@@ -1073,9 +1076,9 @@ mod tests {
         else {
             panic!("expected operator notice")
         };
-        assert!(delivery.message.starts_with("[taurhaus] recovery_card"));
-        assert!(delivery.message.contains("mesh read --unread --mark-read"));
+        crate::coordination::recovery_card::assert_control_golden(&delivery.message);
         assert!(delivery.message.contains("Leases: held delivery-renderer."));
+        assert!(delivery.message.contains("src/current.rs"));
         assert_eq!(
             OperationalContextSnapshotStore::load(temp.path(), "arch", "builder")
                 .expect("load snapshot")

@@ -285,6 +285,9 @@ pub struct AssignmentFacts {
 /// App-owned opaque descriptor; Mesh need not parse a new wire vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CardDescriptor {
+    /// This descriptor created the snapshot before any operational publisher.
+    #[serde(default)]
+    pub descriptor_only: bool,
     pub card_schema: u32,
     pub card_key: Option<CardKey>,
     pub content_revision: String,

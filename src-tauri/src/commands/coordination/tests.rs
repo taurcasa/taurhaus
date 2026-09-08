@@ -2103,6 +2103,7 @@ fn reonboard_succeeds_for_existing_member() {
     )
     .expect("initialize");
 
+    let deliveries_before = fake.delivered_requests().len();
     let result = coordination_reonboard_impl(
         None,
         &state,
@@ -2119,14 +2120,14 @@ fn reonboard_succeeds_for_existing_member() {
 
     assert!(result.delivered);
     let requests = fake.delivered_requests();
+    assert_eq!(requests.len(), deliveries_before);
     let DeliveryRequest::OperatorNotice(delivery) = requests.last().expect("reonboard delivery")
     else {
         panic!("expected operator notice")
     };
-    // Regression: commit efcd7d2 silently replaced Claude re-onboarding with
-    // the lifecycle-only role-context block, dropping the explicit mesh loop.
-    assert!(delivery.message.starts_with("[taurhaus] recovery_card"));
-    assert!(delivery.message.contains("mesh read --unread --mark-read"));
+    // The bounded card replaces the catalog guarded after efcd7d2; unchanged
+    // unforced recovery returns the prior delivery without replaying it.
+    crate::coordination::recovery_card::assert_control_golden(&delivery.message);
 }
 
 #[test]
