@@ -51,7 +51,7 @@ pub fn prepare(
     member_name: &str,
     path: &str,
 ) -> Result<Option<PreparedCard>, CoordinationError> {
-    prepare_inner(registry, root, team, member_name, path, false)
+    prepare_inner(registry, root, team, member_name, path, false, false)
 }
 
 pub(crate) fn prepare_compaction(
@@ -61,7 +61,17 @@ pub(crate) fn prepare_compaction(
     member_name: &str,
     path: &str,
 ) -> Result<Option<PreparedCard>, CoordinationError> {
-    prepare_inner(registry, root, team, member_name, path, true)
+    prepare_inner(registry, root, team, member_name, path, true, false)
+}
+
+/// Recompose at submission without reserving another transport attempt.
+pub(crate) fn refresh(
+    registry: &TeamRootRegistry,
+    root: &Path,
+    team: &str,
+    member: &str,
+) -> Result<Option<PreparedCard>, CoordinationError> {
+    prepare_inner(registry, root, team, member, "inbox", false, true)
 }
 
 fn prepare_inner(
@@ -71,6 +81,7 @@ fn prepare_inner(
     member_name: &str,
     path: &str,
     compaction: bool,
+    refresh: bool,
 ) -> Result<Option<PreparedCard>, CoordinationError> {
     validate_root(registry, root, team)?;
     crate::coordination::validation::validate_member_name(member_name)?;
@@ -182,14 +193,33 @@ fn prepare_inner(
                         r.delivery_id == previous.delivery_id && r.card_key == previous.card_key
                     })
                     .unwrap_or(previous);
+                runtime.recovery.claim = Some(observed.clone());
                 runtime
                     .recovery
                     .observe(&observed, ReceiptStage::Accepted, message.text.len());
-            } else if previous.stage == ReceiptStage::OutcomeUnknown && path == "inbox" {
+            } else if !refresh && previous.stage == ReceiptStage::OutcomeUnknown && path == "inbox"
+            {
                 runtime.recovery.observe(&previous, ReceiptStage::Failed, 0);
             }
         }
-        let mut claim = runtime.recovery.claim(&key, &card.content_revision, path);
+        let mut claim = if refresh {
+            runtime
+                .recovery
+                .claim
+                .as_ref()
+                .filter(|r| r.card_key == key && r.stage == ReceiptStage::OutcomeUnknown)
+                .cloned()
+        } else {
+            None
+        };
+        if claim.is_none() {
+            claim = runtime.recovery.claim(&key, &card.content_revision, path);
+        }
+        if refresh {
+            if let Some(receipt) = claim.as_mut() {
+                receipt.content_revision = card.content_revision.clone();
+            }
+        }
         if path == "read" && claim.is_none() {
             claim = runtime
                 .recovery
@@ -280,11 +310,32 @@ pub fn observe(
         ));
     }
     let mut runtime = MemberRuntimeStore::load(root, team, member)?;
+    let durable_receipt = if stage == ReceiptStage::Accepted {
+        MeshInboxStore::load(root, team, member)?
+            .into_iter()
+            .find(|m| m.id.as_deref() == Some(&receipt.delivery_id))
+            .and_then(|m| {
+                m.extra
+                    .get("recovery_card")
+                    .and_then(|v| serde_json::from_value::<CardReceipt>(v.clone()).ok())
+            })
+            .filter(|r| r.card_key == receipt.card_key)
+    } else {
+        None
+    };
+    let receipt = durable_receipt.as_ref().unwrap_or(receipt);
+    let current_claim =
+        runtime.recovery.claim.as_ref().is_some_and(|r| {
+            r.delivery_id == receipt.delivery_id && r.card_key == receipt.card_key
+        });
+    if current_claim && durable_receipt.is_some() {
+        runtime.recovery.claim = Some(receipt.clone());
+    }
     runtime
         .recovery
         .observe(receipt, stage, receipt.generated_bytes);
     MemberRuntimeStore::save_recovery_locked(&guard, root, team, member, &runtime)?;
-    if stage.satisfies() {
+    if stage.satisfies() && current_claim {
         if let Some(mut pending) =
             crate::coordination::stores::MemberCompactionStore::load(root, team, member)?
         {
@@ -369,7 +420,33 @@ pub fn assignment_facts(
     member: &str,
     snapshot: Option<&crate::coordination::stores::OperationalContextSnapshot>,
 ) -> AssignmentFacts {
-    let mut facts = AssignmentFacts::default();
+    let mut facts = AssignmentFacts {
+        source_revision: digest(
+            &snapshot
+                .map(|s| {
+                    (
+                        &s.task.id,
+                        &s.task.subject,
+                        &s.task.status,
+                        &s.assignment_footer,
+                        &s.ownership,
+                        &s.working_set.focal_files,
+                    )
+                })
+                .map(|(id, subject, status, footer, ownership, files)| {
+                    (
+                        id.clone(),
+                        subject.clone(),
+                        status.clone(),
+                        footer.clone(),
+                        ownership.clone(),
+                        files.clone(),
+                    )
+                })
+                .unwrap_or_default(),
+        ),
+        ..Default::default()
+    };
     let Some(snapshot) = snapshot else {
         return facts;
     };
@@ -750,5 +827,58 @@ mod tests {
             .unwrap()
             .recovery_card
             .is_some());
+    }
+    #[test]
+    fn recovery_late_first_append_wins_over_a_reserved_retry() {
+        // Regression: 2760e88a could not reconcile attempt 1 after attempt 2 was reserved.
+        let (_temp, root, registry) = fixture();
+        reserve_activation(&root, "team", "seat", "activation").unwrap();
+        let first = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        let retry = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        assert_eq!(retry.receipt.attempt, 2);
+        append(&root, &first);
+        assert!(prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .is_none());
+        let accepted = MemberRuntimeStore::load(&root, "team", "seat")
+            .unwrap()
+            .recovery
+            .last_delivered
+            .expect("durable first append wins");
+        assert_eq!(accepted.attempt, 1);
+        assert_eq!(accepted.content_revision, first.receipt.content_revision);
+    }
+
+    #[test]
+    fn recovery_view_revision_covers_operational_facts_but_not_timestamps() {
+        // Regression: 2760e88a left snapshot-only operative changes outside the view digest.
+        let (_temp, root, registry) = fixture();
+        reserve_activation(&root, "team", "seat", "activation").unwrap();
+        let first = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        let mut snapshot = OperationalContextSnapshotStore::load(&root, "team", "seat")
+            .unwrap()
+            .unwrap();
+        snapshot.assignment_footer.validation_expectation = "cargo check".into();
+        OperationalContextSnapshotStore::save(&root, &snapshot).unwrap();
+        let retry = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.receipt.delivery_id, retry.receipt.delivery_id);
+        assert_ne!(
+            first.receipt.content_revision,
+            retry.receipt.content_revision
+        );
+        append(&root, &retry);
+        let (_, read) = read_current(&registry, &root, "team", "seat").unwrap();
+        snapshot.updated_at = Utc::now();
+        OperationalContextSnapshotStore::save(&root, &snapshot).unwrap();
+        let (_, again) = read_current(&registry, &root, "team", "seat").unwrap();
+        assert_eq!(read.content_revision, again.content_revision);
     }
 }

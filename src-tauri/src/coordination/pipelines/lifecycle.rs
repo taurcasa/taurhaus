@@ -562,6 +562,7 @@ impl CoordinationOrchestrator {
         result.recovery_card = MemberRuntimeStore::load(&self.teams_dir, team, member)
             .ok()
             .and_then(|r| r.recovery.claim)
+            .or(result.recovery_card)
             .or(Some(card.receipt));
         Ok(result)
     }

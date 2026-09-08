@@ -44,6 +44,21 @@ impl CoordinationOrchestrator {
         mut request: DeliveryRequest,
     ) -> Result<DeliveryResult, CoordinationError> {
         if let DeliveryRequest::OperatorNotice(notice) = &mut request {
+            if notice.recovery_card.is_some() && notice.operational_context.is_none() {
+                let card = crate::coordination::recovery_delivery::refresh(
+                    &self.root_registry,
+                    &self.teams_dir,
+                    &notice.team_name,
+                    &notice.member_name,
+                )?
+                .ok_or_else(|| {
+                    CoordinationError::Conflict(
+                        "recovery delivery already observed; reload its status".into(),
+                    )
+                })?;
+                notice.message = card.text;
+                notice.recovery_card = Some(card.receipt);
+            }
             if notice.recovery_card.is_none() && notice.operational_context.is_some() {
                 if crate::coordination::stores::MemberCompactionStore::load(
                     &self.teams_dir,
@@ -142,6 +157,18 @@ impl CoordinationOrchestrator {
                 }
 
                 if let Some(receipt) = recovery_receipt.as_ref() {
+                    let mut observed = receipt.clone();
+                    observed.record(
+                        if result.durable {
+                            crate::coordination::recovery_card::ReceiptStage::Accepted
+                        } else if result.method == DeliveryMethod::TmuxInjection {
+                            crate::coordination::recovery_card::ReceiptStage::Submitted
+                        } else {
+                            crate::coordination::recovery_card::ReceiptStage::OutcomeUnknown
+                        },
+                        receipt.generated_bytes,
+                    );
+                    result.recovery_card = Some(observed);
                     if let Err(error) = crate::coordination::recovery_delivery::observe(
                         &self.root_registry,
                         &self.teams_dir,

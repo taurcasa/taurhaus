@@ -8188,3 +8188,73 @@ fn recovery_prepared_onboarding_also_uses_the_common_compiler() {
     assert!(!entry.message.contains("mesh read"));
     drop(orchestrator);
 }
+
+#[test]
+fn recovery_submission_recomposes_a_changed_view_without_spending_a_retry() {
+    use crate::coordination::requests::OperatorNoticeDelivery;
+    // Regression: 25ba6532 submitted prepared content without rechecking current operative facts.
+    let tmp = TempDir::new().unwrap();
+    let backend = Arc::new(FakeBackend::default());
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        backend.clone(),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    orchestrator.create_team("team", None).unwrap();
+    orchestrator
+        .add_member(
+            "team",
+            member(
+                "seat",
+                MemberRole::Agent,
+                CliTool::Codex,
+                tmp.path().to_str().unwrap(),
+            ),
+        )
+        .unwrap();
+    crate::coordination::recovery_delivery::reserve_activation(
+        tmp.path(),
+        "team",
+        "seat",
+        "activation",
+    )
+    .unwrap();
+    let first = crate::coordination::recovery_delivery::prepare(
+        &orchestrator.root_registry,
+        tmp.path(),
+        "team",
+        "seat",
+        "inbox",
+    )
+    .unwrap()
+    .unwrap();
+    let mut snapshot = crate::coordination::stores::OperationalContextSnapshotStore::load(
+        tmp.path(),
+        "team",
+        "seat",
+    )
+    .unwrap()
+    .unwrap();
+    snapshot.assignment_footer.validation_expectation = "CURRENT-VALIDATION".into();
+    crate::coordination::stores::OperationalContextSnapshotStore::save(tmp.path(), &snapshot)
+        .unwrap();
+    orchestrator
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            team_name: "team".into(),
+            member_name: "seat".into(),
+            sender_name: None,
+            message: first.text,
+            recovery_card: Some(first.receipt.clone()),
+            operational_context: None,
+        }))
+        .unwrap();
+    let records = backend.delivered_requests();
+    let DeliveryRequest::OperatorNotice(notice) = &records[0] else {
+        panic!("notice")
+    };
+    assert!(notice.message.contains("CURRENT-VALIDATION"));
+    let receipt = notice.recovery_card.as_ref().unwrap();
+    assert_eq!(receipt.delivery_id, first.receipt.delivery_id);
+    assert_eq!(receipt.attempt, 1);
+    assert_ne!(receipt.content_revision, first.receipt.content_revision);
+}
