@@ -67,11 +67,11 @@ fn decode(record: &Value, workflow: bool) -> Option<MonitorRecord> {
 }
 
 fn bounded_read(path: &Path, limit: u64) -> Option<String> {
-    let mut raw = String::new();
+    let mut raw = Vec::new();
     File::open(path)
         .ok()?
         .take(limit + 1)
-        .read_to_string(&mut raw)
+        .read_to_end(&mut raw)
         .ok()?;
     if raw.len() as u64 > limit {
         tracing::debug!(
@@ -83,7 +83,7 @@ fn bounded_read(path: &Path, limit: u64) -> Option<String> {
         );
         return None;
     }
-    Some(raw)
+    String::from_utf8(raw).ok()
 }
 
 pub(super) fn workflow_records(team_dir: &Path) -> Vec<MonitorRecord> {
@@ -148,17 +148,20 @@ mod tests {
     }
 
     // Regression: 22d0fc03 silently discarded an entire workflow journal
-    // above 8 MiB. Oversize input must leave a diagnostic naming its path.
+    // above 8 MiB. Oversize input must leave a diagnostic naming its path,
+    // including when the byte budget cuts through a UTF-8 character.
     #[test]
     fn oversize_workflow_journal_emits_one_debug_diagnostic() {
         let root = tempfile::tempdir().unwrap();
         let team = root.path().join("teams/oversize-team");
         std::fs::create_dir_all(team.join("state")).unwrap();
         let journal = team.join("state/workflow_events.jsonl");
-        File::create(&journal)
-            .unwrap()
-            .set_len(8 * 1_048_576 + 1)
-            .unwrap();
+        {
+            use std::io::{Seek, SeekFrom, Write};
+            let mut file = File::create(&journal).unwrap();
+            file.seek(SeekFrom::Start(8 * 1_048_576)).unwrap();
+            file.write_all("€".as_bytes()).unwrap();
+        }
         let log = root.path().join("capture.log");
         let subscriber = tracing_subscriber::fmt()
             .with_max_level(tracing::Level::DEBUG)
