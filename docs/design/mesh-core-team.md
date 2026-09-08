@@ -153,6 +153,13 @@ order:
    frontier harnesses actually support; Claude Code + Codex native push
    is first-class, agy/grok stay on the fallback (operator decision,
    ~80% frontier-duo assumption).
+4. `docs/design/ledger-append-log-research.md` (+ review amendment) —
+   the ledger authority, fold, and rendering law.
+5. `docs/design/mesh-next-adjudication.md` — the wave-2 team's user
+   review, adjudicated; BINDS over the studies where it modifies them
+   (notably: the artifact IS the ledger event; card-level
+   independent-review visibility; the answered-step flag's six
+   conditions).
 
 Standing rules:
 
