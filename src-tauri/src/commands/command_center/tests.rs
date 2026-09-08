@@ -224,6 +224,7 @@ fn save_team_member(
         teams_dir,
         team_name,
         &TeamConfig {
+            team_incarnation_id: None,
             schema_version: 1,
             name: team_name.to_string(),
             description: None,
@@ -267,6 +268,7 @@ fn save_team_members(teams_dir: &Path, team_name: &str, members: Vec<Member>) {
         teams_dir,
         team_name,
         &TeamConfig {
+            team_incarnation_id: None,
             schema_version: 1,
             name: team_name.to_string(),
             description: None,
@@ -284,6 +286,7 @@ fn save_member_runtime(teams_dir: &Path, team_name: &str, member_name: &str, pan
         team_name,
         member_name,
         &MemberRuntimeRecord {
+            recovery: Default::default(),
             schema_version: 3,
             member_name: member_name.to_string(),
             cli_tool: None,
@@ -2181,6 +2184,7 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
         "architecture-final",
         "developer2",
         MemberRuntimeRecord {
+            recovery: Default::default(),
             schema_version: 3,
             member_name: "developer2".to_string(),
             cli_tool: Some(CliTool::Codex),
@@ -2484,6 +2488,7 @@ fn delegated_resume_reports_the_account_it_could_not_apply() {
         "architecture-final",
         "developer2",
         MemberRuntimeRecord {
+            recovery: Default::default(),
             schema_version: 3,
             member_name: "developer2".to_string(),
             cli_tool: Some(CliTool::Claude),
@@ -2558,6 +2563,7 @@ fn delegated_resume_without_a_requested_account_reports_nothing() {
         "architecture-final",
         "developer2",
         MemberRuntimeRecord {
+            recovery: Default::default(),
             schema_version: 3,
             member_name: "developer2".to_string(),
             cli_tool: Some(CliTool::Claude),
@@ -2632,6 +2638,7 @@ fn delegated_resume_with_an_opaque_base_reports_that_account_selection_is_not_gu
         "architecture-final",
         "developer2",
         MemberRuntimeRecord {
+            recovery: Default::default(),
             schema_version: 3,
             member_name: "developer2".to_string(),
             cli_tool: Some(CliTool::Claude),
@@ -2707,6 +2714,7 @@ fn delegated_resume_does_not_report_a_wrapper_from_the_unused_resume_base() {
         "architecture-final",
         "developer2",
         MemberRuntimeRecord {
+            recovery: Default::default(),
             schema_version: 3,
             member_name: "developer2".to_string(),
             cli_tool: Some(CliTool::Claude),

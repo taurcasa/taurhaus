@@ -49,6 +49,7 @@ impl CoordinationOrchestrator {
 
         let now = Utc::now();
         let config = TeamConfig {
+            team_incarnation_id: Some(uuid::Uuid::new_v4().to_string()),
             schema_version: 1,
             name: name.to_string(),
             description: description.clone(),
@@ -155,6 +156,7 @@ impl CoordinationOrchestrator {
         TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
 
         let runtime = MemberRuntimeRecord {
+            recovery: Default::default(),
             schema_version: 3,
             member_name: member.name.clone(),
             cli_tool: Some(member.cli_tool),

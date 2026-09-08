@@ -33,6 +33,8 @@ const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
 /// Runtime record persisted at `teams/<team>/runtime/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberRuntimeRecord {
+    #[serde(default)]
+    pub recovery: crate::coordination::recovery_card::RecoveryState,
     #[serde(default = "schema_version_one")]
     pub schema_version: u32,
     #[serde(default)]
@@ -237,6 +239,27 @@ impl MemberRuntimeStore {
         );
 
         save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)
+    }
+
+    /// The recovery owner writes its typed fields while holding the team lock.
+    pub(crate) fn save_recovery_locked(
+        guard: &super::lock::TeamLockGuard,
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+        record: &MemberRuntimeRecord,
+    ) -> Result<(), CoordinationError> {
+        ensure_guard_covers_team(guard, teams_dir, team_name)?;
+        let path = runtime_record_path(teams_dir, team_name, member_name);
+        let target_lock = super::lock::TargetFileLock::acquire_or_create(&path)?;
+        let mut current = record.clone();
+        merge_current_extension_fields(
+            &mut current,
+            &super::lock::read_json_tolerating_torn(&target_lock)?,
+            true,
+        );
+        current.recovery = record.recovery.clone();
+        save_runtime_record_locked(teams_dir, team_name, member_name, &current, &target_lock)
     }
 
     /// Save a snapshot loaded earlier, keeping mesh-owned extension fields and
@@ -656,6 +679,8 @@ fn parse_runtime_record(
 ) -> Result<MemberRuntimeRecord, CoordinationError> {
     #[derive(Debug, Deserialize)]
     struct RuntimeRecordWire {
+        #[serde(default)]
+        recovery: crate::coordination::recovery_card::RecoveryState,
         #[serde(default = "schema_version_one")]
         schema_version: u32,
         #[serde(default)]
@@ -714,6 +739,7 @@ fn parse_runtime_record(
     })?;
 
     Ok(MemberRuntimeRecord {
+        recovery: wire.recovery,
         schema_version: wire.schema_version,
         member_name: wire.member_name.unwrap_or_else(|| member_name.to_string()),
         cli_tool: wire.cli_tool,
@@ -766,6 +792,11 @@ fn merge_current_extension_fields(
         );
         return;
     };
+    if let Some(recovery) = current.get("recovery") {
+        if let Ok(recovery) = serde_json::from_value(recovery.clone()) {
+            record.recovery = recovery;
+        }
+    }
     let current_applied_effort = current
         .get("appliedEffort")
         .or_else(|| current.get("applied_effort"))
@@ -818,6 +849,7 @@ fn merge_current_extension_fields(
 // flattened fields in camelCase. The snake_case spellings remain listed
 // as read aliases for runtime records written before that contract settled.
 const RUNTIME_AUTHORED_KEYS: &[&str] = &[
+    "recovery",
     "schema_version",
     "schemaVersion",
     "member_name",
@@ -1171,6 +1203,7 @@ mod tests {
 
     fn sample_record(member_name: &str) -> MemberRuntimeRecord {
         MemberRuntimeRecord {
+            recovery: Default::default(),
             schema_version: 3,
             member_name: member_name.to_string(),
             cli_tool: Some(CliTool::Codex),
@@ -1600,12 +1633,14 @@ mod tests {
         let team_name = "architecture-final";
 
         let stale = MemberRuntimeRecord {
+            recovery: Default::default(),
             last_seen_at: Some(ts("2026-03-01T20:00:00Z")),
             attached_at: Some(ts("2026-03-01T20:00:00Z")),
             delivery_lease: None,
             ..sample_record("stale-agent")
         };
         let fresh = MemberRuntimeRecord {
+            recovery: Default::default(),
             last_seen_at: Some(ts("2026-03-01T21:05:00Z")),
             attached_at: Some(ts("2026-03-01T21:05:00Z")),
             delivery_lease: None,
@@ -1749,6 +1784,7 @@ mod tests {
         let team_name = "architecture-final";
 
         let no_timestamps = MemberRuntimeRecord {
+            recovery: Default::default(),
             schema_version: 3,
             member_name: "no-heartbeat".to_string(),
             cli_tool: None,

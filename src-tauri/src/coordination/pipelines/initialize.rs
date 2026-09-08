@@ -369,6 +369,7 @@ impl CoordinationOrchestrator {
             &self.teams_dir,
             team_name,
             &TeamConfig {
+                team_incarnation_id: None,
                 schema_version: 1,
                 name: team_name.to_string(),
                 description: team_description,
@@ -384,6 +385,7 @@ impl CoordinationOrchestrator {
                 team_name,
                 &member.name,
                 &crate::coordination::stores::MemberRuntimeRecord {
+                    recovery: Default::default(),
                     schema_version: 3,
                     member_name: member.name.clone(),
                     cli_tool: Some(member.cli_tool),

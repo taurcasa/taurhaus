@@ -645,6 +645,7 @@ mod tests {
             teams.path(),
             "architecture-final",
             &TeamConfig {
+                team_incarnation_id: None,
                 schema_version: 1,
                 name: "architecture-final".to_string(),
                 description: None,
@@ -775,6 +776,7 @@ mod tests {
             teams.path(),
             "architecture-final",
             &TeamConfig {
+                team_incarnation_id: None,
                 schema_version: 1,
                 name: "architecture-final".to_string(),
                 description: None,

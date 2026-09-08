@@ -208,6 +208,202 @@ impl RecoveryState {
     }
 }
 
+/// Bounded against the complete bundled-role required-fact fixture.
+pub const STEERING_BYTE_CAP: usize = 16_384;
+pub const CARD_BYTE_CAP: usize = 32_768;
+pub const FIRST_ACTION: &str = "work_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.";
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssignmentFacts {
+    pub task_id: String,
+    pub assignment_token: String,
+    pub stage_id: String,
+    pub source_revision: String,
+    pub audience_policy_revision: String,
+    pub state: String,
+    pub owner: String,
+    pub objective: String,
+    pub deliverable: String,
+    pub first_action: String,
+    pub completion_signal: String,
+    pub review_route: String,
+    pub wait: String,
+    pub candidate_ref: String,
+    pub rubric_ref: String,
+    pub packet_revision: String,
+    pub restart_cursor_ref: String,
+}
+
+/// One compiler input/output for onboarding, compaction and explicit recovery.
+/// Evidence is references only; private peer prose never enters this type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecoveryCard {
+    pub card_key: Option<CardKey>,
+    pub content_revision: String,
+    pub team_name: String,
+    pub member_name: String,
+    pub project_path: String,
+    pub steering: String,
+    pub assignment: AssignmentFacts,
+    pub requested_effort: String,
+    pub boundaries: Vec<String>,
+}
+
+pub fn render_card_steering(member: &crate::coordination::domain::Member) -> String {
+    let mut lines = vec![format!(
+        "Role: {}",
+        member.role_id.as_deref().unwrap_or("unavailable")
+    )];
+    if let Some(summary) = &member.runtime_compact_summary {
+        lines.push(format!("Purpose: {}", summary.role_purpose));
+        for (title, facts) in [
+            ("Boundary", &summary.keep_doing),
+            ("Sequence", &summary.workflow_sequence),
+            ("Constraint", &summary.avoid),
+            ("Escalation", &summary.escalate_when),
+        ] {
+            lines.extend(facts.iter().map(|fact| format!("{title}: {fact}")));
+        }
+    } else {
+        lines.push("HOLD: minimal role steering unavailable; owner: team lead.".into());
+    }
+    for (title, facts) in [
+        ("Gate", &member.quality_gates),
+        ("Handoff", &member.handoff_expectations),
+        ("Completion", &member.definition_of_done),
+    ] {
+        lines.extend(
+            facts
+                .iter()
+                .flatten()
+                .map(|fact| format!("{title}: {fact}")),
+        );
+    }
+    let text = lines.join("\n");
+    if text.len() > STEERING_BYTE_CAP {
+        "HOLD: role steering exceeds the byte budget; owner: team lead; provide a bounded authorized role revision.".into()
+    } else {
+        text
+    }
+}
+
+impl RecoveryCard {
+    pub fn compile(
+        team_name: &str,
+        member: &crate::coordination::domain::Member,
+        snapshot: Option<&crate::coordination::stores::OperationalContextSnapshot>,
+        card_key: Option<CardKey>,
+        mut assignment: AssignmentFacts,
+    ) -> Self {
+        if assignment.state.is_empty() {
+            assignment.state = snapshot
+                .map(|s| s.task.status.clone())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "unassigned".into());
+        }
+        if let Some(snapshot) = snapshot {
+            if assignment.task_id.is_empty() {
+                assignment.task_id = snapshot.task.id.clone();
+            }
+            if assignment.objective.is_empty() {
+                assignment.objective = snapshot.task.subject.clone();
+            }
+        }
+        // The operative digest excludes updated_at and deadline/presence markers.
+        let content_revision = digest(&(
+            &card_key,
+            &assignment.assignment_token,
+            &assignment.stage_id,
+            &assignment.source_revision,
+            &assignment.audience_policy_revision,
+        ));
+        Self {
+            card_key,
+            content_revision,
+            team_name: team_name.into(),
+            member_name: member.name.clone(),
+            project_path: member.project_path.to_string_lossy().into_owned(),
+            steering: render_card_steering(member),
+            assignment,
+            requested_effort: snapshot
+                .map(|s| s.assignment_footer.task_effort.clone())
+                .unwrap_or_default(),
+            boundaries: snapshot
+                .map(|s| s.assignment_footer.file_ownership_boundary.clone())
+                .unwrap_or_default(),
+        }
+    }
+
+    pub fn render(&self) -> String {
+        let unavailable =
+            |text: &str| if text.is_empty() { "unavailable" } else { text }.to_string();
+        let a = &self.assignment;
+        let key = self
+            .card_key
+            .as_ref()
+            .map(|k| serde_json::to_string(k).expect("card key"))
+            .unwrap_or_else(|| "generation_unknown".into());
+        let mut lines = vec![
+            "[taurhaus] recovery_card".into(),
+            format!(
+                "Identity: {} on {}; key={key}",
+                self.member_name, self.team_name
+            ),
+            format!(
+                "Coverage: {}; source={}; audience={}",
+                self.content_revision,
+                unavailable(&a.source_revision),
+                unavailable(&a.audience_policy_revision)
+            ),
+            format!("Project cwd: {}", self.project_path),
+            format!(
+                "Assignment: task={} token={} stage={} owner={} state={}",
+                unavailable(&a.task_id),
+                unavailable(&a.assignment_token),
+                unavailable(&a.stage_id),
+                unavailable(&a.owner),
+                a.state
+            ),
+        ];
+        for (title, fact) in [
+            ("Objective", &a.objective),
+            ("Deliverable", &a.deliverable),
+            ("First action", &a.first_action),
+            ("Completion signal", &a.completion_signal),
+            ("Review route", &a.review_route),
+            ("Wait/release", &a.wait),
+            ("Candidate", &a.candidate_ref),
+            ("Rubric", &a.rubric_ref),
+            ("Restart cursor", &a.restart_cursor_ref),
+        ] {
+            lines.push(format!("{title}: {}", unavailable(fact)));
+        }
+        lines.push(format!(
+            "Requested effort: {}; effective effort/hold: unavailable",
+            unavailable(&self.requested_effort)
+        ));
+        lines.push(format!(
+            "File boundary: {}",
+            unavailable(&self.boundaries.join(", "))
+        ));
+        lines.push("Evidence/handoff retention: unavailable; references do not prove archival preservation.".into());
+        lines.push(self.steering.clone());
+        lines.push(FIRST_ACTION.into());
+        lines.push("Corrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.".into());
+        let executable = matches!(a.state.as_str(), "pending" | "in_progress")
+            && !a.assignment_token.is_empty()
+            && a.wait == "released"
+            && !a.first_action.is_empty();
+        lines.push(if executable { format!("Next action: {}", a.first_action) } else { "Next action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.".into() });
+        let text = lines.join("\n");
+        if text.len() > CARD_BYTE_CAP {
+            format!("[taurhaus] recovery_card HOLD: required identity/assignment/steering exceeds the byte budget; owner: team lead. Revision: {}. Do not infer GO; request a bounded authorized replacement.", self.content_revision)
+        } else {
+            text
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -310,5 +506,81 @@ mod tests {
         );
         assert_ne!(correction.delivery_id, baseline.delivery_id);
         assert_eq!(correction.obligation_key, baseline.obligation_key);
+    }
+    #[test]
+    fn recovery_renderer_holds_unassigned_waiting_and_terminal_contexts() {
+        // Regression: 9b857060a ended every recovered context with unconditional continuation.
+        for status in ["unassigned", "awaiting_go", "completed", "blocked"] {
+            let member: crate::coordination::domain::Member =
+                serde_json::from_value(serde_json::json!({
+                    "name":"seat", "role":"agent", "project_path":"/scratch", "cli_tool":"codex"
+                }))
+                .unwrap();
+            let facts = AssignmentFacts {
+                state: status.into(),
+                ..Default::default()
+            };
+            let card = RecoveryCard::compile("team", &member, None, None, facts);
+            let text = card.render();
+            assert!(text.contains(status));
+            assert!(!text.contains("continue immediately"));
+            assert!(text.contains("Next action:"));
+        }
+    }
+
+    #[test]
+    fn recovery_steering_golden_and_bundled_required_fact_coverage() {
+        use crate::coordination::domain::Member;
+        let mut member: Member = serde_json::from_value(serde_json::json!({
+            "name":"seat", "role":"agent", "project_path":"/scratch", "cli_tool":"codex",
+            "role_id":"reviewer", "focus_area":"Independent review",
+            "runtime_compact_summary": {"rolePurpose":"Judge the candidate", "keepDoing":["Review only"],
+                "workflowSequence":[],"avoid":["Peer verdicts"],"escalateWhen":["Missing candidate"]},
+            "definition_of_done":["Return findings"]
+        })).unwrap();
+        assert_eq!(render_card_steering(&member), "Role: reviewer\nPurpose: Judge the candidate\nBoundary: Review only\nConstraint: Peer verdicts\nEscalation: Missing candidate\nCompletion: Return findings");
+        let mut count = 0;
+        let mut maximum = 0;
+        for entry in std::fs::read_dir(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/resources/templates/roles"
+        ))
+        .unwrap()
+        {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("yaml") {
+                continue;
+            }
+            let role: crate::templates::types::RoleTemplate =
+                serde_norway::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+            member.role_id = Some(role.role_id);
+            member.runtime_compact_summary = role.runtime_compact_summary;
+            member.definition_of_done = role.definition_of_done;
+            member.quality_gates = role.quality_gates;
+            member.handoff_expectations = role.handoff_expectations;
+            let text = render_card_steering(&member);
+            assert!(
+                !text.contains("HOLD"),
+                "{}",
+                member.role_id.as_deref().unwrap()
+            );
+            if let Some(summary) = &member.runtime_compact_summary {
+                assert!(text.contains(&summary.role_purpose));
+                for fact in summary
+                    .keep_doing
+                    .iter()
+                    .chain(&summary.workflow_sequence)
+                    .chain(&summary.avoid)
+                    .chain(&summary.escalate_when)
+                {
+                    assert!(text.contains(fact), "missing required fact: {fact}");
+                }
+            }
+            maximum = maximum.max(text.len());
+            count += 1;
+        }
+        assert!(count > 20);
+        eprintln!("bundled steering: {count} roles, maximum {maximum} UTF-8 bytes");
+        assert!(maximum <= STEERING_BYTE_CAP);
     }
 }

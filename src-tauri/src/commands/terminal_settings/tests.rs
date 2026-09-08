@@ -698,6 +698,7 @@ fn a_live_launch_without_an_account_id_marks_the_tool_unresolved() {
     std::fs::create_dir_all(&teams_dir).expect("teams dir");
     write_team_with_account(&teams_dir, "team-a", "codex", "work");
     let record = crate::coordination::stores::runtime::MemberRuntimeRecord {
+        recovery: Default::default(),
         schema_version: 3,
         member_name: "builder".to_string(),
         cli_tool: Some(CliTool::Codex),
@@ -1009,6 +1010,7 @@ fn live_runtime_record(
     account_id: &str,
 ) -> crate::coordination::stores::MemberRuntimeRecord {
     crate::coordination::stores::MemberRuntimeRecord {
+        recovery: Default::default(),
         schema_version: 3,
         member_name: member_name.to_string(),
         cli_tool: None,

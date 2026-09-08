@@ -1744,6 +1744,7 @@ mod tests {
             teams_dir,
             team_name,
             &TeamConfig {
+                team_incarnation_id: None,
                 schema_version: 1,
                 name: team_name.to_string(),
                 description: None,
@@ -1761,6 +1762,7 @@ mod tests {
             team_name,
             &member.name,
             &MemberRuntimeRecord {
+                recovery: Default::default(),
                 schema_version: 3,
                 member_name: member.name.clone(),
                 cli_tool: Some(member.cli_tool),
@@ -2597,6 +2599,7 @@ mod tests {
             tmp.path(),
             "taurhaus-team",
             &TeamConfig {
+                team_incarnation_id: None,
                 schema_version: 1,
                 name: "taurhaus-team".to_string(),
                 description: None,
@@ -2615,6 +2618,7 @@ mod tests {
                 "taurhaus-team",
                 &member.name,
                 &MemberRuntimeRecord {
+                    recovery: Default::default(),
                     schema_version: 3,
                     member_name: member.name.clone(),
                     cli_tool: Some(member.cli_tool),

@@ -218,6 +218,7 @@ pub(super) fn parse_cli_tool(raw: &str) -> Result<CliTool, CoordinationError> {
 
 pub(super) fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {
     MemberRuntimeRecord {
+        recovery: Default::default(),
         schema_version: 3,
         member_name: member_name.to_string(),
         cli_tool: None,

@@ -228,6 +228,7 @@ mod tests {
             &teams_dir,
             "deadline-team",
             &TeamConfig {
+                team_incarnation_id: None,
                 schema_version: 1,
                 name: "deadline-team".to_string(),
                 description: None,

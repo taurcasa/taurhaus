@@ -2766,6 +2766,7 @@ fn startup_reconcile_removes_orphan_runtime_records() {
         .expect("create should succeed");
 
     let orphan_runtime = MemberRuntimeRecord {
+        recovery: Default::default(),
         schema_version: 3,
         member_name: "orphan-agent".to_string(),
         cli_tool: None,

@@ -1056,6 +1056,7 @@ fn a_running_member_holds_the_team_under_the_account_it_launched_on() {
     let teams = TempDir::new().expect("teams root");
     write_codex_team(teams.path(), "wave-b", "builder", "codex-work");
     let mut runtime = crate::coordination::stores::MemberRuntimeRecord {
+        recovery: Default::default(),
         schema_version: 3,
         member_name: "builder".to_string(),
         cli_tool: Some(CliTool::Codex),

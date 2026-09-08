@@ -936,6 +936,7 @@ mod tests {
             teams_dir,
             team_name,
             &TeamConfig {
+                team_incarnation_id: None,
                 schema_version: 1,
                 name: team_name.to_string(),
                 description: None,

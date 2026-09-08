@@ -110,6 +110,7 @@ impl TeamMemberView {
         }
 
         Some(MemberRuntimeRecord {
+            recovery: Default::default(),
             schema_version: 3,
             member_name: self.member_name.clone(),
             cli_tool: self.attached_cli_tool,
@@ -302,6 +303,7 @@ fn preferred_runtime_session(existing: &RuntimeSession, candidate: &RuntimeSessi
 
 fn member_runtime_record_from_session(session: &RuntimeSession) -> MemberRuntimeRecord {
     MemberRuntimeRecord {
+        recovery: Default::default(),
         schema_version: 3,
         member_name: session.member_name.clone().unwrap_or_default(),
         cli_tool: Some(session.cli_tool),
@@ -380,6 +382,7 @@ mod tests {
             teams_dir,
             team_name,
             &TeamConfig {
+                team_incarnation_id: None,
                 schema_version: 1,
                 name: team_name.to_string(),
                 description: Some("team".to_string()),
@@ -397,6 +400,7 @@ mod tests {
             team_name,
             member_name,
             &MemberRuntimeRecord {
+                recovery: Default::default(),
                 schema_version: 3,
                 member_name: member_name.to_string(),
                 cli_tool: Some(CliTool::Codex),

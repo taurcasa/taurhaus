@@ -762,6 +762,7 @@ mod tests {
 
     fn sample_team_config(team_name: &str, member_name: &str, project_path: &str) -> TeamConfig {
         TeamConfig {
+            team_incarnation_id: None,
             schema_version: 1,
             name: team_name.to_string(),
             description: None,
@@ -803,6 +804,7 @@ mod tests {
             team_name,
             member_name,
             &MemberRuntimeRecord {
+                recovery: Default::default(),
                 schema_version: 3,
                 member_name: member_name.to_string(),
                 cli_tool: None,

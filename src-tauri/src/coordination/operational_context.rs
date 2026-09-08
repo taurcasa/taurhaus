@@ -599,6 +599,7 @@ mod tests {
 
     fn write_team(teams_dir: &Path) {
         let config = TeamConfig {
+            team_incarnation_id: None,
             schema_version: 1,
             name: "architecture-final".to_string(),
             description: None,
