@@ -52,18 +52,27 @@ without starting any CLI.
   Reason-bearing member blocks do not expire with the activity TTL. See
   [the wait contract](../architecture/data-architecture.md#declared-waits-at-the-taurhaus-deadline-boundary).
 
-## M3 archive reconciliation — open check
+## M3 archive reconciliation — oversize value encoding
 
-The locked binary serializes `--kind ruling --field oversize_diff --value failed`
-with those exact `kind`, `field`, and `value` strings, plus `seq`, `by`, and `at`.
-The existing scanner recognizes it and excludes it from review acceptance. A
-subsequent `budget_raised` ruling remains independently countable. The binary
-fixture proves owner attribution and the old-launch report-cut repair.
+**M3-WAVE2-31:** The orchestrator's source-verified finding in
+[the follow-up brief](../design/m3-oversize-encoding-brief.md) identifies task
+#31's sequence-3 ruling as `field: oversize_diff, value: recorded`: a working-diff
+breach recorded by the lead, rather than a failed shipping candidate. The old
+`is_oversize_failure` predicate matched only `failed`, silently omitting this
+encoding. The earlier report-cut repair remains independently covered; it was
+not the demonstrated cause of #31's zero count.
 
-**M3-WAVE2-31:** The exact reason task #31 displayed zero remains unverified.
-Resolve only from a supplied closed wave export: ruling sequence 3 and its
-amendments, exact fields and timestamps, owner/assignment history, launch
-sidecars, included team roots and report cut. Compare raw, recognized,
-attributed and excluded records. The report-cut fix is demonstrated by the
-scratch fixture; it is not claimed as #31's historical cause. No live wave state
-or plan-ledger row was read or modified for this lane.
+The shared predicate now recognizes every `oversize_diff` ruling regardless of
+value and excludes all of them from review acceptance. The `oversize_diffs`
+column totals attributed rulings. An `Oversize rulings: N total` section prints
+one `category | value | count` line per value seen: `failed` means a
+shipped-candidate breach, `recorded` a working-diff breach, and `other` preserves
+the supplied spelling. Values are JSON-encoded to keep free text on one line;
+missing values render as `<missing>`, and non-string values remain visible in
+`other`. These counts retain owner-only, ruling-time launch attribution;
+ownerless rulings and owners without launch telemetry remain excluded.
+
+The locked-binary fixture emits both `--value failed` and `--value recorded`,
+followed by an independently countable `budget_raised` ruling. It proves both
+encodings are counted with recent and old launches. No live wave state or
+plan-ledger row is read or modified by these tests.
