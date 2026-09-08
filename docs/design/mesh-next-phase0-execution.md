@@ -355,3 +355,123 @@ release that carries its deltas (the real T9 GO changed the rubric),
 generation-scoped context that cannot leak across reassignment, and
 the assignment token visible where the lead needs it. Implementation
 priority follows that value, after the ledger increments.
+
+### D4 — info-only no-response + lead notice dedup: round-1 review outcome
+
+Opus defect lens (2026-09-08, ~13 min, 58 tool uses; every probe
+re-executed, the archive census reproduced exactly, all twelve mesh
+`append_message` sites confirmed inventoried, M1 identity reuse exact):
+**fix_required** — 1 blocker, 5 majors, 5 minors, 1 nit, 4 open
+questions. Blocker: "GO still wakes" asserted while mesh writes no
+member-directed GO notice (only the lead is notified; no generated GO
+kind). Majors: 8 of the 10 measured `INFO ONLY:` bodies changed a work
+rule (two branch corrections, a task withdrawal, five copies of a
+standing rule), so indefinite deferral is the design's principal risk;
+the deferred array vs writer-side supersession is unspecified; rejecting
+`ACTION REQUIRED … --priority low` is a breaking change under an
+additive claim; "one predicate" spans two codebases with no shared
+vectors and misses `reinjection.rs:173`; the design forgoes the
+suppression the existing daemon filter already supports. Findings with
+binding directions: `.check-logs/mesh-next-phase0/d4-opus-findings.md`.
+
+**Orchestrator adjudication folded into the directions:** GO as a
+message is out of scope (the generated release body is D2's `task go`;
+an authored prose GO is never `info`); a mechanical send-time lint
+rejects `INFO ONLY:` bodies carrying supersession/withdrawal/release
+language, plus lead-visible undrained-info counts; generated
+kind-bearing notices are never `info` and info never supersedes; the
+low-priority action combination is suppress-and-label on the unchanged
+path; one committed expectation VECTOR TABLE owned by mesh and mirrored
+byte-for-byte in taurhaus tests; and a STAGE SPLIT — stage 1 (phase-0
+deliverable, no new store): expectation-aware suppression in the
+existing daemon filter, terminal key selection and cron gate, the lint,
+the vectors, covering Codex/Antigravity/Grok now; stage 2 (opt-in,
+Claude, later): the deferred array, gated on the sanctioned-earned-read
+ownership and a reviewed version transition.
+
+**Ruling: yes, one bounded fix round** on `gpt-6-astra` high in place;
+stopping condition: blocker and majors 2–6 implemented as directed and
+orchestrator-verified; no third round.
+
+### Lane B — gap matrix: returned `unavailable` (failed closed, honestly)
+
+The Astra lane (2026-09-08 04:41–05:02) verified the three pinned
+wave-1 hashes, built the candidate reader, reproduced the §11 census
+(29 rows, 52,159 cell characters, the trial projection digest) and
+wrote `ledger-gap-matrix.md` (1.23 MB): 36 checked short-result units,
+56 selected observations across the deep cases (hero, T25, T26,
+T27/T28, governance, live wave-2 capture), the seven malformed-width
+rows and the 5,881-character paragraph as renderer fixtures, a
+provisional §4 field disposition and named spec-deltas — and 3,726 of
+3,777 candidate fragments UNRESOLVED. Its own verdict: "Fail this lane
+closed. Do not freeze payload v1 from this incomplete report." The
+exhaustive proposition matrix the brief asked for does not fit one
+lane turn; the researcher chose fail-closed over guessing, which is the
+corpus's rule. Opus lens on the partial document in progress;
+orchestrator disposition follows it.
+
+### B — acceptance-owner rulings on the ambiguous codings and the payload-v1 provisional freeze
+
+Rulings (orchestrator as acceptance owner, 2026-09-08 ~05:10 UTC), each
+consistent with the study §4/§5, the adjudication and the accepted
+intake design; none adds a payload kind:
+
+| Ambiguity | Ruling |
+|---|---|
+| A1 measure/diagnose display vocabulary | Retain source `work_kind`; any display adapter is a renderer concern; no ledger field. |
+| A2 `remaining: none` on short rows | Never implicit: an explicit `outcome.remaining_status` from an authorized result, else rendered unknown (as the intake design already says). |
+| A3 accepted-candidate join | An attributed evidence association in the ledger; the typed candidate/review relation belongs to the ruling authority (with SD-SOURCE-TUPLE roles), not the ledger. |
+| A4 T6a alias | An explicit alias inside the scope reference; never an unauthenticated task. |
+| A5 late-task retention vs artifacts | Retention gap; resolved only by the closed exports; the artifact arm stays a separate source class. |
+| A6 ruling artifact vs new declaration | The artifact's front matter IS the event (intake design); no per-fact file. |
+| A7 R36/R38 amendment vs observation | Correction of interpretation = `amend`; a changed instrument/population = a new slot with a `prior_observation` reference (study §2.5 rule 1). |
+| A8 E5 causal correction / override | Lead override with reason and retained original attribution (study §4 authority table); the 59-second assertion stays U. |
+| A9 budget typed fields | Ruling/task authority (SD-BUDGET-AUTHORITY); the ledger only references the ruling. |
+| A10 T26 PASS scope | Assessment and limitation per scoped reference (SD-CLAIM-ASSESSMENT); no document-wide Boolean. |
+| A11 T28 closed vs fulfilled | `outcome.scope_disposition: partial` plus `remaining` items with the counting basis in the referenced result. |
+| A12 wave-2 B1 table | A separate captured stratum in any future census; renderer scope. |
+| A13 malformed fragments / stale cells | Renderer fixtures with schema-owned columns (accepted as requirements). |
+| A14 mirrors vs logical acts | Continuation work on the closed exports; no payload effect. |
+| A15 review independence / waiver | `audience_ref` (SD4) plus a `note` with `qualifies` for a disclosed waiver; projection enforcement is increment D's. |
+
+**Payload v1 — provisional freeze:** the study's §4 four kinds with the
+intake design's field spellings; reference roles gain `baseline`,
+`gated`, `reviewed`, `landed`, `red_base`, `red_features`; `retention`
+gains `retain_until`; assessment is per scoped reference; no new
+kinds; budget and diff-confirm typing go to the ruling authority.
+"Provisional" is honest: the exhaustive proposition census (3,726
+syntactic candidates unresolved; semantic denominator U) continues as
+a background lane when the closed wave-1/wave-2 exports exist, and can
+only ADD evidence for fields already present or move a typed relation
+into the ruling authority — it cannot remove a correction/retention
+mechanism the study requires. This freeze feeds increment C1; the
+Opus lens on the partial matrix gates the launch.
+
+### D4 — adjudication: ACCEPTED; stage 1 is a phase-0 mesh lane
+
+Round-1 fix verified directly by the orchestrator against
+`d4-opus-findings.md` (2026-09-08 ~05:15 UTC): mesh generates no
+member-directed GO notice today (S, `main.rs:3316–3333`; the release
+body is D2's `task go`), and an authored GO/release/withdrawal/
+correction is never classifiable as info; the 8/10 measured base rate
+is the principal risk, met by a mechanical send-time lint extending
+`lint_and_prepare_send_message` (bounded keyword list, no override,
+direct and broadcast) and per-member undrained-info counts on `mesh
+who`/read surfaces; generated kind-bearing notices are never info and
+info never supersedes anything, with the two fixtures corrected;
+`ACTION REQUIRED … --priority low` stays accepted on the unchanged path
+as suppress-and-label; one committed expectation vector table owned by
+mesh (`tests/fixtures/expectation-vectors.json`) mirrored byte-for-byte
+into taurhaus, the direct reinjection writer inventoried as
+action/recovery; STAGE SPLIT — stage 1 (existing daemon filter,
+terminal key selection, cron gate, lint, counts, optional field with
+prefix fallback, vectors; no new store; feature-disabled behavior
+explicit) and stage 2 (opt-in Claude deferred array, gated on the
+earned-read ownership and a reviewed version transition; merged-read
+order/budget/overflow/watch specified); cron reminders are action;
+corpus receipt names retained with the two additions marked; the
+message-convention sentence retained and rules appended; stop out of
+scope; the old-binary field-stripping case observed (C31) and handled
+by the optional field with prefix fallback. 31 probes re-run. Promoted
+to `docs/design/info-only-and-notice-dedup-design.md` with evidence
+under `docs/design/evidence/info-only-and-notice-dedup/`.

@@ -1,0 +1,53 @@
+{
+  "workflow_info_sends": 20,
+  "workflow_info_recipients": [
+    "lead-taurjob",
+    "implementer-1",
+    "design-taurjob",
+    "architect",
+    "implementer-1",
+    "heavy-implementer",
+    "product-reviewer",
+    "altitude-reviewer",
+    "design-taurjob",
+    "heavy-implementer-1",
+    "judge-astra-1",
+    "lead-taurjob",
+    "lead-taurjob",
+    "product-reviewer",
+    "altitude-reviewer",
+    "product-reviewer",
+    "lead-taurjob",
+    "design-taurjob",
+    "altitude-reviewer",
+    "lead-taurjob"
+  ],
+  "info_with_ids": 6,
+  "model_output_examples": [
+    {
+      "array_index": 9,
+      "from": "altitude-reviewer",
+      "timestamp": "2026-09-06T19:45:08.635Z",
+      "native_payload": {
+        "type": "idle_notification",
+        "from": "altitude-reviewer",
+        "timestamp": "2026-09-06T19:45:08.635Z",
+        "idleReason": "available",
+        "result": "Noted the pathspec-only commit rule in my scratchpad; the T7 commit will be `git add -- docs/wave-1/reviews/T1-altitude.md && git commit -m '\u2026' -- docs/wave-1/reviews/T1-altitude.md`, nothing broader.\n\nNo response owed to the lead (INFO ONLY). Nothing further is independently requestable \u2014 the only outstanding dependency remains T1's `architecture.md` and the `T7 go <commit>` message. Standing by."
+      }
+    },
+    {
+      "array_index": 29,
+      "from": "altitude-reviewer",
+      "timestamp": "2026-09-06T20:02:27.574Z",
+      "native_payload": {
+        "type": "idle_notification",
+        "from": "altitude-reviewer",
+        "timestamp": "2026-09-06T20:02:27.574Z",
+        "idleReason": "available",
+        "result": "Recorded. No response owed (INFO ONLY), and nothing is independently requestable: my next two actions \u2014 the task #1 final verdict ruling and the T11/M0 structural review \u2014 each depend on a report that hasn't landed (`RESULT T1r2` from the architect; M0 from heavy-implementer). Standing by."
+      }
+    }
+  ],
+  "counting_rule": "case-insensitive leading INFO ONLY prefix after whitespace; Unicode code points, not bytes; envelopes, not distinct logical broadcasts"
+}
