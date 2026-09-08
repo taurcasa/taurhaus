@@ -1727,6 +1727,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams_dir,
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: team_name.to_string(),
                 member_name: member_name.to_string(),

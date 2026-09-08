@@ -264,6 +264,7 @@ pub fn apply_delivery_context(
         })?;
     let existing = OperationalContextSnapshotStore::load(teams_dir, team_name, member_name)?;
     let snapshot = OperationalContextSnapshot {
+        recovery_card: None,
         version: existing.as_ref().map_or(1, |snapshot| snapshot.version),
         team_name: team_name.to_string(),
         member_name: member_name.to_string(),
@@ -410,6 +411,7 @@ fn build_member_snapshot(
     task_state_changed_at: Option<DateTime<Utc>>,
 ) -> OperationalContextSnapshot {
     OperationalContextSnapshot {
+        recovery_card: None,
         version: existing.map_or(1, |snapshot| snapshot.version),
         team_name: team_name.to_string(),
         member_name: member_name.to_string(),
@@ -1129,6 +1131,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),
@@ -1192,6 +1195,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),
@@ -1304,6 +1308,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),
@@ -1354,6 +1359,7 @@ mod tests {
             .with_timezone(&Utc);
         let state_changed_at = stale_at + chrono::Duration::minutes(10);
         let existing = OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "architecture-final".to_string(),
             member_name: "frontend-dev".to_string(),
@@ -1414,6 +1420,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),
@@ -1470,6 +1477,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),
@@ -1518,6 +1526,7 @@ mod tests {
             .with_timezone(&Utc);
         let nudged_at = assigned_at + chrono::Duration::minutes(10);
         let original = OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "architecture-final".to_string(),
             member_name: "frontend-dev".to_string(),
@@ -1650,6 +1659,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams.path(),
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "architecture-final".to_string(),
                 member_name: "frontend-dev".to_string(),

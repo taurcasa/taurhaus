@@ -243,6 +243,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             &teams_dir,
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "deadline-team".to_string(),
                 member_name: "builder".to_string(),

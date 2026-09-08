@@ -214,6 +214,11 @@ pub struct RemoveAgentReport {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReonboardRequest {
+    #[serde(
+        default,
+        skip_serializing_if = "crate::coordination::requests::is_false"
+    )]
+    pub recovery_read: bool,
     #[serde(default)]
     pub force: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]

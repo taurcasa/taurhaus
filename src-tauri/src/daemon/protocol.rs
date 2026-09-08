@@ -46,7 +46,8 @@ use serde::{Deserialize, Serialize};
 /// v23: member launch intents carry stable account ids and the daemon owns the
 /// accept-then-poll selector-account switch operation.
 /// v24: per-team root authority and Claude team account switching.
-pub const PROTOCOL_VERSION: u32 = 24;
+/// v25: versioned recovery receipts and explicit force/read reonboard intents.
+pub const PROTOCOL_VERSION: u32 = 25;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -1518,7 +1519,7 @@ mod tests {
     // edit here, in ARCHITECTURE.md, and in docs/architecture/daemon-protocol.md.
     #[test]
     fn protocol_version_is_pinned() {
-        assert_eq!(PROTOCOL_VERSION, 24);
+        assert_eq!(PROTOCOL_VERSION, 25);
     }
 
     #[test]
@@ -1766,6 +1767,7 @@ mod tests {
         };
         let reonboard = CoordinationReonboardParams {
             request: crate::coordination::requests::ReonboardRequest {
+                recovery_read: false,
                 force: false,
                 intent_id: None,
                 reason: None,
@@ -2227,5 +2229,9 @@ mod tests {
         let detached = r#"{"version":1,"display_sessions":[],"runtime_sessions":[],"focus":{"session":null,"window":null,"timestamp":null},"foreground_project_path":null}"#;
         let result: RuntimeSessionSnapshotResult = serde_json::from_str(detached).unwrap();
         assert_eq!(result.focus.expect("detached focus decodes").session, "");
+    }
+    #[test]
+    fn recovery_force_cannot_silently_run_against_a_protocol_24_daemon() {
+        assert!(PROTOCOL_VERSION > 24);
     }
 }

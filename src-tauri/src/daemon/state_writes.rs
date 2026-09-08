@@ -233,6 +233,7 @@ mod tests {
             .set("architecture-final", &work_root)
             .expect("register team");
         let snapshot = OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "architecture-final".to_string(),
             member_name: "builder".to_string(),
@@ -277,6 +278,7 @@ mod tests {
             .unwrap()
             .with_timezone(&Utc);
         let newer = OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "architecture-final".to_string(),
             member_name: "builder".to_string(),
@@ -325,6 +327,7 @@ mod tests {
         let teams = TempDir::new().expect("teams");
         save_team(teams.path());
         let snapshot = OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "architecture-final".to_string(),
             member_name: "builder".to_string(),

@@ -592,6 +592,7 @@ impl CoordinationOrchestrator {
             let receipt = runtime.recovery.last_delivered.or(runtime.recovery.claim);
             let accepted = receipt.as_ref().is_some_and(|r| r.stage.satisfies());
             return Ok(DeliveryResult {
+                recovery_text: None,
                 recovery_card: receipt,
                 delivered: accepted,
                 durable: accepted,

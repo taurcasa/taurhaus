@@ -246,6 +246,15 @@ pub struct AssignmentFacts {
     pub restart_cursor_ref: String,
 }
 
+/// App-owned opaque descriptor; Mesh need not parse a new wire vocabulary.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CardDescriptor {
+    pub card_schema: u32,
+    pub card_key: Option<CardKey>,
+    pub content_revision: String,
+    pub pending: bool,
+}
+
 /// One compiler input/output for onboarding, compaction and explicit recovery.
 /// Evidence is references only; private peer prose never enters this type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

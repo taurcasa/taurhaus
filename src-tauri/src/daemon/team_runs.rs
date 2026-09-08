@@ -156,8 +156,6 @@ impl TeamOperationsService {
                         operational_snapshot,
                         task_state_changed_at,
                     } = params;
-                    let report = execute_reonboard_pipeline(state.as_ref(), &request)
-                        .map_err(|error| error.to_string())?;
                     let teams_dir = state
                         .team_teams_dir(&request.team_name)
                         .map_err(|error| error.to_string())?;
@@ -168,6 +166,8 @@ impl TeamOperationsService {
                         task_state_changed_at,
                     )
                     .map_err(|error| error.to_string())?;
+                    let report = execute_reonboard_pipeline(state.as_ref(), &request)
+                        .map_err(|error| error.to_string())?;
                     Ok::<_, String>(report)
                 }));
                 match result {
@@ -790,6 +790,11 @@ pub(crate) fn execute_reonboard_pipeline(
     request: &ReonboardRequest,
 ) -> Result<DeliveryResult, crate::coordination::errors::CoordinationError> {
     state.with_team_orchestrator(&request.team_name, |orchestrator| {
+        if request.recovery_read {
+            if request.force { return Err(crate::coordination::errors::CoordinationError::Validation("recovery read and force are separate intents".into())); }
+            let (text,receipt)=crate::coordination::recovery_delivery::read_current(&orchestrator.root_registry,&orchestrator.teams_dir,&request.team_name,&request.member_name)?;
+            return Ok(DeliveryResult { recovery_text: Some(text), recovery_card: Some(receipt), delivered: true, durable: false, method: crate::coordination::requests::DeliveryMethod::InboxFile, wake: crate::coordination::requests::WakeDisposition::NotAttempted { reason: "explicit recovery read".into() }, post_write_warnings: Vec::new() });
+        }
         if request.force {
             let intent = request.intent_id.as_deref().filter(|s| !s.trim().is_empty()).ok_or_else(|| crate::coordination::errors::CoordinationError::Validation("forced recovery requires intent_id".into()))?;
             let reason = request.reason.as_deref().filter(|s| !s.trim().is_empty() && s.len() <= 256).ok_or_else(|| crate::coordination::errors::CoordinationError::Validation("forced recovery requires a reason (1-256 bytes)".into()))?;
@@ -1018,6 +1023,7 @@ mod tests {
         .expect("write held lease");
         let service = service(state);
         let snapshot = crate::coordination::stores::OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "arch".to_string(),
             member_name: "builder".to_string(),
@@ -1034,6 +1040,7 @@ mod tests {
         let run_id = service
             .start_reonboard(CoordinationReonboardParams {
                 request: crate::coordination::requests::ReonboardRequest {
+                    recovery_read: false,
                     force: false,
                     intent_id: None,
                     reason: None,

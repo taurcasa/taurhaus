@@ -70,6 +70,8 @@ pub struct OperationalWorkingSetSnapshot {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct OperationalContextSnapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_card: Option<crate::coordination::recovery_card::CardDescriptor>,
     pub version: u32,
     pub team_name: String,
     pub member_name: String,
@@ -256,6 +258,7 @@ mod tests {
 
     fn sample_snapshot() -> OperationalContextSnapshot {
         OperationalContextSnapshot {
+            recovery_card: None,
             version: 99,
             team_name: "taurhaus-team".to_string(),
             member_name: "developer1".to_string(),
@@ -323,6 +326,7 @@ mod tests {
         assert_eq!(
             stored,
             OperationalContextSnapshot {
+                recovery_card: None,
                 version: OPERATIONAL_SCHEMA_VERSION,
                 ..snapshot
             }

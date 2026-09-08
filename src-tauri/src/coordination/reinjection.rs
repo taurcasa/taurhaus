@@ -420,32 +420,6 @@ fn load_member_leases(
     leases
 }
 
-fn format_role_line(role: &OperationalReinjectionRole) -> Option<String> {
-    match (role.role_name.as_deref(), role.role_id.as_deref()) {
-        (Some(role_name), Some(role_id)) => Some(format!("{role_name} ({role_id})")),
-        (Some(role_name), None) => Some(role_name.to_string()),
-        (None, Some(role_id)) => Some(role_id.to_string()),
-        (None, None) => None,
-    }
-}
-
-fn append_bullet_section(
-    lines: &mut Vec<String>,
-    title: &str,
-    items: &[String],
-    empty_fallback: &str,
-) {
-    if items.is_empty() {
-        lines.push(format!("{title}: {empty_fallback}"));
-        return;
-    }
-
-    lines.push(format!("{title}:"));
-    for item in items {
-        lines.push(format!("- {item}"));
-    }
-}
-
 fn normalize_optional(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -551,6 +525,7 @@ mod tests {
 
     fn sample_snapshot() -> OperationalContextSnapshot {
         OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "taurhaus-team".to_string(),
             member_name: "architect".to_string(),

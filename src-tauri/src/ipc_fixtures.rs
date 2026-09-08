@@ -298,6 +298,7 @@ fn fully_populated_accounts_result() -> AccountsResult {
 
 fn fully_populated_delivery_result() -> DeliveryResult {
     DeliveryResult {
+        recovery_text: None,
         recovery_card: None,
         delivered: true,
         method: DeliveryMethod::InboxFile,

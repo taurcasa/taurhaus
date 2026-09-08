@@ -86,6 +86,7 @@ fn prepare_inner(
     let snapshot = OperationalContextSnapshotStore::load(root, team, member_name)?;
     let facts = assignment_facts(root, team, member_name, snapshot.as_ref());
     let normalize = |p: &Path| crate::provider::path::normalize_project_path(&p.to_string_lossy());
+    let authority_revision = registry.revision(team)?.to_string();
     let key = config
         .team_incarnation_id
         .as_ref()
@@ -99,7 +100,7 @@ fn prepare_inner(
                 runtime.recovery.compaction_generation + u64::from(compaction),
             ),
             roots: Roots {
-                root_authority_revision: registry.revision(team).unwrap_or_default().to_string(),
+                root_authority_revision: authority_revision.clone(),
                 resolved_teams_root: normalize(root),
                 resolved_mesh_config_root: root.parent().map(normalize).unwrap_or_default(),
                 harness_account_root: "unavailable".into(),
@@ -127,6 +128,30 @@ fn prepare_inner(
         team,
         member_name,
     );
+    let mut descriptor_snapshot = snapshot.clone().unwrap_or_else(|| {
+        crate::coordination::stores::OperationalContextSnapshot {
+            recovery_card: None,
+            version: 1,
+            team_name: team.into(),
+            member_name: member_name.into(),
+            updated_at: chrono::Utc::now(),
+            task: Default::default(),
+            assignment_footer: Default::default(),
+            ownership: Default::default(),
+            working_set: crate::coordination::stores::OperationalWorkingSetSnapshot {
+                project_path: card.project_path.clone(),
+                focal_files: Vec::new(),
+            },
+        }
+    });
+    descriptor_snapshot.recovery_card = Some(crate::coordination::recovery_card::CardDescriptor {
+        card_schema: CARD_SCHEMA,
+        card_key: key.clone(),
+        content_revision: card.content_revision.clone(),
+        pending: crate::coordination::stores::MemberCompactionStore::load(root, team, member_name)?
+            .is_some_and(|s| s.pending),
+    });
+    OperationalContextSnapshotStore::save_locked(&guard, root, &descriptor_snapshot)?;
     let mut text = card.render();
     let mut receipt = if let Some(key) = key {
         // The durable append is the authority after an interrupted runtime commit.
@@ -150,7 +175,26 @@ fn prepare_inner(
                 runtime.recovery.observe(&previous, ReceiptStage::Failed, 0);
             }
         }
-        let claim = runtime.recovery.claim(&key, &card.content_revision, path);
+        let mut claim = runtime.recovery.claim(&key, &card.content_revision, path);
+        if path == "read" && claim.is_none() {
+            claim = runtime
+                .recovery
+                .last_delivered
+                .as_ref()
+                .filter(|r| r.card_key == key)
+                .or_else(|| {
+                    runtime
+                        .recovery
+                        .claim
+                        .as_ref()
+                        .filter(|r| r.card_key == key)
+                })
+                .cloned();
+        }
+        if let Some(receipt) = claim.as_mut().filter(|_| path == "read") {
+            receipt.path = "read".into();
+            receipt.content_revision = card.content_revision.clone();
+        }
         MemberRuntimeStore::save_recovery_locked(&guard, root, team, member_name, &runtime)?;
         let Some(receipt) = claim else {
             return Ok(None);
@@ -254,6 +298,27 @@ pub fn observe(
             .clone(),
     );
     Ok(())
+}
+
+pub fn read_current(
+    registry: &TeamRootRegistry,
+    root: &Path,
+    team: &str,
+    member: &str,
+) -> Result<(String, CardReceipt), CoordinationError> {
+    let card = prepare(registry, root, team, member, "read")?
+        .ok_or_else(|| CoordinationError::Conflict("current recovery view unavailable".into()))?;
+    observe(
+        registry,
+        root,
+        team,
+        member,
+        &card.receipt,
+        ReceiptStage::ConsumedByRead,
+    )?;
+    let mut receipt = card.receipt;
+    receipt.stage = ReceiptStage::ConsumedByRead;
+    Ok((card.text, receipt))
 }
 
 pub fn attach_receipt(
@@ -491,5 +556,36 @@ mod tests {
         let facts = assignment_facts(&root, "team", "seat", Some(&snapshot));
         assert_eq!(facts.wait, "awaiting_go");
         assert!(!serde_json::to_string(&facts).unwrap().contains("PRIVATE-"));
+    }
+    #[test]
+    fn recovery_explicit_read_returns_pending_baseline_without_inbox_fallback() {
+        let (_temp, root, registry) = fixture();
+        reserve_activation(&root, "team", "seat", "activation").unwrap();
+        let (text, receipt) = read_current(&registry, &root, "team", "seat").unwrap();
+        assert!(text.contains("recovery_card"));
+        assert_eq!(receipt.stage, ReceiptStage::ConsumedByRead);
+        assert!(MeshInboxStore::load(&root, "team", "seat")
+            .unwrap()
+            .is_empty());
+        assert!(prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn recovery_descriptor_is_published_on_the_existing_operational_snapshot() {
+        let (_temp, root, registry) = fixture();
+        reserve_activation(&root, "team", "seat", "activation").unwrap();
+        let prepared = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        let snapshot = OperationalContextSnapshotStore::load(&root, "team", "seat")
+            .unwrap()
+            .expect("descriptor snapshot");
+        let wire = serde_json::to_value(snapshot).unwrap();
+        assert_eq!(
+            wire["recovery_card"]["content_revision"],
+            prepared.receipt.content_revision
+        );
     }
 }

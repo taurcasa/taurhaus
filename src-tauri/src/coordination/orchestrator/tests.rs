@@ -446,6 +446,7 @@ impl CoordinationBackend for UndeliveredBackend {
 
     fn deliver(&self, _req: DeliveryRequest) -> Result<DeliveryResult, CoordinationError> {
         Ok(DeliveryResult {
+            recovery_text: None,
             recovery_card: None,
             delivered: false,
             method: DeliveryMethod::NativeMessageApi,
@@ -488,6 +489,7 @@ impl CoordinationBackend for InboxFileBackend {
 
     fn deliver(&self, _req: DeliveryRequest) -> Result<DeliveryResult, CoordinationError> {
         Ok(DeliveryResult {
+            recovery_text: None,
             recovery_card: None,
             delivered: true,
             method: DeliveryMethod::InboxFile,

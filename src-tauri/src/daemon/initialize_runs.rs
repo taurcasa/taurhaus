@@ -456,6 +456,7 @@ mod tests {
             cli_commands: CliCommandSettings::default(),
             tmux_layout: "new_window".to_string(),
             operational_snapshots: vec![crate::coordination::stores::OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: "daemon-init".to_string(),
                 member_name: "builder".to_string(),

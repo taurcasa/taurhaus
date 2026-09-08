@@ -155,7 +155,6 @@ impl CompactHookSkipReason {
 enum CompactHookFailureStage {
     ReadStdin,
     ParsePayload,
-    RenderAdditionalContext,
     DeliverInbox,
     RecordDelivery,
     SerializeResponse,
@@ -166,7 +165,6 @@ impl CompactHookFailureStage {
         match self {
             Self::ReadStdin => "read_stdin",
             Self::ParsePayload => "parse_payload",
-            Self::RenderAdditionalContext => "render_additional_context",
             Self::DeliverInbox => "deliver_inbox",
             Self::RecordDelivery => "record_delivery",
             Self::SerializeResponse => "serialize_response",
@@ -1829,6 +1827,7 @@ mod tests {
         OperationalContextSnapshotStore::save(
             teams_dir,
             &OperationalContextSnapshot {
+                recovery_card: None,
                 version: 1,
                 team_name: team_name.to_string(),
                 member_name: member_name.to_string(),

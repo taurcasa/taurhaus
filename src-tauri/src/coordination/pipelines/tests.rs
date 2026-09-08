@@ -2895,6 +2895,7 @@ fn launch_then_task_snapshot_attributes_the_rendered_launch() {
     crate::coordination::operational_context::publish_member_operation_snapshot(
         tmp.path(),
         &OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "routing-team".to_string(),
             member_name: "builder".to_string(),
@@ -5824,6 +5825,7 @@ fn write_member_snapshot_at(
     OperationalContextSnapshotStore::save(
         teams_dir,
         &OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "effort-team".to_string(),
             member_name: member_name.to_string(),

@@ -172,6 +172,8 @@ pub enum WakeDisposition {
 #[serde(rename_all = "camelCase")]
 pub struct DeliveryResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery_card: Option<crate::coordination::recovery_card::CardReceipt>,
     /// Whether the backend completed its delivery operation. For inbox-file
     /// delivery this means exactly one append completed.
@@ -770,6 +772,11 @@ pub struct SwitchTeamAccountReport {
 /// Request contract for re-sending onboarding to one persisted member.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReonboardRequest {
+    #[serde(
+        default,
+        skip_serializing_if = "crate::coordination::requests::is_false"
+    )]
+    pub recovery_read: bool,
     #[serde(default)]
     pub force: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1068,6 +1075,7 @@ mod tests {
     #[test]
     fn reonboard_request_round_trips() {
         let request = ReonboardRequest {
+            recovery_read: false,
             force: false,
             intent_id: None,
             reason: None,
@@ -1223,4 +1231,8 @@ mod tests {
             &[]
         );
     }
+}
+
+pub fn is_false(value: &bool) -> bool {
+    !value
 }

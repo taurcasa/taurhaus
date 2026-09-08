@@ -243,6 +243,13 @@ fn apply_member_deadline(
         rollback_claim(&orchestrator.teams_dir, &claimed, action, now)?;
         return Ok(());
     }
+    let mut recovery_facts = crate::coordination::recovery_delivery::assignment_facts(
+        &orchestrator.teams_dir,
+        team_name,
+        member_name,
+        Some(&snapshot),
+    );
+    recovery_facts.task_id = snapshot.task.id.clone();
     let action_result = match action {
         DeadlineAction::Nothing => Ok(()),
         DeadlineAction::Nudge => orchestrator
@@ -250,22 +257,21 @@ fn apply_member_deadline(
                 recovery_card: None,
                 team_name: team_name.to_string(),
                 member_name: member_name.to_string(),
-                message: format!(
-                    "ACTION REQUIRED: Task #{} — half the deadline is gone ({} minutes total); report progress or BLOCKED.",
-                    snapshot.task.id, deadline_minutes
-                ),
+                message: render_deadline_nudge(&recovery_facts, deadline_minutes),
                 sender_name: sender_name.map(ToString::to_string),
                 operational_context: None,
             }))
             .map(|_| ()),
-        DeadlineAction::MarkStale => crate::coordination::stores::mesh_task::commit_status_if_unchanged(
-            &orchestrator.teams_dir,
-            team_name,
-            member_name,
-            &snapshot.task.id,
-            "in_progress",
-            "stale",
-        ),
+        DeadlineAction::MarkStale => {
+            crate::coordination::stores::mesh_task::commit_status_if_unchanged(
+                &orchestrator.teams_dir,
+                team_name,
+                member_name,
+                &snapshot.task.id,
+                "in_progress",
+                "stale",
+            )
+        }
     };
 
     if let Err(error) = action_result {
@@ -457,6 +463,20 @@ fn member_has_fresh_active_signal(
     fresh && active
 }
 
+fn render_deadline_nudge(
+    facts: &crate::coordination::recovery_card::AssignmentFacts,
+    minutes: u32,
+) -> String {
+    let value = |s: &str| {
+        if s.is_empty() {
+            "unavailable".to_string()
+        } else {
+            s.to_string()
+        }
+    };
+    format!("ACTION REQUIRED: Task #{} — half the deadline is gone ({minutes} minutes total); assignment={}; stage={}; wait/release={}. Next action: report progress or BLOCKED; preserve any existing wait. This reminder does not release GO.", facts.task_id, value(&facts.assignment_token), value(&facts.stage_id), value(&facts.wait))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -548,6 +568,7 @@ mod tests {
             .expect("deadline timestamp")
             .with_timezone(&Utc);
         let before = OperationalContextSnapshot {
+            recovery_card: None,
             version: 1,
             team_name: "deadline-team".to_string(),
             member_name: "builder".to_string(),
@@ -583,5 +604,21 @@ mod tests {
                 .expect("snapshot exists");
         assert_eq!(stored.task.status, "in_progress ");
         assert_eq!(stored.task.stale_at, None);
+    }
+    #[test]
+    fn recovery_deadline_nudge_contains_identity_wait_and_action_without_card() {
+        let facts = crate::coordination::recovery_card::AssignmentFacts {
+            task_id: "17".into(),
+            assignment_token: "token-1".into(),
+            stage_id: "review".into(),
+            wait: "awaiting_go".into(),
+            ..Default::default()
+        };
+        let text = render_deadline_nudge(&facts, 20);
+        for required in ["17", "token-1", "review", "awaiting_go", "Next action:"] {
+            assert!(text.contains(required));
+        }
+        assert!(!text.contains("recovery_card"));
+        assert!(!text.contains("continue immediately"));
     }
 }

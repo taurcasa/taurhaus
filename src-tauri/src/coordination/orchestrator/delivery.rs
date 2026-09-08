@@ -41,8 +41,41 @@ impl CoordinationOrchestrator {
     /// Route a delivery request through the backend and emit audit events.
     pub fn deliver_message(
         &mut self,
-        request: DeliveryRequest,
+        mut request: DeliveryRequest,
     ) -> Result<DeliveryResult, CoordinationError> {
+        if let DeliveryRequest::OperatorNotice(notice) = &mut request {
+            if notice.recovery_card.is_none() && notice.operational_context.is_some() {
+                if crate::coordination::stores::MemberCompactionStore::load(
+                    &self.teams_dir,
+                    &notice.team_name,
+                    &notice.member_name,
+                )?
+                .is_some_and(|s| s.pending)
+                {
+                    apply_delivery_context(
+                        &self.teams_dir,
+                        &notice.team_name,
+                        &notice.member_name,
+                        notice.operational_context.as_ref().unwrap(),
+                    )?;
+                    if let Some(mut card) = crate::coordination::recovery_delivery::prepare(
+                        &self.root_registry,
+                        &self.teams_dir,
+                        &notice.team_name,
+                        &notice.member_name,
+                        "inbox",
+                    )? {
+                        notice.message = format!("{}\n\n{}", card.text, notice.message);
+                        card.receipt.generated_bytes = notice.message.len();
+                        notice.recovery_card = Some(card.receipt);
+                    }
+                }
+            }
+        }
+        let recovery_receipt = match &request {
+            DeliveryRequest::OperatorNotice(n) => n.recovery_card.clone(),
+            _ => None,
+        };
         let (team_name, member_name) = delivery_meta(&request);
         let operational_context = delivery_operational_context(&request).cloned();
         let delivery_type = delivery_type_name(&request).to_string();
@@ -108,6 +141,18 @@ impl CoordinationOrchestrator {
                     return Err(error);
                 }
 
+                if let Some(receipt) = recovery_receipt.as_ref() {
+                    if let Err(error) = crate::coordination::recovery_delivery::observe(
+                        &self.root_registry,
+                        &self.teams_dir,
+                        &team_name_owned,
+                        &member_name_owned,
+                        receipt,
+                        crate::coordination::recovery_card::ReceiptStage::Accepted,
+                    ) {
+                        result.post_write_warnings.push(error.to_string());
+                    }
+                }
                 let wake = if result.method != DeliveryMethod::InboxFile {
                     WakeDisposition::NotAttempted {
                         reason: "delivery method does not require an inbox wake".to_string(),

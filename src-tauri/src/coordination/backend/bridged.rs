@@ -458,6 +458,7 @@ impl MeshBridgedBackend {
             &message,
         )?;
         Ok(DeliveryResult {
+            recovery_text: None,
             recovery_card: payload.recovery_card,
             delivered: true,
             method: DeliveryMethod::InboxFile,

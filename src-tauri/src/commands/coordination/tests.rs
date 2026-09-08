@@ -956,6 +956,7 @@ fn resume_team_daemon_poll_reemits_the_existing_canonical_progress_contract() {
 fn reonboard_daemon_client_uses_its_run_status_method() {
     let params = protocol::CoordinationReonboardParams {
         request: crate::coordination::requests::ReonboardRequest {
+            recovery_read: false,
             force: false,
             intent_id: None,
             reason: None,
@@ -968,6 +969,7 @@ fn reonboard_daemon_client_uses_its_run_status_method() {
         task_state_changed_at: None,
     };
     let report = crate::coordination::requests::DeliveryResult {
+        recovery_text: None,
         recovery_card: None,
         delivered: true,
         method: crate::coordination::requests::DeliveryMethod::InboxFile,
@@ -2105,6 +2107,7 @@ fn reonboard_succeeds_for_existing_member() {
         None,
         &state,
         ReonboardRequest {
+            recovery_read: false,
             force: false,
             intent_id: None,
             reason: None,
@@ -2135,6 +2138,7 @@ fn reonboard_fails_for_nonexistent_team_or_member() {
         None,
         &state,
         ReonboardRequest {
+            recovery_read: false,
             force: false,
             intent_id: None,
             reason: None,
@@ -2150,6 +2154,7 @@ fn reonboard_fails_for_nonexistent_team_or_member() {
         None,
         &state,
         ReonboardRequest {
+            recovery_read: false,
             force: false,
             intent_id: None,
             reason: None,
@@ -2210,6 +2215,7 @@ fn add_agent_and_reonboard_validate_empty_strings() {
         None,
         &state,
         ReonboardRequest {
+            recovery_read: false,
             force: false,
             intent_id: None,
             reason: None,
@@ -2224,6 +2230,7 @@ fn add_agent_and_reonboard_validate_empty_strings() {
         None,
         &state,
         ReonboardRequest {
+            recovery_read: false,
             force: false,
             intent_id: None,
             reason: None,

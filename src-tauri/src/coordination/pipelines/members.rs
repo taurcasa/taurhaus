@@ -1405,13 +1405,13 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         request: &ResumeMemberRequest,
         prepared: &PreparedMemberActivation,
     ) -> Result<Vec<DeliveryResult>, CoordinationError> {
+        let entry = self.orchestrator.prepare_resume_onboarding_entry(
+            request,
+            &prepared.member,
+            &prepared.lead_name,
+        );
         self.orchestrator
-            .deliver_recovery_card(
-                &request.team_name,
-                &prepared.member.name,
-                &prepared.lead_name,
-            )
-            .map(|result| vec![result])
+            .deliver_onboarding_entries(entry.into_iter().collect())
     }
 
     fn add_agent_request(&self) -> &'b AddAgentRequest {

@@ -132,6 +132,7 @@ impl CoordinationBackend for FakeBackend {
         }
 
         Ok(DeliveryResult {
+            recovery_text: None,
             recovery_card: None,
             delivered: true,
             method: DeliveryMethod::TmuxInjection,
