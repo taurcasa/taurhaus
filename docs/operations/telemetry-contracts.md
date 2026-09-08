@@ -27,6 +27,11 @@ client runs. The monitor fixture advances only Mesh's realtime clock with a
 scratch shared library, leaving host time and monotonic polling unchanged. Each
 foreground monitor is terminated and reaped in `finally`. No generated inputs
 are checked in. Taurhaus launch/snapshot fixtures remain Taurhaus-produced.
+Monitor cycles wait up to 30 seconds for the producer's completed-cycle log;
+the final cycle must persist `launch_health` in task metadata. The exact final
+record sequence remains asserted. Fake-clock wait regressions run in the
+default unit lane (or `python3 scripts/mesh-contract-fixture.py --self-test`),
+without starting any CLI.
 
 ## Reader decisions
 

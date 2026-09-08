@@ -3,6 +3,22 @@
 //! ~/.local/bin (or MESH_CONTRACT_BIN). Missing prerequisites fail explicitly.
 use std::path::{Path, PathBuf};
 
+// Regression: 22d0fc03 used a fixed 250 ms delay and could cut a monitor
+// cycle short. The script's fake-clock tests never start Mesh or a harness.
+#[test]
+fn mesh_fixture_monitor_wait_regressions() {
+    let root = tempfile::tempdir().unwrap();
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/mesh-contract-fixture.py");
+    let output = std::process::Command::new("/usr/bin/python3")
+        .env_clear()
+        .env("HOME", root.path())
+        .arg(script)
+        .arg("--self-test")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+}
+
 // Regression: 22d0fc03 (then 38ba6672 and 845aa31c) put binary fixtures in
 // the mandatory unit lane even though CI does not provision locked Mesh.
 #[test]
