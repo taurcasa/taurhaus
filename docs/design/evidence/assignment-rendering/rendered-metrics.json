@@ -1,0 +1,28 @@
+{
+  "verbatim": {
+    "pairs": 9,
+    "old_characters": 23101,
+    "new_characters": 25627,
+    "old_utf8_bytes": 23147,
+    "new_utf8_bytes": 25713,
+    "old_TE": 5775.25,
+    "new_TE": 6406.75,
+    "net_characters": -2526,
+    "net_utf8_bytes": -2566,
+    "net_TE": -631.5,
+    "share_original_task_characters": -0.029885003076049407
+  },
+  "linked": {
+    "pairs": 9,
+    "old_characters": 23101,
+    "new_characters": 27167,
+    "old_utf8_bytes": 23147,
+    "new_utf8_bytes": 27271,
+    "old_TE": 5775.25,
+    "new_TE": 6791.75,
+    "net_characters": -4066,
+    "net_utf8_bytes": -4124,
+    "net_TE": -1016.5,
+    "share_original_task_characters": -0.04810468032748095
+  }
+}

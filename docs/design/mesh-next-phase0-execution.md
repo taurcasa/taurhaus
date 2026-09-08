@@ -317,3 +317,41 @@ and mesh (assignment/wait/correction projection, delivery identities,
 receipts) — with joint fixtures at the existing state boundary. The
 ordering decision stays with the operator: it touches the live
 compaction path and both binaries' release trains.
+
+### D2 — adjudication: ACCEPTED as a correctness change; overhead item 2 RECLASSIFIED
+
+Round-1 fix verified directly by the orchestrator against
+`d2-opus-findings.md` (2026-09-08 ~05:05 UTC): the five archived
+commands are back verbatim and the verifier's executed-command
+assertion is scoped to the executed-evidence section; the renderer
+reads `awaiting_go` and declared blocks and creates no hold (field
+conflicts → visible annotation + the lifecycle's BLOCKED route); all
+nine cards plus a synthetic optional-section card go through the one
+literal template; `mesh task assign` is correctly described as printing
+the inbox message id, with a labelled `assignment_id` added to the
+assign output/JSON envelope; `parent_task_ids`, `anchor`,
+`scaffold_class`, `sunset_*` and the archived ruling/verdict/artifact/
+review fields are in the matrix with an unknown-key rule; every
+`assignment_context` subkey has a declared lifetime and the exact
+top-level clear entry; writers are named per subkey; the GO release
+moves to a proposed compare-and-commit `task go` command with its own
+bounded body (the legacy `task update --go` stays unguarded pending
+migration review); spec-deltas are listed with owners; line 5 keeps the
+standard's scope; the historical T9 GO is rendered through the release
+template (candidate `8f97e28`, rubric `6a44056`, 57→60 checks, R1→R10,
+47(d) deferred). 41 mesh probes re-run in a tempdir. Promoted to
+`docs/design/assignment-rendering-design.md` with evidence under
+`docs/design/evidence/assignment-rendering/`.
+
+**Program-level finding (S, measured with the threads study's
+estimator):** a field-preserving combined rendering of the nine wave-1
+pairs is LARGER than the authored contract plus generated card it
+replaces — verbatim doctrine −2.99%, linked-not-pasted doctrine −4.81%
+of the 84,524-character task-text denominator — against the study's
+8.9% ceiling. Overhead item 2's token premise does not survive contact
+with the preserved fields. The change stays justified by correctness
+alone: one operative contract with an explicit token-bound wait, a GO
+release that carries its deltas (the real T9 GO changed the rubric),
+generation-scoped context that cannot leak across reassignment, and
+the assignment token visible where the lead needs it. Implementation
+priority follows that value, after the ledger increments.
