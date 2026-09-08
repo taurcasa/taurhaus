@@ -606,3 +606,40 @@ Notes for the lens round, not blockers: the Markdown blocks are still
 field dumps (`<pre>` JSON) rather than the study's compact contract —
 increment D's canonical rendering replaces them; the stale-head detail
 string is generic ("current head required; tombstones are terminal").
+
+### C1 — round-1 lenses (fix round r1 running)
+
+Opus conformance lens: **fix_required** (1 major, 4 minors, 4 nits) —
+the `--json` intake adapter is the YAML parser behind a JSON pre-check
+and rejects valid JSON with surrogate-pair escapes; `cargo deny`
+licenses fail because the `yaml-rust2` chain pulls `foldhash` (Zlib)
+which `deny.toml` does not allow; admission re-reads the whole workflow
+journal once per reference (3 s at the documented limits under the
+ledger lock); source-side read failures are reported as
+`committed_corruption`; clap's usage is replaced by a ledger JSON error
+for any argv containing the token `ledger`; three nits (cfg-stub
+convention, `ledger::run` panic-on-misuse, unpinned canonical map
+ordering). Opus operational lens: **fix_required** (3 majors, 2 minors,
+1 nit) — malformed authored Markdown PANICS (exit 101) instead of a
+structured `invalid_input`; Git revision/blob verification resolves
+against an enclosing repository rather than the declared `--repo-root`;
+`remaining_status: none` is blocked for any referenced completion
+unless its whole summary is copied verbatim into `limitations[]`; the
+narrative view repeats an identical heading per entry; the scope-owner
+authorization rule has no test. The procedure's fix round r1 is
+running on `gpt-6-astra` high.
+
+**Orchestrator adjudication on the `remaining_status: none` major
+(binding for C1's acceptance):** the implementer's copy-the-statement
+rule over-read the C1 brief's T8 fixture (the orchestrator's wording).
+The study and the intake design fix the rule: `none` is REJECTED only
+against known open obligations that are STRUCTURED (open `remaining`
+roots in the same declared scope); it is never rejected on prose; the
+writer does not guess which sentence of a referenced completion is a
+qualification. The T8 fixture's intent is VISIBILITY, not copying:
+when an `outcome` declares `none` and its referenced completion carries
+a summary, the projection renders that completion statement beside the
+declaration ("declaration: none; completion statement: …") so a
+contradiction can never be hidden, and a later obligation flags the
+earlier `none` for reconciliation. No copy obligation, no rejection.
+The C1 brief's fixture text is corrected to this reading.

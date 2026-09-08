@@ -116,11 +116,15 @@ diff is `feat/ledger-reader`). Not merged to master, not released.
   fold and past replay; no competing heads; retry correctness; authorship
   and authority; small event and honest limits (UTF-8, pipes, control
   chars, oversize rejected without truncation, `remaining: unknown` ≠
-  none; and the T8 fixture from the gap matrix: an `outcome` declaring
-  `remaining_status: none` whose referenced completion carries an
-  authored limitation ("not validated") is admitted only with that
-  limitation carried in `limitations[]`, never silently — the study's
-  "never turn completed into `remaining: none`" rule); durable committed prefix (crash before/during append, after
+  none; and the T8 fixture from the gap matrix, read as VISIBILITY not
+  copying: an `outcome` declaring `remaining_status: none` whose
+  referenced completion carries a summary ("not validated") is admitted
+  — `none` is rejected only against structured open `remaining` roots in
+  the same scope, never on prose — and the projection renders the
+  completion statement beside the declaration so the contradiction is
+  visible; a later obligation flags the earlier `none` for
+  reconciliation — the study's "never turn completed into `remaining:
+  none`" rule); durable committed prefix (crash before/during append, after
   line sync, around manifest replace — with an injectable fs fault
   seam); corruption and cursors; pull purity (render creates nothing,
   touches no task/inbox); role-command validity (every verb example in
