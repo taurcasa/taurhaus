@@ -73,7 +73,17 @@ fn bounded_read(path: &Path, limit: u64) -> Option<String> {
         .take(limit + 1)
         .read_to_string(&mut raw)
         .ok()?;
-    (raw.len() as u64 <= limit).then_some(raw)
+    if raw.len() as u64 > limit {
+        tracing::debug!(
+            event = "routing.input.skipped",
+            path = %path.display(),
+            limit,
+            reason = "size_limit",
+            "Routing input exceeds the read budget"
+        );
+        return None;
+    }
+    Some(raw)
 }
 
 pub(super) fn workflow_records(team_dir: &Path) -> Vec<MonitorRecord> {
@@ -105,4 +115,42 @@ pub(super) fn task_records(
         records.entry(record.identity.clone()).or_insert(record);
     }
     records.into_values().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression: 22d0fc03 silently discarded an entire workflow journal
+    // above 8 MiB. Oversize input must leave a diagnostic naming its path.
+    #[test]
+    fn oversize_workflow_journal_emits_one_debug_diagnostic() {
+        let root = tempfile::tempdir().unwrap();
+        let team = root.path().join("teams/oversize-team");
+        std::fs::create_dir_all(team.join("state")).unwrap();
+        let journal = team.join("state/workflow_events.jsonl");
+        File::create(&journal)
+            .unwrap()
+            .set_len(8 * 1_048_576 + 1)
+            .unwrap();
+        let log = root.path().join("capture.log");
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .without_time()
+            .with_writer(std::sync::Mutex::new(File::create(&log).unwrap()))
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            assert!(workflow_records(&team).is_empty());
+        });
+        let output = std::fs::read_to_string(log).unwrap();
+        assert_eq!(output.lines().count(), 1, "{output}");
+        assert!(output.contains("DEBUG"), "{output}");
+        assert!(output.contains("routing.input.skipped"), "{output}");
+        assert!(
+            output.contains("oversize-team/state/workflow_events.jsonl"),
+            "{output}"
+        );
+        assert!(output.contains("size_limit"), "{output}");
+    }
 }
