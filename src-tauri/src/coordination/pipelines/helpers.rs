@@ -48,6 +48,7 @@ pub(super) struct MemberActivationRuntimeState {
     pub(super) mesh_joined: bool,
     pub(super) member_added: bool,
     pub(super) launch_account: Option<LaunchAccountResult>,
+    pub(super) harness_account_root: Option<PathBuf>,
     pub(super) applied_effort: Option<String>,
 }
 
@@ -293,6 +294,7 @@ pub(super) fn run_member_session_phase(
             let account = launch.account_result();
             runtime_state.launch_account = (!account.is_empty()).then_some(account);
             runtime_state.applied_effort = launch.applied_effort.clone();
+            runtime_state.harness_account_root = launch.harness_account_root.clone();
             Ok(DetectedRuntimeSession::default())
         }
         MemberSessionPhase::CaptureOnly => {
@@ -695,6 +697,7 @@ pub(super) fn launched_effort(
 pub(super) struct TeamLaunchResult {
     pub(super) command: String,
     pub(super) account: LaunchAccountResult,
+    pub(super) harness_account_root: Option<PathBuf>,
     pub(super) applied_model: Option<String>,
     pub(super) applied_effort: Option<String>,
 }
@@ -951,6 +954,9 @@ pub(super) fn render_team_launch(
     }
 
     Ok(TeamLaunchResult {
+        harness_account_root: (account.account_applied != Some(false))
+            .then_some(team_config_dir)
+            .flatten(),
         command: rendered.command,
         account,
         applied_model: rendered.applied_model,

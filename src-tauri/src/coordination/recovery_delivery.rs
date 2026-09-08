@@ -103,8 +103,16 @@ fn prepare_inner(
                 root_authority_revision: authority_revision.clone(),
                 resolved_teams_root: normalize(root),
                 resolved_mesh_config_root: root.parent().map(normalize).unwrap_or_default(),
-                harness_account_root: "unavailable".into(),
-                launch_namespace: "unavailable".into(),
+                harness_account_root: runtime
+                    .recovery
+                    .harness_account_root
+                    .clone()
+                    .unwrap_or_else(|| "unavailable".into()),
+                launch_namespace: runtime
+                    .recovery
+                    .launch_namespace
+                    .clone()
+                    .unwrap_or_else(|| "unavailable".into()),
                 resolved_project_root: normalize(&member.project_path),
             },
             contract: Contract {
@@ -221,6 +229,9 @@ fn prepare_inner(
             stage: ReceiptStage::OutcomeUnknown,
             generated_bytes: 0,
             accepted_bytes: 0,
+            offered_bytes: 0,
+            returned_by_read_bytes: 0,
+            observations: Vec::new(),
         }
     };
     if receipt.kind == DeliveryKind::Correction {
@@ -278,6 +289,14 @@ pub fn observe(
             {
                 pending.pending = false;
                 pending.satisfied_by = Some(receipt.delivery_id.clone());
+                if let Some(mut snapshot) =
+                    OperationalContextSnapshotStore::load(root, team, member)?
+                {
+                    if let Some(descriptor) = snapshot.recovery_card.as_mut() {
+                        descriptor.pending = false;
+                    }
+                    OperationalContextSnapshotStore::save_locked(&guard, root, &snapshot)?;
+                }
                 crate::coordination::stores::MemberCompactionStore::save_locked(
                     &guard, root, team, member, &pending,
                 )?;
@@ -285,7 +304,7 @@ pub fn observe(
         }
     }
     let mut observation = receipt.clone();
-    observation.stage = stage;
+    observation.record(stage, receipt.generated_bytes);
     taurhaus_lib::logging::emit_global(
         "info",
         "coordination",
@@ -317,7 +336,7 @@ pub fn read_current(
         ReceiptStage::ConsumedByRead,
     )?;
     let mut receipt = card.receipt;
-    receipt.stage = ReceiptStage::ConsumedByRead;
+    receipt.record(ReceiptStage::ConsumedByRead, receipt.generated_bytes);
     Ok((card.text, receipt))
 }
 
@@ -327,8 +346,7 @@ pub fn attach_receipt(
 ) {
     if let Some(receipt) = receipt {
         let mut receipt = receipt.clone();
-        receipt.stage = ReceiptStage::Accepted;
-        receipt.accepted_bytes = message.text.len();
+        receipt.record(ReceiptStage::Accepted, message.text.len());
         message.id = Some(receipt.delivery_id.clone());
         message.extra.insert(
             "recovery_card".into(),
@@ -587,5 +605,118 @@ mod tests {
             wire["recovery_card"]["content_revision"],
             prepared.receipt.content_revision
         );
+    }
+    #[test]
+    fn recovery_read_preserves_acceptance_and_clears_descriptor_pending() {
+        // Regression: edf94e2c replaced acceptance with read status and left a stale descriptor.
+        let (_temp, root, registry) = fixture();
+        reserve_activation(&root, "team", "seat", "activation").unwrap();
+        let boundary = Utc::now();
+        use crate::coordination::stores::compaction::{
+            record_delivery_at, CompactionDeliveryResult,
+        };
+        record_delivery_at(
+            &root,
+            "team",
+            "seat",
+            crate::session_scanner::cli_tool::CliTool::Codex,
+            "session-1",
+            boundary,
+            CompactionDeliveryResult::Skipped,
+        )
+        .unwrap();
+        let card = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        append(&root, &card);
+        observe(
+            &registry,
+            &root,
+            "team",
+            "seat",
+            &card.receipt,
+            ReceiptStage::Accepted,
+        )
+        .unwrap();
+        let (_, read) = read_current(&registry, &root, "team", "seat").unwrap();
+        assert!(read.accepted_bytes > 0);
+        assert!(
+            serde_json::to_value(&read).unwrap()["returned_by_read_bytes"]
+                .as_u64()
+                .unwrap_or(0)
+                > 0
+        );
+        assert!(
+            !OperationalContextSnapshotStore::load(&root, "team", "seat")
+                .unwrap()
+                .unwrap()
+                .recovery_card
+                .unwrap()
+                .pending
+        );
+        record_delivery_at(
+            &root,
+            "team",
+            "seat",
+            crate::session_scanner::cli_tool::CliTool::Codex,
+            "session-1",
+            boundary,
+            CompactionDeliveryResult::Skipped,
+        )
+        .unwrap();
+        assert!(
+            !crate::coordination::stores::MemberCompactionStore::load(&root, "team", "seat")
+                .unwrap()
+                .unwrap()
+                .pending
+        );
+    }
+
+    #[test]
+    fn recovery_root_move_and_rollback_preserve_recipient_and_fence_stale_receipts() {
+        let (temp, root, registry) = fixture();
+        reserve_activation(&root, "team", "seat", "activation").unwrap();
+        let first = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        append(&root, &first);
+        observe(
+            &registry,
+            &root,
+            "team",
+            "seat",
+            &first.receipt,
+            ReceiptStage::Accepted,
+        )
+        .unwrap();
+        let target = temp.path().join("other/teams");
+        crate::daemon::team_move::move_team_directory(&root, &target, "team").unwrap();
+        registry.set("team", &target).unwrap();
+        assert!(prepare(&registry, &root, "team", "seat", "inbox").is_err());
+        assert!(observe(
+            &registry,
+            &target,
+            "team",
+            "seat",
+            &first.receipt,
+            ReceiptStage::Accepted
+        )
+        .is_err());
+        let moved = prepare(&registry, &target, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        assert_eq!(moved.receipt.obligation_key, first.receipt.obligation_key);
+        assert_eq!(moved.receipt.kind, DeliveryKind::Correction);
+        assert_eq!(
+            moved.receipt.supersedes_revision.as_ref(),
+            Some(&first.receipt.content_revision)
+        );
+        crate::daemon::team_move::move_team_directory(&target, &root, "team").unwrap();
+        registry.set("team", &root).unwrap();
+        let rollback = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        assert_ne!(rollback.receipt.delivery_id, first.receipt.delivery_id);
+        assert_eq!(rollback.receipt.kind, DeliveryKind::Correction);
     }
 }

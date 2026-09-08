@@ -225,9 +225,14 @@ pub fn record_delivery_at(
         s.last_session_id == session_id && s.last_compaction_timestamp == compaction_timestamp
     });
     let state = MemberCompactionState {
-        pending: result != CompactionDeliveryResult::Failed,
-        pending_obligation,
-        satisfied_by: if same_boundary {
+        pending: if same_boundary || result == CompactionDeliveryResult::Failed {
+            previous.as_ref().is_some_and(|s| s.pending)
+        } else {
+            true
+        },
+        pending_obligation: pending_obligation
+            .or_else(|| previous.as_ref().and_then(|s| s.pending_obligation.clone())),
+        satisfied_by: if same_boundary || result == CompactionDeliveryResult::Failed {
             previous.and_then(|s| s.satisfied_by)
         } else {
             None

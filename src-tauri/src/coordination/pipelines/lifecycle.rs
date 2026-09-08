@@ -584,18 +584,18 @@ impl CoordinationOrchestrator {
         member: &str,
         sender: &str,
     ) -> Result<DeliveryResult, CoordinationError> {
-        use crate::coordination::recovery_card::ReceiptStage;
-        use crate::coordination::recovery_delivery::{observe, prepare};
+        use crate::coordination::recovery_delivery::prepare;
         let Some(card) = prepare(&self.root_registry, &self.teams_dir, team, member, "inbox")?
         else {
             let runtime = MemberRuntimeStore::load(&self.teams_dir, team, member)?;
             let receipt = runtime.recovery.last_delivered.or(runtime.recovery.claim);
             let accepted = receipt.as_ref().is_some_and(|r| r.stage.satisfies());
+            let durable = receipt.as_ref().is_some_and(|r| r.accepted_bytes > 0);
             return Ok(DeliveryResult {
                 recovery_text: None,
                 recovery_card: receipt,
                 delivered: accepted,
-                durable: accepted,
+                durable,
                 method: crate::coordination::requests::DeliveryMethod::InboxFile,
                 wake: crate::coordination::requests::WakeDisposition::NotAttempted {
                     reason: "existing recovery delivery status".into(),
@@ -612,23 +612,7 @@ impl CoordinationOrchestrator {
                 sender_name: Some(sender.into()),
                 operational_context: None,
             }));
-        let stage = match &result {
-            Ok(result) if result.durable => ReceiptStage::Accepted,
-            Ok(result) if result.delivered => ReceiptStage::Submitted,
-            _ => ReceiptStage::OutcomeUnknown,
-        };
-        let observed = observe(
-            &self.root_registry,
-            &self.teams_dir,
-            team,
-            member,
-            &card.receipt,
-            stage,
-        );
         let mut result = result?;
-        if let Err(error) = observed {
-            result.post_write_warnings.push(error.to_string());
-        }
         result.recovery_card = MemberRuntimeStore::load(&self.teams_dir, team, member)
             .ok()
             .and_then(|r| r.recovery.claim)

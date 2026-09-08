@@ -148,7 +148,13 @@ impl CoordinationOrchestrator {
                         &team_name_owned,
                         &member_name_owned,
                         receipt,
-                        crate::coordination::recovery_card::ReceiptStage::Accepted,
+                        if result.durable {
+                            crate::coordination::recovery_card::ReceiptStage::Accepted
+                        } else if result.method == DeliveryMethod::TmuxInjection {
+                            crate::coordination::recovery_card::ReceiptStage::Submitted
+                        } else {
+                            crate::coordination::recovery_card::ReceiptStage::OutcomeUnknown
+                        },
                     ) {
                         result.post_write_warnings.push(error.to_string());
                     }

@@ -438,6 +438,7 @@ impl CoordinationOrchestrator {
             &context.member.project_path.to_string_lossy(),
             &launch.command,
         )?;
+        runtime_state.harness_account_root = launch.harness_account_root.clone();
         let account = launch.account_result();
         runtime_state.launch_account = (!account.is_empty()).then_some(account);
         runtime_state.applied_effort = launch.applied_effort.clone();

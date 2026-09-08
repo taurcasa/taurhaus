@@ -1023,12 +1023,27 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             &self.runtime_state.session_id,
             self.runtime_state.attached_at,
         ));
-        crate::coordination::recovery_delivery::reserve_activation(
+        MemberRuntimeStore::update(
             &self.orchestrator.teams_dir,
             &prepared.activation_context.team_name,
             &prepared.member.name,
-            &intent,
+            |record| {
+                record.recovery.reserve_activation(&intent);
+                record.recovery.harness_account_root =
+                    self.runtime_state.harness_account_root.as_ref().map(|p| {
+                        crate::provider::path::normalize_project_path(&p.to_string_lossy())
+                    });
+                record.recovery.launch_namespace = Some(
+                    if cfg!(target_os = "windows") {
+                        "wsl"
+                    } else {
+                        "native"
+                    }
+                    .into(),
+                );
+            },
         )
+        .map(|_| ())
         .map_err(|e| ("reserve_recovery_generation".into(), e))
     }
 

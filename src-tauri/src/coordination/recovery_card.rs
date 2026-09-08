@@ -92,6 +92,35 @@ pub struct CardReceipt {
     pub stage: ReceiptStage,
     pub generated_bytes: usize,
     pub accepted_bytes: usize,
+    #[serde(default)]
+    pub offered_bytes: usize,
+    #[serde(default)]
+    pub returned_by_read_bytes: usize,
+    #[serde(default)]
+    pub observations: Vec<(ReceiptStage, chrono::DateTime<chrono::Utc>, String)>,
+}
+
+impl CardReceipt {
+    pub fn record(&mut self, stage: ReceiptStage, bytes: usize) {
+        self.stage = stage;
+        self.generated_bytes = bytes;
+        match stage {
+            ReceiptStage::Accepted => self.accepted_bytes = bytes,
+            ReceiptStage::HookResponseOffered | ReceiptStage::Submitted => {
+                self.offered_bytes = bytes
+            }
+            ReceiptStage::ConsumedByRead => self.returned_by_read_bytes = bytes,
+            _ => {}
+        }
+        if !self
+            .observations
+            .iter()
+            .any(|(observed, _, _)| *observed == stage)
+        {
+            self.observations
+                .push((stage, chrono::Utc::now(), self.path.clone()));
+        }
+    }
 }
 
 /// App-authored runtime fields: one baseline binding and one delivered pointer.
@@ -99,6 +128,10 @@ pub struct CardReceipt {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecoveryState {
     pub member_incarnation_id: Option<String>,
+    #[serde(default)]
+    pub harness_account_root: Option<String>,
+    #[serde(default)]
+    pub launch_namespace: Option<String>,
     pub activation_intent: Option<String>,
     pub activation_generation: u64,
     pub compaction_generation: u64,
@@ -192,6 +225,9 @@ impl RecoveryState {
             stage: ReceiptStage::OutcomeUnknown,
             generated_bytes: 0,
             accepted_bytes: 0,
+            offered_bytes: 0,
+            returned_by_read_bytes: 0,
+            observations: Vec::new(),
         };
         self.baseline_binding = Some(receipt.obligation_key.clone());
         self.claim = Some(receipt.clone());
@@ -205,13 +241,7 @@ impl RecoveryState {
             return; // Stale pre-move or previous-context receipt cannot satisfy this claim.
         }
         let mut receipt = receipt.clone();
-        receipt.stage = stage;
-        receipt.generated_bytes = bytes;
-        receipt.accepted_bytes = if stage == ReceiptStage::Accepted {
-            bytes
-        } else {
-            0
-        };
+        receipt.record(stage, bytes);
         if stage.satisfies() {
             self.baseline_binding = Some(receipt.obligation_key.clone());
             self.last_delivered = Some(receipt.clone());
@@ -452,7 +482,9 @@ impl RecoveryCard {
         let executable = matches!(a.state.as_str(), "pending" | "in_progress")
             && !a.assignment_token.is_empty()
             && a.wait == "released"
-            && !a.first_action.is_empty();
+            && !a.first_action.is_empty()
+            && self.card_key.is_some()
+            && !self.steering.contains("HOLD:");
         lines.push(if executable { format!("Next action: {}", a.first_action) } else { "Next action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.".into() });
         let text = lines.join("\n");
         if text.len() > CARD_BYTE_CAP {
@@ -653,5 +685,20 @@ mod tests {
             state.claim(&k, "moved", "inbox").unwrap().kind,
             DeliveryKind::Correction
         );
+    }
+    #[test]
+    fn recovery_missing_required_steering_holds_even_a_released_assignment() {
+        // Regression: 2760e88a allowed executable next action despite missing required steering.
+        let member=serde_json::from_value(serde_json::json!({"name":"seat","role":"agent","cli_tool":"codex","project_path":"/scratch"})).unwrap();
+        let facts = AssignmentFacts {
+            state: "in_progress".into(),
+            assignment_token: "a1".into(),
+            wait: "released".into(),
+            first_action: "edit now".into(),
+            ..Default::default()
+        };
+        let card = RecoveryCard::compile("team", &member, None, None, facts);
+        assert!(card.render().contains("HOLD"));
+        assert!(!card.render().contains("Next action: edit now"));
     }
 }

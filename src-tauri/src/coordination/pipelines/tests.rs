@@ -8081,3 +8081,84 @@ fn recovery_actual_launch_changes_attachment_stamp_even_for_the_same_session() {
         assert_ne!(pending.attached_at, previous);
     }
 }
+
+#[test]
+fn recovery_launch_captures_the_selected_harness_root_separately() {
+    let temp = TempDir::new().unwrap();
+    let runtime = RecordingCoordinationRuntime::default();
+    let agent = setup_config(
+        "seat",
+        "codex",
+        "gpt-6-astra",
+        temp.path().to_str().unwrap(),
+    );
+    let context =
+        MemberActivationContext::for_initialize_member("team", "lead", &agent, MemberRole::Agent)
+            .unwrap();
+    let mut settings = CliCommandSettings::default();
+    let account = temp.path().join("selected-account");
+    settings
+        .account_selector_dirs
+        .insert("CODEX_HOME".into(), account.clone());
+    let mut pending = MemberActivationRuntimeState::default();
+    run_member_session_phase(
+        &runtime,
+        temp.path(),
+        &context,
+        "%1",
+        MemberSessionPhase::LaunchOnly(&settings),
+        &mut pending,
+    )
+    .unwrap();
+    assert_eq!(
+        pending.harness_account_root.as_deref(),
+        Some(account.as_path())
+    );
+}
+
+#[test]
+fn recovery_team_recreation_and_seat_replacement_mint_distinct_recipients() {
+    let tmp = TempDir::new().unwrap();
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let mut recipients = Vec::new();
+    for generation in 0..3 {
+        if generation != 1 {
+            orchestrator.create_team("team", None).unwrap();
+        }
+        orchestrator
+            .add_member(
+                "team",
+                member(
+                    "seat",
+                    MemberRole::Agent,
+                    CliTool::Codex,
+                    tmp.path().to_str().unwrap(),
+                ),
+            )
+            .unwrap();
+        crate::coordination::recovery_delivery::reserve_activation(
+            tmp.path(),
+            "team",
+            "seat",
+            "activation",
+        )
+        .unwrap();
+        let record = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        let team = TeamConfigStore::load(tmp.path(), "team").unwrap();
+        recipients.push((
+            team.team_incarnation_id.unwrap(),
+            record.recovery.member_incarnation_id.unwrap(),
+        ));
+        if generation == 0 {
+            orchestrator.remove_member("team", "seat", None).unwrap();
+        }
+        if generation == 1 {
+            orchestrator.disband_team("team", None).unwrap();
+        }
+    }
+    assert_eq!(recipients[0].0, recipients[1].0);
+    assert_ne!(recipients[0].1, recipients[1].1);
+    assert_ne!(recipients[1].0, recipients[2].0);
+}
