@@ -134,9 +134,12 @@ oversize-diff incidents, budget raises, relaunches, completed effort switches,
 actions, and median elapsed
 time from first render to the terminal state-change timestamp. Acceptance follows Amendment
 4 exactly: only ledger status `completed` with a sequenced review ruling counts,
-and an oversize-failure ruling (`field: oversize_diff`, `value: failed`) is not
+and any `field: oversize_diff` ruling, whatever its free-text `value`, is not
 a review ruling for that purpose — it is counted in the `oversize_diffs` column
-instead, attributed to the task owner's launch active at the ruling's time.
+instead, attributed to the task owner's launch active at the ruling's time,
+and the report's `Oversize rulings` section lists every value spelling seen
+(`failed` / `recorded` / other) so a differently encoded ruling never
+disappears into a zero (M3, wave 2 task #31: `value: recorded`).
 A `field: budget_raised` ruling (old→new in `value`, reason in `note`) is likewise
 excluded from review acceptance and counted separately in `budget_raises`, using
 the same owner-at-ruling-time attribution. Ownerless rulings are dropped. These
