@@ -572,3 +572,37 @@ ledgers and review files are NOT committed; hashes identify them). The
 runaway's regeneration is kept only in scratch as an unreviewed
 attempt. The payload-v1 provisional freeze in `ledger-writer-brief.md`
 matches this document.
+
+## Lane C1 — ledger writer, fold and standalone verbs (implementer turn complete; orchestrator verification PASS)
+
+`feature-pr` on mesh branch `feat/ledger-writer` (stacked on
+`feat/ledger-reader`, worktree `~/projects/mesh-ledger`), implementer
+`gpt-6-astra` high, launched 2026-09-08 05:18 UTC; implementer turn
+complete at 06:04 with twelve commits (`08fbd55` … `fbfc475`), 3,313
+inserted lines (budget 4,000), new dependencies `yaml-rust2` (YAML 1.2)
+and `unicode-normalization`, 21 writer tests, gates reported green
+(`just check-quick`, `just lint`, `just test` 709 passed / 1 ignored,
+the archive check). Opus lenses and gate in progress.
+
+**Orchestrator verification (S, 06:11 UTC, candidate `fbfc4752`, crate
+binary in a tempdir root with an empty environment):** a scratch team
+with a frozen assignment; `ledger init --wave --authority-file
+--repo-root` created `state/ledger/v1/{lock,manifest.json,segments/
+000001.jsonl}` and returned ledger/epoch/incarnation ids; `ledger entry
+--file result.md` admitted an `outcome` whose body was selected by
+`{section: Summary}` — the "Details" section did not enter the event;
+limitations with quotes and a pipe survived; the receipt carried
+`committed_cut {committed_bytes, last_sequence, prefix_digest}` and a
+`request_digest`; `render --view current|narrative` byte-identical
+across two runs; an identical retry returned the original receipt at
+sequence 1; `amend` with `previous_event_id` moved the head to sequence
+2; a stale head returned `head_mismatch`, exit 3, with `current_head`;
+`history` exposed the authenticated author envelope (actor,
+member incarnation, authority ref) and committed time; a 5,000-byte
+body returned `invalid_input`, exit 2, `actual: 5000, limit: 4096`,
+"link the complete artifact, never truncate"; `tombstone --json`
+landed at sequence 3; a render left the root's file digests unchanged.
+Notes for the lens round, not blockers: the Markdown blocks are still
+field dumps (`<pre>` JSON) rather than the study's compact contract —
+increment D's canonical rendering replaces them; the stale-head detail
+string is generic ("current head required; tombstones are terminal").
