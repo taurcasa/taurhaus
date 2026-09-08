@@ -699,3 +699,66 @@ append is `accepted`; the wording conflates a missing daemon receipt
 with non-delivery); `--assignment-context` schema violations surface as
 raw serde messages ("missing field `availability`", "`artifact_ref`")
 rather than the structured error shape.
+
+### Assignment card — round-1 lenses (fix round r1 running); C1 — round-2 fix done
+
+Card lane, Opus conformance lens **fix_required** (3 majors, 4 minors,
+3 nits) and operational lens **fix_required** (2 majors, 5 minors, 1
+nit): assignment now requires a description but no command can set
+one (tasks created without `--description` become permanently
+unassignable); "assignment undelivered" fires on every delivered-but-
+unread assignment; `task go` commits the release then exits 1 on
+delivery failure with no undelivered marker and no re-send path; a
+typed block wait is never cleared, so a resumed task's card reports a
+conflict forever; every plain `--awaiting-go` card carries the
+Reconciliation/BLOCKED instruction (the orchestrator's note); legacy
+cursors are silently discarded on upgrade; the whole task record is
+snapshotted into the never-rotated workflow journal per assignment;
+`task get` can rebuild and write projections on a read path; the card
+re-derives the effort rule; a regression guard was deleted and an
+acceptance repurposed. Fix round r1 on `gpt-6-astra` high.
+
+C1: fix round r2 (USAGE drift, repo-root hint, narrative grouping key,
+verb help) complete; re-review and gate pending.
+
+C1 round-2 re-review: round-2 items resolved; two NEW majors in path
+normalization — `bundle` reference paths are NFC-normalized before
+resolution (the writer can digest a different file than the author
+named) and retry identity breaks for non-NFC input file names (the
+self-digest exclusion never matches); minor: the T8 visibility half is
+not implemented (the projection must render the referenced completion
+statement beside a `none` declaration); nits on USAGE (`--file`/`--json`
+resolve against the frozen repo root) and a swallowed git diagnostic.
+Fix round r3 (the last the procedure allows) is running; if a major
+survives its re-review the orchestrator verifies the last fix directly
+and decides, never accepting an unaddressed major.
+
+## Lane: info-only stage 1 (implementer turn complete; orchestrator verification PASS)
+
+`feature-pr` on mesh branch `feat/info-only-stage1` (off master,
+worktree `~/projects/mesh-info`), implementer `gpt-6-astra` high,
+launched 2026-09-08 06:53 UTC; implementer turn complete 07:14 with
+five commits (`fb72e00` … `5e75a7d`), 1,267 inserted lines (budget
+1,500), no new dependencies, a 44-row committed vector table
+(`tests/fixtures/expectation-vectors.json`) with conformance tests,
+vector-driven daemon-batch/terminal-key/cron tests, ten assert_cmd
+integration tests including all eight corpus mislabel examples, gates
+green. Opus lenses in progress.
+
+**Orchestrator verification (S, 07:20 UTC, candidate `5e75a7d`, crate
+binary in a tempdir root):** `INFO ONLY: ignore the earlier …` and
+`INFO ONLY: … is withdrawn …` are rejected at send ("contains work-
+changing language '…'; re-prefix ACTION REQUIRED"); a plain info notice
+is accepted; `ACTION REQUIRED … --priority low` is accepted and its echo
+labeled `unknown/legacy` with provenance `legacy_low_priority`; an
+explicit `--expectation info` on an action body is rejected as a
+conflict; `mesh who` shows `pending info: N` per member (JSON
+`pendingInfoCount`/`pendingInfoCoverage`); an explicit read returns the
+info and reports the pending count without marking anything; a
+generated assignment is `action` by class with provenance `generated`;
+every `message_sent` workflow echo carries `{expectation,
+wake_eligible, provenance, policy_revision}`; the inbox message carries
+`responseExpectation` only when the explicit flag was used (optional
+field, prefix fallback). The daemon's batch filter and terminal
+key selection are covered by the lane's vector-driven unit tests (no
+tmux in scratch). No notes beyond the lens round.
