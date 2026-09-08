@@ -288,6 +288,8 @@ fn prepare_inner(
     if receipt.kind == DeliveryKind::Correction {
         text = format!("Correction: supersedes_revision={}; authority=taurhaus; scope=roots/role/contract/packet; effective=current recipient/context only. Replaces those instruction groups; assignment and GO authority remain unchanged.\n{text}", receipt.supersedes_revision.as_deref().unwrap_or("unavailable"));
     }
+    // Increment 1 carries skipped obligations on this live baseline/correction/force/read
+    // path. Mesh-owned assignment deltas are not wired to operational_context yet.
     if let Some(pending) =
         crate::coordination::stores::MemberCompactionStore::load(root, team, member_name)?
             .and_then(|s| s.pending_obligation)

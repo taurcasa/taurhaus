@@ -545,12 +545,36 @@ impl RecoveryCard {
                 "Optional focal files/leases omitted to fit the card budget.".into(),
             );
         }
-        let text = lines.join("\n");
-        if text.len() > CARD_BYTE_CAP {
-            format!("[taurhaus] recovery_card\nIdentity: {} on {}\nAssignment: task={} token={} state={}\nWait/release: {}\nHOLD: identity key, assignment detail, file boundary and role steering could not fit together; owner: team lead; request a bounded authorized replacement. Revision: {}.\nCorrections replace only named instructions; reminders cannot release GO.\nNext action: preserve the stated wait; ask the team lead for the oversized field group.", self.member_name, self.team_name, a.task_id, a.assignment_token, a.state, unavailable(&a.wait), self.content_revision)
-        } else {
-            text
+        if lines.join("\n").len() > CARD_BYTE_CAP {
+            *lines.last_mut().expect("next action") = "Next action: preserve the stated wait; ask the team lead for the oversized field group.".into();
         }
+        while lines.join("\n").len() > CARD_BYTE_CAP {
+            // Retain identity, assignment and wait before other required groups. A
+            // group that cannot fit becomes an explicit unavailable-field hold.
+            // There are fewer than 32 groups, so overflow always has a >256-byte group.
+            let (index, line) = lines
+                .iter()
+                .enumerate()
+                .filter(|(_, line)| line.len() > 256)
+                .max_by_key(|(_, line)| {
+                    let reserved = ["Identity:", "Assignment:", "Wait/release:", "Project cwd:"]
+                        .iter()
+                        .any(|prefix| line.starts_with(prefix));
+                    (!reserved, line.len())
+                })
+                .expect("oversized card has an oversized field group");
+            let group = if line == &self.steering {
+                "Role steering"
+            } else if line == &self.constraints {
+                "Operational constraints"
+            } else {
+                line.split_once(':')
+                    .map(|(title, _)| title)
+                    .unwrap_or("Required context")
+            };
+            lines[index] = format!("HOLD: {group} unavailable because it exceeds the remaining byte budget; owner: team lead; request a bounded authorized replacement.");
+        }
+        lines.join("\n")
     }
 }
 
@@ -623,6 +647,9 @@ mod tests {
             .map(|i| format!("src/components/recovery/long_component_name_{i}.svelte"))
             .collect();
         card.lease_context = "lease ".repeat(1500);
+        card.boundaries = (0..12)
+            .map(|i| format!("src/coordination/recovery/module_{i}.rs"))
+            .collect();
         let text = card.render();
         assert!(text.len() <= CARD_BYTE_CAP);
         assert!(text.contains("Identity: seat on team; key="));
@@ -630,6 +657,17 @@ mod tests {
         assert!(text.contains("Wait/release: released"));
         assert!(text.contains("Corrections replace only named instructions"));
         assert!(text.ends_with("Next action: Run the review"));
+        assert!(text.contains("File boundary: src/coordination/recovery/module_0.rs"));
+
+        // Regression: 2760e88a lost the machine identity even when only the boundary was oversized.
+        card.boundaries = vec!["large-boundary/".repeat(CARD_BYTE_CAP)];
+        let text = card.render();
+        assert!(text.len() <= CARD_BYTE_CAP);
+        assert!(text.contains("Identity: seat on team; key="));
+        assert!(text.contains("Assignment: task=1 token=a1"));
+        assert!(text.contains("Wait/release: released"));
+        assert!(text.contains("HOLD: File boundary"));
+        assert!(!text.ends_with("Next action: Run the review"));
     }
 
     fn key(state: &RecoveryState) -> CardKey {
