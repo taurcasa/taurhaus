@@ -606,7 +606,7 @@ pub fn handle_compact_hook(
             None,
         );
         crate::coordination::recovery_delivery::attach_receipt(&mut message, Some(&card.receipt));
-        if let Err(error) = crate::coordination::stores::MeshInboxStore::append(
+        if let Err(error) = CompactionReinjectionService::deliver_to_inbox(
             &matched.teams_dir,
             &matched.team_name,
             &matched.member.name,

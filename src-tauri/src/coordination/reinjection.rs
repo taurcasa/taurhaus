@@ -1,6 +1,8 @@
 //! Post-compaction task admission and current lease context.
 
+use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::operational::OperationalContextSnapshot;
+use crate::coordination::stores::{MeshInboxMessage, MeshInboxStore};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -47,6 +49,16 @@ impl CompactionReinjectionService {
             !snapshot.task.id.trim().is_empty() && !snapshot.task.subject.trim().is_empty();
 
         has_task_identity && matches!(status, "pending" | "in_progress")
+    }
+
+    /// Append the already compiled card and its receipt through the native-hook writer.
+    pub fn deliver_to_inbox(
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+        message: &MeshInboxMessage,
+    ) -> Result<(), CoordinationError> {
+        MeshInboxStore::append(teams_dir, team_name, member_name, message)
     }
 
     pub fn append_member_lease_context(
