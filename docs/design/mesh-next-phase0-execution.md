@@ -475,3 +475,32 @@ scope; the old-binary field-stripping case observed (C31) and handled
 by the optional field with prefix fallback. 31 probes re-run. Promoted
 to `docs/design/info-only-and-notice-dedup-design.md` with evidence
 under `docs/design/evidence/info-only-and-notice-dedup/`.
+
+### B — round-1 lens outcome and ruling
+
+Opus defect lens on the partial matrix (2026-09-08, ~13 min, 53 tool
+uses; census re-run byte-identical; every population number
+recomputed; all 43 retained-structured codings machine-verified with
+0 failures; sampled deep cases hand-verified; no invented claim):
+**fix_required** — blocker (coverage 51/3,777, R1/W2 uncoded),
+majors: headline numbers unreconciled (15 verified hero-stratum
+codings unreported); T8's `remaining: none` contradicted by its own
+retained completion limitation ("not validated") and coded with
+boilerplate; spec-deltas not reconciled with the accepted intake
+design (SD-RETENTION-REF = SD3, REVIEW-INTEGRITY ≈ SD4, CLAIM-
+ASSESSMENT = accepted vocabulary, SOURCE-TUPLE role names collide with
+the study set) — partly the orchestrator's brief, which predates D1;
+§4 disposition rows marked "necessary" on link-gap evidence that
+evidences roles, not authored fields; no field reportable as unused.
+Findings with directions: `.check-logs/mesh-next-phase0/d5-opus-findings.md`.
+
+**Orchestrator ruling:** the payload-v1 provisional freeze STANDS with
+two corrections — reference roles: the study set governs, NEW roles
+`baseline`, `gated`, `reviewed`, `red_base`, `red_features` (`landing`
+already covers "landed"); and the T8 contradiction becomes a C1
+acceptance fixture (both written into `ledger-writer-brief.md`).
+Increment B stays OPEN: one bounded fix round makes the partial matrix
+honest and reconciled (retitled PARTIAL, coded = 51 with strata, the
+15 promoted, T8 recoded, SD-* re-expressed against SD1–SD6, per-field
+rows with classes, citations fixed); exhaustive coding waits for the
+closed exports. C1 launches now; B's fix round runs in parallel.

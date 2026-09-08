@@ -63,10 +63,16 @@ diff is `feat/ledger-reader`). Not merged to master, not released.
    consequence, authority_ref, applicability, optional prior_decision;
    `note`: body, references, optional qualifies), NO new kinds, NO
    budget/GO/verdict/monitor fields in the ledger. Reference vocabulary
-   per the intake design plus two additions from the gap matrix:
-   reference roles gain `baseline`, `gated`, `reviewed`, `landed`,
-   `red_base`, `red_features` (SD-SOURCE-TUPLE); `retention` gains
-   `retain_until: <boundary-id>` beside `state` (SD-RETENTION-REF).
+   per the intake design (roles `candidate`, `landing`, `rubric`,
+   `instrument`, `result_artifact`, `review_artifact`, `completion`,
+   `ruling`, `prior_observation`) plus the adjudication's source-identity
+   tuple mapped onto it (gap-matrix SD-SOURCE-TUPLE, reconciled by the
+   orchestrator): NEW roles `baseline` (the accepted base a candidate was
+   cut from), `gated` (the tree the gate ran on), `reviewed` (the tree a
+   review was frozen on), `red_base` and `red_features` (red-first
+   evidence); `landing` already covers "landed". `retention` keeps the
+   intake design's `{state, retain_until}` (SD3; the gap matrix's
+   SD-RETENTION-REF is the same delta).
    Evidence `assessment` is per scoped reference, never document-wide
    (SD-CLAIM-ASSESSMENT). Tombstone, the `withdrawn` disposition and
    the epoch-reset transition are implemented as specified even though
@@ -110,7 +116,11 @@ diff is `feat/ledger-reader`). Not merged to master, not released.
   fold and past replay; no competing heads; retry correctness; authorship
   and authority; small event and honest limits (UTF-8, pipes, control
   chars, oversize rejected without truncation, `remaining: unknown` ≠
-  none); durable committed prefix (crash before/during append, after
+  none; and the T8 fixture from the gap matrix: an `outcome` declaring
+  `remaining_status: none` whose referenced completion carries an
+  authored limitation ("not validated") is admitted only with that
+  limitation carried in `limitations[]`, never silently — the study's
+  "never turn completed into `remaining: none`" rule); durable committed prefix (crash before/during append, after
   line sync, around manifest replace — with an injectable fs fault
   seam); corruption and cursors; pull purity (render creates nothing,
   touches no task/inbox); role-command validity (every verb example in
