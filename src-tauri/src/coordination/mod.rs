@@ -19,6 +19,7 @@ pub mod operational_context;
 pub mod orchestrator;
 pub mod pipelines;
 pub mod reconcile;
+pub mod recovery_card;
 pub mod reinjection;
 pub mod requests;
 pub mod roster;
