@@ -1,0 +1,1503 @@
+{
+  "accepted_cores": [
+    {
+      "by": "architect",
+      "candidate_ref": "8a7375b",
+      "completion_event_id": "4f28477b-4cba-4c3b-a337-81c7bd886e25",
+      "join_basis": "I: same task and literal ruling ref in completion summary; not a typed candidate link",
+      "ruling_seq": 2,
+      "task_id": "3"
+    },
+    {
+      "by": "architect",
+      "candidate_ref": "c563ff3",
+      "completion_event_id": "521117ca-8671-4682-8a79-bf3f04c71cfa",
+      "join_basis": "I: same task and literal ruling ref in completion summary; not a typed candidate link",
+      "ruling_seq": 2,
+      "task_id": "4"
+    },
+    {
+      "by": "architect",
+      "candidate_ref": "79d3657",
+      "completion_event_id": "77faa1e4-7a91-459a-8d2f-7fa35ff4595d",
+      "join_basis": "I: same task and literal ruling ref in completion summary; not a typed candidate link",
+      "ruling_seq": 2,
+      "task_id": "5"
+    },
+    {
+      "by": "architect",
+      "candidate_ref": "bfc2cca",
+      "completion_event_id": "3c5d02db-f5a4-4529-9c05-84778c5ccf20",
+      "join_basis": "I: same task and literal ruling ref in completion summary; not a typed candidate link",
+      "ruling_seq": 2,
+      "task_id": "8"
+    }
+  ],
+  "budget_raised_field_rulings": 0,
+  "budget_related_rulings": [
+    {
+      "field": null,
+      "seq": 1,
+      "task_id": "11",
+      "value": "budget-430"
+    }
+  ],
+  "evidence": "S: measured retained bundle bytes; unknown is not zero",
+  "gaps": [
+    {
+      "cause": "retention",
+      "detail": "Only the supplied snapshots and journal window are available; later task populations and full-wave outcomes are unknown.",
+      "fact": "later task/history retention",
+      "label": "I"
+    },
+    {
+      "cause": "retention",
+      "detail": "Absent from retained snapshots; the modern carrier postdates the wave-1 archive. Absence does not establish that no nudges occurred.",
+      "fact": "idle_monitor_records",
+      "label": "I"
+    },
+    {
+      "cause": "schema",
+      "detail": "Task mutations carry changed-field names only, not values; earlier snapshots cannot be reconstructed.",
+      "fact": "historical metadata values",
+      "label": "I"
+    },
+    {
+      "cause": "schema",
+      "detail": "Ruling ref does not type candidate versus report; same-task literal joins are evidence associations, not scope acceptance. No cross-task review link is inferred.",
+      "fact": "candidate/review/completion links",
+      "label": "I"
+    },
+    {
+      "cause": "schema",
+      "detail": "Completed does not establish remaining: none, scope fulfillment, or an authored deferral/revisit condition.",
+      "fact": "remaining and scope disposition",
+      "label": "I"
+    },
+    {
+      "cause": "schema",
+      "detail": "Budget prose is retained verbatim; budget_raised, when present, does not fully type the old/new ceilings or counting semantics.",
+      "fact": "budget old/new ceilings and counting basis",
+      "label": "I"
+    },
+    {
+      "cause": "schema",
+      "detail": "No typed wave decision or causal judgment is reconstructed from timestamps.",
+      "fact": "wave governance and causal explanations",
+      "label": "I"
+    },
+    {
+      "cause": "schema",
+      "detail": "Legacy config/session identity and exact snapshot digests do not establish a team incarnation or atomic capture interval.",
+      "fact": "team incarnation and snapshot capture interval",
+      "label": "I"
+    }
+  ],
+  "idle_monitor_records": 0,
+  "journal_rows": {
+    "protocol_index": 53,
+    "task_mutations": 98,
+    "workflow_events": 321
+  },
+  "manifest": {
+    "consistency": "vector_cut",
+    "cut_id": "65a70603303f99f90071fd856aa5d96a15a1abeb8715170bc2de829ed8538722",
+    "files": [
+      {
+        "bytes": 67043,
+        "consumed": true,
+        "path": "config.json",
+        "rows": null,
+        "sha256": "1bc34272f1a122da8f91bd0c81035ac8ceb2491d4e9fb93d0e816c501c4cb0ad"
+      },
+      {
+        "bytes": 345,
+        "consumed": false,
+        "path": "state/activity/altitude-reviewer.json",
+        "rows": null,
+        "sha256": "f0e3c936f26f546d0186af388bc9b6c1c06878d959331e20f99fb2d95a33d44c"
+      },
+      {
+        "bytes": 345,
+        "consumed": false,
+        "path": "state/activity/architect.json",
+        "rows": null,
+        "sha256": "f0e3c936f26f546d0186af388bc9b6c1c06878d959331e20f99fb2d95a33d44c"
+      },
+      {
+        "bytes": 345,
+        "consumed": false,
+        "path": "state/activity/design-taurjob.json",
+        "rows": null,
+        "sha256": "f0e3c936f26f546d0186af388bc9b6c1c06878d959331e20f99fb2d95a33d44c"
+      },
+      {
+        "bytes": 341,
+        "consumed": false,
+        "path": "state/activity/heavy-implementer-1.json",
+        "rows": null,
+        "sha256": "329153b360b30947ca1939fa8a5973ace75699b606065b02396109e2771adefd"
+      },
+      {
+        "bytes": 345,
+        "consumed": false,
+        "path": "state/activity/heavy-implementer.json",
+        "rows": null,
+        "sha256": "f0e3c936f26f546d0186af388bc9b6c1c06878d959331e20f99fb2d95a33d44c"
+      },
+      {
+        "bytes": 345,
+        "consumed": false,
+        "path": "state/activity/implementer-1.json",
+        "rows": null,
+        "sha256": "f0e3c936f26f546d0186af388bc9b6c1c06878d959331e20f99fb2d95a33d44c"
+      },
+      {
+        "bytes": 345,
+        "consumed": false,
+        "path": "state/activity/judge-astra-1.json",
+        "rows": null,
+        "sha256": "f0e3c936f26f546d0186af388bc9b6c1c06878d959331e20f99fb2d95a33d44c"
+      },
+      {
+        "bytes": 345,
+        "consumed": false,
+        "path": "state/activity/lead-taurjob.json",
+        "rows": null,
+        "sha256": "f0e3c936f26f546d0186af388bc9b6c1c06878d959331e20f99fb2d95a33d44c"
+      },
+      {
+        "bytes": 345,
+        "consumed": false,
+        "path": "state/activity/product-reviewer.json",
+        "rows": null,
+        "sha256": "f0e3c936f26f546d0186af388bc9b6c1c06878d959331e20f99fb2d95a33d44c"
+      },
+      {
+        "bytes": 131,
+        "consumed": false,
+        "path": "state/control_auth/altitude-reviewer.json",
+        "rows": null,
+        "sha256": "94f31209d7afb765b03c0852db4b86a3b3632243528826ba1db76dba0f212c02"
+      },
+      {
+        "bytes": 115,
+        "consumed": false,
+        "path": "state/control_auth/architect.json",
+        "rows": null,
+        "sha256": "979e1df2fc3ff1c95813377331dc1cbfbc466f51534c119264810ab855c25afa"
+      },
+      {
+        "bytes": 125,
+        "consumed": false,
+        "path": "state/control_auth/design-taurjob.json",
+        "rows": null,
+        "sha256": "ec7c02319ce465d08a9ae9fabb65a25274d3f7577f6c018091a727bff7f2f1fc"
+      },
+      {
+        "bytes": 135,
+        "consumed": false,
+        "path": "state/control_auth/heavy-implementer-1.json",
+        "rows": null,
+        "sha256": "db51fb3ca008beb993ca4e7777843e5f630d583f60c7355ba6638729939b2240"
+      },
+      {
+        "bytes": 131,
+        "consumed": false,
+        "path": "state/control_auth/heavy-implementer.json",
+        "rows": null,
+        "sha256": "44749669d056d614e9ea2a18254aba3ef398f98607ea3cbbf1cdead2e26e7a63"
+      },
+      {
+        "bytes": 123,
+        "consumed": false,
+        "path": "state/control_auth/implementer-1.json",
+        "rows": null,
+        "sha256": "48e0f3a3a81e5449b2129f2cb430dc1105869433272836793868dfcb95ae7cd1"
+      },
+      {
+        "bytes": 123,
+        "consumed": false,
+        "path": "state/control_auth/judge-astra-1.json",
+        "rows": null,
+        "sha256": "d3bf9fb97c15a92c2d175ff486552916fcbca349bdaabd9dc22818bec056510a"
+      },
+      {
+        "bytes": 121,
+        "consumed": false,
+        "path": "state/control_auth/lead-taurjob.json",
+        "rows": null,
+        "sha256": "a3c5454a665da2086954a765dd62e499e596c9c826808385ccc322c5e6a17464"
+      },
+      {
+        "bytes": 129,
+        "consumed": false,
+        "path": "state/control_auth/product-reviewer.json",
+        "rows": null,
+        "sha256": "18bb9afe304d0a19b9ab994dd1d189dfe3864b32c110c8895a49bc6cefa7ea1b"
+      },
+      {
+        "bytes": 627,
+        "consumed": false,
+        "path": "state/operational/altitude-reviewer.json",
+        "rows": null,
+        "sha256": "009a1f166f4b237cc7c64918618005ff6e593d77793e66d681e3e66992335e91"
+      },
+      {
+        "bytes": 670,
+        "consumed": false,
+        "path": "state/operational/architect.json",
+        "rows": null,
+        "sha256": "4a62ef2195a8b1c0c17449e201d34da5bf0cbe4652d734b6b112b95d872d8eb1"
+      },
+      {
+        "bytes": 702,
+        "consumed": false,
+        "path": "state/operational/design-taurjob.json",
+        "rows": null,
+        "sha256": "78c88296b74fc98f4719447938bc20b82cf52d6aa8d0981553b71470f90c28ea"
+      },
+      {
+        "bytes": 629,
+        "consumed": false,
+        "path": "state/operational/heavy-implementer-1.json",
+        "rows": null,
+        "sha256": "70bf2d675de29e69783d6a780632b8a3ec402aa018a256343fd5d03777b70865"
+      },
+      {
+        "bytes": 696,
+        "consumed": false,
+        "path": "state/operational/heavy-implementer.json",
+        "rows": null,
+        "sha256": "ab17dcb8e04e103ea2f9a9ae9c8eb1d76f55f0beca2bd91b9adeb5db1cdad3bd"
+      },
+      {
+        "bytes": 699,
+        "consumed": false,
+        "path": "state/operational/implementer-1.json",
+        "rows": null,
+        "sha256": "043d9fcda1479d8311a54613164f912639b2e0d65cfe7a002c73f57bfbf958f7"
+      },
+      {
+        "bytes": 623,
+        "consumed": false,
+        "path": "state/operational/judge-astra-1.json",
+        "rows": null,
+        "sha256": "791e11b06ba45392f662ca7b57348580b041a8cc90a7d2337f8373776f4df4d7"
+      },
+      {
+        "bytes": 622,
+        "consumed": false,
+        "path": "state/operational/lead-taurjob.json",
+        "rows": null,
+        "sha256": "bdd56ef2cb55e3026c84f5c394076cdbf36667a5807b4ac8b5a4ef4bdb40c35c"
+      },
+      {
+        "bytes": 626,
+        "consumed": false,
+        "path": "state/operational/product-reviewer.json",
+        "rows": null,
+        "sha256": "b53f0f065c0c224a7906180cd0e0078e1ef42a3707f541f1e4cce54304c148a1"
+      },
+      {
+        "bytes": 2725,
+        "consumed": false,
+        "path": "state/projections/assignee_inboxes/architect.json",
+        "rows": null,
+        "sha256": "dcde09848e7dd7f5d88e8614a9b05078f8a0310790a880bab1c33358fdbfc4e6"
+      },
+      {
+        "bytes": 2394,
+        "consumed": false,
+        "path": "state/projections/assignee_inboxes/design-taurjob.json",
+        "rows": null,
+        "sha256": "994adfaf39cbd781b272626d7fdc006260d6b95d0f8de6774e1cd604a87acb35"
+      },
+      {
+        "bytes": 3199,
+        "consumed": false,
+        "path": "state/projections/assignee_inboxes/heavy-implementer.json",
+        "rows": null,
+        "sha256": "e8258a8458e159d1459b6e081a7505004d4bb0b22a9ddfc2f12178851b1c289f"
+      },
+      {
+        "bytes": 3237,
+        "consumed": false,
+        "path": "state/projections/assignee_inboxes/implementer-1.json",
+        "rows": null,
+        "sha256": "f8c3d0943c89eff0c47aa4459b20f17fd6d78595a489c84fa92cb3a74363ef42"
+      },
+      {
+        "bytes": 2511,
+        "consumed": false,
+        "path": "state/projections/attention/1.json",
+        "rows": null,
+        "sha256": "a3966e8f6fbe1a33c4c55e696d196a1dfb80d5802e4ee7e0b4191987074075b6"
+      },
+      {
+        "bytes": 3019,
+        "consumed": false,
+        "path": "state/projections/attention/10.json",
+        "rows": null,
+        "sha256": "e882d15c5e55e31b73f771993f64016c4888c067e0721d4d47cac8b222786da1"
+      },
+      {
+        "bytes": 6056,
+        "consumed": false,
+        "path": "state/projections/attention_queue.json",
+        "rows": null,
+        "sha256": "c79ba5363a2e41d2ca152c2ea448a8f3e6e02c81ca99fdff7d8c620b7743284c"
+      },
+      {
+        "bytes": 30491,
+        "consumed": false,
+        "path": "state/projections/lead_board.json",
+        "rows": null,
+        "sha256": "a4f73e48660c27b5cd828b796f9dcc2e3a488800fd155dd55d9cb991b6da0907"
+      },
+      {
+        "bytes": 95,
+        "consumed": false,
+        "path": "state/projections/manifest.json",
+        "rows": null,
+        "sha256": "87e0c1c0b584a96b1c9db4bb3b669eab3705ade99482c8ff2df433021f2cce0a"
+      },
+      {
+        "bytes": 2723,
+        "consumed": false,
+        "path": "state/projections/recovery/1.json",
+        "rows": null,
+        "sha256": "29ecc9e41da05f9f2e214b310c1afaa867972c1dec490e83eac83ef0f7dd8fd8"
+      },
+      {
+        "bytes": 3243,
+        "consumed": false,
+        "path": "state/projections/recovery/10.json",
+        "rows": null,
+        "sha256": "81f8548aebf6cd172f5bd48dbb158c3fb4ee84e0c3b1b0eeedd12d33e0b75460"
+      },
+      {
+        "bytes": 3040,
+        "consumed": false,
+        "path": "state/projections/recovery/11.json",
+        "rows": null,
+        "sha256": "b96b6d6fb4896e90114bba695a86a9de02378ce19c0f92c85551f9bb14f54514"
+      },
+      {
+        "bytes": 2193,
+        "consumed": false,
+        "path": "state/projections/recovery/2.json",
+        "rows": null,
+        "sha256": "6876347da6ed2af82f2c20dff1b4269e114e9afa47526cf5775e99a7c5bb949e"
+      },
+      {
+        "bytes": 3262,
+        "consumed": false,
+        "path": "state/projections/recovery/3.json",
+        "rows": null,
+        "sha256": "b8cbdc61267ef13255f87930f6d1a41c51db3c65ad89a319f4854d7faaf2c94a"
+      },
+      {
+        "bytes": 2776,
+        "consumed": false,
+        "path": "state/projections/recovery/4.json",
+        "rows": null,
+        "sha256": "1713935ab7564697cdf06e827273ecc94e7033848a4c6b4f275ea73cb95cdc15"
+      },
+      {
+        "bytes": 3041,
+        "consumed": false,
+        "path": "state/projections/recovery/5.json",
+        "rows": null,
+        "sha256": "1905860f4ed4aafdb4d5b9e0d4fa958d54d7ca5605747b6eb1d123116a90e445"
+      },
+      {
+        "bytes": 3122,
+        "consumed": false,
+        "path": "state/projections/recovery/6.json",
+        "rows": null,
+        "sha256": "69b088fa6a39f963b701db340e05bb7e04f30dafa3aea8cd904290124448d60d"
+      },
+      {
+        "bytes": 2448,
+        "consumed": false,
+        "path": "state/projections/recovery/7.json",
+        "rows": null,
+        "sha256": "2cedaff20a802093ded5495d777a1b1ae626f85965ff80978f3cb3cf67b16b48"
+      },
+      {
+        "bytes": 3275,
+        "consumed": false,
+        "path": "state/projections/recovery/8.json",
+        "rows": null,
+        "sha256": "49d017548c6e5cf4b7aa780202e3f69e977e83dde3edde7089b3a1cd7fc8e054"
+      },
+      {
+        "bytes": 3003,
+        "consumed": false,
+        "path": "state/projections/recovery/9.json",
+        "rows": null,
+        "sha256": "08b9dfd874641ea0b4960aa79f6dbb7b3418fa18b061cc13b8244ee7f73ad9b8"
+      },
+      {
+        "bytes": 30926,
+        "consumed": false,
+        "path": "state/projections/taurhaus_workflow.json",
+        "rows": null,
+        "sha256": "a1ddf9993c11657cd81cdcf0af5a06a998395539bbf3fdfe7b7dbfc49135a4c4"
+      },
+      {
+        "bytes": 52236,
+        "consumed": true,
+        "path": "state/protocol_index.jsonl",
+        "rows": 53,
+        "sha256": "0f26b0e3fb87db07544bc274f2ab1d0fcd5af51a077147d9dd7ef8ced363849c"
+      },
+      {
+        "bytes": 555130,
+        "consumed": false,
+        "path": "state/protocol_telemetry.jsonl",
+        "rows": 1262,
+        "sha256": "6e557b1804ec7cf3ea6d86dd2b6d3aa6d098fabb3d43b2605ff7db74820121d0"
+      },
+      {
+        "bytes": 11216,
+        "consumed": true,
+        "path": "state/task_mutations.jsonl",
+        "rows": 98,
+        "sha256": "c5f3ce38628b2cb1cad7a0e2fbc235adffa2777bfeb3c717cbedcfbc038be194"
+      },
+      {
+        "bytes": 234,
+        "consumed": false,
+        "path": "state/telemetry/1.jsonl",
+        "rows": 1,
+        "sha256": "a5dba6a932f0bcffe72a1a66add9ff9c7deffe381912560b490222cc5d6445f2"
+      },
+      {
+        "bytes": 245,
+        "consumed": false,
+        "path": "state/telemetry/10.jsonl",
+        "rows": 1,
+        "sha256": "0d4171227f8d8368d417a442ecc154964bd69a99a50bdfe51914d57357b95361"
+      },
+      {
+        "bytes": 251,
+        "consumed": false,
+        "path": "state/telemetry/11.jsonl",
+        "rows": 1,
+        "sha256": "3d16d6c249e42bfa56ee1b005956266d46c38f036e37f43ed46d086381a9e74a"
+      },
+      {
+        "bytes": 240,
+        "consumed": false,
+        "path": "state/telemetry/2.jsonl",
+        "rows": 1,
+        "sha256": "fbcccd12d9da7b89f4e0c9cf5bb5e81a149b339acfb55e6fb8e58f1f905e5345"
+      },
+      {
+        "bytes": 430,
+        "consumed": false,
+        "path": "state/telemetry/5.jsonl",
+        "rows": 2,
+        "sha256": "6373c7f172e37ed444887c8e0f569a46a36116e607f52fa33715c98a5ede07d8"
+      },
+      {
+        "bytes": 426,
+        "consumed": false,
+        "path": "state/telemetry/6.jsonl",
+        "rows": 2,
+        "sha256": "e14ba90755da6b9493a96a483301683d8c721f45eef95c9c78bd561b35b38d07"
+      },
+      {
+        "bytes": 422,
+        "consumed": false,
+        "path": "state/telemetry/7.jsonl",
+        "rows": 2,
+        "sha256": "c0db082e20b769b342cbb7ab4a1ca4c56d3f7765ce301f8e5356455e8fa10793"
+      },
+      {
+        "bytes": 428,
+        "consumed": false,
+        "path": "state/telemetry/8.jsonl",
+        "rows": 2,
+        "sha256": "a688caa22109860a277df0d22091f5fe88ed9bb744c40176e0432c9f285f6e1e"
+      },
+      {
+        "bytes": 665,
+        "consumed": false,
+        "path": "state/telemetry/9.jsonl",
+        "rows": 3,
+        "sha256": "40de02c946a33a6db3667701ca4d0a42a89af7631ff2e164927fb801cb1bbf7a"
+      },
+      {
+        "bytes": 2188,
+        "consumed": false,
+        "path": "state/telemetry/_unattributed.jsonl",
+        "rows": 9,
+        "sha256": "cbab7e6edea7a8c0c847f1b26fb115cb5c2ff0e79c1b045f05febc45678b69d9"
+      },
+      {
+        "bytes": 107122,
+        "consumed": true,
+        "path": "state/workflow_events.jsonl",
+        "rows": 321,
+        "sha256": "907075d8fbaa2d9cbaa5424ecbc17880bf7aff135821134585d8d6b56c3dbe38"
+      },
+      {
+        "bytes": 3782,
+        "consumed": true,
+        "path": "tasks/1.json",
+        "rows": null,
+        "sha256": "f2ee0cb50a11c96a509cf6d0a27855ca1bf3bd9dd37e777e100143556052c241"
+      },
+      {
+        "bytes": 3025,
+        "consumed": true,
+        "path": "tasks/10.json",
+        "rows": null,
+        "sha256": "a6761bf6b712e2c87599148a282dcf694ca28b61fdba84410095f4d148aefc6c"
+      },
+      {
+        "bytes": 2572,
+        "consumed": true,
+        "path": "tasks/11.json",
+        "rows": null,
+        "sha256": "2db961e2e547ca684a74181e5feb27d3c6472b807235c298b83cd744c49c0458"
+      },
+      {
+        "bytes": 3078,
+        "consumed": true,
+        "path": "tasks/2.json",
+        "rows": null,
+        "sha256": "76628d1f4c3fae72cf51c7ee03a8e493ba580957dcde1cb95f5a046bb0f478da"
+      },
+      {
+        "bytes": 2928,
+        "consumed": true,
+        "path": "tasks/3.json",
+        "rows": null,
+        "sha256": "8e5924a43fce6c19e1ea9495f35418c2067ca66e2699fa37ef05644511a24a7c"
+      },
+      {
+        "bytes": 2533,
+        "consumed": true,
+        "path": "tasks/4.json",
+        "rows": null,
+        "sha256": "0d46c4ced66ba414426a96e633e4c097c2212ebb0008f94c1b56d6f36bc97108"
+      },
+      {
+        "bytes": 2690,
+        "consumed": true,
+        "path": "tasks/5.json",
+        "rows": null,
+        "sha256": "9e6078d7f6809bb103cb44ec9be937cbfb91c65ae0a7d63dccf21bee62783331"
+      },
+      {
+        "bytes": 2886,
+        "consumed": true,
+        "path": "tasks/6.json",
+        "rows": null,
+        "sha256": "bd7ceb1eef23fc8104501cba9b01a21e24f4037861905e99975035dd8a9a2685"
+      },
+      {
+        "bytes": 2493,
+        "consumed": true,
+        "path": "tasks/7.json",
+        "rows": null,
+        "sha256": "7f83d714375646824744be8237ebfd14d6e22927db11e63f05cc6ade15d1ec7d"
+      },
+      {
+        "bytes": 2980,
+        "consumed": true,
+        "path": "tasks/8.json",
+        "rows": null,
+        "sha256": "5725b24ed0f40b8b481c06526277fa225e857cb0ecbb8c91bcf8f3cbec2fb23b"
+      },
+      {
+        "bytes": 2488,
+        "consumed": true,
+        "path": "tasks/9.json",
+        "rows": null,
+        "sha256": "d7d0c56e9e8366a37e4dfab213bca12571d24650dfad07213295dde13318d5fa"
+      },
+      {
+        "bytes": 234,
+        "consumed": false,
+        "path": "telemetry/1.jsonl",
+        "rows": 1,
+        "sha256": "a5dba6a932f0bcffe72a1a66add9ff9c7deffe381912560b490222cc5d6445f2"
+      },
+      {
+        "bytes": 245,
+        "consumed": false,
+        "path": "telemetry/10.jsonl",
+        "rows": 1,
+        "sha256": "0d4171227f8d8368d417a442ecc154964bd69a99a50bdfe51914d57357b95361"
+      },
+      {
+        "bytes": 251,
+        "consumed": false,
+        "path": "telemetry/11.jsonl",
+        "rows": 1,
+        "sha256": "3d16d6c249e42bfa56ee1b005956266d46c38f036e37f43ed46d086381a9e74a"
+      },
+      {
+        "bytes": 240,
+        "consumed": false,
+        "path": "telemetry/2.jsonl",
+        "rows": 1,
+        "sha256": "fbcccd12d9da7b89f4e0c9cf5bb5e81a149b339acfb55e6fb8e58f1f905e5345"
+      },
+      {
+        "bytes": 430,
+        "consumed": false,
+        "path": "telemetry/5.jsonl",
+        "rows": 2,
+        "sha256": "6373c7f172e37ed444887c8e0f569a46a36116e607f52fa33715c98a5ede07d8"
+      },
+      {
+        "bytes": 426,
+        "consumed": false,
+        "path": "telemetry/6.jsonl",
+        "rows": 2,
+        "sha256": "e14ba90755da6b9493a96a483301683d8c721f45eef95c9c78bd561b35b38d07"
+      },
+      {
+        "bytes": 422,
+        "consumed": false,
+        "path": "telemetry/7.jsonl",
+        "rows": 2,
+        "sha256": "c0db082e20b769b342cbb7ab4a1ca4c56d3f7765ce301f8e5356455e8fa10793"
+      },
+      {
+        "bytes": 428,
+        "consumed": false,
+        "path": "telemetry/8.jsonl",
+        "rows": 2,
+        "sha256": "a688caa22109860a277df0d22091f5fe88ed9bb744c40176e0432c9f285f6e1e"
+      },
+      {
+        "bytes": 665,
+        "consumed": false,
+        "path": "telemetry/9.jsonl",
+        "rows": 3,
+        "sha256": "40de02c946a33a6db3667701ca4d0a42a89af7631ff2e164927fb801cb1bbf7a"
+      },
+      {
+        "bytes": 2188,
+        "consumed": false,
+        "path": "telemetry/_unattributed.jsonl",
+        "rows": 9,
+        "sha256": "cbab7e6edea7a8c0c847f1b26fb115cb5c2ff0e79c1b045f05febc45678b69d9"
+      }
+    ],
+    "journal_window": {
+      "end": "2026-09-06T20:11:26.180Z",
+      "start": "2026-09-06T19:34:32.013Z"
+    },
+    "layout_version": "0",
+    "reader_version": "0.2.29+ace395e6c362f8fa0b69e9d6dbc4f5b38d6fe3f8"
+  },
+  "negative_cases": [
+    {
+      "completions": [],
+      "cross_task_review_link": "unavailable",
+      "label": "I",
+      "reasons": [
+        "retained correction/rejection evidence"
+      ],
+      "rulings": [
+        {
+          "at": "2026-09-06T19:52:41.181Z",
+          "by": "lead-taurjob",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T19:52:41.181Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "ruling",
+                "note": "Altitude review docs/wave-1/reviews/T1-altitude.md: 6 findings. Required before acceptance: split M3 into M3a/M3b, parity measure task, stale route text, T2 surface reconciliation. Route: Astra-authored, Claude altitude pass (lead substitute).",
+                "ref": "fd25749",
+                "seq": 1,
+                "value": "bounded-correction"
+              },
+              "source": {
+                "file": "tasks/1.json",
+                "identity": "rulings[0]:seq:1",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T19:52:41.181Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "ruling",
+                "note": "Altitude review docs/wave-1/reviews/T1-altitude.md: 6 findings. Required before acceptance: split M3 into M3a/M3b, parity measure task, stale route text, T2 surface reconciliation. Route: Astra-authored, Claude altitude pass (lead substitute).",
+                "ref": "fd25749",
+                "seq": 1,
+                "value": "bounded-correction"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "44745724-b1c4-4403-9892-4986a118f6ab",
+                "line": 207
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "ruling",
+          "note": "Altitude review docs/wave-1/reviews/T1-altitude.md: 6 findings. Required before acceptance: split M3 into M3a/M3b, parity measure task, stale route text, T2 surface reconciliation. Route: Astra-authored, Claude altitude pass (lead substitute).",
+          "ref": "fd25749",
+          "seq": 1,
+          "value": "bounded-correction"
+        },
+        {
+          "at": "2026-09-06T19:55:22.360Z",
+          "by": "lead-taurjob",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T19:55:22.360Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "ruling",
+                "note": "Operator approved the six reserved decisions as stated 2026-09-06. Implementation M0 starts now; M1-M3 after T1r reconciliation and T2.",
+                "ref": "1ee252f",
+                "seq": 2,
+                "value": "operator-approved"
+              },
+              "source": {
+                "file": "tasks/1.json",
+                "identity": "rulings[1]:seq:2",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T19:55:22.360Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "ruling",
+                "note": "Operator approved the six reserved decisions as stated 2026-09-06. Implementation M0 starts now; M1-M3 after T1r reconciliation and T2.",
+                "ref": "1ee252f",
+                "seq": 2,
+                "value": "operator-approved"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "f19bc6d3-60c5-4267-b053-f6c10d342c9d",
+                "line": 237
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "ruling",
+          "note": "Operator approved the six reserved decisions as stated 2026-09-06. Implementation M0 starts now; M1-M3 after T1r reconciliation and T2.",
+          "ref": "1ee252f",
+          "seq": 2,
+          "value": "operator-approved"
+        },
+        {
+          "at": "2026-09-06T19:55:31.161Z",
+          "by": "altitude-reviewer",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T19:55:31.161Z",
+                "by": "altitude-reviewer",
+                "field": null,
+                "kind": "verdict",
+                "note": "bounded correction (not accepted as-is): accept on reconciliation commit applying findings 1,2,4,5,6 of 00314d4 plus S1,S2,S5 of 8df7fed; finding 3 is a lead scope decision. Independent altitude pass concurs with the lead substitute's verdict.",
+                "ref": "fd25749",
+                "seq": 3,
+                "value": "rejected"
+              },
+              "source": {
+                "file": "tasks/1.json",
+                "identity": "rulings[2]:seq:3",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T19:55:31.161Z",
+                "by": "altitude-reviewer",
+                "field": null,
+                "kind": "verdict",
+                "note": "bounded correction (not accepted as-is): accept on reconciliation commit applying findings 1,2,4,5,6 of 00314d4 plus S1,S2,S5 of 8df7fed; finding 3 is a lead scope decision. Independent altitude pass concurs with the lead substitute's verdict.",
+                "ref": "fd25749",
+                "seq": 3,
+                "value": "rejected"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "44453c6d-3826-41bb-8cc6-ef105913708d",
+                "line": 241
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "verdict",
+          "note": "bounded correction (not accepted as-is): accept on reconciliation commit applying findings 1,2,4,5,6 of 00314d4 plus S1,S2,S5 of 8df7fed; finding 3 is a lead scope decision. Independent altitude pass concurs with the lead substitute's verdict.",
+          "ref": "fd25749",
+          "seq": 3,
+          "value": "rejected"
+        },
+        {
+          "at": "2026-09-06T19:57:23.818Z",
+          "by": "altitude-reviewer",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T19:57:23.818Z",
+                "by": "altitude-reviewer",
+                "field": null,
+                "kind": "verdict",
+                "note": "bounded correction (not accepted as-is), review d966220 at docs/wave-1/reviews/T1-altitude-reviewer.md: T1r 1b4bdf1 closes S1,S2,S5 and finding 5; accept on a T1r follow-up applying findings 1 (privacy failure granularity by check id), 2 (closed typed safe_payload_json), 4 (persist transitions, publish ticks), 6 (name preservation+framing tests); finding 3 (legacy import scope) is a lead decision. Supersedes my ruling #3 against fd25749.",
+                "ref": "1ee252f",
+                "seq": 4,
+                "value": "rejected"
+              },
+              "source": {
+                "file": "tasks/1.json",
+                "identity": "rulings[3]:seq:4",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T19:57:23.818Z",
+                "by": "altitude-reviewer",
+                "field": null,
+                "kind": "verdict",
+                "note": "bounded correction (not accepted as-is), review d966220 at docs/wave-1/reviews/T1-altitude-reviewer.md: T1r 1b4bdf1 closes S1,S2,S5 and finding 5; accept on a T1r follow-up applying findings 1 (privacy failure granularity by check id), 2 (closed typed safe_payload_json), 4 (persist transitions, publish ticks), 6 (name preservation+framing tests); finding 3 (legacy import scope) is a lead decision. Supersedes my ruling #3 against fd25749.",
+                "ref": "1ee252f",
+                "seq": 4,
+                "value": "rejected"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "66855e97-d7ac-4d30-a4d7-0ac8239e5035",
+                "line": 263
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "verdict",
+          "note": "bounded correction (not accepted as-is), review d966220 at docs/wave-1/reviews/T1-altitude-reviewer.md: T1r 1b4bdf1 closes S1,S2,S5 and finding 5; accept on a T1r follow-up applying findings 1 (privacy failure granularity by check id), 2 (closed typed safe_payload_json), 4 (persist transitions, publish ticks), 6 (name preservation+framing tests); finding 3 (legacy import scope) is a lead decision. Supersedes my ruling #3 against fd25749.",
+          "ref": "1ee252f",
+          "seq": 4,
+          "value": "rejected"
+        }
+      ],
+      "snapshot_status": "in_progress",
+      "task_id": "1"
+    },
+    {
+      "completions": [],
+      "cross_task_review_link": "unavailable",
+      "label": "I",
+      "reasons": [
+        "retained correction/rejection evidence"
+      ],
+      "rulings": [
+        {
+          "at": "2026-09-06T20:01:14.430Z",
+          "by": "product-reviewer",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T20:01:14.430Z",
+                "by": "product-reviewer",
+                "field": null,
+                "kind": "verdict",
+                "note": "Product-review acceptance of T2. 7 findings, review at eafd1b0 (docs/wave-1/reviews/T2-product-review.md). Three high-severity privacy findings: check 54 CLI-retention disclosure absent from mockups; check 55 absolute claim 'never into results, logs or anywhere else' exceeds R1 rules 1+5; failure path shows tool's last message verbatim, bypassing the prompt-text translator. Also: log permits 'raw lines' against ruling R5; prose contradicts its own mockup and T1/T3 on agy/grok; import copy names seen.md against R6; six concurrent passes contradicts R9 four-total cap with no queued pass state (check 60). All findings are copy or state coverage, none architectural. Checks 58, 59, 32, 44-46, 5, 22-28, 47 confirmed sound. Accept on a correction commit applying 1-7; no layout re-review needed.",
+                "ref": "8f97e28",
+                "seq": 1,
+                "value": "bounded correction"
+              },
+              "source": {
+                "file": "tasks/2.json",
+                "identity": "rulings[0]:seq:1",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T20:01:14.430Z",
+                "by": "product-reviewer",
+                "field": null,
+                "kind": "verdict",
+                "note": "Product-review acceptance of T2. 7 findings, review at eafd1b0 (docs/wave-1/reviews/T2-product-review.md). Three high-severity privacy findings: check 54 CLI-retention disclosure absent from mockups; check 55 absolute claim 'never into results, logs or anywhere else' exceeds R1 rules 1+5; failure path shows tool's last message verbatim, bypassing the prompt-text translator. Also: log permits 'raw lines' against ruling R5; prose contradicts its own mockup and T1/T3 on agy/grok; import copy names seen.md against R6; six concurrent passes contradicts R9 four-total cap with no queued pass state (check 60). All findings are copy or state coverage, none architectural. Checks 58, 59, 32, 44-46, 5, 22-28, 47 confirmed sound. Accept on a correction commit applying 1-7; no layout re-review needed.",
+                "ref": "8f97e28",
+                "seq": 1,
+                "value": "bounded correction"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "44623569-d28f-4fa4-8bcc-f303d110dcd3",
+                "line": 290
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "verdict",
+          "note": "Product-review acceptance of T2. 7 findings, review at eafd1b0 (docs/wave-1/reviews/T2-product-review.md). Three high-severity privacy findings: check 54 CLI-retention disclosure absent from mockups; check 55 absolute claim 'never into results, logs or anywhere else' exceeds R1 rules 1+5; failure path shows tool's last message verbatim, bypassing the prompt-text translator. Also: log permits 'raw lines' against ruling R5; prose contradicts its own mockup and T1/T3 on agy/grok; import copy names seen.md against R6; six concurrent passes contradicts R9 four-total cap with no queued pass state (check 60). All findings are copy or state coverage, none architectural. Checks 58, 59, 32, 44-46, 5, 22-28, 47 confirmed sound. Accept on a correction commit applying 1-7; no layout re-review needed.",
+          "ref": "8f97e28",
+          "seq": 1,
+          "value": "bounded correction"
+        },
+        {
+          "at": "2026-09-06T20:03:10.590Z",
+          "by": "lead-taurjob",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T20:03:10.590Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "note",
+                "note": "product-reviewer T2R: bounded correction, 7 findings (3 high privacy copy: check 54 disclosure missing, check 55 'anywhere else' claim, verbatim tool last-message). 'bounded correction' accepted as the ruling value. Correction batch T2a issued after T9 verdict.",
+                "ref": "eafd1b0",
+                "seq": 2,
+                "value": "lead-verified"
+              },
+              "source": {
+                "file": "tasks/2.json",
+                "identity": "rulings[1]:seq:2",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T20:03:10.590Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "note",
+                "note": "product-reviewer T2R: bounded correction, 7 findings (3 high privacy copy: check 54 disclosure missing, check 55 'anywhere else' claim, verbatim tool last-message). 'bounded correction' accepted as the ruling value. Correction batch T2a issued after T9 verdict.",
+                "ref": "eafd1b0",
+                "seq": 2,
+                "value": "lead-verified"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "19339a4b-33d2-4d45-8518-744036d3298e",
+                "line": 305
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "note",
+          "note": "product-reviewer T2R: bounded correction, 7 findings (3 high privacy copy: check 54 disclosure missing, check 55 'anywhere else' claim, verbatim tool last-message). 'bounded correction' accepted as the ruling value. Correction batch T2a issued after T9 verdict.",
+          "ref": "eafd1b0",
+          "seq": 2,
+          "value": "lead-verified"
+        },
+        {
+          "at": "2026-09-06T20:04:07.611Z",
+          "by": "judge-astra-1",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T20:04:07.611Z",
+                "by": "judge-astra-1",
+                "field": null,
+                "kind": "verdict",
+                "note": null,
+                "ref": "8f97e28",
+                "seq": 3,
+                "value": "rejected"
+              },
+              "source": {
+                "file": "tasks/2.json",
+                "identity": "rulings[2]:seq:3",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T20:04:07.611Z",
+                "by": "judge-astra-1",
+                "field": null,
+                "kind": "verdict",
+                "note": null,
+                "ref": "8f97e28",
+                "seq": 3,
+                "value": "rejected"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "7f137687-a9f9-4ed7-ab3a-dc3e6c079df2",
+                "line": 314
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "verdict",
+          "note": null,
+          "ref": "8f97e28",
+          "seq": 3,
+          "value": "rejected"
+        }
+      ],
+      "snapshot_status": "in_progress",
+      "task_id": "2"
+    },
+    {
+      "completions": [
+        {
+          "actor": "product-reviewer",
+          "assignment_id": "f5f665f8-6d99-43b3-b1d4-bbdc524b3b45",
+          "at": "2026-09-06T19:49:29.886Z",
+          "eventType": "task_completed",
+          "event_id": "be84dfd3-265c-483b-89c2-880efd2e3a5a",
+          "source": {
+            "file": "state/workflow_events.jsonl",
+            "identity": "be84dfd3-265c-483b-89c2-880efd2e3a5a",
+            "line": 182
+          },
+          "summary": "T6a: acceptance.md at 06ffc9b — 57 numbered checks, 205 lines (budget 260). Checks 48-51 added for SPEC 0.6/0.4/0.5-0.7 per ruling R2; 52-57 added per privacy ruling R1; check 16 patched to T3's verified result (agy streams, grok batched). T1/T6 seam review corrected six checks that contradicted T1/T3/R1 evidence - checks 32 and 19 as originally written would have forced a privacy violation. One open seam recorded: R1 rule 4 implies raw stream text may be displayed in the live view, T1 forbids displaying token text; checks 15 and 19 follow the stricter T1 reading.",
+          "task_id": "6"
+        }
+      ],
+      "cross_task_review_link": "unavailable",
+      "label": "I",
+      "reasons": [
+        "completion without matching accepted candidate reference"
+      ],
+      "rulings": [
+        {
+          "at": "2026-09-06T19:44:36.615Z",
+          "by": "lead-taurjob",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T19:44:36.615Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "verdict",
+                "note": "Acceptance checklist meets contract; 224 lines vs 200 budget recorded as overage, revised budget 260 granted for amendment (checks 48+, check 16 patch). Route: Claude-authored spec-delta, acceptance owner lead (Claude); no GPT review required for spec-delta per standard.",
+                "ref": "7bc4b74",
+                "seq": 1,
+                "value": "accepted"
+              },
+              "source": {
+                "file": "tasks/6.json",
+                "identity": "rulings[0]:seq:1",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T19:44:36.615Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "verdict",
+                "note": "Acceptance checklist meets contract; 224 lines vs 200 budget recorded as overage, revised budget 260 granted for amendment (checks 48+, check 16 patch). Route: Claude-authored spec-delta, acceptance owner lead (Claude); no GPT review required for spec-delta per standard.",
+                "ref": "7bc4b74",
+                "seq": 1,
+                "value": "accepted"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "56297673-df09-4b20-94a5-12ae8fc13f50",
+                "line": 106
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "verdict",
+          "note": "Acceptance checklist meets contract; 224 lines vs 200 budget recorded as overage, revised budget 260 granted for amendment (checks 48+, check 16 patch). Route: Claude-authored spec-delta, acceptance owner lead (Claude); no GPT review required for spec-delta per standard.",
+          "ref": "7bc4b74",
+          "seq": 1,
+          "value": "accepted"
+        },
+        {
+          "at": "2026-09-06T19:47:27.424Z",
+          "by": "lead-taurjob",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T19:47:27.424Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "verdict",
+                "note": "Amendment accepted: 57 checks, 188 lines within revised budget, R1-R4 applied, checks 1-47 numbering preserved. Owner to complete #6.",
+                "ref": "ae61684",
+                "seq": 2,
+                "value": "accepted"
+              },
+              "source": {
+                "file": "tasks/6.json",
+                "identity": "rulings[1]:seq:2",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T19:47:27.424Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "verdict",
+                "note": "Amendment accepted: 57 checks, 188 lines within revised budget, R1-R4 applied, checks 1-47 numbering preserved. Owner to complete #6.",
+                "ref": "ae61684",
+                "seq": 2,
+                "value": "accepted"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "b2842bc8-bb82-4c7d-a527-3dff229862ef",
+                "line": 170
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "verdict",
+          "note": "Amendment accepted: 57 checks, 188 lines within revised budget, R1-R4 applied, checks 1-47 numbering preserved. Owner to complete #6.",
+          "ref": "ae61684",
+          "seq": 2,
+          "value": "accepted"
+        }
+      ],
+      "snapshot_status": "completed",
+      "task_id": "6"
+    },
+    {
+      "completions": [
+        {
+          "actor": "lead-taurjob",
+          "assignment_id": "dae4fe59-8c9c-44f2-8979-89c12d71fa26",
+          "at": "2026-09-06T20:03:10.633Z",
+          "eventType": "task_completed",
+          "event_id": "d99efb98-bfa5-4864-ad9b-b2303feb4f1c",
+          "source": {
+            "file": "state/workflow_events.jsonl",
+            "identity": "d99efb98-bfa5-4864-ad9b-b2303feb4f1c",
+            "line": 307
+          },
+          "summary": "T1 altitude review: lead substitute (8df7fed) and altitude-reviewer independent pass (d966220), both bounded correction, concordant",
+          "task_id": "7"
+        }
+      ],
+      "cross_task_review_link": "unavailable",
+      "label": "I",
+      "reasons": [
+        "completion without own-task verdict",
+        "completion without matching accepted candidate reference"
+      ],
+      "rulings": [
+        {
+          "at": "2026-09-06T19:52:41.160Z",
+          "by": "lead-taurjob",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T19:52:41.160Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "note",
+                "note": "altitude-reviewer inactive, no uptake after nudge; lead-taurjob (did not author T1) performed the altitude pass per taurhaus ruling. Seat left inactive.",
+                "ref": null,
+                "seq": 1,
+                "value": "lead-substitution"
+              },
+              "source": {
+                "file": "tasks/7.json",
+                "identity": "rulings[0]:seq:1",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T19:52:41.160Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "note",
+                "note": "altitude-reviewer inactive, no uptake after nudge; lead-taurjob (did not author T1) performed the altitude pass per taurhaus ruling. Seat left inactive.",
+                "ref": null,
+                "seq": 1,
+                "value": "lead-substitution"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "86fa9b40-6456-46b0-96b4-006290d4570c",
+                "line": 206
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "note",
+          "note": "altitude-reviewer inactive, no uptake after nudge; lead-taurjob (did not author T1) performed the altitude pass per taurhaus ruling. Seat left inactive.",
+          "ref": null,
+          "seq": 1,
+          "value": "lead-substitution"
+        },
+        {
+          "at": "2026-09-06T19:54:22.808Z",
+          "by": "lead-taurjob",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T19:54:22.808Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "note",
+                "note": "altitude-reviewer started #7 after lead substitute review 8df7fed. Reviewer delivers independently to docs/wave-1/reviews/T1-altitude-reviewer.md against 1ee252f, then lead reconciles both.",
+                "ref": null,
+                "seq": 2,
+                "value": "seat-resumed"
+              },
+              "source": {
+                "file": "tasks/7.json",
+                "identity": "rulings[1]:seq:2",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T19:54:22.808Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "note",
+                "note": "altitude-reviewer started #7 after lead substitute review 8df7fed. Reviewer delivers independently to docs/wave-1/reviews/T1-altitude-reviewer.md against 1ee252f, then lead reconciles both.",
+                "ref": null,
+                "seq": 2,
+                "value": "seat-resumed"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "ff987c7f-63c8-47ba-8afd-9f5a091f9b7b",
+                "line": 231
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "note",
+          "note": "altitude-reviewer started #7 after lead substitute review 8df7fed. Reviewer delivers independently to docs/wave-1/reviews/T1-altitude-reviewer.md against 1ee252f, then lead reconciles both.",
+          "ref": null,
+          "seq": 2,
+          "value": "seat-resumed"
+        }
+      ],
+      "snapshot_status": "completed",
+      "task_id": "7"
+    },
+    {
+      "completions": [
+        {
+          "actor": "judge-astra-1",
+          "assignment_id": "49f0e0e3-6833-40f8-906a-78419909a5b1",
+          "at": "2026-09-06T20:04:07.628Z",
+          "eventType": "task_completed",
+          "event_id": "992f361f-0bda-41df-a600-3fa93ef94792",
+          "source": {
+            "file": "state/workflow_events.jsonl",
+            "identity": "992f361f-0bda-41df-a600-3fa93ef94792",
+            "line": 315
+          },
+          "summary": "RESULT T9 6cda054: independent verdict reject, 10 findings; T2 ruling rejected at 8f97e28; 120 browser renders; check:task unavailable and recorded.",
+          "task_id": "9"
+        }
+      ],
+      "cross_task_review_link": "unavailable",
+      "label": "I",
+      "reasons": [
+        "completion without own-task verdict",
+        "completion without matching accepted candidate reference"
+      ],
+      "rulings": [
+        {
+          "at": "2026-09-06T19:51:20.128Z",
+          "by": "lead-taurjob",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T19:51:20.128Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "note",
+                "note": "Owner heavy-implementer-1 -> judge-astra-1 per taurhaus ruling 2026-09-06; rubric = acceptance.md; verdict isolation: reviews the artifact only, not product-reviewer's findings.",
+                "ref": null,
+                "seq": 1,
+                "value": "route-change"
+              },
+              "source": {
+                "file": "tasks/9.json",
+                "identity": "rulings[0]:seq:1",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T19:51:20.128Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "note",
+                "note": "Owner heavy-implementer-1 -> judge-astra-1 per taurhaus ruling 2026-09-06; rubric = acceptance.md; verdict isolation: reviews the artifact only, not product-reviewer's findings.",
+                "ref": null,
+                "seq": 1,
+                "value": "route-change"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "1b8e08f1-c5a9-4ad0-8d02-da163e20b47a",
+                "line": 194
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "note",
+          "note": "Owner heavy-implementer-1 -> judge-astra-1 per taurhaus ruling 2026-09-06; rubric = acceptance.md; verdict isolation: reviews the artifact only, not product-reviewer's findings.",
+          "ref": null,
+          "seq": 1,
+          "value": "route-change"
+        }
+      ],
+      "snapshot_status": "completed",
+      "task_id": "9"
+    },
+    {
+      "completions": [],
+      "cross_task_review_link": "unavailable",
+      "label": "I",
+      "reasons": [
+        "acceptance evidence before snapshot completion"
+      ],
+      "rulings": [
+        {
+          "at": "2026-09-06T20:02:03.829Z",
+          "by": "lead-taurjob",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T20:02:03.829Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "note",
+                "note": "50/120 lines, one file. 10/13 portal types verify+text over plain HTTP, 11/13 verify; HiBob is the only demonstrated loss vs existing pipeline. Lead decision R12: no browser helper in wave 1.",
+                "ref": "b825b54",
+                "seq": 1,
+                "value": "lead-verified"
+              },
+              "source": {
+                "file": "tasks/10.json",
+                "identity": "rulings[0]:seq:1",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T20:02:03.829Z",
+                "by": "lead-taurjob",
+                "field": null,
+                "kind": "note",
+                "note": "50/120 lines, one file. 10/13 portal types verify+text over plain HTTP, 11/13 verify; HiBob is the only demonstrated loss vs existing pipeline. Lead decision R12: no browser helper in wave 1.",
+                "ref": "b825b54",
+                "seq": 1,
+                "value": "lead-verified"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "a9009605-f06f-4817-a1f5-61d88258b62c",
+                "line": 298
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "note",
+          "note": "50/120 lines, one file. 10/13 portal types verify+text over plain HTTP, 11/13 verify; HiBob is the only demonstrated loss vs existing pipeline. Lead decision R12: no browser helper in wave 1.",
+          "ref": "b825b54",
+          "seq": 1,
+          "value": "lead-verified"
+        },
+        {
+          "at": "2026-09-06T20:03:56.988Z",
+          "by": "architect",
+          "copies": [
+            {
+              "payload": {
+                "at": "2026-09-06T20:03:56.988Z",
+                "by": "architect",
+                "field": null,
+                "kind": "verdict",
+                "note": null,
+                "ref": "b825b54",
+                "seq": 2,
+                "value": "accepted"
+              },
+              "source": {
+                "file": "tasks/10.json",
+                "identity": "rulings[1]:seq:2",
+                "line": 1
+              }
+            },
+            {
+              "payload": {
+                "at": "2026-09-06T20:03:56.988Z",
+                "by": "architect",
+                "field": null,
+                "kind": "verdict",
+                "note": null,
+                "ref": "b825b54",
+                "seq": 2,
+                "value": "accepted"
+              },
+              "source": {
+                "file": "state/workflow_events.jsonl",
+                "identity": "2ef63df1-0a4a-4b5a-85e4-360119f14ca6",
+                "line": 310
+              }
+            }
+          ],
+          "echo_join": "matched",
+          "field": null,
+          "kind": "verdict",
+          "note": null,
+          "ref": "b825b54",
+          "seq": 2,
+          "value": "accepted"
+        }
+      ],
+      "snapshot_status": "in_progress",
+      "task_id": "10"
+    }
+  ],
+  "projection_schema": "ledger-reader/0",
+  "source_conflicts": 0,
+  "status_agreements": 11,
+  "task_rulings": 23,
+  "task_snapshots": 11,
+  "workflow_event_types": {
+    "assignment_accepted": 8,
+    "assignment_started": 13,
+    "assignment_superseded": 1,
+    "lead_admin_task_action_recorded": 2,
+    "message_delivery_recorded": 36,
+    "message_read": 37,
+    "message_sent": 86,
+    "progress_reported": 5,
+    "review_requested": 7,
+    "ruling_recorded": 23,
+    "task_assigned": 12,
+    "task_blocked": 1,
+    "task_completed": 7,
+    "task_created": 11,
+    "task_state_updated": 72
+  }
+}

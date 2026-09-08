@@ -1,0 +1,9 @@
+{
+  "limits": {
+    "W1-0870": "The T3 contract names `~/projects/taurjobs/docs/reference/cli-stream-samples/` plus a facts update committed on master. The hand display shortens that path; neither the contract nor path abbreviation proves delivery.",
+    "W1-0879": "The T4 contract names `~/projects/taurjobs/docs/reference/taurhaus-prior-art.md` committed on master. The hand display shortens that path; no facts update is specified and actual delivery is not independently proved.",
+    "W1-0888": "The T8 contract names `~/projects/taurjobs/docs/reference/toolchain.md` (<=80 lines), committed on master, and an uncommitted scratch scaffold under /tmp only. The hand display shortens the path; the contract is not proof of delivery or platform validation.",
+    "W1-0897": "The T5 contract names `~/projects/taurjobs/docs/reference/pipeline-stages.md` committed on master. The hand display shortens that path; no facts update is specified and actual delivery is not independently proved."
+  },
+  "t8reason": "S: completion 3c5d02db-f5a4-4529-9c05-84778c5ccf20 retains \u201cVisual quality, production build, and native Windows support not validated.\u201d I: the hand `none` is contradicted by that authored limitation; it is not evidence of an absence of qualifications. Preserve the retained limitation; any replacement scope declaration must be explicit and authorized. C1 fixture requirement, not a test passed (`docs/design/ledger-writer-brief.md:119\u2013122`)."
+}

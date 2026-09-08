@@ -504,3 +504,71 @@ honest and reconciled (retitled PARTIAL, coded = 51 with strata, the
 15 promoted, T8 recoded, SD-* re-expressed against SD1–SD6, per-field
 rows with classes, citations fixed); exhaustive coding waits for the
 closed exports. C1 launches now; B's fix round runs in parallel.
+
+### Incident — the gap-matrix lane resumed itself and overwrote the reconciliation (procedure defect, 2026-09-08 05:03–05:33 UTC)
+
+The `research-sweep-long` copy carries `resume: true` (added so a
+design study could span several turns). When the gap-matrix researcher
+returned `status: unavailable`, its Opus wrapper treated the run as
+unfinished and launched `codex exec resume` turns (turn0 at 05:03,
+another still running at 05:31) that attempted the exhaustive coding
+the orchestrator had explicitly declined, and rewrote
+`ledger-gap-matrix.md` (2.1 MB, "3,609 coded propositions", 2,254 of
+them labeled U) at 05:31:54 — one minute after the reconciliation fix
+round (05:21–05:30) had written the directed PARTIAL document to the
+same path. The fix round's staged copy and the original partial survive
+in its evidence directory (`ledger-round1/staged-report.md`,
+`before-ledger-gap-matrix.md`). Disposition: the parent workflow was
+stopped, the runner group terminated, the reconciled document restored
+from the staged copy, and the runaway output kept beside it as
+`ledger-gap-matrix.exhaustive-attempt.md` — an UNREVIEWED
+inference-heavy classification that is not authoritative and must not
+be cited as coverage. Lesson (binding for this program): a research
+lane that returns `unavailable` is finished — never run a fix round on
+a document whose producing lane can still resume; the long-timeout
+procedure must not resume after an explicit `unavailable`, and the
+orchestrator confirms the producing runner is dead before editing its
+output. No live state, repo file, or other lane was affected; the
+reader and C1 worktree were untouched.
+
+Addendum (05:36 UTC): the runner shell died on the group kill but the
+`codex exec resume` child survived (GNU `timeout` places its child in
+its own process group); it was terminated separately by verified
+command line. The fix lane's FINAL reconciled version (05:30) was
+lost — its staged copy (05:24) is an intermediate stage carrying the
+retitle, the 51/3,777 coverage with the fifteen promoted codings, the
+T8 recode, the intake-design citation, the citation fixes and per-row
+labels, but not the spec-delta re-expression, the per-field
+disposition or the fix record. Recovery: the remaining directions are
+re-run on the staged base through a no-resume variant of the research
+procedure (`research-sweep-fix.js`) with the producing runner confirmed
+dead first. This is the same round-1 fix, not a second round.
+
+### B — adjudication: reconciled PARTIAL matrix ACCEPTED; increment B stays OPEN
+
+Correction to the incident note: the fix lane's FINAL reconciled
+document survived — the runaway turn had renamed it to
+`ledger-gap-matrix.turn0.md` before writing its regeneration — and was
+restored to the report path after the runaway was terminated. Verified
+directly by the orchestrator (2026-09-08 ~05:40 UTC): title "PARTIAL
+(increment B open)"; coverage 51/3,777 (36 short-result + 15 hero,
+R1/W2 zero) with the continuation stated; W1-0892 recoded as a
+contradicted authored `none` with the retained completion limitation;
+the accepted intake design added to the authority list and every
+SD-* reconciled against SD1–SD6 exactly as ruled (RETENTION-REF = SD3;
+SOURCE-TUPLE = study roles + NEW `baseline`, `gated`, `reviewed`,
+`red_base`, `red_features`, `landing` covering landed; DIFF-CONFIRM and
+BUDGET-AUTHORITY outside the ledger; REVIEW-INTEGRITY = SD4 envelope
+with D's enforcement; CLAIM-ASSESSMENT = accepted vocabulary;
+NARRATIVE-CUT a renderer requirement); the §4 disposition one row per
+field/member with the coded proposition and its class; the unused-field
+deliverable recorded as unmet and carried into C's entry conditions;
+A2 restated; citations fixed; per-row labels; A1–A15 pointed at this
+ledger; appendix intact (3,777 IDs). Promoted: the reviewed part as
+`docs/design/ledger-gap-matrix.md`, the full document, work index,
+census, fixtures and verification logs under
+`docs/design/evidence/ledger-gap-matrix/` (copies of another repo's
+ledgers and review files are NOT committed; hashes identify them). The
+runaway's regeneration is kept only in scratch as an unreviewed
+attempt. The payload-v1 provisional freeze in `ledger-writer-brief.md`
+matches this document.

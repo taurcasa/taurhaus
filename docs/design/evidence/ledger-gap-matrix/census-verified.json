@@ -1,0 +1,61 @@
+{
+  "journal_rows": {
+    "protocol_index": 53,
+    "task_mutations": 98,
+    "workflow_events": 321
+  },
+  "task_snapshots": 11,
+  "task_rulings": 23,
+  "status_agreements": 11,
+  "source_conflicts": 0,
+  "budget_related_rulings": [
+    {
+      "field": null,
+      "seq": 1,
+      "task_id": "11",
+      "value": "budget-430"
+    }
+  ],
+  "budget_raised_field_rulings": 0,
+  "idle_monitor_records": 0,
+  "accepted_cores": [
+    {
+      "by": "architect",
+      "candidate_ref": "8a7375b",
+      "completion_event_id": "4f28477b-4cba-4c3b-a337-81c7bd886e25",
+      "join_basis": "I: same task and literal ruling ref in completion summary; not a typed candidate link",
+      "ruling_seq": 2,
+      "task_id": "3"
+    },
+    {
+      "by": "architect",
+      "candidate_ref": "c563ff3",
+      "completion_event_id": "521117ca-8671-4682-8a79-bf3f04c71cfa",
+      "join_basis": "I: same task and literal ruling ref in completion summary; not a typed candidate link",
+      "ruling_seq": 2,
+      "task_id": "4"
+    },
+    {
+      "by": "architect",
+      "candidate_ref": "79d3657",
+      "completion_event_id": "77faa1e4-7a91-459a-8d2f-7fa35ff4595d",
+      "join_basis": "I: same task and literal ruling ref in completion summary; not a typed candidate link",
+      "ruling_seq": 2,
+      "task_id": "5"
+    },
+    {
+      "by": "architect",
+      "candidate_ref": "bfc2cca",
+      "completion_event_id": "3c5d02db-f5a4-4529-9c05-84778c5ccf20",
+      "join_basis": "I: same task and literal ruling ref in completion summary; not a typed candidate link",
+      "ruling_seq": 2,
+      "task_id": "8"
+    }
+  ],
+  "window": {
+    "end": "2026-09-06T20:11:26.180Z",
+    "start": "2026-09-06T19:34:32.013Z"
+  },
+  "census_assertions": "PASS",
+  "reader_build_exit": 0
+}
