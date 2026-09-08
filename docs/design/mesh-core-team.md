@@ -30,6 +30,19 @@ the locked mesh binary, never hand-written — that is how M1/M2 shipped.
 Until this gate closes, wave telemetry zeros are unmeasurable, not
 successes.
 
+**Phase-0 status (orchestrator, 2026-09-08):** the contract-repair gate
+CLOSED with PR #148 (M1–M3 landed with binary-produced fixtures); the
+wave-2 telemetry measurements remain gated on the wave-2 mesh state
+archive only. Item 5 increment A (offline reader) landed on mesh branch
+`feat/ledger-reader`; its intake design (`ledger-artifact-as-event.md`)
+and the item 1, 2 and 3/4 designs (`onboarding-card-design.md`,
+`assignment-rendering-design.md`, `info-only-and-notice-dedup-design.md`)
+were produced by Astra lanes with Opus review; verdicts and the
+measured reclassification of item 2 (larger, not smaller, when fields
+are preserved) are in `mesh-next-phase0-execution.md`. Mesh master stays
+at the 0.2.29 lock commit; every phase-0 change lives on branches until
+a deliberate lock-flow release.
+
 The measured items, strongest first (citations: threads memo = mesh-
 task-threads-research.md, overhaul study = mesh-messaging-overhaul-
 research.md; both on the wave-1 archive):

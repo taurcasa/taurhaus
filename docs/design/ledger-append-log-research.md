@@ -582,3 +582,23 @@ under the round-5 machinery and records the proposed amendments
 (§6–§7 there). Headlines binding on this document's next revision:
 the closed-wave census confirms the pathology at full-wave scale (ledger touches 39.1% of all reachable commits, 47.2% of mainline; 48 ledger-only commits; seven malformed-width rows and stale current-view cells at closure) — phase-0 item 5 is promoted alongside onboarding; malformed-row and non-table-accumulation cases join the acceptance fixtures. The original measurements and models above are unchanged and
 keep their original populations.
+
+---
+
+**Phase-0 addendum (orchestrator, 2026-09-08).** The authored intake in
+§7 and its review-pass amendment are superseded by the accepted design
+`ledger-artifact-as-event.md` (Astra-authored, one Opus fix round,
+orchestrator-verified): the artifact a seat already commits IS the
+event (front-matter `ledger:` namespace on a review file, NOTES or
+RESULT artifact, ingested through the existing completion/review/
+progress submission or `--summary-file`; a dedicated entry file only
+for facts in no artifact). Its spec-deltas SD1–SD6 — submission-route
+adapter call, split source-commit-first receipt with standalone
+idempotent repair, bounds/atomic batch/`invalid_input`, boundary-only
+retention, `audience_ref`, trailing-body and section-selector body
+forms, expected-head transport — are increment C's contract; the
+storage, CAS, fold, limits, errors and test table of §4–§6 and §10
+stand. Increment A (offline reader over bundle layout v0, `mesh ledger
+render/census --input-bundle`) landed on mesh branch
+`feat/ledger-reader`, reproducing §2.3–2.4 exactly; see
+`mesh-next-phase0-execution.md`.

@@ -425,3 +425,20 @@ under the round-5 machinery and records the proposed amendments
 (§6–§7 there). Headlines binding on this document's next revision:
 the stale current-view failures (#18/#20/#31) and the #65 mutable-RESULT contamination strengthen the bounded-projection and immutable-submission contracts; five documented wait/release pairs and the 68-rows-vs-64-touches gap join the fixture set. The original measurements and models above are unchanged and
 keep their original populations.
+
+---
+
+**Phase-0 addendum (orchestrator, 2026-09-08).** Overhead item 2 (one
+combined assignment rendering) was designed and measured in
+`assignment-rendering-design.md`: a rendering that preserves every
+contract field, the assignment token, effort/reason, references and the
+operative wait is LARGER than the authored contract plus generated card
+it replaces on the nine wave-1 pairs (−2.99% with verbatim doctrine,
+−4.81% with linked-not-pasted doctrine, of the 84,524-character task
+sample; same estimator). The 8.9% ceiling above remains a correct
+ceiling for deleting the second body; it is not reachable while the
+fields are preserved. The item is reclassified a correctness change
+(one operative contract, token-bound wait, GO release carrying its
+deltas, generation-scoped context). The exact-repeat onboarding surplus
+(53,508 characters) stays an interval, 0–13,377 TE, until archived
+context-generation records exist (`onboarding-card-design.md`).
