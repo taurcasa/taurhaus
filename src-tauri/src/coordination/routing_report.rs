@@ -75,11 +75,11 @@ pub fn render_routing_report(
     let mut model_rows = BTreeMap::<String, ReportStats>::new();
 
     for (teams_dir, team_name) in registry.team_locations()? {
-        let workflow = mesh::workflow_records(&teams_dir.join(&team_name));
         let telemetry_dir = teams_dir.join(&team_name).join("state/telemetry");
         let Ok(entries) = fs::read_dir(&telemetry_dir) else {
             continue;
         };
+        let workflow = mesh::workflow_records(&teams_dir.join(&team_name));
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
             if path.extension().and_then(|extension| extension.to_str()) != Some("jsonl") {

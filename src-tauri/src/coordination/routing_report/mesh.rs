@@ -121,6 +121,32 @@ pub(super) fn task_records(
 mod tests {
     use super::*;
 
+    // Regression: 22d0fc03 read the workflow journal before checking whether
+    // the team had any telemetry to attribute. No journal read is needed here.
+    #[test]
+    fn teams_without_telemetry_do_not_read_workflow_journals() {
+        let root = tempfile::tempdir().unwrap();
+        let teams = root.path().join("teams");
+        let team = teams.join("no-telemetry-team");
+        std::fs::create_dir_all(team.join("state")).unwrap();
+        File::create(team.join("state/workflow_events.jsonl"))
+            .unwrap()
+            .set_len(8 * 1_048_576 + 1)
+            .unwrap();
+        let log = root.path().join("capture.log");
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .without_time()
+            .with_writer(std::sync::Mutex::new(File::create(&log).unwrap()))
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            super::super::render_routing_report(&teams, 30, Utc::now()).unwrap();
+        });
+        let output = std::fs::read_to_string(log).unwrap();
+        assert!(!output.contains("routing.input.skipped"), "{output}");
+    }
+
     // Regression: 22d0fc03 silently discarded an entire workflow journal
     // above 8 MiB. Oversize input must leave a diagnostic naming its path.
     #[test]
@@ -147,10 +173,7 @@ mod tests {
         assert_eq!(output.lines().count(), 1, "{output}");
         assert!(output.contains("DEBUG"), "{output}");
         assert!(output.contains("routing.input.skipped"), "{output}");
-        assert!(
-            output.contains("oversize-team/state/workflow_events.jsonl"),
-            "{output}"
-        );
+        assert!(output.contains(&journal.display().to_string()), "{output}");
         assert!(output.contains("size_limit"), "{output}");
     }
 }
