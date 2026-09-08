@@ -643,3 +643,59 @@ declaration ("declaration: none; completion statement: …") so a
 contradiction can never be hidden, and a later obligation flags the
 earlier `none` for reconciliation. No copy obligation, no rejection.
 The C1 brief's fixture text is corrected to this reading.
+
+### C1 — fix round r1 verified on the `none` semantics (S, 06:45 UTC)
+
+Three fix commits (`53a1d3c`, `161f808`, `b888bec`; 3,754 lines of
+4,000). The `remaining_status: none` admission now reads
+(`intake.rs` ~:759–790): reject only against a STRUCTURED open
+`remaining` root in the same scope (existing head or in-batch, not
+`resolved`/`withdrawn`); for a `completion` reference, a limitation
+the author DECLARED on that reference (the assessment vocabulary's
+required `limitation`) must be carried in `limitations[]` — a
+consistency check inside the author's own event, no prose guessing;
+regression test `completion_without_declared_limitation_allows_
+remaining_none` (names `08fbd55` as the over-strict commit). This
+matches the adjudication. Repo-root verification now requires the
+declared `--repo-root` to be the Git toplevel (a subdirectory root is
+refused for Git-verified references — safe, slightly strict; noted for
+D). Re-review and gate pending.
+
+## Lane: one record-generated assignment card (implementer turn complete; orchestrator verification PASS)
+
+`feature-pr` on mesh branch `feat/assignment-card` (off master, worktree
+`~/projects/mesh-card`), implementer `gpt-6-astra` high, launched
+2026-09-08 06:14 UTC; implementer turn complete 06:43 with four commits
+(`209490b` … `f844ecf`), 1,797 inserted lines (budget 1,800), no new
+dependencies, ten acceptance tests matching the design's fixtures,
+gates green (688 tests). Deviation recorded: one cargo invocation
+briefly overlapped another lane's job; later waits held. Opus lenses in
+progress.
+
+**Orchestrator verification (S, 06:50 UTC, candidate `39c173a`+tests,
+crate binary in a tempdir root):** `task create --review-route` persists
+`review_route`; `task assign … --awaiting-go` prints `(assignment_id: …)`
+beside the inbox message id and the token equals `task get --json`'s;
+the seat's inbox card follows the literal template (header with team,
+assignment token + issuer/time, effort/reason, `ACTION REQUIRED:
+pre-read only; execution waits`, `Execution: WAIT … awaiting_go=<token>`,
+the five lines, deadline, no-ack footer) and `task get` renders the same
+card losslessly; `task go 1 --assignment <wrong>` is rejected with the
+token-mismatch error; `task go 1 --assignment <right>` clears
+`awaiting_go` and delivers a release body following the GO template
+(release authority/time/condition, accepted base/candidate/rubric/
+packet as "not recorded", changes since pre-GO, first action now,
+completion/review, other waits); across three assignment generations
+`previous_assignment_id` and `assignment_change_reason` are
+machine-maintained and no generation context is carried; the authored
+`ACTION REQUIRED` message without deliverable/completion signal still
+warns while the generated card and release carry no warning. Notes for
+the lens round: the held card prints a "Reconciliation: awaiting_go=…
+versus wait=null … obligation, not a recorded block" line even for a
+plain token wait with no declared context (should appear only on a real
+conflict); `task get` prints "assignment undelivered (no recorded
+delivery receipt)" for an assignment that IS in the inbox (durable
+append is `accepted`; the wording conflates a missing daemon receipt
+with non-delivery); `--assignment-context` schema violations surface as
+raw serde messages ("missing field `availability`", "`artifact_ref`")
+rather than the structured error shape.
