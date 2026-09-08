@@ -660,6 +660,7 @@ mod tests {
     }
     #[test]
     fn recovery_audience_projection_preserves_go_despite_contradictory_release_metadata() {
+        // Regression: 2760e88a let release metadata override an explicit awaiting-GO state.
         let (_temp, root, _registry) = fixture();
         let snapshot: crate::coordination::stores::OperationalContextSnapshot=serde_json::from_value(json!({"version":1,"team_name":"team","member_name":"seat","updated_at":Utc::now(),"task":{"id":"1","subject":"Review","status":"in_progress"},"assignment_footer":{},"ownership":{"override_allowed":false,"active_override_reason":null},"working_set":{"project_path":"/scratch","focal_files":[]}})).unwrap();
         let path = crate::coordination::stores::mesh_task::task_path(&root, "team", "1").unwrap();

@@ -693,6 +693,7 @@ mod tests {
     }
     #[test]
     fn recovery_root_change_after_claim_cannot_open_a_second_baseline() {
+        // Regression: ff287130 opened another baseline when roots changed before acceptance.
         let mut state = RecoveryState::default();
         state.reserve_activation("attachment");
         let mut k = key(&state);

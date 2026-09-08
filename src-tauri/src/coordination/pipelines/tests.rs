@@ -8058,6 +8058,7 @@ fn recovery_managed_onboarding_retry_uses_one_baseline() {
 
 #[test]
 fn recovery_actual_launch_changes_attachment_stamp_even_for_the_same_session() {
+    // Regression: 25ba6532 reused a generation when a preserved-session relaunch kept its old stamp.
     let temp = TempDir::new().unwrap();
     let runtime = RecordingCoordinationRuntime::default();
     let agent = setup_config(
