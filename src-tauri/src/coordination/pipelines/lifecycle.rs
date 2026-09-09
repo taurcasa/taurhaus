@@ -323,7 +323,10 @@ impl CoordinationOrchestrator {
             None
         };
         let address = match patch.pane_id.as_ref().and_then(Option::as_deref) {
-            Some(pane) => self.runtime.tmux_address(pane)?,
+            Some(pane) => self.runtime.tmux_address(pane).unwrap_or_else(|error| {
+                tracing::warn!(pane, %error, "attachment address unavailable; delivery remains pending");
+                None
+            }),
             None => None,
         };
         let guard = acquire_team_lock(&self.teams_dir, &context.team_name)?;
@@ -356,6 +359,10 @@ impl CoordinationOrchestrator {
                         .into(),
                     );
                     runtime.launch_root = attachment;
+                    // A fresh attachment cannot inherit certification or an old address.
+                    runtime.terminal_contract = 0;
+                    runtime.tmux_socket = None;
+                    runtime.tmux_session_id = None;
                 }
                 if let Some((socket, session)) = address {
                     runtime.tmux_socket = Some(socket);
@@ -381,6 +388,25 @@ impl CoordinationOrchestrator {
                 }
                 if let Some(pane_start_time) = patch.pane_start_time {
                     runtime.pane_start_time = pane_start_time;
+                }
+                if patch.activation.is_some()
+                    && runtime
+                        .tmux_socket
+                        .as_ref()
+                        .is_some_and(|p| p.is_absolute())
+                    && runtime.tmux_session_id.as_ref().is_some_and(|s| {
+                        s.strip_prefix('$')
+                            .is_some_and(|n| n.parse::<u64>().is_ok())
+                    })
+                    && runtime.pane_id.is_some()
+                    && runtime.pane_pid.is_some()
+                    && runtime.pane_start_time.is_some()
+                    && runtime
+                        .launch_root
+                        .as_ref()
+                        .is_some_and(|r| r.team_incarnation_id.is_some())
+                {
+                    runtime.terminal_contract = 1;
                 }
                 if let Some(session_id) = patch.session_id {
                     runtime.session_id = session_id;

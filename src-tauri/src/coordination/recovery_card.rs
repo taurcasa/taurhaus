@@ -143,52 +143,6 @@ pub struct RecoveryState {
     pub last_delivered: Option<CardReceipt>,
 }
 
-impl crate::coordination::stores::MemberRuntimeRecord {
-    pub fn context(&self) -> (u64, u64) {
-        (self.attachment_generation, self.context_generation)
-    }
-
-    /// Called by the activation owner only, after capture and before delivery.
-    pub fn reserve_activation(&mut self, intent: &str) {
-        if self.recovery.activation_intent.as_deref() == Some(intent) {
-            return;
-        }
-        self.recovery
-            .member_incarnation_id
-            .get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
-        self.recovery.activation_intent = Some(intent.to_string());
-        self.attachment_generation += 1;
-        self.context_generation = 0;
-        self.recovery.admitted_boundary = None;
-        self.recovery.baseline_binding = None;
-        self.recovery.claim = None;
-    }
-
-    /// Metadata only; the existing hook path decides which boundary is admitted.
-    pub fn admit_compaction(&mut self, boundary: &str) {
-        if self.recovery.admitted_boundary.as_deref() == Some(boundary) {
-            return;
-        }
-        self.recovery.admitted_boundary = Some(boundary.to_string());
-        self.context_generation += 1;
-        self.recovery.baseline_binding = None;
-        if self
-            .recovery
-            .claim
-            .as_ref()
-            .is_none_or(|r| r.card_key.context != self.context())
-        {
-            self.recovery.claim = None;
-        } else {
-            self.recovery.baseline_binding = self
-                .recovery
-                .claim
-                .as_ref()
-                .map(|r| r.obligation_key.clone());
-        }
-    }
-}
-
 impl RecoveryState {
     pub fn claim(&mut self, key: &CardKey, revision: &str, path: &str) -> Option<CardReceipt> {
         let obligation = key.obligation_key();

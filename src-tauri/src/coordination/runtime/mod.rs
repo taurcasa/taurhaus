@@ -315,14 +315,19 @@ pub fn pane_belongs_to_member(record: &MemberRuntimeRecord, live_pane: &LivePane
             };
         }
     }
-    if let Some(expected) = record.pane_start_time {
+    if let Some(expected) = record
+        .pane_start_time
+        .filter(|_| record.terminal_contract >= 1)
+    {
         if live_pane.pane_start_time != Some(expected) {
             return PaneOwnership::Foreign {
                 reason: "pane_start_time_mismatch".to_string(),
             };
         }
     }
-    if record.pane_pid.is_some() || record.pane_start_time.is_some() {
+    if record.pane_pid.is_some()
+        || (record.terminal_contract >= 1 && record.pane_start_time.is_some())
+    {
         return PaneOwnership::Owned;
     }
 
@@ -789,6 +794,32 @@ mod tests {
         assert!(!is_shell_command("codex"));
         assert!(!is_shell_command("claude"));
         assert!(!is_shell_command(""));
+    }
+
+    #[test]
+    fn legacy_epoch_start_time_is_not_foreign_after_upgrade() {
+        // Regression: 1127823e replaced tmux epoch seconds with proc ticks
+        // without distinguishing pre-contract records (or non-Linux probes).
+        let mut record = sample_runtime_with_pane("seat", "%9");
+        record.terminal_contract = 0;
+        record.pane_pid = Some(1200);
+        record.pane_start_time = Some(1_755_000_000);
+        let mut live = LivePane {
+            pane_id: "%9".into(),
+            pane_pid: Some(1200),
+            pane_start_time: Some(12345),
+            current_command: None,
+            current_path: None,
+            is_dead: false,
+        };
+        assert_eq!(pane_belongs_to_member(&record, &live), PaneOwnership::Owned);
+        live.pane_start_time = None;
+        assert_eq!(pane_belongs_to_member(&record, &live), PaneOwnership::Owned);
+        record.terminal_contract = 1;
+        assert!(matches!(
+            pane_belongs_to_member(&record, &live),
+            PaneOwnership::Foreign { .. }
+        ));
     }
 
     #[test]

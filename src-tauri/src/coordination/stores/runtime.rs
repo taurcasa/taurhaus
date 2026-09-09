@@ -147,7 +147,81 @@ mod start_ticks {
 
 impl Default for MemberRuntimeRecord {
     fn default() -> Self {
-        serde_json::from_value(serde_json::json!({"terminalContract": 1})).expect("default runtime")
+        Self {
+            attachment_generation: 0,
+            context_generation: 0,
+            tmux_socket: None,
+            tmux_session_id: None,
+            harness: None,
+            launch_root: None,
+            activity_snapshot_path: None,
+            terminal_contract: 0,
+            recovery: Default::default(),
+            schema_version: schema_version_one(),
+            member_name: String::new(),
+            cli_tool: None,
+            project_path: None,
+            pane_id: None,
+            pane_pid: None,
+            pane_start_time: None,
+            session_id: None,
+            jsonl_path: None,
+            daemon_pid: None,
+            health: default_runtime_health(),
+            delivery_lease: None,
+            attached_at: None,
+            last_seen_at: None,
+            applied_effort: None,
+            effort_resume_failure: None,
+            launch_account: Default::default(),
+            extra: BTreeMap::new(),
+        }
+    }
+}
+
+impl MemberRuntimeRecord {
+    pub fn context(&self) -> (u64, u64) {
+        (self.attachment_generation, self.context_generation)
+    }
+
+    /// Called by the activation owner only, after capture and before delivery.
+    pub fn reserve_activation(&mut self, intent: &str) {
+        if self.recovery.activation_intent.as_deref() == Some(intent) {
+            return;
+        }
+        self.recovery
+            .member_incarnation_id
+            .get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
+        self.recovery.activation_intent = Some(intent.to_string());
+        self.attachment_generation += 1;
+        self.context_generation = 0;
+        self.recovery.admitted_boundary = None;
+        self.recovery.baseline_binding = None;
+        self.recovery.claim = None;
+    }
+
+    /// Metadata only; the existing hook path decides which boundary is admitted.
+    pub fn admit_compaction(&mut self, boundary: &str) {
+        if self.recovery.admitted_boundary.as_deref() == Some(boundary) {
+            return;
+        }
+        self.recovery.admitted_boundary = Some(boundary.to_string());
+        self.context_generation += 1;
+        self.recovery.baseline_binding = None;
+        if self
+            .recovery
+            .claim
+            .as_ref()
+            .is_none_or(|r| r.card_key.context != self.context())
+        {
+            self.recovery.claim = None;
+        } else {
+            self.recovery.baseline_binding = self
+                .recovery
+                .claim
+                .as_ref()
+                .map(|r| r.obligation_key.clone());
+        }
     }
 }
 
@@ -225,28 +299,28 @@ impl MemberRuntimeSnapshot {
             changed.push("appliedEffort");
         }
         if self.baseline.attachment_generation != current.attachment_generation {
-            changed.push("attachment_generation");
+            changed.push("attachmentGeneration");
         }
         if self.baseline.context_generation != current.context_generation {
-            changed.push("context_generation");
+            changed.push("contextGeneration");
         }
         if self.baseline.tmux_socket != current.tmux_socket {
-            changed.push("tmux_socket");
+            changed.push("tmuxSocket");
         }
         if self.baseline.tmux_session_id != current.tmux_session_id {
-            changed.push("tmux_session_id");
+            changed.push("tmuxSessionId");
         }
         if self.baseline.harness != current.harness {
             changed.push("harness");
         }
         if self.baseline.launch_root != current.launch_root {
-            changed.push("launch_root");
+            changed.push("launchRoot");
         }
         if self.baseline.activity_snapshot_path != current.activity_snapshot_path {
-            changed.push("activity_snapshot_path");
+            changed.push("activitySnapshotPath");
         }
         if self.baseline.terminal_contract != current.terminal_contract {
-            changed.push("terminal_contract");
+            changed.push("terminalContract");
         }
         changed
     }
@@ -703,7 +777,6 @@ fn save_runtime_record_locked(
         }
     }
     let mut normalized = record.clone();
-    normalized.terminal_contract = 1;
     normalized.schema_version = RUNTIME_SCHEMA_VERSION;
     normalized.member_name = member_name.to_string();
     normalized.extra = extension_fields_only(normalized.extra, RUNTIME_AUTHORED_KEYS);
@@ -1417,6 +1490,21 @@ mod tests {
     }
 
     #[test]
+    fn legacy_liveness_save_does_not_certify_attachment() {
+        // Regression: 80a83d08 stamped terminalContract on every save,
+        // letting pre-contract attachments pass mesh's opt-in gate.
+        let tmp = TempDir::new().unwrap();
+        let mut record = sample_record("seat");
+        record.terminal_contract = 0;
+        MemberRuntimeStore::save(tmp.path(), "team", "seat", &record).unwrap();
+        MemberRuntimeStore::save_preserving_applied_effort(tmp.path(), "team", "seat", &record)
+            .unwrap();
+        let saved = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        assert_eq!(saved.terminal_contract, 0);
+        assert_eq!(MemberRuntimeRecord::default().terminal_contract, 0);
+    }
+
+    #[test]
     fn terminal_contract_spelling_and_stale_liveness_preservation() {
         // Regression: 3ca169ed reserved activation before publishing identity and
         // liveness could overwrite attachment facts added by another writer.
@@ -1424,6 +1512,17 @@ mod tests {
         let root = tmp.path();
         let mut original = sample_record("seat");
         original.reserve_activation("first");
+        original.terminal_contract = 1;
+        original.tmux_socket = Some(root.join("first-tmux.sock"));
+        original.tmux_session_id = Some("$1".into());
+        original.harness = Some(CliTool::Codex);
+        original.launch_root = Some(LaunchRoot {
+            claude_dir: root.into(),
+            teams_dir: root.join("teams"),
+            team_incarnation_id: Some("first".into()),
+            root_authority_revision: 0,
+        });
+        original.activity_snapshot_path = Some(root.join("activity-first.json"));
         MemberRuntimeStore::save(root, "team", "seat", &original).unwrap();
         let path = runtime_record_path(root, "team", "seat");
         let mut disk: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -1440,7 +1539,7 @@ mod tests {
             "activitySnapshotPath",
             "terminalContract",
         ] {
-            assert!(disk.get(key).is_some(), "missing {key}");
+            assert!(!disk[key].is_null(), "missing {key}");
         }
         assert_eq!(disk["terminalContract"], 1);
         disk["attachmentGeneration"] = 9.into();
@@ -1481,13 +1580,13 @@ mod tests {
         let latest = MemberRuntimeStore::load(root, "team", "seat").unwrap();
         let changed = MemberRuntimeSnapshot::capture(&original).changed_fields(Some(&latest));
         for key in [
-            "attachment_generation",
-            "context_generation",
-            "tmux_socket",
-            "tmux_session_id",
+            "attachmentGeneration",
+            "contextGeneration",
+            "tmuxSocket",
+            "tmuxSessionId",
             "harness",
-            "launch_root",
-            "activity_snapshot_path",
+            "launchRoot",
+            "activitySnapshotPath",
         ] {
             assert!(changed.contains(&key), "unchecked {key}");
         }
