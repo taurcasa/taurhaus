@@ -22,6 +22,8 @@ use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::{spec, CliTool, CompactionDelivery};
 use taurhaus_lib::logging::emit_global;
 
+pub mod drain;
+
 const TAURHAUS_COMPACT_HOOK_BASENAME: &str = "taurhaus-session-start-compact";
 const CLAUDE_SETTINGS_FILENAME: &str = "settings.json";
 const CODEX_HOOKS_FILENAME: &str = "hooks.json";
@@ -98,6 +100,8 @@ fn tool_from_hook_environment() -> Option<CliTool> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 pub struct CompactHookResponse {
+    #[serde(skip)]
+    drain_receipt: Option<drain::Offer>,
     #[serde(skip)]
     receipt: Option<(
         PathBuf,
@@ -402,11 +406,11 @@ fn emit_hook_degraded(tool: CliTool, config_dir: &Path, executable: &str) {
 }
 
 pub fn handle_compact_hook_stdin<R: Read>(
-    mut stdin: R,
+    stdin: R,
     teams_dir: &Path,
 ) -> Result<CompactHookResponse, CoordinationError> {
     let mut raw = String::new();
-    stdin.read_to_string(&mut raw).map_err(|error| {
+    stdin.take(64 * 1024 + 1).read_to_string(&mut raw).map_err(|error| {
         emit_compact_hook_failed(
             CompactHookFailureStage::ReadStdin,
             None,
@@ -418,6 +422,7 @@ pub fn handle_compact_hook_stdin<R: Read>(
         );
         CoordinationError::Io(error)
     })?;
+    if raw.len() > 64 * 1024 { return Err(CoordinationError::Validation("hook input budget".into())); }
     handle_compact_hook(&raw, teams_dir)
 }
 
@@ -440,6 +445,12 @@ pub fn handle_compact_hook(
     })?;
 
     emit_compact_hook_received(&payload, raw.len());
+    let mut response = handle_compaction_decision(&payload, teams_dir)?;
+    drain::append(teams_dir, &payload, &mut response);
+    Ok(response)
+}
+
+fn handle_compaction_decision(payload: &CompactHookInput, teams_dir: &Path) -> Result<CompactHookResponse, CoordinationError> {
 
     let is_post_compact = hook_event_is(&payload.hook_event_name, POST_COMPACT_HOOK_EVENT);
     if !is_post_compact
@@ -680,6 +691,7 @@ pub fn handle_compact_hook(
 
     Ok(match delivery {
         CompactionDelivery::HookStdout => CompactHookResponse {
+            drain_receipt: None,
             receipt: Some((
                 matched.teams_dir.clone(),
                 matched.team_name.clone(),
@@ -965,13 +977,17 @@ pub fn run_compact_hook_cli<R: Read, W: Write>(
     teams_dir: &Path,
 ) -> Result<(), CoordinationError> {
     let response = handle_compact_hook_stdin(stdin, teams_dir)?;
-    serde_json::to_writer(&mut stdout, &response).map_err(|error| {
-        CoordinationError::StoreError(format!(
-            "failed to serialize compact hook response: {error}"
-        ))
-    })?;
-    stdout.write_all(b"\n")?;
-    stdout.flush()?;
+    let output_result = (|| -> Result<(), CoordinationError> {
+        let bytes = serde_json::to_vec(&response).map_err(|error| CoordinationError::StoreError(error.to_string()))?;
+        stdout.write_all(&bytes)?;
+        stdout.write_all(b"\n")?;
+        stdout.flush()?;
+        Ok(())
+    })();
+    // Release the final output executor before any receipt; this offer emits no more bytes.
+    drop(stdout);
+    if let Some(offer) = response.drain_receipt { offer.finish(output_result.is_ok()); }
+    output_result?;
     if let Some((root, team, member, receipt)) = response.receipt {
         if let Err(error) = crate::coordination::recovery_delivery::observe(
             &crate::coordination::stores::TeamRootRegistry::new(teams_dir.to_path_buf()),
@@ -1108,7 +1124,7 @@ fn emit_compact_hook_parse_payload_debug(raw: &str, error_message: &str) {
         "error.message".to_string(),
         Value::String(error_message.to_string()),
     );
-    fields.insert("raw_payload".to_string(), Value::String(raw.to_string()));
+    // Hook payloads may contain prompts/tool arguments. Only their size is diagnostic.
     fields.insert("raw_bytes".to_string(), Value::from(raw.len() as u64));
     emit_global(
         "debug",
@@ -2691,7 +2707,7 @@ mod tests {
         );
         assert!(contents.contains("\"failure_stage\":\"parse_payload\""));
         assert!(contents.contains("\"event\":\"compaction.compact_hook.parse_payload_debug\""));
-        assert!(contents.contains("\"raw_payload\":\"{\""));
+        assert!(!contents.contains("raw_payload"));
     }
 
     #[test]
@@ -3444,4 +3460,69 @@ mod tests {
                 .is_empty());
         }
     }
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_managed_boundary_round_trip() {
+        use crate::coordination::mesh_cli::FakeMesh;
+        let fake = FakeMesh::new("exit 99", "exit 99");
+        let root = fake.dir.path();
+        let teams = root.join("teams");
+        let mut member = sample_member(root);
+        member.cli_tool = CliTool::Codex;
+        write_team_fixture(&teams, "drain-team", &member, "verified-session");
+        let config_path = teams.join("drain-team/config.json");
+        let mut config: Value = serde_json::from_slice(&fs::read(&config_path).unwrap()).unwrap();
+        config["delivery_owner"] = json!("team");
+        config["messaging_format"] = json!(2);
+        config["team_incarnation_id"] = json!("incarnation");
+        fs::write(config_path, config.to_string()).unwrap();
+        let mut record = MemberRuntimeStore::load(&teams, "drain-team", &member.name).unwrap();
+        record.terminal_contract = 1;
+        record.attachment_generation = 7;
+        record.context_generation = 3;
+        record.tmux_socket = Some(root.join("private.sock"));
+        record.tmux_session_id = Some("$9".into());
+        record.pane_pid = Some(123);
+        record.pane_start_time = Some(456);
+        record.harness = Some(CliTool::Codex);
+        record.launch_root = Some(crate::coordination::stores::runtime::LaunchRoot {
+            claude_dir: root.into(), teams_dir: teams.clone(),
+            team_incarnation_id: Some("incarnation".into()), root_authority_revision: 0,
+        });
+        MemberRuntimeStore::save(&teams, "drain-team", &member.name, &record).unwrap();
+        let state = teams.join("drain-team/state/delivery");
+        fs::create_dir_all(&state).unwrap();
+        fs::write(state.join("adapter-architect.json"), r#"{"mode":"hook","revision":1,"boundary":{"owner_fence":2}}"#).unwrap();
+        let script = r#"#!/usr/bin/python3
+import sys,json,pathlib,os
+root=pathlib.Path(__file__).parent
+value=json.load(sys.stdin)
+with (root/'calls').open('a') as f: f.write(json.dumps({'argv':sys.argv[1:],'stdin':value,'env_keys':list(os.environ)})+'\n')
+protocol='mesh-hook-drain/1'
+if sys.argv[-1]=='capabilities':
+ print(json.dumps({'protocol':protocol,'descriptors':[{'id':'codex/0.153.4/PostToolUse/1','harness':'codex','build':'0.153.4','host':'fixture','event':'PostToolUse','source':'ordinary','matcher':'','config_trust':'fixture','envelope':'hookSpecificOutput.additionalContext; event-specific validation required','context_entry':'fixture','drop_rules':'fixture','max_bytes':8192,'max_chars':8000,'continuation_budget':0,'enabled':True}]}))
+elif sys.argv[-1]=='drain':
+ print(json.dumps({'protocol':protocol,'status':'offered','stage':'bridge_rendered','text':'[mesh message data] fixture marker\n','deliveries':[{'message_id':'m1','delivery_id':'d1','sequence':1,'coverage':'full_body','body_bytes':14,'body_chars':14}],'attempt_ids':['a1'],'offer_id':'offer-1','owner_fence':2,'selection_revision':1,'continue':False}))
+else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliveries':[],'offer_id':None,'continue':False}))
+"#;
+        fs::write(root.join("mesh"), script).unwrap();
+        let payload = json!({"hook_event_name":"PostToolUse","session_id":"verified-session","cwd":root,"transcript_path":root.join(".codex/rollout-test.jsonl")});
+        let mut output = Vec::new();
+        run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, &teams).unwrap();
+        let output: Value = serde_json::from_slice(&output).unwrap();
+        assert!(output["hookSpecificOutput"]["additionalContext"].as_str().unwrap_or_default().contains("fixture marker"));
+        let calls: Vec<Value> = fs::read_to_string(root.join("calls")).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[1]["argv"], json!(["--claude-dir",root,"--team","drain-team","--name","architect","delivery","drain"]));
+        let request = &calls[1]["stdin"]["request"];
+        assert_eq!(request["runtime"]["context_generation"], "3");
+        assert_eq!(request["runtime"]["attachment_generation"], 7);
+        assert_eq!(request["runtime"]["pane_start"], "456");
+        assert_eq!(request["runtime"]["tmux_session"], "$9");
+        assert_eq!(request["session"], "verified-session");
+        assert_eq!(calls[2]["stdin"]["request"], *request);
+        assert_eq!(calls[2]["stdin"]["stage"], "hook_response_offered");
+        assert_eq!(calls[2]["stdin"]["offer_id"], "offer-1");
+    }
+
 }

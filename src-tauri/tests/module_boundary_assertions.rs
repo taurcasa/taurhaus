@@ -800,6 +800,10 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "daemon-hosted Claude delivery appends inbox records",
         ),
         (
+            "src/coordination/compact_hook/drain.rs",
+            "native hook bridge reads root authority; external Mesh receipts never run in the Windows app",
+        ),
+        (
             "src/coordination/compact_hook.rs",
             "WSL-native compact-hook process publishes reinjection state",
         ),
@@ -973,6 +977,7 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         "MemberCompactionStore::delete_without_lock(",
         "prune_state_if_session_mismatch(",
         "record_delivery_at(",
+        "record_delivery_with_journal_at(",
         "TeamConfigStore::save(",
         "AccountSwitchManifestStore::append(",
         "TeamConfigStore::clear_member_pane_binding(",
@@ -1573,4 +1578,16 @@ fn terminal_child_mode_inherits_flock_and_exits_without_daemon_startup() {
     );
     drop(guard);
     assert!(fs::File::open(path).unwrap().try_lock_exclusive().is_ok());
+}
+
+#[test]
+fn hook_bridge_contract_pins_protocol_and_writer_coverage() {
+    let hook = fs::read_to_string(crate_root().join("src/coordination/compact_hook/drain.rs")).unwrap();
+    for spelling in ["mesh-hook-drain/1", "hook_response_offered", "outcome_unknown", "offer_id", "attachment_generation", "launch_root", "reserved_bytes", "reserved_chars"] {
+        assert!(hook.contains(spelling), "missing bridge contract {spelling}");
+    }
+    // Regression: f0a5bad7 added this compaction writer without the Windows-app boundary marker.
+    let boundaries = fs::read_to_string(crate_root().join("tests/module_boundary_assertions.rs")).unwrap();
+    let markers = boundaries.split("let markers = [").find(|section| section.contains("record_delivery_at(" )).unwrap();
+    assert!(markers.split("];" ).next().unwrap().contains("record_delivery_with_journal_at("));
 }
