@@ -2379,6 +2379,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn canonical_deadline_nudge_links_and_failures_remain_one_shot() {
+        // Regression: 20b27ac6 dropped the deadline sender; 755560bb spent refused claims without telemetry.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         for refused in [false, true] {
             let mesh = crate::coordination::mesh_cli::FakeMesh::new(
                 r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
@@ -2394,6 +2396,9 @@ mod tests {
                 .extra
                 .insert("messaging_format".into(), serde_json::json!(2));
             TeamConfigStore::save(&root, "deadline-team", &config).unwrap();
+            let log_path = mesh.dir.path().join("deadline.jsonl");
+            let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+            taurhaus_lib::logging::install_global_sink(&sink);
             let assigned = Utc::now();
             seed_deadline_task(&root, assigned, Some(20));
             for _ in 0..2 {
@@ -2419,7 +2424,17 @@ mod tests {
                 "a canonical failure must not roll back the nudge claim"
             );
             assert!(mesh.argv().contains("--task\n42\n"));
+            assert!(!mesh.argv().contains("--assignment\n"));
+            assert!(mesh.argv().contains("--name\nteam-lead\n"));
+            assert!(!mesh.argv().contains("--name\nbuilder\n"));
             assert!(deadline_snapshot(&root).task.nudged_at.is_some());
+            sink.flush_for_test().unwrap();
+            let events = std::fs::read_to_string(log_path).unwrap();
+            assert!(events.contains(if refused {
+                "deadline.nudge.unconfirmed"
+            } else {
+                "deadline.nudge.sent"
+            }));
         }
     }
 

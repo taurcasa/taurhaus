@@ -42,26 +42,11 @@ impl ClaudeNativeBackend {
             &mut message,
             payload.recovery_card.as_ref(),
         );
-        if let Some(links) = payload.journal_links.as_ref() {
-            message.extra.insert(
-                "journal_links".into(),
-                serde_json::to_value(links).expect("links"),
-            );
-        } else if let Some(task) = payload
-            .operational_context
-            .as_ref()
-            .and_then(|c| c.task.as_ref())
-            .filter(|_| !message.extra.contains_key("journal_links"))
-        {
-            let links = crate::coordination::journal::JournalLinks {
-                task: task.id.clone(),
-                assignment: String::new(),
-            };
-            message.extra.insert(
-                "journal_links".into(),
-                serde_json::to_value(links).expect("links"),
-            );
-        }
+        crate::coordination::recovery_delivery::attach_journal_links(
+            &mut message,
+            payload.journal_links.as_ref(),
+            payload.operational_context.as_ref(),
+        );
         let journal = MeshInboxStore::append(
             &self.teams_dir,
             &payload.team_name,

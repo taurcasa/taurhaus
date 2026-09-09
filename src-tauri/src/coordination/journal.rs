@@ -1,6 +1,8 @@
 //! Taurhaus's generated-message producer adapter. Mesh alone owns format-2 projections.
-use std::path::Path;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -60,9 +62,37 @@ fn failure(reason: &str) -> CoordinationError {
 pub fn report_failure(team: &str, member: &str, id: Option<&str>, error: &CoordinationError) {
     taurhaus_lib::logging::emit_global(
         "warn", "coordination", "coordination.journal.accept_failed", None,
-        json!({"team":team,"recipient":member,"idempotency_key":id.map(|id| format!("taurhaus-daemon:{id}")),"reason":error.to_string()})
+        json!({"team":team,"recipient":member,"idempotency_key":id.map(idempotency_key),"reason":error.to_string()})
             .as_object().unwrap().clone(),
     );
+}
+
+fn idempotency_key(id: &str) -> String {
+    format!("taurhaus-daemon:{id}")
+}
+
+// Successful probes only: repairing an unavailable/old binary must allow the
+// existing bounded pre-submission retry. Fake executables have unique temp paths.
+type CapabilityKey = (String, Vec<String>, PathBuf);
+fn check_capability(root: &Path, team: &str, actor: &str) -> Result<(), CoordinationError> {
+    #[cfg(test)]
+    if !super::mesh_cli::test_mesh_installed() {
+        return Err(failure("test requires a fake mesh executable"));
+    }
+    static SUPPORTED: OnceLock<Mutex<HashSet<CapabilityKey>>> = OnceLock::new();
+    let invocation = super::mesh_cli::mesh_command_invocation(&["version", "--json"]);
+    let key = (invocation.program, invocation.args, root.to_path_buf());
+    let cache = SUPPORTED.get_or_init(Default::default);
+    let mut supported = cache.lock().unwrap_or_else(|e| e.into_inner());
+    if supported.contains(&key) {
+        return Ok(());
+    }
+    let version = run(root, team, actor, &["version", "--json"]).map_err(|e| e.error)?;
+    if version["journal_writer"] != "mesh-journal/2" {
+        return Err(failure("mesh-journal/2 required"));
+    }
+    supported.insert(key);
+    Ok(())
 }
 
 pub fn accept(
@@ -71,23 +101,36 @@ pub fn accept(
     member: &str,
     message: &MeshInboxMessage,
 ) -> Result<JournalReceipt, CoordinationError> {
-    let id = message
-        .id
-        .as_deref()
-        .filter(|id| !id.is_empty())
-        .ok_or_else(|| failure("missing delivery identity"))?;
-    let claude_dir = root
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .ok_or_else(|| failure("missing resolved Mesh config root"))?;
-    let version = run(root, team, member, &["version", "--json"])?;
-    if version["journal_writer"] != "mesh-journal/2" {
-        return Err(failure("mesh-journal/2 required"));
-    }
+    // Mesh authenticates --name and uses it as claimed_sender. A service notice
+    // uses the lead; explicit senders retain their identity, never the recipient.
+    let prepared = (|| {
+        let id = message
+            .id
+            .as_deref()
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| failure("missing delivery identity"))?;
+        let claude_dir = root
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .ok_or_else(|| failure("missing resolved Mesh config root"))?;
+        let actor = if message.from == super::stores::inbox::OPERATOR_SENDER_NAME {
+            super::stores::TeamConfigStore::load(root, team)?
+                .members
+                .into_iter()
+                .find(|m| m.role == super::domain::MemberRole::Lead)
+                .map(|m| m.name)
+                .ok_or_else(|| failure("missing journal producer lead"))?
+        } else {
+            message.from.clone()
+        };
+        check_capability(root, team, &actor)?;
+        Ok((id, claude_dir, actor))
+    })();
+    let (id, claude_dir, actor) = prepared
+        .map_err(|error| record_pre_submission_failure(root, team, member, message, error))?;
     let claude_dir = super::runtime::mesh_cli_claude_dir_arg_from_path(claude_dir);
-    let key = format!("taurhaus-daemon:{id}");
-    // Authenticate the managed recipient through the same control credential seam
-    // as the daemon backend. Mesh marks this service producer as generated/verified.
+    let key = idempotency_key(id);
+    // Resolve the actor's control token through the existing daemon CLI seam.
     let mut args = vec![
         "journal",
         "accept",
@@ -104,7 +147,7 @@ pub fn accept(
         "--team",
         team,
         "--name",
-        member,
+        &actor,
     ];
     let links = message
         .extra
@@ -113,22 +156,29 @@ pub fn accept(
     if let Some(links) = &links {
         if !links.task.is_empty() {
             args.extend(["--task", &links.task]);
-            if !links.assignment.is_empty() {
-                args.extend(["--assignment", &links.assignment]);
-            }
+            // Snapshot tokens can lag reassignment. Mesh derives the current
+            // assignment from the task; informational notices must not assert it.
         }
     }
-    let value = run(root, team, member, &args)?;
+    let value = run(root, team, &actor, &args).map_err(|error| {
+        if error.not_submitted {
+            record_pre_submission_failure(root, team, member, message, error.error)
+        } else {
+            error.error
+        }
+    })?;
+    if value["status"] != "accepted" {
+        return Err(failure(
+            safe_error_code(&value).unwrap_or("missing canonical acceptance"),
+        ));
+    }
     let nonempty = |v: &Value| v.as_str().filter(|s| !s.is_empty()).map(str::to_owned);
     let target = value["delivery_targets"]
         .as_array()
         .filter(|targets| targets.len() == 1)
         .and_then(|targets| targets.first())
-        .filter(|target| target["recipient"] == member)
+        .filter(|target| nonempty(&target["recipient"]).is_some())
         .ok_or_else(|| failure("invalid acceptance recipient"))?;
-    if value["status"] != "accepted" {
-        return Err(failure("missing canonical acceptance"));
-    }
     Ok(JournalReceipt {
         message_id: nonempty(&value["message_id"]).ok_or_else(|| failure("missing message_id"))?,
         delivery_id: nonempty(&target["delivery_id"])
@@ -142,10 +192,79 @@ pub fn accept(
     })
 }
 
-fn run(root: &Path, team: &str, member: &str, args: &[&str]) -> Result<Value, CoordinationError> {
+fn record_pre_submission_failure(
+    root: &Path,
+    team: &str,
+    member: &str,
+    message: &MeshInboxMessage,
+    error: CoordinationError,
+) -> CoordinationError {
+    if super::recovery_delivery::observe_pre_submission_failure(root, team, member, message)
+        .is_err()
+    {
+        // Preserve the submission reason; the claim stays quarantined if persistence fails.
+        tracing::warn!(
+            team,
+            member,
+            "could not persist pre-submission failure receipt"
+        );
+    }
+    error
+}
+
+struct CommandFailure {
+    error: CoordinationError,
+    not_submitted: bool,
+}
+
+// An allowlist prevents untrusted CLI output from copying prose or credentials
+// into telemetry. This candidate emits plain journal codes; also accept JSON codes.
+fn safe_error_code(value: &Value) -> Option<&'static str> {
+    known_error_code(value.get("code").or_else(|| value.get("error"))?.as_str()?)
+}
+
+fn known_error_code(code: &str) -> Option<&'static str> {
+    [
+        "canonical_service_contract_required",
+        "invalid_idempotency_key",
+        "capture_disabled",
+        "assignment_mismatch",
+        "assignment_requires_one_task",
+        "conflicting_orchestration_links",
+        "unauthorized",
+        "task_not_found",
+        "canonical_required",
+        "budget_exceeded",
+    ]
+    .into_iter()
+    .find(|known| *known == code)
+}
+
+fn refusal_code(bytes: &[u8]) -> Option<&'static str> {
+    String::from_utf8_lossy(bytes).lines().find_map(|line| {
+        if let Ok(value) = serde_json::from_str::<Value>(line) {
+            return safe_error_code(&value);
+        }
+        if let Some(code) = line.strip_prefix("error: IO error: journal: ") {
+            return known_error_code(code);
+        }
+        if line.starts_with("error: unauthorized: ") {
+            return Some("unauthorized");
+        }
+        if line.starts_with("error: assignment token mismatch: ") {
+            return Some("assignment_mismatch");
+        }
+        None
+    })
+}
+
+fn run(root: &Path, team: &str, member: &str, args: &[&str]) -> Result<Value, CommandFailure> {
     #[cfg(test)]
     if !super::mesh_cli::test_mesh_installed() {
-        return Err(failure("test requires a fake mesh executable"));
+        return Err(CommandFailure {
+            error: failure("test requires a fake mesh executable"),
+            not_submitted: true,
+        });
     }
     let invocation =
         super::runtime::mesh_command_invocation_for_member_at(args, team, member, root);
@@ -153,7 +272,7 @@ fn run(root: &Path, team: &str, member: &str, args: &[&str]) -> Result<Value, Co
     super::runtime::apply_background_command_settings(&mut command);
     command.args(&invocation.args);
     let timeout = if cfg!(test) {
-        Duration::from_millis(150)
+        Duration::from_secs(1)
     } else {
         Duration::from_secs(5)
     };
@@ -162,13 +281,28 @@ fn run(root: &Path, team: &str, member: &str, args: &[&str]) -> Result<Value, Co
         timeout,
         "mesh journal producer",
     )
-    .map_err(|e| failure(&e.to_string()))?;
+    .map_err(|e| CommandFailure {
+        not_submitted: matches!(
+            e.kind(),
+            std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
+        ),
+        error: failure(&e.to_string()),
+    })?;
     if !output.status.success() {
-        // Do not copy CLI stderr or argv into telemetry: they can contain body or credentials.
-        return Err(failure(&format!(
-            "mesh {} exited {}",
-            args[0], output.status
-        )));
+        let code = refusal_code(&output.stdout).or_else(|| refusal_code(&output.stderr));
+        return Err(CommandFailure {
+            error: failure(&format!(
+                "mesh {} exited {}{}",
+                args[0],
+                output.status,
+                code.map(|c| format!(": {c}")).unwrap_or_default()
+            )),
+            // Even a coded refusal is quarantined after submission: no resend.
+            not_submitted: false,
+        });
     }
-    serde_json::from_slice(&output.stdout).map_err(|_| failure("invalid mesh JSON response"))
+    serde_json::from_slice(&output.stdout).map_err(|_| CommandFailure {
+        error: failure("invalid mesh JSON response"),
+        not_submitted: false,
+    })
 }

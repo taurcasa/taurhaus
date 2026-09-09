@@ -2032,6 +2032,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn canonical_grok_compaction_retains_acceptance_and_never_resends_failure() {
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         for refused in [false, true] {
             let mesh = crate::coordination::mesh_cli::FakeMesh::new(
                 r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
@@ -2050,6 +2051,10 @@ mod tests {
             write_snapshot_fixture(&root, "grok-team", &member.name);
             let mut config = TeamConfigStore::load(&root, "grok-team").unwrap();
             config.team_incarnation_id = Some("grok-incarnation".into());
+            let mut lead = member.clone();
+            lead.name = "lead".into();
+            lead.role = crate::coordination::domain::MemberRole::Lead;
+            config.members.push(lead);
             config
                 .extra
                 .insert("messaging_format".into(), serde_json::json!(2));

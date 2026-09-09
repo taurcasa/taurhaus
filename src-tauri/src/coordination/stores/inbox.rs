@@ -88,6 +88,7 @@ impl MeshInboxMessage {
             "ackedAt",
             "ackedBy",
             "externalRelay",
+            "journal_links",
         ] {
             self.extra.remove(key);
         }
@@ -369,6 +370,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn canonical_append_uses_accept_without_touching_projection() {
+        // Regression: 20b27ac6 authenticated the recipient, discarding the service/lead sender.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let mesh = crate::coordination::mesh_cli::FakeMesh::new(
             r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
             r#"echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"agent","delivery_id":"d1"}]}'"#,
@@ -377,13 +380,13 @@ mod tests {
         fs::create_dir_all(root.join("t/inboxes")).unwrap();
         fs::write(
             root.join("t/config.json"),
-            r#"{"name":"t","messaging_format":2,"members":[]}"#,
+            serde_json::json!({"name":"t","createdAt":0,"messaging_format":2,"members":[{"name":"lead","role":"lead","cwd":mesh.dir.path()}]}).to_string(),
         )
         .unwrap();
         let projection = root.join("t/inboxes/agent.json");
         fs::write(&projection, "[]").unwrap();
         let mut message = MeshInboxMessage::new(
-            "agent",
+            "taurhaus",
             "body with 'quotes'\nand newline".into(),
             None,
             Utc::now(),
@@ -404,6 +407,8 @@ mod tests {
         assert!(argv.contains("journal\naccept\n"), "{argv}");
         assert!(argv.contains("--producer\ntaurhaus-daemon\n"), "{argv}");
         assert!(argv.contains("--recipient\nagent\n"), "{argv}");
+        assert!(argv.contains("--name\nlead\n"), "{argv}");
+        assert!(!argv.contains("--name\nagent\n"), "{argv}");
         assert!(
             argv.contains("--idempotency-key\ntaurhaus-daemon:card-delivery-1\n"),
             "{argv}"
@@ -412,6 +417,90 @@ mod tests {
             argv.contains(&format!("--claude-dir\n{}\n", mesh.dir.path().display())),
             "{argv}"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_explicit_sender_alias_and_cached_capability() {
+        // Regression: 20b27ac6 replaced explicit senders and rejected Mesh's canonical recipient.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let mesh = crate::coordination::mesh_cli::FakeMesh::new(
+            r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+            r#"while [ "$#" -gt 0 ]; do
+                case "$1" in
+                    --name) shift; actor="$1";;
+                esac
+                shift
+            done
+            printf '%s' "$actor" > claimed_sender
+            echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"lead","delivery_id":"d1"}]}'"#,
+        );
+        let root = mesh.dir.path().join("teams");
+        fs::create_dir_all(root.join("t")).unwrap();
+        fs::write(
+            root.join("t/config.json"),
+            r#"{"name":"t","createdAt":0,"messaging_format":2,"members":[]}"#,
+        )
+        .unwrap();
+        let message = MeshInboxMessage::new("coordinator", "notice".into(), None, Utc::now());
+        for _ in 0..2 {
+            MeshInboxStore::append(&root, "t", "team-lead", &message).unwrap();
+        }
+        assert_eq!(
+            fs::read_to_string(mesh.dir.path().join("claimed_sender")).unwrap(),
+            "coordinator"
+        );
+        assert_eq!(mesh.argv().matches("version\n").count(), 1);
+        assert_eq!(mesh.argv().matches("accept\n").count(), 2);
+        assert!(!root.join("t/inboxes").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_refusal_preserves_only_safe_error_codes() {
+        // Regression: 20b27ac6 dropped all Mesh refusal reasons, leaving only the exit code.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        for diagnostic in [
+            r#"{"error":"canonical_service_contract_required","detail":"private body"}"#,
+            "error: IO error: journal: canonical_service_contract_required",
+        ] {
+            let script = format!("echo '{}' >&2; exit 1", diagnostic);
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new(
+                r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+                &script,
+            );
+            let root = mesh.dir.path().join("teams");
+            fs::create_dir_all(root.join("t")).unwrap();
+            fs::write(
+                root.join("t/config.json"),
+                r#"{"name":"t","createdAt":0,"messaging_format":2,"members":[]}"#,
+            )
+            .unwrap();
+            let message = MeshInboxMessage::new("lead", "notice".into(), None, Utc::now());
+            let error = MeshInboxStore::append(&root, "t", "agent", &message)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains("canonical_service_contract_required"),
+                "{error}"
+            );
+            assert!(!error.contains("private body"));
+            assert_eq!(mesh.argv().matches("accept\n").count(), 1);
+        }
+    }
+
+    #[test]
+    fn legacy_append_strips_internal_journal_links() {
+        // Regression: 755560bb leaked the adapter's link parameters into the shared legacy row.
+        let tmp = TempDir::new().unwrap();
+        let mut message = MeshInboxMessage::new("taurhaus", "notice".into(), None, Utc::now());
+        message.extra.insert(
+            "journal_links".into(),
+            serde_json::json!({"task":"1","assignment":"a1"}),
+        );
+        MeshInboxStore::append(tmp.path(), "t", "agent", &message).unwrap();
+        let loaded = MeshInboxStore::load(tmp.path(), "t", "agent").unwrap();
+        assert!(!loaded[0].extra.contains_key("journal_links"));
     }
 
     #[cfg(unix)]
@@ -441,7 +530,7 @@ mod tests {
             fs::create_dir_all(root.join("t")).unwrap();
             fs::write(
                 root.join("t/config.json"),
-                r#"{"name":"t","messaging_format":2,"members":[]}"#,
+                serde_json::json!({"name":"t","createdAt":0,"messaging_format":2,"members":[{"name":"lead","role":"lead","cwd":mesh.dir.path()}]}).to_string(),
             )
             .unwrap();
             let message = MeshInboxMessage::new("agent", "notice".into(), None, Utc::now());
@@ -465,6 +554,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn canonical_invalid_format_refuses_and_legacy_never_invokes_mesh() {
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: 20b27ac6 treated a non-object config as a legacy team.
         for config in [
             "[]",

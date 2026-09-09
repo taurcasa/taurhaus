@@ -118,14 +118,23 @@ For teams whose config carries `messaging_format: 2`, the Taurhaus daemon
 (and its existing native compaction bridge) is a journal producer, not an
 inbox writer. The shared delivery seam submits once through `mesh journal
 accept --producer taurhaus-daemon`, with the resolved team's `--claude-dir`,
-recipient, task/assignment links and a delivery-derived idempotency key.
+recipient, task links and a delivery-derived idempotency key. Mesh derives the
+current assignment from each task; snapshot assignment tokens are not delivery
+preconditions. The authenticated actor is the explicit sender or team lead,
+while the producer remains `taurhaus-daemon`. Successful capability probes
+are cached per binary invocation and resolved root.
 Mesh assigns `origin: generated`; acceptance is independent of projection,
 transport, read and uptake. `onboarding.delivery.observed` retains the local
 card `delivery_id` and the returned `journal.message_id` and
 `journal.delivery_id`; compaction bookkeeping retains the same journal receipt.
 An unavailable, incompatible, refusing or timed-out Mesh emits
 `coordination.journal.accept_failed` with team, recipient, idempotency key and
-reason. Canonical delivery never falls back to an array write or automatically
-resends an unknown/failed submission. Non-canonical teams keep direct append.
+reason (including recognized Mesh error codes, never CLI prose or credentials).
+Canonical delivery never falls back to an array write or resends after a
+submission with an uncertain outcome. A preflight or executable-spawn failure
+records `Failed` on the matching recovery claim; the existing single bounded
+retry retains the same delivery identity. A spent deadline nudge with no
+confirmed acceptance emits `deadline.nudge.unconfirmed` with team, member,
+task and deadline fields. Non-canonical teams keep direct append.
 This adapter adds no protocol version, terminal writer, delivery owner or
 activation permission; the existing runtime-exclusion contract still applies.

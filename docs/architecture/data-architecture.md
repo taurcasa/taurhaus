@@ -325,9 +325,21 @@ Only Mesh owns the canonical journal and its inbox projections. Taurhaus keeps
 the returned message/delivery identities on its recovery and compaction
 receipts, independently of projection or read state. Canonical failures are
 visible as `coordination.journal.accept_failed`; neither array fallback nor
-automatic resend is permitted. Legacy teams retain the append behavior below.
+resend of a submitted notice is permitted. A failure before submission records
+a failed recovery receipt and permits the existing single bounded retry with
+the same delivery identity. Legacy teams retain the append behavior below.
 
-Taurhaus inbox producers route through that writer — operator notices for bridged members, operator notices for Claude members, and grok compaction cards. Operator-originated traffic is sent as `taurhaus` (`MeshInboxMessage::operator_originated`) and reports `DeliveryMethod::InboxFile` truthfully; no `mesh send` sender-candidate chain remains. Claude and Codex compaction cards return on native hook stdout and do not touch the inbox.
+Taurhaus inbox producers route through that writer — operator notices for bridged
+members, operator notices for Claude members, and grok compaction cards.
+Legacy operator-originated traffic uses the explicit sender or `taurhaus`
+(`MeshInboxMessage::operator_originated`). Canonical records carry
+`author.service: taurhaus-daemon` and the explicit sender (or team lead) as
+`author.claimed_sender`; the daemon authenticates that actor, independently of
+the recipient. Task links let Mesh derive the current assignment, without
+asserting a potentially stale Taurhaus snapshot token. Both paths report
+`DeliveryMethod::InboxFile`; no `mesh send` sender-candidate chain remains.
+Claude and Codex compaction cards return on native hook stdout and do not touch
+the inbox.
 
 ## Key Data Flows
 

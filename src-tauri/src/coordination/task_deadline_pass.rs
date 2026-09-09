@@ -287,6 +287,14 @@ fn apply_member_deadline(
             || !crate::coordination::journal::canonical(&orchestrator.teams_dir, team_name)?
         {
             rollback_claim(&orchestrator.teams_dir, &claimed, action, now)?;
+        } else {
+            taurhaus_lib::logging::emit_global(
+                "warn",
+                "coordination",
+                "deadline.nudge.unconfirmed",
+                Some("Nudge claim retained without confirmed journal acceptance".into()),
+                deadline_event_fields(team_name, member_name, &snapshot.task.id, deadline_minutes),
+            );
         }
         if action == DeadlineAction::MarkStale
             && matches!(

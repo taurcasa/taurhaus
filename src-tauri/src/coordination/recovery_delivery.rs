@@ -429,6 +429,75 @@ pub fn read_current(
     Ok((card.text, receipt))
 }
 
+/// A failed preflight/spawn cannot have committed a journal record. Record that
+/// fact on the matching claim so RecoveryState's existing two-attempt budget applies.
+pub fn observe_pre_submission_failure(
+    root: &Path,
+    team: &str,
+    member: &str,
+    message: &crate::coordination::stores::MeshInboxMessage,
+) -> Result<(), CoordinationError> {
+    let Some(mut receipt) = message
+        .extra
+        .get("recovery_card")
+        .and_then(|v| serde_json::from_value::<CardReceipt>(v.clone()).ok())
+    else {
+        return Ok(());
+    };
+    let mut recorded = false;
+    MemberRuntimeStore::update(root, team, member, |runtime| {
+        if runtime.recovery.claim.as_ref().is_some_and(|claim| {
+            claim.delivery_id == receipt.delivery_id
+                && claim.attempt == receipt.attempt
+                && claim.card_key == receipt.card_key
+                && claim.stage == ReceiptStage::OutcomeUnknown
+        }) {
+            runtime.recovery.observe(&receipt, ReceiptStage::Failed, 0);
+            recorded = true;
+        }
+    })?;
+    if recorded {
+        receipt.record(ReceiptStage::Failed, 0);
+        taurhaus_lib::logging::emit_global(
+            "info",
+            "coordination",
+            "onboarding.delivery.observed",
+            None,
+            serde_json::to_value(receipt)
+                .expect("receipt")
+                .as_object()
+                .unwrap()
+                .clone(),
+        );
+    }
+    Ok(())
+}
+
+pub fn attach_journal_links(
+    message: &mut crate::coordination::stores::MeshInboxMessage,
+    explicit: Option<&crate::coordination::journal::JournalLinks>,
+    context: Option<&crate::coordination::requests::OperationalContextUpdate>,
+) {
+    if let Some(links) = explicit {
+        message.extra.insert(
+            "journal_links".into(),
+            serde_json::to_value(links).expect("links"),
+        );
+    } else if let Some(task) = context
+        .and_then(|c| c.task.as_ref())
+        .filter(|_| !message.extra.contains_key("journal_links"))
+    {
+        let links = crate::coordination::journal::JournalLinks {
+            task: task.id.clone(),
+            assignment: String::new(),
+        };
+        message.extra.insert(
+            "journal_links".into(),
+            serde_json::to_value(links).expect("links"),
+        );
+    }
+}
+
 pub fn attach_receipt(
     message: &mut crate::coordination::stores::MeshInboxMessage,
     receipt: Option<&CardReceipt>,
@@ -610,12 +679,15 @@ mod tests {
             bridged::MeshBridgedBackend, claude::ClaudeNativeBackend, CoordinationBackend,
         };
         use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
-        // Regression: 755560bb replaced the card's assignment link with task-only context.
+        // Regression: 20b27ac6 sent stale snapshot assignment tokens as delivery preconditions.
         let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         for bridged in [false, true] {
             let mesh = crate::coordination::mesh_cli::FakeMesh::new(
                 r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
-                r#"echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"seat","delivery_id":"d1"}]}'"#,
+                r#"for arg in "$@"; do
+                    if [ "$arg" = --assignment ]; then echo 'error: assignment token mismatch' >&2; exit 1; fi
+                done
+                echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"seat","delivery_id":"d1"}]}'"#,
             );
             let (_temp, root, registry) = fixture();
             let log_path = mesh.dir.path().join("observed.jsonl");
@@ -623,6 +695,10 @@ mod tests {
             taurhaus_lib::logging::install_global_sink(&sink);
             let mut config = TeamConfigStore::load(&root, "team").unwrap();
             config.extra.insert("messaging_format".into(), json!(2));
+            let mut lead = config.members[0].clone();
+            lead.name = "lead".into();
+            lead.role = crate::coordination::domain::MemberRole::Lead;
+            config.members.push(lead);
             TeamConfigStore::save(&root, "team", &config).unwrap();
             reserve_activation(&root, "team", "seat", "activation").unwrap();
             let snapshot = assigned_snapshot(&root, json!({"assignment_id":"a1"}), "in_progress");
@@ -665,7 +741,9 @@ mod tests {
             let wire = serde_json::to_value(&result).unwrap();
             assert_eq!(wire["recoveryCard"]["journal"]["message_id"], "m1");
             assert_eq!(wire["recoveryCard"]["journal"]["delivery_id"], "d1");
-            assert!(mesh.argv().contains("--task\n1\n--assignment\na1\n"));
+            assert!(mesh.argv().contains("--task\n1\n"));
+            assert!(!mesh.argv().contains("--assignment\n"));
+            assert!(mesh.argv().contains("--name\nlead\n"));
             assert!(prepare(&registry, &root, "team", "seat", "inbox")
                 .unwrap()
                 .is_none());
@@ -689,6 +767,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn canonical_unknown_recovery_submission_is_not_retried_from_array_absence() {
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: 3ca169ed reconciled missing legacy rows into a retry, unsafe for canonical acceptance.
         let mesh = crate::coordination::mesh_cli::FakeMesh::new(
             r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
@@ -702,13 +781,56 @@ mod tests {
         let card = prepare(&registry, &root, "team", "seat", "inbox")
             .unwrap()
             .unwrap();
-        let mut message = MeshInboxMessage::new("seat", card.text, None, Utc::now());
+        let mut message = MeshInboxMessage::new("lead", card.text, None, Utc::now());
         attach_receipt(&mut message, Some(&card.receipt));
         assert!(MeshInboxStore::append(&root, "team", "seat", &message).is_err());
         assert!(prepare(&registry, &root, "team", "seat", "inbox")
             .unwrap()
             .is_none());
         assert_eq!(mesh.argv().matches("accept\n").count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_pre_submission_failure_allows_only_one_card_retry() {
+        // Regression: 20b27ac6 quarantined even failed version probes before any submission.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        for version in [
+            "missing",
+            "exit 19",
+            r#"echo '{"journal_writer":"mesh-journal/1"}'"#,
+        ] {
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new(version, "exit 99");
+            if version == "missing" {
+                std::fs::remove_file(mesh.dir.path().join("mesh")).unwrap();
+            }
+            let (_temp, root, registry) = fixture();
+            let mut config = TeamConfigStore::load(&root, "team").unwrap();
+            config.extra.insert("messaging_format".into(), json!(2));
+            TeamConfigStore::save(&root, "team", &config).unwrap();
+            reserve_activation(&root, "team", "seat", "activation").unwrap();
+            let mut identity = None;
+            for attempt in 1..=2 {
+                let card = prepare(&registry, &root, "team", "seat", "inbox")
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(card.receipt.attempt, attempt);
+                assert_eq!(
+                    identity.get_or_insert(card.receipt.delivery_id.clone()),
+                    &card.receipt.delivery_id
+                );
+                let mut message = MeshInboxMessage::new("lead", card.text, None, Utc::now());
+                attach_receipt(&mut message, Some(&card.receipt));
+                assert!(MeshInboxStore::append(&root, "team", "seat", &message).is_err());
+                let runtime = MemberRuntimeStore::load(&root, "team", "seat").unwrap();
+                assert_eq!(runtime.recovery.claim.unwrap().stage, ReceiptStage::Failed);
+            }
+            assert!(prepare(&registry, &root, "team", "seat", "inbox")
+                .unwrap()
+                .is_none());
+            assert!(!mesh.argv().contains("accept\n"));
+            assert!(!root.join("team/inboxes").exists());
+        }
     }
 
     #[test]
