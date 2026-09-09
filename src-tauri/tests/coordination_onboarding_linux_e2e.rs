@@ -11,6 +11,9 @@ use std::sync::Arc;
 
 use tempfile::TempDir;
 
+#[path = "../src/process_utils.rs"]
+mod process_utils;
+
 #[path = "support/coordination_shims.rs"]
 mod coordination_shims;
 pub use coordination_shims::provider;
