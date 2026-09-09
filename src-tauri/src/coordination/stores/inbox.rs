@@ -132,7 +132,18 @@ impl MeshInboxStore {
         team_name: &str,
         member_name: &str,
         message: &MeshInboxMessage,
-    ) -> Result<(), CoordinationError> {
+    ) -> Result<Option<crate::coordination::journal::JournalReceipt>, CoordinationError> {
+        use crate::coordination::journal;
+        let canonical = journal::canonical(teams_dir, team_name).inspect_err(|error| {
+            journal::report_failure(team_name, member_name, message.id.as_deref(), error);
+        })?;
+        if canonical {
+            return journal::accept(teams_dir, team_name, member_name, message)
+                .map(Some)
+                .inspect_err(|error| {
+                    journal::report_failure(team_name, member_name, message.id.as_deref(), error)
+                });
+        }
         let inbox_dir = inboxes_dir(teams_dir, team_name);
         fs::create_dir_all(&inbox_dir)?;
 
@@ -157,7 +168,7 @@ impl MeshInboxStore {
             .as_ref()
             .is_some_and(|id| messages.iter().any(|m| m.id.as_ref() == Some(id)))
         {
-            return Ok(());
+            return Ok(None);
         }
         messages.push(message);
 
@@ -197,12 +208,12 @@ impl MeshInboxStore {
                     let _ = fs::remove_file(&tmp_path);
                     return Err(CoordinationError::Io(write_err));
                 }
-                return Ok(());
+                return Ok(None);
             }
             let _ = fs::remove_file(&tmp_path);
             return Err(CoordinationError::Io(err));
         }
-        Ok(())
+        Ok(None)
     }
 }
 
@@ -354,6 +365,76 @@ mod tests {
 
     use super::*;
     use taurhaus_lib::logging::{install_global_sink, LogFileState};
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_append_uses_accept_without_touching_projection() {
+        let mesh = crate::coordination::mesh_cli::FakeMesh::new(
+            r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+            r#"echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"agent","delivery_id":"d1"}]}'"#,
+        );
+        let root = mesh.dir.path().join("teams");
+        fs::create_dir_all(root.join("t/inboxes")).unwrap();
+        fs::write(
+            root.join("t/config.json"),
+            r#"{"name":"t","messaging_format":2,"members":[]}"#,
+        )
+        .unwrap();
+        let projection = root.join("t/inboxes/agent.json");
+        fs::write(&projection, "[]").unwrap();
+        let mut message = MeshInboxMessage::new(
+            "agent",
+            "body with 'quotes'\nand newline".into(),
+            None,
+            Utc::now(),
+        );
+        message.id = Some("card-delivery-1".into());
+        MeshInboxStore::append(&root, "t", "agent", &message).unwrap();
+        assert_eq!(
+            fs::read_to_string(projection).unwrap(),
+            "[]",
+            "only Mesh owns projections"
+        );
+        let argv = mesh.argv();
+        assert!(argv.contains("journal\naccept\n"), "{argv}");
+        assert!(argv.contains("--producer\ntaurhaus-daemon\n"), "{argv}");
+        assert!(argv.contains("--recipient\nagent\n"), "{argv}");
+        assert!(
+            argv.contains("--idempotency-key\ntaurhaus-daemon:card-delivery-1\n"),
+            "{argv}"
+        );
+        assert!(
+            argv.contains(&format!("--claude-dir\n{}\n", mesh.dir.path().display())),
+            "{argv}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_refusal_never_falls_back_or_retries() {
+        for (version, accept) in [
+            (r#"echo '{"journal_writer":"mesh-journal/1"}'"#, "exit 99"),
+            (r#"echo '{"journal_writer":"mesh-journal/2"}'"#, "exit 23"),
+            (
+                r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+                "exec sleep 2",
+            ),
+            (r#"echo '{"journal_writer":"mesh-journal/2"}'"#, "echo '{}'"),
+        ] {
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new(version, accept);
+            let root = mesh.dir.path().join("teams");
+            fs::create_dir_all(root.join("t")).unwrap();
+            fs::write(
+                root.join("t/config.json"),
+                r#"{"name":"t","messaging_format":2,"members":[]}"#,
+            )
+            .unwrap();
+            let message = MeshInboxMessage::new("agent", "notice".into(), None, Utc::now());
+            assert!(MeshInboxStore::append(&root, "t", "agent", &message).is_err());
+            assert!(!root.join("t/inboxes").exists());
+            assert!(mesh.argv().matches("accept\n").count() <= 1);
+        }
+    }
 
     #[test]
     fn append_and_load_round_trip() {

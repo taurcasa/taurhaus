@@ -44,6 +44,10 @@ pub fn mesh_binary_path() -> Option<String> {
 }
 
 pub fn mesh_binary_path_for_distro(explicit_distro: Option<&str>) -> Option<String> {
+    #[cfg(test)]
+    if let Some(path) = TEST_MESH.with(|slot| slot.borrow().clone()) {
+        return Some(path);
+    }
     if cfg!(target_os = "windows") {
         resolve_wsl_home_for_coordination_in_distro(explicit_distro)
             .map(|home| format!("{home}/.local/bin/mesh"))
@@ -478,4 +482,52 @@ mod tests {
             assert_eq!(args, vec!["-e".to_string(), "which".to_string()]);
         }
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_MESH: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Scoped executable seam; never changes process-wide HOME or PATH.
+#[cfg(all(test, unix))]
+pub(crate) struct FakeMesh {
+    pub dir: tempfile::TempDir,
+}
+
+#[cfg(all(test, unix))]
+impl FakeMesh {
+    pub fn new(version: &str, accept: &str) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mesh");
+        let script = format!(
+            "#!/bin/sh\ncd '{}'\nprintf '%s\\n' \"$@\" >> argv\nif [ \"$1\" = version ]; then\n{}\nelse\n{}\nfi\n",
+            dir.path().display(), version, accept
+        );
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        TEST_MESH.with(|slot| {
+            assert!(slot
+                .borrow_mut()
+                .replace(path.to_string_lossy().into())
+                .is_none())
+        });
+        Self { dir }
+    }
+    pub fn argv(&self) -> String {
+        std::fs::read_to_string(self.dir.path().join("argv")).unwrap_or_default()
+    }
+}
+
+#[cfg(all(test, unix))]
+impl Drop for FakeMesh {
+    fn drop(&mut self) {
+        TEST_MESH.with(|slot| *slot.borrow_mut() = None);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_mesh_installed() -> bool {
+    TEST_MESH.with(|slot| slot.borrow().is_some())
 }
