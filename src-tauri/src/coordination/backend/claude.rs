@@ -29,7 +29,7 @@ impl ClaudeNativeBackend {
 
     fn send_operator_notice(
         &self,
-        payload: OperatorNoticeDelivery,
+        mut payload: OperatorNoticeDelivery,
     ) -> Result<DeliveryResult, CoordinationError> {
         let mut message = MeshInboxMessage::operator_originated(
             &payload.member_name,
@@ -42,12 +42,34 @@ impl ClaudeNativeBackend {
             &mut message,
             payload.recovery_card.as_ref(),
         );
-        MeshInboxStore::append(
+        if let Some(links) = payload.journal_links.as_ref() {
+            message.extra.insert(
+                "journal_links".into(),
+                serde_json::to_value(links).expect("links"),
+            );
+        } else if let Some(task) = payload
+            .operational_context
+            .as_ref()
+            .and_then(|c| c.task.as_ref())
+        {
+            let links = crate::coordination::journal::JournalLinks {
+                task: task.id.clone(),
+                assignment: String::new(),
+            };
+            message.extra.insert(
+                "journal_links".into(),
+                serde_json::to_value(links).expect("links"),
+            );
+        }
+        let journal = MeshInboxStore::append(
             &self.teams_dir,
             &payload.team_name,
             &payload.member_name,
             &message,
         )?;
+        if let Some(receipt) = payload.recovery_card.as_mut() {
+            receipt.journal = journal;
+        }
 
         Ok(DeliveryResult {
             recovery_text: None,
@@ -121,6 +143,7 @@ mod tests {
         // operator delivery must remain a direct inbox append from the lead.
         let result = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                journal_links: None,
                 recovery_card: None,
                 team_name: "taurhaus-team".to_string(),
                 member_name: "design-taurhaus".to_string(),
@@ -149,6 +172,7 @@ mod tests {
 
         let result = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                journal_links: None,
                 recovery_card: None,
                 team_name: "taurhaus-team".to_string(),
                 member_name: "product-check-1".to_string(),

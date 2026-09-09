@@ -215,6 +215,7 @@ mod tests {
 
         let _ = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                journal_links: None,
                 recovery_card: None,
                 team_name: "architecture-final".to_string(),
                 member_name: "alice".to_string(),
@@ -251,6 +252,7 @@ mod tests {
         ));
         let err = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                journal_links: None,
                 recovery_card: None,
                 team_name: "architecture-final".to_string(),
                 member_name: "alice".to_string(),
@@ -269,6 +271,7 @@ mod tests {
         backend.clear_deliver_error();
         let result = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                journal_links: None,
                 recovery_card: None,
                 team_name: "architecture-final".to_string(),
                 member_name: "alice".to_string(),
@@ -289,6 +292,7 @@ mod tests {
 
         let err = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                journal_links: None,
                 recovery_card: None,
                 team_name: "architecture-final".to_string(),
                 member_name: "alice".to_string(),

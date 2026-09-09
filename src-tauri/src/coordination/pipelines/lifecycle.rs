@@ -639,6 +639,7 @@ impl CoordinationOrchestrator {
         };
         let result =
             self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                journal_links: None,
                 recovery_card: Some(card.receipt.clone()),
                 member_name: member.into(),
                 team_name: team.into(),

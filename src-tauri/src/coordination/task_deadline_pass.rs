@@ -255,6 +255,10 @@ fn apply_member_deadline(
             recovery_facts.task_id = snapshot.task.id.clone();
             orchestrator
                 .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                    journal_links: Some(crate::coordination::journal::JournalLinks {
+                        task: recovery_facts.task_id.clone(),
+                        assignment: recovery_facts.assignment_token.clone(),
+                    }),
                     recovery_card: None,
                     team_name: team_name.to_string(),
                     member_name: member_name.to_string(),
@@ -277,7 +281,13 @@ fn apply_member_deadline(
     };
 
     if let Err(error) = action_result {
-        rollback_claim(&orchestrator.teams_dir, &claimed, action, now)?;
+        // Canonical acceptance can have committed before a lost reply. Keep the
+        // one-shot claim: only Mesh can reconcile that outcome, never resend.
+        if action != DeadlineAction::Nudge
+            || !crate::coordination::journal::canonical(&orchestrator.teams_dir, team_name)?
+        {
+            rollback_claim(&orchestrator.teams_dir, &claimed, action, now)?;
+        }
         if action == DeadlineAction::MarkStale
             && matches!(
                 &error,

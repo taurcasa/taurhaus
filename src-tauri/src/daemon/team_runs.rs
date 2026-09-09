@@ -675,6 +675,7 @@ pub(crate) fn execute_switch_team_account(
             };
             if let Err(error) = orchestrator.deliver_message(DeliveryRequest::operator_notice(
                 OperatorNoticeDelivery {
+                    journal_links: None,
                     recovery_card: None,
                     member_name: handoff.member_name.clone(),
                     team_name: request.team_name.clone(),
@@ -733,6 +734,7 @@ pub(crate) fn execute_switch_team_account(
             );
             if let Err(error) = orchestrator.deliver_message(DeliveryRequest::operator_notice(
                 OperatorNoticeDelivery {
+                    journal_links: None,
                     recovery_card: None,
                     member_name: lead_name.clone(),
                     team_name: request.team_name.clone(),

@@ -583,7 +583,7 @@ pub fn handle_compact_hook(
     } else {
         "hook_stdout"
     };
-    let Some(card) = crate::coordination::recovery_delivery::prepare_compaction(
+    let Some(mut card) = crate::coordination::recovery_delivery::prepare_compaction(
         &registry,
         &matched.teams_dir,
         &matched.team_name,
@@ -606,35 +606,38 @@ pub fn handle_compact_hook(
             None,
         );
         crate::coordination::recovery_delivery::attach_receipt(&mut message, Some(&card.receipt));
-        if let Err(error) = CompactionReinjectionService::deliver_to_inbox(
+        match CompactionReinjectionService::deliver_to_inbox(
             &matched.teams_dir,
             &matched.team_name,
             &matched.member.name,
             &message,
         ) {
-            let _ = record_delivery_at(
-                &matched.teams_dir,
-                &matched.team_name,
-                &matched.member.name,
-                tool,
-                &payload.session_id,
-                compaction_timestamp,
-                CompactionDeliveryResult::Failed,
-            );
-            emit_compact_hook_failed(
-                CompactHookFailureStage::DeliverInbox,
-                Some(&payload),
-                Some(&matched),
-                None,
-                None,
-                None,
-                &error.to_string(),
-            );
-            return Err(error);
+            Ok(journal) => card.receipt.journal = journal,
+            Err(error) => {
+                let _ = record_delivery_at(
+                    &matched.teams_dir,
+                    &matched.team_name,
+                    &matched.member.name,
+                    tool,
+                    &payload.session_id,
+                    compaction_timestamp,
+                    CompactionDeliveryResult::Failed,
+                );
+                emit_compact_hook_failed(
+                    CompactHookFailureStage::DeliverInbox,
+                    Some(&payload),
+                    Some(&matched),
+                    None,
+                    None,
+                    None,
+                    &error.to_string(),
+                );
+                return Err(error);
+            }
         }
     }
 
-    record_delivery_at(
+    crate::coordination::stores::compaction::record_delivery_with_journal_at(
         &matched.teams_dir,
         &matched.team_name,
         &matched.member.name,
@@ -642,6 +645,7 @@ pub fn handle_compact_hook(
         &payload.session_id,
         compaction_timestamp,
         CompactionDeliveryResult::Injected,
+        card.receipt.journal.clone(),
     )
     .inspect_err(|error| {
         emit_compact_hook_failed(
@@ -896,7 +900,8 @@ fn compat_import_duplicate(
         return Ok(false);
     };
     Ok(state.last_session_id == session_id
-        && state.last_delivery_result == CompactionDeliveryResult::Injected
+        && (state.last_delivery_result == CompactionDeliveryResult::Injected
+            || crate::coordination::journal::canonical(teams_dir, &matched.team_name)?)
         && now.signed_duration_since(state.last_compaction_timestamp) < COMPAT_IMPORT_DEDUPE_WINDOW)
 }
 
@@ -2022,6 +2027,57 @@ mod tests {
             state.last_delivery_result,
             CompactionDeliveryResult::Injected
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_grok_compaction_retains_acceptance_and_never_resends_failure() {
+        for refused in [false, true] {
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new(
+                r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+                if refused {
+                    "exit 23"
+                } else {
+                    r#"echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"architect","delivery_id":"d1"}]}'"#
+                },
+            );
+            let root = mesh.dir.path().join("teams");
+            let project = mesh.dir.path().join("project");
+            fs::create_dir_all(&project).unwrap();
+            let member = grok_member(&project);
+            assert_eq!(member.name, "architect");
+            write_team_fixture(&root, "grok-team", &member, "grok-session");
+            write_snapshot_fixture(&root, "grok-team", &member.name);
+            let mut config = TeamConfigStore::load(&root, "grok-team").unwrap();
+            config.team_incarnation_id = Some("grok-incarnation".into());
+            config
+                .extra
+                .insert("messaging_format".into(), serde_json::json!(2));
+            TeamConfigStore::save(&root, "grok-team", &config).unwrap();
+            crate::coordination::recovery_delivery::reserve_activation(
+                &root,
+                "grok-team",
+                &member.name,
+                "activation",
+            )
+            .unwrap();
+            let result = handle_compact_hook(&grok_payload(&project, "grok-session"), &root);
+            assert_eq!(result.is_err(), refused);
+            let state = MemberCompactionStore::load(&root, "grok-team", &member.name)
+                .unwrap()
+                .unwrap();
+            let wire = serde_json::to_value(&state).unwrap();
+            if !refused {
+                assert_eq!(wire["journal"]["message_id"], "m1");
+                assert_eq!(wire["journal"]["delivery_id"], "d1");
+                assert!(mesh.argv().contains("--task\n680\n"));
+            }
+            handle_compact_hook(&grok_payload(&project, "grok-session"), &root).unwrap();
+            assert_eq!(mesh.argv().matches("accept\n").count(), 1);
+            assert!(MeshInboxStore::load(&root, "grok-team", &member.name)
+                .unwrap()
+                .is_empty());
+        }
     }
 
     #[test]

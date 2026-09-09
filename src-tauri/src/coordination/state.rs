@@ -1258,6 +1258,7 @@ mod tests {
             )?;
             orchestrator.deliver_message(DeliveryRequest::operator_notice(
                 OperatorNoticeDelivery {
+                    journal_links: None,
                     recovery_card: None,
                     team_name: "root-authority".to_string(),
                     member_name: "builder".to_string(),
@@ -2375,6 +2376,53 @@ mod tests {
         assert_no_deadline_termination(&runtime);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn canonical_deadline_nudge_links_and_failures_remain_one_shot() {
+        for refused in [false, true] {
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new(
+                r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+                if refused {
+                    "exit 23"
+                } else {
+                    r#"echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"builder","delivery_id":"d1"}]}'"#
+                },
+            );
+            let (_tmp, root, _runtime, _fake, state) = deadline_fixture();
+            let mut config = TeamConfigStore::load(&root, "deadline-team").unwrap();
+            config
+                .extra
+                .insert("messaging_format".into(), serde_json::json!(2));
+            TeamConfigStore::save(&root, "deadline-team", &config).unwrap();
+            let assigned = Utc::now();
+            seed_deadline_task(&root, assigned, Some(20));
+            for _ in 0..2 {
+                state
+                    .with_orchestrator(|orch| {
+                        orch.backend = Arc::new(
+                            crate::coordination::backend::claude::ClaudeNativeBackend::new(
+                                root.clone(),
+                            ),
+                        );
+                        orch.claude_backend = None;
+                        crate::coordination::task_deadline_pass::apply_task_deadlines(
+                            orch,
+                            "deadline-team",
+                            assigned + chrono::Duration::minutes(10),
+                        )
+                    })
+                    .unwrap();
+            }
+            assert_eq!(
+                mesh.argv().matches("accept\n").count(),
+                1,
+                "a canonical failure must not roll back the nudge claim"
+            );
+            assert!(mesh.argv().contains("--task\n42\n"));
+            assert!(deadline_snapshot(&root).task.nudged_at.is_some());
+        }
+    }
+
     #[test]
     fn deadline_pass_nudges_once_then_stales_once_without_stopping_the_session() {
         let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
@@ -3197,6 +3245,7 @@ mod tests {
         state
             .with_orchestrator(|orch| {
                 orch.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                    journal_links: None,
                     recovery_card: None,
                     team_name: "architecture-final".to_string(),
                     member_name: "existing-dev".to_string(),

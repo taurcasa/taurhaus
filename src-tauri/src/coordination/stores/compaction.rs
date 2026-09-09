@@ -24,6 +24,8 @@ pub enum CompactionDeliveryResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct MemberCompactionState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub journal: Option<crate::coordination::journal::JournalReceipt>,
     #[serde(default)]
     pub pending: bool,
     #[serde(default)]
@@ -197,6 +199,29 @@ pub fn record_delivery_at(
     compaction_timestamp: DateTime<Utc>,
     result: CompactionDeliveryResult,
 ) -> Result<(), CoordinationError> {
+    record_delivery_with_journal_at(
+        teams_dir,
+        team_name,
+        member_name,
+        tool,
+        session_id,
+        compaction_timestamp,
+        result,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn record_delivery_with_journal_at(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+    tool: CliTool,
+    session_id: &str,
+    compaction_timestamp: DateTime<Utc>,
+    result: CompactionDeliveryResult,
+    journal: Option<crate::coordination::journal::JournalReceipt>,
+) -> Result<(), CoordinationError> {
     let guard = super::lock::acquire_team_lock(teams_dir, team_name)?;
     let mut pending_obligation = None;
     if result != CompactionDeliveryResult::Failed {
@@ -229,6 +254,12 @@ pub fn record_delivery_at(
     // Only a new skipped boundary replaces the obligation; receipt observation satisfies it.
     let preserve_obligation = same_boundary || result != CompactionDeliveryResult::Skipped;
     let state = MemberCompactionState {
+        journal: journal.or_else(|| {
+            previous
+                .as_ref()
+                .filter(|_| same_boundary)
+                .and_then(|s| s.journal.clone())
+        }),
         pending: if preserve_obligation {
             previous.as_ref().is_some_and(|s| s.pending)
         } else {
@@ -361,6 +392,7 @@ mod tests {
 
     fn sample_state() -> MemberCompactionState {
         MemberCompactionState {
+            journal: None,
             pending: false,
             pending_obligation: None,
             satisfied_by: None,

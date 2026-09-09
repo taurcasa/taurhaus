@@ -438,7 +438,7 @@ impl MeshBridgedBackend {
 
     fn send_operator_notice(
         &self,
-        payload: OperatorNoticeDelivery,
+        mut payload: OperatorNoticeDelivery,
     ) -> Result<DeliveryResult, CoordinationError> {
         let mut message = MeshInboxMessage::operator_originated(
             &payload.member_name,
@@ -451,12 +451,34 @@ impl MeshBridgedBackend {
             &mut message,
             payload.recovery_card.as_ref(),
         );
-        MeshInboxStore::append(
+        if let Some(links) = payload.journal_links.as_ref() {
+            message.extra.insert(
+                "journal_links".into(),
+                serde_json::to_value(links).expect("links"),
+            );
+        } else if let Some(task) = payload
+            .operational_context
+            .as_ref()
+            .and_then(|c| c.task.as_ref())
+        {
+            let links = crate::coordination::journal::JournalLinks {
+                task: task.id.clone(),
+                assignment: String::new(),
+            };
+            message.extra.insert(
+                "journal_links".into(),
+                serde_json::to_value(links).expect("links"),
+            );
+        }
+        let journal = MeshInboxStore::append(
             &self.teams_dir,
             &payload.team_name,
             &payload.member_name,
             &message,
         )?;
+        if let Some(receipt) = payload.recovery_card.as_mut() {
+            receipt.journal = journal;
+        }
         Ok(DeliveryResult {
             recovery_text: None,
             recovery_card: payload.recovery_card.map(Box::new),
@@ -790,6 +812,7 @@ mod tests {
 
         let result = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                journal_links: None,
                 recovery_card: None,
                 member_name: "codex-reviewer".to_string(),
                 team_name: "architecture-final".to_string(),
@@ -816,6 +839,7 @@ mod tests {
 
         backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                journal_links: None,
                 recovery_card: None,
                 member_name: "codex-reviewer".to_string(),
                 team_name: "architecture-final".to_string(),
@@ -847,6 +871,7 @@ mod tests {
 
             let delivered =
                 backend.deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                    journal_links: None,
                     recovery_card: None,
                     member_name: "fake-agent".to_string(),
                     team_name: "architecture-final".to_string(),

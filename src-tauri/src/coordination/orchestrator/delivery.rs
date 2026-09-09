@@ -160,7 +160,12 @@ impl CoordinationOrchestrator {
                     return Err(error);
                 }
 
-                if let Some(receipt) = recovery_receipt.as_ref() {
+                let accepted_receipt = result
+                    .recovery_card
+                    .as_deref()
+                    .cloned()
+                    .or(recovery_receipt);
+                if let Some(receipt) = accepted_receipt.as_ref() {
                     let mut observed = receipt.clone();
                     observed.record(
                         if result.durable {

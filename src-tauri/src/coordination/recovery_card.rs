@@ -79,6 +79,10 @@ impl ReceiptStage {
 /// envelope, allowing reconciliation after append but before runtime commit.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CardReceipt {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub journal: Option<crate::coordination::journal::JournalReceipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub journal_links: Option<crate::coordination::journal::JournalLinks>,
     pub delivery_id: String,
     pub obligation_key: ObligationKey,
     #[serde(default)]
@@ -172,6 +176,8 @@ impl RecoveryState {
             }
         }
         let receipt = CardReceipt {
+            journal: None,
+            journal_links: None,
             delivery_id: id,
             satisfied_obligations: vec![obligation.clone()],
             obligation_key: obligation,
