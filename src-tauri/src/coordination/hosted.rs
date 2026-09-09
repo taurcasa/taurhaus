@@ -17,6 +17,8 @@ type Seat = Arc<Mutex<Option<OwnedSeat>>>;
 struct OwnedSeat {
     host: HostProcess,
     generation: u64,
+    attachment: AppServerAttachment,
+    launch_root: LaunchRoot,
     _socket_directory: SocketDirectory,
 }
 struct SocketDirectory(PathBuf);
@@ -196,9 +198,13 @@ impl HostedMembers {
             if let Some(attachment) = &mut record.app_server { attachment.state = if ready.is_ok() { "ready" } else { "unavailable" }.into(); }
         }).map_err(|e| e.to_string())?;
         ready?;
+        let mut attachment = record.app_server.clone().ok_or("host attachment missing")?;
+        attachment.state = "ready".into();
         *owned = Some(OwnedSeat {
             host,
             generation: record.attachment_generation,
+            attachment,
+            launch_root: record.launch_root.ok_or("host launch root missing")?,
             _socket_directory: directory,
         });
         Ok(())
@@ -225,10 +231,8 @@ impl HostedMembers {
         let attachment = record.app_server.as_ref().ok_or("member is not hosted")?;
         if generation != seat.generation
             || generation != record.attachment_generation
-            || attachment.thread_id != seat.host.thread_id
-            || attachment.process_id != seat.host.pid()
-            || attachment.process_start != seat.host.process_start
-            || attachment.state != "ready"
+            || attachment != &seat.attachment
+            || record.launch_root.as_ref() != Some(&seat.launch_root)
         {
             return Err("host attachment changed; refresh before another operation".into());
         }
@@ -405,6 +409,11 @@ pub(crate) mod tests {
         assert_eq!(wire["health"], "active");
         assert!(wire["contextGeneration"].is_string());
         let generation = record.attachment_generation;
+        // Regression: 83077dad checked PID/thread but ignored changed native transport facts.
+        MemberRuntimeStore::update(tmp.path(), "team", "seat", |r| r.app_server.as_mut().unwrap().transport = "unsupported".into()).unwrap();
+        assert!(hosts.operation(&registry, "team", "seat", generation, "input", json!({"text":"wrong transport"})).is_err());
+        MemberRuntimeStore::update(tmp.path(), "team", "seat", |r| r.app_server = record.app_server.clone()).unwrap();
+
         let holder =
             HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
         assert!(hosts
