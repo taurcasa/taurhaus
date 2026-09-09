@@ -772,10 +772,22 @@ mod tests {
         fs::write(&path, "inherited-inode\n").unwrap();
         let _guard =
             TerminalLock::acquire(tmp.path(), "team", "seat", "test", 1, Duration::ZERO).unwrap();
-        let output = taurhaus_lib::platform::terminal_io::output(
-            std::process::Command::new("/bin/sh").args(["-c", "read value; printf %s \"$value\""]),
+        use std::os::unix::fs::PermissionsExt;
+        let supervisor = tmp.path().join("supervisor");
+        fs::write(
+            &supervisor,
+            "#!/bin/sh\n[ \"$1\" = --terminal-child ] || exit 2\nshift 2\nexec \"$@\"\n",
         )
         .unwrap();
+        fs::set_permissions(&supervisor, fs::Permissions::from_mode(0o700)).unwrap();
+        let output =
+            taurhaus_lib::platform::terminal_io::with_child_executable(&supervisor, || {
+                taurhaus_lib::platform::terminal_io::output(
+                    std::process::Command::new("/bin/sh")
+                        .args(["-c", "read value; printf %s \"$value\""]),
+                )
+                .unwrap()
+            });
         assert!(output.status.success());
         assert_eq!(output.stdout, b"inherited-inode");
     }

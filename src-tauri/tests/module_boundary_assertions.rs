@@ -881,7 +881,7 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
         ),
         (
             "src/coordination/stores/lock.rs",
-            "terminal exclusion reads registry authority to resolve pane-only stop requests; it never mutates the registry or runtime records",
+            "terminal exclusion reads registry authority for pane-only stops; the native daemon creates lock/holder state, while the Windows app defers managed stops without writing team state",
         ),
         (
             "src/coordination/task_deadline_pass.rs",
@@ -1533,30 +1533,44 @@ fn terminal_contract_pins_shared_spelling_and_write_boundaries() {
 #[test]
 fn terminal_child_mode_inherits_flock_and_exits_without_daemon_startup() {
     use fs2::FileExt;
-    use std::process::{Command, Stdio};
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::process::Command;
+    use taurhaus_lib::platform::terminal_io;
+    // Regression: c7226a4d never tested output() through its production
+    // supervisor, hiding re-exec and argv/environment forwarding failures.
     let tmp = tempfile::TempDir::new().unwrap();
     let path = tmp.path().join("terminal.lock");
     fs::write(&path, "inherited-lock\n").unwrap();
     let file = fs::File::open(&path).unwrap();
     file.lock_exclusive().unwrap();
-    let deadline = (SystemTime::now() + Duration::from_secs(2))
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis()
-        .to_string();
-    let output = Command::new(env!("CARGO_BIN_EXE_taurhaus-daemon"))
-        .args([
-            "--terminal-child",
-            &deadline,
-            "/bin/sh",
-            "-c",
-            "read value; printf %s \"$value\"",
-        ])
-        .stdin(Stdio::from(file))
-        .output()
-        .unwrap();
+    terminal_io::enter(file);
+    struct Leave;
+    impl Drop for Leave {
+        fn drop(&mut self) {
+            terminal_io::leave();
+        }
+    }
+    let guard = Leave;
+    let output = terminal_io::with_child_executable(
+        std::path::Path::new(env!("CARGO_BIN_EXE_taurhaus-daemon")),
+        || {
+            terminal_io::output(
+                Command::new("/bin/sh")
+                    .args([
+                        "-c",
+                        "read value; printf '%s:%s:%s' \"$value\" \"$CHECK_FORWARD\" \"$PWD\"",
+                    ])
+                    .env("CHECK_FORWARD", "forwarded")
+                    .env_remove("CHECK_REMOVED")
+                    .current_dir(tmp.path()),
+            )
+            .unwrap()
+        },
+    );
     assert!(output.status.success());
-    assert_eq!(output.stdout, b"inherited-lock");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!("inherited-lock:forwarded:{}", tmp.path().display())
+    );
+    drop(guard);
     assert!(fs::File::open(path).unwrap().try_lock_exclusive().is_ok());
 }

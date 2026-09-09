@@ -81,14 +81,6 @@ fn project_path_exists_for_tmux(project_path: &str) -> Result<bool, String> {
     }
 }
 
-/// Launch a CLI tool session in tmux using the configured layout strategy.
-///
-/// Layout strategies:
-/// - `new_window` (default): Always create a new tmux window
-/// - `split`: Split an existing window horizontally, up to 4 panes per window
-/// - `per_project`: Same project shares a window with splits, different projects get new windows
-///
-/// Returns `(tmux_session, window_name, pane_id)` on success.
 fn tmux_command() -> Command {
     explicit_tmux_command().unwrap_or_else(|error| {
         tracing::error!(%error, "tmux socket unavailable; refusing terminal command");
@@ -102,6 +94,15 @@ fn managed_terminal_write<T>(
     op: &str,
     write: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
+    #[cfg(all(test, target_os = "linux"))]
+    if let Some(root) = tests::fake_root() {
+        return crate::coordination::stores::lock::terminal_write_for_pane_at_root(
+            &root.join("claude/teams"),
+            pane,
+            op,
+            write,
+        );
+    }
     crate::coordination::stores::lock::terminal_write_for_pane(pane, op, write)
 }
 #[cfg(not(feature = "mesh-bridged-backend"))]
@@ -113,6 +114,14 @@ fn managed_terminal_write<T>(
     write()
 }
 
+/// Launch a CLI tool session in tmux using the configured layout strategy.
+///
+/// Layout strategies:
+/// - `new_window` (default): Always create a new tmux window
+/// - `split`: Split an existing window horizontally, up to 4 panes per window
+/// - `per_project`: Same project shares a window with splits, different projects get new windows
+///
+/// Returns `(tmux_session, window_name, pane_id)` on success.
 pub fn launch_in_tmux(
     project_path: &str,
     mode: LaunchMode,
@@ -862,7 +871,6 @@ mod tests {
     fn terminal_stop_and_interrupt_defer_then_retry_on_explicit_socket() {
         use fs2::FileExt;
         use std::os::unix::fs::PermissionsExt;
-        let _env = crate::test_support::acquire_env_test_guard();
         let tmp = tempfile::TempDir::new().unwrap();
         let root = tmp.path().join("claude/teams");
         let team = root.join("team");
@@ -881,19 +889,22 @@ mod tests {
         let fake = tmp.path().join("tmux");
         std::fs::write(
             &fake,
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" >> \"$TMUX_TEST_LOG\"\n",
+            "#!/bin/sh\nif [ \"$1\" = --terminal-child ]; then shift 2; exec \"$@\"; fi\nprintf '%s\\n' \"$@\" >> \"$TMUX_TEST_LOG\"\n",
         )
         .unwrap();
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o700)).unwrap();
         let log = tmp.path().join("calls");
-        let saved: Vec<_> = ["PATH", "TAURHAUS_CLAUDE_DIR", "TMUX_TEST_LOG"]
-            .into_iter()
-            .map(|k| (k, std::env::var_os(k)))
-            .collect();
-        std::env::set_var("PATH", tmp.path());
-        std::env::set_var("TAURHAUS_CLAUDE_DIR", root.parent().unwrap());
-        std::env::set_var("TMUX_TEST_LOG", &log);
-        let result = std::panic::catch_unwind(|| {
+        // Regression: 1127823e replaced process-global PATH and roots, letting
+        // concurrent tests use the wrong inventory and write behind a holder.
+        TEST_FAKE_ROOT.with(|slot| *slot.borrow_mut() = Some(tmp.path().into()));
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                TEST_FAKE_ROOT.with(|slot| *slot.borrow_mut() = None);
+            }
+        }
+        let _reset = Reset;
+        crate::platform::terminal_io::with_child_executable(&fake, || {
             let holder = std::fs::File::create(team.join("state/terminal/seat.lock")).unwrap();
             holder.lock_exclusive().unwrap();
             assert!(run_tmux_raw_key("%1", "C-c").is_err());
@@ -907,23 +918,29 @@ mod tests {
             assert!(calls.contains("C-c"));
             assert!(calls.contains("Enter"));
         });
-        for (key, value) in saved {
-            if let Some(value) = value {
-                std::env::set_var(key, value);
-            } else {
-                std::env::remove_var(key);
-            }
-        }
-        result.unwrap();
     }
 
     #[cfg(target_os = "linux")]
     thread_local! {
+        static TEST_FAKE_ROOT: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
         static TEST_TMUX_ROOT: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
     }
 
     #[cfg(target_os = "linux")]
+    pub(super) fn fake_root() -> Option<std::path::PathBuf> {
+        TEST_FAKE_ROOT.with(|slot| slot.borrow().clone())
+    }
+
+    #[cfg(target_os = "linux")]
     pub(super) fn scratch_tmux_command() -> Option<Command> {
+        if let Some(root) = fake_root() {
+            let mut cmd = Command::new(root.join("tmux"));
+            cmd.env_remove("TMUX")
+                .env("TMUX_TEST_LOG", root.join("calls"))
+                .arg("-S")
+                .arg(root.join("tmux.sock"));
+            return Some(cmd);
+        }
         TEST_TMUX_ROOT.with(|root| {
             root.borrow().as_ref().map(|root| {
                 let mut cmd = Command::new("tmux");

@@ -1,12 +1,13 @@
 //! Bounded terminal children inherit the lifetime flock as stdin.
 use std::cell::RefCell;
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 pub const HOLD_BOUND: Duration = Duration::from_secs(10);
 thread_local! {
+    static CHILD_EXECUTABLE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
     static ACTIVE: RefCell<Option<(File, Instant)>> = const { RefCell::new(None) };
 }
 pub fn active() -> bool {
@@ -17,6 +18,20 @@ pub fn enter(file: File) {
 }
 pub fn leave() {
     ACTIVE.with(|a| *a.borrow_mut() = None);
+}
+
+/// Supply the supervisor explicitly for transport fixtures. The override is
+/// thread-local and unwind-safe; the production command construction is unchanged.
+#[doc(hidden)]
+pub fn with_child_executable<T>(path: &Path, run: impl FnOnce() -> T) -> T {
+    struct Restore(Option<PathBuf>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            CHILD_EXECUTABLE.with(|slot| *slot.borrow_mut() = self.0.take());
+        }
+    }
+    let _restore = Restore(CHILD_EXECUTABLE.with(|slot| slot.replace(Some(path.into()))));
+    run()
 }
 
 pub fn output(command: &mut Command) -> std::io::Result<Output> {
@@ -37,9 +52,7 @@ pub fn output(command: &mut Command) -> std::io::Result<Output> {
     }
     // The production child supervises tmux independently of the original
     // holder. Killing the holder cannot strand a client with the lifetime fd.
-    #[cfg(not(test))]
     let mut supervisor = child_command(command, end)?;
-    #[cfg(not(test))]
     let command = &mut supervisor;
     let mut child = command
         .stdin(Stdio::from(file))
@@ -63,7 +76,6 @@ pub fn output(command: &mut Command) -> std::io::Result<Output> {
 
 const CHILD_MODE: &str = "--terminal-child";
 
-#[cfg(not(test))]
 fn child_command(command: &Command, end: Instant) -> std::io::Result<Command> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let remaining = end
@@ -73,7 +85,11 @@ fn child_command(command: &Command, end: Instant) -> std::io::Result<Command> {
         .duration_since(UNIX_EPOCH)
         .map_err(std::io::Error::other)?
         .as_millis();
-    let mut child = Command::new(std::env::current_exe()?);
+    let executable = CHILD_EXECUTABLE
+        .with(|slot| slot.borrow().clone())
+        .map(Ok)
+        .unwrap_or_else(std::env::current_exe)?;
+    let mut child = Command::new(executable);
     child
         .arg(CHILD_MODE)
         .arg(deadline.to_string())
