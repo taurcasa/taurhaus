@@ -228,6 +228,10 @@ fn apply_member_deadline(
         return Ok(());
     }
 
+    // Resolve before claiming: a later config-read failure must not mask the
+    // delivery error or skip bookkeeping for an already claimed action.
+    let canonical_nudge = action == DeadlineAction::Nudge
+        && crate::coordination::journal::canonical(&orchestrator.teams_dir, team_name)?;
     let Some(claimed) = claim_action(&orchestrator.teams_dir, &snapshot, action, now)? else {
         return Ok(());
     };
@@ -282,9 +286,10 @@ fn apply_member_deadline(
 
     if let Err(error) = action_result {
         // Canonical acceptance can have committed before a lost reply. Keep the
-        // one-shot claim: only Mesh can reconcile that outcome, never resend.
-        if action != DeadlineAction::Nudge
-            || !crate::coordination::journal::canonical(&orchestrator.teams_dir, team_name)?
+        // one-shot claim unless submission was prevented by preflight/spawn.
+        // Only Mesh can reconcile an uncertain submitted outcome; never resend.
+        if !canonical_nudge
+            || crate::coordination::journal::not_submitted(&error)
         {
             rollback_claim(&orchestrator.teams_dir, &claimed, action, now)?;
         } else {

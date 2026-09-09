@@ -133,7 +133,10 @@ reason (including recognized Mesh error codes, never CLI prose or credentials).
 Canonical delivery never falls back to an array write or resends after a
 submission with an uncertain outcome. A preflight or executable-spawn failure
 records `Failed` on the matching recovery claim; the existing single bounded
-retry retains the same delivery identity. A spent deadline nudge with no
+retry retains the same delivery identity. A deadline preflight or executable-spawn
+failure releases the nudge claim for the next pass; it does not emit an
+unconfirmed-submission event. A cached binary that rejects `journal` at argument
+parsing is also a pre-submission failure. A spent deadline nudge with no
 confirmed acceptance emits `deadline.nudge.unconfirmed` with team, member,
 task and deadline fields. Non-canonical teams keep direct append.
 This adapter adds no protocol version, terminal writer, delivery owner or

@@ -221,6 +221,7 @@ fn known_error_code(code: &str) -> Option<&'static str> {
     [
         "canonical_service_contract_required",
         "invalid_idempotency_key",
+        "idempotency_conflict",
         "capture_disabled",
         "assignment_mismatch",
         "assignment_requires_one_task",
@@ -291,8 +292,14 @@ fn run(root: &Path, team: &str, member: &str, args: &[&str]) -> Result<Value, Co
                 output.status,
                 code.map(|c| format!(": {c}")).unwrap_or_default()
             )),
-            // Even a coded refusal is quarantined after submission: no resend.
-            not_submitted: false,
+            // A cached binary may have been replaced by an older CLI. Clap's
+            // explicit subcommand rejection precedes journal submission. Other
+            // failures, including coded refusals, remain quarantined.
+            not_submitted: output.status.code() == Some(2)
+                && code.is_none()
+                && String::from_utf8_lossy(&output.stderr)
+                    .lines()
+                    .any(|line| line.starts_with("error: unrecognized subcommand ")),
         });
     }
     serde_json::from_slice(&output.stdout).map_err(|_| CommandFailure {
