@@ -522,11 +522,15 @@ mod tests {
         let mut orch = CoordinationOrchestrator::new_with_runtime(
             root.clone(),
             std::sync::Arc::new(crate::coordination::backend::fake::FakeBackend::default()),
-            std::sync::Arc::new(crate::coordination::runtime::RecordingCoordinationRuntime::default()),
+            std::sync::Arc::new(
+                crate::coordination::runtime::RecordingCoordinationRuntime::default(),
+            ),
         );
         orch.create_team("t", None).unwrap();
         let mut config = TeamConfigStore::load(&root, "t").unwrap();
-        config.extra.insert("messaging_format".into(), serde_json::json!(2));
+        config
+            .extra
+            .insert("messaging_format".into(), serde_json::json!(2));
         TeamConfigStore::save(&root, "t", &config).unwrap();
         let now = Utc::now();
         let snapshot = serde_json::from_value(serde_json::json!({
@@ -535,16 +539,25 @@ mod tests {
                 "deadline_minutes":20, "assigned_at":now - Duration::minutes(10)},
             "assignment_footer":{}, "ownership":{"override_allowed":false},
             "working_set":{"project_path":mesh.dir.path(), "focal_files":[]}
-        })).unwrap();
+        }))
+        .unwrap();
         OperationalContextSnapshotStore::save(&root, &snapshot).unwrap();
         let tasks = mesh.dir.path().join("tasks/t");
         fs::create_dir_all(&tasks).unwrap();
-        fs::write(tasks.join("42.json"), r#"{"id":"42","owner":"removed","status":"in_progress"}"#).unwrap();
+        fs::write(
+            tasks.join("42.json"),
+            r#"{"id":"42","owner":"removed","status":"in_progress"}"#,
+        )
+        .unwrap();
         for _ in 0..2 {
             let error = apply_member_deadline(&mut orch, "t", "removed", None, now).unwrap_err();
             assert!(matches!(error, CoordinationError::NotFound(_)));
             assert!(OperationalContextSnapshotStore::load(&root, "t", "removed")
-                .unwrap().unwrap().task.nudged_at.is_none());
+                .unwrap()
+                .unwrap()
+                .task
+                .nudged_at
+                .is_none());
         }
         assert!(mesh.argv().is_empty());
     }
