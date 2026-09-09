@@ -689,12 +689,19 @@ pub(crate) mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let registry = seat(tmp.path());
         let hosts = HostedMembers::default();
-        hosts.launch(&registry, "team", "seat", &fixture(tmp.path())).unwrap();
+        hosts
+            .launch(&registry, "team", "seat", &fixture(tmp.path()))
+            .unwrap();
         super::super::compact_hook::tests::write_snapshot_fixture(tmp.path(), "team", "seat");
         let before = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
         let payload = json!({"hook_event_name":"SessionStart","source":"compact","session_id":"old-thread","cwd":tmp.path(),"transcript_path":tmp.path().join("rollout-old-thread.jsonl")});
         let mut output = Vec::new();
-        assert!(super::super::compact_hook::run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, tmp.path()).is_err());
+        assert!(super::super::compact_hook::run_compact_hook_cli(
+            payload.to_string().as_bytes(),
+            &mut output,
+            tmp.path()
+        )
+        .is_err());
         assert!(output.is_empty());
         let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
         assert_eq!(after.context_generation, before.context_generation);
@@ -857,7 +864,9 @@ pub(crate) mod tests {
             let tmp = tempfile::tempdir().unwrap();
             let registry = seat(tmp.path());
             let hosts = HostedMembers::default();
-            hosts.launch(&registry, "team", "seat", &fixture(tmp.path())).unwrap();
+            hosts
+                .launch(&registry, "team", "seat", &fixture(tmp.path()))
+                .unwrap();
             let original = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
             MemberRuntimeStore::update(tmp.path(), "team", "seat", |record| {
                 record.attachment_generation += 1;
@@ -867,11 +876,19 @@ pub(crate) mod tests {
                     record.app_server = None;
                     record.pane_id = Some("%replacement".into());
                 }
-            }).unwrap();
+            })
+            .unwrap();
             let replaced = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
             assert!(hosts.stop(&registry, "team", "seat").is_err());
-            assert_eq!(serde_json::to_value(MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap()).unwrap(), serde_json::to_value(replaced).unwrap());
-            assert!(taurhaus_lib::platform::process_start_ticks(original.app_server.unwrap().process_id).is_none());
+            assert_eq!(
+                serde_json::to_value(MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap())
+                    .unwrap(),
+                serde_json::to_value(replaced).unwrap()
+            );
+            assert!(taurhaus_lib::platform::process_start_ticks(
+                original.app_server.unwrap().process_id
+            )
+            .is_none());
         }
     }
 
