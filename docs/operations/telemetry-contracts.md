@@ -93,3 +93,20 @@ without clearing input; unavailable flock support refuses terminal I/O and repor
 on release. Recovery cards and deadline nudges remain inbox appends. Unit and
 contract tests use scratch roots and fake terminal transports; the compaction
 transport check is `python3 scripts/test_runtime_exclusion.py`.
+
+A legacy member remains `terminalContract: 0` until a launch atomically publishes
+all attachment facts, including Linux process-start ticks. A heartbeat cannot
+certify it, and its historical tmux epoch value is not a ticks mismatch. Missing
+attachment inventory defers stop/interrupt; unrelated corrupt records do not
+block a member that was resolved. The Windows app defers managed terminal writes
+to the native daemon without creating lock or holder state on its UNC mount.
+Unsupported flock is reported once per path and never permits unlocked I/O.
+Install the matching app and daemon together before either writes these records:
+old apps cannot decode the new decimal-string `paneStartTime`. The mandated
+unchanged protocol number does not guard against that mixed-version deployment.
+
+Member terminal operations and scanner inventory probes use explicit `-S`.
+Session bootstrap and emulator attachment helpers still use tmux's ambient
+socket resolution (`TMUX`, otherwise `TMUX_TMPDIR` and the effective uid).
+Those session-level helpers do not consume a member's recorded socket; custom
+bootstrap/emulator socket selection remains outside this member-write change.

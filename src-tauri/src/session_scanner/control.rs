@@ -84,6 +84,13 @@ fn project_path_exists_for_tmux(project_path: &str) -> Result<bool, String> {
 fn tmux_command() -> Command {
     explicit_tmux_command().unwrap_or_else(|error| {
         tracing::error!(%error, "tmux socket unavailable; refusing terminal command");
+        crate::logging::emit_global(
+            "error",
+            "coordination",
+            "coordination.terminal.unavailable",
+            Some(format!("Tmux socket resolution failed: {error}")),
+            Default::default(),
+        );
         Command::new("/nonexistent/taurhaus-tmux-socket-unavailable")
     })
 }
