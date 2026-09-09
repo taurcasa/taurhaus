@@ -88,6 +88,7 @@ impl MeshInboxMessage {
             "ackedAt",
             "ackedBy",
             "externalRelay",
+            "journal_links",
         ] {
             self.extra.remove(key);
         }
@@ -132,7 +133,18 @@ impl MeshInboxStore {
         team_name: &str,
         member_name: &str,
         message: &MeshInboxMessage,
-    ) -> Result<(), CoordinationError> {
+    ) -> Result<Option<crate::coordination::journal::JournalReceipt>, CoordinationError> {
+        use crate::coordination::journal;
+        let canonical = journal::canonical(teams_dir, team_name).inspect_err(|error| {
+            journal::report_failure(team_name, member_name, message.id.as_deref(), error);
+        })?;
+        if canonical {
+            return journal::accept(teams_dir, team_name, member_name, message)
+                .map(Some)
+                .inspect_err(|error| {
+                    journal::report_failure(team_name, member_name, message.id.as_deref(), error)
+                });
+        }
         let inbox_dir = inboxes_dir(teams_dir, team_name);
         fs::create_dir_all(&inbox_dir)?;
 
@@ -157,7 +169,7 @@ impl MeshInboxStore {
             .as_ref()
             .is_some_and(|id| messages.iter().any(|m| m.id.as_ref() == Some(id)))
         {
-            return Ok(());
+            return Ok(None);
         }
         messages.push(message);
 
@@ -197,12 +209,12 @@ impl MeshInboxStore {
                     let _ = fs::remove_file(&tmp_path);
                     return Err(CoordinationError::Io(write_err));
                 }
-                return Ok(());
+                return Ok(None);
             }
             let _ = fs::remove_file(&tmp_path);
             return Err(CoordinationError::Io(err));
         }
-        Ok(())
+        Ok(None)
     }
 }
 
@@ -354,6 +366,278 @@ mod tests {
 
     use super::*;
     use taurhaus_lib::logging::{install_global_sink, LogFileState};
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_append_uses_accept_without_touching_projection() {
+        // Regression: 20b27ac6 authenticated the recipient, discarding the service/lead sender.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let mesh = crate::coordination::mesh_cli::FakeMesh::new(
+            r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+            r#"echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"agent","delivery_id":"d1"}]}'"#,
+        );
+        let root = mesh.dir.path().join("teams");
+        fs::create_dir_all(root.join("t/inboxes")).unwrap();
+        fs::write(
+            root.join("t/config.json"),
+            serde_json::json!({"name":"t","createdAt":0,"messaging_format":2,"members":[{"name":"lead","role":"lead","cwd":mesh.dir.path()}]}).to_string(),
+        )
+        .unwrap();
+        let projection = root.join("t/inboxes/agent.json");
+        fs::write(&projection, "[]").unwrap();
+        let mut message = MeshInboxMessage::new(
+            "taurhaus",
+            "body with 'quotes'\nand newline".into(),
+            None,
+            Utc::now(),
+        );
+        message.id = Some("card-delivery-1".into());
+        let receipt = MeshInboxStore::append(&root, "t", "agent", &message)
+            .unwrap()
+            .unwrap();
+        assert_eq!(receipt.message_id, "m1");
+        assert_eq!(receipt.delivery_id, "d1");
+        assert_eq!(receipt.projection, "pending");
+        assert_eq!(
+            fs::read_to_string(projection).unwrap(),
+            "[]",
+            "only Mesh owns projections"
+        );
+        let argv = mesh.argv();
+        assert!(argv.contains("journal\naccept\n"), "{argv}");
+        assert!(argv.contains("--producer\ntaurhaus-daemon\n"), "{argv}");
+        assert!(argv.contains("--recipient\nagent\n"), "{argv}");
+        assert!(argv.contains("--name\nlead\n"), "{argv}");
+        assert!(!argv.contains("--name\nagent\n"), "{argv}");
+        assert!(
+            argv.contains("--idempotency-key\ntaurhaus-daemon:card-delivery-1\n"),
+            "{argv}"
+        );
+        assert!(
+            argv.contains(&format!("--claude-dir\n{}\n", mesh.dir.path().display())),
+            "{argv}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_explicit_sender_alias_and_cached_capability() {
+        // Regression: 20b27ac6 replaced explicit senders and rejected Mesh's canonical recipient.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let mesh = crate::coordination::mesh_cli::FakeMesh::new(
+            r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+            r#"while [ "$#" -gt 0 ]; do
+                case "$1" in
+                    --name) shift; actor="$1";;
+                esac
+                shift
+            done
+            printf '%s' "$actor" > claimed_sender
+            echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"lead","delivery_id":"d1"}]}'"#,
+        );
+        let root = mesh.dir.path().join("teams");
+        fs::create_dir_all(root.join("t")).unwrap();
+        fs::write(
+            root.join("t/config.json"),
+            r#"{"name":"t","createdAt":0,"messaging_format":2,"members":[]}"#,
+        )
+        .unwrap();
+        let message = MeshInboxMessage::new("coordinator", "notice".into(), None, Utc::now());
+        for _ in 0..2 {
+            MeshInboxStore::append(&root, "t", "team-lead", &message).unwrap();
+        }
+        assert_eq!(
+            fs::read_to_string(mesh.dir.path().join("claimed_sender")).unwrap(),
+            "coordinator"
+        );
+        assert_eq!(mesh.argv().matches("version\n").count(), 1);
+        assert_eq!(mesh.argv().matches("accept\n").count(), 2);
+        assert!(!root.join("t/inboxes").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_cached_probe_downgrade_is_pre_submission_only_for_clap_refusal() {
+        // Regression: 6efb08f5 cached capability across a downgrade and quarantined clap refusal.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        for (diagnostic, pre_submission) in [
+            ("error: unrecognized subcommand 'journal'", true),
+            ("unknown outcome", false),
+            ("error: IO error: journal: idempotency_conflict", false),
+        ] {
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new(
+                r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+                r#"echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"agent","delivery_id":"d1"}]}'"#,
+            );
+            let root = mesh.dir.path().join("teams");
+            fs::create_dir_all(root.join("t")).unwrap();
+            fs::write(root.join("t/config.json"), r#"{"messaging_format":2}"#).unwrap();
+            let message = MeshInboxMessage::new("lead", "notice".into(), None, Utc::now());
+            MeshInboxStore::append(&root, "t", "agent", &message).unwrap();
+            // Replace the binary at the same path after a successful cached probe.
+            fs::write(
+                mesh.dir.path().join("mesh"),
+                format!("#!/bin/sh\necho \"{diagnostic}\" >&2\nexit 2\n"),
+            )
+            .unwrap();
+            let next = MeshInboxMessage::new("lead", "next notice".into(), None, Utc::now());
+            let error = MeshInboxStore::append(&root, "t", "agent", &next).unwrap_err();
+            assert_eq!(
+                crate::coordination::journal::not_submitted(&error),
+                pre_submission,
+                "{error}"
+            );
+            assert!(!root.join("t/inboxes").exists());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_refusal_preserves_only_safe_error_codes() {
+        // Regression: 20b27ac6 dropped all Mesh refusal reasons, leaving only the exit code.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        for (diagnostic, expected) in [
+            (
+                r#"{"error":"canonical_service_contract_required","detail":"private body"}"#,
+                "canonical_service_contract_required",
+            ),
+            (
+                "error: IO error: journal: canonical_service_contract_required",
+                "canonical_service_contract_required",
+            ),
+            ("error: unauthorized: private body", "unauthorized"),
+            ("error: IO error: journal: body_budget", "body_budget"),
+            // Regression: 6efb08f5 omitted Mesh's actionable idempotency refusal.
+            (
+                "error: IO error: journal: idempotency_conflict",
+                "idempotency_conflict",
+            ),
+        ] {
+            let script = format!("echo '{}' >&2; exit 1", diagnostic);
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new(
+                r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+                &script,
+            );
+            let root = mesh.dir.path().join("teams");
+            fs::create_dir_all(root.join("t")).unwrap();
+            fs::write(
+                root.join("t/config.json"),
+                r#"{"name":"t","createdAt":0,"messaging_format":2,"members":[]}"#,
+            )
+            .unwrap();
+            let message = MeshInboxMessage::new("lead", "notice".into(), None, Utc::now());
+            let error = MeshInboxStore::append(&root, "t", "agent", &message)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(expected), "{error}");
+            assert!(!error.contains("private body"));
+            assert_eq!(mesh.argv().matches("accept\n").count(), 1);
+        }
+    }
+
+    #[test]
+    fn legacy_append_strips_internal_journal_links() {
+        // Regression: 755560bb leaked the adapter's link parameters into the shared legacy row.
+        let tmp = TempDir::new().unwrap();
+        let mut message = MeshInboxMessage::new("taurhaus", "notice".into(), None, Utc::now());
+        message.extra.insert(
+            "journal_links".into(),
+            serde_json::json!({"task":"1","assignment":"a1"}),
+        );
+        MeshInboxStore::append(tmp.path(), "t", "agent", &message).unwrap();
+        let loaded = MeshInboxStore::load(tmp.path(), "t", "agent").unwrap();
+        assert!(!loaded[0].extra.contains_key("journal_links"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_refusal_never_falls_back_or_retries() {
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        for (version, accept) in [
+            ("missing", "exit 99"),
+            ("exit 19", "exit 99"),
+            ("exec sleep 2", "exit 99"),
+            (r#"echo '{"journal_writer":"mesh-journal/1"}'"#, "exit 99"),
+            (r#"echo '{"journal_writer":"mesh-journal/2"}'"#, "exit 23"),
+            (
+                r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+                "exec sleep 2",
+            ),
+            (r#"echo '{"journal_writer":"mesh-journal/2"}'"#, "echo '{}'"),
+        ] {
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new(version, accept);
+            if version == "missing" {
+                fs::remove_file(mesh.dir.path().join("mesh")).unwrap();
+            }
+            let log_path = mesh.dir.path().join("failed.jsonl");
+            let sink = LogFileState::new(log_path.clone()).unwrap();
+            install_global_sink(&sink);
+            let root = mesh.dir.path().join("teams");
+            fs::create_dir_all(root.join("t")).unwrap();
+            fs::write(
+                root.join("t/config.json"),
+                serde_json::json!({"name":"t","createdAt":0,"messaging_format":2,"members":[{"name":"lead","role":"lead","cwd":mesh.dir.path()}]}).to_string(),
+            )
+            .unwrap();
+            let message = MeshInboxMessage::new("agent", "notice".into(), None, Utc::now());
+            // Regression: ec26f4be selected unrelated failures from the shared log sink.
+            crate::coordination::journal::report_failure(
+                "other-team",
+                "other-member",
+                Some("foreign-delivery"),
+                &crate::coordination::errors::CoordinationError::Backend("foreign failure".into()),
+            );
+            let error = MeshInboxStore::append(&root, "t", "agent", &message).unwrap_err();
+            sink.flush_for_test().unwrap();
+            let events = fs::read_to_string(log_path).unwrap();
+            let event: Value = events
+                .lines()
+                .map(|line| serde_json::from_str::<Value>(line).unwrap())
+                .find(|v| {
+                    v["event"] == "coordination.journal.accept_failed"
+                        && v["idempotency_key"]
+                            == format!("taurhaus-daemon:{}", message.id.as_deref().unwrap())
+                        && v["recipient"] == "agent"
+                })
+                .unwrap();
+            assert_eq!(event["reason"], error.to_string());
+            assert_eq!(event["recipient"], "agent");
+            assert_eq!(event["team"], "t");
+            assert!(
+                !event.to_string().contains("notice"),
+                "body must not be logged"
+            );
+            assert!(!root.join("t/inboxes").exists());
+            assert!(mesh.argv().matches("accept\n").count() <= 1);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_invalid_format_refuses_and_legacy_never_invokes_mesh() {
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        // Regression: 20b27ac6 treated a non-object config as a legacy team.
+        for config in [
+            "[]",
+            "null",
+            "{bad",
+            r#"{"messaging_format":99}"#,
+            r#"{"messaging_format":"2"}"#,
+            "{}",
+            r#"{"messaging_format":1}"#,
+        ] {
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new("exit 99", "exit 99");
+            let root = mesh.dir.path().join("teams");
+            fs::create_dir_all(root.join("t")).unwrap();
+            fs::write(root.join("t/config.json"), config).unwrap();
+            let message = MeshInboxMessage::new("agent", "notice".into(), None, Utc::now());
+            let result = MeshInboxStore::append(&root, "t", "agent", &message);
+            let legacy = config == "{}" || config == r#"{"messaging_format":1}"#;
+            assert_eq!(result.is_ok(), legacy, "config: {config}");
+            assert_eq!(root.join("t/inboxes/agent.json").exists(), legacy);
+            assert!(mesh.argv().is_empty());
+        }
+    }
 
     #[test]
     fn append_and_load_round_trip() {

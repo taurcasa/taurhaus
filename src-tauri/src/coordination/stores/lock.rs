@@ -322,7 +322,7 @@ pub(super) fn is_transient_file_lock_error(err: &std::io::Error) -> bool {
     matches!(err.raw_os_error(), Some(5 | 32 | 33))
 }
 
-pub(super) fn read_to_string_with_retry(path: &Path) -> std::io::Result<String> {
+pub(crate) fn read_to_string_with_retry(path: &Path) -> std::io::Result<String> {
     let mut retry_index = 0;
     loop {
         match fs::read_to_string(path) {

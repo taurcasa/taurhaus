@@ -1258,6 +1258,7 @@ mod tests {
             )?;
             orchestrator.deliver_message(DeliveryRequest::operator_notice(
                 OperatorNoticeDelivery {
+                    journal_links: None,
                     recovery_card: None,
                     team_name: "root-authority".to_string(),
                     member_name: "builder".to_string(),
@@ -2375,6 +2376,162 @@ mod tests {
         assert_no_deadline_termination(&runtime);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn canonical_deadline_nudge_links_and_failures_remain_one_shot() {
+        // Regression: 20b27ac6 dropped the deadline sender; 755560bb spent refused claims without telemetry.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        for mode in ["accepted", "refused", "config-changed"] {
+            let refused = mode != "accepted";
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new(
+                r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+                if refused {
+                    "exit 23"
+                } else {
+                    r#"echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"builder","delivery_id":"d1"}]}'"#
+                },
+            );
+            let (_tmp, root, _runtime, _fake, state) = deadline_fixture();
+            let mut config = TeamConfigStore::load(&root, "deadline-team").unwrap();
+            config
+                .extra
+                .insert("messaging_format".into(), serde_json::json!(2));
+            TeamConfigStore::save(&root, "deadline-team", &config).unwrap();
+            // Regression: 755560bb reread config on failure, masking the delivery error.
+            if mode == "config-changed" {
+                let script_path = mesh.dir.path().join("mesh");
+                let script = std::fs::read_to_string(&script_path).unwrap();
+                std::fs::write(
+                    &script_path,
+                    script.replace(
+                        "exit 23",
+                        &format!(
+                            "printf '{{' > '{}'; exit 23",
+                            root.join("deadline-team/config.json").display(),
+                        ),
+                    ),
+                )
+                .unwrap();
+            }
+            let log_path = mesh.dir.path().join("deadline.jsonl");
+            let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+            taurhaus_lib::logging::install_global_sink(&sink);
+            let assigned = Utc::now();
+            seed_deadline_task(&root, assigned, Some(20));
+            for attempt in 0..if mode == "config-changed" { 1 } else { 2 } {
+                let outcome = state
+                    .with_orchestrator(|orch| {
+                        orch.backend = Arc::new(
+                            crate::coordination::backend::claude::ClaudeNativeBackend::new(
+                                root.clone(),
+                            ),
+                        );
+                        orch.claude_backend = None;
+                        crate::coordination::task_deadline_pass::apply_task_deadlines(
+                            orch,
+                            "deadline-team",
+                            assigned + chrono::Duration::minutes(10),
+                        )
+                    })
+                    .unwrap();
+                if refused && attempt == 0 {
+                    assert!(
+                        outcome.failures[0].1.contains("exited exit status: 23"),
+                        "{:?}",
+                        outcome.failures
+                    );
+                }
+            }
+            assert_eq!(
+                mesh.argv().matches("accept\n").count(),
+                1,
+                "a canonical failure must not roll back the nudge claim"
+            );
+            assert!(mesh.argv().contains("--task\n42\n"));
+            assert!(!mesh.argv().contains("--assignment\n"));
+            assert!(mesh.argv().contains("--name\nteam-lead\n"));
+            assert!(!mesh.argv().contains("--name\nbuilder\n"));
+            assert!(deadline_snapshot(&root).task.nudged_at.is_some());
+            sink.flush_for_test().unwrap();
+            let events = std::fs::read_to_string(log_path).unwrap();
+            assert!(events.contains(if refused {
+                "deadline.nudge.unconfirmed"
+            } else {
+                "deadline.nudge.sent"
+            }));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_deadline_preflight_failure_releases_claim_for_next_pass() {
+        // Regression: 755560bb burned one-shot nudges before any canonical submission.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        for version in ["missing", r#"echo '{"journal_writer":"mesh-journal/1"}'"#] {
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new(version, "exit 99");
+            let script_path = mesh.dir.path().join("mesh");
+            let script = std::fs::read_to_string(&script_path).unwrap();
+            if version == "missing" {
+                std::fs::remove_file(&script_path).unwrap();
+            }
+            let (_tmp, root, _runtime, _fake, state) = deadline_fixture();
+            let mut config = TeamConfigStore::load(&root, "deadline-team").unwrap();
+            config
+                .extra
+                .insert("messaging_format".into(), serde_json::json!(2));
+            TeamConfigStore::save(&root, "deadline-team", &config).unwrap();
+            let log_path = mesh.dir.path().join("deadline.jsonl");
+            let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+            taurhaus_lib::logging::install_global_sink(&sink);
+            let assigned = Utc::now();
+            seed_deadline_task(&root, assigned, Some(20));
+            let pass = || {
+                state
+                    .with_orchestrator(|orch| {
+                        orch.backend = Arc::new(
+                            crate::coordination::backend::claude::ClaudeNativeBackend::new(
+                                root.clone(),
+                            ),
+                        );
+                        orch.claude_backend = None;
+                        crate::coordination::task_deadline_pass::apply_task_deadlines(
+                            orch,
+                            "deadline-team",
+                            assigned + chrono::Duration::minutes(10),
+                        )
+                    })
+                    .unwrap()
+            };
+            for _ in 0..2 {
+                let outcome = pass();
+                assert_eq!(outcome.failures.len(), 1);
+                assert!(
+                    deadline_snapshot(&root).task.nudged_at.is_none(),
+                    "{version}"
+                );
+            }
+            assert!(!mesh.argv().contains("accept\n"));
+            sink.flush_for_test().unwrap();
+            let events = std::fs::read_to_string(log_path).unwrap();
+            assert!(!events
+                .lines()
+                .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+                .any(
+                    |v| v["event"] == "deadline.nudge.unconfirmed" && v["team"] == "deadline-team"
+                ));
+            // Repair the same executable: the next pass can now send the nudge once.
+            let repaired = script.replace(version, r#"echo '{"journal_writer":"mesh-journal/2"}'"#)
+                .replace("exit 99", r#"echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"builder","delivery_id":"d1"}]}'"#);
+            std::fs::write(&script_path, repaired).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o700)).unwrap();
+            assert!(pass().failures.is_empty());
+            assert!(pass().failures.is_empty());
+            assert_eq!(mesh.argv().matches("accept\n").count(), 1);
+            assert!(deadline_snapshot(&root).task.nudged_at.is_some());
+        }
+    }
+
     #[test]
     fn deadline_pass_nudges_once_then_stales_once_without_stopping_the_session() {
         let (_tmp, teams_dir, runtime, fake, state) = deadline_fixture();
@@ -3197,6 +3354,7 @@ mod tests {
         state
             .with_orchestrator(|orch| {
                 orch.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                    journal_links: None,
                     recovery_card: None,
                     team_name: "architecture-final".to_string(),
                     member_name: "existing-dev".to_string(),

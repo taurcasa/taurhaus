@@ -8268,6 +8268,7 @@ fn recovery_submission_recomposes_a_changed_view_without_spending_a_retry() {
         .unwrap();
     orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            journal_links: None,
             team_name: "team".into(),
             member_name: "seat".into(),
             sender_name: None,

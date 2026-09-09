@@ -57,7 +57,7 @@ impl CompactionReinjectionService {
         team_name: &str,
         member_name: &str,
         message: &MeshInboxMessage,
-    ) -> Result<(), CoordinationError> {
+    ) -> Result<Option<crate::coordination::journal::JournalReceipt>, CoordinationError> {
         MeshInboxStore::append(teams_dir, team_name, member_name, message)
     }
 

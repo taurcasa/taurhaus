@@ -192,10 +192,16 @@ fn prepare_inner(
             .is_some_and(|s| s.pending),
     });
     OperationalContextSnapshotStore::save_locked(&guard, root, &descriptor_snapshot)?;
+    let canonical = crate::coordination::journal::canonical(root, team)?;
     let mut text = card.render();
     let mut receipt = if let Some(key) = key {
         // The durable append is the authority after an interrupted runtime commit.
-        if let Some(previous) = runtime.recovery.claim.clone().filter(|r| r.path == "inbox") {
+        if let Some(previous) = runtime
+            .recovery
+            .claim
+            .clone()
+            .filter(|r| r.path == "inbox" && !canonical)
+        {
             let appended = MeshInboxStore::load(root, team, member_name)?
                 .into_iter()
                 .find(|m| m.id.as_deref() == Some(&previous.delivery_id));
@@ -262,6 +268,8 @@ fn prepare_inner(
     } else {
         // Legacy names/session ids are not enough to authorize suppression.
         CardReceipt {
+            journal: None,
+            journal_links: None,
             delivery_id: uuid::Uuid::new_v4().to_string(),
             satisfied_obligations: Vec::new(),
             obligation_key: ((String::new(), String::new()), (0, 0)),
@@ -300,6 +308,11 @@ fn prepare_inner(
             receipt.satisfied_obligations.push(pending);
         }
     }
+    receipt.journal_links =
+        (!card.assignment.task_id.is_empty()).then(|| crate::coordination::journal::JournalLinks {
+            task: card.assignment.task_id.clone(),
+            assignment: card.assignment.assignment_token.clone(),
+        });
     receipt.generated_bytes = text.len();
     if !receipt.card_key.recipient.0.is_empty() {
         runtime.recovery.claim = Some(receipt.clone());
@@ -327,7 +340,9 @@ pub fn observe(
         ));
     }
     let mut runtime = MemberRuntimeStore::load(root, team, member)?;
-    let durable_receipt = if stage == ReceiptStage::Accepted {
+    let durable_receipt = if stage == ReceiptStage::Accepted
+        && !crate::coordination::journal::canonical(root, team)?
+    {
         MeshInboxStore::load(root, team, member)?
             .into_iter()
             .find(|m| m.id.as_deref() == Some(&receipt.delivery_id))
@@ -414,11 +429,109 @@ pub fn read_current(
     Ok((card.text, receipt))
 }
 
+/// Called only by the daemon backend or native hook that owns delivery receipts.
+pub fn observe_inbox_failure(
+    root: &Path,
+    team: &str,
+    member: &str,
+    message: &crate::coordination::stores::MeshInboxMessage,
+    error: &CoordinationError,
+) {
+    if crate::coordination::journal::not_submitted(error)
+        && observe_pre_submission_failure(root, team, member, message).is_err()
+    {
+        // Preserve the submission error; persistence failure keeps the claim quarantined.
+        tracing::warn!(
+            team,
+            member,
+            "could not persist pre-submission failure receipt"
+        );
+    }
+}
+
+/// A failed preflight/spawn cannot have committed a journal record. Record that
+/// fact on the matching claim so RecoveryState's existing two-attempt budget applies.
+fn observe_pre_submission_failure(
+    root: &Path,
+    team: &str,
+    member: &str,
+    message: &crate::coordination::stores::MeshInboxMessage,
+) -> Result<(), CoordinationError> {
+    let Some(mut receipt) = message
+        .extra
+        .get("recovery_card")
+        .and_then(|v| serde_json::from_value::<CardReceipt>(v.clone()).ok())
+    else {
+        return Ok(());
+    };
+    let mut recorded = false;
+    MemberRuntimeStore::update(root, team, member, |runtime| {
+        if let Some(claim) = runtime.recovery.claim.as_ref().filter(|claim| {
+            claim.delivery_id == receipt.delivery_id
+                && claim.attempt == receipt.attempt
+                && claim.card_key == receipt.card_key
+                && claim.stage == ReceiptStage::OutcomeUnknown
+        }) {
+            // The inbox envelope is pre-marked accepted for legacy persistence.
+            // Only the runtime claim is evidence of what actually happened.
+            receipt = claim.clone();
+            runtime.recovery.observe(&receipt, ReceiptStage::Failed, 0);
+            recorded = true;
+        }
+    })?;
+    if recorded {
+        receipt.record(ReceiptStage::Failed, 0);
+        taurhaus_lib::logging::emit_global(
+            "info",
+            "coordination",
+            "onboarding.delivery.observed",
+            None,
+            serde_json::to_value(receipt)
+                .expect("receipt")
+                .as_object()
+                .unwrap()
+                .clone(),
+        );
+    }
+    Ok(())
+}
+
+pub fn attach_journal_links(
+    message: &mut crate::coordination::stores::MeshInboxMessage,
+    explicit: Option<&crate::coordination::journal::JournalLinks>,
+    context: Option<&crate::coordination::requests::OperationalContextUpdate>,
+) {
+    if let Some(links) = explicit {
+        message.extra.insert(
+            "journal_links".into(),
+            serde_json::to_value(links).expect("links"),
+        );
+    } else if let Some(task) = context
+        .and_then(|c| c.task.as_ref())
+        .filter(|_| !message.extra.contains_key("journal_links"))
+    {
+        let links = crate::coordination::journal::JournalLinks {
+            task: task.id.clone(),
+            assignment: String::new(),
+        };
+        message.extra.insert(
+            "journal_links".into(),
+            serde_json::to_value(links).expect("links"),
+        );
+    }
+}
+
 pub fn attach_receipt(
     message: &mut crate::coordination::stores::MeshInboxMessage,
     receipt: Option<&CardReceipt>,
 ) {
     if let Some(receipt) = receipt {
+        if let Some(links) = &receipt.journal_links {
+            message.extra.insert(
+                "journal_links".into(),
+                serde_json::to_value(links).expect("links"),
+            );
+        }
         let mut receipt = receipt.clone();
         receipt.record(ReceiptStage::Accepted, message.text.len());
         message.id = Some(receipt.delivery_id.clone());
@@ -580,6 +693,206 @@ mod tests {
         )
         .unwrap();
         snapshot
+    }
+
+    #[cfg(all(unix, feature = "mesh-bridged-backend"))]
+    #[test]
+    fn canonical_recovery_receipts_links_and_no_projection_retry() {
+        use crate::coordination::backend::{
+            bridged::MeshBridgedBackend, claude::ClaudeNativeBackend, CoordinationBackend,
+        };
+        use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
+        // Regression: 20b27ac6 sent stale snapshot assignment tokens as delivery preconditions.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        for bridged in [false, true] {
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new(
+                r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+                r#"for arg in "$@"; do
+                    if [ "$arg" = --assignment ]; then echo 'error: assignment token mismatch' >&2; exit 1; fi
+                done
+                echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"seat","delivery_id":"d1"}]}'"#,
+            );
+            let (_temp, root, registry) = fixture();
+            let log_path = mesh.dir.path().join("observed.jsonl");
+            let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+            taurhaus_lib::logging::install_global_sink(&sink);
+            let mut config = TeamConfigStore::load(&root, "team").unwrap();
+            config.extra.insert("messaging_format".into(), json!(2));
+            let mut lead = config.members[0].clone();
+            lead.name = "lead".into();
+            lead.role = crate::coordination::domain::MemberRole::Lead;
+            config.members.push(lead);
+            TeamConfigStore::save(&root, "team", &config).unwrap();
+            reserve_activation(&root, "team", "seat", "activation").unwrap();
+            let snapshot = assigned_snapshot(&root, json!({"assignment_id":"a1"}), "in_progress");
+            OperationalContextSnapshotStore::save(&root, &snapshot).unwrap();
+            let card = prepare(&registry, &root, "team", "seat", "inbox")
+                .unwrap()
+                .unwrap();
+            // Regression: ec26f4be selected a foreign receipt from the process-global sink.
+            let mut foreign = card.receipt.clone();
+            foreign.delivery_id = "foreign-recovery-delivery".into();
+            taurhaus_lib::logging::emit_global(
+                "info",
+                "coordination",
+                "onboarding.delivery.observed",
+                None,
+                serde_json::to_value(foreign)
+                    .unwrap()
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            );
+            let backend: Box<dyn CoordinationBackend> = if bridged {
+                Box::new(MeshBridgedBackend::new_with_teams_dir(root.clone()))
+            } else {
+                Box::new(ClaudeNativeBackend::new(root.clone()))
+            };
+            let mut orchestrator =
+                crate::coordination::orchestrator::CoordinationOrchestrator::new_with_runtime(
+                    root.clone(),
+                    std::sync::Arc::from(backend),
+                    std::sync::Arc::new(
+                        crate::coordination::runtime::RecordingCoordinationRuntime::default(),
+                    ),
+                );
+            let result = orchestrator
+                .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                    journal_links: None,
+                    recovery_card: Some(card.receipt.clone()),
+                    team_name: "team".into(),
+                    member_name: "seat".into(),
+                    message: card.text,
+                    sender_name: None,
+                    operational_context: Some(
+                        crate::coordination::requests::OperationalContextUpdate {
+                            task: Some(crate::coordination::requests::OperationalTaskContext {
+                                id: "1".into(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        },
+                    ),
+                }))
+                .unwrap();
+            let wire = serde_json::to_value(&result).unwrap();
+            assert_eq!(wire["recoveryCard"]["journal"]["message_id"], "m1");
+            assert_eq!(wire["recoveryCard"]["journal"]["delivery_id"], "d1");
+            assert!(mesh.argv().contains("--task\n1\n"));
+            assert!(!mesh.argv().contains("--assignment\n"));
+            assert!(mesh.argv().contains("--name\nlead\n"));
+            assert!(prepare(&registry, &root, "team", "seat", "inbox")
+                .unwrap()
+                .is_none());
+            assert!(MeshInboxStore::load(&root, "team", "seat")
+                .unwrap()
+                .is_empty());
+            assert_eq!(mesh.argv().matches("accept\n").count(), 1);
+            sink.flush_for_test().unwrap();
+            let events = std::fs::read_to_string(log_path).unwrap();
+            let event: serde_json::Value = events
+                .lines()
+                .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+                .find(|v| {
+                    v["event"] == "onboarding.delivery.observed"
+                        && v["delivery_id"] == card.receipt.delivery_id
+                })
+                .unwrap();
+            assert_eq!(event["journal"]["message_id"], "m1");
+            assert_eq!(event["journal"]["delivery_id"], "d1");
+            assert_eq!(event["delivery_id"], card.receipt.delivery_id);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_unknown_recovery_submission_is_not_retried_from_array_absence() {
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        // Regression: 3ca169ed reconciled missing legacy rows into a retry, unsafe for canonical acceptance.
+        let mesh = crate::coordination::mesh_cli::FakeMesh::new(
+            r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
+            "exit 23",
+        );
+        let (_temp, root, registry) = fixture();
+        let mut config = TeamConfigStore::load(&root, "team").unwrap();
+        config.extra.insert("messaging_format".into(), json!(2));
+        TeamConfigStore::save(&root, "team", &config).unwrap();
+        reserve_activation(&root, "team", "seat", "activation").unwrap();
+        let card = prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .unwrap();
+        let mut message = MeshInboxMessage::new("lead", card.text, None, Utc::now());
+        attach_receipt(&mut message, Some(&card.receipt));
+        assert!(MeshInboxStore::append(&root, "team", "seat", &message).is_err());
+        assert!(prepare(&registry, &root, "team", "seat", "inbox")
+            .unwrap()
+            .is_none());
+        assert_eq!(mesh.argv().matches("accept\n").count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_pre_submission_failure_allows_only_one_card_retry() {
+        // Regression: 755560bb quarantined even failed version probes before any submission.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        for version in [
+            "missing",
+            "exit 19",
+            r#"echo '{"journal_writer":"mesh-journal/1"}'"#,
+        ] {
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new(version, "exit 99");
+            if version == "missing" {
+                std::fs::remove_file(mesh.dir.path().join("mesh")).unwrap();
+            }
+            let (_temp, root, registry) = fixture();
+            let mut config = TeamConfigStore::load(&root, "team").unwrap();
+            config.extra.insert("messaging_format".into(), json!(2));
+            TeamConfigStore::save(&root, "team", &config).unwrap();
+            reserve_activation(&root, "team", "seat", "activation").unwrap();
+            let mut identity = None;
+            for attempt in 1..=2 {
+                let card = prepare(&registry, &root, "team", "seat", "inbox")
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(card.receipt.attempt, attempt);
+                assert_eq!(
+                    identity.get_or_insert(card.receipt.delivery_id.clone()),
+                    &card.receipt.delivery_id
+                );
+                let mut message = MeshInboxMessage::new("lead", card.text, None, Utc::now());
+                attach_receipt(&mut message, Some(&card.receipt));
+                use crate::coordination::backend::{
+                    claude::ClaudeNativeBackend, CoordinationBackend,
+                };
+                use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
+                let backend = ClaudeNativeBackend::new(root.clone());
+                assert!(backend
+                    .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                        team_name: "team".into(),
+                        member_name: "seat".into(),
+                        message: message.text,
+                        sender_name: Some("lead".into()),
+                        recovery_card: Some(card.receipt),
+                        journal_links: None,
+                        operational_context: None,
+                    }))
+                    .is_err());
+                let runtime = MemberRuntimeStore::load(&root, "team", "seat").unwrap();
+                let failed = runtime.recovery.claim.unwrap();
+                assert_eq!(failed.stage, ReceiptStage::Failed);
+                // Regression: 6efb08f5 copied the pre-marked legacy envelope into a failure receipt.
+                assert_eq!(failed.accepted_bytes, 0);
+                assert!(!failed
+                    .observations
+                    .iter()
+                    .any(|(stage, _, _)| *stage == ReceiptStage::Accepted));
+            }
+            assert!(prepare(&registry, &root, "team", "seat", "inbox")
+                .unwrap()
+                .is_none());
+            assert!(!mesh.argv().contains("accept\n"));
+            assert!(!root.join("team/inboxes").exists());
+        }
     }
 
     #[test]

@@ -116,6 +116,8 @@ pub struct OperationalContextUpdate {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorNoticeDelivery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub journal_links: Option<crate::coordination::journal::JournalLinks>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery_card: Option<crate::coordination::recovery_card::CardReceipt>,
     pub member_name: String,
     pub team_name: String,
@@ -176,7 +178,7 @@ pub struct DeliveryResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery_card: Option<Box<crate::coordination::recovery_card::CardReceipt>>,
     /// Whether the backend completed its delivery operation. For inbox-file
-    /// delivery this means exactly one append completed.
+    /// delivery this means canonical acceptance or one legacy append completed.
     pub delivered: bool,
     pub method: DeliveryMethod,
     /// Whether the selected delivery method persisted the message. For
@@ -927,6 +929,7 @@ mod tests {
     #[test]
     fn delivery_request_round_trip() {
         let req = DeliveryRequest::OperatorNotice(Box::new(OperatorNoticeDelivery {
+            journal_links: None,
             recovery_card: None,
             member_name: "agent-1".to_string(),
             team_name: "architecture-final".to_string(),

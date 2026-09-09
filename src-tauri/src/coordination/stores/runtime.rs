@@ -2052,6 +2052,7 @@ mod tests {
             team_name,
             member_name,
             &MemberCompactionState {
+                journal: None,
                 pending: false,
                 pending_obligation: None,
                 satisfied_by: None,

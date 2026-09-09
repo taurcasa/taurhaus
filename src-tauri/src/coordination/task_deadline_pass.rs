@@ -228,6 +228,9 @@ fn apply_member_deadline(
         return Ok(());
     }
 
+    // Resolve before claiming so config changes cannot mask a delivery error.
+    let canonical_nudge = action == DeadlineAction::Nudge
+        && crate::coordination::journal::canonical(&orchestrator.teams_dir, team_name)?;
     let Some(claimed) = claim_action(&orchestrator.teams_dir, &snapshot, action, now)? else {
         return Ok(());
     };
@@ -255,6 +258,10 @@ fn apply_member_deadline(
             recovery_facts.task_id = snapshot.task.id.clone();
             orchestrator
                 .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                    journal_links: Some(crate::coordination::journal::JournalLinks {
+                        task: recovery_facts.task_id.clone(),
+                        assignment: recovery_facts.assignment_token.clone(),
+                    }),
                     recovery_card: None,
                     team_name: team_name.to_string(),
                     member_name: member_name.to_string(),
@@ -277,7 +284,23 @@ fn apply_member_deadline(
     };
 
     if let Err(error) = action_result {
-        rollback_claim(&orchestrator.teams_dir, &claimed, action, now)?;
+        // Canonical acceptance can have committed before a lost reply. Keep the
+        // one-shot claim unless submission was prevented by preflight/spawn.
+        // Only Mesh can reconcile an uncertain submitted outcome; never resend.
+        if !canonical_nudge
+            || crate::coordination::journal::not_submitted(&error)
+            || matches!(&error, CoordinationError::NotFound(_))
+        {
+            rollback_claim(&orchestrator.teams_dir, &claimed, action, now)?;
+        } else {
+            taurhaus_lib::logging::emit_global(
+                "warn",
+                "coordination",
+                "deadline.nudge.unconfirmed",
+                Some("Nudge claim retained without confirmed journal acceptance".into()),
+                deadline_event_fields(team_name, member_name, &snapshot.task.id, deadline_minutes),
+            );
+        }
         if action == DeadlineAction::MarkStale
             && matches!(
                 &error,
@@ -489,6 +512,55 @@ mod tests {
         OperationalAssignmentFooterSnapshot, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
         OperationalWorkingSetSnapshot,
     };
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_nudge_for_removed_member_releases_claim_before_submission() {
+        // Regression: 755560bb retained canonical claims even for a missing recipient.
+        let mesh = crate::coordination::mesh_cli::FakeMesh::new("exit 99", "exit 99");
+        let root = mesh.dir.path().join("teams");
+        let mut orch = CoordinationOrchestrator::new_with_runtime(
+            root.clone(),
+            std::sync::Arc::new(crate::coordination::backend::fake::FakeBackend::default()),
+            std::sync::Arc::new(
+                crate::coordination::runtime::RecordingCoordinationRuntime::default(),
+            ),
+        );
+        orch.create_team("t", None).unwrap();
+        let mut config = TeamConfigStore::load(&root, "t").unwrap();
+        config
+            .extra
+            .insert("messaging_format".into(), serde_json::json!(2));
+        TeamConfigStore::save(&root, "t", &config).unwrap();
+        let now = Utc::now();
+        let snapshot = serde_json::from_value(serde_json::json!({
+            "version":1, "team_name":"t", "member_name":"removed", "updated_at":now,
+            "task":{"id":"42", "subject":"Review", "status":"in_progress",
+                "deadline_minutes":20, "assigned_at":now - Duration::minutes(10)},
+            "assignment_footer":{}, "ownership":{"override_allowed":false},
+            "working_set":{"project_path":mesh.dir.path(), "focal_files":[]}
+        }))
+        .unwrap();
+        OperationalContextSnapshotStore::save(&root, &snapshot).unwrap();
+        let tasks = mesh.dir.path().join("tasks/t");
+        fs::create_dir_all(&tasks).unwrap();
+        fs::write(
+            tasks.join("42.json"),
+            r#"{"id":"42","owner":"removed","status":"in_progress"}"#,
+        )
+        .unwrap();
+        for _ in 0..2 {
+            let error = apply_member_deadline(&mut orch, "t", "removed", None, now).unwrap_err();
+            assert!(matches!(error, CoordinationError::NotFound(_)));
+            assert!(OperationalContextSnapshotStore::load(&root, "t", "removed")
+                .unwrap()
+                .unwrap()
+                .task
+                .nudged_at
+                .is_none());
+        }
+        assert!(mesh.argv().is_empty());
+    }
 
     // Regression: 51923397 copied Mesh IdleMonitor's expiry with no way to
     // follow a deployment whose mesh-owned TTL differs from the default.
