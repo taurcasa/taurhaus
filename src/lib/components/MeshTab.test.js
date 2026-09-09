@@ -1,3 +1,4 @@
+import { configureToolRegistry, FALLBACK_TOOLS } from '../toolRegistry.js'
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll, afterEach } from 'vitest'
 import { tick } from 'svelte'
 import { cleanup, render, screen, waitFor, fireEvent, within } from '@testing-library/svelte'
@@ -2529,6 +2530,9 @@ describe('MeshTab', () => {
     })
     await fireEvent.click(screen.getByTestId('mesh-add-agent-role-card-agent-default'))
 
+    configureToolRegistry(FALLBACK_TOOLS.map(tool => ({ ...tool, hostingSupported: tool.id === 'codex' })))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Delivery' })).toBeInTheDocument())
+    await fireEvent.change(screen.getByRole('combobox', { name: 'Delivery' }), { target: { value: 'app_server' } })
     await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
       target: { value: 'backend-dev' },
     })
@@ -2545,9 +2549,11 @@ describe('MeshTab', () => {
           agent: expect.objectContaining({
             name: 'backend-dev',
             projectId: 'proj-api',
+            delivery: 'app_server',
           }),
         })
       )
+      configureToolRegistry(null)
       expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent(
         "Agent 'backend-dev' added. Notes: onboarding wake failed: member pane is foreign: cli_tool_mismatch: expected=codex found=claude"
       )

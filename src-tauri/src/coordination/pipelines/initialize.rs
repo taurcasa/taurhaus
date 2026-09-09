@@ -609,7 +609,9 @@ impl CoordinationOrchestrator {
                     CoordinationError::StoreError("Mesh did not join the requested lead".into())
                 })?;
             // Keep Mesh's identity/auth extensions while adopting the requested seat.
+            let requested = std::mem::take(&mut members[0].extra);
             members[0].extra = lead.extra.clone();
+            members[0].extra.extend(requested);
             config.description = team_description;
             config.members = members.clone();
             TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
@@ -618,7 +620,15 @@ impl CoordinationOrchestrator {
                 &self.teams_dir,
                 team_name,
                 &TeamConfig {
-                    team_incarnation_id: None,
+                    team_incarnation_id: members
+                        .iter()
+                        .any(|m| {
+                            m.extra
+                                .get("adapter_mode")
+                                .and_then(serde_json::Value::as_str)
+                                == Some("app_server")
+                        })
+                        .then(|| uuid::Uuid::new_v4().to_string()),
                     schema_version: 1,
                     name: team_name.to_string(),
                     description: team_description,

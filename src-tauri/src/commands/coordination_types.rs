@@ -51,6 +51,9 @@ pub struct AgentSetupConfig {
     // canonical `reasoning_effort` next to `model`.
     #[serde(default, alias = "reasoning_effort")]
     pub reasoning_effort: Option<String>,
+    /// Seat delivery at creation; omission preserves the tmux path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<String>,
     /// Stable account id for selector-capable managed members.
     #[serde(default, alias = "account_id")]
     pub account_id: Option<String>,

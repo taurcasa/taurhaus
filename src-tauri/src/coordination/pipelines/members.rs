@@ -517,6 +517,23 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             Err(err) => return Err(("add_lead".to_string(), err)),
         };
 
+        if prepared
+            .member
+            .extra
+            .get("adapter_mode")
+            .and_then(serde_json::Value::as_str)
+            == Some("app_server")
+        {
+            match stage {
+                InitializeMemberActivationStage::CreatePanes => {
+                    self.run_shared_activation(&prepared)?;
+                    return Ok(None);
+                }
+                InitializeMemberActivationStage::LaunchSessions
+                | InitializeMemberActivationStage::StartDaemons => return Ok(None),
+                InitializeMemberActivationStage::JoinMesh => {}
+            }
+        }
         match stage {
             InitializeMemberActivationStage::CreatePanes => {
                 if self.initialize_member_skips_launch() {
@@ -668,6 +685,16 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             .and_then(serde_json::Value::as_str)
             == Some("app_server")
         {
+            if matches!(self.wrapper, SharedMemberActivationWrapper::AddAgent { .. }) {
+                self.orchestrator
+                    .add_member(
+                        &prepared.activation_context.team_name,
+                        prepared.member.clone(),
+                    )
+                    .map_err(|e| ("update_roster".into(), e))?;
+                // Keep failed hosted attachments as stopped/recoverable seats; never silently erase unknown input.
+                self.join_mesh(prepared)?;
+            }
             let launch_host = || -> Result<(), CoordinationError> {
                 let mut context = prepared.activation_context.clone();
                 context.resume_session_id = prepared

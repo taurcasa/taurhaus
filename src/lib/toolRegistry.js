@@ -63,6 +63,7 @@ export const FALLBACK_TOOLS = Object.freeze([
   },
   {
     id: 'codex',
+    hostingSupported: false, // Only the backend can attest daemon hosting availability.
     label: 'Codex',
     displayName: 'Codex',
     accent: 'sky',
@@ -271,6 +272,7 @@ function normalizeDescriptor(raw) {
       raw.accountLoginCommand ?? raw.account_login_command
     ),
     accountDirName: stringOrNull(raw.accountDirName ?? raw.account_dir_name),
+    hostingSupported: raw.hostingSupported === true,
     aliases,
     capabilities: normalizeCapabilities(raw.capabilities),
   }, DESCRIPTOR_ALIASES)

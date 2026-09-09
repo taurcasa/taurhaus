@@ -35,6 +35,7 @@ const { writeTextFile } = await import('@tauri-apps/plugin-fs')
 import * as meshTabUtils from './meshTabUtils.js'
 
 import MeshTeamBuilder from './MeshTeamBuilder.svelte'
+import { configureToolRegistry, FALLBACK_TOOLS } from '../toolRegistry.js'
 import { TEST_MODEL_CATALOG } from '../../test/fixtures/modelCatalog.js'
 
 const ROLE_VERSION_VISIBILITY_STORAGE_KEY =
@@ -1236,4 +1237,27 @@ it('defaults on when backend status arrives and preserves an explicit opt-out', 
   await fireEvent.click(toggle)
   await view.rerender(builderProps({ meshStatus: { version: '1.0.1', canonical_messaging_supported: true } }))
   expect(toggle).not.toBeChecked()
+})
+
+describe('seat delivery choice', () => {
+  afterEach(() => configureToolRegistry(null))
+
+  it.each([true, false, undefined])('uses the backend hosting flag (%s)', async (hostingSupported) => {
+    configureToolRegistry(FALLBACK_TOOLS.map(tool => ({ ...tool, hostingSupported: tool.id === 'codex' ? hostingSupported : false })))
+    const onUpdateAgent = vi.fn()
+    renderBuilder({ teamConfig: sampleRosterConfig(), onUpdateAgent })
+    await fireEvent.click(screen.getByLabelText('Edit builder-1 details'))
+    await fireEvent.click(screen.getByLabelText('Edit lead details'))
+    const select = screen.queryByRole('combobox', { name: 'Delivery' })
+    if (hostingSupported === true) {
+      expect(select).toHaveValue('tmux')
+      expect(Array.from(select.options).map(option => option.textContent)).toEqual([
+        'tmux pane', 'app-server (native, attached TUI)',
+      ])
+      await fireEvent.change(select, { target: { value: 'app_server' } })
+      expect(onUpdateAgent).toHaveBeenCalledWith('agent-codex-1', { delivery: 'app_server' })
+    } else {
+      expect(select).not.toBeInTheDocument()
+    }
+  })
 })

@@ -78,6 +78,7 @@
 {#if !unavailable && (transcript || error)}
   <section class="space-y-3 rounded-xl border p-4 {t.keyline} {t.textPrimary}" aria-label="Hosted conversation">
     <h3 class="text-sm font-semibold">Conversation</h3>
+    <p class="text-xs">To return a seat on a team-owned team to a tmux pane, stop it, remove it, then re-add the same name with Delivery set to tmux pane.</p>
     {#if transcript}
       {#if transcript.orphanProcessId}
         <p role="status">Orphaned host process {transcript.orphanProcessId} survived the previous daemon. Verify its recorded process start time, terminate that process manually, then stop and resume this member.</p>

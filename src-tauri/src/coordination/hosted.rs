@@ -439,7 +439,7 @@ impl HostedMembers {
         let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
         let attachment = record.app_server.as_ref().ok_or("NOT_HOSTED")?;
         if config.extra.get("delivery_owner").and_then(Value::as_str) == Some("team") {
-            return Err("app_server_switch_requires_5b_recoverable_relaunch_packet".into());
+            return Err("app_server_rollback_on_team_owned_team: stop the seat, remove it, re-add it with delivery tmux".into());
         }
         let opted_out = config.members.iter().any(|m| {
             m.name == member

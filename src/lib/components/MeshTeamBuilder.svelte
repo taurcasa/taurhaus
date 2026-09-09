@@ -1,4 +1,5 @@
 <script>
+  import MemberDeliverySelect from './MemberDeliverySelect.svelte'
   import { onDestroy, onMount, tick } from 'svelte'
   import {
     deleteRoleTemplate,
@@ -2372,6 +2373,8 @@
                           onchange={(next) => onUpdateLead(next)}
                         />
                       </div>
+                      <MemberDeliverySelect tool={normalizeTool(normalizedTeam.lead.tool)} delivery={normalizedTeam.lead.delivery}
+                        {dark} onchange={(next) => onUpdateLead(next)} />
                       <MemberAccountPicker
                         memberId="lead"
                         tool={normalizeTool(normalizedTeam.lead.tool)}
@@ -2521,6 +2524,8 @@
                           onchange={(next) => onUpdateAgent(agent.id, next)}
                         />
                       </div>
+                      <MemberDeliverySelect tool={normalizeTool(agent.tool)} delivery={agent.delivery}
+                        {dark} onchange={(next) => onUpdateAgent(agent.id, next)} />
                       <MemberAccountPicker
                         memberId={agent.id}
                         tool={normalizeTool(agent.tool)}

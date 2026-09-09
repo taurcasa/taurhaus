@@ -338,6 +338,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
       roleName: role.name || '',
       name: deps.buildRuntimeAgentName(role, draft.projectId, state.teamConfig, deps.getProjectPath()),
       tool,
+      delivery: tool === draft.tool ? draft.delivery : null,
       model,
       reasoningEffort,
       description: instructions,
@@ -360,6 +361,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     if (!draft) return
     const next = { ...draft, [field]: value }
     if (field === 'tool') {
+      next.delivery = null
       next.model = deps.defaultModelFor(value)
       next.reasoningEffort = deps.defaultEffortFor(value, next.model)
     }
@@ -380,6 +382,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
           cliTool: deps.normalizeTool(draft.tool),
           model: String(draft.model || '').trim(),
           reasoningEffort: draft.reasoningEffort ?? null,
+          ...(draft.delivery ? { delivery: draft.delivery } : {}),
           projectId: String(draft.projectId || '').trim(),
           description: String(draft.description || '').trim() || null,
           roleId: String(draft.roleId || '').trim() || null,

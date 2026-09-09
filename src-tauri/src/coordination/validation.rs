@@ -13,6 +13,28 @@ pub(crate) fn validate_member_configuration(
             member.name
         ))
     };
+    if member
+        .extra
+        .get("adapter_mode")
+        .and_then(serde_json::Value::as_str)
+        == Some("app_server")
+    {
+        if !crate::session_scanner::launch::HostedLaunch::supports(member.cli_tool) {
+            return Err(invalid(
+                "delivery",
+                format!(
+                    "app_server_unsupported_harness: {} cannot host an app-server seat",
+                    member.cli_tool
+                ),
+            ));
+        }
+        if !cfg!(target_os = "linux") {
+            return Err(invalid(
+                "delivery",
+                "app_server_unsupported_platform: Owned hosting is Linux/WSL only".into(),
+            ));
+        }
+    }
     if !member.project_path.is_dir() {
         return Err(invalid(
             "cwd",

@@ -897,6 +897,9 @@ pub struct CliToolDescriptor {
     pub capabilities: CliCapabilityDescriptor,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app_server: Option<crate::session_scanner::launch::HostedDescriptor>,
+    /// Host availability on the daemon platform, independent of native eligibility.
+    #[serde(default)]
+    pub hosting_supported: bool,
 }
 
 impl From<&CliToolSpec> for CliToolDescriptor {
@@ -916,6 +919,8 @@ impl From<&CliToolSpec> for CliToolDescriptor {
             account_login_command: value.account_login_command.map(str::to_string),
             account_dir_name: value.base_dir_name.to_string(),
             capabilities: value.capabilities.into(),
+            hosting_supported: cfg!(any(target_os = "linux", target_os = "windows"))
+                && crate::session_scanner::launch::HostedLaunch::supports(value.tool),
             app_server: crate::session_scanner::launch::HostedLaunch::supports(value.tool)
                 .then(crate::session_scanner::launch::HostedDescriptor::codex),
         }

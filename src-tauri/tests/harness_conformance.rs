@@ -662,6 +662,7 @@ fn setup_config(tool: CliTool, project: &std::path::Path) -> AgentSetupConfig {
         cli_tool: tool.to_string(),
         model: default.id.clone(),
         reasoning_effort: default.default_effort.clone(),
+        delivery: None,
         account_id: None,
         project_id: project.display().to_string(),
         description: None,

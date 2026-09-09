@@ -64,6 +64,7 @@ pub(super) fn map_agent_setup_to_contract(agent: &AgentSetupConfig) -> contracts
         cli_tool: agent.cli_tool.clone(),
         model: agent.model.clone(),
         reasoning_effort: agent.reasoning_effort.clone(),
+        delivery: agent.delivery.clone(),
         account_id: agent.account_id.clone(),
         project_id: agent.project_id.clone(),
         description: agent.description.clone(),
