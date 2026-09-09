@@ -8571,3 +8571,54 @@ fn hosted_member_liveness_and_effort_relaunch_never_use_a_pane() {
     );
     orchestrator.hosted.stop(&registry, "team", "seat").unwrap();
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
+    // Regression: fa18910c made hosted-to-pane rollback permanently refuse.
+    let tmp = TempDir::new().unwrap();
+    let registry = crate::coordination::hosted::tests::seat(tmp.path());
+    let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator =
+        new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+    orchestrator
+        .hosted
+        .launch(&registry, "team", "seat", &launch)
+        .unwrap();
+    let before = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    orchestrator.hosted.stop(&registry, "team", "seat").unwrap();
+    let mut config = TeamConfigStore::load(tmp.path(), "team").unwrap();
+    config.members[0].extra.remove("adapter_mode");
+    std::fs::write(tmp.path().join("team/config.json"), serde_json::to_vec(&config).unwrap()).unwrap();
+    runtime.set_detected_runtime_session("test-pane-1", CliTool::Codex, Some("owned-thread"), None);
+    let mut commands = CliCommandSettings::default();
+    let command = format!(
+        "CODEX_HOME='{}' '{}' --sandbox read-only --ask-for-approval never",
+        tmp.path().display(),
+        launch.program.display()
+    );
+    commands.codex.fresh = command.clone();
+    commands.codex.resume = format!("{command} resume {{session_id}}");
+    commands.codex_bypass_hook_trust = false;
+    commands
+        .account_selector_dirs
+        .insert("CODEX_HOME".into(), tmp.path().into());
+    let request = ResumeMemberRequest {
+        team_name: "team".into(),
+        member_name: "seat".into(),
+        reasoning_effort_override: None,
+    };
+    let report = orchestrator
+        .resume_member_with_cli_commands_and_layout(&request, &commands, "new_window")
+        .unwrap();
+    assert!(report.resumed, "{}", report.message);
+    assert_eq!(report.pane_id.as_deref(), Some("test-pane-1"));
+    let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    assert_eq!(before.session_id, after.session_id);
+    assert!(after.app_server.is_none());
+    assert!(after.attachment_generation > before.attachment_generation);
+    assert!(runtime.calls().iter().any(|c| matches!(c,
+        RuntimeCall::SendKeys { keys, .. } if (keys.contains("resume") && keys.contains("owned-thread")) && keys.contains(tmp.path().to_str().unwrap()))));
+    assert!(taurhaus_lib::platform::process_start_ticks(before.app_server.unwrap().process_id).is_none());
+}

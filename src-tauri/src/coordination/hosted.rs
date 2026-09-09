@@ -85,7 +85,7 @@ impl HostedMembers {
         if owned.is_some() {
             return Err("owned host must be stopped before relaunch".into());
         }
-        let guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
+        let guard = HostOperationLock::acquire_for_launch(&root, team, member)
             .map_err(|e| e.to_string())?;
         let before = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
         if before.host_input_unknown
@@ -246,6 +246,56 @@ impl HostedMembers {
             _socket_directory: directory,
         });
         Ok(())
+    }
+
+    /// Taurhaus's rollback half. Live Mesh-owned delivery still needs the paired switch packet.
+    pub fn rollback_to_pane(
+        &self, registry: &TeamRootRegistry, team: &str, member: &str,
+    ) -> Result<(), String> {
+        let root = registry.resolve(team).map_err(|e| e.to_string())?;
+        let cell = self.seat(&root, team, member)?;
+        let owned = cell.try_lock().map_err(|_| "host member busy")?;
+        let _guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
+            .map_err(|e| e.to_string())?;
+        let config = TeamConfigStore::load(&root, team).map_err(|e| e.to_string())?;
+        let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
+        let attachment = record.app_server.as_ref().ok_or("NOT_HOSTED")?;
+        if config.extra.get("delivery_owner").and_then(Value::as_str) == Some("team") {
+            return Err("app_server_switch_requires_5b_recoverable_relaunch_packet".into());
+        }
+        let opted_out = config.members.iter().any(|m| m.name == member
+            && m.extra.get("adapter_mode").and_then(Value::as_str) != Some("app_server"));
+        let authority = record.launch_root.as_ref().ok_or("host launch root missing")?;
+        if !opted_out || owned.is_some() || attachment.state != "stopped"
+            || record.session_id.as_deref() != Some(&attachment.thread_id)
+            || authority.teams_dir != root || authority.team_incarnation_id != config.team_incarnation_id
+            || authority.root_authority_revision != registry.revision(team).map_err(|e| e.to_string())?
+            || taurhaus_lib::platform::process_start_ticks(attachment.process_id)
+                .map(|v| v.to_string()).as_deref() == Some(&attachment.process_start) {
+            return Err("controlled rollback requires the stopped owned attachment and explicit opt-out".into());
+        }
+        if record.host_input_unknown || (record.host_input_abandoned_at != Some(record.attachment_generation)
+            && record.recovery.claim.as_ref().is_some_and(|r| r.stage == super::recovery_card::ReceiptStage::OutcomeUnknown)) {
+            return Err("outcome_unknown: resolve hosted input before rollback".into());
+        }
+        // Refuse retained native attempts; never reinterpret missing receipts as unread.
+        match std::fs::read_dir(root.join(team).join("state/delivery")) {
+            Ok(entries) => for entry in entries {
+                if entry.map_err(|e| e.to_string())?.path().extension().is_some_and(|s| s == "native") {
+                    return Err("pending: reconcile native attempts before rollback".into());
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.to_string()),
+        }
+        MemberRuntimeStore::update(&root, team, member, |r| {
+            r.attachment_generation = r.attachment_generation.saturating_add(1);
+            r.host_rollback = Some(json!({"oldMode":"app_server", "newMode":"tmux", "optIn":false,
+                "attachment":attachment, "fence":r.attachment_generation, "unresolvedAttempts":[],
+                "abandonedAt":r.host_input_abandoned_at}));
+            r.app_server = None;
+            r.health = HealthState::SessionDead;
+        }).map(|_| ()).map_err(|e| e.to_string())
     }
 
     pub fn abandon_unknown(
@@ -517,6 +567,10 @@ pub(crate) mod tests {
         TeamRootRegistry::new(root.into())
     }
 
+    fn input(hosts: &HostedMembers, registry: &TeamRootRegistry, generation: u64, text: &str) -> Result<Value, String> {
+        hosts.operation(registry, "team", "seat", generation, "input", json!({"text":text}))
+    }
+
     #[test]
     fn hosted_definite_rejection_allows_new_input_and_relaunch() {
         // Regression: 7921d720 made definite steer rejections permanently ambiguous.
@@ -527,10 +581,10 @@ pub(crate) mod tests {
             let hosts = HostedMembers::default();
             hosts.launch(&registry, "team", "seat", &launch).unwrap();
             let generation = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap().attachment_generation;
-            hosts.operation(&registry, "team", "seat", generation, "input", json!({"text":"active"})).unwrap();
-            let error = hosts.operation(&registry, "team", "seat", generation, "input", json!({"text":rejected})).unwrap_err();
+            input(&hosts, &registry, generation, "active").unwrap();
+            let error = input(&hosts, &registry, generation, rejected).unwrap_err();
             assert!(error.starts_with("failed:"), "{error}");
-            hosts.operation(&registry, "team", "seat", generation, "input", json!({"text":"next input"})).unwrap();
+            input(&hosts, &registry, generation, "next input").unwrap();
             hosts.stop(&registry, "team", "seat").unwrap();
             hosts.launch(&registry, "team", "seat", &launch).unwrap();
             hosts.stop(&registry, "team", "seat").unwrap();
@@ -585,15 +639,7 @@ pub(crate) mod tests {
             r.app_server.as_mut().unwrap().transport = "unsupported".into()
         })
         .unwrap();
-        assert!(hosts
-            .operation(
-                &registry,
-                "team",
-                "seat",
-                generation,
-                "input",
-                json!({"text":"wrong transport"})
-            )
+        assert!(input(&hosts, &registry, generation, "wrong transport")
             .is_err());
         MemberRuntimeStore::update(tmp.path(), "team", "seat", |r| {
             r.app_server = record.app_server.clone()
@@ -602,26 +648,10 @@ pub(crate) mod tests {
 
         let holder =
             HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
-        assert!(hosts
-            .operation(
-                &registry,
-                "team",
-                "seat",
-                generation,
-                "input",
-                json!({"text":"blocked"})
-            )
+        assert!(input(&hosts, &registry, generation, "blocked")
             .is_err());
         drop(holder);
-        hosts
-            .operation(
-                &registry,
-                "team",
-                "seat",
-                generation,
-                "input",
-                json!({"text":"operator"}),
-            )
+        input(&hosts, &registry, generation, "operator")
             .unwrap();
         assert!(hosts
             .operation(
@@ -652,15 +682,7 @@ pub(crate) mod tests {
             resumed.app_server.unwrap().host_generation,
             attachment.host_generation
         );
-        assert!(hosts
-            .operation(
-                &registry,
-                "team",
-                "seat",
-                generation,
-                "input",
-                json!({"text":"stale"})
-            )
+        assert!(input(&hosts, &registry, generation, "stale")
             .is_err());
         hosts.stop(&registry, "team", "seat").unwrap();
     }
@@ -791,15 +813,7 @@ pub(crate) mod tests {
         let generation = MemberRuntimeStore::load(tmp.path(), "team", "seat")
             .unwrap()
             .attachment_generation;
-        hosts
-            .operation(
-                &registry,
-                "team",
-                "seat",
-                generation,
-                "input",
-                json!({"text":"startup marker"}),
-            )
+        input(&hosts, &registry, generation, "startup marker")
             .unwrap();
         {
             let _guard =
@@ -821,15 +835,7 @@ pub(crate) mod tests {
                 .unwrap()
                 .pending
         );
-        hosts
-            .operation(
-                &registry,
-                "team",
-                "seat",
-                generation,
-                "input",
-                json!({"text":"after compact"}),
-            )
+        input(&hosts, &registry, generation, "after compact")
             .unwrap();
         let transcript = hosts
             .operation(
@@ -892,15 +898,7 @@ pub(crate) mod tests {
         let mut config: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         config["team_incarnation_id"] = json!("recreated");
         std::fs::write(path, config.to_string()).unwrap();
-        assert!(hosts
-            .operation(
-                &registry,
-                "team",
-                "seat",
-                record.attachment_generation,
-                "input",
-                json!({"text":"wrong incarnation"})
-            )
+        assert!(input(&hosts, &registry, record.attachment_generation, "wrong incarnation")
             .is_err());
         hosts.stop(&registry, "team", "seat").unwrap();
     }

@@ -33,6 +33,9 @@ const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
 /// Runtime record persisted at `teams/<team>/runtime/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberRuntimeRecord {
+    /// Recoverable stopped-host boundary, retained if pane relaunch fails.
+    #[serde(default, rename = "hostRollback", alias = "host_rollback", skip_serializing_if = "Option::is_none")]
+    pub host_rollback: Option<Value>,
     #[serde(default, rename = "hostInputUnknown", alias = "host_input_unknown")]
     pub host_input_unknown: bool,
     /// Operator abandoned the ambiguous input at this stopped attachment; no replay.
@@ -204,6 +207,7 @@ mod start_ticks {
 impl Default for MemberRuntimeRecord {
     fn default() -> Self {
         Self {
+            host_rollback: None,
             host_input_unknown: false,
             host_input_abandoned_at: None,
             app_server: None,
@@ -336,6 +340,7 @@ impl MemberRuntimeSnapshot {
         };
 
         let mut changed = Vec::new();
+        if self.baseline.host_rollback != current.host_rollback { changed.push("hostRollback"); }
         if self.baseline.host_input_unknown != current.host_input_unknown
             || self.baseline.host_input_abandoned_at != current.host_input_abandoned_at {
             changed.push("hostInputUnknown");
@@ -939,6 +944,8 @@ fn parse_runtime_record(
 ) -> Result<MemberRuntimeRecord, CoordinationError> {
     #[derive(Debug, Deserialize)]
     struct RuntimeRecordWire {
+        #[serde(default, alias = "hostRollback")]
+        host_rollback: Option<Value>,
         #[serde(default, alias = "hostInputUnknown")]
         host_input_unknown: bool,
         #[serde(default, alias = "hostInputAbandonedAt")]
@@ -1035,6 +1042,7 @@ fn parse_runtime_record(
     })?;
 
     Ok(MemberRuntimeRecord {
+        host_rollback: wire.host_rollback,
         host_input_unknown: wire.host_input_unknown,
         host_input_abandoned_at: wire.host_input_abandoned_at,
         app_server: wire.app_server,
@@ -1111,6 +1119,7 @@ fn merge_current_extension_fields(
             record.daemon_pid = latest.daemon_pid;
         }
         if preserve_applied_effort || latest.attachment_generation > record.attachment_generation {
+            record.host_rollback = latest.host_rollback;
             record.host_input_unknown = latest.host_input_unknown;
             record.host_input_abandoned_at = latest.host_input_abandoned_at;
             record.app_server = latest.app_server;
@@ -1184,6 +1193,7 @@ fn merge_current_extension_fields(
 // flattened fields in camelCase. The snake_case spellings remain listed
 // as read aliases for runtime records written before that contract settled.
 const RUNTIME_AUTHORED_KEYS: &[&str] = &[
+    "hostRollback", "host_rollback",
     "hostInputUnknown", "host_input_unknown",
     "hostInputAbandonedAt", "host_input_abandoned_at",
     "appServer",
