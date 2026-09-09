@@ -8483,6 +8483,7 @@ fn terminal_effort_marks_dead_before_wait_and_retries_without_spending_budget() 
 
 #[test]
 fn reinitialize_resets_attachment_without_rewinding_generation() {
+    // Regression: b643834d required an existing config even on the legacy path.
     // Regression: 80a83d08 merged a fresh seed behind the on-disk generation,
     // silently retaining its old healthy pane throughout reinitialization.
     let tmp = TempDir::new().unwrap();
@@ -8510,7 +8511,7 @@ fn reinitialize_resets_attachment_without_rewinding_generation() {
     )
     .unwrap();
     orchestrator
-        .seed_initialize_roster("team", None, lead, &[])
+        .seed_initialize_roster("team", None, lead, &[], false)
         .unwrap();
     let record = MemberRuntimeStore::load(tmp.path(), "team", "lead").unwrap();
     assert_eq!(record.health, HealthState::SessionDead);

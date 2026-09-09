@@ -172,6 +172,7 @@ impl CoordinationOrchestrator {
             request.team_description.clone(),
             lead_member,
             &agent_members,
+            request.messaging.is_some(),
         ) {
             self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report_with_progress(
@@ -529,15 +530,15 @@ impl CoordinationOrchestrator {
         team_description: Option<String>,
         lead_member: crate::coordination::domain::Member,
         agent_members: &[crate::coordination::domain::Member],
+        canonical: bool,
     ) -> Result<(), CoordinationError> {
         let created_at = Utc::now();
         let mut members = Vec::with_capacity(1 + agent_members.len());
         members.push(lead_member);
         members.extend(agent_members.iter().cloned());
 
-        let existing = TeamConfigStore::load(&self.teams_dir, team_name)?;
-        if existing.extra.get("messaging_format") == Some(&serde_json::json!(2)) {
-            let mut config = existing;
+        if canonical {
+            let mut config = TeamConfigStore::load(&self.teams_dir, team_name)?;
             let lead = config
                 .members
                 .iter()
