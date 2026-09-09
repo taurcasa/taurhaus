@@ -845,7 +845,11 @@ fn save_runtime_record_locked(
 
     let target_path = runtime_record_path(teams_dir, team_name, member_name);
     let tmp_path = runtime_tmp_path(teams_dir, team_name, member_name);
-    let payload = serde_json::to_string_pretty(&normalized).map_err(|err| {
+    let mut wire = serde_json::to_value(&normalized).map_err(|err| CoordinationError::StoreError(err.to_string()))?;
+    if normalized.app_server.is_some() && normalized.health == HealthState::Healthy {
+        wire["health"] = Value::String("active".into());
+    }
+    let payload = serde_json::to_string_pretty(&wire).map_err(|err| {
         CoordinationError::StoreError(format!(
             "failed to serialize runtime record for '{member_name}': {err}"
         ))
@@ -1502,6 +1506,7 @@ where
     D: Deserializer<'de>,
 {
     let value = Value::deserialize(deserializer)?;
+    if value == "active" { return Ok(HealthState::Healthy); }
     Ok(serde_json::from_value(value).unwrap_or_else(|_| default_runtime_health()))
 }
 

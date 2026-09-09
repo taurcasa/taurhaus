@@ -1,6 +1,4 @@
 pub mod agy_hooks;
-#[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
-pub(crate) mod app_server;
 pub mod auth;
 #[cfg(feature = "mesh-bridged-backend")]
 pub(crate) mod background_scheduler;

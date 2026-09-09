@@ -33,7 +33,7 @@ impl HostProcess {
             .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
             .spawn().map_err(|e| e.to_string())?;
         let mut host = Self { child, rpc: None, thread_id: String::new(), build: String::new(), process_start: String::new(), socket: socket.into(), uncertain: false };
-        host.process_start = crate::platform::process_start_ticks(host.child.id()).ok_or("host process identity unavailable")?.to_string();
+        host.process_start = taurhaus_lib::platform::process_start_ticks(host.child.id()).ok_or("host process identity unavailable")?.to_string();
         loop {
             let remaining = guard.remaining().map_err(|e| e.to_string())?;
             if host.child.try_wait().map_err(|e| e.to_string())?.is_some() {
@@ -66,10 +66,12 @@ impl HostProcess {
         Ok(host)
     }
 
+    pub fn outcome_unknown(&self) -> bool { self.uncertain }
+
     pub fn pid(&self) -> u32 { self.child.id() }
     pub fn alive(&mut self) -> bool {
         self.child.try_wait().ok().flatten().is_none()
-            && crate::platform::process_start_ticks(self.child.id()).map(|v| v.to_string()).as_deref() == Some(&self.process_start)
+            && taurhaus_lib::platform::process_start_ticks(self.child.id()).map(|v| v.to_string()).as_deref() == Some(&self.process_start)
     }
 
     pub fn transcript(&mut self, guard: &HostOperationLock) -> Result<Value, String> {
@@ -196,11 +198,11 @@ impl Rpc {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
-    fn fixture(root: &std::path::Path) -> crate::session_scanner::launch::HostedLaunch {
+    pub(crate) fn fixture(root: &std::path::Path) -> crate::session_scanner::launch::HostedLaunch {
         let executable = root.join("codex");
         std::fs::write(&executable, r#"#!/usr/bin/python3
 import json, os, socket, sys, threading
@@ -261,7 +263,7 @@ with socket.socket(socket.AF_UNIX) as listener:
         assert!(host.transcript(&guard).unwrap().to_string().contains("operator marker"));
         let pid = host.child.id();
         drop(host);
-        assert!(crate::platform::process_start_ticks(pid).is_none());
+        assert!(taurhaus_lib::platform::process_start_ticks(pid).is_none());
         let mut resumed = HostProcess::launch(&launch, tmp.path(), &tmp.path().join("b.sock"), Some("owned-thread"), &guard).unwrap();
         assert!(resumed.transcript(&guard).unwrap().to_string().contains("operator marker"));
         assert!(HostProcess::launch(&launch, tmp.path(), &tmp.path().join("c.sock"), Some("wrong-thread"), &guard).is_err());
