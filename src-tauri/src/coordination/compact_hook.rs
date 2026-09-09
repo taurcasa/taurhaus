@@ -3873,6 +3873,39 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
 
     #[cfg(unix)]
     #[test]
+    fn hook_drain_discovery_failure_preserves_installed_home() {
+        // Regression: 15f222bd treated unavailable capabilities as disabled pins,
+        // deleting daemon-owned registrations during Windows/app reconciliation.
+        for failure in ["missing", "nonzero", "invalid", "malformed-descriptor"] {
+            let (fake, _, teams) = hook_drain_fixture();
+            let home = fake.dir.path().join("selected-codex");
+            let mesh = fake.dir.path().join("mesh");
+            let exe = fake.dir.path().join("taurhaus");
+            fs::write(&exe, "fixture executable").unwrap();
+            let bindings = vec![(teams, "drain-team".into(), "architect".into())];
+            assert!(drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).unwrap());
+            let settings = home.join("hooks.json");
+            let installed = fs::read(&settings).unwrap();
+            let scripts = fs::read_dir(home.join("hooks")).unwrap()
+                .map(|entry| { let path = entry.unwrap().path(); let bytes = fs::read(&path).unwrap(); (path, bytes) })
+                .collect::<Vec<_>>();
+            match failure {
+                "missing" => fs::remove_file(&mesh).unwrap(),
+                "nonzero" => fs::write(&mesh, "#!/bin/sh\nexit 7\n").unwrap(),
+                "invalid" => fs::write(&mesh, "#!/bin/sh\nprintf invalid\n").unwrap(),
+                _ => {
+                    let script = fs::read_to_string(&mesh).unwrap().replace("'max_bytes':8192", "'max_bytes':'invalid'");
+                    fs::write(&mesh, script).unwrap();
+                }
+            }
+            assert!(!drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).unwrap(), "{failure}");
+            assert_eq!(fs::read(&settings).unwrap(), installed, "{failure}");
+            for (path, bytes) in scripts { assert_eq!(fs::read(path).unwrap(), bytes); }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn hook_drain_codex_home_reconciliation_preserves_foreign_and_malformed_settings() {
         let (fake, _, teams) = hook_drain_fixture();
         let home = fake.dir.path().join("selected-codex");

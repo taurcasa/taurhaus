@@ -2873,6 +2873,20 @@ mod tests {
         }
     }
     #[test]
+    fn string_runtime_context_requires_new_reader_protocol() {
+        // Regression: c408b68a changed persisted contextGeneration to a string
+        // without excluding protocol-25 apps, whose u64 reader rejects the record.
+        #[derive(Deserialize)]
+        struct LegacyRecord {
+            #[serde(default, rename = "contextGeneration")]
+            _context_generation: u64,
+        }
+        let wire = serde_json::to_value(sample_record("seat")).unwrap();
+        assert!(serde_json::from_value::<LegacyRecord>(wire).is_err());
+        assert!(crate::daemon::protocol::PROTOCOL_VERSION > 25);
+    }
+
+    #[test]
     fn hook_runtime_wire_uses_verified_session_and_string_context() {
         // Regression: 3ca169ed published a numeric contextGeneration, incompatible with v1.1.
         let mut record = sample_record("seat");

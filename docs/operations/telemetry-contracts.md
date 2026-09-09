@@ -174,5 +174,6 @@ boundary. This packet proves software behavior only. Mesh's production descripto
 remain disabled; real Claude/Codex uptake, exact paired tips and intended
 build/host/config/trust evidence belong to the separately authorized uptake lane.
 Claude native-mailbox exclusion still blocks activation in Mesh. agy/Grok and Stop
-continuation remain inactive. No daemon protocol change, transport retirement,
+continuation remain inactive. Daemon protocol 26 excludes protocol-25 readers of
+the new string runtime context generation. No transport retirement,
 canonical-writer expansion or live deployment is implied.

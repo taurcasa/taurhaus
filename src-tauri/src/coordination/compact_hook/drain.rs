@@ -80,15 +80,16 @@ fn read_json(path: &Path, limit: usize) -> Option<Value> {
 }
 
 fn executable() -> Option<PathBuf> {
-    // Windows hooks execute through the native WSL daemon. Never discover a shell here.
+    // Only native Unix hooks execute this transport. Windows reconciliation must
+    // stand down and preserve the registrations owned by the WSL daemon.
     if cfg!(windows) {
         return None;
     }
     let path = PathBuf::from(crate::coordination::mesh_cli::mesh_binary_path()?);
-    path.is_absolute().then_some(path)
+    (path.is_absolute() && path.is_file()).then_some(path)
 }
 
-fn descriptors(executable: &Path, root: &Path, team: &str, member: &str) -> Vec<Descriptor> {
+fn descriptors(executable: &Path, root: &Path, team: &str, member: &str) -> Option<Vec<Descriptor>> {
     let result = exchange(
         executable,
         root,
@@ -98,22 +99,17 @@ fn descriptors(executable: &Path, root: &Path, team: &str, member: &str) -> Vec<
         &json!({"protocol":PROTOCOL}),
     );
     if result.failed {
-        return Vec::new();
+        return None;
     }
     let Ok(value) = serde_json::from_slice::<Value>(&result.bytes) else {
-        return Vec::new();
+        return None;
     };
     if value["protocol"] != PROTOCOL {
-        return Vec::new();
+        return None;
     }
-    value["descriptors"]
-        .as_array()
-        .filter(|rows| rows.len() <= 64)
-        .into_iter()
-        .flatten()
-        .filter_map(|row| serde_json::from_value(row.clone()).ok())
-        .filter(Descriptor::supported)
-        .collect()
+    let rows = value["descriptors"].as_array().filter(|rows| rows.len() <= 64)?;
+    let pins: Vec<Descriptor> = serde_json::from_value(Value::Array(rows.clone())).ok()?;
+    Some(pins.into_iter().filter(Descriptor::supported).collect())
 }
 
 /// Only exact runtime session identity can authorize a drain. The compaction
@@ -219,7 +215,9 @@ pub(super) fn append(teams: &Path, payload: &CompactHookInput, response: &mut Co
     };
     let root = PathBuf::from(identity["runtime"]["root"].as_str().unwrap_or_default());
     let source = payload.source.as_deref().unwrap_or("ordinary");
-    let pins = descriptors(&executable, &root, &matched.team_name, &matched.member.name);
+    let Some(pins) = descriptors(&executable, &root, &matched.team_name, &matched.member.name) else {
+        return;
+    };
     let matching: Vec<_> = pins
         .iter()
         .filter(|pin| {
@@ -548,6 +546,8 @@ pub fn reconcile_home(
     if !matches!(tool, CliTool::Claude | CliTool::Codex) {
         return Ok(false);
     }
+    // Absence of capability evidence never grants teardown authority (notably on Windows).
+    let Some(mesh) = executable() else { return Ok(false); };
     let filename = if tool == CliTool::Claude {
         CLAUDE_SETTINGS_FILENAME
     } else {
@@ -561,7 +561,7 @@ pub fn reconcile_home(
     if settings["disableAllHooks"] != true
         && hook_executable_exists(home, &runtime_path_string(exe, runtime)?)
     {
-        if let Some(mesh) = executable() {
+        {
             for (teams, team, member) in bindings {
                 let Some(config) = read_json(&teams.join(team).join("config.json"), 1024 * 1024)
                 else {
@@ -591,7 +591,10 @@ pub fn reconcile_home(
                 let Some(root) = teams.parent() else {
                     continue;
                 };
-                for pin in descriptors(&mesh, root, team, member) {
+                let Some(pins) = descriptors(&mesh, root, team, member) else {
+                    return Ok(false);
+                };
+                for pin in pins {
                     if pin.harness != tool.to_string() || pin.source == COMPACT_SOURCE {
                         continue;
                     }
