@@ -500,14 +500,7 @@ fn handle_compact_hook_with_guard(
 
     let before =
         MemberRuntimeStore::load(&matched.teams_dir, &matched.team_name, &matched.member.name)?;
-    if before.app_server.is_some()
-        || matched
-            .member
-            .extra
-            .get("adapter_mode")
-            .and_then(Value::as_str)
-            == Some("app_server")
-    {
+    if before.app_server.is_some() {
         *host_guard = Some(
             crate::coordination::stores::lock::HostOperationLock::acquire(
                 &matched.teams_dir,
@@ -3230,7 +3223,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn compact_hook_records_the_transcript_compaction_timestamp() {
+    fn compact_hook_preserves_opted_in_pane_recovery_and_timestamp() {
         // Regression: 6fe0aa3 recorded Utc::now() for hook delivery while the
         // transcript fallback recorded the compacted event timestamp, defeating dedupe.
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -3238,6 +3231,8 @@ pub(crate) mod tests {
         fs::create_dir_all(&project).expect("project dir");
         let mut member = sample_member(&project);
         member.cli_tool = CliTool::Codex;
+        // Regression: 4cae348e treated opt-in as a published host, dropping pane recovery.
+        member.extra.insert("adapter_mode".into(), json!("app_server"));
         write_team_fixture(tmp.path(), "codex-team", &member, "session-codex");
         write_snapshot_fixture(tmp.path(), "codex-team", &member.name);
         let transcript_path = tmp
@@ -3254,7 +3249,7 @@ pub(crate) mod tests {
         )
         .expect("write transcript");
 
-        handle_compact_hook(
+        let response = handle_compact_hook(
             &json!({
                 "hook_event_name": "SessionStart",
                 "session_id": "session-codex",
@@ -3266,10 +3261,19 @@ pub(crate) mod tests {
             tmp.path(),
         )
         .expect("handle Codex compact hook");
+        assert!(response
+            .hook_specific_output
+            .unwrap()
+            .additional_context
+            .contains("Current task: #680"));
+        let record = MemberRuntimeStore::load(tmp.path(), "codex-team", &member.name).unwrap();
+        assert!(record.pane_id.is_some() && record.app_server.is_none());
 
         let state = MemberCompactionStore::load(tmp.path(), "codex-team", &member.name)
             .expect("load compaction state")
             .expect("compaction state");
+        assert_eq!(state.last_delivery_result, CompactionDeliveryResult::Injected);
+        assert_eq!(state.last_session_id, "session-codex");
         assert_eq!(
             state.last_compaction_timestamp,
             DateTime::parse_from_rfc3339("2026-08-26T06:00:00.123Z")
