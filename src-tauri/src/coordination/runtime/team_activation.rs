@@ -44,17 +44,18 @@ mod tests {
     use super::*;
     use crate::coordination::stores::TeamConfigStore;
 
+    // Regression: 7ffdba14 unbalanced string delimiters confused the source boundary scanner.
     fn frontend_canonical_policy() -> serde_json::Value {
         // The shipping literal is valid JSON so this lane validates exactly the UI policy.
         let source = include_str!("../../../../src/lib/components/meshTabUtils.js");
         let literal = source
-            .split_once("export const DEFAULT_CANONICAL_POLICY = Object.freeze(")
+            .split_once("export const DEFAULT_CANONICAL_POLICY = Object.freeze({")
             .unwrap()
             .1
             .split_once("\n})")
             .unwrap()
             .0;
-        serde_json::from_str(&format!("{literal}\n}}"))
+        serde_json::from_str(&format!("{{{literal}\n}}"))
             .expect("keep the shared policy literal valid JSON")
     }
 
