@@ -262,6 +262,7 @@ describe('meshTabUtils cross-project metadata', () => {
   it('builds a minimal preset initialization payload and omits role metadata', () => {
     const request = buildInitializationRequest({
       initializationMode: 'preset',
+      canonicalMessaging: false,
       presetId: 'full-team',
       lead: {
         name: 'team-lead',
@@ -639,5 +640,21 @@ describe('meshTabUtils launch account note', () => {
       accountNote: 'opaque_base_command',
       accountNoteDetail: 'team-wrapper',
     }))
+  })
+})
+
+describe('canonical messaging initialization', () => {
+  it.each(['custom', 'preset'])('includes the disposable policy for %s teams and omits it when disabled', (initializationMode) => {
+    const config = { initializationMode, presetId: 'trial', lead: {}, agents: [] }
+    const request = buildInitializationRequest(config, 'trial')
+    expect(request.messaging).toEqual({ mode: 'canonical', retentionPolicy: {
+      capture_scope: 'mesh-producers-only', synthetic_disposable: true,
+      dm_horizon_days: 7, task_horizon_days: 30, retry_horizon_days: 30,
+      archive_owner: 'lead', archive_access: 'captured-audience',
+      closure: 'manual-disposal-after-evidence-export', purge_implemented: false,
+      canonical_writers: 'mesh-only', approved_by: 'taurhaus-operator',
+      inactive_horizon_days: 14, review_horizon_days: 30,
+    } })
+    expect(buildInitializationRequest({ ...config, canonicalMessaging: false }, 'trial')).not.toHaveProperty('messaging')
   })
 })

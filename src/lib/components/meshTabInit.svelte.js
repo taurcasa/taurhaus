@@ -1,8 +1,8 @@
 export function createMeshTabInit({ state, refs, deps, gate, setup }) {
-  function handleInitialize() {
+  function handleInitialize({ canonicalMessaging = true } = {}) {
     if (!state.canInitialize) return
     state.initProgress = deps.buildInitializationRequest(
-      state.teamConfig,
+      { ...state.teamConfig, canonicalMessaging },
       state.teamName,
       deps.getProjectPath(),
       deps.getModelCatalog()

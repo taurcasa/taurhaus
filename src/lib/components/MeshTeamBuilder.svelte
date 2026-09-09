@@ -79,6 +79,8 @@
     onSavePreset = () => {},
   } = $props()
 
+  let canonicalMessaging = $state(true)
+
   const t = $derived(themeTokens(dark))
   const modelCatalogContext = getModelCatalogContext()
   const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
@@ -1191,7 +1193,7 @@
       await tick()
     }
 
-    onInitialize()
+    onInitialize({ canonicalMessaging })
   }
 
   function toggleLeadDetails() {
@@ -2562,6 +2564,13 @@
         </div>
 
         <footer class="shrink-0 space-y-3 border-t pt-3 {dark ? 'border-white/[0.08]' : 'border-zinc-200/70'}" data-testid="mesh-action-bar">
+          <label class="flex items-start gap-2 text-xs {t.textPrimary}">
+            <input type="checkbox" bind:checked={canonicalMessaging} class="mt-0.5 accent-brand-600" />
+            <span>
+              <span>Canonical messaging — mesh journal + team delivery (disposable team)</span>
+              <span class="mt-1 block {t.textSecondary}" aria-hidden="true">Keeps messages in the mesh journal; dispose of the team after exporting evidence.</span>
+            </span>
+          </label>
           <div class="w-full" title={!canInitialize ? initializeButtonTitle : undefined} data-testid="mesh-action-initialize-hint">
             <button
               class="flex h-12 w-full items-center justify-center gap-2 rounded-[18px] bg-brand-600 px-4 text-[13px] font-semibold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"

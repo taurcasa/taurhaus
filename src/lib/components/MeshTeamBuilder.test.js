@@ -1189,3 +1189,16 @@ describe('MeshTeamBuilder role-inherited reasoning effort', () => {
     expect(effort).toHaveValue('')
   })
 })
+
+it('defaults canonical messaging on and passes the operator toggle to initialization', async () => {
+  const onInitialize = vi.fn()
+  renderBuilder({ onInitialize, teamConfig: { lead: { name: 'lead', tool: 'codex', model: 'gpt-5.4', projectId: '/projects/taurhaus' }, agents: [] } })
+  const toggle = screen.getByRole('checkbox', { name: 'Canonical messaging — mesh journal + team delivery (disposable team)' })
+  expect(toggle).toBeChecked()
+  await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+  expect(onInitialize).toHaveBeenLastCalledWith({ canonicalMessaging: true })
+  await fireEvent.click(toggle)
+  expect(toggle).not.toBeChecked()
+  await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+  expect(onInitialize).toHaveBeenLastCalledWith({ canonicalMessaging: false })
+})

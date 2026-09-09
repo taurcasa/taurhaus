@@ -2,6 +2,8 @@
 
 User guide for the Mesh template system, with the correct mental model for role design.
 
+New teams default to **Canonical messaging — mesh journal + team delivery (disposable team)** in the team builder. Turn it off for legacy messaging; canonical teams retain evidence in the mesh journal and require manual disposal after evidence export.
+
 ## Why Roles Matter
 
 Roles are not mainly about listing what a model can do. They exist to define a **context domain**.
