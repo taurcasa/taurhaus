@@ -228,7 +228,7 @@ fn known_error_code(code: &str) -> Option<&'static str> {
         "unauthorized",
         "task_not_found",
         "canonical_required",
-        "budget_exceeded",
+        "body_budget",
     ]
     .into_iter()
     .find(|known| *known == code)

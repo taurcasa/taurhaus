@@ -460,9 +460,17 @@ mod tests {
     fn canonical_refusal_preserves_only_safe_error_codes() {
         // Regression: 20b27ac6 dropped all Mesh refusal reasons, leaving only the exit code.
         let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
-        for diagnostic in [
-            r#"{"error":"canonical_service_contract_required","detail":"private body"}"#,
-            "error: IO error: journal: canonical_service_contract_required",
+        for (diagnostic, expected) in [
+            (
+                r#"{"error":"canonical_service_contract_required","detail":"private body"}"#,
+                "canonical_service_contract_required",
+            ),
+            (
+                "error: IO error: journal: canonical_service_contract_required",
+                "canonical_service_contract_required",
+            ),
+            ("error: unauthorized: private body", "unauthorized"),
+            ("error: IO error: journal: body_budget", "body_budget"),
         ] {
             let script = format!("echo '{}' >&2; exit 1", diagnostic);
             let mesh = crate::coordination::mesh_cli::FakeMesh::new(
@@ -480,10 +488,7 @@ mod tests {
             let error = MeshInboxStore::append(&root, "t", "agent", &message)
                 .unwrap_err()
                 .to_string();
-            assert!(
-                error.contains("canonical_service_contract_required"),
-                "{error}"
-            );
+            assert!(error.contains(expected), "{error}");
             assert!(!error.contains("private body"));
             assert_eq!(mesh.argv().matches("accept\n").count(), 1);
         }

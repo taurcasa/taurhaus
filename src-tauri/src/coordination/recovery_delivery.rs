@@ -466,12 +466,15 @@ fn observe_pre_submission_failure(
     };
     let mut recorded = false;
     MemberRuntimeStore::update(root, team, member, |runtime| {
-        if runtime.recovery.claim.as_ref().is_some_and(|claim| {
+        if let Some(claim) = runtime.recovery.claim.as_ref().filter(|claim| {
             claim.delivery_id == receipt.delivery_id
                 && claim.attempt == receipt.attempt
                 && claim.card_key == receipt.card_key
                 && claim.stage == ReceiptStage::OutcomeUnknown
         }) {
+            // The inbox envelope is pre-marked accepted for legacy persistence.
+            // Only the runtime claim is evidence of what actually happened.
+            receipt = claim.clone();
             runtime.recovery.observe(&receipt, ReceiptStage::Failed, 0);
             recorded = true;
         }
@@ -858,7 +861,14 @@ mod tests {
                     }))
                     .is_err());
                 let runtime = MemberRuntimeStore::load(&root, "team", "seat").unwrap();
-                assert_eq!(runtime.recovery.claim.unwrap().stage, ReceiptStage::Failed);
+                let failed = runtime.recovery.claim.unwrap();
+                assert_eq!(failed.stage, ReceiptStage::Failed);
+                // Regression: 6efb08f5 copied the pre-marked legacy envelope into a failure receipt.
+                assert_eq!(failed.accepted_bytes, 0);
+                assert!(!failed
+                    .observations
+                    .iter()
+                    .any(|(stage, _, _)| *stage == ReceiptStage::Accepted));
             }
             assert!(prepare(&registry, &root, "team", "seat", "inbox")
                 .unwrap()
