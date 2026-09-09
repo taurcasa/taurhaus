@@ -554,7 +554,7 @@ fn handle_compaction_decision(
             || current.session_id.as_deref() != Some(payload.session_id.as_str())
             || attachment.thread_id != payload.session_id
             || attachment.contract != 1
-            || attachment.transport != "unix_ndjson"
+            || attachment.transport != "unix-websocket"
             || attachment.state != "ready"
         {
             return Err(CoordinationError::Conflict(
@@ -3698,7 +3698,7 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
             host: "fixture".into(),
             configuration: "fixture".into(),
             trust: "fixture".into(),
-            transport: "unix_ndjson".into(),
+            transport: "unix-websocket".into(),
             state: "ready".into(),
         });
         MemberRuntimeStore::save(&teams, "drain-team", "architect", &runtime).unwrap();

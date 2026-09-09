@@ -1,16 +1,17 @@
-//! Owned host process and bounded contract-v1 RPC. Never used for TUI seats.
+//! Owned host process and bounded contract-v1 RPC over Unix WebSockets.
 
 use crate::coordination::stores::lock::HostOperationLock;
 use serde_json::{json, Value};
 use std::collections::VecDeque;
-use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use taurhaus_lib::session_scanner::launch::HostedLaunch;
 
-const FRAME_LIMIT: usize = 65_536;
+#[path = "hosted_websocket.rs"]
+mod websocket;
+use websocket::WebSocket;
 
 pub(crate) struct HostProcess {
     child: Child,
@@ -74,7 +75,7 @@ impl HostProcess {
             {
                 let stream: UnixStream = connection.into();
                 host.rpc = Some(Rpc {
-                    reader: BufReader::new(stream),
+                    socket: WebSocket::connect(stream, guard)?,
                     events: VecDeque::new(),
                     requests: Vec::new(),
                     truncated: false,
@@ -329,63 +330,26 @@ impl RpcError {
 }
 
 struct Rpc {
-    reader: BufReader<UnixStream>,
+    socket: WebSocket,
     events: VecDeque<Value>,
     requests: Vec<Value>,
     truncated: bool,
 }
 impl Rpc {
     fn write(&mut self, value: &Value, guard: &HostOperationLock) -> Result<(), String> {
-        let mut frame = serde_json::to_vec(value).map_err(|e| e.to_string())?;
-        frame.push(b'\n');
-        if frame.len() > FRAME_LIMIT {
-            return Err("host frame exceeds 64 KiB".into());
-        }
-        let mut remaining = frame.as_slice();
-        while !remaining.is_empty() {
-            self.reader
-                .get_mut()
-                .set_write_timeout(Some(guard.remaining().map_err(|e| e.to_string())?))
-                .map_err(|e| e.to_string())?;
-            let n = self
-                .reader
-                .get_mut()
-                .write(remaining)
-                .map_err(|_| "host write failed; outcome may be unknown")?;
-            if n == 0 {
-                return Err("host connection closed during write".into());
-            }
-            remaining = &remaining[n..];
-        }
-        Ok(())
+        self.socket.send(
+            1,
+            &serde_json::to_vec(value).map_err(|e| e.to_string())?,
+            guard,
+        )
     }
     fn read(&mut self, guard: &HostOperationLock) -> Result<Value, String> {
-        let mut frame = Vec::new();
-        loop {
-            self.reader
-                .get_mut()
-                .set_read_timeout(Some(guard.remaining().map_err(|e| e.to_string())?))
-                .map_err(|e| e.to_string())?;
-            let chunk = self
-                .reader
-                .fill_buf()
-                .map_err(|_| "host read failed; outcome may be unknown")?;
-            if chunk.is_empty() {
-                return Err("host connection closed".into());
-            }
-            let count = chunk
-                .iter()
-                .position(|b| *b == b'\n')
-                .map_or(chunk.len(), |n| n + 1);
-            if frame.len() + count > FRAME_LIMIT {
-                return Err("host frame exceeds 64 KiB".into());
-            }
-            frame.extend_from_slice(&chunk[..count]);
-            self.reader.consume(count);
-            if frame.last() == Some(&b'\n') {
-                return serde_json::from_slice(&frame).map_err(|_| "malformed host frame".into());
-            }
+        let message = self.socket.read(guard)?;
+        let value: Value = serde_json::from_slice(&message).map_err(|_| "malformed host frame")?;
+        if !value.is_object() {
+            return Err("host frame must contain one JSON object".into());
         }
+        Ok(value)
     }
     fn call(
         &mut self,
@@ -436,7 +400,7 @@ pub(crate) mod tests {
     ) -> taurhaus_lib::session_scanner::launch::HostedLaunch {
         let executable = root.join("codex");
         std::fs::write(&executable, r#"#!/usr/bin/python3
-import json, os, socket, sys, threading, fcntl
+import json, os, socket, sys, threading, fcntl, base64, hashlib, struct
 root = os.environ['CODEX_HOME']
 address = sys.argv[sys.argv.index('--listen')+1].removeprefix('unix://')
 saved = os.path.join(root, 'thread.json')
@@ -445,8 +409,60 @@ lock = threading.Lock()
 def client(connection):
     global thread
     with connection, connection.makefile('rwb') as stream:
-        for line in stream:
-            request = json.loads(line)
+        # Regression: cadd533e spoke NDJSON; Codex 0.153.4 closes it with EOF.
+        if stream.readline() != b'GET / HTTP/1.1\r\n': return
+        headers = {}
+        while True:
+            line = stream.readline()
+            if line == b'\r\n': break
+            key, value = line.decode().split(':', 1)
+            headers[key.lower()] = value.strip()
+        assert headers['upgrade'].lower() == 'websocket'
+        assert headers['connection'].lower() == 'upgrade'
+        assert headers['sec-websocket-version'] == '13'
+        assert len(base64.b64decode(headers['sec-websocket-key'])) == 16
+        accept = base64.b64encode(hashlib.sha1((headers['sec-websocket-key'] + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
+        if os.environ.get('FAKE_WIRE') == 'bad_accept': accept = 'wrong'
+        stream.write(('HTTP/1.1 101 Switching Protocols\r\nconnection: Upgrade\r\nupgrade: websocket\r\nsec-websocket-accept: '+accept+'\r\n\r\n').encode()); stream.flush()
+        def frame(opcode, payload, fin=True):
+            n = len(payload)
+            header = bytes([(128 if fin else 0) | opcode])
+            header += bytes([n]) if n < 126 else (b'\x7e'+struct.pack('!H',n) if n <= 65535 else b'\x7f'+struct.pack('!Q',n))
+            stream.write(header+payload); stream.flush()
+        def receive():
+            header = stream.read(2)
+            if not header: return 8, b''
+            assert header[0] & 128 and header[1] & 128, 'client must mask'
+            n = header[1] & 127
+            if n == 126: n = struct.unpack('!H', stream.read(2))[0]
+            if n == 127: n = struct.unpack('!Q', stream.read(8))[0]
+            assert n <= 65536
+            mask, payload = stream.read(4), stream.read(n)
+            return header[0] & 15, bytes(b ^ mask[i%4] for i,b in enumerate(payload))
+        def emit(value):
+            payload = json.dumps(value).encode()
+            if os.environ.get('FAKE_WIRE') == 'fragment_ping':
+                frame(1, payload[:3], False); frame(9, b'probe')
+                assert receive() == (10, b'probe')
+                frame(0, payload[3:])
+            else: frame(1, payload)
+        initialized = False
+        while True:
+            opcode, payload = receive()
+            if opcode == 8:
+                if payload: frame(8, payload)
+                return
+            assert opcode == 1
+            request = json.loads(payload)
+            if not initialized:
+                assert request['method'] == 'initialize'
+                assert request['params']['capabilities']['experimentalApi'] is True
+                initialized = True
+                wire = os.environ.get('FAKE_WIRE')
+                if wire == 'close':
+                    frame(8, struct.pack('!H',1000)); assert receive() == (8, struct.pack('!H',1000)); return
+                if wire == 'oversize':
+                    stream.write(b'\x81\x7f'+struct.pack('!Q',65537)); stream.flush(); return
             assert 'jsonrpc' not in request
             if 'id' not in request: continue
             if 'method' not in request:
@@ -508,9 +524,8 @@ def client(connection):
                     with open(saved, 'w') as output: json.dump(thread, output)
                 if method == 'turn/start' and params['input'][0]['text'] == 'disconnect': return
                 reply = {'id':request['id'], 'error':error} if error else {'id':request['id'], 'result':result}
-                stream.write((json.dumps(reply)+'\n').encode())
-                if approval: stream.write((json.dumps(approval)+'\n').encode())
-                stream.flush()
+                emit(reply)
+                if approval: emit(approval)
 with socket.socket(socket.AF_UNIX) as listener:
     listener.bind(address); listener.listen(4)
     while True:
@@ -595,6 +610,35 @@ with socket.socket(socket.AF_UNIX) as listener:
         // Regression: 9b50346b checked the approval ID but not its thread identity.
         assert!(host.approval(&json!("permission-1"), true, &guard).is_err());
     }
+    #[test]
+    fn websocket_upgrade_masking_fragmentation_and_ping() {
+        // Regression: cadd533e used NDJSON, which the pinned Unix endpoint closes with EOF.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut launch = fixture(tmp.path());
+        launch
+            .environment
+            .insert("FAKE_WIRE".into(), "fragment_ping".into());
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        assert_eq!(
+            host.transcript(&guard).unwrap()["thread"]["id"],
+            "owned-thread"
+        );
+    }
+
+    #[test]
+    fn websocket_refuses_bad_accept_close_and_oversize_before_thread_start() {
+        for wire in ["bad_accept", "close", "oversize"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let mut launch = fixture(tmp.path());
+            launch.environment.insert("FAKE_WIRE".into(), wire.into());
+            let guard =
+                HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+            assert!(spawn(&launch, tmp.path(), None, &guard).is_err(), "{wire}");
+            assert!(!tmp.path().join("thread.json").exists());
+        }
+    }
+
     #[test]
     fn fake_host_unknown_build_refuses_before_thread_creation() {
         let tmp = tempfile::tempdir().unwrap();

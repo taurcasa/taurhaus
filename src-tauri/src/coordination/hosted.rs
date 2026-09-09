@@ -158,7 +158,7 @@ impl HostedMembers {
             host: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
             configuration: super::recovery_card::digest(&launch.arguments),
             trust: "unverified".into(),
-            transport: "unix_ndjson".into(),
+            transport: "unix-websocket".into(),
             state: "recovering".into(),
         });
         record.launch_root = Some(authority);

@@ -1641,7 +1641,7 @@ mod tests {
             "accountRoot": tmp.path().join("account"), "processId": 123,
             "processStart": "456", "hostGeneration": "host-one",
             "build": "fake", "host": "test", "configuration": "policy",
-            "trust": "test", "transport": "unix_ndjson", "state": "ready"
+            "trust": "test", "transport": "unix-websocket", "state": "ready"
         });
         let record: MemberRuntimeRecord = serde_json::from_value(wire).unwrap();
         MemberRuntimeStore::save(tmp.path(), "team", "seat", &record).unwrap();
