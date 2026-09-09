@@ -8352,6 +8352,18 @@ fn terminal_launch_defers_behind_holder_and_retries_after_release() {
         )
         .unwrap();
     let record = MemberRuntimeStore::load(root, "team", "seat").unwrap();
+    // Regression: 80a83d08 certified launches even with null socket/session facts.
+    assert_eq!(record.tmux_socket, Some(root.join("recording-tmux.sock")));
+    assert_eq!(record.tmux_session_id.as_deref(), Some("$1"));
+    assert!(record.pane_pid.is_some());
+    assert!(record.pane_start_time.is_some());
+    assert!(record.harness.is_some());
+    assert!(record
+        .activity_snapshot_path
+        .as_ref()
+        .unwrap()
+        .is_absolute());
+    assert_eq!(record.terminal_contract, 1);
     assert_eq!(record.attachment_generation, 1);
     assert_eq!(record.pane_id, state.pane_id);
     assert_eq!(
@@ -8447,4 +8459,42 @@ fn terminal_effort_marks_dead_before_wait_and_retries_without_spending_budget() 
         )
         .unwrap();
     assert_eq!(retried.switched, ["builder"], "{retried:?}");
+}
+
+#[test]
+fn reinitialize_resets_attachment_without_rewinding_generation() {
+    // Regression: 80a83d08 merged a fresh seed behind the on-disk generation,
+    // silently retaining its old healthy pane throughout reinitialization.
+    let tmp = TempDir::new().unwrap();
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        Arc::new(FakeBackend::default()),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    let lead = member(
+        "lead",
+        MemberRole::Lead,
+        CliTool::Codex,
+        tmp.path().to_str().unwrap(),
+    );
+    MemberRuntimeStore::save(
+        tmp.path(),
+        "team",
+        "lead",
+        &crate::coordination::stores::MemberRuntimeRecord {
+            attachment_generation: 7,
+            pane_id: Some("%old".into()),
+            health: HealthState::Healthy,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    orchestrator
+        .seed_initialize_roster("team", None, lead, &[])
+        .unwrap();
+    let record = MemberRuntimeStore::load(tmp.path(), "team", "lead").unwrap();
+    assert_eq!(record.health, HealthState::SessionDead);
+    assert!(record.pane_id.is_none());
+    assert!(record.attachment_generation >= 7);
+    assert_eq!(record.terminal_contract, 0);
 }
