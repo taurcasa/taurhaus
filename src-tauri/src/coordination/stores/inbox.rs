@@ -389,7 +389,12 @@ mod tests {
             Utc::now(),
         );
         message.id = Some("card-delivery-1".into());
-        MeshInboxStore::append(&root, "t", "agent", &message).unwrap();
+        let receipt = MeshInboxStore::append(&root, "t", "agent", &message)
+            .unwrap()
+            .unwrap();
+        assert_eq!(receipt.message_id, "m1");
+        assert_eq!(receipt.delivery_id, "d1");
+        assert_eq!(receipt.projection, "pending");
         assert_eq!(
             fs::read_to_string(projection).unwrap(),
             "[]",
@@ -412,7 +417,11 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn canonical_refusal_never_falls_back_or_retries() {
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         for (version, accept) in [
+            ("missing", "exit 99"),
+            ("exit 19", "exit 99"),
+            ("exec sleep 2", "exit 99"),
             (r#"echo '{"journal_writer":"mesh-journal/1"}'"#, "exit 99"),
             (r#"echo '{"journal_writer":"mesh-journal/2"}'"#, "exit 23"),
             (
@@ -422,6 +431,12 @@ mod tests {
             (r#"echo '{"journal_writer":"mesh-journal/2"}'"#, "echo '{}'"),
         ] {
             let mesh = crate::coordination::mesh_cli::FakeMesh::new(version, accept);
+            if version == "missing" {
+                fs::remove_file(mesh.dir.path().join("mesh")).unwrap();
+            }
+            let log_path = mesh.dir.path().join("failed.jsonl");
+            let sink = LogFileState::new(log_path.clone()).unwrap();
+            install_global_sink(&sink);
             let root = mesh.dir.path().join("teams");
             fs::create_dir_all(root.join("t")).unwrap();
             fs::write(
@@ -430,9 +445,46 @@ mod tests {
             )
             .unwrap();
             let message = MeshInboxMessage::new("agent", "notice".into(), None, Utc::now());
-            assert!(MeshInboxStore::append(&root, "t", "agent", &message).is_err());
+            let error = MeshInboxStore::append(&root, "t", "agent", &message).unwrap_err();
+            sink.flush_for_test().unwrap();
+            let events = fs::read_to_string(log_path).unwrap();
+            let event: Value = events
+                .lines()
+                .map(|line| serde_json::from_str::<Value>(line).unwrap())
+                .find(|v| v["event"] == "coordination.journal.accept_failed")
+                .unwrap();
+            assert_eq!(event["reason"], error.to_string());
+            assert_eq!(event["recipient"], "agent");
+            assert_eq!(event["team"], "t");
+            assert!(!events.contains("notice"), "body must not be logged");
             assert!(!root.join("t/inboxes").exists());
             assert!(mesh.argv().matches("accept\n").count() <= 1);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_invalid_format_refuses_and_legacy_never_invokes_mesh() {
+        // Regression: 20b27ac6 treated a non-object config as a legacy team.
+        for config in [
+            "[]",
+            "null",
+            "{bad",
+            r#"{"messaging_format":99}"#,
+            r#"{"messaging_format":"2"}"#,
+            "{}",
+            r#"{"messaging_format":1}"#,
+        ] {
+            let mesh = crate::coordination::mesh_cli::FakeMesh::new("exit 99", "exit 99");
+            let root = mesh.dir.path().join("teams");
+            fs::create_dir_all(root.join("t")).unwrap();
+            fs::write(root.join("t/config.json"), config).unwrap();
+            let message = MeshInboxMessage::new("agent", "notice".into(), None, Utc::now());
+            let result = MeshInboxStore::append(&root, "t", "agent", &message);
+            let legacy = config == "{}" || config == r#"{"messaging_format":1}"#;
+            assert_eq!(result.is_ok(), legacy, "config: {config}");
+            assert_eq!(root.join("t/inboxes/agent.json").exists(), legacy);
+            assert!(mesh.argv().is_empty());
         }
     }
 

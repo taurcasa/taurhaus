@@ -51,6 +51,7 @@ impl ClaudeNativeBackend {
             .operational_context
             .as_ref()
             .and_then(|c| c.task.as_ref())
+            .filter(|_| !message.extra.contains_key("journal_links"))
         {
             let links = crate::coordination::journal::JournalLinks {
                 task: task.id.clone(),

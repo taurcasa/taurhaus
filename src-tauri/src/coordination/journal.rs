@@ -42,6 +42,9 @@ pub fn canonical(root: &Path, team: &str) -> Result<bool, CoordinationError> {
     };
     let config: Value =
         serde_json::from_str(&raw).map_err(|_| failure("invalid team messaging config"))?;
+    if !config.is_object() {
+        return Err(failure("invalid team messaging config"));
+    }
     match config.get("messaging_format") {
         None => Ok(false),
         Some(v) if v.as_u64() == Some(1) => Ok(false),

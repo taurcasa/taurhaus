@@ -610,12 +610,17 @@ mod tests {
             bridged::MeshBridgedBackend, claude::ClaudeNativeBackend, CoordinationBackend,
         };
         use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
+        // Regression: 755560bb replaced the card's assignment link with task-only context.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         for bridged in [false, true] {
             let mesh = crate::coordination::mesh_cli::FakeMesh::new(
                 r#"echo '{"journal_writer":"mesh-journal/2"}'"#,
                 r#"echo '{"status":"accepted","message_id":"m1","sequence":1,"projection":"pending","delivery_targets":[{"recipient":"seat","delivery_id":"d1"}]}'"#,
             );
             let (_temp, root, registry) = fixture();
+            let log_path = mesh.dir.path().join("observed.jsonl");
+            let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+            taurhaus_lib::logging::install_global_sink(&sink);
             let mut config = TeamConfigStore::load(&root, "team").unwrap();
             config.extra.insert("messaging_format".into(), json!(2));
             TeamConfigStore::save(&root, "team", &config).unwrap();
@@ -630,30 +635,37 @@ mod tests {
             } else {
                 Box::new(ClaudeNativeBackend::new(root.clone()))
             };
-            let result = backend
-                .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            let mut orchestrator =
+                crate::coordination::orchestrator::CoordinationOrchestrator::new_with_runtime(
+                    root.clone(),
+                    std::sync::Arc::from(backend),
+                    std::sync::Arc::new(
+                        crate::coordination::runtime::RecordingCoordinationRuntime::default(),
+                    ),
+                );
+            let result = orchestrator
+                .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                     journal_links: None,
                     recovery_card: Some(card.receipt.clone()),
                     team_name: "team".into(),
                     member_name: "seat".into(),
                     message: card.text,
                     sender_name: None,
-                    operational_context: None,
+                    operational_context: Some(
+                        crate::coordination::requests::OperationalContextUpdate {
+                            task: Some(crate::coordination::requests::OperationalTaskContext {
+                                id: "1".into(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        },
+                    ),
                 }))
                 .unwrap();
             let wire = serde_json::to_value(&result).unwrap();
             assert_eq!(wire["recoveryCard"]["journal"]["message_id"], "m1");
             assert_eq!(wire["recoveryCard"]["journal"]["delivery_id"], "d1");
             assert!(mesh.argv().contains("--task\n1\n--assignment\na1\n"));
-            observe(
-                &registry,
-                &root,
-                "team",
-                "seat",
-                result.recovery_card.as_ref().unwrap(),
-                ReceiptStage::Accepted,
-            )
-            .unwrap();
             assert!(prepare(&registry, &root, "team", "seat", "inbox")
                 .unwrap()
                 .is_none());
@@ -661,6 +673,16 @@ mod tests {
                 .unwrap()
                 .is_empty());
             assert_eq!(mesh.argv().matches("accept\n").count(), 1);
+            sink.flush_for_test().unwrap();
+            let events = std::fs::read_to_string(log_path).unwrap();
+            let event: serde_json::Value = events
+                .lines()
+                .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+                .find(|v| v["event"] == "onboarding.delivery.observed")
+                .unwrap();
+            assert_eq!(event["journal"]["message_id"], "m1");
+            assert_eq!(event["journal"]["delivery_id"], "d1");
+            assert_eq!(event["delivery_id"], card.receipt.delivery_id);
         }
     }
 
