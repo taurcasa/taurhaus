@@ -759,9 +759,16 @@ pub fn ensure_compact_hook_installed(
                 .map(move |member| (teams_dir.to_path_buf(), team.clone(), member.name))
         })
         .collect::<Vec<_>>();
-    let drain_changed =
-        drain::reconcile_home(claude_dir, CliTool::Claude, &bindings, taurhaus_exe)?;
+    let drain_changed = reconcile_claude_drain_hooks(claude_dir, &bindings, taurhaus_exe)?;
     Ok(compact_changed || drain_changed)
+}
+
+fn reconcile_claude_drain_hooks(
+    home: &Path,
+    bindings: &[drain::Binding],
+    exe: &Path,
+) -> Result<bool, CoordinationError> {
+    drain::reconcile_home(home, CliTool::Claude, bindings, exe)
 }
 
 pub fn remove_compact_hook(teams_dir: &Path) -> Result<bool, CoordinationError> {
@@ -773,7 +780,7 @@ pub fn remove_compact_hook(teams_dir: &Path) -> Result<bool, CoordinationError> 
     };
     let exe = std::env::current_exe()?;
     let compact_changed = ClaudeCompactionSignalSource.remove(claude_dir)?;
-    let drain_changed = drain::reconcile_home(claude_dir, CliTool::Claude, &[], &exe)?;
+    let drain_changed = reconcile_claude_drain_hooks(claude_dir, &[], &exe)?;
     Ok(compact_changed || drain_changed)
 }
 
