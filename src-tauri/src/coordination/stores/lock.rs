@@ -28,6 +28,132 @@ thread_local! {
     static HELD_TEAM_LOCKS: RefCell<HashSet<PathBuf>> = RefCell::new(HashSet::new());
 }
 
+/// Permanent per-member inode. Drop closes it; it is never unlinked.
+#[derive(Debug)]
+pub struct TerminalLock {
+    _file: File,
+    holder: PathBuf,
+    _not_send: PhantomData<Rc<()>>,
+}
+
+impl TerminalLock {
+    pub fn acquire(
+        root: &Path,
+        team: &str,
+        member: &str,
+        op: &str,
+        epoch: u64,
+        wait: Duration,
+    ) -> Result<Self, CoordinationError> {
+        crate::coordination::validation::validate_team_name(team)?;
+        crate::coordination::validation::validate_member_name(member)?;
+        if taurhaus_lib::platform::terminal_io::active()
+            || HELD_TEAM_LOCKS.with(|h| !h.borrow().is_empty())
+        {
+            return Err(CoordinationError::Conflict(
+                "terminal lock must be last and alone".into(),
+            ));
+        }
+        let dir = root.join(team).join("state/terminal");
+        fs::create_dir_all(&dir)?;
+        let path = dir.join(format!("{member}.lock"));
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&path)?;
+        let deadline = std::time::Instant::now() + wait.min(Duration::from_secs(2));
+        loop {
+            match file.try_lock_exclusive() {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if std::time::Instant::now() >= deadline {
+                        return Err(CoordinationError::Conflict(
+                            "terminal write deferred: lock busy".into(),
+                        ));
+                    }
+                    thread::sleep(
+                        Duration::from_millis(10)
+                            .min(deadline.saturating_duration_since(std::time::Instant::now())),
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(team, member, error = %e, "terminal write disabled: flock unavailable");
+                    let fields =
+                        serde_json::json!({"team": team, "member": member, "error": e.to_string()});
+                    emit_global(
+                        "error",
+                        "coordination",
+                        "coordination.terminal.unavailable",
+                        Some("Terminal writes require an engaged flock".into()),
+                        fields.as_object().unwrap().clone(),
+                    );
+                    return Err(e.into());
+                }
+            }
+        }
+        let holder = dir.join(format!("{member}.holder.json"));
+        // Overwrite a crashed owner's diagnostic only after acquiring ownership.
+        fs::write(&holder, serde_json::to_vec(&serde_json::json!({"owner": "taurhaus", "op": op, "epoch": epoch, "since": chrono::Utc::now()})).map_err(|e| CoordinationError::StoreError(e.to_string()))?)?;
+        taurhaus_lib::platform::terminal_io::enter(file.try_clone()?);
+        Ok(Self {
+            _file: file,
+            holder,
+            _not_send: PhantomData,
+        })
+    }
+}
+impl Drop for TerminalLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.holder);
+        taurhaus_lib::platform::terminal_io::leave();
+    }
+}
+
+pub fn terminal_write<T>(
+    root: &Path,
+    team: &str,
+    member: &str,
+    op: &str,
+    write: impl FnOnce() -> Result<T, CoordinationError>,
+) -> Result<T, CoordinationError> {
+    let epoch = match super::runtime::MemberRuntimeStore::load(root, team, member) {
+        Ok(r) => r.attachment_generation,
+        Err(CoordinationError::NotFound(_)) => 0,
+        Err(e) => return Err(e),
+    };
+    let _guard = TerminalLock::acquire(root, team, member, op, epoch, Duration::from_secs(2))?;
+    write()
+}
+
+/// Stop IPC carries a pane, so resolve the managed record before taking its
+/// lock. An unreadable runtime is an error, never an unlocked fallback.
+pub fn terminal_write_for_pane<T>(
+    pane: &str,
+    op: &str,
+    write: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let registry = super::team_roots::TeamRootRegistry::new(
+        crate::provider::platform_paths::PlatformPaths::teams_dir(),
+    );
+    for (root, team) in registry.team_locations().map_err(|e| e.to_string())? {
+        for member in
+            super::runtime::MemberRuntimeStore::list(&root, &team).map_err(|e| e.to_string())?
+        {
+            let record = super::runtime::MemberRuntimeStore::load(&root, &team, &member)
+                .map_err(|e| e.to_string())?;
+            if record.pane_id.as_deref() == Some(pane) {
+                return terminal_write(&root, &team, &member, op, || {
+                    write().map_err(CoordinationError::Backend)
+                })
+                .map_err(|e| e.to_string());
+            }
+        }
+    }
+    write()
+}
+
 fn is_windows_unsupported_lock_error(err: &std::io::Error) -> bool {
     cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
 }
@@ -225,6 +351,9 @@ pub fn acquire_team_lock(
     teams_dir: &Path,
     team_name: &str,
 ) -> Result<TeamLockGuard, CoordinationError> {
+    if taurhaus_lib::platform::terminal_io::active() {
+        return Err(CoordinationError::Conflict("terminal lock is held".into()));
+    }
     let team_dir = teams_dir.join(team_name);
     fs::create_dir_all(&team_dir)?;
 
@@ -305,6 +434,9 @@ impl TargetFileLock {
     }
 
     fn acquire(path: &Path, create: bool) -> Result<Option<Self>, CoordinationError> {
+        if taurhaus_lib::platform::terminal_io::active() {
+            return Err(CoordinationError::Conflict("terminal lock is held".into()));
+        }
         // An interrupted move-aside swap leaves the record at its displaced
         // sibling; settle it before opening, or `create` would bury the only
         // copy under a fresh empty file.
@@ -553,6 +685,56 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn terminal_lock_bounds_wait_and_preserves_inode_and_diagnostics() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("team/state/terminal/seat.lock");
+        let holder = tmp.path().join("team/state/terminal/seat.holder.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let fake = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        fake.lock_exclusive().unwrap();
+        let started = std::time::Instant::now();
+        assert!(TerminalLock::acquire(
+            tmp.path(),
+            "team",
+            "seat",
+            "launch",
+            1,
+            Duration::from_millis(20)
+        )
+        .is_err());
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(!holder.exists());
+        fake.unlock().unwrap();
+        fs::write(&holder, "crashed holder").unwrap();
+        {
+            let _guard =
+                TerminalLock::acquire(tmp.path(), "team", "seat", "launch", 1, Duration::ZERO)
+                    .unwrap();
+            let value: serde_json::Value =
+                serde_json::from_slice(&fs::read(&holder).unwrap()).unwrap();
+            assert_eq!(value["owner"], "taurhaus");
+            assert_eq!(value["op"], "launch");
+            assert_eq!(value["epoch"], 1);
+            assert!(fake.try_lock_exclusive().is_err());
+            assert!(
+                acquire_team_lock(tmp.path(), "team").is_err(),
+                "terminal lock must be last and alone"
+            );
+        }
+        assert!(!holder.exists());
+        assert!(path.exists());
+        assert!(
+            fake.try_lock_exclusive().is_ok(),
+            "same inode remains lockable"
+        );
+    }
 
     #[test]
     fn unsupported_lock_error_detection_is_platform_aware() {
