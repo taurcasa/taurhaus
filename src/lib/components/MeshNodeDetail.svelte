@@ -10,7 +10,7 @@
   import { normalizeTool } from '../meshDefaults.js'
   import { EMPTY_MODEL_CATALOG, defaultEffortFor, defaultModelFor } from '../modelCatalog.js'
   import { themeTokens } from '../themeTokens.js'
-  import { toolLabel as registeredToolLabel, tools, supportsHostedControls } from '../toolRegistry.js'
+  import { toolLabel as registeredToolLabel, tools } from '../toolRegistry.js'
   import { accountHeadroom as usageHeadroom, exhaustedUsage } from '../usageWindows.js'
   import { accountLineLabel } from './meshTabUtils.js'
 
@@ -1228,7 +1228,7 @@
         {/if}
 
         {#if !isEditing && configurationEntries.length > 0}
-          {#if normalizedContext === 'runtime' && supportsHostedControls(tool) && teamName}
+          {#if normalizedContext === 'runtime' && node?.hosted === true && teamName}
             <HostedThread {teamName} memberName={name} {dark} />
           {/if}
           <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid={normalizedContext === 'runtime' ? 'mesh-node-detail-runtime' : 'mesh-node-detail-configuration'}>

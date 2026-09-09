@@ -22,7 +22,7 @@ it('round-trips operator input with the transcript attachment generation', async
 })
 
 it('explains older daemons without offering an input control', async () => {
-  coordinationHosted.mockRejectedValue(new Error('UNKNOWN_METHOD'))
+  coordinationHosted.mockRejectedValue(new Error('Remote("Unknown method: coordination.hosted_transcript")'))
   const { unmount } = render(HostedThread, { teamName: 'team', memberName: 'seat' })
   expect(await screen.findByRole('alert')).toHaveTextContent('Hosted controls require a daemon update')
   expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument()
@@ -39,5 +39,34 @@ it('clears the previous member before the next transcript is available', async (
   await rerender({ teamName: 'team', memberName: 'second' })
   await waitFor(() => expect(screen.queryByText('First member')).not.toBeInTheDocument())
   expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument()
+  unmount()
+})
+
+it.each(['NOT_HOSTED', 'Unknown method: coordination.hosted_transcript'])('stops polling after %s', async (message) => {
+  // Regression: a9c8109b rescheduled polls after terminal unavailable responses.
+  vi.useFakeTimers()
+  try {
+    coordinationHosted.mockRejectedValue(new Error(message))
+    const { unmount } = render(HostedThread, { teamName: 'team', memberName: 'seat' })
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(coordinationHosted).toHaveBeenCalledTimes(1)
+    unmount()
+  } finally { vi.useRealTimers() }
+})
+
+it('keeps deferred input editable without claiming an unknown outcome', async () => {
+  // Regression: a9c8109b marked pre-input contention as outcome-unknown.
+  coordinationHosted.mockImplementation(async (_team, _member, operation) => {
+    if (operation === 'input') throw new Error('host operation deferred: lock busy')
+    return { attachmentGeneration: 7, thread: { turns: [] }, requests: [] }
+  })
+  const { unmount } = render(HostedThread, { teamName: 'team', memberName: 'seat' })
+  const input = await screen.findByLabelText('Message hosted member')
+  await fireEvent.input(input, { target: { value: 'Keep this draft' } })
+  await fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('deferred'))
+  expect(input).toBeEnabled()
+  expect(input).toHaveValue('Keep this draft')
+  expect(screen.queryByText(/Previous input has an unknown outcome/)).not.toBeInTheDocument()
   unmount()
 })

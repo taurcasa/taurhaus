@@ -8,31 +8,38 @@
   let error = $state('')
   let submitting = $state(false)
   let unavailable = $state(false)
+  let pending = $state('')
   const lines = $derived((transcript?.thread?.turns ?? []).flatMap(turn =>
     (turn.items ?? []).flatMap(item => item.text ? [item.text] : (item.content ?? []).filter(c => c.type === 'text').map(c => c.text))))
   const requests = $derived(transcript?.requests ?? [])
-  const disabled = $derived(submitting || Boolean(transcript?.outcomeUnknown))
+  const disabled = $derived(submitting || Boolean(transcript?.outcomeUnknown) || pending.startsWith('Recovery'))
 
   $effect(() => {
     const team = teamName, member = memberName
     transcript = null
     draft = ''
     error = ''
+    pending = ''
     unavailable = false
     submitting = false
-    let disposed = false, timer
+    let disposed = false, terminal = false, timer
     async function refresh() {
       try {
         const next = await coordinationHosted(team, member, 'transcript', {})
-        if (!disposed) { transcript = next; unavailable = false }
+        if (!disposed) {
+          transcript = next; unavailable = false
+          if (next.thread?.status?.type === 'idle') pending = ''
+        }
       } catch (cause) {
         if (!disposed) {
           const message = String(cause?.message ?? cause)
           unavailable = message.includes('NOT_HOSTED')
-          error = message.includes('UNKNOWN_METHOD') ? 'Hosted controls require a daemon update.' : message
+          const older = /UNKNOWN_METHOD|Unknown method:/.test(message)
+          terminal = unavailable || older
+          error = older ? 'Hosted controls require a daemon update.' : 'Conversation unavailable. Stop and resume the hosted member to recover.'
         }
       } finally {
-        if (!disposed) timer = setTimeout(refresh, 2000)
+        if (!disposed && !terminal) timer = setTimeout(refresh, 2000)
       }
     }
     refresh()
@@ -45,6 +52,7 @@
     const current = () => team === teamName && member === memberName
     submitting = true
     error = ''
+    pending = ''
     try {
       await coordinationHosted(team, member, operation, { generation, ...params })
       if (!current()) return
@@ -53,8 +61,15 @@
       if (current()) transcript = next
     } catch (cause) {
       if (!current()) return
-      error = String(cause?.message ?? cause)
-      if (operation === 'input') transcript = { ...transcript, outcomeUnknown: true }
+      const message = String(cause?.message ?? cause)
+      if (/pending:|deferred:|host member busy/.test(message)) {
+        pending = message.includes('recovery')
+          ? 'Recovery must reach the next idle turn. Your draft is saved; send it when the turn is idle.'
+          : 'Input deferred. Your draft is saved; retry when the member is ready.'
+      } else {
+        error = message.startsWith('failed:') ? 'The turn changed before input was accepted. Refresh and retry.'
+          : 'The operation could not be confirmed. Check the conversation before retrying.'
+      }
     } finally { if (current()) submitting = false }
   }
 </script>
@@ -74,7 +89,14 @@
           <button disabled={submitting} onclick={() => submit('approval', { requestId: request.id, accept: false })}>Deny</button>
         </div>
       {/each}
-      {#if transcript.outcomeUnknown}<p role="status">Previous input has an unknown outcome. Check the conversation before recovery.</p>{/if}
+      <p class="text-xs">Send starts an idle turn or steers the active turn. Deferred drafts are not queued.</p>
+      {#if transcript.outcomeUnknown}
+        <p role="status">Previous input has an unknown outcome. Stop the member, then abandon this input without replay before resuming.</p>
+        {#if transcript.stopped}
+          <button disabled={submitting} onclick={() => submit('reconcile', { abandonUnknown: true })}>Abandon unknown input without replay</button>
+        {/if}
+      {/if}
+      {#if pending}<p role="status">{pending}</p>{/if}
       <form class="space-y-2" onsubmit={event => { event.preventDefault(); submit('input', { text: draft }) }}>
         <label class="block text-xs" for="hosted-input">Message hosted member</label>
         <textarea id="hosted-input" class="w-full rounded border bg-transparent p-2 text-sm {t.keyline}" bind:value={draft} disabled={disabled} maxlength="8000" rows="3"></textarea>

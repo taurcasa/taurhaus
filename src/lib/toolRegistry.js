@@ -347,8 +347,3 @@ export function toolCounts(items, readTool) {
   return { all: values.length, ...counts }
 }
 
-// Operator surface only; this does not enable native delivery eligibility.
-export function supportsHostedControls(value) {
-  // UI availability is separate from the persisted harness/eligibility contract.
-  return new Set(['codex']).has(normalizeTool(value))
-}

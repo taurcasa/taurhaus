@@ -4258,6 +4258,7 @@ fn live_team_status_round_trip() {
             crate::commands::coordination_types::LiveRuntimeSnapshotFreshness::Fresh,
         members: vec![
             LiveAgentStatus {
+                hosted: false,
                 name: "team-lead".to_string(),
                 role: AgentRole::Lead,
                 cli_tool: "claude".to_string(),
@@ -4286,6 +4287,7 @@ fn live_team_status_round_trip() {
                 account_fallback_from: None,
             },
             LiveAgentStatus {
+                hosted: false,
                 name: "frontend-dev".to_string(),
                 role: AgentRole::Member,
                 cli_tool: "codex".to_string(),
@@ -4332,6 +4334,7 @@ fn project_mesh_snapshot_round_trip() {
         team_status: Some(FastTeamSnapshot {
             lead_name: "team-lead".to_string(),
             members: vec![FastAgentSnapshot {
+                hosted: false,
                 name: "frontend-dev".to_string(),
                 role: AgentRole::Member,
                 cli_tool: "codex".to_string(),
@@ -5268,4 +5271,18 @@ fn wave2_review_add_member_normalizes_optional_project_paths() {
         project_path: Some(" ".into()),
     };
     assert!(super::request_normalization::normalize_add_member_request_path(&db, request).is_err());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn hosted_runtime_publishes_operator_control_authority() {
+    // Regression: a9c8109b offered hosted controls using tool identity, without attachment facts.
+    let tmp = TempDir::new().unwrap();
+    let registry = crate::coordination::hosted::tests::seat(tmp.path());
+    let state = test_state(tmp.path().into());
+    let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
+    state.hosted.launch(&registry, "team", "seat", &launch).unwrap();
+    let view = coordination_get_live_team_status_impl(&state, None, "team".into()).unwrap();
+    assert_eq!(serde_json::to_value(&view).unwrap()["members"][0]["hosted"], true);
+    state.hosted.stop(&registry, "team", "seat").unwrap();
 }
