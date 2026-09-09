@@ -223,10 +223,12 @@ fn sha1(input: &[u8]) -> [u8; 20] {
         0x10325476,
         0xc3d2e1f0,
     ];
-    for chunk in padded.chunks_exact(64) {
+    let (blocks, _) = padded.as_chunks::<64>();
+    for chunk in blocks {
         let mut words = [0u32; 80];
-        for (i, bytes) in chunk.chunks_exact(4).enumerate() {
-            words[i] = u32::from_be_bytes(bytes.try_into().unwrap());
+        let (block_words, _) = chunk.as_chunks::<4>();
+        for (i, bytes) in block_words.iter().enumerate() {
+            words[i] = u32::from_be_bytes(*bytes);
         }
         for i in 16..80 {
             words[i] = (words[i - 3] ^ words[i - 8] ^ words[i - 14] ^ words[i - 16]).rotate_left(1);
@@ -256,8 +258,9 @@ fn sha1(input: &[u8]) -> [u8; 20] {
         }
     }
     let mut digest = [0; 20];
-    for (bytes, value) in digest.chunks_exact_mut(4).zip(state) {
-        bytes.copy_from_slice(&value.to_be_bytes());
+    let (digest_words, _) = digest.as_chunks_mut::<4>();
+    for (bytes, value) in digest_words.iter_mut().zip(state) {
+        *bytes = value.to_be_bytes();
     }
     digest
 }
