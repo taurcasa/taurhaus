@@ -1555,6 +1555,7 @@ fn start_live_status_stub_daemon(
 
 fn sample_preflight_request() -> InitializeTeamRequest {
     InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: Some("Cross-project implementation team".to_string()),
         preset_id: None,
@@ -3528,6 +3529,7 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
     let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "review-team".to_string(),
         team_description: Some("Review-focused team".to_string()),
         preset_id: None,
@@ -3746,6 +3748,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
     let state = test_state(tmp.path().join("teams"));
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "dev-team".to_string(),
         team_description: Some("Dev-focused team".to_string()),
         preset_id: Some("dev-team".to_string()),
@@ -3972,6 +3975,7 @@ fn project_mesh_snapshot_skips_missing_config_dirs_without_warning() {
 #[test]
 fn initialize_team_request_round_trip() {
     let value = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: Some("Cross-project implementation team".to_string()),
         preset_id: None,

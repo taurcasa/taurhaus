@@ -75,10 +75,14 @@ pub struct AgentSetupConfig {
     pub capabilities: Option<Vec<String>>,
 }
 
+pub use crate::coordination::requests::TeamMessagingSetup;
+
 /// IPC request for one-click team initialization.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InitializeTeamRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messaging: Option<TeamMessagingSetup>,
     pub team_name: String,
     pub team_description: Option<String>,
     pub preset_id: Option<String>,

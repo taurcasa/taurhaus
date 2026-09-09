@@ -5,6 +5,8 @@
 
 ![Coordination Architecture](images/coordination-architecture.jpg)
 
+Canonical activation is an additive initialize option, with no daemon protocol bump. Mesh creates the disposable canonical team and joins its lead; Taurhaus adopts that entry, adds the roster, launches every seat (including the lead), and then runs the lead-only `opt_in_delivery` step before ensuring the team daemon. Team-owned delivery skips member daemons. Creation failures clean up the new team; delivery opt-in refusals preserve the launched team and selected root, report Mesh’s refusal, and allow the same request to retry opt-in without recreating seats. The temporary retention-policy file is removed after creation.
+
 ## Overview
 
 Taurhaus gains the ability to create, monitor, and manage multi-agent teams that collaborate via the filesystem. The integration leverages mesh (a Rust CLI for non-Claude agents) and Claude Code's native team system, with the filesystem (`~/.claude/`) as the shared API surface.

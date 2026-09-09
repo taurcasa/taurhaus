@@ -1623,6 +1623,7 @@ mod tests {
     fn coordination_initialize_method_contract_roundtrips() {
         let params = CoordinationInitializeParams {
             request: crate::coordination::requests::InitializeTeamRequest {
+                messaging: None,
                 team_name: "daemon-init".to_string(),
                 team_description: Some("Runs in the daemon".to_string()),
                 lead_mode: crate::coordination::requests::LeadMode::LaunchNew,

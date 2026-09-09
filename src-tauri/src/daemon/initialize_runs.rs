@@ -115,6 +115,13 @@ impl InitializeTeamService {
                             }
                             Ok((report, target_root))
                         }
+                        Ok(report) if report.failed_step.as_deref() == Some("opt_in_delivery") => {
+                            // The launched team remains retryable at its selected root.
+                            state
+                                .team_root_registry()
+                                .set(&params.request.team_name, &target_root)?;
+                            Ok((report, target_root))
+                        }
                         Ok(report) => {
                             state
                                 .team_root_registry()
@@ -457,6 +464,7 @@ mod tests {
         let builder_project = project.join("builder").display().to_string();
         CoordinationInitializeParams {
             request: InitializeTeamRequest {
+                messaging: None,
                 team_name: "daemon-init".to_string(),
                 team_description: Some("daemon pipeline test".to_string()),
                 lead_mode: LeadMode::LaunchNew,

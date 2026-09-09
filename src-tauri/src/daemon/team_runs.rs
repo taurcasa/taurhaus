@@ -922,6 +922,7 @@ mod tests {
         crate::daemon::initialize_runs::execute_initialize_pipeline(
             state,
             &InitializeTeamRequest {
+                messaging: None,
                 team_name: "arch".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,

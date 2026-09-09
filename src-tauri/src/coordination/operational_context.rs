@@ -705,6 +705,7 @@ mod tests {
             capabilities: None,
         };
         let request = crate::coordination::requests::InitializeTeamRequest {
+            messaging: None,
             team_name: "architecture-final".to_string(),
             team_description: None,
             lead_mode: crate::coordination::requests::LeadMode::LaunchNew,

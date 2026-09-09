@@ -87,8 +87,35 @@ impl CoordinationOrchestrator {
             &mut emit_progress,
         );
 
+        if self.pending_canonical_initialize_matches(request) {
+            for step in [
+                "create_team",
+                "add_lead",
+                "create_panes",
+                "launch_sessions",
+                "join_mesh",
+                "start_daemons",
+            ] {
+                emit_initialize_step_progress(step, StepStatus::Running, None, &mut emit_progress);
+                mark_initialize_step_succeeded(
+                    step,
+                    "retained from previous attempt",
+                    &mut succeeded_steps,
+                    &mut steps,
+                    &mut emit_progress,
+                );
+            }
+            return self.finish_initialize(request, succeeded_steps, steps, emit_progress);
+        }
+
         emit_initialize_step_progress("create_team", StepStatus::Running, None, &mut emit_progress);
-        if let Err(err) = self.create_team(&request.team_name, request.team_description.clone()) {
+        let create_result = if request.messaging.is_some() {
+            self.create_canonical_initialize_team(request)
+        } else {
+            self.create_team(&request.team_name, request.team_description.clone())
+                .map(|_| ())
+        };
+        if let Err(err) = create_result {
             return Ok(failed_initialize_report_with_progress(
                 &request.team_name,
                 "create_team",
@@ -271,6 +298,52 @@ impl CoordinationOrchestrator {
             ));
         }
 
+        self.finish_initialize(request, succeeded_steps, steps, emit_progress)
+    }
+
+    fn finish_initialize(
+        &mut self,
+        request: &InitializeTeamRequest,
+        mut succeeded_steps: Vec<String>,
+        mut steps: Vec<StepProgress>,
+        mut emit_progress: Option<InitializeProgressEmitter<'_>>,
+    ) -> Result<InitializeReport, CoordinationError> {
+        if request.messaging.is_some() {
+            emit_initialize_step_progress(
+                "opt_in_delivery",
+                StepStatus::Running,
+                None,
+                &mut emit_progress,
+            );
+            // Persist only after every seat has launched; Retry must not launch twice.
+            let opt_in = self
+                .save_pending_canonical_initialize(request)
+                .and_then(|()| {
+                    self.runtime.opt_in_team_delivery(
+                        &request.team_name,
+                        &request.lead.name,
+                        &self.teams_dir,
+                    )
+                });
+            if let Err(err) = opt_in {
+                return Ok(failed_initialize_report_with_progress(
+                    &request.team_name,
+                    "opt_in_delivery",
+                    err,
+                    succeeded_steps,
+                    &mut steps,
+                    &mut emit_progress,
+                ));
+            }
+            mark_initialize_step_succeeded(
+                "opt_in_delivery",
+                "team delivery enabled",
+                &mut succeeded_steps,
+                &mut steps,
+                &mut emit_progress,
+            );
+        }
+
         emit_initialize_step_progress(
             "send_onboarding",
             StepStatus::Running,
@@ -297,6 +370,9 @@ impl CoordinationOrchestrator {
         );
 
         self.ensure_team_daemon_after_initialize(request);
+        if request.messaging.is_some() {
+            std::fs::remove_file(self.pending_canonical_initialize_path(&request.team_name))?;
+        }
 
         Ok(InitializeReport {
             team_name: request.team_name.clone(),
@@ -306,6 +382,100 @@ impl CoordinationOrchestrator {
             message: "team initialized".to_string(),
             steps,
         })
+    }
+
+    fn pending_canonical_initialize_path(&self, team: &str) -> std::path::PathBuf {
+        self.teams_dir
+            .join(team)
+            .join("state/taurhaus-initialize-pending.json")
+    }
+
+    fn pending_canonical_initialize_matches(&self, request: &InitializeTeamRequest) -> bool {
+        request.messaging.is_some()
+            && TeamConfigStore::load(&self.teams_dir, &request.team_name).is_ok_and(|config| {
+                config.extra.get("messaging_format") == Some(&serde_json::json!(2))
+            })
+            && std::fs::read(self.pending_canonical_initialize_path(&request.team_name))
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<InitializeTeamRequest>(&bytes).ok())
+                .as_ref()
+                == Some(request)
+    }
+
+    fn save_pending_canonical_initialize(
+        &self,
+        request: &InitializeTeamRequest,
+    ) -> Result<(), CoordinationError> {
+        let path = self.pending_canonical_initialize_path(&request.team_name);
+        std::fs::create_dir_all(path.parent().expect("team state directory"))?;
+        let bytes = serde_json::to_vec(request)
+            .map_err(|e| CoordinationError::StoreError(e.to_string()))?;
+        std::fs::write(path, bytes)?;
+        Ok(())
+    }
+
+    fn create_canonical_initialize_team(
+        &mut self,
+        request: &InitializeTeamRequest,
+    ) -> Result<(), CoordinationError> {
+        use crate::coordination::requests::TeamMessagingSetup;
+        let Some(TeamMessagingSetup::Canonical { retention_policy }) = &request.messaging else {
+            unreachable!()
+        };
+        // Refusing an existing directory must never clean up a team we do not own.
+        if self.teams_dir.join(&request.team_name).try_exists()? {
+            return Err(CoordinationError::Conflict(format!(
+                "team '{}' already exists",
+                request.team_name
+            )));
+        }
+        std::fs::create_dir_all(&self.teams_dir)?;
+        let policy_path = self
+            .teams_dir
+            .join(format!(".canonical-policy-{}.json", uuid::Uuid::new_v4()));
+        let policy = TemporaryCanonicalPolicy(policy_path);
+        let result = (|| {
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&policy.0)?;
+            let bytes = serde_json::to_vec(retention_policy)
+                .map_err(|e| CoordinationError::StoreError(e.to_string()))?;
+            file.write_all(&bytes)?;
+            drop(file);
+            self.runtime.create_canonical_team(
+                &request.team_name,
+                &request.lead.name,
+                &self.teams_dir,
+                &policy.0,
+            )?;
+            let config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
+            if config.extra.get("messaging_format") != Some(&serde_json::json!(2)) {
+                return Err(CoordinationError::StoreError(
+                    "Mesh did not create a canonical team".into(),
+                ));
+            }
+            if !crate::coordination::stores::team_roots::same_teams_root(
+                &self.root_registry.resolve(&request.team_name)?,
+                &self.teams_dir,
+            ) {
+                self.root_registry
+                    .set(&request.team_name, &self.teams_dir)?;
+            }
+            self.audit_log.push(AuditEvent::TeamCreated(
+                crate::coordination::audit::TeamCreatedEvent {
+                    team_name: request.team_name.clone(),
+                    member_count: config.members.len(),
+                    created_at: config.created_at,
+                },
+            ));
+            Ok(())
+        })();
+        if result.is_err() {
+            self.cleanup_initialize_failure(&request.team_name);
+        }
+        result
     }
 
     fn validate_initialize_configuration(
@@ -365,19 +535,36 @@ impl CoordinationOrchestrator {
         members.push(lead_member);
         members.extend(agent_members.iter().cloned());
 
-        TeamConfigStore::save(
-            &self.teams_dir,
-            team_name,
-            &TeamConfig {
-                team_incarnation_id: None,
-                schema_version: 1,
-                name: team_name.to_string(),
-                description: team_description,
-                created_at,
-                members: members.clone(),
-                extra: Default::default(),
-            },
-        )?;
+        let existing = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        if existing.extra.get("messaging_format") == Some(&serde_json::json!(2)) {
+            let mut config = existing;
+            let lead = config
+                .members
+                .iter()
+                .find(|m| m.name == members[0].name)
+                .ok_or_else(|| {
+                    CoordinationError::StoreError("Mesh did not join the requested lead".into())
+                })?;
+            // Keep Mesh's identity/auth extensions while adopting the requested seat.
+            members[0].extra = lead.extra.clone();
+            config.description = team_description;
+            config.members = members.clone();
+            TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
+        } else {
+            TeamConfigStore::save(
+                &self.teams_dir,
+                team_name,
+                &TeamConfig {
+                    team_incarnation_id: None,
+                    schema_version: 1,
+                    name: team_name.to_string(),
+                    description: team_description,
+                    created_at,
+                    members: members.clone(),
+                    extra: Default::default(),
+                },
+            )?;
+        }
 
         for member in members {
             let seed = crate::coordination::stores::MemberRuntimeRecord {
@@ -639,5 +826,17 @@ fn backend_kind_for_member_tool(tool: CliTool) -> BackendKind {
         BackendKind::ClaudeNative
     } else {
         BackendKind::MeshBridged
+    }
+}
+
+struct TemporaryCanonicalPolicy(std::path::PathBuf);
+
+impl Drop for TemporaryCanonicalPolicy {
+    fn drop(&mut self) {
+        if let Err(error) = std::fs::remove_file(&self.0) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(%error, "failed to remove canonical policy file");
+            }
+        }
     }
 }

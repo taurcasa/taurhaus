@@ -99,6 +99,7 @@ pub(super) fn map_initialize_request_to_contract(
     request: &InitializeTeamRequest,
 ) -> contracts::InitializeTeamRequest {
     contracts::InitializeTeamRequest {
+        messaging: request.messaging.clone(),
         team_name: request.team_name.clone(),
         team_description: request.team_description.clone(),
         lead_mode: map_lead_mode_to_contract(request.lead_mode),

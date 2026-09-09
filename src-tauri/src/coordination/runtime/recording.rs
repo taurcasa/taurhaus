@@ -12,6 +12,12 @@ use super::{CoordinationRuntime, DetectedRuntimeSession, LivePane};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeCall {
+    CreateCanonicalTeam {
+        args: Vec<String>,
+    },
+    OptInTeamDelivery {
+        args: Vec<String>,
+    },
     CreatePane {
         project_id: String,
     },
@@ -136,6 +142,8 @@ impl LivePaneProbeGate {
 #[derive(Debug, Default)]
 pub struct RecordingCoordinationRuntime {
     calls: Mutex<Vec<RuntimeCall>>,
+    canonical_create_failure: Mutex<Option<String>>,
+    delivery_opt_in_failure: Mutex<Option<String>>,
     pane_exists: Mutex<HashMap<String, bool>>,
     pane_dead: Mutex<HashMap<String, bool>>,
     pane_shell: Mutex<HashMap<String, bool>>,
@@ -161,6 +169,14 @@ pub struct RecordingCoordinationRuntime {
 }
 
 impl RecordingCoordinationRuntime {
+    pub fn set_canonical_create_failure(&self, message: Option<&str>) {
+        *self.canonical_create_failure.lock().unwrap() = message.map(str::to_owned);
+    }
+
+    pub fn set_delivery_opt_in_failure(&self, message: Option<&str>) {
+        *self.delivery_opt_in_failure.lock().unwrap() = message.map(str::to_owned);
+    }
+
     pub fn calls(&self) -> Vec<RuntimeCall> {
         self.calls
             .lock()
@@ -553,6 +569,55 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
                 .to_string(),
         });
         self.spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
+    fn create_canonical_team(
+        &self,
+        team_name: &str,
+        lead_name: &str,
+        teams_dir: &std::path::Path,
+        policy_path: &std::path::Path,
+    ) -> Result<(), CoordinationError> {
+        self.push_call(RuntimeCall::CreateCanonicalTeam {
+            args: super::team_activation::create_args(team_name, lead_name, teams_dir, policy_path),
+        });
+        let policy: serde_json::Value = serde_json::from_slice(&std::fs::read(policy_path)?)
+            .map_err(|e| CoordinationError::StoreError(e.to_string()))?;
+        let team = teams_dir.join(team_name);
+        let auth = team.join("state/control_auth");
+        std::fs::create_dir_all(&auth)?;
+        // A deterministic Mesh-shaped fake, including the already-joined lead.
+        let config = serde_json::json!({
+            "name": team_name, "createdAt": 1772399806546_i64,
+            "leadAgentId": format!("{lead_name}@{team_name}"),
+            "team_incarnation_id": "recorded-incarnation", "messaging_format": 2,
+            "minimum_writer": "mesh-journal/2", "delivery_owner": "team",
+            "messaging_activation": "disposable-mesh-only", "messaging_policy": policy,
+            "members": [{"name": lead_name, "agentType": "lead", "model": "external",
+                "agentId": format!("{lead_name}@{team_name}"), "cwd": teams_dir,
+                "controlAuthTokenHash": "recording-only-hash"}]
+        });
+        std::fs::write(team.join("config.json"), config.to_string())?;
+        std::fs::write(auth.join(format!("{lead_name}.json")), "{}")?;
+        if let Some(message) = self.canonical_create_failure.lock().unwrap().clone() {
+            return Err(CoordinationError::Backend(message));
+        }
+        Ok(())
+    }
+
+    fn opt_in_team_delivery(
+        &self,
+        team_name: &str,
+        lead_name: &str,
+        teams_dir: &std::path::Path,
+    ) -> Result<(), CoordinationError> {
+        self.push_call(RuntimeCall::OptInTeamDelivery {
+            args: super::team_activation::delivery_args(team_name, lead_name, teams_dir),
+        });
+        if let Some(message) = self.delivery_opt_in_failure.lock().unwrap().clone() {
+            return Err(CoordinationError::Backend(message));
+        }
+        Ok(())
     }
 
     fn spawn_team_daemon(

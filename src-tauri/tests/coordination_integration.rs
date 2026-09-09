@@ -368,6 +368,7 @@ fn fixture_project(root: &Path, name: &str) -> String {
 
 fn make_request(root: &Path, team_name: &str) -> InitializeTeamRequest {
     InitializeTeamRequest {
+        messaging: None,
         team_name: team_name.to_string(),
         team_description: Some("integration".to_string()),
         lead_mode: LeadMode::LaunchNew,
@@ -457,6 +458,7 @@ fn make_request(root: &Path, team_name: &str) -> InitializeTeamRequest {
 fn make_ipc_request(root: &Path, team_name: &str) -> commands::coordination::InitializeTeamRequest {
     let request = make_request(root, team_name);
     commands::coordination::InitializeTeamRequest {
+        messaging: None,
         team_name: request.team_name,
         team_description: request.team_description,
         preset_id: None,

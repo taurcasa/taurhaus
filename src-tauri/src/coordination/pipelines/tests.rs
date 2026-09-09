@@ -96,6 +96,7 @@ fn wave2_review_initialize_checks_names_before_seat_configuration() {
         let mut orchestrator =
             new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
         let request = InitializeTeamRequest {
+            messaging: None,
             team_name: "invalid-team".into(),
             team_description: None,
             lead: setup_config("lead", "claude", "opus", tmp.path().to_str().unwrap()),
@@ -140,6 +141,7 @@ fn wave2_member_validation_rejects_invalid_create_add_and_resume_before_launch()
             }
         }
         let request = InitializeTeamRequest {
+            messaging: None,
             team_name: "invalid-team".to_string(),
             team_description: None,
             lead: setup_config("lead", "claude", "opus", project),
@@ -1283,6 +1285,7 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
     let initialize_report = initialize_orchestrator
         .initialize_team_with_cli_commands_and_layout(
             &InitializeTeamRequest {
+                messaging: None,
                 team_name: "initialize-team".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
@@ -1474,6 +1477,7 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
     let initialize_claude_report = initialize_orchestrator
         .initialize_team_with_cli_commands_and_layout(
             &InitializeTeamRequest {
+                messaging: None,
                 team_name: "initialize-claude".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
@@ -1550,6 +1554,7 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
     let initialize_sidecar_report = initialize_sidecar_orchestrator
         .initialize_team_with_cli_commands_and_layout(
             &InitializeTeamRequest {
+                messaging: None,
                 team_name: "initialize-sidecar".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
@@ -1805,6 +1810,7 @@ fn shared_stage_onboarding_and_runtime_commit_policies_assert_wrapper_difference
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
 
     let initialize_request = InitializeTeamRequest {
+        messaging: None,
         team_name: "initialize-team".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -2738,6 +2744,7 @@ fn initialized_member_persists_the_opaque_base_account_note() {
     let report = orchestrator
         .initialize_team_with_cli_commands_and_layout(
             &InitializeTeamRequest {
+                messaging: None,
                 team_name: "opaque-runtime-team".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
@@ -3228,6 +3235,7 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
     claude_agent.capabilities = Some(vec!["analysis".to_string(), "research".to_string()]);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3289,6 +3297,7 @@ fn initialize_pipeline_claude_agent_without_role_context_receives_unassigned_car
     let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3336,6 +3345,7 @@ fn initialize_onboarding_entries_use_deferred_barrier_policy() {
     let orchestrator = new_orchestrator(&tmp, backend, runtime);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3377,6 +3387,7 @@ fn initialize_onboarding_waits_for_member_activation_barrier() {
         CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3445,6 +3456,7 @@ fn initialize_pipeline_persists_codex_agent_session_id() {
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3496,6 +3508,7 @@ fn initialize_pipeline_per_project_layout_reuses_anchor_pane() {
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3587,6 +3600,7 @@ fn initialize_pipeline_retries_transient_send_keys_failure_for_codex_agent() {
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3643,6 +3657,7 @@ fn initialize_pipeline_reports_pane_diagnostics_after_send_keys_retries_exhaust(
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3691,6 +3706,7 @@ fn initialize_pipeline_persists_claude_agent_session_id() {
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3742,6 +3758,7 @@ fn initialize_pipeline_seeds_full_roster_before_reload_dependent_steps() {
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: Some("Review pipeline".to_string()),
         lead_mode: LeadMode::LaunchNew,
@@ -3813,6 +3830,7 @@ fn initialize_pipeline_progress_callback_preserves_batch_step_order() {
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -4338,6 +4356,7 @@ fn claude_lead_join_failure_is_nonfatal_after_activation_commit() {
     let initialize_report = initialize_orchestrator
         .initialize_team_with_cli_commands_and_layout(
             &InitializeTeamRequest {
+                messaging: None,
                 team_name: "lead-join-initialize".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
@@ -8745,4 +8764,120 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
         taurhaus_lib::platform::process_start_ticks(before.app_server.unwrap().process_id)
             .is_none()
     );
+}
+
+// Regression: 50a07ab6 (#151) added team-owned runtime exclusion, but initialize still
+// created legacy teams and could not activate the canonical delivery owner.
+#[test]
+fn canonical_initialize_adopts_mesh_config_and_launches_before_delivery() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator =
+        new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+    let project = tmp.path().to_str().unwrap();
+    let request: InitializeTeamRequest = serde_json::from_value(serde_json::json!({
+        "team_name": "canonical", "team_description": "Disposable trial",
+        "lead_mode": "launch_new",
+        "lead": setup_config("lead", "codex", "gpt-6-astra", project),
+        "agents": [setup_config("builder", "codex", "gpt-6-astra", project)],
+        "messaging": {"mode": "canonical", "retentionPolicy": {"synthetic_disposable": true}}
+    }))
+    .unwrap();
+    let report = orchestrator.initialize_team(&request).unwrap();
+    assert!(report.failed_step.is_none(), "{report:?}");
+    let config = TeamConfigStore::load(tmp.path(), "canonical").unwrap();
+    assert_eq!(
+        config.extra.get("messaging_format"),
+        Some(&serde_json::json!(2))
+    );
+    assert_eq!(config.members.len(), 2);
+    assert_eq!(
+        config.members.iter().filter(|m| m.name == "lead").count(),
+        1
+    );
+    assert!(!runtime.calls().iter().any(|c| matches!(
+        c,
+        RuntimeCall::SpawnDaemon { .. } | RuntimeCall::SpawnDaemonAtRoot { .. }
+    )));
+    let launch = report
+        .succeeded_steps
+        .iter()
+        .position(|s| s == "launch_sessions")
+        .unwrap();
+    let opt_in = report
+        .succeeded_steps
+        .iter()
+        .position(|s| s == "opt_in_delivery")
+        .unwrap();
+    assert!(launch < opt_in);
+}
+
+#[test]
+fn canonical_initialize_creation_refusal_cleans_up_but_opt_in_refusal_retains_team() {
+    for creation_failure in [true, false] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator =
+            new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+        let project = tmp.path().to_str().unwrap();
+        let mut request: InitializeTeamRequest = serde_json::from_value(serde_json::json!({
+            "team_name": "canonical", "team_description": "Disposable trial",
+            "lead_mode": "launch_new",
+            "lead": setup_config("lead", "codex", "gpt-6-astra", project),
+            "agents": [setup_config("builder", "codex", "gpt-6-astra", project)],
+            "messaging": {"mode": "canonical", "retentionPolicy": {"synthetic_disposable": true}}
+        }))
+        .unwrap();
+
+        if creation_failure {
+            runtime.set_canonical_create_failure(Some("mesh: policy refused"));
+        } else {
+            runtime.set_delivery_opt_in_failure(Some(
+                "mesh: OLD executor lead: terminalContract: 1 required",
+            ));
+        }
+        let report = orchestrator.initialize_team(&request).unwrap();
+        assert_eq!(
+            report.failed_step.as_deref(),
+            Some(if creation_failure {
+                "create_team"
+            } else {
+                "opt_in_delivery"
+            })
+        );
+        assert!(report.retryable);
+        assert!(
+            report.message.contains(if creation_failure {
+                "mesh: policy refused"
+            } else {
+                "mesh: OLD executor lead"
+            }),
+            "{report:?}"
+        );
+        assert_eq!(
+            tmp.path().join("canonical/config.json").exists(),
+            !creation_failure
+        );
+        assert!(!runtime
+            .calls()
+            .iter()
+            .any(|c| matches!(c, RuntimeCall::SpawnTeamDaemon { .. })));
+        assert!(!fs::read_dir(tmp.path()).unwrap().any(|entry| entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".canonical-policy-")));
+        // An absent field follows the original path (covered by the unchanged
+        // batch-order and launch goldens). A conflict must never delete it.
+        if !creation_failure {
+            request.messaging = None;
+            let original = fs::read(tmp.path().join("canonical/config.json")).unwrap();
+            let retry = orchestrator.initialize_team(&request).unwrap();
+            assert_eq!(retry.failed_step.as_deref(), Some("create_team"));
+            assert_eq!(
+                fs::read(tmp.path().join("canonical/config.json")).unwrap(),
+                original
+            );
+        }
+    }
 }

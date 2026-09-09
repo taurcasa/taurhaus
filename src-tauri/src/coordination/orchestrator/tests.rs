@@ -1175,6 +1175,7 @@ impl CoordinationRuntime for ClaudeLaunchRosterRuntime {
 
 fn initialize_request(team_name: &str) -> InitializeTeamRequest {
     InitializeTeamRequest {
+        messaging: None,
         team_name: team_name.to_string(),
         team_description: Some("init pipeline test".to_string()),
         lead_mode: LeadMode::LaunchNew,
