@@ -803,13 +803,44 @@ fn reconcile_managed_account_hooks_for_roots_at(
     taurhaus_exe: &std::path::Path,
 ) -> Result<bool, CoordinationError> {
     let homes = collect_managed_hook_homes_for_roots(teams_roots, cli_commands)?;
-    reconcile_unused_managed_hook_homes(
+    let changed = reconcile_unused_managed_hook_homes(
         homes,
         cli_commands,
         codex_hooks_supported,
         grok_enabled,
         taurhaus_exe,
-    )
+    )?;
+    Ok(reconcile_delivery_hook_homes(teams_roots, cli_commands, taurhaus_exe)? || changed)
+}
+
+/// Ordinary delivery registrations have their own capability gate and live-home
+/// reconciliation. Codex compaction support (including unknown/downgraded builds)
+/// never authorizes these events.
+fn reconcile_delivery_hook_homes(
+    roots: &[std::path::PathBuf],
+    cli_commands: &crate::models::CliCommandSettings,
+    exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    let tool = CliTool::Codex;
+    let mut homes = known_managed_homes(cli_commands, tool).into_iter()
+        .map(|home| (home, Vec::new())).collect::<std::collections::BTreeMap<_, _>>();
+    for root in roots {
+        for team in crate::coordination::stores::TeamConfigStore::list(root)? {
+            let config = crate::coordination::stores::TeamConfigStore::load(root, &team)?;
+            for member in config.members.iter().filter(|m| m.cli_tool == tool) {
+                match live_launch_home(root, &team, member, cli_commands) {
+                    Some(Some(home)) => homes.entry(home).or_default().push((root.clone(), team.clone(), member.name.clone())),
+                    Some(None) => return Ok(false), // Preserve shared homes if a live account is unresolved.
+                    None => {}
+                }
+            }
+        }
+    }
+    let mut changed = false;
+    for (home, bindings) in homes {
+        changed |= crate::coordination::compact_hook::drain::reconcile_home(&home, tool, &bindings, exe)?;
+    }
+    Ok(changed)
 }
 
 fn log_managed_account_hook_degraded(error: &CoordinationError, message: &str) {
@@ -868,6 +899,7 @@ fn reconcile_managed_account_hooks_for_launch_at(
             reconcile(home, false)?;
         }
     }
+    reconcile_delivery_hook_homes(&[teams_dir.to_path_buf()], cli_commands, taurhaus_exe)?;
     let codex_launch_homes = launch_members
         .iter()
         .filter(|(tool, _)| {
@@ -1035,6 +1067,12 @@ fn reconcile_account_switch_hooks_at(
                 context.taurhaus_exe,
             )?,
         };
+        if context.cli_tool == CliTool::Codex {
+            let config = crate::coordination::stores::TeamConfigStore::load(context.teams_dir, context.team_name)?;
+            let bindings = config.members.iter().filter(|m| m.cli_tool == context.cli_tool)
+                .map(|m| (context.teams_dir.to_path_buf(), context.team_name.to_string(), m.name.clone())).collect::<Vec<_>>();
+            changed |= crate::coordination::compact_hook::drain::reconcile_home(target_home, context.cli_tool, &bindings, context.taurhaus_exe)?;
+        }
         return Ok(changed);
     }
     for previous_home in previous_homes {
@@ -1048,6 +1086,9 @@ fn reconcile_account_switch_hooks_at(
             previous_home,
             context.accounts,
         )?;
+        if context.cli_tool == CliTool::Codex && !keep_installed {
+            changed |= crate::coordination::compact_hook::drain::reconcile_home(previous_home, context.cli_tool, &[], context.taurhaus_exe)?;
+        }
         changed |= match context.delivery {
             CompactionDelivery::HookStdout => reconcile_codex_hook_at_with_support(
                 previous_home,

@@ -718,7 +718,13 @@ pub fn ensure_compact_hook_installed(
         )));
     };
 
-    ClaudeCompactionSignalSource.install(claude_dir, taurhaus_exe)
+    let compact_changed = ClaudeCompactionSignalSource.install(claude_dir, taurhaus_exe)?;
+    let bindings = TeamConfigStore::list(teams_dir)?.into_iter().filter_map(|team| {
+        TeamConfigStore::load(teams_dir, &team).ok().map(|config| (team, config))
+    }).flat_map(|(team, config)| config.members.into_iter().filter(|m| m.cli_tool == CliTool::Claude)
+        .map(move |member| (teams_dir.to_path_buf(), team.clone(), member.name))).collect::<Vec<_>>();
+    let drain_changed = drain::reconcile_home(claude_dir, CliTool::Claude, &bindings, taurhaus_exe)?;
+    Ok(compact_changed || drain_changed)
 }
 
 pub fn remove_compact_hook(teams_dir: &Path) -> Result<bool, CoordinationError> {
@@ -3461,8 +3467,7 @@ mod tests {
         }
     }
     #[cfg(unix)]
-    #[test]
-    fn hook_drain_managed_boundary_round_trip() {
+    fn hook_drain_fixture() -> (crate::coordination::mesh_cli::FakeMesh, Value, PathBuf) {
         use crate::coordination::mesh_cli::FakeMesh;
         let fake = FakeMesh::new("exit 99", "exit 99");
         let root = fake.dir.path();
@@ -3494,19 +3499,34 @@ mod tests {
         fs::create_dir_all(&state).unwrap();
         fs::write(state.join("adapter-architect.json"), r#"{"mode":"hook","revision":1,"boundary":{"owner_fence":2}}"#).unwrap();
         let script = r#"#!/usr/bin/python3
-import sys,json,pathlib,os
+import sys,json,pathlib,os,time
 root=pathlib.Path(__file__).parent
 value=json.load(sys.stdin)
 with (root/'calls').open('a') as f: f.write(json.dumps({'argv':sys.argv[1:],'stdin':value,'env_keys':list(os.environ)})+'\n')
 protocol='mesh-hook-drain/1'
+mode=(root/'mode').read_text() if (root/'mode').exists() else ''
 if sys.argv[-1]=='capabilities':
  print(json.dumps({'protocol':protocol,'descriptors':[{'id':'codex/0.153.4/PostToolUse/1','harness':'codex','build':'0.153.4','host':'fixture','event':'PostToolUse','source':'ordinary','matcher':'','config_trust':'fixture','envelope':'hookSpecificOutput.additionalContext; event-specific validation required','context_entry':'fixture','drop_rules':'fixture','max_bytes':8192,'max_chars':8000,'continuation_budget':0,'enabled':True}]}))
 elif sys.argv[-1]=='drain':
- print(json.dumps({'protocol':protocol,'status':'offered','stage':'bridge_rendered','text':'[mesh message data] fixture marker\n','deliveries':[{'message_id':'m1','delivery_id':'d1','sequence':1,'coverage':'full_body','body_bytes':14,'body_chars':14}],'attempt_ids':['a1'],'offer_id':'offer-1','owner_fence':2,'selection_revision':1,'continue':False}))
+ if mode=='invalid': print('not json'); sys.exit(0)
+ if mode=='oversized': print('x'*70000); sys.exit(0)
+ if mode=='stderr': sys.stderr.write('x'*100000)
+ print(json.dumps({'protocol':protocol,'status':'offered','stage':'bridge_rendered','text':'[mesh message data] fixture marker\n','deliveries':[{'message_id':'m1','delivery_id':'d1','sequence':1,'coverage':'full_body','body_bytes':14,'body_chars':14}],'attempt_ids':['a1'],'offer_id':'offer-1','owner_fence':2,'selection_revision':1,'continue':False}),flush=True)
+ if mode=='nonzero': sys.exit(7)
+ if mode=='timeout': time.sleep(10)
+elif mode=='receipt-failure': sys.exit(7)
 else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliveries':[],'offer_id':None,'continue':False}))
 "#;
         fs::write(root.join("mesh"), script).unwrap();
         let payload = json!({"hook_event_name":"PostToolUse","session_id":"verified-session","cwd":root,"transcript_path":root.join(".codex/rollout-test.jsonl")});
+        (fake, payload, teams)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_managed_boundary_round_trip() {
+        let (fake, payload, teams) = hook_drain_fixture();
+        let root = fake.dir.path();
         let mut output = Vec::new();
         run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, &teams).unwrap();
         let output: Value = serde_json::from_slice(&output).unwrap();
@@ -3523,6 +3543,147 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
         assert_eq!(calls[2]["stdin"]["request"], *request);
         assert_eq!(calls[2]["stdin"]["stage"], "hook_response_offered");
         assert_eq!(calls[2]["stdin"]["offer_id"], "offer-1");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_claude_installer_is_gated_and_idempotent() {
+        let (fake, _, teams) = hook_drain_fixture();
+        let root = fake.dir.path();
+        let script = fs::read_to_string(root.join("mesh")).unwrap().replace("codex", "claude");
+        fs::write(root.join("mesh"), script).unwrap();
+        let config_path = teams.join("drain-team/config.json");
+        let config = fs::read_to_string(&config_path).unwrap().replace("codex", "claude");
+        fs::write(config_path, config).unwrap();
+        let settings_path = root.join("settings.json");
+        fs::write(&settings_path, r#"{"trust":"unchanged","hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"foreign"}]}]}}"#).unwrap();
+        assert!(ensure_compact_hook_installed(&teams, &root.join("mesh")).unwrap());
+        let settings: Value = serde_json::from_slice(&fs::read(&settings_path).unwrap()).unwrap();
+        assert!(settings["hooks"]["PostToolUse"].to_string().contains("taurhaus-delivery-drain"));
+        assert_eq!(settings["trust"], "unchanged");
+        assert!(settings["hooks"]["PostToolUse"].to_string().contains("foreign"));
+        assert!(!ensure_compact_hook_installed(&teams, &root.join("mesh")).unwrap());
+        let script = fs::read_to_string(root.join("mesh")).unwrap().replace("'enabled':True", "'enabled':False");
+        fs::write(root.join("mesh"), script).unwrap();
+        assert!(ensure_compact_hook_installed(&teams, &root.join("mesh")).unwrap());
+        let settings: Value = serde_json::from_slice(&fs::read(&settings_path).unwrap()).unwrap();
+        assert!(!settings.to_string().contains("taurhaus-delivery-drain"));
+        assert!(settings.to_string().contains("taurhaus-session-start-compact"));
+    }
+
+    #[cfg(unix)]
+    fn hook_drain_calls(fake: &crate::coordination::mesh_cli::FakeMesh) -> Vec<Value> {
+        fs::read_to_string(fake.dir.path().join("calls")).unwrap_or_default().lines()
+            .map(|line| serde_json::from_str(line).unwrap()).collect()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_ineligible_boundaries_never_call_drain() {
+        for case in ["tmux", "non-owner", "legacy", "future", "disabled", "wrong-session", "wrong-root", "dead", "wrong-event", "grok", "agy", "stop"] {
+            let (fake, mut payload, teams) = hook_drain_fixture();
+            let root = fake.dir.path();
+            let config_path = teams.join("drain-team/config.json");
+            let mut config: Value = serde_json::from_slice(&fs::read(&config_path).unwrap()).unwrap();
+            match case {
+                "tmux" => fs::write(teams.join("drain-team/state/delivery/adapter-architect.json"), r#"{"mode":"tmux","revision":2}"#).unwrap(),
+                "non-owner" => config["delivery_owner"] = json!("member"),
+                "legacy" => config["messaging_format"] = json!(1),
+                "future" => config["messaging_format"] = json!(99),
+                "disabled" => { let script = fs::read_to_string(root.join("mesh")).unwrap().replace("'enabled':True", "'enabled':False"); fs::write(root.join("mesh"), script).unwrap(); },
+                "wrong-session" => payload["session_id"] = json!("same-cwd-is-not-identity"),
+                "wrong-event" => payload["hook_event_name"] = json!("Cancelled"),
+                "grok" => payload["transcript_path"] = json!(root.join(".grok/transcript.jsonl")),
+                "agy" => payload["transcript_path"] = json!(root.join(".gemini/transcript.jsonl")),
+                "stop" => payload["hook_event_name"] = json!("Stop"),
+                _ => {
+                    let mut runtime = MemberRuntimeStore::load(&teams, "drain-team", "architect").unwrap();
+                    if case == "dead" { runtime.health = HealthState::SessionDead; }
+                    else { runtime.launch_root.as_mut().unwrap().root_authority_revision = 99; }
+                    MemberRuntimeStore::save(&teams, "drain-team", "architect", &runtime).unwrap();
+                }
+            }
+            fs::write(config_path, config.to_string()).unwrap();
+            let mut out = Vec::new();
+            run_compact_hook_cli(payload.to_string().as_bytes(), &mut out, &teams).unwrap();
+            assert!(!hook_drain_calls(&fake).iter().any(|call| call["argv"][7] == "drain"), "{case}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_compact_card_survives_faults_without_retries() {
+        for mode in ["ok", "nonzero", "timeout", "invalid", "oversized", "receipt-failure", "stderr"] {
+            let (fake, mut payload, teams) = hook_drain_fixture();
+            let root = fake.dir.path();
+            let script = fs::read_to_string(root.join("mesh")).unwrap().replace("PostToolUse", "SessionStart").replace("'source':'ordinary'", "'source':'compact'");
+            fs::write(root.join("mesh"), script).unwrap();
+            fs::write(root.join("mode"), mode).unwrap();
+            write_snapshot_fixture(&teams, "drain-team", "architect");
+            payload["hook_event_name"] = json!("SessionStart");
+            payload["source"] = json!("compact");
+            let start = std::time::Instant::now();
+            let mut out = Vec::new();
+            run_compact_hook_cli(payload.to_string().as_bytes(), &mut out, &teams).unwrap();
+            assert!(start.elapsed() < std::time::Duration::from_secs(4), "{mode}");
+            let out: Value = serde_json::from_slice(&out).unwrap();
+            let context = out["hookSpecificOutput"]["additionalContext"].as_str().expect(mode);
+            assert!(context.contains("Inspect architecture"), "{mode}: {context}");
+            let calls = hook_drain_calls(&fake);
+            assert_eq!(calls.iter().filter(|c| c["argv"][7] == "drain").count(), 1, "{mode}");
+            assert_eq!(calls.iter().filter(|c| c["argv"][7] == "receipt").count(), 1, "{mode}");
+            let receipt = &calls.last().unwrap()["stdin"];
+            let offered = matches!(mode, "ok" | "receipt-failure" | "stderr");
+            assert_eq!(receipt["stage"], if offered { "hook_response_offered" } else { "outcome_unknown" }, "{mode}");
+            assert_eq!(context.contains("fixture marker"), offered, "{mode}");
+            if offered { assert!(context.find("Inspect architecture").unwrap() < context.find("## Mesh pending messages (attributed data)").unwrap()); }
+            assert_eq!(calls[1]["stdin"]["request"]["compose_compaction"], true);
+            assert!(calls[1]["stdin"]["request"]["reserved_bytes"].as_u64().unwrap() > 100);
+            assert_eq!(receipt["request"], calls[1]["stdin"]["request"]);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_partial_write_closes_executor_before_unknown_receipt() {
+        struct BrokenOutput(PathBuf);
+        impl Write for BrokenOutput {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> { Err(std::io::ErrorKind::BrokenPipe.into()) }
+            fn flush(&mut self) -> std::io::Result<()> { unreachable!() }
+        }
+        impl Drop for BrokenOutput { fn drop(&mut self) { fs::write(&self.0, "closed").unwrap(); } }
+        let (fake, payload, teams) = hook_drain_fixture();
+        let root = fake.dir.path();
+        let script = fs::read_to_string(root.join("mesh")).unwrap().replace("else: print(json.dumps({'protocol':protocol,'status':'recorded'", "else:\n assert (root/'executor-closed').exists()\n print(json.dumps({'protocol':protocol,'status':'recorded'");
+        fs::write(root.join("mesh"), script).unwrap();
+        assert!(run_compact_hook_cli(payload.to_string().as_bytes(), BrokenOutput(root.join("executor-closed")), &teams).is_err());
+        let calls = hook_drain_calls(&fake);
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[2]["stdin"]["stage"], "outcome_unknown");
+        assert_eq!(calls[2]["stdin"]["offer_id"], "offer-1");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_codex_home_reconciliation_preserves_foreign_and_malformed_settings() {
+        let (fake, _, teams) = hook_drain_fixture();
+        let home = fake.dir.path().join("selected-codex");
+        let exe = fake.dir.path().join("mesh");
+        fs::create_dir_all(&home).unwrap();
+        let bindings = vec![(teams, "drain-team".into(), "architect".into())];
+        ensure_codex_compact_hook_installed_at(&home, &exe).unwrap();
+        let settings = home.join("hooks.json");
+        let compaction = fs::read_to_string(&settings).unwrap();
+        assert!(drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).unwrap());
+        assert!(!drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).unwrap());
+        let installed = fs::read_to_string(&settings).unwrap();
+        assert!(installed.contains("PostToolUse"));
+        assert!(installed.contains("taurhaus-session-start-compact"));
+        assert!(drain::reconcile_home(&home, CliTool::Codex, &[], &exe).unwrap());
+        assert_eq!(serde_json::from_str::<Value>(&fs::read_to_string(&settings).unwrap()).unwrap(), serde_json::from_str::<Value>(&compaction).unwrap());
+        fs::write(&settings, "{").unwrap();
+        assert!(drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).is_err());
+        assert_eq!(fs::read_to_string(settings).unwrap(), "{");
     }
 
 }

@@ -272,3 +272,95 @@ fn child_exchange(executable: &Path, root: &Path, team: &str, member: &str, verb
 fn child_exchange(_: &Path, _: &Path, _: &str, _: &str, _: &str, _: &[u8], _: &mut Vec<u8>) -> std::io::Result<()> {
     Err(std::io::Error::other("native hook transport requires Unix"))
 }
+
+/// Explicit live-home bindings supplied by the account reconciler. Shared homes
+/// receive the union; an unresolved live account is never guessed from defaults.
+pub type Binding = (PathBuf, String, String);
+const SCRIPT_PREFIX: &str = "taurhaus-delivery-drain-";
+
+pub fn reconcile_home(home: &Path, tool: CliTool, bindings: &[Binding], exe: &Path) -> Result<bool, CoordinationError> {
+    if !matches!(tool, CliTool::Claude | CliTool::Codex) { return Ok(false); }
+    let filename = if tool == CliTool::Claude { CLAUDE_SETTINGS_FILENAME } else { CODEX_HOOKS_FILENAME };
+    let settings_path = home.join(filename);
+    let mut settings = load_settings_json(&settings_path)?;
+    let original = settings.clone();
+    let runtime = detect_hook_runtime(home);
+    let mut desired = std::collections::BTreeMap::new();
+    if settings["disableAllHooks"] != true && hook_executable_exists(home, &runtime_path_string(exe, runtime)?) {
+        if let Some(mesh) = executable() {
+            for (teams, team, member) in bindings {
+                let Some(config) = read_json(&teams.join(team).join("config.json"), 1024 * 1024) else { continue; };
+                if config["delivery_owner"] != "team" || config["messaging_format"] != 2 { continue; }
+                if !config["members"].as_array().is_some_and(|members| members.iter().any(|m| m["name"] == *member && m["isActive"] != false)) { continue; }
+                let Some(state) = read_json(&teams.join(team).join(format!("state/delivery/adapter-{member}.json")), 4 * 1024 * 1024) else { continue; };
+                if state["mode"] != "hook" { continue; }
+                let Some(root) = teams.parent() else { continue; };
+                for pin in descriptors(&mesh, root, team, member) {
+                    if pin.harness != tool.to_string() || pin.source == COMPACT_SOURCE { continue; }
+                    // The ordinary SessionStart descriptor has an exact source matcher;
+                    // prose from a disabled discovery descriptor never becomes config.
+                    if pin.event == SESSION_START_HOOK_EVENT && pin.matcher != pin.source { continue; }
+                    use sha2::{Digest, Sha256};
+                    let key = hex::encode(Sha256::digest(root.to_string_lossy().as_bytes()));
+                    desired.insert((key, pin.event.clone(), pin.matcher.clone()), (root.to_path_buf(), pin));
+                }
+            }
+        }
+    }
+    let owned = |hook: &Value| hook["command"].as_str().is_some_and(|c| c.contains(SCRIPT_PREFIX));
+    // Do not erase per-hook user disablement when reconciling a shared home.
+    if settings["hooks"].as_object().into_iter().flat_map(|events| events.values())
+        .filter_map(Value::as_array).flatten().filter_map(|entry| entry["hooks"].as_array()).flatten()
+        .any(|hook| owned(hook) && (hook["disabled"] == true || hook["enabled"] == false)) { return Ok(false); }
+    if settings.get("hooks").is_none() && desired.is_empty() { return Ok(false); }
+    let hooks = settings.as_object_mut().ok_or_else(|| CoordinationError::Validation("hook settings object required".into()))?
+        .entry("hooks").or_insert_with(|| json!({})).as_object_mut()
+        .ok_or_else(|| CoordinationError::Validation("hook events object required".into()))?;
+    let mut old_scripts = Vec::new();
+    for entries in hooks.values_mut() {
+        let entries = entries.as_array_mut().ok_or_else(|| CoordinationError::Validation("hook entries array required".into()))?;
+        for entry in entries.iter_mut() {
+            let commands = entry.get_mut("hooks").and_then(Value::as_array_mut)
+                .ok_or_else(|| CoordinationError::Validation("hook commands array required".into()))?;
+            commands.retain(|hook| { if owned(hook) { old_scripts.push(hook["command"].clone()); false } else { true } });
+        }
+        entries.retain(|entry| entry["hooks"].as_array().is_none_or(|commands| !commands.is_empty()));
+    }
+    hooks.retain(|_, entries| entries.as_array().is_none_or(|entries| !entries.is_empty()));
+    let mut scripts = Vec::new();
+    for ((key, event, matcher), (root, pin)) in desired {
+        let extension = if runtime == HookRuntime::Windows { "cmd" } else { "sh" };
+        let script = home.join("hooks").join(format!("{SCRIPT_PREFIX}{key}.{extension}"));
+        let command = settings_command_for_script(&script, runtime)?;
+        let hook = command_hook_value(&command, Some(pin.max_chars as u64));
+        hooks.entry(event).or_insert_with(|| json!([])).as_array_mut().expect("validated entries")
+            .push(json!({"matcher":matcher,"hooks":[hook]}));
+        scripts.push((script, root));
+    }
+    // Validate everything before mutation, install every target before config teardown.
+    let mut changed = false;
+    for (script, root) in &scripts {
+        fs::create_dir_all(script.parent().expect("script parent"))?;
+        changed |= write_hook_script_with_claude_dir(script, exe, runtime, Some(root))?;
+    }
+    if settings != original {
+        if let Some(parent) = settings_path.parent() { fs::create_dir_all(parent)?; }
+        write_atomic_settings_file(&settings_path, &serde_json::to_vec_pretty(&settings).map_err(|e| CoordinationError::StoreError(e.to_string()))?)?;
+        changed = true;
+    }
+    // Remove only the exact generated names, after their registrations are gone.
+    if let Ok(entries) = fs::read_dir(home.join("hooks")) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_stem().and_then(|s| s.to_str()) else { continue; };
+            let Some(hash) = name.strip_prefix(SCRIPT_PREFIX) else { continue; };
+            if hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit())
+                && !scripts.iter().any(|(active, _)| active == &path)
+                && old_scripts.iter().any(|c| c.as_str().is_some_and(|c| c.contains(name))) {
+                fs::remove_file(path)?;
+                changed = true;
+            }
+        }
+    }
+    Ok(changed)
+}
