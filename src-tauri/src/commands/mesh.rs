@@ -358,6 +358,7 @@ fn mesh_status_not_installed(
     error: Option<String>,
 ) -> MeshInstallStatus {
     MeshInstallStatus {
+        // Deliberate bundled fallback: no readable installed contract exists yet.
         canonical_messaging_supported: canonical_messaging_supported(&bundled_contract.version),
         installed: false,
         version: None,
@@ -411,6 +412,7 @@ fn mesh_status_unrunnable(
     read_error: String,
 ) -> MeshInstallStatus {
     MeshInstallStatus {
+        // Deliberate bundled fallback: no readable installed contract exists yet.
         canonical_messaging_supported: canonical_messaging_supported(&bundled_contract.version),
         installed: false,
         version: None,
@@ -2198,6 +2200,7 @@ exit 0
     }
 }
 
+// New command tests follow the sibling-file convention; legacy tests remain above.
 #[cfg(test)]
 #[path = "mesh/tests.rs"]
 mod canonical_tests;

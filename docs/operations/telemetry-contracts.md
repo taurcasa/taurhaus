@@ -42,7 +42,7 @@ selects one ignored real-binary test for canonical team creation and
 It requires an explicitly selected canonical-capable binary; it never resolves
 `~/.local/bin/mesh`. Missing selection reports NOT RUN and exits nonzero; the
 ordinary unit lane reports NOT RUN and leaves this test ignored. The child runs
-with an empty environment, scratch HOME/cwd and explicit tempdir `--claude-dir`;
+with an empty environment, scratch HOME/cwd and explicit tempdir `--claude-dir`.
 It checks help, creates a disposable team using the shipping frontend policy,
 and verifies that Mesh still authenticates the lead after Taurhaus saves the
 config (delivery refuses only for the missing runtime record). No harness, daemon
