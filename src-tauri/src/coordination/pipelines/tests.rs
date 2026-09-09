@@ -8905,7 +8905,7 @@ fn canonical_initialize_adopts_mesh_config_and_launches_before_delivery() {
 }
 
 #[test]
-fn canonical_initialize_creation_refusal_cleans_up_but_opt_in_refusal_retains_team() {
+fn canonical_initialize_refusals_preserve_unowned_or_retryable_teams() {
     for creation_failure in [true, false] {
         let tmp = TempDir::new().unwrap();
         let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -8946,10 +8946,9 @@ fn canonical_initialize_creation_refusal_cleans_up_but_opt_in_refusal_retains_te
             }),
             "{report:?}"
         );
-        assert_eq!(
-            tmp.path().join("canonical/config.json").exists(),
-            !creation_failure
-        );
+        // The fake publishes a team before refusing, modeling another creator.
+        // Only a successful Mesh create transfers cleanup ownership to Taurhaus.
+        assert!(tmp.path().join("canonical/config.json").exists());
         assert!(!runtime
             .calls()
             .iter()
@@ -8984,8 +8983,162 @@ fn canonical_initialize_creation_refusal_cleans_up_but_opt_in_refusal_retains_te
             )));
             assert!(!tmp
                 .path()
-                .join("canonical/state/taurhaus-initialize-pending.json")
+                .join(".taurhaus-initialize-pending/canonical.json")
                 .exists());
         }
     }
+}
+
+fn canonical_review_request(tmp: &TempDir) -> InitializeTeamRequest {
+    serde_json::from_value(serde_json::json!({
+        "team_name": "canonical", "lead_mode": "launch_new",
+        "lead": setup_config("lead", "codex", "gpt-6-astra", tmp.path().to_str().unwrap()),
+        "agents": [],
+        "messaging": {"mode": "canonical", "retentionPolicy": {"synthetic_disposable": true}}
+    }))
+    .unwrap()
+}
+
+// Regression: b643834d surfaced clap usage when the installed Mesh lacked team create.
+#[test]
+fn canonical_review_unsupported_mesh_has_actionable_error() {
+    for refusal in [
+        "error: unrecognized subcommand 'team'",
+        "error: unexpected argument '--messaging-canonical' found",
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_canonical_create_failure(Some(refusal));
+        let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+        let report = orchestrator
+            .initialize_team(&canonical_review_request(&tmp))
+            .unwrap();
+        assert_eq!(report.failed_step.as_deref(), Some("create_team"));
+        assert!(
+            report
+                .message
+                .contains("installed Mesh does not support canonical teams"),
+            "{report:?}"
+        );
+        assert!(
+            report.message.contains("disable Canonical messaging"),
+            "{report:?}"
+        );
+    }
+}
+
+// Regression: 796bba0e retained launched steps without checking stale pane identities.
+#[test]
+fn canonical_review_retry_refuses_missing_dead_reused_or_unprobeable_seats() {
+    for problem in ["missing", "dead", "reused", "probe"] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_delivery_opt_in_failure(Some("mesh: runtime pending"));
+        let mut orchestrator =
+            new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+        let request = canonical_review_request(&tmp);
+        assert_eq!(
+            orchestrator
+                .initialize_team(&request)
+                .unwrap()
+                .failed_step
+                .as_deref(),
+            Some("opt_in_delivery")
+        );
+        let record = MemberRuntimeStore::load(tmp.path(), "canonical", "lead").unwrap();
+        let pane = record.pane_id.unwrap();
+        match problem {
+            "missing" => runtime.set_pane_exists(&pane, false),
+            "dead" => runtime.set_pane_dead(&pane, true),
+            "reused" => runtime.set_pane_identity(&pane, Some(999999), Some(999999)),
+            _ => runtime.set_live_pane_failure(&pane, "probe failed"),
+        }
+        runtime.set_delivery_opt_in_failure(None);
+        let before = runtime.calls().len();
+        let report = orchestrator.initialize_team(&request).unwrap();
+        assert_eq!(
+            report.failed_step.as_deref(),
+            Some("launch_sessions"),
+            "{problem}: {report:?}"
+        );
+        assert!(
+            report.message.contains("disband and re-initialize"),
+            "{report:?}"
+        );
+        assert!(!runtime.calls()[before..].iter().any(|c| matches!(
+            c,
+            RuntimeCall::OptInTeamDelivery { .. } | RuntimeCall::SpawnTeamDaemon { .. }
+        )));
+        assert!(tmp.path().join("canonical/config.json").exists());
+    }
+}
+
+// Regression: 796bba0e placed Taurhaus retry bookkeeping inside Mesh-owned state.
+#[test]
+fn canonical_review_checkpoint_is_outside_the_team_tree() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    runtime.set_delivery_opt_in_failure(Some("mesh: runtime pending"));
+    let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+    orchestrator
+        .initialize_team(&canonical_review_request(&tmp))
+        .unwrap();
+    assert!(!tmp
+        .path()
+        .join("canonical/state/taurhaus-initialize-pending.json")
+        .exists());
+    assert!(tmp
+        .path()
+        .join(".taurhaus-initialize-pending/canonical.json")
+        .exists());
+}
+
+// Regression: 796bba0e propagated checkpoint unlink errors after successful launch.
+#[test]
+fn canonical_review_checkpoint_cleanup_is_best_effort() {
+    for replace_with_directory in [false, true] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+        let report = orchestrator
+            .initialize_team_with_cli_commands_and_layout_and_progress(
+                &canonical_review_request(&tmp),
+                &CliCommandSettings::default(),
+                "new_window",
+                Some(&mut |step, status, _| {
+                    if step == "send_onboarding" && status == StepStatus::Succeeded {
+                        for relative in [
+                            "canonical/state/taurhaus-initialize-pending.json",
+                            ".taurhaus-initialize-pending/canonical.json",
+                        ] {
+                            let path = tmp.path().join(relative);
+                            if path.is_file() {
+                                fs::remove_file(&path).unwrap();
+                                if replace_with_directory {
+                                    fs::create_dir(path).unwrap();
+                                }
+                            }
+                        }
+                    }
+                }),
+            )
+            .expect("bookkeeping cannot discard a successful report");
+        assert!(report.failed_step.is_none(), "{report:?}");
+    }
+}
+
+// Regression: b643834d disbanded a concurrently published team on Mesh create refusal.
+#[test]
+fn canonical_review_create_refusal_never_removes_a_concurrently_published_team() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    // This fake publishes Mesh-shaped config before refusing: a competing creator
+    // won the creation lock after Taurhaus's unlocked directory pre-check.
+    runtime.set_canonical_create_failure(Some("mesh: new canonical team required"));
+    let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+    let report = orchestrator
+        .initialize_team(&canonical_review_request(&tmp))
+        .unwrap();
+    assert_eq!(report.failed_step.as_deref(), Some("create_team"));
+    assert!(tmp.path().join("canonical/config.json").exists());
 }

@@ -27,14 +27,16 @@ pub(crate) fn delivery_args(team: &str, lead: &str, teams: &Path) -> Vec<String>
 }
 
 fn identity_args(team: &str, lead: &str, teams: &Path) -> Vec<String> {
-    vec![
-        "--claude-dir".into(),
-        mesh_cli_claude_dir_arg_from_path(teams.parent().unwrap_or(teams)),
-        "--team".into(),
-        team.into(),
-        "--name".into(),
-        lead.into(),
-    ]
+    let mut args = Vec::new();
+    // Match spawn_team_daemon_at_root: never reinterpret the teams root as its parent.
+    if let Some(root) = teams.parent() {
+        args.extend([
+            "--claude-dir".into(),
+            mesh_cli_claude_dir_arg_from_path(root),
+        ]);
+    }
+    args.extend(["--team".into(), team.into(), "--name".into(), lead.into()]);
+    args
 }
 
 #[cfg(test)]
@@ -42,6 +44,14 @@ mod tests {
     use super::*;
     use crate::coordination::stores::TeamConfigStore;
     use serde_json::json;
+
+    // Regression: b643834d retargeted parentless roots into an unintended nested teams directory.
+    #[test]
+    fn canonical_review_parentless_root_does_not_invent_claude_dir() {
+        assert!(!identity_args("trial", "lead", Path::new("/"))
+            .iter()
+            .any(|arg| arg == "--claude-dir"));
+    }
 
     // Regression: 796bba0e gave the candidate a name matching the locked Mesh lane filter.
     #[test]

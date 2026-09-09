@@ -5,7 +5,7 @@
 
 ![Coordination Architecture](images/coordination-architecture.jpg)
 
-Canonical activation is an additive initialize option, with no daemon protocol bump. Mesh creates the disposable canonical team and joins its lead; Taurhaus adopts that entry, adds the roster, launches every seat (including the lead), and then runs the lead-only `opt_in_delivery` step before ensuring the team daemon. Team-owned delivery skips member daemons. Creation failures clean up the new team; delivery opt-in refusals preserve the launched team and selected root, report Mesh’s refusal, and allow the same request to retry opt-in without recreating seats. The temporary retention-policy file is removed after creation.
+Canonical activation is an additive initialize option, with no daemon protocol bump. Mesh creates the disposable canonical team and joins its lead; Taurhaus adopts that entry, adds the roster, launches every seat (including the lead), and then runs the lead-only `opt_in_delivery` step before ensuring the team daemon. Team-owned delivery skips member daemons. Failures after Mesh confirms creation clean up the new team; a Mesh create refusal never removes a concurrently created team. delivery opt-in refusals preserve the launched team and selected root, report Mesh’s refusal, and allow the same request to retry opt-in without recreating seats, after verifying all retained panes are live and still owned by those seats. Missing, dead or unverifiable panes require disbanding and re-initializing. The temporary retention-policy file is removed after creation.
 
 ## Overview
 

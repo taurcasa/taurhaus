@@ -88,6 +88,16 @@ impl CoordinationOrchestrator {
         );
 
         if self.pending_canonical_initialize_matches(request) {
+            if let Err(err) = self.validate_retained_canonical_seats(request) {
+                return Ok(failed_initialize_report_with_progress(
+                    &request.team_name,
+                    "launch_sessions",
+                    err,
+                    succeeded_steps,
+                    &mut steps,
+                    &mut emit_progress,
+                ));
+            }
             for step in [
                 "create_team",
                 "add_lead",
@@ -372,7 +382,13 @@ impl CoordinationOrchestrator {
 
         self.ensure_team_daemon_after_initialize(request);
         if request.messaging.is_some() {
-            std::fs::remove_file(self.pending_canonical_initialize_path(&request.team_name))?;
+            if let Err(error) =
+                std::fs::remove_file(self.pending_canonical_initialize_path(&request.team_name))
+            {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!(%error, team = %request.team_name, "failed to remove initialize checkpoint");
+                }
+            }
         }
 
         Ok(InitializeReport {
@@ -387,8 +403,41 @@ impl CoordinationOrchestrator {
 
     fn pending_canonical_initialize_path(&self, team: &str) -> std::path::PathBuf {
         self.teams_dir
-            .join(team)
-            .join("state/taurhaus-initialize-pending.json")
+            .join(".taurhaus-initialize-pending")
+            .join(format!("{team}.json"))
+    }
+
+    fn validate_retained_canonical_seats(
+        &self,
+        request: &InitializeTeamRequest,
+    ) -> Result<(), CoordinationError> {
+        use crate::coordination::runtime::{pane_belongs_to_member, PaneOwnership};
+        for seat in std::iter::once(&request.lead).chain(&request.agents) {
+            let live = (|| {
+                let record =
+                    MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &seat.name)?;
+                let Some(pane) = record.pane_id.as_deref() else {
+                    return Ok(false);
+                };
+                let Some(observed) = self.runtime.live_pane(pane)? else {
+                    return Ok(false);
+                };
+                Ok::<_, CoordinationError>(
+                    !self.runtime.pane_is_dead(pane)?
+                        && matches!(
+                            pane_belongs_to_member(&record, &observed),
+                            PaneOwnership::Owned
+                        ),
+                )
+            })();
+            if !matches!(live, Ok(true)) {
+                return Err(CoordinationError::Conflict(format!(
+                    "retained seat '{}' is unavailable or its pane identity cannot be verified; disband and re-initialize the team",
+                    seat.name
+                )));
+            }
+        }
+        Ok(())
     }
 
     fn pending_canonical_initialize_matches(&self, request: &InitializeTeamRequest) -> bool {
@@ -408,7 +457,7 @@ impl CoordinationOrchestrator {
         request: &InitializeTeamRequest,
     ) -> Result<(), CoordinationError> {
         let path = self.pending_canonical_initialize_path(&request.team_name);
-        std::fs::create_dir_all(path.parent().expect("team state directory"))?;
+        std::fs::create_dir_all(path.parent().expect("initialize checkpoint directory"))?;
         let bytes = serde_json::to_vec(request)
             .map_err(|e| CoordinationError::StoreError(e.to_string()))?;
         std::fs::write(path, bytes)?;
@@ -435,6 +484,7 @@ impl CoordinationOrchestrator {
             .teams_dir
             .join(format!(".canonical-policy-{}.json", uuid::Uuid::new_v4()));
         let policy = TemporaryCanonicalPolicy(policy_path);
+        let mut mesh_created = false;
         let result = (|| {
             use std::io::Write;
             let mut file = std::fs::OpenOptions::new()
@@ -450,7 +500,19 @@ impl CoordinationOrchestrator {
                 &request.lead.name,
                 &self.teams_dir,
                 &policy.0,
-            )?;
+            ).map_err(|error| {
+                let message = error.to_string();
+                if ["unrecognized subcommand 'team'", "unrecognized subcommand 'create'",
+                    "unexpected argument '--messaging-canonical'", "unexpected argument '--isolated'",
+                    "unexpected argument '--retention-policy'"]
+                    .iter().any(|parse_error| message.contains(parse_error))
+                {
+                    CoordinationError::Backend(
+                        "the installed Mesh does not support canonical teams; install a compatible bundled Mesh build or disable Canonical messaging and retry".into(),
+                    )
+                } else { error }
+            })?;
+            mesh_created = true;
             let config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
             if config.extra.get("messaging_format") != Some(&serde_json::json!(2)) {
                 return Err(CoordinationError::StoreError(
@@ -473,7 +535,7 @@ impl CoordinationOrchestrator {
             ));
             Ok(())
         })();
-        if result.is_err() {
+        if mesh_created && result.is_err() {
             self.cleanup_initialize_failure(&request.team_name);
         }
         result
