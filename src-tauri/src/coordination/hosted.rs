@@ -84,6 +84,9 @@ impl HostedMembers {
         let guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
             .map_err(|e| e.to_string())?;
         let before = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
+        if before.extra.get("hostInputUnknown") == Some(&Value::Bool(true)) || before.recovery.claim.as_ref().is_some_and(|r| r.stage == super::recovery_card::ReceiptStage::OutcomeUnknown) {
+            return Err("outcome_unknown: recovery must be reconciled before relaunch".into());
+        }
         if before.pane_id.is_some() || (before.app_server.is_none() && before.session_id.is_some())
         {
             return Err("app_server_switch_requires_5b_recoverable_relaunch_packet".into());
@@ -106,7 +109,7 @@ impl HostedMembers {
         }
         let directory = SocketDirectory::create()?;
         let socket = directory.0.join("rpc.sock");
-        let host = HostProcess::launch(
+        let mut host = HostProcess::launch(
             launch,
             &definition.project_path,
             &socket,
@@ -135,14 +138,14 @@ impl HostedMembers {
             configuration: super::recovery_card::digest(&launch.arguments),
             trust: "unverified".into(),
             transport: "unix_ndjson".into(),
-            state: "ready".into(),
+            state: "recovering".into(),
         });
         record.launch_root = Some(authority);
         record.terminal_contract = 1;
         record.harness = Some(definition.cli_tool);
         record.cli_tool = Some(definition.cli_tool);
         record.project_path = Some(definition.project_path.clone());
-        record.health = HealthState::Healthy;
+        record.health = HealthState::SessionDead;
         record.pane_id = None;
         record.pane_pid = None;
         record.pane_start_time = None;
@@ -178,6 +181,21 @@ impl HostedMembers {
         ) {
             return Err("host attachment changed during launch".into());
         }
+        let ready = (|| -> Result<(), String> {
+            use super::recovery_card::ReceiptStage;
+            let card = super::recovery_delivery::prepare(registry, &root, team, member, "app_server").map_err(|e| e.to_string())?.ok_or("startup recovery is not ready")?;
+            MemberRuntimeStore::update(&root, team, member, |r| { r.extra.insert("hostInputUnknown".into(), json!(true)); }).map_err(|e| e.to_string())?;
+            let result = host.input(&card.text, &guard);
+            let stage = if result.is_ok() { ReceiptStage::Submitted } else if host.outcome_unknown() { ReceiptStage::OutcomeUnknown } else { ReceiptStage::Failed };
+            super::recovery_delivery::observe(registry, &root, team, member, &card.receipt, stage).map_err(|e| e.to_string())?;
+            MemberRuntimeStore::update(&root, team, member, |r| { r.extra.insert("hostInputUnknown".into(), json!(host.outcome_unknown())); }).map_err(|e| e.to_string())?;
+            result.map(|_| ())
+        })();
+        MemberRuntimeStore::update(&root, team, member, |record| {
+            record.health = if ready.is_ok() { HealthState::Healthy } else { HealthState::SessionDead };
+            if let Some(attachment) = &mut record.app_server { attachment.state = if ready.is_ok() { "ready" } else { "unavailable" }.into(); }
+        }).map_err(|e| e.to_string())?;
+        ready?;
         *owned = Some(OwnedSeat {
             host,
             generation: record.attachment_generation,
@@ -372,6 +390,7 @@ pub(crate) mod tests {
         let hosts = HostedMembers::default();
         hosts.launch(&registry, "team", "seat", &launch).unwrap();
         let record = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        assert_eq!(record.recovery.last_delivered.as_ref().map(|r| r.stage), Some(super::super::recovery_card::ReceiptStage::Submitted));
         let attachment = record.app_server.as_ref().unwrap();
         assert_eq!(attachment.thread_id, "owned-thread");
         assert_eq!(record.session_id.as_deref(), Some("owned-thread"));
@@ -528,11 +547,10 @@ pub(crate) mod tests {
         assert!(MemberCompactionStore::load(tmp.path(), "team", "seat").unwrap().unwrap().pending);
         hosts.operation(&registry, "team", "seat", generation, "input", json!({"text":"after compact"})).unwrap();
         let transcript = hosts.operation(&registry, "team", "seat", generation, "transcript", Value::Null).unwrap();
-        for (i, marker) in ["startup marker", "after compact"].iter().enumerate() {
-            let text = transcript["thread"]["turns"][i]["items"][0]["content"][0]["text"].as_str().unwrap();
-            assert!(text.starts_with("[taurhaus] recovery_card"));
-            assert!(text.ends_with(marker));
-        }
+        assert!(transcript["thread"]["turns"][0]["items"][0]["content"][0]["text"].as_str().unwrap().starts_with("[taurhaus] recovery_card"));
+        assert_eq!(transcript["thread"]["turns"][1]["items"][0]["content"][0]["text"], "startup marker");
+        let text = transcript["thread"]["turns"][2]["items"][0]["content"][0]["text"].as_str().unwrap();
+        assert!(text.starts_with("[taurhaus] recovery_card") && text.ends_with("after compact"));
         assert_eq!(MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap().context_generation, 1);
         assert!(!MemberCompactionStore::load(tmp.path(), "team", "seat").unwrap().unwrap().pending);
         hosts.stop(&registry, "team", "seat").unwrap();
