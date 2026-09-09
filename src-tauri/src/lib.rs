@@ -868,6 +868,4 @@ mod tests {
         assert_eq!(entry["event"], "test.cli_hook_logging");
         assert_eq!(entry["component"], "coordination");
     }
-
-
 }

@@ -424,11 +424,20 @@ pub fn handle_compact_hook_stdin<R: Read>(
             CoordinationError::Io(error)
         })?;
     if raw.len() > 64 * 1024 {
-        emit_global("debug", "coordination", "delivery.hook.skipped", None,
-            json!({"reason":"hook_input_budget"}).as_object().unwrap().clone());
+        emit_global(
+            "debug",
+            "coordination",
+            "delivery.hook.skipped",
+            None,
+            json!({"reason":"hook_input_budget"})
+                .as_object()
+                .unwrap()
+                .clone(),
+        );
         return Ok(CompactHookResponse::default());
     }
-    let raw = String::from_utf8(raw).map_err(|_| CoordinationError::Validation("invalid hook UTF-8".into()))?;
+    let raw = String::from_utf8(raw)
+        .map_err(|_| CoordinationError::Validation("invalid hook UTF-8".into()))?;
     handle_compact_hook(&raw, teams_dir)
 }
 
@@ -452,11 +461,17 @@ pub fn handle_compact_hook(
 
     if hook_event_is(&payload.hook_event_name, POST_COMPACT_HOOK_EVENT)
         || (hook_event_is(&payload.hook_event_name, SESSION_START_HOOK_EVENT)
-            && payload.source.as_deref() == Some(COMPACT_SOURCE)) {
+            && payload.source.as_deref() == Some(COMPACT_SOURCE))
+    {
         emit_compact_hook_received(&payload, raw.len());
     } else {
-        emit_global("debug", "coordination", "delivery.hook.received", None,
-            base_compact_hook_fields(Some(&payload), None));
+        emit_global(
+            "debug",
+            "coordination",
+            "delivery.hook.received",
+            None,
+            base_compact_hook_fields(Some(&payload), None),
+        );
     }
     let mut response = handle_compaction_decision(&payload, teams_dir)?;
     drain::append(teams_dir, &payload, &mut response);
@@ -3898,7 +3913,9 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
         fs::write(&settings, json!({"hooks":foreign}).to_string()).unwrap();
         ensure_compact_hook_installed(&teams, &fake.dir.path().join("mesh")).unwrap();
         let value: Value = serde_json::from_slice(&fs::read(settings).unwrap()).unwrap();
-        for event in ["PreToolUse", "PostToolUse"] { assert_eq!(value["hooks"][event], foreign[event]); }
+        for event in ["PreToolUse", "PostToolUse"] {
+            assert_eq!(value["hooks"][event], foreign[event]);
+        }
     }
 
     #[cfg(unix)]
@@ -3908,7 +3925,13 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
         let (fake, _, teams) = hook_drain_fixture();
         let root = fake.dir.path();
         let mesh = root.join("mesh");
-        fs::write(&mesh, fs::read_to_string(&mesh).unwrap().replace("codex", "claude")).unwrap();
+        fs::write(
+            &mesh,
+            fs::read_to_string(&mesh)
+                .unwrap()
+                .replace("codex", "claude"),
+        )
+        .unwrap();
         let bindings = vec![(teams.clone(), "drain-team".into(), "architect".into())];
         ensure_compact_hook_installed(&teams, &mesh).unwrap();
         drain::reconcile_home(root, CliTool::Claude, &bindings, &mesh).unwrap();
@@ -3926,7 +3949,13 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
         for (sequence, offered) in [("0", true), ("None", false)] {
             let (fake, payload, teams) = hook_drain_fixture();
             let mesh = fake.dir.path().join("mesh");
-            fs::write(&mesh, fs::read_to_string(&mesh).unwrap().replace("'sequence':1", &format!("'sequence':{sequence}"))).unwrap();
+            fs::write(
+                &mesh,
+                fs::read_to_string(&mesh)
+                    .unwrap()
+                    .replace("'sequence':1", &format!("'sequence':{sequence}")),
+            )
+            .unwrap();
             let response = handle_compact_hook(&payload.to_string(), &teams).unwrap();
             assert_eq!(response.hook_specific_output.is_some(), offered);
         }
@@ -3957,21 +3986,33 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
             assert!(drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).unwrap());
             let settings = home.join("hooks.json");
             let installed = fs::read(&settings).unwrap();
-            let scripts = fs::read_dir(home.join("hooks")).unwrap()
-                .map(|entry| { let path = entry.unwrap().path(); let bytes = fs::read(&path).unwrap(); (path, bytes) })
+            let scripts = fs::read_dir(home.join("hooks"))
+                .unwrap()
+                .map(|entry| {
+                    let path = entry.unwrap().path();
+                    let bytes = fs::read(&path).unwrap();
+                    (path, bytes)
+                })
                 .collect::<Vec<_>>();
             match failure {
                 "missing" => fs::remove_file(&mesh).unwrap(),
                 "nonzero" => fs::write(&mesh, "#!/bin/sh\nexit 7\n").unwrap(),
                 "invalid" => fs::write(&mesh, "#!/bin/sh\nprintf invalid\n").unwrap(),
                 _ => {
-                    let script = fs::read_to_string(&mesh).unwrap().replace("'max_bytes':8192", "'max_bytes':'invalid'");
+                    let script = fs::read_to_string(&mesh)
+                        .unwrap()
+                        .replace("'max_bytes':8192", "'max_bytes':'invalid'");
                     fs::write(&mesh, script).unwrap();
                 }
             }
-            assert!(!drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).unwrap(), "{failure}");
+            assert!(
+                !drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).unwrap(),
+                "{failure}"
+            );
             assert_eq!(fs::read(&settings).unwrap(), installed, "{failure}");
-            for (path, bytes) in scripts { assert_eq!(fs::read(path).unwrap(), bytes); }
+            for (path, bytes) in scripts {
+                assert_eq!(fs::read(path).unwrap(), bytes);
+            }
         }
     }
 

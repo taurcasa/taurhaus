@@ -89,7 +89,12 @@ fn executable() -> Option<PathBuf> {
     (path.is_absolute() && path.is_file()).then_some(path)
 }
 
-fn descriptors(executable: &Path, root: &Path, team: &str, member: &str) -> Option<Vec<Descriptor>> {
+fn descriptors(
+    executable: &Path,
+    root: &Path,
+    team: &str,
+    member: &str,
+) -> Option<Vec<Descriptor>> {
     let result = exchange(
         executable,
         root,
@@ -107,7 +112,9 @@ fn descriptors(executable: &Path, root: &Path, team: &str, member: &str) -> Opti
     if value["protocol"] != PROTOCOL {
         return None;
     }
-    let rows = value["descriptors"].as_array().filter(|rows| rows.len() <= 64)?;
+    let rows = value["descriptors"]
+        .as_array()
+        .filter(|rows| rows.len() <= 64)?;
     let pins: Vec<Descriptor> = serde_json::from_value(Value::Array(rows.clone())).ok()?;
     Some(pins.into_iter().filter(Descriptor::supported).collect())
 }
@@ -215,7 +222,8 @@ pub(super) fn append(teams: &Path, payload: &CompactHookInput, response: &mut Co
     };
     let root = PathBuf::from(identity["runtime"]["root"].as_str().unwrap_or_default());
     let source = payload.source.as_deref().unwrap_or("ordinary");
-    let Some(pins) = descriptors(&executable, &root, &matched.team_name, &matched.member.name) else {
+    let Some(pins) = descriptors(&executable, &root, &matched.team_name, &matched.member.name)
+    else {
         return;
     };
     let matching: Vec<_> = pins
@@ -288,8 +296,16 @@ pub(super) fn append(teams: &Path, payload: &CompactHookInput, response: &mut Co
         }
     }
     if offer.id.is_none() {
-        emit_global("debug", "coordination", "delivery.hook.outcome_unknown", None,
-            json!({"team":offer.team,"member":offer.member,"reason":offer.reason}).as_object().unwrap().clone());
+        emit_global(
+            "debug",
+            "coordination",
+            "delivery.hook.outcome_unknown",
+            None,
+            json!({"team":offer.team,"member":offer.member,"reason":offer.reason})
+                .as_object()
+                .unwrap()
+                .clone(),
+        );
         return;
     }
     response.drain_receipt = Some(offer);
@@ -341,7 +357,9 @@ fn valid_batch(value: &Value, selection: &Value, pin: &Descriptor, prefix: &str)
                 .is_some_and(|id| !id.is_empty() && ids.insert(format!("a:{id}")))
         })
         && items.iter().all(|item| {
-            let Some(sequence) = item["sequence"].as_u64() else { return false; };
+            let Some(sequence) = item["sequence"].as_u64() else {
+                return false;
+            };
             let ordered = last_sequence.is_none_or(|last| sequence > last);
             last_sequence = Some(sequence);
             ordered
@@ -477,7 +495,12 @@ fn child_exchange(
                     offset += n;
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-                Err(e) if matches!(e.kind(), std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset) => {
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+                    ) =>
+                {
                     // Capabilities may exit without reading stdin. Drain its response
                     // before deciding; a successful document remains authoritative.
                     stdin_closed = true;
@@ -505,7 +528,6 @@ fn child_exchange(
                         }
                         bytes.extend_from_slice(&buffer[..n]);
                     } // Stderr is drained and discarded, never logged as payload.
-
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(e) => return Err(e),
@@ -551,7 +573,9 @@ pub fn reconcile_home(
         return Ok(false);
     }
     // Absence of capability evidence never grants teardown authority (notably on Windows).
-    let Some(mesh) = executable() else { return Ok(false); };
+    let Some(mesh) = executable() else {
+        return Ok(false);
+    };
     let filename = if tool == CliTool::Claude {
         CLAUDE_SETTINGS_FILENAME
     } else {
@@ -566,12 +590,12 @@ pub fn reconcile_home(
         && hook_executable_exists(home, &runtime_path_string(exe, runtime)?)
     {
         for (teams, team, member) in bindings {
-            let Some(config) = read_json(&teams.join(team).join("config.json"), 1024 * 1024)
-            else {
+            let Some(config) = read_json(&teams.join(team).join("config.json"), 1024 * 1024) else {
                 continue;
             };
             if !TeamConfigStore::team_owns_delivery(teams, team)?
-                || !crate::coordination::journal::canonical(teams, team)? {
+                || !crate::coordination::journal::canonical(teams, team)?
+            {
                 continue;
             }
             if !config["members"].as_array().is_some_and(|members| {
@@ -615,7 +639,7 @@ pub fn reconcile_home(
                 );
             }
         }
-}
+    }
     let owned = |hook: &Value| {
         let Some(command) = hook["command"].as_str() else {
             return false;
@@ -664,9 +688,13 @@ pub fn reconcile_home(
         .ok_or_else(|| CoordinationError::Validation("hook events object required".into()))?;
     let mut old_scripts = Vec::new();
     for entries in hooks.values_mut() {
-        let Some(entries) = entries.as_array_mut() else { continue; };
+        let Some(entries) = entries.as_array_mut() else {
+            continue;
+        };
         for entry in entries.iter_mut() {
-            let Some(commands) = entry.get_mut("hooks").and_then(Value::as_array_mut) else { continue; };
+            let Some(commands) = entry.get_mut("hooks").and_then(Value::as_array_mut) else {
+                continue;
+            };
             commands.retain(|hook| {
                 if owned(hook) {
                     old_scripts.push(hook["command"].clone());
@@ -698,11 +726,22 @@ pub fn reconcile_home(
             &command,
             (tool == CliTool::Codex).then_some(pin.max_chars as u64),
         );
-        let Some(entries) = hooks.entry(event).or_insert_with(|| json!([])).as_array_mut() else { continue; };
+        let Some(entries) = hooks
+            .entry(event)
+            .or_insert_with(|| json!([]))
+            .as_array_mut()
+        else {
+            continue;
+        };
         entries.push(json!({"matcher":matcher,"hooks":[hook]}));
         scripts.push((script, root));
     }
-    if hooks.is_empty() { settings.as_object_mut().expect("settings object").remove("hooks"); }
+    if hooks.is_empty() {
+        settings
+            .as_object_mut()
+            .expect("settings object")
+            .remove("hooks");
+    }
     // Validate everything before mutation, install every target before config teardown.
     let mut changed = false;
     for (script, root) in &scripts {

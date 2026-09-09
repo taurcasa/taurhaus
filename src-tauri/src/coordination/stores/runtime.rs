@@ -2883,7 +2883,7 @@ mod tests {
         }
         let wire = serde_json::to_value(sample_record("seat")).unwrap();
         assert!(serde_json::from_value::<LegacyRecord>(wire).is_err());
-        assert!(crate::daemon::protocol::PROTOCOL_VERSION > 25);
+        assert!(taurhaus_lib::daemon::protocol::PROTOCOL_VERSION > 25);
     }
 
     #[test]
