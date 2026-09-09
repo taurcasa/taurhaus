@@ -1,9 +1,11 @@
 # Codex 0.153.4 — SessionStart(compact) composed drain
 
-2026-09-09, round 1. **INCONCLUSIVE for eligibility; disabled.** A real automatic
-compaction completed on the stdio host, but no hook invocation or marker uptake
-was observed. The named-session TUI continuation also returned `NO_MARKER`,
-without compacting. Neither result supplies an intact recovery-card/offer join.
+2026-09-09. **INCONCLUSIVE, configuration-confounded; no valid uptake test;
+disabled.** The only run that compacted had `trustStatus: "untrusted"` and
+invalid bridge identity. Its `NO_MARKER` is a configuration artifact, not evidence
+against boundary uptake. The corrected TUI continuation never compacted and is
+off-pin. No run combined a trusted handler, compaction and valid bridge identity;
+recovery-card/offer composition remains untested. This is the round-2 correction.
 
 ## Corrected activation finding
 
@@ -115,16 +117,50 @@ no tools/delegation instructions, and `model_auto_compact_token_limit=2048`,
 }
 ```
 
-The stdio fixture initially used `sessionId` rather than the runtime store's
-`session_id` (also camelCase aliases for cli/project fields). The running daemon
-rewrote it to a dead/missing-session record. That makes its downstream bridge
-identity setup invalid; it does **not** explain the independently observed absence
-of any hook invocation. The TUI continuation corrected the runtime spellings,
+The stdio fixture initially used `sessionId`; the later TUI fixture used
+`session_id` (and snake_case cli/project fields). The running daemon rewrote the
+stdio fixture to a dead/missing-session record, leaving downstream bridge identity
+invalid. The previous attribution to spelling alone is not established:
+`MemberRuntimeStore::load` uses `parse_runtime_record`, whose `RuntimeRecordWire`
+accepts `sessionId`, `cliTool` and `projectPath` aliases at this tip. The invalid
+runtime and untrusted handler remain separate confounds; neither observation
+isolates the cause of absent hook execution. The TUI continuation changed the spellings,
 bumped attachment generation to 2 with observed pane PID/start ticks, and ran
 without a daemon scheduler overwriting this explicit fixture. The standalone
 native bridge requires no daemon port. Its runtime stayed active with the exact
 session and hookSessionId. TUI did not reach the compact boundary, so no pass is
 claimed there either. These limitations preclude claiming a Codex product regression.
+
+## Eligibility refusal and re-commission decision
+
+**Review option (b): this packet could not establish hook trust under the pinned app-server host.**
+The observed bypass invocation still returned `trustStatus: "untrusted"`; it did
+not establish trusted execution. This is an unmet trial prerequisite, not proof
+that trust is impossible or that SessionStart(compact) cannot deliver. The
+`NO_MARKER` null cannot prove or refute model-visible uptake. Mesh's exact host
+in `src/delivery/hook/capabilities.rs` is `app-server probe; TUI UNVERIFIED`;
+even a future TUI-only pass would not enable that pin.
+
+Rechecking surviving `evidence/trial-result.json` confirms the enabled command
+`/tmp/elig-r1-v2r9vhiy/taurhaus-daemon --compact-hook` was untrusted;
+`evidence/tui-rollout.jsonl` contains no compaction record. The pinned probe
+report's section 3 already leaves bypass propagation, trust and invocation
+conditions unresolved. This correction performs no new trust experiment.
+
+The review identifies free setup affordances: `/hooks` (hook management), a
+persisted hook-trust store and `/compact` (explicit compaction). These remain
+unexercised here; slash-command availability does not establish trusted execution
+under app-server hosting, and triggering compaction may spend model budget.
+A re-commissioned trial should first verify trusted status inside scratch
+CODEX_HOME on the pinned host, validate the live `session_id`/hookSessionId and
+attachment tuple, then budget one actual compaction and check marker/card/receipts.
+No production trust-store edits or host broadening are proposed.
+
+The budget is **not exhausted**: 3/5 user turns and four conservatively accounted
+generation slots, estimated $0.166959 of $2. Unreported compaction usage remains
+an accounting limit, not a claim that the remaining authorization disappeared.
+The orchestrator retains the re-commission decision. This documentation correction
+adds **0 additional turns / $0.00** and leaves the descriptor disabled.
 
 Explicit real Mesh `read --json --last 16`, then `read --json --mark-read --last 16`
 ran after each trial. Final read-back showed both messages `read: true`; every
@@ -204,8 +240,8 @@ remaining accounting limitation.
 ## Outcome, cleanup and exclusions
 
 **No descriptor flip, no Mesh commit, no Taurhaus registry entry.** The compiled
-activation obstacle was removed in scratch; the commissioned uptake attempt
-now has real model/compaction evidence but remains inconclusive for eligibility.
+activation obstacle was removed in scratch; the commissioned uptake question
+remains unanswered because no executed run satisfied all trial prerequisites.
 No other Codex hook boundary, agy or Grok trial was substituted. Permission/tool/
 error/switch coverage and recovery-card correctness are excluded, not passed.
 
@@ -216,3 +252,62 @@ justified one more Enter, not a second prompt. Full controllers, replay commands
 regression checks, gates and durable cleanup are in [execution audit](execution-audit.md).
 Private servers were stopped, owned children reaped, both ports and both tmux
 sockets refused connections (errno 111), and copied auth.json was removed.
+
+## Evidence regression checks
+
+These credential-free checks test the summary's interpretation, not model uptake.
+Before the prose correction, the three tests exited **1** with **11 failed
+assertions/subtests**: missing confounds in both headlines, no explicit trust
+decision, and stale round labels. After correction, all three passed (exit **0**).
+The three earlier execution-audit checks also still pass (exit **0**).
+Run from the checkout root; no harness, subprocess or account data is accessed:
+
+```sh
+python3 - <<'PYTEST'
+from pathlib import Path
+text = Path('docs/design/evidence/native-eligibility/codex-0.153.4-SessionStart-compact.md').read_text()
+source = text.split('<!-- compact-confound-tests -->\n```python\n', 1)[1].split('\n```', 1)[0]
+exec(compile(source, 'compact-confound-tests', 'exec'))
+PYTEST
+```
+
+<!-- compact-confound-tests -->
+```python
+from pathlib import Path
+import unittest
+
+D = Path('docs/design/evidence/native-eligibility')
+class CompactConfoundRegression(unittest.TestCase):
+    # // Regression: 4651d244 buried untrusted-handler and invalid-identity confounds,
+    # making its summary's null result look like evidence against boundary uptake.
+    def test_summary_and_headline_disclose_invalid_trial(self):
+        summary = (D / 'README.md').read_text()
+        row = next(line for line in summary.splitlines() if line.startswith('| 3. Codex'))
+        detail = (D / 'codex-0.153.4-SessionStart-compact.md').read_text()
+        headline = detail.split('## ', 1)[0]
+        for name, text in [('summary row', row), ('detail headline', headline)]:
+            for fact in ['trustStatus: "untrusted"', 'invalid bridge identity',
+                         'configuration-confounded', 'no valid uptake test']:
+                with self.subTest(location=name, fact=fact):
+                    self.assertIn(fact, text)
+
+    def test_refusal_names_unestablished_trust_and_host_pin(self):
+        detail = (D / 'codex-0.153.4-SessionStart-compact.md').read_text()
+        decision = detail.split('## Eligibility refusal and re-commission decision\n', 1)
+        self.assertEqual(len(decision), 2, 'explicit trust/refusal decision missing')
+        decision = decision[1].split('\n## ', 1)[0]
+        for fact in ['could not establish hook trust under the pinned app-server host',
+                     'app-server probe; TUI UNVERIFIED', '/hooks', '/compact',
+                     'not exhausted', 'orchestrator', '0 additional turns / $0.00']:
+            with self.subTest(fact=fact):
+                self.assertIn(fact, decision)
+
+    def test_packet_headlines_do_not_mislabel_revision(self):
+        for file in ['README.md', 'codex-0.153.4-SessionStart-compact.md']:
+            with self.subTest(file=file):
+                headline = (D / file).read_text().split('## ', 1)[0]
+                self.assertNotIn('round 1', headline)
+
+if __name__ == '__main__':
+    unittest.main()
+```
