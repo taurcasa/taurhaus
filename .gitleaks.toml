@@ -10,5 +10,7 @@ useDefault = true
 [allowlist]
 description = "SHA-256 file checksums quoted in committed research documents"
 regexes = [
+  # RFC 6455 sample WebSocket nonce ('the sample nonce'), a public spec constant recorded in native-eligibility evidence
+  '''dGhlIHNhbXBsZSBub25jZQ==''',
   '''5e4cdfc3ba40af04ed58d9c062dcb745be5eb0c06ea5734edf39747c8586de3e''',
 ]
