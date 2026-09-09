@@ -360,8 +360,14 @@ test-mesh-contracts: ensure-tauri-resources
     @test "$(uname -s)" = Linux || { echo "Mesh binary contracts require Linux" >&2; exit 1; }
     cd src-tauri && cargo test --lib mesh_binary_ -- --ignored --test-threads=1
 
+# Canonical candidate operator lane; never resolves the installed legacy Mesh.
+test-canonical-mesh-contract: ensure-tauri-resources
+    @test -n "${MESH_CONTRACT_BIN:-}" || { echo "NOT RUN: set MESH_CONTRACT_BIN to the canonical candidate" >&2; exit 1; }
+    cd src-tauri && cargo test --lib canonical_mesh_binary_ -- --ignored --test-threads=1
+
 # Rust unit-test execution lane (excludes heavy suites and operator Mesh fixtures).
 test-rust-unit: ensure-tauri-resources
+    @echo "NOT RUN: Canonical Mesh contract; run just test-canonical-mesh-contract with MESH_CONTRACT_BIN."
     @echo "NOT RUN: Mesh binary contracts; run just test-mesh-contracts with locked Mesh, Python 3, and cc."
     cd src-tauri && heavy_test_filters="{{heavy_rust_test_filters}}"; skip_args=""; for test_filter in $heavy_test_filters; do skip_args="$skip_args --skip $test_filter"; done; cargo test --lib --bins -- --test-threads=1 $skip_args
 

@@ -885,6 +885,15 @@ where
     }))
 }
 
+fn canonical_member_id(config: &TeamConfig, member: &Member) -> String {
+    if config.extra.get("messaging_format") == Some(&Value::from(2)) {
+        if let Some(id) = member.extra.get("agentId").and_then(Value::as_str) {
+            return id.to_string();
+        }
+    }
+    mesh_agent_id(&config.name, &member.name)
+}
+
 fn mesh_compatible_wire(
     config: &TeamConfig,
     runtime_by_member: &HashMap<String, MemberRuntimeRecord>,
@@ -895,7 +904,7 @@ fn mesh_compatible_wire(
         .iter()
         .find(|member| member.role == MemberRole::Lead)
         .or_else(|| config.members.first());
-    let lead_agent_id = lead_member.map(|member| mesh_agent_id(&config.name, &member.name));
+    let lead_agent_id = lead_member.map(|member| canonical_member_id(config, member));
     let lead_session_id = lead_member.map(|member| {
         runtime_by_member
             .get(&member.name)
@@ -961,7 +970,7 @@ fn mesh_compatible_wire(
                 capabilities: member.capabilities.clone(),
                 project_path: project_path.clone(),
                 cli_tool: member.cli_tool,
-                agent_id: mesh_agent_id(&config.name, &member.name),
+                agent_id: canonical_member_id(config, member),
                 agent_type: if member.role == MemberRole::Lead {
                     "orchestrator".to_string()
                 } else {
@@ -970,7 +979,9 @@ fn mesh_compatible_wire(
                 model: member.model.clone(),
                 reasoning_effort: member.reasoning_effort.clone(),
                 account_id: member.account_id.clone(),
-                joined_at_millis: created_at_millis,
+                joined_at_millis: (config.extra.get("messaging_format") == Some(&Value::from(2)))
+                    .then(|| member.extra.get("joinedAt").and_then(Value::as_i64))
+                    .flatten().unwrap_or(created_at_millis),
                 project_path_camel: project_path.clone(),
                 cwd: project_path,
                 tmux_pane_id: runtime.and_then(|state| state.pane_id.clone()),
@@ -1103,11 +1114,25 @@ fn parse_mesh_config(value: Value, team_name: &str) -> Result<TeamConfig, Coordi
         .and_then(|millis| Utc.timestamp_millis_opt(millis).single())
         .unwrap_or_else(Utc::now);
 
+    let canonical = wire.extra.get("messaging_format") == Some(&Value::from(2));
     let members = wire
         .members
         .into_iter()
-        .map(mesh_member_to_domain)
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|member| {
+            let identity = ["agentId", "joinedAt"]
+                .into_iter()
+                .filter_map(|key| {
+                    canonical
+                        .then(|| member.extra.get(key).cloned())
+                        .flatten()
+                        .map(|value| (key.to_string(), value))
+                })
+                .collect::<BTreeMap<_, _>>();
+            let mut member = mesh_member_to_domain(member)?;
+            member.extra.extend(identity);
+            Ok(member)
+        })
+        .collect::<Result<Vec<_>, CoordinationError>>()?;
 
     Ok(TeamConfig {
         team_incarnation_id: wire.team_incarnation_id,
@@ -2508,5 +2533,33 @@ mod tests {
             discovery.teams[0].lead_project_path.as_deref(),
             Some(Path::new("/tmp/agent-a"))
         );
+    }
+    // Regression: 5cebfef81 synthesized member IDs on every save. Canonical
+    // creation joins a UUID-identified lead whose Mesh identity must survive.
+    #[test]
+    fn canonical_config_save_preserves_mesh_member_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let team = root.path().join("trial");
+        fs::create_dir(&team).unwrap();
+        let original = serde_json::json!({
+            "name": "trial", "createdAt": 1234, "leadAgentId": "mesh-lead-uuid",
+            "messaging_format": 2, "team_incarnation_id": "mesh-team-uuid",
+            "members": [{"name": "lead", "agentType": "lead", "agentId": "mesh-lead-uuid", "joinedAt": 2345, "cwd": root.path()}]
+        });
+        fs::write(team.join("config.json"), original.to_string()).unwrap();
+        let mut config = TeamConfigStore::load(root.path(), "trial").unwrap();
+        config.description = Some("updated".into());
+        TeamConfigStore::save(root.path(), "trial", &config).unwrap();
+        let saved: Value =
+            serde_json::from_slice(&fs::read(team.join("config.json")).unwrap()).unwrap();
+        assert_eq!(
+            saved["members"][0]["agentId"],
+            original["members"][0]["agentId"]
+        );
+        assert_eq!(
+            saved["members"][0]["joinedAt"],
+            original["members"][0]["joinedAt"]
+        );
+        assert_eq!(saved["leadAgentId"], original["leadAgentId"]);
     }
 }

@@ -5296,3 +5296,30 @@ fn hosted_runtime_publishes_operator_control_authority() {
     );
     state.hosted.stop(&registry, "team", "seat").unwrap();
 }
+
+#[test]
+fn canonical_initialize_ipc_maps_additive_policy_and_rejects_invalid_shapes() {
+    let legacy = sample_preflight_request();
+    let bytes = serde_json::to_vec(&legacy).unwrap();
+    assert!(!String::from_utf8_lossy(&bytes).contains("messaging"));
+    let legacy: InitializeTeamRequest = serde_json::from_slice(&bytes).unwrap();
+    assert!(legacy.messaging.is_none());
+    assert_eq!(serde_json::to_vec(&legacy).unwrap(), bytes);
+    let mut value = serde_json::to_value(legacy).unwrap();
+    value["messaging"] =
+        serde_json::json!({"mode": "canonical", "retentionPolicy": {"synthetic_disposable": true}});
+    let request: InitializeTeamRequest = serde_json::from_value(value.clone()).unwrap();
+    let domain = map_initialize_request_to_contract(&request);
+    assert_eq!(domain.messaging, request.messaging);
+    assert_eq!(
+        serde_json::to_value(domain).unwrap()["messaging"],
+        value["messaging"]
+    );
+    for invalid in [
+        serde_json::json!({"mode":"unknown", "retentionPolicy": {}}),
+        serde_json::json!({"mode":"canonical", "retentionPolicy": []}),
+    ] {
+        value["messaging"] = invalid;
+        assert!(serde_json::from_value::<InitializeTeamRequest>(value.clone()).is_err());
+    }
+}

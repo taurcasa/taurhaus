@@ -20,15 +20,16 @@
     onRetry = () => {},
   } = $props()
 
-  const stepsOrder = [
+  const stepsOrder = $derived([
     'validate_configuration',
     'create_team',
     'create_panes',
     'launch_sessions',
     'join_mesh',
     'start_daemons',
+    ...(request?.messaging?.mode === 'canonical' ? ['opt_in_delivery'] : []),
     'send_onboarding',
-  ]
+  ])
   const stepLabels = {
     validate_configuration: 'Validating configuration',
     create_team: 'Creating team',
@@ -36,15 +37,17 @@
     launch_sessions: 'Verifying launched sessions',
     join_mesh: 'Connecting agents to mesh',
     start_daemons: 'Starting background services',
+    opt_in_delivery: 'Enabling team delivery',
     send_onboarding: 'Sending agent instructions',
   }
   const stepDescriptions = {
     validate_configuration: 'Checking team name, agent tools, and project assignments',
-    create_team: 'Writing team config to ~/.claude/teams/',
+    create_team: 'Creating the team at its selected account root',
     create_panes: 'Creating tmux panes and starting each CLI tool in one launch command',
     launch_sessions: 'Confirming each tool started successfully',
     join_mesh: 'Connecting team members',
     start_daemons: 'Setting up monitoring for each team member',
+    opt_in_delivery: 'Checking all launched seats before enabling mesh team delivery',
     send_onboarding: 'Delivering initial instructions to each agent',
   }
 

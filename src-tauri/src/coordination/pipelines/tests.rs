@@ -8809,6 +8809,97 @@ fn canonical_initialize_adopts_mesh_config_and_launches_before_delivery() {
         .iter()
         .position(|s| s == "opt_in_delivery")
         .unwrap();
+    let calls = runtime.calls();
+    let RuntimeCall::CreateCanonicalTeam { args } = &calls[0] else {
+        panic!("{calls:?}")
+    };
+    let policy_path = Path::new(&args[5]);
+    assert_eq!(policy_path.parent(), Some(tmp.path()));
+    assert!(policy_path
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .starts_with(".canonical-policy-"));
+    assert!(!policy_path.exists());
+    let root = tmp.path().parent().unwrap().to_str().unwrap();
+    assert_eq!(
+        args,
+        &vec![
+            "team",
+            "create",
+            "--messaging-canonical",
+            "--isolated",
+            "--retention-policy",
+            policy_path.to_str().unwrap(),
+            "--claude-dir",
+            root,
+            "--team",
+            "canonical",
+            "--name",
+            "lead"
+        ]
+    );
+    let delivery = calls
+        .iter()
+        .position(|call| matches!(call, RuntimeCall::OptInTeamDelivery { .. }))
+        .unwrap();
+    let daemon = calls
+        .iter()
+        .position(|call| matches!(call, RuntimeCall::SpawnTeamDaemon { .. }))
+        .unwrap();
+    assert!(delivery < daemon);
+    assert!(
+        calls[..delivery]
+            .iter()
+            .filter(|call| matches!(call, RuntimeCall::DetectSessionId { .. }))
+            .count()
+            >= 2
+    );
+    assert_eq!(
+        calls[delivery],
+        RuntimeCall::OptInTeamDelivery {
+            args: vec![
+                "team",
+                "delivery",
+                "--owner",
+                "team",
+                "--claude-dir",
+                root,
+                "--team",
+                "canonical",
+                "--name",
+                "lead"
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
+        }
+    );
+    let lead = config.members.iter().find(|m| m.name == "lead").unwrap();
+    assert_eq!(lead.role, MemberRole::Lead);
+    assert_eq!(lead.cli_tool, CliTool::Codex);
+    assert_eq!(lead.model.as_deref(), Some("gpt-6-astra"));
+    assert_eq!(lead.project_path, tmp.path());
+    assert_eq!(lead.extra["controlAuthTokenHash"], "recording-only-hash");
+    assert_eq!(
+        config.team_incarnation_id.as_deref(),
+        Some("recorded-incarnation")
+    );
+    assert_eq!(config.extra["minimum_writer"], "mesh-journal/2");
+    assert_eq!(config.extra["delivery_owner"], "team");
+    assert_eq!(
+        config.extra["messaging_policy"],
+        serde_json::json!({"synthetic_disposable": true})
+    );
+    for name in ["lead", "builder"] {
+        assert_eq!(
+            MemberRuntimeStore::load(tmp.path(), "canonical", name)
+                .unwrap()
+                .terminal_contract,
+            1
+        );
+    }
     assert!(launch < opt_in);
 }
 
@@ -8878,6 +8969,22 @@ fn canonical_initialize_creation_refusal_cleans_up_but_opt_in_refusal_retains_te
                 fs::read(tmp.path().join("canonical/config.json")).unwrap(),
                 original
             );
+            let messaging = serde_json::from_value(serde_json::json!({"mode": "canonical", "retentionPolicy": {"synthetic_disposable": true}})).unwrap();
+            request.messaging = Some(messaging);
+            runtime.set_delivery_opt_in_failure(None);
+            let before = runtime.calls().len();
+            let retried = orchestrator.initialize_team(&request).unwrap();
+            assert!(retried.failed_step.is_none(), "{retried:?}");
+            assert!(!runtime.calls()[before..].iter().any(|c| matches!(
+                c,
+                RuntimeCall::CreateCanonicalTeam { .. }
+                    | RuntimeCall::CreatePane { .. }
+                    | RuntimeCall::SendKeys { .. }
+            )));
+            assert!(!tmp
+                .path()
+                .join("canonical/state/taurhaus-initialize-pending.json")
+                .exists());
         }
     }
 }
