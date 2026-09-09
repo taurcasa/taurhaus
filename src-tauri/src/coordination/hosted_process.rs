@@ -549,30 +549,51 @@ with socket.socket(socket.AF_UNIX) as listener:
         let tmp = tempfile::tempdir().unwrap();
         let launch = fixture(tmp.path());
         let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
-        let mut host = HostProcess::launch(&launch, tmp.path(), &tmp.path().join("rpc.sock"), None, &guard).unwrap();
+        let mut host = HostProcess::launch(
+            &launch,
+            tmp.path(),
+            &tmp.path().join("rpc.sock"),
+            None,
+            &guard,
+        )
+        .unwrap();
         host.input("approval", &guard).unwrap();
         assert!(host.input("blocked by approval", &guard).is_err());
-        host.approval(&json!("permission-1"), false, &guard).unwrap();
-        assert_eq!(host.transcript(&guard).unwrap()["thread"]["approvalDecision"], "decline");
+        host.approval(&json!("permission-1"), false, &guard)
+            .unwrap();
+        assert_eq!(
+            host.transcript(&guard).unwrap()["thread"]["approvalDecision"],
+            "decline"
+        );
         assert_eq!(host.input("steer marker", &guard).unwrap()["turnId"], "1");
         host.interrupt(&guard).unwrap();
-        assert_eq!(host.transcript(&guard).unwrap()["thread"]["status"]["type"], "idle");
+        assert_eq!(
+            host.transcript(&guard).unwrap()["thread"]["status"]["type"],
+            "idle"
+        );
         host.input("foreign approval", &guard).unwrap();
         host.transcript(&guard).unwrap();
         // Regression: 9b50346b checked the approval ID but not its thread identity.
         assert!(host.approval(&json!("permission-1"), true, &guard).is_err());
     }
 
-
     #[test]
     fn fake_host_unknown_build_refuses_before_thread_creation() {
         let tmp = tempfile::tempdir().unwrap();
         let mut launch = fixture(tmp.path());
-        launch.environment.insert("FAKE_BUILD".into(), "unreviewed".into());
+        launch
+            .environment
+            .insert("FAKE_BUILD".into(), "unreviewed".into());
         let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
         // Regression: 9b50346b parsed any nonempty build as usable for native input.
-        assert!(HostProcess::launch(&launch, tmp.path(), &tmp.path().join("rpc.sock"), None, &guard).is_err());
+        assert!(HostProcess::launch(
+            &launch,
+            tmp.path(),
+            &tmp.path().join("rpc.sock"),
+            None,
+            &guard
+        )
+        .is_err());
         assert!(!tmp.path().join("thread.json").exists());
     }
-
 }

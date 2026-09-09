@@ -8527,7 +8527,10 @@ fn hosted_member_liveness_and_effort_relaunch_never_use_a_pane() {
     let attachment = roster[0].runtime_record().unwrap();
     assert!(attachment.app_server.is_some());
     let result = orchestrator.teardown_member_resources_best_effort(
-        "team", "seat", Some(tmp.path()), Some(&attachment),
+        "team",
+        "seat",
+        Some(tmp.path()),
+        Some(&attachment),
     );
     assert!(result
         .steps

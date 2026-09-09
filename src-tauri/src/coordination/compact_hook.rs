@@ -401,11 +401,18 @@ fn emit_hook_degraded(tool: CliTool, config_dir: &Path, executable: &str) {
     );
 }
 
-pub fn handle_compact_hook_stdin<R: Read>(stdin: R, teams_dir: &Path) -> Result<CompactHookResponse, CoordinationError> {
+pub fn handle_compact_hook_stdin<R: Read>(
+    stdin: R,
+    teams_dir: &Path,
+) -> Result<CompactHookResponse, CoordinationError> {
     read_hosted_hook(stdin, teams_dir, &mut None)
 }
 
-fn read_hosted_hook<R: Read>(mut stdin: R, teams_dir: &Path, host_guard: &mut Option<crate::coordination::stores::lock::HostOperationLock>) -> Result<CompactHookResponse, CoordinationError> {
+fn read_hosted_hook<R: Read>(
+    mut stdin: R,
+    teams_dir: &Path,
+    host_guard: &mut Option<crate::coordination::stores::lock::HostOperationLock>,
+) -> Result<CompactHookResponse, CoordinationError> {
     let mut raw = String::new();
     stdin.read_to_string(&mut raw).map_err(|error| {
         emit_compact_hook_failed(
@@ -429,7 +436,11 @@ pub fn handle_compact_hook(
     handle_compact_hook_with_guard(raw, teams_dir, &mut None)
 }
 
-fn handle_compact_hook_with_guard(raw: &str, teams_dir: &Path, host_guard: &mut Option<crate::coordination::stores::lock::HostOperationLock>) -> Result<CompactHookResponse, CoordinationError> {
+fn handle_compact_hook_with_guard(
+    raw: &str,
+    teams_dir: &Path,
+    host_guard: &mut Option<crate::coordination::stores::lock::HostOperationLock>,
+) -> Result<CompactHookResponse, CoordinationError> {
     let payload = parse_compact_hook_input(raw).map_err(|err| {
         emit_compact_hook_parse_payload_debug(raw, &err.to_string());
         emit_compact_hook_failed(
@@ -487,8 +498,18 @@ fn handle_compact_hook_with_guard(raw: &str, teams_dir: &Path, host_guard: &mut 
         }
     };
 
-    if MemberRuntimeStore::load(&matched.teams_dir, &matched.team_name, &matched.member.name)?.app_server.is_some() {
-        *host_guard = Some(crate::coordination::stores::lock::HostOperationLock::acquire(&matched.teams_dir, &matched.team_name, &matched.member.name, std::time::Duration::from_secs(2))?);
+    if MemberRuntimeStore::load(&matched.teams_dir, &matched.team_name, &matched.member.name)?
+        .app_server
+        .is_some()
+    {
+        *host_guard = Some(
+            crate::coordination::stores::lock::HostOperationLock::acquire(
+                &matched.teams_dir,
+                &matched.team_name,
+                &matched.member.name,
+                std::time::Duration::from_secs(2),
+            )?,
+        );
     }
     emit_compact_hook_resolved(&payload, &matched);
 

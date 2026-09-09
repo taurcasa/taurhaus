@@ -142,24 +142,31 @@ task and deadline fields. Non-canonical teams keep direct append.
 This adapter adds no protocol version, terminal writer, delivery owner or
 activation permission; the existing runtime-exclusion contract still applies.
 
-## Stage-5b storage/exclusion foundations — not an eligibility packet
+## Stage-5b owned-host evidence — not an eligibility packet
 
-`hosted_attachment_contract_and_stale_snapshot` exercises the typed runtime
-attachment and the runtime-exclusion v1.1 on-disk spelling in a tempdir.
-`host_operation_lock_excludes_mesh_and_never_replaces_inode` uses a fake flock
-holder to prove deferral and stable-inode reuse at
-`teams/TEAM/state/app-server/MEMBER.lock`.
-`host_operation_lock_is_acquired_after_data_locks_are_released` rejects nested
-team/host exclusion. Waits are capped at two seconds; the guard exposes a
-five-second remaining submission deadline for future I/O callers.
+The fake executable speaks newline-delimited JSON-RPC without `jsonrpc` on a
+private Unix socket in a tempdir. Tests cover launch/account/permission rendering,
+atomic complete runtime publication, named resume, foreign-field preservation,
+root/attachment revalidation, lost-response suppression, liveness/effort relaunch,
+owned shutdown and daemon/UI transcript-input round trips. A fake flock holder
+proves deferral and stable-inode reuse at `teams/TEAM/state/app-server/MEMBER.lock`.
+The same exclusion covers startup, UI/approval/interrupt, effort relaunch,
+compaction output, attachment publication and shutdown. Team/runtime locks are
+short snapshots only; no data lock or model-turn wait spans native RPC I/O.
+Acquisition is capped at two seconds, submission at five seconds, frames at
+64 KiB and events processed per response at 128. Closing never unlinks the lock.
 
-The lock primitive is not yet wired to host operations. No runtime lock may span
-native RPC I/O; the hosting contract permits only short runtime snapshots under
-host exclusion. No model-turn wait belongs inside this guard. Closing a holder
-never unlinks the shared inode, and unsupported flock never permits unlocked I/O.
+Startup and next-turn recovery use the existing `onboarding.delivery.observed`
+receipt path (`app_server`). `Submitted` requires the correlated native response;
+it proves neither consumption nor task acceptance. `hostInputUnknown` persists
+before possible input and remains true after ambiguous loss, blocking replay.
+The compaction-hook test probes exclusion during actual CLI stdout; the fallback
+test consumes existing pending compaction at its current context generation.
+The detector and compaction ledger retain their existing semantics.
 
-These tests invoke no harness, daemon listener, account reader or tmux client.
-They prove neither native delivery nor intended-host eligibility. The paired
-Unix framing conflict and Mesh switch prerequisite are recorded in
-[harness-model.md](../architecture/harness-model.md#owned-codex-hosting-prerequisites-stage-5b-incomplete).
-All descriptors remain disabled; no paid trial or deployment was performed.
+These are fake software proofs only. Pane conversion and rollback tests assert
+refusal pending the paired recoverable-relaunch contract, not successful switching.
+The unresolved Unix framing mismatch and Mesh switch dependency are recorded in
+[the harness model](../architecture/harness-model.md#owned-codex-hosting-stage-5b-disabled-pending-pairing).
+No real harness, live daemon, operator tmux server, account credentials or paid
+trial is used. All native descriptors remain disabled.

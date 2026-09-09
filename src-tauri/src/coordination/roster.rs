@@ -106,7 +106,9 @@ impl TeamMemberView {
     }
 
     pub fn runtime_record(&self) -> Option<MemberRuntimeRecord> {
-        if self.hosted_runtime.is_some() { return self.hosted_runtime.clone(); }
+        if self.hosted_runtime.is_some() {
+            return self.hosted_runtime.clone();
+        }
         if !self.has_runtime_record {
             return None;
         }
