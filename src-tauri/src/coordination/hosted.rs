@@ -437,21 +437,24 @@ impl HostedMembers {
         let guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
             .map_err(|e| e.to_string())?;
         let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
-        if let Some(attachment) = &record.app_server {
-            if let Some(seat) = owned.as_ref() {
-                if attachment.process_id != seat.host.pid()
-                    || attachment.process_start != seat.host.process_start
-                {
-                    drop(owned.take());
-                    return Err("host attachment changed before shutdown".into());
-                }
-            } else if taurhaus_lib::platform::process_start_ticks(attachment.process_id)
+        if let Some(seat) = owned.as_ref() {
+            if record.app_server.as_ref() != Some(&seat.attachment)
+                || record.attachment_generation != seat.generation
+                || record.launch_root.as_ref() != Some(&seat.launch_root)
+            {
+                drop(owned.take());
+                return Err("host attachment changed before shutdown".into());
+            }
+        } else if let Some(attachment) = &record.app_server {
+            if taurhaus_lib::platform::process_start_ticks(attachment.process_id)
                 .map(|v| v.to_string())
                 .as_deref()
                 == Some(&attachment.process_start)
             {
                 return Err("live host belongs to a previous daemon; cannot claim shutdown".into());
             }
+        } else {
+            return Err("member is not hosted".into());
         }
         MemberRuntimeStore::update(&root, team, member, |record| {
             record.attachment_generation = record.attachment_generation.saturating_add(1);
@@ -826,6 +829,31 @@ pub(crate) mod tests {
             taurhaus_lib::platform::process_start_ticks(before.app_server.unwrap().process_id)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn hosted_shutdown_preserves_a_replacement_attachment() {
+        // Regression: 10fa0eb2 treated an absent appServer as permission to stop a replacement pane.
+        for replacement_host in [false, true] {
+            let tmp = tempfile::tempdir().unwrap();
+            let registry = seat(tmp.path());
+            let hosts = HostedMembers::default();
+            hosts.launch(&registry, "team", "seat", &fixture(tmp.path())).unwrap();
+            let original = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+            MemberRuntimeStore::update(tmp.path(), "team", "seat", |record| {
+                record.attachment_generation += 1;
+                if replacement_host {
+                    record.app_server.as_mut().unwrap().host_generation = "replacement".into();
+                } else {
+                    record.app_server = None;
+                    record.pane_id = Some("%replacement".into());
+                }
+            }).unwrap();
+            let replaced = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+            assert!(hosts.stop(&registry, "team", "seat").is_err());
+            assert_eq!(serde_json::to_value(MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap()).unwrap(), serde_json::to_value(replaced).unwrap());
+            assert!(taurhaus_lib::platform::process_start_ticks(original.app_server.unwrap().process_id).is_none());
+        }
     }
 
     #[test]
