@@ -526,7 +526,6 @@ with socket.socket(socket.AF_UNIX) as listener:
         taurhaus_lib::session_scanner::launch::HostedLaunch::from_rendered(&command, root, None)
             .unwrap()
     }
-
     fn spawn(
         launch: &HostedLaunch,
         root: &Path,
@@ -536,7 +535,6 @@ with socket.socket(socket.AF_UNIX) as listener:
         let socket = root.join(format!("{}.sock", uuid::Uuid::new_v4().simple()));
         HostProcess::launch(launch, root, &socket, resume, guard)
     }
-
     #[test]
     fn fake_host_round_trip_named_resume_and_owned_cleanup() {
         let tmp = tempfile::tempdir().unwrap();
@@ -548,23 +546,18 @@ with socket.socket(socket.AF_UNIX) as listener:
             host.input("operator marker", &guard).unwrap()["turn"]["id"],
             "1"
         );
-        assert!(host
-            .transcript(&guard)
-            .unwrap()
-            .to_string()
-            .contains("operator marker"));
+        let original = host.transcript(&guard).unwrap();
+        assert!(original.to_string().contains("operator marker"));
         let pid = host.child.id();
         drop(host);
         assert!(taurhaus_lib::platform::process_start_ticks(pid).is_none());
         let mut resumed = spawn(&launch, tmp.path(), Some("owned-thread"), &guard).unwrap();
-        assert!(resumed
-            .transcript(&guard)
-            .unwrap()
-            .to_string()
-            .contains("operator marker"));
+        assert_eq!(
+            resumed.transcript(&guard).unwrap()["thread"],
+            original["thread"]
+        );
         assert!(spawn(&launch, tmp.path(), Some("wrong-thread"), &guard).is_err());
     }
-
     #[test]
     fn fake_host_lost_input_response_never_replays() {
         let tmp = tempfile::tempdir().unwrap();
@@ -577,7 +570,6 @@ with socket.socket(socket.AF_UNIX) as listener:
         assert!(persisted.contains("disconnect"));
         assert!(!persisted.contains("must not replay"));
     }
-
     #[test]
     fn fake_host_permission_wait_deny_steer_and_cancel_preserve_thread() {
         let tmp = tempfile::tempdir().unwrap();
@@ -603,7 +595,6 @@ with socket.socket(socket.AF_UNIX) as listener:
         // Regression: 9b50346b checked the approval ID but not its thread identity.
         assert!(host.approval(&json!("permission-1"), true, &guard).is_err());
     }
-
     #[test]
     fn fake_host_unknown_build_refuses_before_thread_creation() {
         let tmp = tempfile::tempdir().unwrap();

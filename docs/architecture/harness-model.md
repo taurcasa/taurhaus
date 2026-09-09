@@ -134,49 +134,12 @@ Each change is a small PR with red-first regression tests naming the breaking co
 
 ## Owned Codex hosting (stage 5b, disabled pending pairing)
 
-On Linux/WSL, a managed Codex member may persist `adapter_mode: "app_server"`
-in its member configuration; omission retains pane hosting. The existing resume
-pipeline selects this mode before acquiring a pane. LaunchSpec still resolves
-base commands/aliases, model, effort and account selection. The hosted render
-accepts literal Codex arguments and an explicit absolute `CODEX_HOME`, carries
-account-selection facts, and refuses opaque shell wrappers, unknown arguments
-and unnamed resume. Permission/sandbox configuration is preserved explicitly.
-This is not an initializer roster option or a hot conversion of a running pane.
+Linux/WSL members opt in with `adapter_mode: "app_server"`; omission keeps panes. The existing launch/resume machinery resolves aliases, model, effort and explicit `CODEX_HOME`. The hosted render preserves account/permission/sandbox policy and refuses opaque wrappers, unsupported arguments and unnamed resume. Non-Linux opt-ins fail explicitly.
 
-The daemon owns the child, private Unix socket, named persistent thread and UI
-connection. `appServer` contains contract, socket/thread/member/account identity,
-PID plus process start ticks, host incarnation, build, host, configuration, trust
-and transport. The identity and attachment generation publish in one compared
-commit, preserving foreign runtime fields. A `recovering` attachment becomes
-`ready`/`health: active` only after the startup recovery input has a correlated
-receipt. Failed startup stays unavailable. Normal shutdown publishes stopped
-before killing the owned child; daemon restart never adopts a PID or launches
-an agent automatically. Controlled resume refuses a still-live previous owner,
-uses the exact saved thread, and preserves conversation identity across relaunch.
-Liveness and effort relaunch use that attachment without reconstructing a pane.
+The daemon owns the child, private socket and persistent thread. `appServer` publishes contract, socket/thread/member/account, PID/start ticks, incarnation, build/host/configuration/trust/transport and lifecycle state with a new attachment generation in one compared commit. Startup becomes ready only after a recovery receipt. Stop publishes before killing; restart never adopts a PID or launches automatically. Controlled resume names the saved thread and account.
 
-Member details provide transcript, input, interrupt and approval controls through
-the daemon. Operator operations revalidate the complete owned attachment and root
-incarnation under the stable per-member host lock. Shutdown preserves a replacement
-attachment, and compaction refuses an old thread even when its cwd matches. Native compaction output holds
-that exclusion through stdout and receipt bookkeeping. Where the hook does not
-supply the card, existing pending-compaction state causes the card to precede
-operator input in the next idle turn. Neither path invents a compaction boundary.
-Unknown input outcomes are durable and prevent automatic replay.
+Published `hosted` status gates transcript/input/approval/cancel controls. The host lock revalidates attachment/root authority, excludes compaction through stdout/bookkeeping, and defers busy liveness. Ordinary operations get five seconds, cold launch thirty. Send starts an idle turn or steers an active one; pending recovery waits for the next idle turn, preserving the draft without queuing. The existing detector supplies compaction state; fallback prepends the recovery card to next-turn input. No new boundary is inferred from native output.
 
-The bounded raw Unix NDJSON implementation is tested only with a fake executable
-reporting the frozen build `0.153.4`; unknown builds refuse before thread creation.
-The stage-5a contract specifies `unix_ndjson`, whereas the
-[official app-server reference](https://learn.chatgpt.com/docs/app-server#protocol)
-specifies HTTP Upgrade/WebSocket framing for `--listen unix://PATH`. The frozen
-probe exercised stdio and left Unix unverified. A paired framing correction or
-pinned Unix evidence is required before actual-host compatibility can be claimed.
-`trust` remains `unverified`; descriptors remain disabled and no paid trial ran.
+Definite steer rejection permits a newly validated attempt; ambiguous input blocks replay. After stop, an explicit **abandon without replay** decision records the attachment generation and permits named relaunch without changing recovery receipts. Controlled opt-out rollback validates the dead child/root/account/thread, refuses unknown input or retained native attempts, and clears `appServer` at a new fence. `hostRollback` retains old/new modes, opt-in, attachment tuple and unresolved attempts. Failed pane recovery retains that boundary; wrong-thread panes are cleaned up. Team-owned Mesh switching still needs the paired packet; hot conversion refuses.
 
-The paired Mesh switch still refuses transitions into/out of `app_server` with
-`app_server_switch_requires_5b_recoverable_relaunch_packet`. This checkout has no
-Mesh switch implementation or agreed packet schema. Existing-pane conversion and
-host-to-pane rollback therefore refuse that boundary; automated fenced switch
-and rollback are **not implemented**. The Mesh owner must pair its recoverable
-relaunch contract before tmux messaging can be retired. Fake tests establish
-host lifecycle and refusal safety, not switch success or intended-host eligibility.
+Fake build `0.153.4` proves software only. The paired contract pins `unix_ndjson`; the [vendor reference](https://learn.chatgpt.com/docs/app-server#protocol) describes HTTP Upgrade/WebSocket framing for Unix sockets, which the stdio probe did not verify. Carry that question to the paired 5a correction before enabling anything. Trust stays unverified, all descriptors stay disabled, and no paid trial runs.

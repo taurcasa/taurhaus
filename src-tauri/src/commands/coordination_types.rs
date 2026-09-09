@@ -234,7 +234,7 @@ pub struct ReonboardRequest {
 #[serde(rename_all = "camelCase")]
 pub struct LiveAgentStatus {
     /// Published runtime attachment authority; older payloads default to false.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hosted: bool,
     pub name: String,
     pub role: AgentRole,
@@ -317,7 +317,7 @@ pub enum LiveRuntimeSnapshotFreshness {
 #[serde(rename_all = "camelCase")]
 pub struct FastAgentSnapshot {
     /// Published runtime attachment authority; older payloads default to false.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hosted: bool,
     pub name: String,
     pub role: AgentRole,

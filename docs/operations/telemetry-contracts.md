@@ -144,66 +144,16 @@ activation permission; the existing runtime-exclusion contract still applies.
 
 ## Stage-5b owned-host evidence — not an eligibility packet
 
-The fake executable speaks newline-delimited JSON-RPC without `jsonrpc` on a
-private Unix socket in a tempdir. Tests cover launch/account/permission rendering,
-atomic complete runtime publication, named resume, foreign-field preservation,
-root/attachment revalidation, lost-response suppression, liveness/effort relaunch,
-owned shutdown and daemon/UI transcript-input round trips. A fake flock holder
-proves deferral and stable-inode reuse at `teams/TEAM/state/app-server/MEMBER.lock`.
-The same exclusion covers startup, UI/approval/interrupt, effort relaunch,
-compaction output, attachment publication and shutdown. Team/runtime locks are
-short snapshots only; no data lock or model-turn wait spans native RPC I/O.
-Acquisition is capped at two seconds, submission at five seconds, frames at
-64 KiB and events processed per response at 128. Closing never unlinks the lock.
+Only tempdir fake NDJSON transports are tested. Native descriptors remain disabled; the Unix framing question and paired Mesh switch remain open in [the harness model](../architecture/harness-model.md#owned-codex-hosting-stage-5b-disabled-pending-pairing). The stable `state/app-server/MEMBER.lock` excludes input, effort, compaction, shutdown and publication. Wait is at most two seconds; ordinary operations get five seconds, cold launch thirty. No data lock spans RPC and no lock spans a turn.
 
-Startup and next-turn recovery use the existing `onboarding.delivery.observed`
-receipt path (`app_server`). `Submitted` requires the correlated native response;
-it proves neither consumption nor task acceptance. `hostInputUnknown` persists
-before possible input and remains true after ambiguous loss, blocking replay.
-The compaction-hook test probes exclusion during actual CLI stdout; the fallback
-test consumes existing pending compaction at its current context generation.
-The detector and compaction ledger retain their existing semantics.
+Recovery retains `onboarding.delivery.observed` and existing compaction bookkeeping. A native receipt is submission, never read/acceptance. Typed `hostInputUnknown` is persisted before possible input. Classified definite steer rejection clears ambiguity; transport loss does not. Explicit stopped-member reconciliation records `hostInputAbandonedAt`, preserving receipts and abandoning input without replay. IPC operations emit the usual lifecycle spans, correlated with daemon RPC events. Lock contention defers liveness instead of failing the team's pass.
 
-These are fake software proofs only. Pane conversion tests assert refusal pending the paired recoverable-relaunch
-contract. Successful switching and rollback remain unimplemented.
-The unresolved Unix framing mismatch and Mesh switch dependency are recorded in
-[the harness model](../architecture/harness-model.md#owned-codex-hosting-stage-5b-disabled-pending-pairing).
-No real harness, live daemon, operator tmux server, account credentials or paid
-trial is used. All native descriptors remain disabled.
+Controlled pre-eligibility rollback retains `hostRollback`: old/new mode, opt-in, old attachment/build/host, new-generation fence, unresolved attempts and any abandon decision. It requires a stopped child, exact root/session/account and no retained native attempts. Failed pane relaunch leaves a recoverable boundary. Team-owned Mesh switching still requires its paired packet; no tmux delivery is retired by this lane. See the protocol document for additive UI/reconcile methods.
 
-### Lane verification (2026-09-09)
+### Fix round 1 verification
 
-All gates ran from the hosting checkout with its own target directory. Each gate
-polled machine-wide Cargo activity before starting. Harness homes, app data and
-TMUX_TMPDIR were disposable; PATH guards refused ambient harness/tmux execution.
-No real Codex run, install, deployment, paid packet or descriptor activation ran.
+Regressions were observed before fixes for definite rejection, ambiguous-input recovery, shared-lock liveness, controlled rollback, missing hosted status, ordinary-member mounting, terminal polling and deferred input. All 20 focused Rust hosting tests and 50 focused frontend tests passed after their fixes. Required gate results and final inserted-line counts are recorded below.
 
-| Exact gate | Exit | Evidence |
-|---|---:|---|
-| `just check-quick` | 0 | Rust test compilation, frontend typecheck, 2,463 frontend tests |
-| `just lint` | 0 | Clippy, frontend dependency/structure and repository script checks |
-| `just test-contracts` | 0 | 15 renderer, 20 harness and 31 module-boundary tests |
-| `just test-rust-unit` | 101 | 2,600 passed, 5 failed, 9 ignored, 100 filtered |
+Final exact gates, serialized with isolated homes and CLI/tmux guards: `just check-quick` **0** (2,467 frontend tests), `just lint` **0**, `just test-contracts` **0** (15 renderer + 20 harness + 31 boundary tests), `just test-rust-unit` **101** (2,605 passed, 5 failed, 9 ignored, 100 filtered). Logs: `/tmp/host-round1-{check-quick,lint,test-contracts,test-rust-unit}.final.log`. The full branch has **2,999 gross inserted lines**, excluding Cargo.lock; no dependencies or render-role goldens changed.
 
-The five unit failures require real scratch tmux and were refused by the guard:
-`coordination::runtime::tmux::tests::{resume_add_nine_same_project_members_share_one_window,resume_add_other_policies_do_not_tile,resume_add_tiling_failure_removes_only_the_new_pane}`
-and `session_scanner::control::tests::{nine_same_project_members_share_one_window,scratch_tmux_resolves_binary_from_path}`.
-All 20 new Rust hosting/exclusion tests and three frontend hosted-control tests
-passed. Red was observed for the new seams and for attachment identity, member UI
-reuse, startup readiness, unreviewed builds, descriptor parity and declared module
-boundaries before their respective fixes. No render-role-section goldens changed.
-A visual cross-family review and successful paired switch/rollback proof remain
-outstanding; this evidence is not a completion or eligibility declaration.
-
-The continuation adds two red/green identity regressions: shutdown preserves a
-replacement pane/host record while cleaning up only its owned child; compaction
-from an old thread at the same cwd refuses before stdout or ledger mutation.
-Hosted compaction rechecks attachment identity after acquiring host exclusion.
-All four gates were rerun with the results above. Their continuation logs are
-`/tmp/taurhaus-host-{check-quick,lint,contracts,rust-unit}-continuation.log`.
-
-Visual review remains unverified. The browser suite stalled before reporting
-results, including its unchanged smoke fixture (bounded stop: exit 124). A
-standalone browser DOM check passed, but a disposable Vite fixture failed to mount
-the component; no visual score or cross-family approval is claimed. The fixture
-and browsers were stopped, and no unverified visual test was added to the suite.
+The five pre-existing unit failures are the guarded tmux fixtures: `coordination::runtime::tmux::tests::{resume_add_nine_same_project_members_share_one_window,resume_add_other_policies_do_not_tile,resume_add_tiling_failure_removes_only_the_new_pane}` and `session_scanner::control::tests::{nine_same_project_members_share_one_window,scratch_tmux_resolves_binary_from_path}` (guard exit 97: ambient harness/tmux refused). They were not bypassed. Stopping alone does not prove input rejection, so the explicit no-replay reconciliation option replaces that suggested shortcut. Team-owned fenced switching and intended-host/visual eligibility remain unverified; only Taurhaus's controlled rollback half is proved. Small status DTO/node-mapping/fixture edits were necessary to carry authoritative hosted-ness to the named UI.

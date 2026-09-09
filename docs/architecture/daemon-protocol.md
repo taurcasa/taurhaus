@@ -4,7 +4,7 @@ The daemon is a companion process that handles filesystem access, process scanni
 
 ![Daemon Protocol](../images/daemon-protocol.jpg)
 
-> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 55 callable methods (56 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 26; the tables below are authoritative.
+> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 60 callable methods (61 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 26; the tables below are authoritative.
 
 ## Why a daemon
 
@@ -410,17 +410,9 @@ Separately, startup now validates that the connected daemon is serving from the 
 
 ### Stage-5b pairing decision
 
-Protocol 26 is required by the corrected persistent runtime vocabulary:
-`contextGeneration` is written as a string and member identity as `memberName`.
-Protocol-25 runtime readers require a numeric generation and cannot decode the
-new records. New readers accept both the legacy numeric generation and the
-contract string; compaction bookkeeping still uses the existing internal counter.
-This is a changed encoding, not a bump merely for adding `appServer`.
+Protocol remains **26** for the earlier context-generation string encoding correction. Defaulted `hosted` status flags and additive methods need no further bump. The app and daemon release together, app first; nothing is installed here.
 
-The additive Linux/WSL methods below need no additional bump. All require
-`team_name` and `member_name`; mutations also require the transcript's numeric
-`generation`. The Tauri command `coordination_hosted` proxies these methods and
-never creates a second process owner.
+The additive Linux/WSL methods below need no additional bump. All require `team_name` and `member_name`; mutations also require the transcript's numeric `generation`. The Tauri command `coordination_hosted` proxies these methods and never creates a second process owner.
 
 | Method | Additional parameters | Result |
 |---|---|---|
@@ -428,13 +420,6 @@ never creates a second process owner.
 | `coordination.hosted_input` | `text` | Correlated start/steer receipt |
 | `coordination.hosted_interrupt` | None | Correlated interrupt response |
 | `coordination.hosted_approval` | `requestId`, boolean `accept` | Approval response for an owned thread's pending request |
+| `coordination.hosted_reconcile` | boolean `abandonUnknown: true` | After stop, explicitly abandon uncertain operator input without replay; exact attachment generation required |
 
-Every result includes `attachmentGeneration`. Host errors use
-`HOST_OPERATION_FAILED`; details distinguish `NOT_HOSTED`, busy/pending,
-unavailable, stale identity and uncertain input. An older daemon answers
-`UNKNOWN_METHOD`; the UI explains that hosted controls require an update.
-Normal app connections still enforce exact protocol pairing. Transcript polling
-never replays input, and a receipt means submission, not model consumption.
-App and daemon must release together, app first; this branch performs no install
-or release. Transport verification and fenced switching remain unresolved as
-recorded in [the harness model](harness-model.md#owned-codex-hosting-stage-5b-disabled-pending-pairing).
+Results carry `attachmentGeneration`. Host errors use `HOST_OPERATION_FAILED`. Older daemons return `UNKNOWN_METHOD` / `Unknown method: ...`; the UI stops polling and explains the update. `coordination_hosted` uses shared constants and an IPC lifecycle span. Stopped transcripts return `stopped`, `outcomeUnknown` and the generation, without claiming a live read. Reconciliation records the explicit abandon decision at that stopped generation, preserves recovery receipts, and permits named relaunch without resending abandoned input. Receipts prove submission, never consumption. Framing and paired switching remain unverified as recorded in [the harness model](harness-model.md#owned-codex-hosting-stage-5b-disabled-pending-pairing).

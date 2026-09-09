@@ -48,6 +48,13 @@ pub(crate) struct HostedMembers {
     seats: Mutex<HashMap<SeatKey, Seat>>,
 }
 
+fn host_alive(host: &AppServerAttachment) -> bool {
+    taurhaus_lib::platform::process_start_ticks(host.process_id)
+        .map(|v| v.to_string())
+        .as_deref()
+        == Some(&host.process_start)
+}
+
 impl HostedMembers {
     fn seat(&self, root: &Path, team: &str, member: &str) -> Result<Seat, String> {
         let mut seats = self.seats.lock().map_err(|_| "host registry unavailable")?;
@@ -113,11 +120,7 @@ impl HostedMembers {
             {
                 return Err("host resume account/thread identity mismatch".into());
             }
-            if taurhaus_lib::platform::process_start_ticks(previous.process_id)
-                .map(|v| v.to_string())
-                .as_deref()
-                == Some(&previous.process_start)
-            {
+            if host_alive(previous) {
                 return Err(
                     "previous host is still alive; owner restart cannot adopt or replace it".into(),
                 );
@@ -282,10 +285,7 @@ impl HostedMembers {
             || authority.team_incarnation_id != config.team_incarnation_id
             || authority.root_authority_revision
                 != registry.revision(team).map_err(|e| e.to_string())?
-            || taurhaus_lib::platform::process_start_ticks(attachment.process_id)
-                .map(|v| v.to_string())
-                .as_deref()
-                == Some(&attachment.process_start)
+            || host_alive(attachment)
         {
             return Err(
                 "controlled rollback requires the stopped owned attachment and explicit opt-out"
@@ -350,10 +350,7 @@ impl HostedMembers {
         if generation != record.attachment_generation
             || owned.is_some()
             || attachment.state != "stopped"
-            || taurhaus_lib::platform::process_start_ticks(attachment.process_id)
-                .map(|v| v.to_string())
-                .as_deref()
-                == Some(&attachment.process_start)
+            || host_alive(attachment)
         {
             return Err("Stop the hosted member before resolving its unknown input.".into());
         }
@@ -368,7 +365,7 @@ impl HostedMembers {
             generation,
             "host input abandoned without replay"
         );
-        Ok(json!({"abandoned":true}))
+        Ok(json!({"abandoned":true, "attachmentGeneration":generation}))
     }
 
     pub fn operation(
@@ -568,11 +565,7 @@ impl HostedMembers {
                 return Err("host attachment changed before shutdown".into());
             }
         } else if let Some(attachment) = &record.app_server {
-            if taurhaus_lib::platform::process_start_ticks(attachment.process_id)
-                .map(|v| v.to_string())
-                .as_deref()
-                == Some(&attachment.process_start)
-            {
+            if host_alive(attachment) {
                 return Err("live host belongs to a previous daemon; cannot claim shutdown".into());
             }
         } else {
@@ -609,11 +602,17 @@ pub(crate) mod tests {
         MemberRuntimeStore::save(root, "team", "seat", &MemberRuntimeRecord::default()).unwrap();
         TeamRootRegistry::new(root.into())
     }
-
+    fn running(root: &Path) -> (TeamRootRegistry, HostedMembers) {
+        let registry = seat(root);
+        let hosts = HostedMembers::default();
+        hosts
+            .launch(&registry, "team", "seat", &fixture(root))
+            .unwrap();
+        (registry, hosts)
+    }
     fn saved(root: &Path) -> MemberRuntimeRecord {
         MemberRuntimeStore::load(root, "team", "seat").unwrap()
     }
-
     fn transcript(hosts: &HostedMembers, registry: &TeamRootRegistry, generation: u64) -> Value {
         hosts
             .operation(
@@ -626,7 +625,6 @@ pub(crate) mod tests {
             )
             .unwrap()
     }
-
     fn input(
         hosts: &HostedMembers,
         registry: &TeamRootRegistry,
@@ -642,10 +640,9 @@ pub(crate) mod tests {
             json!({"text":text}),
         )
     }
-
     #[test]
     fn hosted_definite_rejection_allows_new_input_and_relaunch() {
-        // Regression: 7921d720 made definite steer rejections permanently ambiguous.
+        // Regression: 9b50346b made definite steer rejections permanently ambiguous.
         for rejected in ["completion race", "wrong turn"] {
             let tmp = tempfile::tempdir().unwrap();
             let registry = seat(tmp.path());
@@ -662,10 +659,9 @@ pub(crate) mod tests {
             hosts.stop(&registry, "team", "seat").unwrap();
         }
     }
-
     #[test]
     fn hosted_liveness_defers_a_mesh_lock_holder() {
-        // Regression: fa18910c let shared host-lock contention abort team passes.
+        // Regression: a9c8109b let shared host-lock contention abort team passes.
         use fs2::FileExt;
         let tmp = tempfile::tempdir().unwrap();
         let registry = seat(tmp.path());
@@ -682,7 +678,6 @@ pub(crate) mod tests {
         drop(holder);
         hosts.stop(&registry, "team", "seat").unwrap();
     }
-
     #[test]
     fn owned_member_publishes_resumes_and_excludes_mesh() {
         let tmp = tempfile::tempdir().unwrap();
@@ -741,7 +736,6 @@ pub(crate) mod tests {
         assert!(input(&hosts, &registry, generation, "stale").is_err());
         hosts.stop(&registry, "team", "seat").unwrap();
     }
-
     #[test]
     fn owned_member_refuses_pane_conversion_and_does_not_adopt_after_owner_restart() {
         let tmp = tempfile::tempdir().unwrap();
@@ -774,7 +768,6 @@ pub(crate) mod tests {
             .is_err());
         hosts.stop(&registry, "team", "seat").unwrap();
     }
-
     #[test]
     fn hosted_recovery_hook_holds_exclusion_through_stdout() {
         struct CheckedOutput {
@@ -800,11 +793,7 @@ pub(crate) mod tests {
             }
         }
         let tmp = tempfile::tempdir().unwrap();
-        let registry = seat(tmp.path());
-        let hosts = HostedMembers::default();
-        hosts
-            .launch(&registry, "team", "seat", &fixture(tmp.path()))
-            .unwrap();
+        let (registry, hosts) = running(tmp.path());
         write_snapshot_fixture(tmp.path(), "team", "seat");
         let payload = json!({"hook_event_name":"SessionStart","source":"compact","session_id":"owned-thread","cwd":tmp.path(),"transcript_path":tmp.path().join("rollout-owned-thread.jsonl")});
         let mut output = CheckedOutput {
@@ -821,16 +810,11 @@ pub(crate) mod tests {
         assert_eq!(record.context_generation, 1);
         hosts.stop(&registry, "team", "seat").unwrap();
     }
-
     #[test]
     fn hosted_compaction_refuses_an_old_thread_at_the_same_cwd() {
         // Regression: 5c95d585 inherited cwd fallback and admitted a former host's compaction.
         let tmp = tempfile::tempdir().unwrap();
-        let registry = seat(tmp.path());
-        let hosts = HostedMembers::default();
-        hosts
-            .launch(&registry, "team", "seat", &fixture(tmp.path()))
-            .unwrap();
+        let (registry, hosts) = running(tmp.path());
         write_snapshot_fixture(tmp.path(), "team", "seat");
         let before = saved(tmp.path());
         let payload = json!({"hook_event_name":"SessionStart","source":"compact","session_id":"old-thread","cwd":tmp.path(),"transcript_path":tmp.path().join("rollout-old-thread.jsonl")});
@@ -844,18 +828,13 @@ pub(crate) mod tests {
         assert_eq!(after.recovery, before.recovery);
         hosts.stop(&registry, "team", "seat").unwrap();
     }
-
     #[test]
     fn hosted_recovery_first_input_uses_existing_pending_compaction_without_new_generation() {
         use super::super::stores::{
             record_delivery_at, CompactionDeliveryResult, MemberCompactionStore,
         };
         let tmp = tempfile::tempdir().unwrap();
-        let registry = seat(tmp.path());
-        let hosts = HostedMembers::default();
-        hosts
-            .launch(&registry, "team", "seat", &fixture(tmp.path()))
-            .unwrap();
+        let (registry, hosts) = running(tmp.path());
         write_snapshot_fixture(tmp.path(), "team", "seat");
         let generation = saved(tmp.path()).attachment_generation;
         input(&hosts, &registry, generation, "startup marker").unwrap();
@@ -881,20 +860,17 @@ pub(crate) mod tests {
         );
         input(&hosts, &registry, generation, "after compact").unwrap();
         let transcript = transcript(&hosts, &registry, generation);
-        assert!(
-            transcript["thread"]["turns"][0]["items"][0]["content"][0]["text"]
+        let message = |index: usize| {
+            transcript["thread"]["turns"][index]["items"][0]["content"][0]["text"]
                 .as_str()
                 .unwrap()
-                .starts_with("[taurhaus] recovery_card")
+        };
+        assert!(message(0).starts_with("[taurhaus] recovery_card"));
+        assert_eq!(message(1), "startup marker");
+        assert!(
+            message(2).starts_with("[taurhaus] recovery_card")
+                && message(2).ends_with("after compact")
         );
-        assert_eq!(
-            transcript["thread"]["turns"][1]["items"][0]["content"][0]["text"],
-            "startup marker"
-        );
-        let text = transcript["thread"]["turns"][2]["items"][0]["content"][0]["text"]
-            .as_str()
-            .unwrap();
-        assert!(text.starts_with("[taurhaus] recovery_card") && text.ends_with("after compact"));
         assert_eq!(saved(tmp.path()).context_generation, 1);
         assert!(
             !MemberCompactionStore::load(tmp.path(), "team", "seat")
@@ -904,7 +880,6 @@ pub(crate) mod tests {
         );
         hosts.stop(&registry, "team", "seat").unwrap();
     }
-
     #[test]
     fn hosted_publication_preserves_concurrent_foreign_fields_and_checks_incarnation() {
         // Regression: 83077dad replaced the compared current record with a stale clone,
@@ -936,36 +911,23 @@ pub(crate) mod tests {
         .is_err());
         hosts.stop(&registry, "team", "seat").unwrap();
     }
-
     #[test]
     fn hosted_daemon_shutdown_publishes_before_owned_children_exit() {
         let tmp = tempfile::tempdir().unwrap();
-        let registry = seat(tmp.path());
-        let hosts = HostedMembers::default();
-        hosts
-            .launch(&registry, "team", "seat", &fixture(tmp.path()))
-            .unwrap();
+        let (_registry, hosts) = running(tmp.path());
         let before = saved(tmp.path());
         hosts.shutdown().unwrap();
         let after = saved(tmp.path());
         assert!(after.attachment_generation > before.attachment_generation);
         assert_eq!(after.app_server.unwrap().state, "stopped");
-        assert!(
-            taurhaus_lib::platform::process_start_ticks(before.app_server.unwrap().process_id)
-                .is_none()
-        );
+        assert!(!host_alive(&before.app_server.unwrap()));
     }
-
     #[test]
     fn hosted_shutdown_preserves_a_replacement_attachment() {
         // Regression: 10fa0eb2 treated an absent appServer as permission to stop a replacement pane.
         for replacement_host in [false, true] {
             let tmp = tempfile::tempdir().unwrap();
-            let registry = seat(tmp.path());
-            let hosts = HostedMembers::default();
-            hosts
-                .launch(&registry, "team", "seat", &fixture(tmp.path()))
-                .unwrap();
+            let (registry, hosts) = running(tmp.path());
             let original = saved(tmp.path());
             MemberRuntimeStore::update(tmp.path(), "team", "seat", |record| {
                 record.attachment_generation += 1;
@@ -989,7 +951,6 @@ pub(crate) mod tests {
             .is_none());
         }
     }
-
     #[test]
     fn hosted_launch_requires_codex_capability_and_records_account_selection() {
         let tmp = tempfile::tempdir().unwrap();

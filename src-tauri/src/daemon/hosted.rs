@@ -58,7 +58,6 @@ pub(crate) fn handle(
 mod tests {
     use super::*;
     use serde_json::json;
-
     #[test]
     fn daemon_host_input_and_transcript_use_owned_member_and_generation() {
         let tmp = tempfile::tempdir().unwrap();
@@ -81,7 +80,7 @@ mod tests {
     }
     #[test]
     fn hosted_ambiguous_input_has_explicit_no_replay_recovery() {
-        // Regression: 7921d720 persisted hostInputUnknown with no operator exit.
+        // Regression: a9c8109b persisted hostInputUnknown with no operator exit.
         let tmp = tempfile::tempdir().unwrap();
         let registry = crate::coordination::hosted::tests::seat(tmp.path());
         let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
