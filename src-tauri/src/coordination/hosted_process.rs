@@ -527,25 +527,22 @@ with socket.socket(socket.AF_UNIX) as listener:
             .unwrap()
     }
 
+    fn spawn(
+        launch: &HostedLaunch,
+        root: &Path,
+        resume: Option<&str>,
+        guard: &HostOperationLock,
+    ) -> Result<HostProcess, String> {
+        let socket = root.join(format!("{}.sock", uuid::Uuid::new_v4().simple()));
+        HostProcess::launch(launch, root, &socket, resume, guard)
+    }
+
     #[test]
     fn fake_host_round_trip_named_resume_and_owned_cleanup() {
         let tmp = tempfile::tempdir().unwrap();
         let launch = fixture(tmp.path());
-        let guard = crate::coordination::stores::lock::HostOperationLock::acquire(
-            tmp.path(),
-            "team",
-            "seat",
-            std::time::Duration::ZERO,
-        )
-        .unwrap();
-        let mut host = HostProcess::launch(
-            &launch,
-            tmp.path(),
-            &tmp.path().join("a.sock"),
-            None,
-            &guard,
-        )
-        .unwrap();
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
         assert_eq!(host.thread_id, "owned-thread");
         assert_eq!(
             host.input("operator marker", &guard).unwrap()["turn"]["id"],
@@ -559,48 +556,21 @@ with socket.socket(socket.AF_UNIX) as listener:
         let pid = host.child.id();
         drop(host);
         assert!(taurhaus_lib::platform::process_start_ticks(pid).is_none());
-        let mut resumed = HostProcess::launch(
-            &launch,
-            tmp.path(),
-            &tmp.path().join("b.sock"),
-            Some("owned-thread"),
-            &guard,
-        )
-        .unwrap();
+        let mut resumed = spawn(&launch, tmp.path(), Some("owned-thread"), &guard).unwrap();
         assert!(resumed
             .transcript(&guard)
             .unwrap()
             .to_string()
             .contains("operator marker"));
-        assert!(HostProcess::launch(
-            &launch,
-            tmp.path(),
-            &tmp.path().join("c.sock"),
-            Some("wrong-thread"),
-            &guard
-        )
-        .is_err());
+        assert!(spawn(&launch, tmp.path(), Some("wrong-thread"), &guard).is_err());
     }
 
     #[test]
     fn fake_host_lost_input_response_never_replays() {
         let tmp = tempfile::tempdir().unwrap();
         let launch = fixture(tmp.path());
-        let guard = crate::coordination::stores::lock::HostOperationLock::acquire(
-            tmp.path(),
-            "team",
-            "seat",
-            std::time::Duration::ZERO,
-        )
-        .unwrap();
-        let mut host = HostProcess::launch(
-            &launch,
-            tmp.path(),
-            &tmp.path().join("a.sock"),
-            None,
-            &guard,
-        )
-        .unwrap();
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
         assert!(host.input("disconnect", &guard).is_err());
         assert!(host.input("must not replay", &guard).is_err());
         let persisted = std::fs::read_to_string(tmp.path().join("thread.json")).unwrap();
@@ -613,14 +583,7 @@ with socket.socket(socket.AF_UNIX) as listener:
         let tmp = tempfile::tempdir().unwrap();
         let launch = fixture(tmp.path());
         let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
-        let mut host = HostProcess::launch(
-            &launch,
-            tmp.path(),
-            &tmp.path().join("rpc.sock"),
-            None,
-            &guard,
-        )
-        .unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
         host.input("approval", &guard).unwrap();
         assert!(host.input("blocked by approval", &guard).is_err());
         host.approval(&json!("permission-1"), false, &guard)
@@ -650,14 +613,7 @@ with socket.socket(socket.AF_UNIX) as listener:
             .insert("FAKE_BUILD".into(), "unreviewed".into());
         let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
         // Regression: 9b50346b parsed any nonempty build as usable for native input.
-        assert!(HostProcess::launch(
-            &launch,
-            tmp.path(),
-            &tmp.path().join("rpc.sock"),
-            None,
-            &guard
-        )
-        .is_err());
+        assert!(spawn(&launch, tmp.path(), None, &guard).is_err());
         assert!(!tmp.path().join("thread.json").exists());
     }
 }

@@ -64,36 +64,20 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let registry = crate::coordination::hosted::tests::seat(tmp.path());
         let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
-        let state = crate::coordination::state::CoordinationState::with_components_and_runtime(
-            tmp.path().into(),
-            crate::coordination::backend::BackendSelector::m0(),
-            std::sync::Arc::new(|_, _| {
-                Ok(std::sync::Arc::new(
-                    crate::coordination::backend::fake::FakeBackend::default(),
-                ))
-            }),
-            std::sync::Arc::new(|| {
-                std::sync::Arc::new(
-                    crate::coordination::runtime::RecordingCoordinationRuntime::default(),
-                )
-            }),
-        );
-        state
-            .hosted
-            .launch(&registry, "team", "seat", &launch)
-            .unwrap();
+        let hosts = HostedMembers::default();
+        hosts.launch(&registry, "team", "seat", &launch).unwrap();
         let mut params = json!({"team_name":"team","member_name":"seat"});
-        let view = handle(&state.hosted, &registry, "transcript", &params).unwrap();
+        let view = handle(&hosts, &registry, "transcript", &params).unwrap();
         assert_eq!(view["thread"]["id"], "owned-thread");
         params["text"] = json!("daemon operator marker");
-        assert!(handle(&state.hosted, &registry, "input", &params).is_err());
+        assert!(handle(&hosts, &registry, "input", &params).is_err());
         params["generation"] = view["attachmentGeneration"].clone();
-        assert!(handle(&state.hosted, &registry, "input", &params).is_ok());
-        assert!(handle(&state.hosted, &registry, "transcript", &params)
+        assert!(handle(&hosts, &registry, "input", &params).is_ok());
+        assert!(handle(&hosts, &registry, "transcript", &params)
             .unwrap()
             .to_string()
             .contains("daemon operator marker"));
-        state.hosted.stop(&registry, "team", "seat").unwrap();
+        hosts.stop(&registry, "team", "seat").unwrap();
     }
     #[test]
     fn hosted_ambiguous_input_has_explicit_no_replay_recovery() {

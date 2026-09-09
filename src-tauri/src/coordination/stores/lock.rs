@@ -826,13 +826,7 @@ mod tests {
         use std::os::unix::fs::MetadataExt;
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("team/state/app-server/seat.lock");
-        let guard = super::HostOperationLock::acquire(
-            tmp.path(),
-            "team",
-            "seat",
-            std::time::Duration::ZERO,
-        )
-        .unwrap();
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
         let inode = std::fs::metadata(&path).unwrap().ino();
         let mesh = std::fs::OpenOptions::new()
             .read(true)
@@ -843,63 +837,31 @@ mod tests {
             fs2::FileExt::try_lock_exclusive(&mesh).is_err(),
             "mesh must defer"
         );
-        assert!(super::TerminalLock::acquire(
-            tmp.path(),
-            "team",
-            "seat",
-            "test",
-            0,
-            std::time::Duration::ZERO
-        )
-        .is_err());
+        assert!(
+            TerminalLock::acquire(tmp.path(), "team", "seat", "test", 0, Duration::ZERO).is_err()
+        );
         drop(guard);
         fs2::FileExt::try_lock_exclusive(&mesh).unwrap();
         let started = std::time::Instant::now();
-        assert!(super::HostOperationLock::acquire(
-            tmp.path(),
-            "team",
-            "seat",
-            std::time::Duration::from_millis(20)
-        )
-        .is_err());
-        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+        assert!(
+            HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::from_millis(20))
+                .is_err()
+        );
+        assert!(started.elapsed() < Duration::from_secs(1));
         fs2::FileExt::unlock(&mesh).unwrap();
-        let _guard = super::HostOperationLock::acquire(
-            tmp.path(),
-            "team",
-            "seat",
-            std::time::Duration::ZERO,
-        )
-        .unwrap();
+        let _guard =
+            HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
         assert_eq!(std::fs::metadata(path).unwrap().ino(), inode);
     }
 
     #[test]
     fn host_operation_lock_is_acquired_after_data_locks_are_released() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let team = super::acquire_team_lock(tmp.path(), "team").unwrap();
-        assert!(super::HostOperationLock::acquire(
-            tmp.path(),
-            "team",
-            "seat",
-            std::time::Duration::ZERO
-        )
-        .is_err());
+        let team = acquire_team_lock(tmp.path(), "team").unwrap();
+        assert!(HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).is_err());
         drop(team);
-        let _host = super::HostOperationLock::acquire(
-            tmp.path(),
-            "team",
-            "seat",
-            std::time::Duration::ZERO,
-        )
-        .unwrap();
-        assert!(super::HostOperationLock::acquire(
-            tmp.path(),
-            "team",
-            "seat",
-            std::time::Duration::ZERO
-        )
-        .is_err());
+        let _host = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        assert!(HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).is_err());
     }
     use std::sync::{mpsc, Arc, Barrier};
     use std::thread;
