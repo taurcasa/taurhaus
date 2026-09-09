@@ -33,7 +33,12 @@ const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
 /// Runtime record persisted at `teams/<team>/runtime/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberRuntimeRecord {
-    #[serde(default, rename = "appServer", alias = "app_server", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "appServer",
+        alias = "app_server",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub app_server: Option<AppServerAttachment>,
     #[serde(
         default,
@@ -41,7 +46,12 @@ pub struct MemberRuntimeRecord {
         alias = "attachment_generation"
     )]
     pub attachment_generation: u64,
-    #[serde(default, rename = "contextGeneration", alias = "context_generation", with = "context_generation_wire")]
+    #[serde(
+        default,
+        rename = "contextGeneration",
+        alias = "context_generation",
+        with = "context_generation_wire"
+    )]
     pub context_generation: u64,
     #[serde(default, rename = "tmuxSocket", alias = "tmux_socket")]
     pub tmux_socket: Option<PathBuf>,
@@ -151,7 +161,9 @@ mod context_generation_wire {
     pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
         match serde_json::Value::deserialize(deserializer)? {
             serde_json::Value::String(s) => s.parse().map_err(serde::de::Error::custom),
-            value => value.as_u64().ok_or_else(|| serde::de::Error::custom("invalid context generation")),
+            value => value
+                .as_u64()
+                .ok_or_else(|| serde::de::Error::custom("invalid context generation")),
         }
     }
 }
@@ -914,7 +926,12 @@ fn parse_runtime_record(
             alias = "attachment_generation"
         )]
         attachment_generation: u64,
-        #[serde(default, rename = "contextGeneration", alias = "context_generation", with = "context_generation_wire")]
+        #[serde(
+            default,
+            rename = "contextGeneration",
+            alias = "context_generation",
+            with = "context_generation_wire"
+        )]
         context_generation: u64,
         #[serde(default, rename = "tmuxSocket", alias = "tmux_socket")]
         tmux_socket: Option<PathBuf>,
