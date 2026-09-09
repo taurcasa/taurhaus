@@ -43,9 +43,24 @@ mod tests {
     use crate::coordination::stores::TeamConfigStore;
     use serde_json::json;
 
+    // Regression: 796bba0e gave the candidate a name matching the locked Mesh lane filter.
+    #[test]
+    fn canonical_candidate_is_excluded_from_locked_mesh_contract_lane() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--list", "--ignored", "mesh_binary_"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let selected = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            !selected.contains("team_activation::"),
+            "candidate leaked into locked lane: {selected}"
+        );
+    }
+
     #[test]
     #[ignore = "NOT RUN: canonical Mesh contract requires explicit MESH_CONTRACT_BIN; run just test-canonical-mesh-contract"]
-    fn canonical_mesh_binary_creates_and_round_trips_authority() {
+    fn canonical_activation_candidate_creates_and_round_trips_authority() {
         let binary = std::env::var_os("MESH_CONTRACT_BIN")
             .map(std::path::PathBuf::from)
             .expect("MESH_CONTRACT_BIN must name the canonical candidate");

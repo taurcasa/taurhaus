@@ -363,7 +363,7 @@ test-mesh-contracts: ensure-tauri-resources
 # Canonical candidate operator lane; never resolves the installed legacy Mesh.
 test-canonical-mesh-contract: ensure-tauri-resources
     @test -n "${MESH_CONTRACT_BIN:-}" || { echo "NOT RUN: set MESH_CONTRACT_BIN to the canonical candidate" >&2; exit 1; }
-    cd src-tauri && cargo test --lib canonical_mesh_binary_ -- --ignored --test-threads=1
+    cd src-tauri && cargo test --lib canonical_activation_candidate_ -- --ignored --test-threads=1
 
 # Rust unit-test execution lane (excludes heavy suites and operator Mesh fixtures).
 test-rust-unit: ensure-tauri-resources
