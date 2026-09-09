@@ -67,7 +67,7 @@ impl TerminalLock {
         loop {
             match file.try_lock_exclusive() {
                 Ok(()) => break,
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                Err(e) if terminal_lock_contended(&e, cfg!(target_os = "windows")) => {
                     if std::time::Instant::now() >= deadline {
                         return Err(CoordinationError::Conflict(
                             "terminal write deferred: lock busy".into(),
@@ -79,16 +79,17 @@ impl TerminalLock {
                     );
                 }
                 Err(e) => {
-                    tracing::error!(team, member, error = %e, "terminal write disabled: flock unavailable");
-                    let fields =
-                        serde_json::json!({"team": team, "member": member, "error": e.to_string()});
-                    emit_global(
-                        "error",
-                        "coordination",
-                        "coordination.terminal.unavailable",
-                        Some("Terminal writes require an engaged flock".into()),
-                        fields.as_object().unwrap().clone(),
-                    );
+                    if note_unsupported_lock(&path) {
+                        tracing::error!(team, member, error = %e, "terminal write disabled: flock unavailable");
+                        let fields = serde_json::json!({"team": team, "member": member, "error": e.to_string()});
+                        emit_global(
+                            "error",
+                            "coordination",
+                            "coordination.terminal.unavailable",
+                            Some("Terminal writes require an engaged flock".into()),
+                            fields.as_object().unwrap().clone(),
+                        );
+                    }
                     return Err(e.into());
                 }
             }
@@ -134,24 +135,68 @@ pub fn terminal_write_for_pane<T>(
     op: &str,
     write: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
-    let registry = super::team_roots::TeamRootRegistry::new(
-        crate::provider::platform_paths::PlatformPaths::teams_dir(),
-    );
-    for (root, team) in registry.team_locations().map_err(|e| e.to_string())? {
-        for member in
-            super::runtime::MemberRuntimeStore::list(&root, &team).map_err(|e| e.to_string())?
-        {
-            let record = super::runtime::MemberRuntimeStore::load(&root, &team, &member)
-                .map_err(|e| e.to_string())?;
+    terminal_write_for_pane_at_root(
+        &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        pane,
+        op,
+        write,
+    )
+}
+
+pub(crate) fn terminal_write_for_pane_at_root<T>(
+    teams_dir: &Path,
+    pane: &str,
+    op: &str,
+    write: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let registry = super::team_roots::TeamRootRegistry::new(teams_dir.to_path_buf());
+    let deferred = |e| format!("terminal write deferred: attachment lookup: {e}");
+    let mut uncertain = false;
+    for (root, team) in registry.team_locations().map_err(deferred)? {
+        let records = match super::runtime::MemberRuntimeStore::load_all(&root, &team) {
+            Ok(records) => records,
+            Err(_) => {
+                uncertain = true;
+                continue;
+            }
+        };
+        for (member, record) in &records {
             if record.pane_id.as_deref() == Some(pane) {
-                return terminal_write(&root, &team, &member, op, || {
+                // Windows app fallback must not create lock/holder state on
+                // the UNC volume; only the native daemon can exclude writers.
+                #[cfg(target_os = "windows")]
+                return Err(
+                    "terminal write deferred: managed stop requires the native daemon".into(),
+                );
+                #[cfg(not(target_os = "windows"))]
+                return terminal_write(&root, &team, member, op, || {
                     write().map_err(CoordinationError::Backend)
                 })
                 .map_err(|e| e.to_string());
             }
         }
+        // A missing/corrupt member makes a negative lookup inconclusive; it
+        // must not turn a temporarily displaced managed pane into an unmanaged one.
+        uncertain |= super::runtime::MemberRuntimeStore::list(&root, &team)
+            .map(|names| names.len() != records.len())
+            .unwrap_or(true);
+        uncertain |= match super::config::TeamConfigStore::load(&root, &team) {
+            Ok(config) => config
+                .members
+                .iter()
+                .any(|member| !records.iter().any(|(name, _)| name == &member.name)),
+            Err(_) => true,
+        };
+    }
+    if uncertain {
+        return Err("terminal write deferred: attachment inventory incomplete".into());
     }
     write()
+}
+
+fn terminal_lock_contended(error: &std::io::Error, windows: bool) -> bool {
+    error.kind() == std::io::ErrorKind::WouldBlock || (windows && error.raw_os_error() == Some(33))
+    // ERROR_LOCK_VIOLATION
 }
 
 fn is_windows_unsupported_lock_error(err: &std::io::Error) -> bool {
@@ -686,9 +731,41 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn terminal_lookup_skips_unrelated_corruption_but_defers_unknown_attachment() {
+        // Regression: 1127823e aborted every stop on one corrupt record, then
+        // wrote unlocked when a managed record was transiently absent.
+        use super::super::runtime::{MemberRuntimeRecord, MemberRuntimeStore};
+        let tmp = TempDir::new().unwrap();
+        MemberRuntimeStore::save(
+            tmp.path(),
+            "team",
+            "seat",
+            &MemberRuntimeRecord {
+                pane_id: Some("%1".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        fs::write(tmp.path().join("team/runtime/broken.json"), "{").unwrap();
+        terminal_write_for_pane_at_root(tmp.path(), "%1", "stop", || {
+            assert!(taurhaus_lib::platform::terminal_io::active());
+            Ok(())
+        })
+        .unwrap();
+        fs::remove_file(tmp.path().join("team/runtime/seat.json")).unwrap();
+        let result = terminal_write_for_pane_at_root(tmp.path(), "%1", "stop", || {
+            panic!("unresolved pane must not be written")
+        });
+        let result: Result<(), String> = result;
+        assert!(result.unwrap_err().contains("terminal write deferred"));
+    }
+
     #[cfg(unix)]
     #[test]
     fn terminal_child_receives_the_locked_file_as_stdin() {
+        // Regression: c7226a4d selected supervision by the library cfg(test),
+        // so the integration harness re-executed itself instead of the transport.
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("team/state/terminal/seat.lock");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
