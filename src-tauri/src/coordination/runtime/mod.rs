@@ -546,6 +546,15 @@ pub fn resolve_or_create_pane_for_member(
         })
     };
 
+    // Resume may still hold the snapshot captured before rollback cleared the
+    // stored pane identity. A stopped host's old view is not a reusable shell.
+    if runtime_record
+        .and_then(|record| record.app_server.as_ref())
+        .is_some_and(|host| host.state == "stopped")
+    {
+        return create_new();
+    }
+
     let Some(existing_pane_id) = runtime_record.and_then(|record| record.pane_id.as_deref()) else {
         return create_new();
     };

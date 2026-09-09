@@ -163,6 +163,9 @@ pub struct AppServerAttachment {
     pub configuration: String,
     pub trust: String,
     pub transport: String,
+    /// Exact remote-resume argv; account environment stays with the daemon.
+    #[serde(default)]
+    pub attach_argv: Vec<String>,
     /// Empty on an incomplete peer record; never evidence of a ready child.
     #[serde(default)]
     pub state: String,
@@ -1641,7 +1644,7 @@ mod tests {
             "accountRoot": tmp.path().join("account"), "processId": 123,
             "processStart": "456", "hostGeneration": "host-one",
             "build": "fake", "host": "test", "configuration": "policy",
-            "trust": "test", "transport": "unix_ndjson", "state": "ready"
+            "trust": "test", "transport": "unix-websocket", "state": "ready"
         });
         let record: MemberRuntimeRecord = serde_json::from_value(wire).unwrap();
         MemberRuntimeStore::save(tmp.path(), "team", "seat", &record).unwrap();

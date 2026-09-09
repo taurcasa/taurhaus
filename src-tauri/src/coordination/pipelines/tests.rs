@@ -8502,7 +8502,7 @@ fn reinitialize_resets_attachment_without_rewinding_generation() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn hosted_member_liveness_and_effort_relaunch_never_use_a_pane() {
+fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
     let tmp = TempDir::new().unwrap();
     let registry = crate::coordination::hosted::tests::seat(tmp.path());
     let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
@@ -8542,8 +8542,29 @@ fn hosted_member_liveness_and_effort_relaunch_never_use_a_pane() {
         tmp.path().display(),
         launch.program.display()
     );
-    commands.codex.fresh = command.clone();
-    commands.codex.resume = format!("{command} resume {{session_id}}");
+    // Same resolved alias path as ordinary launches; selected scratch account wins.
+    commands.codex.fresh = "codex-seat".into();
+    commands.codex.resume = "codex-seat resume {session_id}".into();
+    for mode in [
+        crate::daemon::protocol::LaunchMode::Fresh,
+        crate::daemon::protocol::LaunchMode::Resume,
+    ] {
+        commands.resolved_bases.insert(
+            (CliTool::Codex, mode),
+            ResolvedBase {
+                command: if mode == crate::daemon::protocol::LaunchMode::Fresh {
+                    command.clone()
+                } else {
+                    format!("{command} resume {{session_id}}")
+                },
+                expansions: vec![AliasExpansion {
+                    name: "codex-seat".into(),
+                    body: command.clone(),
+                }],
+                opaque_head: None,
+            },
+        );
+    }
     commands.codex_bypass_hook_trust = false;
     commands
         .account_selector_dirs
@@ -8557,19 +8578,106 @@ fn hosted_member_liveness_and_effort_relaunch_never_use_a_pane() {
         .resume_member_with_cli_commands_and_layout(&request, &commands, "new_window")
         .unwrap();
     assert!(report.resumed, "{}", report.message);
-    assert_eq!(report.pane_id, None);
+    // Regression: cadd533e returned before opening the operator's attached TUI.
+    assert_eq!(report.pane_id.as_deref(), Some("test-pane-1"));
     let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
     assert_eq!(before.session_id, after.session_id);
     assert_eq!(after.applied_effort.as_deref(), Some("high"));
-    assert!(
-        !runtime
-            .calls()
-            .iter()
-            .any(|c| format!("{c:?}").contains("Pane")),
-        "{:?}",
-        runtime.calls()
+    let wire = serde_json::to_value(&after).unwrap();
+    let host = &wire["appServer"];
+    assert_eq!(
+        host["attachArgv"],
+        serde_json::json!([
+            launch.program.to_str().unwrap(),
+            "--remote",
+            format!("unix://{}", host["socketPath"].as_str().unwrap()),
+            "resume",
+            "owned-thread",
+            "--no-alt-screen",
+            "--strict-config"
+        ])
     );
-    orchestrator.hosted.stop(&registry, "team", "seat").unwrap();
+    assert!(runtime.calls().iter().any(|c| matches!(c,
+        RuntimeCall::SendKeys { keys, .. } if keys.contains("env -u TMUX")
+            && keys.contains("--remote") && keys.contains("owned-thread")
+            && keys.contains(tmp.path().to_str().unwrap()))));
+    let generation = after.attachment_generation;
+    let pid = host["processId"].clone();
+    let before_calls = runtime.calls().len();
+    let report = orchestrator
+        .resume_member_with_cli_commands_and_layout(&request, &commands, "new_window")
+        .unwrap();
+    assert!(report.resumed, "{}", report.message);
+    assert_eq!(report.pane_id.as_deref(), Some("test-pane-1"));
+    assert!(report.reused_pane);
+    assert!(!runtime.calls()[before_calls..]
+        .iter()
+        .any(|c| matches!(c, RuntimeCall::SendKeys { .. })));
+    runtime.set_pane_exists("test-pane-1", false);
+    let report = orchestrator
+        .resume_member_with_cli_commands_and_layout(&request, &commands, "new_window")
+        .unwrap();
+    assert!(report.resumed, "{}", report.message);
+    assert_eq!(report.pane_id.as_deref(), Some("test-pane-2"));
+    let reattached = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    assert_eq!(reattached.attachment_generation, generation);
+    assert_eq!(
+        serde_json::to_value(&reattached).unwrap()["appServer"]["processId"],
+        pid
+    );
+    assert_eq!(reattached.session_id.as_deref(), Some("owned-thread"));
+    assert_eq!(reattached.pane_pid, Some(1002));
+    assert!(reattached.pane_start_time.is_some());
+    assert!(reattached.tmux_socket.is_some());
+    let result = orchestrator.teardown_member_resources_best_effort(
+        "team",
+        "seat",
+        Some(tmp.path()),
+        Some(&reattached),
+    );
+    assert!(result
+        .steps
+        .iter()
+        .any(|s| s.step == "stop_host" && s.success));
+    // Regression: b4a4b2dd added the attached pane but inherited host-only teardown.
+    assert!(runtime
+        .calls()
+        .iter()
+        .any(|c| matches!(c, RuntimeCall::KillPane { pane_id } if pane_id == "test-pane-2")));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn hosted_teardown_reports_already_closed_pane() {
+    // Regression: efb1ddb8 reported a successful pane kill even when the TUI was absent.
+    let tmp = TempDir::new().unwrap();
+    let registry = crate::coordination::hosted::tests::seat(tmp.path());
+    let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+    orchestrator
+        .hosted
+        .launch(&registry, "team", "seat", &launch)
+        .unwrap();
+    orchestrator
+        .hosted
+        .attach_pane(&registry, "team", "seat", runtime.as_ref(), "new_window")
+        .unwrap();
+    let record = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    runtime.set_pane_exists(record.pane_id.as_deref().unwrap(), false);
+    let result = orchestrator.teardown_member_resources_best_effort(
+        "team",
+        "seat",
+        Some(tmp.path()),
+        Some(&record),
+    );
+    assert!(result.steps.iter().any(|step| step.step == "kill_pane"
+        && step.success
+        && step.message.as_deref() == Some("attached TUI already closed")));
+    assert!(!runtime
+        .calls()
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::KillPane { .. })));
 }
 
 #[cfg(target_os = "linux")]
@@ -8586,7 +8694,13 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
         .hosted
         .launch(&registry, "team", "seat", &launch)
         .unwrap();
+    // Regression: efb1ddb8 retained the attached TUI identity into plain-pane rollback.
+    orchestrator
+        .hosted
+        .attach_pane(&registry, "team", "seat", runtime.as_ref(), "new_window")
+        .unwrap();
     let before = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    runtime.set_pane_shell(before.pane_id.as_deref().unwrap(), false);
     orchestrator.hosted.stop(&registry, "team", "seat").unwrap();
     let mut config = TeamConfigStore::load(tmp.path(), "team").unwrap();
     config.members[0].extra.remove("adapter_mode");
@@ -8595,7 +8709,7 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
         serde_json::to_vec(&config).unwrap(),
     )
     .unwrap();
-    runtime.set_detected_runtime_session("test-pane-1", CliTool::Codex, Some("owned-thread"), None);
+    runtime.set_detected_runtime_session("test-pane-2", CliTool::Codex, Some("owned-thread"), None);
     let mut commands = CliCommandSettings::default();
     let command = format!(
         "CODEX_HOME='{}' '{}' --sandbox read-only --ask-for-approval never",
@@ -8617,7 +8731,10 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
         .resume_member_with_cli_commands_and_layout(&request, &commands, "new_window")
         .unwrap();
     assert!(report.resumed, "{}", report.message);
-    assert_eq!(report.pane_id.as_deref(), Some("test-pane-1"));
+    assert_eq!(report.pane_id.as_deref(), Some("test-pane-2"));
+    assert_ne!(report.pane_id, before.pane_id);
+    assert!(runtime.calls().iter().all(|c| !matches!(c,
+        RuntimeCall::SendKeys { pane_id, keys, .. } if Some(pane_id) == before.pane_id.as_ref() && !keys.contains("--remote"))));
     let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
     assert_eq!(before.session_id, after.session_id);
     assert!(after.app_server.is_none());

@@ -131,6 +131,9 @@ fn fully_populated_settings() -> Settings {
         agy_hooks_supported: true,
     };
     let tools = vec![CliToolDescriptor {
+        // This older (0.150.1), synthetic descriptor exercises the optional-field
+        // fallback. The live Codex conversion/build pin is covered by harness_conformance.
+        app_server: None,
         id: CliTool::Codex,
         label: "Codex fixture".to_string(),
         display_name: "Codex fixture CLI".to_string(),

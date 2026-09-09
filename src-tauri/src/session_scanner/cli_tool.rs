@@ -895,6 +895,8 @@ pub struct CliToolDescriptor {
     pub account_login_command: Option<String>,
     pub account_dir_name: String,
     pub capabilities: CliCapabilityDescriptor,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_server: Option<crate::session_scanner::launch::HostedDescriptor>,
 }
 
 impl From<&CliToolSpec> for CliToolDescriptor {
@@ -914,6 +916,8 @@ impl From<&CliToolSpec> for CliToolDescriptor {
             account_login_command: value.account_login_command.map(str::to_string),
             account_dir_name: value.base_dir_name.to_string(),
             capabilities: value.capabilities.into(),
+            app_server: crate::session_scanner::launch::HostedLaunch::supports(value.tool)
+                .then(crate::session_scanner::launch::HostedDescriptor::codex),
         }
     }
 }
@@ -1245,6 +1249,18 @@ pub fn descriptors() -> Vec<CliToolDescriptor> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_host_descriptor_pins_verified_transport_and_attached_tui_build() {
+        let descriptor =
+            serde_json::to_value(CliToolDescriptor::from(spec(CliTool::Codex))).unwrap();
+        assert_eq!(descriptor["appServer"]["build"], "0.153.4");
+        assert_eq!(descriptor["appServer"]["transport"], "unix-websocket");
+        assert_eq!(
+            descriptor["appServer"]["attachedTui"],
+            "verified on 0.153.4"
+        );
+    }
 
     #[test]
     fn registry_replaces_gemini_with_antigravity_capabilities() {

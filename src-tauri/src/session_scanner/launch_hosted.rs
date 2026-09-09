@@ -5,6 +5,26 @@ use crate::session_scanner::cli_tool::CliTool;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// Runtime evidence pins the remote-resume primitive to this build. The generated
+/// home and amendment-required strict flag are software-tested integration changes.
+/// A build bump needs a fresh HTTP Upgrade + initialize probe before this allowlist changes.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostedDescriptor {
+    pub build: String,
+    pub transport: String,
+    pub attached_tui: String,
+}
+impl HostedDescriptor {
+    pub fn codex() -> Self {
+        Self {
+            build: "0.153.4".into(),
+            transport: "unix-websocket".into(),
+            attached_tui: "verified on 0.153.4".into(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct HostedLaunch {
     pub program: PathBuf,
@@ -30,6 +50,63 @@ impl LaunchSpec<'_> {
 }
 
 impl HostedLaunch {
+    pub fn attach_argv(&self, socket: &Path, thread: &str) -> Result<Vec<String>, String> {
+        if !socket.is_absolute() || thread.is_empty() || thread.starts_with('-') {
+            return Err("attached TUI requires an exact owned thread and absolute socket".into());
+        }
+        Ok(vec![
+            self.program.to_string_lossy().into_owned(),
+            "--remote".into(),
+            format!("unix://{}", socket.display()),
+            "resume".into(),
+            thread.into(),
+            "--no-alt-screen".into(),
+            "--strict-config".into(),
+        ])
+    }
+
+    pub fn attach_command(&self, argv: &[String], home: &Path) -> String {
+        let environment = self
+            .environment
+            .iter()
+            .map(|(key, value)| {
+                let value = if key == "CODEX_HOME" {
+                    home.to_string_lossy().into_owned()
+                } else {
+                    value.clone()
+                };
+                super::shell_escape(&format!("{key}={value}"))
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let command = argv
+            .iter()
+            .map(|s| super::shell_escape(s))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!("env -u TMUX {environment} {command}")
+    }
+
+    /// Only auth is shared with the selected account. Never import its config,
+    /// instructions, hooks, or skills into the attached client.
+    #[cfg(target_os = "linux")]
+    pub fn prepare_attach_home(
+        &self,
+        home: &Path,
+        config: &serde_json::Value,
+    ) -> Result<(), String> {
+        use std::os::unix::fs::{symlink, DirBuilderExt};
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(home)
+            .map_err(|e| e.to_string())?;
+        let config = toml::to_string(config).map_err(|e| e.to_string())?;
+        std::fs::write(home.join("config.toml"), config).map_err(|e| e.to_string())?;
+        // A link keeps account rotation visible without copying or logging credentials.
+        symlink(self.account_root.join("auth.json"), home.join("auth.json"))
+            .map_err(|e| e.to_string())
+    }
+
     pub fn supports(tool: CliTool) -> bool {
         tool == CliTool::Codex
     }

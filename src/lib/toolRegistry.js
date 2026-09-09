@@ -71,6 +71,11 @@ export const FALLBACK_TOOLS = Object.freeze([
     aliases: ['codex', 'mesh', 'mesh_bridged'],
     accountLoginCommand: 'codex login',
     accountDirName: '.codex',
+    appServer: {
+      build: '0.153.4',
+      transport: 'unix-websocket',
+      attachedTui: 'verified on 0.153.4',
+    },
     capabilities: {
       modelFlag: '-m',
       effortFlag: { kind: 'config', flag: '-c', key: 'model_reasoning_effort' },

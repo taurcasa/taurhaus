@@ -165,8 +165,49 @@ Linux/WSL members opt in with `adapter_mode: "app_server"`; omission keeps panes
 
 The daemon owns the child, private socket and persistent thread. `appServer` publishes contract, socket/thread/member/account, PID/start ticks, incarnation, build/host/configuration/trust/transport and lifecycle state with a new attachment generation in one compared commit. Startup becomes ready only after a recovery receipt. Stop publishes before killing; restart never adopts a PID or launches automatically. Controlled resume names the saved thread and account. After a daemon crash, a surviving child is published as `orphaned` and the conversation names its PID. The daemon never kills a recorded PID it does not own. For manual cleanup, verify that PID’s `/proc/<pid>/stat` start ticks still match `appServer.processStart`, terminate only that confirmed orphan, then stop and resume the member. A gone process becomes `unavailable`; named recovery remains possible.
 
+After the thread is ready, the daemon opens a real TUI in the member pane using the resolved executable and private view home: `env -u TMUX CODEX_HOME=<private-launch-home> <codex> --remote unix://<socket> resume <exact-thread-id> --no-alt-screen --strict-config`. The host owns model/permission policy; the TUI attaches to that existing thread. `appServer.attachArgv` records the exact CLI argv alongside `threadId`. Pane PID/start ticks, tmux socket/session and terminal exclusion retain their existing meaning. Host RPC, terminal I/O and the compared runtime publication use separate lock scopes.
+
+Closing the pane closes a view; it does not stop the daemon-owned child. Resume of an unchanged live host verifies its thread and reattaches the pane without thread creation or a new host generation. An already attached live pane is reused without another command. Missing threads never open a picker or substitute a fresh conversation. Explicit member teardown stops the owned child and closes only the matching attached pane. The app transcript/input panel remains the second view, and controlled opt-out still performs the stage-5b named-thread relaunch into a plain pane.
+
 Published `hosted` status gates transcript/input/approval/cancel controls. The host lock revalidates attachment/root authority, excludes compaction through stdout/bookkeeping, and defers busy liveness. Ordinary operations get five seconds, cold launch thirty. Send starts an idle turn or steers an active one; pending recovery waits for the next idle turn, preserving the draft without queuing. The existing detector supplies compaction state; fallback prepends the recovery card to next-turn input. No new boundary is inferred from native output.
 
-Definite steer rejection permits a newly validated attempt; ambiguous input blocks replay. After stop, an explicit **abandon without replay** decision records the attachment generation and permits named relaunch without changing recovery receipts. Controlled opt-out rollback validates the dead child/root/account/thread, refuses unknown input or retained native attempts, and clears `appServer` at a new fence. `hostRollback` retains old/new modes, opt-in, attachment tuple and unresolved attempts. Failed pane recovery retains that boundary; wrong-thread panes are cleaned up. Team-owned Mesh switching still needs the paired packet; hot conversion refuses.
+Definite steer rejection permits a newly validated attempt; ambiguous input blocks replay. After stop, an explicit **abandon without replay** decision records the attachment generation and permits named relaunch without changing recovery receipts. Controlled opt-out rollback validates the dead child/root/account/thread, refuses unknown input or retained native attempts, and clears `appServer` and the retained TUI pane identity at a new fence, forcing plain-session recovery into a fresh pane. `hostRollback` retains old/new modes, opt-in, attachment tuple and unresolved attempts. Failed pane recovery retains that boundary; wrong-thread panes are cleaned up. Team-owned Mesh switching still needs the paired packet; hot conversion refuses.
 
-Fake build `0.153.4` proves software only. The paired contract pins `unix_ndjson`; the [vendor reference](https://learn.chatgpt.com/docs/app-server#protocol) describes HTTP Upgrade/WebSocket framing for Unix sockets, which the stdio probe did not verify. Carry that question to the paired 5a correction before enabling anything. Trust stays unverified, all descriptors stay disabled, and no paid trial runs.
+The Codex `0.153.4` transport pin is `unix-websocket`: HTTP/1.1 Upgrade with a random 16-byte key and verified RFC 6455 accept, then masked client text frames and unmasked server text frames. Each message is one JSON object without `jsonrpc`; `initialize` with `clientInfo` and `capabilities.experimentalApi: true` comes first, with per-connection request IDs. Fragmentation and ping/pong are supported; close, malformed frames and messages over 64 KiB fail closed. Every read/write uses the remaining host-operation deadline. Raw NDJSON produces EOF on this build (stage-5b regression `cadd533e`).
+
+The transport/attached-TUI evidence is scoped to build `0.153.4`. A CLI bump must rerun the HTTP Upgrade/initialize handshake probe before its descriptor remains enabled; an unknown build or failed handshake refuses before thread creation. The descriptor's `attachedTui: verified on 0.153.4` records the trial's exact-ID
+remote-resume primitive, not a production-config verification. The generated
+private home, `project_doc_max_bytes` and amendment-required `--strict-config`
+flag are integration changes covered by fakes, awaiting the real integration trial.
+Fake transports prove software only. Trust and paired Mesh eligibility remain separate and disabled pending their packet; this lane performs no paid trial or activation.
+
+The attached client uses a daemon-generated `config.toml` in a private per-host,
+per-member launch home. Model, effort, approval and sandbox settings come from
+the effective thread/start or thread/resume response; only `auth.json` links to
+the selected account. No account config, instructions, hooks or skills are copied.
+The TUI config sets `project_doc_max_bytes = 0` to disable project instruction
+file discovery. It adds no personality, developer-instruction or project-trust
+entries. Host startup sends no extra instruction/config overrides; a nonempty or
+missing `instructionSources` response refuses attach with
+`host loaded unexpected instruction sources`. This remains fail-closed for projects
+whose host loads instruction files; the lane does not claim to suppress them via RPC.
+Workspace-write options are copied only when present and non-null. Approval enums
+are validated and normalized to config/request spelling, while settings comparisons
+retain the server's original wire spelling.
+`--strict-config` rejects unknown keys; it is not itself an isolation mechanism.
+The home is removed when the owned host is dropped. Runtime account identity
+continues to mean the selected credential account, not this disposable view home.
+
+A differing `thread/settings/updated` notification for the owned thread logs
+`hosted.settings.diverged` without settings contents. After correlating the pending
+response, the daemon reasserts its policy using a named `thread/resume` and checks
+the effective response under the same host deadline. Failure keeps subsequent
+operations gated on repair; repair never submits or replays input. This follows the
+[documented resume configuration overrides](https://learn.chatgpt.com/docs/app-server).
+Fake tests establish the software path; real attached-client drift/reassertion
+still belongs to the paired integration trial.
+
+Host relaunch retains the old pane identity until terminal-locked attachment:
+a verified shell is reused, a verified old attached TUI is retired before a new
+view opens, and foreign pane identities are left alone. A live host's repeated
+attach remains idempotent and reports pane reuse truthfully.
