@@ -2505,6 +2505,18 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
+    it('forwards the canonical policy unchanged through initialize IPC', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      const { DEFAULT_CANONICAL_POLICY } = await import('./components/meshTabUtils.js')
+      const messaging = { mode: 'canonical', retentionPolicy: DEFAULT_CANONICAL_POLICY }
+      tauriCore.invoke.mockResolvedValue({ teamName: 'trial', steps: [] })
+      await ipc.coordinationInitializeTeam({ teamName: 'trial', lead: {}, agents: [], messaging })
+      expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_initialize_team', {
+        request: expect.objectContaining({ messaging }),
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
     it('coordinationInitializeTeam returns deterministic mock shape', async () => {
       const result = await ipc.coordinationInitializeTeam({
         teamName: 'arch',

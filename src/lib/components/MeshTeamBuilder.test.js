@@ -1195,6 +1195,7 @@ it('defaults canonical messaging on and passes the operator toggle to initializa
   renderBuilder({ onInitialize, teamConfig: { lead: { name: 'lead', tool: 'codex', model: 'gpt-5.4', projectId: '/projects/taurhaus' }, agents: [] } })
   const toggle = screen.getByRole('checkbox', { name: 'Canonical messaging — mesh journal + team delivery (disposable team)' })
   expect(toggle).toBeChecked()
+  expect(toggle).toHaveAccessibleDescription('Keeps messages in the mesh journal; dispose of the team after exporting evidence.')
   await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
   expect(onInitialize).toHaveBeenLastCalledWith({ canonicalMessaging: true })
   await fireEvent.click(toggle)

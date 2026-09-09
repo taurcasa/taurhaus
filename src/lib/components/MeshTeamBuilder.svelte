@@ -2565,10 +2565,10 @@
 
         <footer class="shrink-0 space-y-3 border-t pt-3 {dark ? 'border-white/[0.08]' : 'border-zinc-200/70'}" data-testid="mesh-action-bar">
           <label class="flex items-start gap-2 text-xs {t.textPrimary}">
-            <input type="checkbox" bind:checked={canonicalMessaging} class="mt-0.5 accent-brand-600" />
+            <input type="checkbox" bind:checked={canonicalMessaging} aria-labelledby="mesh-canonical-label" aria-describedby="mesh-canonical-description" class="mt-0.5 accent-brand-600" />
             <span>
-              <span>Canonical messaging — mesh journal + team delivery (disposable team)</span>
-              <span class="mt-1 block {t.textSecondary}" aria-hidden="true">Keeps messages in the mesh journal; dispose of the team after exporting evidence.</span>
+              <span id="mesh-canonical-label">Canonical messaging — mesh journal + team delivery (disposable team)</span>
+              <span id="mesh-canonical-description" class="mt-1 block {t.textSecondary}">Keeps messages in the mesh journal; dispose of the team after exporting evidence.</span>
             </span>
           </label>
           <div class="w-full" title={!canInitialize ? initializeButtonTitle : undefined} data-testid="mesh-action-initialize-hint">
