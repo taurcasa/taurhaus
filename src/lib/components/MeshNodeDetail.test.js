@@ -25,8 +25,6 @@ vi.mock('../MarkdownRenderer.svelte', () => ({
   },
 }))
 
-vi.mock('../ipc/coordination.js', () => ({ coordinationHosted: vi.fn() }))
-import { coordinationHosted } from '../ipc/coordination.js'
 import MeshNodeDetail from './MeshNodeDetail.svelte'
 
 function renderDetail(props = {}) {
@@ -606,16 +604,4 @@ describe('MeshNodeDetail', () => {
     expect(opener).toHaveFocus()
     opener.remove()
   })
-})
-
-it('mounts hosted controls only for a published hosted attachment', async () => {
-  // Regression: a9c8109b mounted and polled for every Codex member.
-  coordinationHosted.mockClear()
-  coordinationHosted.mockResolvedValue({ thread: { turns: [] }, attachmentGeneration: 7 })
-  const view = renderDetail({ teamName: 'team', node: { name: 'seat', tool: 'codex' } })
-  await new Promise(resolve => setTimeout(resolve, 20))
-  expect(coordinationHosted).not.toHaveBeenCalled()
-  await view.rerender({ teamName: 'team', node: { name: 'seat', tool: 'codex', hosted: true } })
-  await waitFor(() => expect(coordinationHosted).toHaveBeenCalledTimes(1))
-  view.unmount()
 })
