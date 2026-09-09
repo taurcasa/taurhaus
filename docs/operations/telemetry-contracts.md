@@ -183,14 +183,27 @@ No real Codex run, install, deployment, paid packet or descriptor activation ran
 | `just check-quick` | 0 | Rust test compilation, frontend typecheck, 2,463 frontend tests |
 | `just lint` | 0 | Clippy, frontend dependency/structure and repository script checks |
 | `just test-contracts` | 0 | 15 renderer, 20 harness and 31 module-boundary tests |
-| `just test-rust-unit` | 101 | 2,598 passed, 5 failed, 9 ignored, 100 filtered |
+| `just test-rust-unit` | 101 | 2,600 passed, 5 failed, 9 ignored, 100 filtered |
 
 The five unit failures require real scratch tmux and were refused by the guard:
 `coordination::runtime::tmux::tests::{resume_add_nine_same_project_members_share_one_window,resume_add_other_policies_do_not_tile,resume_add_tiling_failure_removes_only_the_new_pane}`
 and `session_scanner::control::tests::{nine_same_project_members_share_one_window,scratch_tmux_resolves_binary_from_path}`.
-All 18 new Rust hosting/exclusion tests and three frontend hosted-control tests
+All 20 new Rust hosting/exclusion tests and three frontend hosted-control tests
 passed. Red was observed for the new seams and for attachment identity, member UI
 reuse, startup readiness, unreviewed builds, descriptor parity and declared module
 boundaries before their respective fixes. No render-role-section goldens changed.
 A visual cross-family review and successful paired switch/rollback proof remain
 outstanding; this evidence is not a completion or eligibility declaration.
+
+The continuation adds two red/green identity regressions: shutdown preserves a
+replacement pane/host record while cleaning up only its owned child; compaction
+from an old thread at the same cwd refuses before stdout or ledger mutation.
+Hosted compaction rechecks attachment identity after acquiring host exclusion.
+All four gates were rerun with the results above. Their continuation logs are
+`/tmp/taurhaus-host-{check-quick,lint,contracts,rust-unit}-continuation.log`.
+
+Visual review remains unverified. The browser suite stalled before reporting
+results, including its unchanged smoke fixture (bounded stop: exit 124). A
+standalone browser DOM check passed, but a disposable Vite fixture failed to mount
+the component; no visual score or cross-family approval is claimed. The fixture
+and browsers were stopped, and no unverified visual test was added to the suite.

@@ -156,8 +156,9 @@ uses the exact saved thread, and preserves conversation identity across relaunch
 Liveness and effort relaunch use that attachment without reconstructing a pane.
 
 Member details provide transcript, input, interrupt and approval controls through
-the daemon. Every operation revalidates the complete owned attachment and root
-incarnation under the stable per-member host lock. Native compaction output holds
+the daemon. Operator operations revalidate the complete owned attachment and root
+incarnation under the stable per-member host lock. Shutdown preserves a replacement
+attachment, and compaction refuses an old thread even when its cwd matches. Native compaction output holds
 that exclusion through stdout and receipt bookkeeping. Where the hook does not
 supply the card, existing pending-compaction state causes the card to precede
 operator input in the next idle turn. Neither path invents a compaction boundary.
