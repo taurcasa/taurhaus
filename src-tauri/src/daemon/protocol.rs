@@ -47,7 +47,8 @@ use serde::{Deserialize, Serialize};
 /// accept-then-poll selector-account switch operation.
 /// v24: per-team root authority and Claude team account switching.
 /// v25: versioned recovery receipts and explicit force/read reonboard intents.
-/// v26: runtime context-generation encoding is a string, with camelCase member identity.
+/// v26: persisted runtime contextGeneration became a string; v25 apps reject it.
+/// Hosted storage shares this encoding and camelCase member identity; hosted methods are additive.
 pub const PROTOCOL_VERSION: u32 = 26;
 
 // ---------------------------------------------------------------------------

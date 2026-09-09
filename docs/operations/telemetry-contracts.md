@@ -149,3 +149,42 @@ Only tempdir fake NDJSON transports are tested. Native descriptors remain disabl
 Recovery retains `onboarding.delivery.observed` and existing compaction bookkeeping. A native receipt is submission, never read/acceptance. Typed `hostInputUnknown` is persisted before possible input. Classified definite steer rejection clears ambiguity; transport loss does not. Explicit stopped-member reconciliation records `hostInputAbandonedAt`, preserving receipts and abandoning input without replay. IPC operations emit the usual lifecycle spans, correlated with daemon RPC events. Lock contention defers liveness instead of failing the team's pass. Busy-seat shutdown emits `owned hosts not cleanly stopped` at warn level and continues the normal daemon shutdown path.
 
 Controlled pre-eligibility rollback retains `hostRollback`: old/new mode, opt-in, old attachment/build/host, new-generation fence, unresolved attempts and any abandon decision. It requires a stopped child, exact root/session/account and no retained native attempts. Failed pane relaunch leaves a recoverable boundary. Team-owned Mesh switching still requires its paired packet; no tmux delivery is retired by this lane. See the protocol document for additive UI/reconcile methods.
+
+## Native hook bridge — software conformance only
+
+The software seam follows Mesh 4a source `adc9b831756de2fd4282198f4e63a72ba24fe928`;
+the integrated binary and uptake trial remain separate evidence.
+The native daemon hook bridge pins `mesh-hook-drain/1` and resolves the absolute
+Mesh executable through `coordination::mesh_cli`. It queries `delivery capabilities`
+and reads `state/delivery/adapter-MEMBER.json` under the team directory. This
+bridge-readable path and its `mode`/`revision` fields are pinned contract surface;
+`selection_revision` in a returned offer must match that revision. Only an enabled Claude/Codex event
+on a canonical, team-owned delivery seat in `hook` mode can drain. Every subprocess
+receives explicit account root/team/member argv, a cleared environment with only
+`LANG`, one bounded JSON stdin document and EOF. Each child has a two-second total
+I/O deadline, 16 KiB request (including routing), and 64 KiB response limits.
+Stderr is drained and discarded in bounded 4 KiB chunks. The 8192-byte/8000-scalar context limits
+include JSON escaping, delimiters, the reserved recovery card and envelope allowance.
+The runtime publishes `hookSessionId` from its captured session and
+`contextGeneration` as a string; the compaction counter remains numeric internally.
+
+After closing its output executor, the bridge sends `delivery receipt` with the
+original request, offer ID, stage and evidence. `delivery.hook.receipt` records only
+team/member/offer ID, stage, receipt success and a bounded reason, never message
+bodies or hook prompts/tool arguments. Write+flush proves `hook_response_offered`,
+not native acceptance or consumption. Nonzero, timeout, malformed/oversized output
+and partial writes yield `outcome_unknown`, without drain retry or tmux fallback.
+If no offer ID survived, the bridge records debug `delivery.hook.outcome_unknown`
+and skips the uncorrelatable receipt child: Mesh keeps the
+reservation quarantined for explicit correlated recovery. Receipt failure after
+flush never changes the successful hook result.
+
+The `hook_drain_*` unit fixtures use a Python fake Mesh executable in temporary
+roots; `just test-contracts` pins the protocol vocabulary and Windows writer
+boundary. This packet proves software behavior only. Mesh's production descriptors
+remain disabled; real Claude/Codex uptake, exact paired tips and intended
+build/host/config/trust evidence belong to the separately authorized uptake lane.
+Claude native-mailbox exclusion still blocks activation in Mesh. agy/Grok and Stop
+continuation remain inactive. Daemon protocol 26 excludes protocol-25 readers of
+the new string runtime context generation. No transport retirement,
+canonical-writer expansion or live deployment is implied.

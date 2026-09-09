@@ -22,6 +22,8 @@ use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::{spec, CliTool, CompactionDelivery};
 use taurhaus_lib::logging::emit_global;
 
+pub mod drain;
+
 const TAURHAUS_COMPACT_HOOK_BASENAME: &str = "taurhaus-session-start-compact";
 const CLAUDE_SETTINGS_FILENAME: &str = "settings.json";
 const CODEX_HOOKS_FILENAME: &str = "hooks.json";
@@ -99,6 +101,8 @@ fn tool_from_hook_environment() -> Option<CliTool> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 pub struct CompactHookResponse {
     #[serde(skip)]
+    drain_receipt: Option<drain::Offer>,
+    #[serde(skip)]
     receipt: Option<(
         PathBuf,
         String,
@@ -126,7 +130,6 @@ struct HookMemberMatch {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CompactHookSkipReason {
-    NonCompactSessionStart,
     PostCompactSignalOnly,
     DuplicateCompatImport,
     ToolInferenceUnavailable,
@@ -139,7 +142,6 @@ enum CompactHookSkipReason {
 impl CompactHookSkipReason {
     fn as_str(self) -> &'static str {
         match self {
-            Self::NonCompactSessionStart => "non_compact_session_start",
             Self::PostCompactSignalOnly => "post_compact_signal_only",
             Self::DuplicateCompatImport => "duplicate_compat_import",
             Self::ToolInferenceUnavailable => "tool_inference_unavailable",
@@ -409,23 +411,41 @@ pub fn handle_compact_hook_stdin<R: Read>(
 }
 
 fn read_hosted_hook<R: Read>(
-    mut stdin: R,
+    stdin: R,
     teams_dir: &Path,
     host_guard: &mut Option<crate::coordination::stores::lock::HostOperationLock>,
 ) -> Result<CompactHookResponse, CoordinationError> {
-    let mut raw = String::new();
-    stdin.read_to_string(&mut raw).map_err(|error| {
-        emit_compact_hook_failed(
-            CompactHookFailureStage::ReadStdin,
+    let mut raw = Vec::new();
+    stdin
+        .take(64 * 1024 + 1)
+        .read_to_end(&mut raw)
+        .map_err(|error| {
+            emit_compact_hook_failed(
+                CompactHookFailureStage::ReadStdin,
+                None,
+                None,
+                None,
+                None,
+                Some(raw.len()),
+                &error.to_string(),
+            );
+            CoordinationError::Io(error)
+        })?;
+    if raw.len() > 64 * 1024 {
+        emit_global(
+            "debug",
+            "coordination",
+            "delivery.hook.skipped",
             None,
-            None,
-            None,
-            None,
-            Some(raw.len()),
-            &error.to_string(),
+            json!({"reason":"hook_input_budget"})
+                .as_object()
+                .unwrap()
+                .clone(),
         );
-        CoordinationError::Io(error)
-    })?;
+        return Ok(CompactHookResponse::default());
+    }
+    let raw = String::from_utf8(raw)
+        .map_err(|_| CoordinationError::Validation("invalid hook UTF-8".into()))?;
     handle_compact_hook_with_guard(&raw, teams_dir, host_guard)
 }
 
@@ -455,24 +475,41 @@ fn handle_compact_hook_with_guard(
         CoordinationError::Validation(format!("invalid compact hook payload: {err}"))
     })?;
 
-    emit_compact_hook_received(&payload, raw.len());
+    if hook_event_is(&payload.hook_event_name, POST_COMPACT_HOOK_EVENT)
+        || (hook_event_is(&payload.hook_event_name, SESSION_START_HOOK_EVENT)
+            && payload.source.as_deref() == Some(COMPACT_SOURCE))
+    {
+        emit_compact_hook_received(&payload, raw.len());
+    } else {
+        emit_global(
+            "debug",
+            "coordination",
+            "delivery.hook.received",
+            None,
+            base_compact_hook_fields(Some(&payload), None),
+        );
+    }
+    let mut response = handle_compaction_decision(&payload, teams_dir, host_guard)?;
+    drain::append(teams_dir, &payload, &mut response);
+    Ok(response)
+}
 
+fn handle_compaction_decision(
+    payload: &CompactHookInput,
+    teams_dir: &Path,
+    host_guard: &mut Option<crate::coordination::stores::lock::HostOperationLock>,
+) -> Result<CompactHookResponse, CoordinationError> {
     let is_post_compact = hook_event_is(&payload.hook_event_name, POST_COMPACT_HOOK_EVENT);
     if !is_post_compact
         && (!hook_event_is(&payload.hook_event_name, SESSION_START_HOOK_EVENT)
             || payload.source.as_deref() != Some(COMPACT_SOURCE))
     {
-        emit_compact_hook_skipped(
-            &payload,
-            None,
-            CompactHookSkipReason::NonCompactSessionStart,
-        );
         return Ok(CompactHookResponse::default());
     }
 
     let Some(tool) = payload.inferred_tool() else {
         emit_compact_hook_skipped(
-            &payload,
+            payload,
             None,
             CompactHookSkipReason::ToolInferenceUnavailable,
         );
@@ -486,14 +523,14 @@ fn handle_compact_hook_with_guard(
     // documented stdout contract though, so a harness that is answered on
     // stdout can only treat it as a signal.
     if is_post_compact && delivery != CompactionDelivery::MeshInbox {
-        emit_compact_hook_skipped(&payload, None, CompactHookSkipReason::PostCompactSignalOnly);
+        emit_compact_hook_skipped(payload, None, CompactHookSkipReason::PostCompactSignalOnly);
         return Ok(CompactHookResponse::default());
     }
 
-    let matched = match resolve_member_match(teams_dir, tool, &payload)? {
+    let matched = match resolve_member_match(teams_dir, tool, payload)? {
         Ok(matched) => matched,
         Err(reason) => {
-            emit_compact_hook_skipped(&payload, None, reason);
+            emit_compact_hook_skipped(payload, None, reason);
             return Ok(CompactHookResponse::default());
         }
     };
@@ -528,7 +565,7 @@ fn handle_compact_hook_with_guard(
             ));
         }
     }
-    emit_compact_hook_resolved(&payload, &matched);
+    emit_compact_hook_resolved(payload, &matched);
 
     if crate::session_scanner::cli_tool::spec(tool)
         .capabilities
@@ -542,7 +579,7 @@ fn handle_compact_hook_with_guard(
             Utc::now(),
         )? {
             emit_compact_hook_skipped(
-                &payload,
+                payload,
                 Some(&matched),
                 CompactHookSkipReason::DuplicateCompatImport,
             );
@@ -578,7 +615,7 @@ fn handle_compact_hook_with_guard(
         .inspect_err(|error| {
             emit_compact_hook_failed(
                 CompactHookFailureStage::RecordDelivery,
-                Some(&payload),
+                Some(payload),
                 Some(&matched),
                 None,
                 None,
@@ -587,7 +624,7 @@ fn handle_compact_hook_with_guard(
             );
         })?;
         emit_compact_hook_skipped(
-            &payload,
+            payload,
             Some(&matched),
             CompactHookSkipReason::MissingOperationalSnapshot,
         );
@@ -607,7 +644,7 @@ fn handle_compact_hook_with_guard(
         .inspect_err(|error| {
             emit_compact_hook_failed(
                 CompactHookFailureStage::RecordDelivery,
-                Some(&payload),
+                Some(payload),
                 Some(&matched),
                 None,
                 None,
@@ -616,7 +653,7 @@ fn handle_compact_hook_with_guard(
             );
         })?;
         emit_compact_hook_skipped(
-            &payload,
+            payload,
             Some(&matched),
             CompactHookSkipReason::NoResumableTaskContext,
         );
@@ -678,7 +715,7 @@ fn handle_compact_hook_with_guard(
                 );
                 emit_compact_hook_failed(
                     CompactHookFailureStage::DeliverInbox,
-                    Some(&payload),
+                    Some(payload),
                     Some(&matched),
                     None,
                     None,
@@ -703,7 +740,7 @@ fn handle_compact_hook_with_guard(
     .inspect_err(|error| {
         emit_compact_hook_failed(
             CompactHookFailureStage::RecordDelivery,
-            Some(&payload),
+            Some(payload),
             Some(&matched),
             None,
             None,
@@ -722,10 +759,11 @@ fn handle_compact_hook_with_guard(
             crate::coordination::recovery_card::ReceiptStage::Accepted,
         )?;
     }
-    emit_compact_hook_delivered(&payload, &matched, additional_context.len());
+    emit_compact_hook_delivered(payload, &matched, additional_context.len());
 
     Ok(match delivery {
         CompactionDelivery::HookStdout => CompactHookResponse {
+            drain_receipt: None,
             receipt: Some((
                 matched.teams_dir.clone(),
                 matched.team_name.clone(),
@@ -752,7 +790,32 @@ pub fn ensure_compact_hook_installed(
         )));
     };
 
-    ClaudeCompactionSignalSource.install(claude_dir, taurhaus_exe)
+    let compact_changed = ClaudeCompactionSignalSource.install(claude_dir, taurhaus_exe)?;
+    let bindings = TeamConfigStore::list(teams_dir)?
+        .into_iter()
+        .filter_map(|team| {
+            TeamConfigStore::load(teams_dir, &team)
+                .ok()
+                .map(|config| (team, config))
+        })
+        .flat_map(|(team, config)| {
+            config
+                .members
+                .into_iter()
+                .filter(|m| m.cli_tool == CliTool::Claude)
+                .map(move |member| (teams_dir.to_path_buf(), team.clone(), member.name))
+        })
+        .collect::<Vec<_>>();
+    let drain_changed = reconcile_claude_drain_hooks(claude_dir, &bindings, taurhaus_exe)?;
+    Ok(compact_changed || drain_changed)
+}
+
+fn reconcile_claude_drain_hooks(
+    home: &Path,
+    bindings: &[drain::Binding],
+    exe: &Path,
+) -> Result<bool, CoordinationError> {
+    drain::reconcile_home(home, CliTool::Claude, bindings, exe)
 }
 
 pub fn remove_compact_hook(teams_dir: &Path) -> Result<bool, CoordinationError> {
@@ -762,7 +825,10 @@ pub fn remove_compact_hook(teams_dir: &Path) -> Result<bool, CoordinationError> 
             teams_dir.display()
         )));
     };
-    ClaudeCompactionSignalSource.remove(claude_dir)
+    let exe = std::env::current_exe()?;
+    let compact_changed = ClaudeCompactionSignalSource.remove(claude_dir)?;
+    let drain_changed = reconcile_claude_drain_hooks(claude_dir, &[], &exe)?;
+    Ok(compact_changed || drain_changed)
 }
 
 pub fn ensure_codex_compact_hook_installed(taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
@@ -1005,20 +1071,57 @@ pub fn handle_session_start_hook(
     handle_compact_hook(raw, teams_dir)
 }
 
+/// Native hook mode is a short-lived process: take sole ownership of fd 1 so
+/// dropping the output executor sends EOF before Mesh can close its offer.
+#[cfg(unix)]
+#[allow(unsafe_code)] // std::io::Stdout is shared; this standalone executor must close fd 1.
+pub fn hook_stdout() -> fs::File {
+    use std::os::fd::{FromRawFd, OwnedFd};
+    static TAKEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    assert!(
+        !TAKEN.swap(true, std::sync::atomic::Ordering::SeqCst),
+        "hook stdout already owned"
+    );
+    // SAFETY: called once, only by the standalone hook CLI before any stdout use.
+    fs::File::from(unsafe { OwnedFd::from_raw_fd(1) })
+}
+#[cfg(not(unix))]
+pub fn hook_stdout() -> std::io::Stdout {
+    std::io::stdout()
+}
+
 pub fn run_compact_hook_cli<R: Read, W: Write>(
     stdin: R,
     mut stdout: W,
     teams_dir: &Path,
 ) -> Result<(), CoordinationError> {
     let mut host_guard = None;
-    let response = read_hosted_hook(stdin, teams_dir, &mut host_guard)?;
-    serde_json::to_writer(&mut stdout, &response).map_err(|error| {
-        CoordinationError::StoreError(format!(
-            "failed to serialize compact hook response: {error}"
-        ))
-    })?;
-    stdout.write_all(b"\n")?;
-    stdout.flush()?;
+    let response = match read_hosted_hook(stdin, teams_dir, &mut host_guard) {
+        Ok(response) => response,
+        // Preserve the hosted boundary's silent refusal: this attachment has
+        // not authorized any output, and no drain offer was requested.
+        Err(error) if host_guard.is_some() => return Err(error),
+        Err(error) => {
+            stdout.write_all(b"{}\n")?;
+            stdout.flush()?;
+            return Err(error);
+        }
+    };
+    let output_result = (|| -> Result<(), CoordinationError> {
+        let bytes = serde_json::to_vec(&response)
+            .map_err(|error| CoordinationError::StoreError(error.to_string()))?;
+        stdout.write_all(&bytes)?;
+        stdout.write_all(b"\n")?;
+        stdout.flush()?;
+        Ok(())
+    })();
+    // Release the final output executor before any receipt; this offer emits no more bytes.
+    // Native fd 1 is dead from here on and may be reused by child sockets. Never use stdout again.
+    drop(stdout);
+    if let Some(offer) = response.drain_receipt {
+        offer.finish(output_result.is_ok());
+    }
+    output_result?;
     if let Some((root, team, member, receipt)) = response.receipt {
         if let Err(error) = crate::coordination::recovery_delivery::observe(
             &crate::coordination::stores::TeamRootRegistry::new(teams_dir.to_path_buf()),
@@ -1155,7 +1258,7 @@ fn emit_compact_hook_parse_payload_debug(raw: &str, error_message: &str) {
         "error.message".to_string(),
         Value::String(error_message.to_string()),
     );
-    fields.insert("raw_payload".to_string(), Value::String(raw.to_string()));
+    // Hook payloads may contain prompts/tool arguments. Only their size is diagnostic.
     fields.insert("raw_bytes".to_string(), Value::from(raw.len() as u64));
     emit_global(
         "debug",
@@ -2738,7 +2841,7 @@ pub(crate) mod tests {
         );
         assert!(contents.contains("\"failure_stage\":\"parse_payload\""));
         assert!(contents.contains("\"event\":\"compaction.compact_hook.parse_payload_debug\""));
-        assert!(contents.contains("\"raw_payload\":\"{\""));
+        assert!(!contents.contains("raw_payload"));
     }
 
     #[test]
@@ -3506,5 +3609,633 @@ pub(crate) mod tests {
                 .unwrap()
                 .is_empty());
         }
+    }
+    #[cfg(unix)]
+    fn hook_drain_fixture() -> (crate::coordination::mesh_cli::FakeMesh, Value, PathBuf) {
+        use crate::coordination::mesh_cli::FakeMesh;
+        let fake = FakeMesh::new("exit 99", "exit 99");
+        let root = fake.dir.path();
+        let teams = root.join("teams");
+        let mut member = sample_member(root);
+        member.cli_tool = CliTool::Codex;
+        write_team_fixture(&teams, "drain-team", &member, "verified-session");
+        let config_path = teams.join("drain-team/config.json");
+        let mut config: Value = serde_json::from_slice(&fs::read(&config_path).unwrap()).unwrap();
+        config["delivery_owner"] = json!("team");
+        config["messaging_format"] = json!(2);
+        config["team_incarnation_id"] = json!("incarnation");
+        fs::write(config_path, config.to_string()).unwrap();
+        let mut record = MemberRuntimeStore::load(&teams, "drain-team", &member.name).unwrap();
+        record.terminal_contract = 1;
+        record.attachment_generation = 7;
+        record.context_generation = 3;
+        record.tmux_socket = Some(root.join("private.sock"));
+        record.tmux_session_id = Some("$9".into());
+        record.pane_pid = Some(123);
+        record.pane_start_time = Some(456);
+        record.harness = Some(CliTool::Codex);
+        record.launch_root = Some(crate::coordination::stores::runtime::LaunchRoot {
+            claude_dir: root.into(),
+            teams_dir: teams.clone(),
+            team_incarnation_id: Some("incarnation".into()),
+            root_authority_revision: 0,
+        });
+        MemberRuntimeStore::save(&teams, "drain-team", &member.name, &record).unwrap();
+        let state = teams.join("drain-team/state/delivery");
+        fs::create_dir_all(&state).unwrap();
+        fs::write(
+            state.join("adapter-architect.json"),
+            r#"{"mode":"hook","revision":1,"boundary":{"owner_fence":2}}"#,
+        )
+        .unwrap();
+        let script = r#"#!/usr/bin/python3
+import sys,json,pathlib,os,time
+root=pathlib.Path(__file__).parent
+value=json.load(sys.stdin)
+with (root/'calls').open('a') as f: f.write(json.dumps({'argv':sys.argv[1:],'stdin':value,'env_keys':list(os.environ)})+'\n')
+protocol='mesh-hook-drain/1'
+mode=(root/'mode').read_text() if (root/'mode').exists() else ''
+if sys.argv[-1]=='capabilities':
+ print(json.dumps({'protocol':protocol,'descriptors':[{'id':'codex/0.153.4/PostToolUse/1','harness':'codex','build':'0.153.4','host':'fixture','event':'PostToolUse','source':'ordinary','matcher':'','config_trust':'fixture','envelope':'hookSpecificOutput.additionalContext; event-specific validation required','context_entry':'fixture','drop_rules':'fixture','max_bytes':8192,'max_chars':8000,'continuation_budget':0,'enabled':True}]}))
+elif sys.argv[-1]=='drain':
+ if mode=='invalid': print('not json'); sys.exit(0)
+ if mode=='oversized': print('x'*70000); sys.exit(0)
+ if mode=='stderr': sys.stderr.write('x'*100000)
+ print(json.dumps({'protocol':protocol,'status':'offered','stage':'bridge_rendered','text':'[mesh message data] fixture marker\n','deliveries':[{'message_id':'m1','delivery_id':'d1','sequence':1,'coverage':'full_body','body_bytes':14,'body_chars':14}],'attempt_ids':['a1'],'offer_id':'offer-1','owner_fence':2,'selection_revision':1,'continue':False}),flush=True)
+ if mode=='nonzero': sys.exit(7)
+ if mode=='timeout': time.sleep(10)
+elif mode=='receipt-failure': sys.exit(7)
+else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliveries':[],'offer_id':None,'continue':False}))
+"#;
+        fs::write(root.join("mesh"), script).unwrap();
+        let payload = json!({"hook_event_name":"PostToolUse","session_id":"verified-session","cwd":root,"transcript_path":root.join(".codex/rollout-test.jsonl")});
+        (fake, payload, teams)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_managed_boundary_round_trip() {
+        let (fake, payload, teams) = hook_drain_fixture();
+        let root = fake.dir.path();
+        let mut output = Vec::new();
+        run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, &teams).unwrap();
+        let output: Value = serde_json::from_slice(&output).unwrap();
+        assert!(output["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("fixture marker"));
+        let calls: Vec<Value> = fs::read_to_string(root.join("calls"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(calls.len(), 3);
+        for call in &calls {
+            assert!(call["env_keys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|key| matches!(key.as_str(), Some("LANG" | "LC_CTYPE"))));
+        }
+        assert_eq!(
+            calls[1]["argv"],
+            json!([
+                "--claude-dir",
+                root,
+                "--team",
+                "drain-team",
+                "--name",
+                "architect",
+                "delivery",
+                "drain"
+            ])
+        );
+        let request = &calls[1]["stdin"]["request"];
+        assert_eq!(request["runtime"]["context_generation"], "3");
+        assert_eq!(request["runtime"]["attachment_generation"], 7);
+        assert_eq!(request["runtime"]["pane_start"], "456");
+        assert_eq!(request["runtime"]["tmux_session"], "$9");
+        assert_eq!(request["session"], "verified-session");
+        assert_eq!(calls[2]["stdin"]["request"], *request);
+        assert_eq!(calls[2]["stdin"]["stage"], "hook_response_offered");
+        assert_eq!(calls[2]["stdin"]["offer_id"], "offer-1");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_claude_installer_is_gated_and_idempotent() {
+        let (fake, _, teams) = hook_drain_fixture();
+        let root = fake.dir.path();
+        let script = fs::read_to_string(root.join("mesh"))
+            .unwrap()
+            .replace("codex", "claude");
+        fs::write(root.join("mesh"), script).unwrap();
+        let config_path = teams.join("drain-team/config.json");
+        let config = fs::read_to_string(&config_path)
+            .unwrap()
+            .replace("codex", "claude");
+        fs::write(config_path, config).unwrap();
+        let settings_path = root.join("settings.json");
+        fs::write(&settings_path, r#"{"trust":"unchanged","hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"foreign"}]}]}}"#).unwrap();
+        assert!(ensure_compact_hook_installed(&teams, &root.join("mesh")).unwrap());
+        let settings: Value = serde_json::from_slice(&fs::read(&settings_path).unwrap()).unwrap();
+        assert!(settings["hooks"]["PostToolUse"]
+            .to_string()
+            .contains("taurhaus-delivery-drain"));
+        // Regression: 15f222bd copied Codex's config-only limit into Claude registrations.
+        assert!(!settings["hooks"]["PostToolUse"]
+            .to_string()
+            .contains("additionalContextLimit"));
+        assert_eq!(settings["trust"], "unchanged");
+        assert!(settings["hooks"]["PostToolUse"]
+            .to_string()
+            .contains("foreign"));
+        assert!(!ensure_compact_hook_installed(&teams, &root.join("mesh")).unwrap());
+        let script = fs::read_to_string(root.join("mesh"))
+            .unwrap()
+            .replace("'enabled':True", "'enabled':False");
+        fs::write(root.join("mesh"), script).unwrap();
+        assert!(ensure_compact_hook_installed(&teams, &root.join("mesh")).unwrap());
+        let settings: Value = serde_json::from_slice(&fs::read(&settings_path).unwrap()).unwrap();
+        assert!(!settings.to_string().contains("taurhaus-delivery-drain"));
+        assert!(settings
+            .to_string()
+            .contains("taurhaus-session-start-compact"));
+    }
+
+    #[cfg(unix)]
+    fn hook_drain_calls(fake: &crate::coordination::mesh_cli::FakeMesh) -> Vec<Value> {
+        fs::read_to_string(fake.dir.path().join("calls"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_ineligible_boundaries_never_call_drain() {
+        // Regression: c408b68a treated absent published hook facts as verified serde defaults.
+        for case in [
+            "tmux",
+            "non-owner",
+            "legacy",
+            "future",
+            "disabled",
+            "wrong-session",
+            "missing-hook-session",
+            "missing-context",
+            "wrong-root",
+            "dead",
+            "wrong-event",
+            "grok",
+            "agy",
+            "stop",
+        ] {
+            let (fake, mut payload, teams) = hook_drain_fixture();
+            let root = fake.dir.path();
+            let config_path = teams.join("drain-team/config.json");
+            let mut config: Value =
+                serde_json::from_slice(&fs::read(&config_path).unwrap()).unwrap();
+            match case {
+                "tmux" => fs::write(
+                    teams.join("drain-team/state/delivery/adapter-architect.json"),
+                    r#"{"mode":"tmux","revision":2}"#,
+                )
+                .unwrap(),
+                "non-owner" => config["delivery_owner"] = json!("member"),
+                "legacy" => config["messaging_format"] = json!(1),
+                "future" => config["messaging_format"] = json!(99),
+                "disabled" => {
+                    let script = fs::read_to_string(root.join("mesh"))
+                        .unwrap()
+                        .replace("'enabled':True", "'enabled':False");
+                    fs::write(root.join("mesh"), script).unwrap();
+                }
+                "missing-hook-session" | "missing-context" => {
+                    let path = teams.join("drain-team/runtime/architect.json");
+                    let mut record: Value =
+                        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+                    record
+                        .as_object_mut()
+                        .unwrap()
+                        .remove(if case == "missing-context" {
+                            "contextGeneration"
+                        } else {
+                            "hookSessionId"
+                        });
+                    fs::write(path, record.to_string()).unwrap();
+                }
+                "wrong-session" => payload["session_id"] = json!("same-cwd-is-not-identity"),
+                "wrong-event" => payload["hook_event_name"] = json!("Cancelled"),
+                "grok" => payload["transcript_path"] = json!(root.join(".grok/transcript.jsonl")),
+                "agy" => payload["transcript_path"] = json!(root.join(".gemini/transcript.jsonl")),
+                "stop" => payload["hook_event_name"] = json!("Stop"),
+                _ => {
+                    let mut runtime =
+                        MemberRuntimeStore::load(&teams, "drain-team", "architect").unwrap();
+                    if case == "dead" {
+                        runtime.health = HealthState::SessionDead;
+                    } else {
+                        runtime
+                            .launch_root
+                            .as_mut()
+                            .unwrap()
+                            .root_authority_revision = 99;
+                    }
+                    MemberRuntimeStore::save(&teams, "drain-team", "architect", &runtime).unwrap();
+                }
+            }
+            fs::write(config_path, config.to_string()).unwrap();
+            let mut out = Vec::new();
+            run_compact_hook_cli(payload.to_string().as_bytes(), &mut out, &teams).unwrap();
+            assert!(
+                !hook_drain_calls(&fake)
+                    .iter()
+                    .any(|call| call["argv"][7] == "drain"),
+                "{case}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_compact_card_survives_faults_without_retries() {
+        for mode in [
+            "ok",
+            "nonzero",
+            "timeout",
+            "invalid",
+            "oversized",
+            "receipt-failure",
+            "stderr",
+        ] {
+            let (fake, mut payload, teams) = hook_drain_fixture();
+            let root = fake.dir.path();
+            let script = fs::read_to_string(root.join("mesh"))
+                .unwrap()
+                .replace("PostToolUse", "SessionStart")
+                .replace("'source':'ordinary'", "'source':'compact'");
+            fs::write(root.join("mesh"), script).unwrap();
+            fs::write(root.join("mode"), mode).unwrap();
+            write_snapshot_fixture(&teams, "drain-team", "architect");
+            payload["hook_event_name"] = json!("SessionStart");
+            payload["source"] = json!("compact");
+            let start = std::time::Instant::now();
+            let mut out = Vec::new();
+            run_compact_hook_cli(payload.to_string().as_bytes(), &mut out, &teams).unwrap();
+            assert!(
+                start.elapsed() < std::time::Duration::from_secs(4),
+                "{mode}"
+            );
+            let out: Value = serde_json::from_slice(&out).unwrap();
+            let context = out["hookSpecificOutput"]["additionalContext"]
+                .as_str()
+                .expect(mode);
+            assert!(
+                context.contains("Inspect architecture"),
+                "{mode}: {context}"
+            );
+            let calls = hook_drain_calls(&fake);
+            assert_eq!(
+                calls.iter().filter(|c| c["argv"][7] == "drain").count(),
+                1,
+                "{mode}"
+            );
+            // Regression: c408b68a sent null offer IDs, which Mesh always refuses.
+            let has_id = !matches!(mode, "invalid" | "oversized");
+            assert_eq!(
+                calls.iter().filter(|c| c["argv"][7] == "receipt").count(),
+                usize::from(has_id),
+                "{mode}"
+            );
+            if !has_id {
+                assert!(!context.contains("fixture marker"));
+                continue;
+            }
+            let receipt = &calls.last().unwrap()["stdin"];
+            let offered = matches!(mode, "ok" | "receipt-failure" | "stderr");
+            assert_eq!(
+                receipt["stage"],
+                if offered {
+                    "hook_response_offered"
+                } else {
+                    "outcome_unknown"
+                },
+                "{mode}"
+            );
+            assert_eq!(context.contains("fixture marker"), offered, "{mode}");
+            if offered {
+                assert!(
+                    context.find("Inspect architecture").unwrap()
+                        < context
+                            .find("## Mesh pending messages (attributed data)")
+                            .unwrap()
+                );
+            }
+            assert_eq!(calls[1]["stdin"]["request"]["compose_compaction"], true);
+            assert!(
+                calls[1]["stdin"]["request"]["reserved_bytes"]
+                    .as_u64()
+                    .unwrap()
+                    > 100
+            );
+            assert_eq!(receipt["request"], calls[1]["stdin"]["request"]);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_partial_write_closes_executor_before_unknown_receipt() {
+        struct BrokenOutput(PathBuf);
+        impl Write for BrokenOutput {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                unreachable!()
+            }
+        }
+        impl Drop for BrokenOutput {
+            fn drop(&mut self) {
+                fs::write(&self.0, "closed").unwrap();
+            }
+        }
+        let (fake, payload, teams) = hook_drain_fixture();
+        let root = fake.dir.path();
+        let script = fs::read_to_string(root.join("mesh")).unwrap().replace("else: print(json.dumps({'protocol':protocol,'status':'recorded'", "else:\n assert (root/'executor-closed').exists()\n print(json.dumps({'protocol':protocol,'status':'recorded'");
+        fs::write(root.join("mesh"), script).unwrap();
+        assert!(run_compact_hook_cli(
+            payload.to_string().as_bytes(),
+            BrokenOutput(root.join("executor-closed")),
+            &teams
+        )
+        .is_err());
+        let calls = hook_drain_calls(&fake);
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[2]["stdin"]["stage"], "outcome_unknown");
+        assert_eq!(calls[2]["stdin"]["offer_id"], "offer-1");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_foreign_hook_shapes_remain_tolerated() {
+        // Regression: 15f222bd made valid foreign hook entries fatal after compaction install.
+        let (fake, _, teams) = hook_drain_fixture();
+        let settings = fake.dir.path().join("settings.json");
+        let foreign = json!({"PreToolUse":[{"matcher":"Bash"}],"PostToolUse":"foreign"});
+        fs::write(&settings, json!({"hooks":foreign}).to_string()).unwrap();
+        ensure_compact_hook_installed(&teams, &fake.dir.path().join("mesh")).unwrap();
+        let value: Value = serde_json::from_slice(&fs::read(settings).unwrap()).unwrap();
+        for event in ["PreToolUse", "PostToolUse"] {
+            assert_eq!(value["hooks"][event], foreign[event]);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_old_root_removal_cleans_ordinary_registrations() {
+        // Regression: 15f222bd installed drain entries but root-switch removal only removed compaction.
+        let (fake, _, teams) = hook_drain_fixture();
+        let root = fake.dir.path();
+        let mesh = root.join("mesh");
+        fs::write(
+            &mesh,
+            fs::read_to_string(&mesh)
+                .unwrap()
+                .replace("codex", "claude"),
+        )
+        .unwrap();
+        let bindings = vec![(teams.clone(), "drain-team".into(), "architect".into())];
+        ensure_compact_hook_installed(&teams, &mesh).unwrap();
+        drain::reconcile_home(root, CliTool::Claude, &bindings, &mesh).unwrap();
+        assert!(remove_compact_hook(&teams).unwrap());
+        let settings = fs::read_to_string(root.join("settings.json")).unwrap();
+        assert!(!settings.contains("taurhaus-delivery-drain"));
+        assert!(!settings.contains("taurhaus-session-start-compact"));
+        assert!(!remove_compact_hook(&teams).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_sequence_zero_is_valid_but_missing_sequence_is_not() {
+        // Regression: c408b68a conflated a valid sequence zero with missing sequence.
+        for (sequence, offered) in [("0", true), ("None", false)] {
+            let (fake, payload, teams) = hook_drain_fixture();
+            let mesh = fake.dir.path().join("mesh");
+            fs::write(
+                &mesh,
+                fs::read_to_string(&mesh)
+                    .unwrap()
+                    .replace("'sequence':1", &format!("'sequence':{sequence}")),
+            )
+            .unwrap();
+            let response = handle_compact_hook(&payload.to_string(), &teams).unwrap();
+            assert_eq!(response.hook_specific_output.is_some(), offered);
+        }
+    }
+
+    #[test]
+    fn hook_drain_oversized_input_skips_without_hook_failure() {
+        // Regression: 734e93ed made ordinary prompt/tool payloads over 64 KiB fail the hook.
+        let root = tempfile::tempdir().unwrap();
+        let payload = json!({"hook_event_name":"PreToolUse","session_id":"session","tool_input":"界".repeat(65 * 1024)});
+        let mut output = Vec::new();
+        run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, root.path()).unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&output).unwrap(), json!({}));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_discovery_failure_preserves_installed_home() {
+        // Regression: 15f222bd treated unavailable capabilities as disabled pins,
+        // deleting daemon-owned registrations during Windows/app reconciliation.
+        for failure in ["missing", "nonzero", "invalid", "malformed-descriptor"] {
+            let (fake, _, teams) = hook_drain_fixture();
+            let home = fake.dir.path().join("selected-codex");
+            let mesh = fake.dir.path().join("mesh");
+            let exe = fake.dir.path().join("taurhaus");
+            fs::write(&exe, "fixture executable").unwrap();
+            let bindings = vec![(teams, "drain-team".into(), "architect".into())];
+            assert!(drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).unwrap());
+            let settings = home.join("hooks.json");
+            let installed = fs::read(&settings).unwrap();
+            let scripts = fs::read_dir(home.join("hooks"))
+                .unwrap()
+                .map(|entry| {
+                    let path = entry.unwrap().path();
+                    let bytes = fs::read(&path).unwrap();
+                    (path, bytes)
+                })
+                .collect::<Vec<_>>();
+            match failure {
+                "missing" => fs::remove_file(&mesh).unwrap(),
+                "nonzero" => fs::write(&mesh, "#!/bin/sh\nexit 7\n").unwrap(),
+                "invalid" => fs::write(&mesh, "#!/bin/sh\nprintf invalid\n").unwrap(),
+                _ => {
+                    let script = fs::read_to_string(&mesh)
+                        .unwrap()
+                        .replace("'max_bytes':8192", "'max_bytes':'invalid'");
+                    fs::write(&mesh, script).unwrap();
+                }
+            }
+            assert!(
+                !drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).unwrap(),
+                "{failure}"
+            );
+            assert_eq!(fs::read(&settings).unwrap(), installed, "{failure}");
+            for (path, bytes) in scripts {
+                assert_eq!(fs::read(path).unwrap(), bytes);
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_codex_home_reconciliation_preserves_foreign_and_malformed_settings() {
+        let (fake, _, teams) = hook_drain_fixture();
+        let home = fake.dir.path().join("selected-codex");
+        let exe = fake.dir.path().join("mesh");
+        fs::create_dir_all(&home).unwrap();
+        let bindings = vec![(teams, "drain-team".into(), "architect".into())];
+        ensure_codex_compact_hook_installed_at(&home, &exe).unwrap();
+        let settings = home.join("hooks.json");
+        let compaction = fs::read_to_string(&settings).unwrap();
+        assert!(drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).unwrap());
+        assert!(!drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).unwrap());
+        let installed = fs::read_to_string(&settings).unwrap();
+        assert!(installed.contains("PostToolUse"));
+        assert!(installed.contains("taurhaus-session-start-compact"));
+        assert!(drain::reconcile_home(&home, CliTool::Codex, &[], &exe).unwrap());
+        assert_eq!(
+            serde_json::from_str::<Value>(&fs::read_to_string(&settings).unwrap()).unwrap(),
+            serde_json::from_str::<Value>(&compaction).unwrap()
+        );
+        fs::write(&settings, "{").unwrap();
+        assert!(drain::reconcile_home(&home, CliTool::Codex, &bindings, &exe).is_err());
+        assert_eq!(fs::read_to_string(settings).unwrap(), "{");
+    }
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_rejects_wrong_contract_and_combined_unicode_overflow() {
+        for (from, to) in [
+            ("mesh-hook-drain/1", "mesh-hook-drain/99"),
+            ("'selection_revision':1", "'selection_revision':9"),
+            ("'continue':False", "'continue':True"),
+            ("'coverage':'full_body'", "'coverage':'partial'"),
+            ("'[mesh message data] fixture marker\\n'", "'界'*4000"),
+        ] {
+            let (fake, payload, teams) = hook_drain_fixture();
+            let script = fs::read_to_string(fake.dir.path().join("mesh")).unwrap();
+            assert!(script.contains(from), "{from}");
+            fs::write(fake.dir.path().join("mesh"), script.replace(from, to)).unwrap();
+            let mut out = Vec::new();
+            run_compact_hook_cli(payload.to_string().as_bytes(), &mut out, &teams).unwrap();
+            let output: Value = serde_json::from_slice(&out).unwrap();
+            assert!(output.get("hookSpecificOutput").is_none(), "{from}");
+            let calls = hook_drain_calls(&fake);
+            if calls.len() > 1 {
+                assert_eq!(calls.last().unwrap()["stdin"]["stage"], "outcome_unknown");
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_no_card_and_duplicate_card_remain_independent() {
+        let (fake, mut payload, teams) = hook_drain_fixture();
+        let script = fs::read_to_string(fake.dir.path().join("mesh"))
+            .unwrap()
+            .replace("PostToolUse", "SessionStart")
+            .replace("'source':'ordinary'", "'source':'compact'");
+        fs::write(fake.dir.path().join("mesh"), script).unwrap();
+        payload["hook_event_name"] = json!("SessionStart");
+        payload["source"] = json!("compact");
+        for _ in 0..2 {
+            let mut out = Vec::new();
+            run_compact_hook_cli(payload.to_string().as_bytes(), &mut out, &teams).unwrap();
+            let output: Value = serde_json::from_slice(&out).unwrap();
+            assert!(output["hookSpecificOutput"]["additionalContext"]
+                .as_str()
+                .unwrap()
+                .contains("fixture marker"));
+        }
+        // Suppression belongs to Mesh; absence of a card cannot suppress a drain.
+        assert_eq!(
+            hook_drain_calls(&fake)
+                .iter()
+                .filter(|c| c["argv"][7] == "drain")
+                .count(),
+            2
+        );
+    }
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_claude_codex_event_envelopes_and_ordinary_context_are_pinned() {
+        for tool in [CliTool::Claude, CliTool::Codex] {
+            for event in [
+                "SessionStart",
+                "UserPromptSubmit",
+                "PreToolUse",
+                "PostToolUse",
+                "PermissionRequest",
+            ] {
+                let (fake, mut payload, teams) = hook_drain_fixture();
+                let root = fake.dir.path();
+                let script = fs::read_to_string(root.join("mesh"))
+                    .unwrap()
+                    .replace("codex", &tool.to_string())
+                    .replace("PostToolUse", event);
+                fs::write(root.join("mesh"), script).unwrap();
+                let config_path = teams.join("drain-team/config.json");
+                let config = fs::read_to_string(&config_path)
+                    .unwrap()
+                    .replace("codex", &tool.to_string());
+                fs::write(config_path, config).unwrap();
+                let mut record =
+                    MemberRuntimeStore::load(&teams, "drain-team", "architect").unwrap();
+                record.cli_tool = Some(tool);
+                record.harness = Some(tool);
+                MemberRuntimeStore::save(&teams, "drain-team", "architect", &record).unwrap();
+                payload["transcript_path"] =
+                    json!(root.join(format!(".{tool}/projects/transcript.jsonl")));
+                payload["hook_event_name"] = json!(event);
+                let mut out = Vec::new();
+                run_compact_hook_cli(payload.to_string().as_bytes(), &mut out, &teams).unwrap();
+                let out: Value = serde_json::from_slice(&out).unwrap();
+                assert_eq!(out["hookSpecificOutput"]["hookEventName"], event, "{tool}");
+                assert!(out["hookSpecificOutput"]["additionalContext"]
+                    .as_str()
+                    .unwrap()
+                    .contains("fixture marker"));
+                assert_eq!(
+                    MemberRuntimeStore::load(&teams, "drain-team", "architect")
+                        .unwrap()
+                        .context_generation,
+                    3
+                );
+                assert!(
+                    MemberCompactionStore::load(&teams, "drain-team", "architect")
+                        .unwrap()
+                        .is_none()
+                );
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_preserves_foreign_mentions_of_managed_scripts() {
+        // Regression: 15f222bd identified owned hooks by a substring in any command.
+        let (fake, _, _) = hook_drain_fixture();
+        let root = fake.dir.path();
+        let path = root.join("hooks.json");
+        let foreign = json!({"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":format!("echo taurhaus-delivery-drain-{}.sh", "a".repeat(64))}]}]}});
+        fs::write(&path, foreign.to_string()).unwrap();
+        drain::reconcile_home(root, CliTool::Codex, &[], &root.join("mesh")).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&fs::read(path).unwrap()).unwrap(),
+            foreign
+        );
     }
 }

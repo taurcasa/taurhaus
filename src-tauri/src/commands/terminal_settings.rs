@@ -651,8 +651,9 @@ pub(crate) fn reconcile_managed_account_hooks_for_launch(
 /// The launch reconciler is the only other place that sees account-scoped
 /// homes, and a launch is exactly what never happens again once the last
 /// member using one is gone: disbanding the only team on `~/.codex-work` left
-/// the taurhaus hook in that home forever. Removal only — installing stays
-/// with the launch that knows which account it is about to use.
+/// the taurhaus hook in that home forever. Compaction reconciliation only removes;
+/// its installation stays with the launch. Ordinary delivery hooks also install
+/// from verified live-home bindings and enabled Mesh descriptors.
 pub(crate) fn reconcile_managed_account_hooks_for_roots(
     teams_roots: &[std::path::PathBuf],
     grok_enabled: bool,
@@ -803,13 +804,60 @@ fn reconcile_managed_account_hooks_for_roots_at(
     taurhaus_exe: &std::path::Path,
 ) -> Result<bool, CoordinationError> {
     let homes = collect_managed_hook_homes_for_roots(teams_roots, cli_commands)?;
-    reconcile_unused_managed_hook_homes(
+    let changed = reconcile_unused_managed_hook_homes(
         homes,
         cli_commands,
         codex_hooks_supported,
         grok_enabled,
         taurhaus_exe,
-    )
+    )?;
+    Ok(reconcile_delivery_hook_homes(teams_roots, cli_commands, taurhaus_exe)? || changed)
+}
+
+/// Ordinary delivery registrations have their own capability gate and live-home
+/// reconciliation. Codex compaction support (including unknown/downgraded builds)
+/// never authorizes these events.
+fn reconcile_delivery_hook_homes(
+    roots: &[std::path::PathBuf],
+    cli_commands: &crate::models::CliCommandSettings,
+    exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    let Some(tool) = crate::session_scanner::cli_tool::all()
+        .iter()
+        .find(|entry| {
+            hook_reconciled_tool(entry.tool)
+                && entry.capabilities.compaction_delivery == CompactionDelivery::HookStdout
+        })
+        .map(|entry| entry.tool)
+    else {
+        return Ok(false);
+    };
+    let mut homes = known_managed_homes(cli_commands, tool)
+        .into_iter()
+        .map(|home| (home, Vec::new()))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    for root in roots {
+        for team in crate::coordination::stores::TeamConfigStore::list(root)? {
+            let config = crate::coordination::stores::TeamConfigStore::load(root, &team)?;
+            for member in config.members.iter().filter(|m| m.cli_tool == tool) {
+                match live_launch_home(root, &team, member, cli_commands) {
+                    Some(Some(home)) => homes.entry(home).or_default().push((
+                        root.clone(),
+                        team.clone(),
+                        member.name.clone(),
+                    )),
+                    Some(None) => return Ok(false), // Preserve shared homes if a live account is unresolved.
+                    None => {}
+                }
+            }
+        }
+    }
+    let mut changed = false;
+    for (home, bindings) in homes {
+        changed |=
+            crate::coordination::compact_hook::drain::reconcile_home(&home, tool, &bindings, exe)?;
+    }
+    Ok(changed)
 }
 
 fn log_managed_account_hook_degraded(error: &CoordinationError, message: &str) {
@@ -868,6 +916,7 @@ fn reconcile_managed_account_hooks_for_launch_at(
             reconcile(home, false)?;
         }
     }
+    reconcile_delivery_hook_homes(&[teams_dir.to_path_buf()], cli_commands, taurhaus_exe)?;
     let codex_launch_homes = launch_members
         .iter()
         .filter(|(tool, _)| {
@@ -1035,6 +1084,43 @@ fn reconcile_account_switch_hooks_at(
                 context.taurhaus_exe,
             )?,
         };
+        if context.delivery == CompactionDelivery::HookStdout {
+            let mut bindings = Vec::new();
+            for team in crate::coordination::stores::TeamConfigStore::list(context.teams_dir)? {
+                let config =
+                    crate::coordination::stores::TeamConfigStore::load(context.teams_dir, &team)?;
+                for member in config
+                    .members
+                    .iter()
+                    .filter(|m| m.cli_tool == context.cli_tool)
+                {
+                    let runtime = crate::coordination::stores::MemberRuntimeStore::load(
+                        context.teams_dir,
+                        &team,
+                        &member.name,
+                    )
+                    .ok();
+                    let home = runtime
+                        .as_ref()
+                        .and_then(|r| r.launch_account.account_id.as_ref())
+                        .and_then(|id| context.accounts.iter().find(|a| &a.id == id))
+                        .map(|a| a.dir.as_path());
+                    if team == context.team_name || home == Some(target_home) {
+                        bindings.push((
+                            context.teams_dir.to_path_buf(),
+                            team.clone(),
+                            member.name.clone(),
+                        ));
+                    }
+                }
+            }
+            changed |= crate::coordination::compact_hook::drain::reconcile_home(
+                target_home,
+                context.cli_tool,
+                &bindings,
+                context.taurhaus_exe,
+            )?;
+        }
         return Ok(changed);
     }
     for previous_home in previous_homes {
@@ -1048,6 +1134,14 @@ fn reconcile_account_switch_hooks_at(
             previous_home,
             context.accounts,
         )?;
+        if context.delivery == CompactionDelivery::HookStdout && !keep_installed {
+            changed |= crate::coordination::compact_hook::drain::reconcile_home(
+                previous_home,
+                context.cli_tool,
+                &[],
+                context.taurhaus_exe,
+            )?;
+        }
         changed |= match context.delivery {
             CompactionDelivery::HookStdout => reconcile_codex_hook_at_with_support(
                 previous_home,
