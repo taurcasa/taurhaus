@@ -1,0 +1,169 @@
+[
+  {
+    "pid": 3914917,
+    "start_ticks": "21621276",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-ik66igdt",
+      "/tmp/th-int-ik66igdt",
+      "--chdir",
+      "/tmp/th-int-ik66igdt/project",
+      "/bin/bash",
+      "/tmp/th-int-ik66igdt/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3914918,
+    "start_ticks": "21621276",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-ik66igdt",
+      "/tmp/th-int-ik66igdt",
+      "--chdir",
+      "/tmp/th-int-ik66igdt/project",
+      "/bin/bash",
+      "/tmp/th-int-ik66igdt/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3914919,
+    "start_ticks": "21621276",
+    "argv": [
+      "/tmp/th-int-ik66igdt/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "31164",
+      "--data-dir",
+      "/tmp/th-int-ik66igdt/data",
+      ""
+    ]
+  },
+  {
+    "pid": 3914920,
+    "start_ticks": "21621276",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 3914928,
+    "start_ticks": "21621287",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3915036,
+    "start_ticks": "21621350",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-int-ik66igdt/project' && CLAUDE_DIR='/tmp/th-int-ik66igdt/claude' CLAUDE_CONFIG_DIR='/tmp/th-int-ik66igdt/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'integration' --agent-name 'lead' --agent-id 'lead@integration' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3915039,
+    "start_ticks": "21621350",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "integration",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@integration",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3915055,
+    "start_ticks": "21621355",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-int-ik66igdt/project' && CLAUDE_DIR='/tmp/th-int-ik66igdt/claude' CODEX_HOME='/tmp/th-int-ik66igdt/codex' codex --sandbox read-only --ask-for-approval never --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-int-ik66igdt/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3915058,
+    "start_ticks": "21621355",
+    "argv": [
+      "codex",
+      "--sandbox",
+      "read-only",
+      "--ask-for-approval",
+      "never",
+      "--dangerously-bypass-hook-trust",
+      "-c",
+      "notify=[\"/tmp/th-int-ik66igdt/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3915186,
+    "start_ticks": "21621395",
+    "argv": [
+      "/tmp/th-int-ik66igdt/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "integration",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-int-ik66igdt/claude",
+      ""
+    ]
+  }
+]

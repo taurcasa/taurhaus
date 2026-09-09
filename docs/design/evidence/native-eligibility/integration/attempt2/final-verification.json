@@ -1,0 +1,24 @@
+{
+  "owned_identities_checked": 10,
+  "surviving_owned_identities": [],
+  "root_removed": true,
+  "auth_removed": true,
+  "private_port": 31164,
+  "port_closed": true,
+  "tmux_socket_closed": true,
+  "mesh_worktree_clean": true,
+  "gate_root_removed": true,
+  "evidence_hygiene_issues": [],
+  "initialize_passed": true,
+  "launch_before_opt_in": true,
+  "step_1": "inconclusive: online-seat resume refused before hosted launch",
+  "steps_2_through_7": "not run",
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "product_files_changed": [],
+  "model_turns_observed": 0,
+  "model_spend_observed_usd": 0
+}

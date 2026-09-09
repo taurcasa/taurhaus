@@ -193,3 +193,217 @@ is one evidence commit rather than seven step commits. The requested Opus eviden
 lens was unavailable in this session's model/tool surface and was not replaced
 with a claimed cross-family review. A new authorized trial must resolve the
 canonical setup prerequisite before any eligibility conclusion.
+
+## Attempt 2 — production initialization passes; step 1 setup remains INCONCLUSIVE
+
+2026-09-10 (Europe/Berlin; runtime logs use 2026-09-09 23:14 UTC).
+**No eligibility enabled. No app-server input was exercised.** Production
+`coordination.initialize_team` successfully created the canonical team, launched
+both seats, and then completed `opt_in_delivery`. The controller next set the
+scratch member's `adapter_mode` to `app_server` and called
+`coordination.resume_member` while that seat was online. The RPC refused at
+`load_member`: **`Conflict: member 'seat' in team 'integration' is not offline`**.
+Controller exit **1**; it stopped immediately and restored the descriptor.
+
+This is a **controller/setup limitation, not evidence of an app-server launch
+failure**. In particular, it does not establish that stop-then-resume would fail:
+that sequence was not run after the first refusal. The live seat never reached
+`HostedMembers::launch`, and neither recorded product defect was exercised.
+The code's later `app_server_switch_requires_5b_recoverable_relaunch_packet`
+guard is source evidence only, not this run's observed refusal.
+
+Pair: Taurhaus **`0f1a6e90`**, based on canonical activation **`06d1267b`**
+(PR #157), protocol **27**, branch `feat/integration-trial`; Mesh
+**`4388d6a1590e3072c9dfdc61ccd08b00bff2508b`**, branch `feat/native-push`.
+Both binaries were rebuilt from these worktrees with checkout-local targets.
+The temporary compiled descriptor changed exactly the 0.153.4 disposition to
+`trial` and enabled it, leaving host/configuration/trust and all other builds
+unchanged. [Exact diff](integration/attempt2/mesh-trial-descriptor.diff).
+The descriptor has been reverted; **Mesh flip commit: none**.
+
+| Brief step | Attempt 2 outcome | S-runtime evidence / missing proof |
+| --- | --- | --- |
+| 1. Daemon-owned app-server + attached strict TUI | **INCONCLUSIVE: setup refusal** | Production initialization passes all nine stages. Subsequent resume refuses the already-online member at `load_member`; the runtime has a regular pane, no `appServer`, and no discovered session/thread ID. |
+| 2. Idle send → start, marker, receipt, explicit read | **NOT RUN** | No `mesh send`, `turn/start`, marker reply, `native_enqueued`, or explicit read. |
+| 3. Active send → steer | **NOT RUN** | No active model turn or expectedTurnId. |
+| 4. Operator/socket ordering + mutual exclusion | **NOT RUN** | No operator input or host-operation holder. Mesh owner.lock is not host-operation evidence. |
+| 5. Compaction + recovery card | **NOT RUN** | Startup inbox acceptance exists; it does not prove compaction recovery or model uptake. |
+| 6. Daemon restart | **NOT RUN** | No restart or persistent hosted identity. |
+| 7. Rollback + tmux delivery | **NOT RUN** | No hosted attachment to roll back. Separate cleanup of the started processes passed. |
+
+### Runtime sequence and identities
+
+[Executed controller](integration/attempt2-controller.py),
+[event JSONL](integration/attempt2/run/events.jsonl),
+[initialize result](integration/attempt2/run/initialize-result.json),
+[resume result](integration/attempt2/run/resume-result.json),
+[daemon log](integration/attempt2/run/daemon.log),
+[structured log](integration/attempt2/run/taurhaus.log.jsonl).
+
+Scratch root **`/tmp/th-int-ik66igdt`**, private port **31164**, team
+`integration`, lead `lead`, member `seat`. Scratch project is a fresh committed
+git repository containing the short `AGENTS.md` shown in attempt 1; creation
+commands are `events.jsonl:5–10`. No operator repository content was copied.
+Random reserved marker **`990084b281d9d0ea`** was never submitted.
+
+The exact `coordination.initialize_team` request is `events.jsonl:18`, request
+ID **`66967cbcee57b97d`**. Its messaging object was parsed directly from
+`DEFAULT_CANONICAL_POLICY` in `src/lib/components/meshTabUtils.js`, with no policy
+substitution; [retained policy](integration/attempt2/run/policy.json).
+Lead: Claude `claude-haiku-4-5` on credential-free scratch CLAUDE_CONFIG_DIR.
+Member: Codex **0.153.4**, **gpt-5.6-luna**, effort **low**, read-only sandbox,
+never approvals. Binary SHA-256 identities are `events.jsonl:1–4`.
+
+Initialization run **`init_ea40f09e6e724233a3e98cd30046b847`** returned:
+
+```json
+{"failed_step":null,"message":"team initialized","succeeded_steps":["validate_configuration","create_team","add_lead","create_panes","launch_sessions","join_mesh","start_daemons","opt_in_delivery","send_onboarding"]}
+```
+
+The lead reached its first-run theme screen, not a model turn:
+[lead capture](integration/attempt2/run/initialize-pane-1.txt).
+The Codex pane showed v0.153.4 with `model: loading` and an empty input:
+[member capture](integration/attempt2/run/initialize-pane-2.txt).
+The production rendered commands are `taurhaus.log.jsonl:12–13`.
+Both runtimes have `terminalContract: 1`, attachment generation 1,
+context generation `"0"`, and null `session_id`; neither has `appServer`.
+Member pane **`%2`**, pane PID **134** inside the private PID namespace,
+start ticks **21621355**; lead pane **`%1`**, PID **115**, start ticks
+**21621350**. These namespace PIDs are distinct from the host PID inventory.
+[Member runtime](integration/attempt2/run/team/runtime/seat.json),
+[lead runtime](integration/attempt2/run/team/runtime/lead.json).
+
+Team incarnation
+**`c7ac345bdeb68789a58744da96d42a955d16f8ab2bcc6e2eb5ffbc83e27d4637`**;
+member incarnation **`c836b70c-b762-4c0e-b31c-fd1b37b2a950`**.
+The config's bootstrap leadSessionId is not a Codex thread ID.
+
+After the scratch config opt-in (`events.jsonl:30`), request
+**`7d1b699ded323c7e`** called `coordination.resume_member`; run
+**`resume_e48c1ef9a1e949cfb4ae14e6548d380c`** returned:
+
+```json
+{"failed_step":"load_member","resumed":false,"pane_id":null,"message":"Conflict: member 'seat' in team 'integration' is not offline"}
+```
+
+`events.jsonl:42` records the stop. There was no retry, pane identity deletion,
+runtime forgery, or continued numbered step. AgentDefinition has no adapter-mode
+field and `member_from_agent_setup` initializes `extra` empty; therefore the
+production initialize request itself did not opt this seat into hosting. The
+subsequent config-plus-resume attempt did not satisfy the launch prerequisites.
+
+### Receipts, journal references and spend
+
+The two startup cards reached **inbox acceptance only**. For `seat`, structured
+log line 27 and its runtime record retain this journal reference:
+
+```json
+{"message_id":"8940e5ae-bb88-4d91-b705-2b49d67aa484","delivery_id":"918588c2-009d-4b3d-9205-16b797cab5bf","sequence":2,"projection":"pending"}
+```
+
+Associated observation: `stage: accepted`, `path: inbox`, `accepted_bytes: 2273`,
+`offered_bytes: 0`, `returned_by_read_bytes: 0`. The member dispatcher health
+records **`activity not freshly idle`**, zero completed deliveries and zero
+failures. These are runtime/journal-reference excerpts, **not exported original
+canonical journal rows**: the inherited snapshot glob did not retain those rows.
+No `consumed_by_read` or native enqueue is claimed. No app-server wire frames or
+host-operation holder files exist in this attempt's evidence.
+
+| Spend item | Model turns / generations / compactions | USD |
+| --- | --- | --- |
+| Scratch Claude first-run screen | 0 / 0 / 0 | $0.00 |
+| Scratch Codex launch, still loading; onboarding pending | 0 observed / 0 observed / 0 | $0.00 model spend observed |
+| Controller input or compaction | 0 / 0 / 0 | $0.00 |
+| Attempt 2 total versus caps | **0 / 8 observed model turns** | **$0.00 / $3.00 observed** |
+
+[Cost ledger](integration/attempt2/run/cost-ledger.json),
+[usage-event export](integration/attempt2/run/usage-events.json).
+No work prompt, TUI Enter, native input, or compaction was requested. The usage
+export is empty, session IDs remain null, and delivery remained pending before
+teardown. No vendor billing statement was queried; $0 is the observed no-turn
+result, not a claimed subscription invoice measurement. There were no paid
+reruns. Attempt 1 plus attempt 2 remain at zero observed model turns.
+
+### Isolation, cleanup and reproduction
+
+Scratch root mode 0700; CODEX_HOME started with only copied `auth.json` mode
+0600 and then a generated minimal config. HOME and all harness/data roots were
+scratch, inherited TMUX was absent, TMUX_TMPDIR pointed to the private server.
+Bubblewrap hid `/home`, `/tmp`, `/run`, exposed only the writable scratch root,
+and put the real daemon, Mesh, Claude, Codex and tmux in a disposable PID
+namespace. All executables were copied into scratch `$HOME/.local/bin` and no
+operator installation directory was exposed to the child namespace.
+
+The controller's finally block stopped and waited its own process groups,
+ending the descendant PID namespace. The ten recorded host PID/start-tick
+identities are in [identities.json](integration/attempt2/run/identities.json).
+[Cleanup](integration/attempt2/run/cleanup.json): no surviving scratch processes,
+private port closed, root and auth copy removed. Descriptor restoration command
+exited **0**, and the Mesh worktree is clean. The native trial binary remained
+only as an unused build artifact in the authorized Mesh target; its scratch
+executable copy was deleted. No standing daemon, server or team was contacted.
+
+Exact reproduction of this **failed setup controller**, not a passing seven-step
+trial, from the specified checkout root:
+
+```sh
+python3 docs/design/evidence/native-eligibility/integration/attempt2-build.py
+python3 docs/design/evidence/native-eligibility/integration/attempt2-controller.py attempt2/NEW_RUN
+python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+```
+
+Do not treat the inspection checkpoint in the controller as seven-step coverage:
+that branch was not reached. A future commissioned run must resolve the hosted
+activation route before submitting model work.
+
+Both builds first ran `pgrep -af '(^|/)cargo( |$)'`; each returned **1**, no Cargo
+running. Daemon `cargo build --bin taurhaus-daemon` and Mesh `cargo build --bin
+mesh` each exited **0**, using `src-tauri/target` and Mesh `target` respectively.
+[Daemon build](integration/attempt2/daemon-build.json),
+[Mesh build](integration/attempt2/mesh-build.json).
+No install recipe or forbidden daemon port was used.
+
+### Attempt 2 gates and deviations
+
+All exact gates ran from this checkout root in the credential-free
+[gate controller](integration/attempt2-gates.py): private HOME, harness roots,
+PID namespace, rejecting CLI/tmux/Mesh shims and checkout-local Rust target.
+Each Cargo preflight returned 1 (no competing Cargo).
+
+| Exact gate | Exit | Result |
+| --- | --- | --- |
+| `just check-quick` | **0** | Rust test compilation, frontend typecheck; 150 frontend files / 2,486 tests passed. |
+| `just lint` | **0** | Rust, frontend, workflow and recipe guards passed. |
+| `just test-contracts` | **0** | All 68 Rust contract tests passed. |
+| `just test-rust-unit` | N/A | No `src-tauri/` changes. |
+| Mesh `just check-quick`, `just lint`, `just test` | N/A | Conditional on a passing flip; no flip was made. |
+
+Gate logs and exit metadata are under [attempt2/gates](integration/attempt2/gates).
+[Final verification](integration/attempt2/final-verification.json) checks retained
+identities, port/socket/root cleanup, descriptor restoration, evidence hygiene,
+and the production initialize ordering.
+
+No product code changed, no new dependency or registry entry was needed, and
+non-evidence inserted lines are **0 / 400**. Neither product defect was reached,
+so neither was fixed and no regression red/green is claimed. The existing
+`HostedDescriptor::codex()` already covers the pinned build and transport.
+
+Deviations and limits:
+
+- The controller used scratch config opt-in followed by resume on a live pane.
+  That invalid activation sequence stopped before hosting; it is not a product
+  regression or a conclusive native eligibility test. No additional activation
+  repair was authorized within the two-defect product scope.
+- Original canonical journal rows were not exported by the inherited glob;
+  retained runtime and logging records contain journal references and inbox
+  acceptance observations only. There is no wire/native-receipt evidence.
+- There was no completed numbered trial step, so this is one evidence commit,
+  not seven green-step commits. Attempt 1 remains intact above.
+- An Opus evidence lens was unavailable in the exposed model/tool surface;
+  no cross-family review is claimed. Final verification is a local artifact
+  audit, not that independent lens.
+- No continuation after the first refusal; no changes to plan ledger rows,
+  deployment, release, installation, or descriptor eligibility.
+
+Retained text pane captures and the contract-test log omit trailing blank lines;
+full pane output remains in the event JSONL.
