@@ -205,6 +205,11 @@
     />
   {:else}
     <MeshSetupView
+      meshStatus={controller.capability.status}
+      meshStatusError={controller.capability.error}
+      canonicalOptOut={controller.capability.optOut}
+      onRetryMeshStatus={controller.refreshMeshStatus}
+      onCanonicalMessagingChange={controller.handleCanonicalMessagingChange}
       mode={mode}
       {dark}
       modelCatalog={catalog}

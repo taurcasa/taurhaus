@@ -22,7 +22,6 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 }))
 
 const {
-  checkMeshInstallStatus,
   deleteRoleTemplate,
   exportRoleToFile,
   getRoleTemplate,
@@ -209,6 +208,7 @@ function builderProps(props = {}) {
   return {
     dark: false,
     mode: 'setup',
+    meshStatus: { version: '0.2.29', canonical_messaging_supported: false },
     teamName: 'taurhaus-team',
     teamConfig: {
       description: '',
@@ -1227,10 +1227,11 @@ it('keeps new teams on legacy messaging when installed Mesh lacks canonical crea
 
 // Regression: 9d09c883 used a synchronous bundled hash instead of async installed status.
 it('defaults on when backend status arrives and preserves an explicit opt-out', async () => {
-  checkMeshInstallStatus.mockResolvedValueOnce({ version: '1.0.0', canonical_messaging_supported: true })
-  const view = renderBuilder()
+  const view = renderBuilder({ meshStatus: null })
   const toggle = screen.getByRole('checkbox', { name: /Canonical messaging/ })
-  await waitFor(() => expect(toggle).toBeChecked())
+  expect(toggle).toHaveAccessibleDescription('Checking Mesh…')
+  await view.rerender(builderProps({ meshStatus: { version: '1.0.0', canonical_messaging_supported: true } }))
+  expect(toggle).toBeChecked()
   expect(toggle).toBeEnabled()
   await fireEvent.click(toggle)
   await view.rerender(builderProps({ meshStatus: { version: '1.0.1', canonical_messaging_supported: true } }))

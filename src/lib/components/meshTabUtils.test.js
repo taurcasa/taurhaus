@@ -680,3 +680,24 @@ it.each(['custom', 'preset'])('defaults %s requests from backend capability with
   expect(buildInitializationRequest({ ...config, canonicalMessaging: false }, 'trial')).not.toHaveProperty('messaging')
   expect(buildInitializationRequest({ ...config, meshStatus: { canonical_messaging_supported: false } }, 'trial')).not.toHaveProperty('messaging')
 })
+
+// Regression: 5e4cf925 never supplied runtime status to the initialization fallback.
+it('uses resolved runtime capability for initialization without a builder flag', async () => {
+  const { createMeshTabInit } = await import('./meshTabInit.svelte.js')
+  const state = { canInitialize: true, teamConfig: { lead: {}, agents: [] }, teamName: 'trial' }
+  let status = null
+  const init = createMeshTabInit({ state, deps: {
+    buildInitializationRequest,
+    getProjectPath: () => '',
+    getModelCatalog: () => undefined,
+    getMeshStatus: () => status,
+    getCanonicalMessaging: () => undefined,
+  } })
+  init.handleInitialize()
+  expect(state.initProgress).toBeUndefined()
+  status = { canonical_messaging_supported: true }
+  init.handleInitialize()
+  expect(state.initProgress).toHaveProperty('messaging.mode', 'canonical')
+  init.handleInitialize({ canonicalMessaging: false })
+  expect(state.initProgress).not.toHaveProperty('messaging')
+})

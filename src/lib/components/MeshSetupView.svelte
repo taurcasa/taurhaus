@@ -10,6 +10,11 @@
     projectPath = '',
     teamConfig = null,
     teamName = '',
+    meshStatus = null,
+    meshStatusError = '',
+    canonicalOptOut = false,
+    onRetryMeshStatus = () => {},
+    onCanonicalMessagingChange = () => {},
     initProgress = null,
     quickPresets = [],
     roleTemplates = [],
@@ -53,6 +58,11 @@
       {dark}
       {teamName}
       {teamConfig}
+      {meshStatus}
+      {meshStatusError}
+      {canonicalOptOut}
+      {onRetryMeshStatus}
+      {onCanonicalMessagingChange}
       roleTemplates={roleTemplates}
       presets={quickPresets}
       {availableProjects}
@@ -83,6 +93,11 @@
       {dark}
       {teamName}
       {teamConfig}
+      {meshStatus}
+      {meshStatusError}
+      {canonicalOptOut}
+      {onRetryMeshStatus}
+      {onCanonicalMessagingChange}
       roleTemplates={roleTemplates}
       presets={quickPresets}
       {availableProjects}
