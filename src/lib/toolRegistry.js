@@ -63,7 +63,6 @@ export const FALLBACK_TOOLS = Object.freeze([
   },
   {
     id: 'codex',
-    hostedControls: true,
     label: 'Codex',
     displayName: 'Codex',
     accent: 'sky',
@@ -350,5 +349,6 @@ export function toolCounts(items, readTool) {
 
 // Operator surface only; this does not enable native delivery eligibility.
 export function supportsHostedControls(value) {
-  return Boolean(FALLBACK_TOOLS.find(entry => entry.id === normalizeTool(value))?.hostedControls)
+  // UI availability is separate from the persisted harness/eligibility contract.
+  return new Set(['codex']).has(normalizeTool(value))
 }

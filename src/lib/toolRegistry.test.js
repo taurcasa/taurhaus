@@ -21,6 +21,7 @@ beforeEach(() => resetToolRegistry())
 
 describe('toolRegistry', () => {
   it('keeps the pre-settings fallback byte-equivalent to the backend contract', () => {
+    // Regression: a9c8109b added UI-only hosted controls to the shared fallback schema.
     // Regression: 07fc8f3 added frontend tool data independently of the Rust
     // registry; the shared fixture is also asserted by the Rust conformance test.
     expect(FALLBACK_TOOLS).toEqual(CONTRACT_TOOLS)
