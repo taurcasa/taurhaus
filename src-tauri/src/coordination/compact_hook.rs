@@ -403,13 +403,6 @@ fn emit_hook_degraded(tool: CliTool, config_dir: &Path, executable: &str) {
     );
 }
 
-pub fn handle_compact_hook_stdin<R: Read>(
-    stdin: R,
-    teams_dir: &Path,
-) -> Result<CompactHookResponse, CoordinationError> {
-    read_hosted_hook(stdin, teams_dir, &mut None)
-}
-
 fn read_hosted_hook<R: Read>(
     stdin: R,
     teams_dir: &Path,
@@ -490,7 +483,11 @@ fn handle_compact_hook_with_guard(
         );
     }
     let mut response = handle_compaction_decision(&payload, teams_dir, host_guard)?;
-    drain::append(teams_dir, &payload, &mut response);
+    // Hosted compaction keeps exclusion through stdout and its local recovery receipt.
+    // Mesh drain subprocess round-trips must not consume that bounded lock budget.
+    if host_guard.is_none() {
+        drain::append(teams_dir, &payload, &mut response);
+    }
     Ok(response)
 }
 
@@ -3670,6 +3667,65 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
         fs::write(root.join("mesh"), script).unwrap();
         let payload = json!({"hook_event_name":"PostToolUse","session_id":"verified-session","cwd":root,"transcript_path":root.join(".codex/rollout-test.jsonl")});
         (fake, payload, teams)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hosted_compaction_delivers_recovery_without_mesh_drain_subprocesses() {
+        // Regression: 7b686594 ran drain capabilities, delivery and receipt subprocesses
+        // under HostOperationLock, exceeding its budget and blocking operator controls.
+        let (fake, mut payload, teams) = hook_drain_fixture();
+        let root = fake.dir.path();
+        let script = fs::read_to_string(root.join("mesh"))
+            .unwrap()
+            .replace("PostToolUse", "SessionStart")
+            .replace("'source':'ordinary'", "'source':'compact'");
+        fs::write(root.join("mesh"), script).unwrap();
+        write_snapshot_fixture(&teams, "drain-team", "architect");
+        payload["hook_event_name"] = json!("SessionStart");
+        payload["source"] = json!("compact");
+        let mut runtime = MemberRuntimeStore::load(&teams, "drain-team", "architect").unwrap();
+        runtime.app_server = Some(crate::coordination::stores::runtime::AppServerAttachment {
+            contract: 1,
+            socket_path: root.join("host.sock"),
+            thread_id: "verified-session".into(),
+            member_id: "architect".into(),
+            account_root: root.into(),
+            process_id: 123,
+            process_start: "456".into(),
+            host_generation: "host-1".into(),
+            build: "fixture".into(),
+            host: "fixture".into(),
+            configuration: "fixture".into(),
+            trust: "fixture".into(),
+            transport: "unix_ndjson".into(),
+            state: "ready".into(),
+        });
+        MemberRuntimeStore::save(&teams, "drain-team", "architect", &runtime).unwrap();
+
+        crate::coordination::recovery_delivery::reserve_activation(
+            &teams,
+            "drain-team",
+            "architect",
+            "activation",
+        )
+        .unwrap();
+        let mut output = Vec::new();
+        run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, &teams).unwrap();
+        let output: Value = serde_json::from_slice(&output).unwrap();
+        assert!(output["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap()
+            .contains("Current task: #680"));
+        let runtime = MemberRuntimeStore::load(&teams, "drain-team", "architect").unwrap();
+        assert_eq!(
+            runtime.recovery.claim.unwrap().stage,
+            crate::coordination::recovery_card::ReceiptStage::HookResponseOffered
+        );
+        assert!(
+            hook_drain_calls(&fake).is_empty(),
+            "hosted compaction must not spawn Mesh while excluding operator controls"
+        );
     }
 
     #[cfg(unix)]
