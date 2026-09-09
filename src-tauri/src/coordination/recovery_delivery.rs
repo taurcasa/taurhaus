@@ -816,7 +816,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn canonical_pre_submission_failure_allows_only_one_card_retry() {
-        // Regression: 20b27ac6 quarantined even failed version probes before any submission.
+        // Regression: 755560bb quarantined even failed version probes before any submission.
         let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         for version in [
             "missing",
