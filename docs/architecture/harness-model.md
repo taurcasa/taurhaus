@@ -128,6 +128,28 @@ The daemon (WSL2 on Windows, native elsewhere) owns process inventory, session i
 - **Gemini CLI account/usage provider** (never shipped): the fixture-driven `retrieveUserQuota` provider planned as 17d was cancelled with the CLI.
 - The eight architecture infographics under `docs/images/` were regenerated on 2026-08-28 from their prompts in `infographics.manifest.yaml` (`just infographics`, see `docs/operations/infographics.md`).
 
+## Native boundary delivery bridge
+
+`coordination/compact_hook/drain.rs` implements the separate, disabled-by-default
+`mesh-hook-drain/1` delivery seam. Mesh publishes per-build/host/event/source
+capabilities; compaction support never enables ordinary delivery. The native hook
+requires the managed runtime's exact session, launch-root/incarnation, attachment,
+pane/socket/PID/start, tmux session and context facts, plus a canonical delivery-owner
+team and hook adapter selection. Claude/Codex return a bounded batch through
+`hookSpecificOutput.additionalContext`; only the compaction owner prepares the
+recovery card, and an allowed compact drain appends a labelled section after it.
+No-card/duplicate-card decisions do not suppress independently eligible mail.
+
+Managed ordinary-event scripts and registrations are reconciled separately from
+compaction, preserve foreign hooks/trust, use live account homes, and install switch
+targets before removing unused previous homes. Unknown/downgraded Codex compaction
+reconciliation is unchanged. A flushed response is only `hook_response_offered`;
+uncertain output remains `outcome_unknown`, with no automatic retry or alternate
+transport. agy/Grok retain their existing activity/compaction behavior and remain
+descriptor-only for drains. Stop continuation is unsupported. Production pins stay
+disabled pending separately commissioned, scoped harness uptake; see
+[the bridge telemetry contract](../operations/telemetry-contracts.md#native-hook-bridge--software-conformance-only).
+
 ## How changes are made
 
 Each change is a small PR with red-first regression tests naming the breaking commit, implemented by one model family and reviewed by the other (Opus ↔ Codex) through two lenses — conformance to the spec, and an operational checklist (upgrade of persisted data, protocol bumps on wire vocabulary, Windows/WSL paths, user-config edit discipline, concurrency, honest tests, hygiene) — with the fix → re-review loop repeated until no majors remain. Implementers commit after every green step and never edit the ledger; the orchestrator writes the spec (reviewed by the other family first when it edits user config or persisted formats), fills the ledger at merge, and merges only on the check's conclusion. Each new CLI starts with two independent research reports (`docs/design/research/`), verified live on a host that has it; the plans' facts tables cite them.

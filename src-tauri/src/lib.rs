@@ -776,24 +776,20 @@ fn run_compact_hook_cli() -> i32 {
     let teams_dir = crate::provider::platform_paths::PlatformPaths::teams_dir();
     match crate::coordination::compact_hook::run_compact_hook_cli(
         io::stdin(),
-        io::stdout(),
+        crate::coordination::compact_hook::hook_stdout(),
         &teams_dir,
     ) {
         Ok(()) => {}
         Err(err) => {
             crate::coordination::compact_hook::emit_compact_hook_cli_failed(&err.to_string());
             tracing::warn!(error = %err, "compact hook bridge failed");
-            if let Err(write_error) = write_claude_compact_hook_stdout(io::stdout(), "{}") {
-                tracing::warn!(error = %write_error, "failed to write compact hook fallback response to stdout");
-                return 1;
-            }
         }
     }
 
     0
 }
 
-#[cfg(feature = "mesh-bridged-backend")]
+#[cfg(all(test, feature = "mesh-bridged-backend"))]
 fn write_claude_compact_hook_stdout<W: io::Write>(mut stdout: W, payload: &str) -> io::Result<()> {
     stdout.write_all(payload.as_bytes())?;
     stdout.write_all(b"\n")?;

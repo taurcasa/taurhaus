@@ -821,15 +821,30 @@ fn reconcile_delivery_hook_homes(
     cli_commands: &crate::models::CliCommandSettings,
     exe: &std::path::Path,
 ) -> Result<bool, CoordinationError> {
-    let tool = CliTool::Codex;
-    let mut homes = known_managed_homes(cli_commands, tool).into_iter()
-        .map(|home| (home, Vec::new())).collect::<std::collections::BTreeMap<_, _>>();
+    let Some(tool) = crate::session_scanner::cli_tool::all()
+        .iter()
+        .find(|entry| {
+            hook_reconciled_tool(entry.tool)
+                && entry.capabilities.compaction_delivery == CompactionDelivery::HookStdout
+        })
+        .map(|entry| entry.tool)
+    else {
+        return Ok(false);
+    };
+    let mut homes = known_managed_homes(cli_commands, tool)
+        .into_iter()
+        .map(|home| (home, Vec::new()))
+        .collect::<std::collections::BTreeMap<_, _>>();
     for root in roots {
         for team in crate::coordination::stores::TeamConfigStore::list(root)? {
             let config = crate::coordination::stores::TeamConfigStore::load(root, &team)?;
             for member in config.members.iter().filter(|m| m.cli_tool == tool) {
                 match live_launch_home(root, &team, member, cli_commands) {
-                    Some(Some(home)) => homes.entry(home).or_default().push((root.clone(), team.clone(), member.name.clone())),
+                    Some(Some(home)) => homes.entry(home).or_default().push((
+                        root.clone(),
+                        team.clone(),
+                        member.name.clone(),
+                    )),
                     Some(None) => return Ok(false), // Preserve shared homes if a live account is unresolved.
                     None => {}
                 }
@@ -838,7 +853,8 @@ fn reconcile_delivery_hook_homes(
     }
     let mut changed = false;
     for (home, bindings) in homes {
-        changed |= crate::coordination::compact_hook::drain::reconcile_home(&home, tool, &bindings, exe)?;
+        changed |=
+            crate::coordination::compact_hook::drain::reconcile_home(&home, tool, &bindings, exe)?;
     }
     Ok(changed)
 }
@@ -1067,11 +1083,42 @@ fn reconcile_account_switch_hooks_at(
                 context.taurhaus_exe,
             )?,
         };
-        if context.cli_tool == CliTool::Codex {
-            let config = crate::coordination::stores::TeamConfigStore::load(context.teams_dir, context.team_name)?;
-            let bindings = config.members.iter().filter(|m| m.cli_tool == context.cli_tool)
-                .map(|m| (context.teams_dir.to_path_buf(), context.team_name.to_string(), m.name.clone())).collect::<Vec<_>>();
-            changed |= crate::coordination::compact_hook::drain::reconcile_home(target_home, context.cli_tool, &bindings, context.taurhaus_exe)?;
+        if context.delivery == CompactionDelivery::HookStdout {
+            let mut bindings = Vec::new();
+            for team in crate::coordination::stores::TeamConfigStore::list(context.teams_dir)? {
+                let config =
+                    crate::coordination::stores::TeamConfigStore::load(context.teams_dir, &team)?;
+                for member in config
+                    .members
+                    .iter()
+                    .filter(|m| m.cli_tool == context.cli_tool)
+                {
+                    let runtime = crate::coordination::stores::MemberRuntimeStore::load(
+                        context.teams_dir,
+                        &team,
+                        &member.name,
+                    )
+                    .ok();
+                    let home = runtime
+                        .as_ref()
+                        .and_then(|r| r.launch_account.account_id.as_ref())
+                        .and_then(|id| context.accounts.iter().find(|a| &a.id == id))
+                        .map(|a| a.dir.as_path());
+                    if team == context.team_name || home == Some(target_home) {
+                        bindings.push((
+                            context.teams_dir.to_path_buf(),
+                            team.clone(),
+                            member.name.clone(),
+                        ));
+                    }
+                }
+            }
+            changed |= crate::coordination::compact_hook::drain::reconcile_home(
+                target_home,
+                context.cli_tool,
+                &bindings,
+                context.taurhaus_exe,
+            )?;
         }
         return Ok(changed);
     }
@@ -1086,8 +1133,13 @@ fn reconcile_account_switch_hooks_at(
             previous_home,
             context.accounts,
         )?;
-        if context.cli_tool == CliTool::Codex && !keep_installed {
-            changed |= crate::coordination::compact_hook::drain::reconcile_home(previous_home, context.cli_tool, &[], context.taurhaus_exe)?;
+        if context.delivery == CompactionDelivery::HookStdout && !keep_installed {
+            changed |= crate::coordination::compact_hook::drain::reconcile_home(
+                previous_home,
+                context.cli_tool,
+                &[],
+                context.taurhaus_exe,
+            )?;
         }
         changed |= match context.delivery {
             CompactionDelivery::HookStdout => reconcile_codex_hook_at_with_support(

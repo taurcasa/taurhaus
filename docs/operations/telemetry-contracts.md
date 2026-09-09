@@ -141,3 +141,38 @@ confirmed acceptance emits `deadline.nudge.unconfirmed` with team, member,
 task and deadline fields. Non-canonical teams keep direct append.
 This adapter adds no protocol version, terminal writer, delivery owner or
 activation permission; the existing runtime-exclusion contract still applies.
+
+## Native hook bridge — software conformance only
+
+The software seam follows Mesh 4a source `adc9b831756de2fd4282198f4e63a72ba24fe928`;
+the integrated binary and uptake trial remain separate evidence.
+The native daemon hook bridge pins `mesh-hook-drain/1` and resolves the absolute
+Mesh executable through `coordination::mesh_cli`. It queries `delivery capabilities`
+and reads `state/delivery/adapter-MEMBER.json`; only an enabled Claude/Codex event
+on a canonical, team-owned delivery seat in `hook` mode can drain. Every subprocess
+receives explicit account root/team/member argv, a cleared environment with only
+`LANG`, one bounded JSON stdin document and EOF. Each child has a two-second total
+I/O deadline, 16 KiB request (including routing), 64 KiB response and 4 KiB stderr
+capture limits; excess stderr is discarded. The 8192-byte/8000-scalar context limits
+include JSON escaping, delimiters, the reserved recovery card and envelope allowance.
+The runtime publishes `hookSessionId` from its captured session and
+`contextGeneration` as a string; the compaction counter remains numeric internally.
+
+After closing its output executor, the bridge sends `delivery receipt` with the
+original request, offer ID, stage and evidence. `delivery.hook.receipt` records only
+team/member/offer ID, stage, receipt success and a bounded reason, never message
+bodies or hook prompts/tool arguments. Write+flush proves `hook_response_offered`,
+not native acceptance or consumption. Nonzero, timeout, malformed/oversized output
+and partial writes yield `outcome_unknown`, without drain retry or tmux fallback.
+If no offer ID survived, receipt closure cannot be confirmed: Mesh keeps the
+reservation quarantined for explicit correlated recovery. Receipt failure after
+flush never changes the successful hook result.
+
+The `hook_drain_*` unit fixtures use a Python fake Mesh executable in temporary
+roots; `just test-contracts` pins the protocol vocabulary and Windows writer
+boundary. This packet proves software behavior only. Mesh's production descriptors
+remain disabled; real Claude/Codex uptake, exact paired tips and intended
+build/host/config/trust evidence belong to the separately authorized uptake lane.
+Claude native-mailbox exclusion still blocks activation in Mesh. agy/Grok and Stop
+continuation remain inactive. No daemon protocol change, transport retirement,
+canonical-writer expansion or live deployment is implied.

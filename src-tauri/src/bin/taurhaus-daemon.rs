@@ -309,12 +309,11 @@ fn maybe_run_compact_hook_mode() -> bool {
     let teams_dir = PlatformPaths::teams_dir();
     if let Err(error) = taurhaus_lib::coordination::compact_hook::run_compact_hook_cli(
         std::io::stdin(),
-        std::io::stdout(),
+        taurhaus_lib::coordination::compact_hook::hook_stdout(),
         &teams_dir,
     ) {
         taurhaus_lib::coordination::compact_hook::emit_compact_hook_cli_failed(&error.to_string());
         tracing::warn!(error = %error, "compact hook bridge failed");
-        println!("{{}}");
     }
     true
 }

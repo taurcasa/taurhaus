@@ -1135,6 +1135,7 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
     // cfg(test) declaration would silently let runtime identity branches escape.
     const ALLOWED_RUNTIME_FILES: &[&str] = &[
         "src/coordination/compact_hook.rs",
+        "src/coordination/compact_hook/drain.rs", // Separate per-event native delivery capability slice.
         "src/daemon/agy_hooks.rs",
         "src/models/mod.rs",
         "src/session_scanner/cli_tool.rs",
@@ -1582,12 +1583,45 @@ fn terminal_child_mode_inherits_flock_and_exits_without_daemon_startup() {
 
 #[test]
 fn hook_bridge_contract_pins_protocol_and_writer_coverage() {
-    let hook = fs::read_to_string(crate_root().join("src/coordination/compact_hook/drain.rs")).unwrap();
-    for spelling in ["mesh-hook-drain/1", "hook_response_offered", "outcome_unknown", "offer_id", "attachment_generation", "launch_root", "reserved_bytes", "reserved_chars"] {
-        assert!(hook.contains(spelling), "missing bridge contract {spelling}");
+    let hook =
+        fs::read_to_string(crate_root().join("src/coordination/compact_hook/drain.rs")).unwrap();
+    for spelling in [
+        "mesh-hook-drain/1",
+        "hook_response_offered",
+        "outcome_unknown",
+        "offer_id",
+        "attachment_generation",
+        "launch_root",
+        "reserved_bytes",
+        "reserved_chars",
+    ] {
+        assert!(
+            hook.contains(spelling),
+            "missing bridge contract {spelling}"
+        );
     }
     // Regression: f0a5bad7 added this compaction writer without the Windows-app boundary marker.
-    let boundaries = fs::read_to_string(crate_root().join("tests/module_boundary_assertions.rs")).unwrap();
-    let markers = boundaries.split("let markers = [").find(|section| section.contains("record_delivery_at(" )).unwrap();
-    assert!(markers.split("];" ).next().unwrap().contains("record_delivery_with_journal_at("));
+    let boundaries =
+        fs::read_to_string(crate_root().join("tests/module_boundary_assertions.rs")).unwrap();
+    let markers = boundaries
+        .split("let markers = [")
+        .find(|section| section.contains("record_delivery_at("))
+        .unwrap();
+    assert!(markers
+        .split("];")
+        .next()
+        .unwrap()
+        .contains("record_delivery_with_journal_at("));
+}
+
+#[test]
+fn native_hook_owns_stdout_until_receipt_and_never_writes_a_second_response() {
+    // Regression: c408b68a dropped Stdout's shared handle, which did not close fd 1.
+    for file in ["src/lib.rs", "src/bin/taurhaus-daemon.rs"] {
+        let source = fs::read_to_string(crate_root().join(file)).unwrap();
+        assert!(
+            source.contains("compact_hook::hook_stdout()"),
+            "{file}: hook must own final stdout fd"
+        );
+    }
 }
