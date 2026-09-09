@@ -78,6 +78,8 @@ const DEFAULT_TMUX_LAYOUT: &str = "new_window";
 
 /// App-managed coordination state that lazily initializes the orchestrator.
 pub struct CoordinationState {
+    #[cfg(target_os = "linux")]
+    pub(crate) hosted: Arc<crate::coordination::hosted::HostedMembers>,
     teams_dir: PathBuf,
     team_root_registry: TeamRootRegistry,
     app_started_at: DateTime<Utc>,
@@ -173,6 +175,8 @@ impl CoordinationState {
             backend_selector,
             backend_factory,
             runtime_factory,
+            #[cfg(target_os = "linux")]
+            hosted: Arc::new(Default::default()),
             orchestrator: Mutex::new(None),
             root_orchestrators: Mutex::new(HashMap::new()),
             live_presence_degraded_teams: Mutex::new(std::collections::HashSet::new()),

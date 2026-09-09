@@ -141,13 +141,13 @@ impl HostedMembers {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::coordination::hosted_process::tests::fixture;
     use crate::coordination::stores::{MemberRuntimeRecord, TeamConfigStore};
     use serde_json::json;
 
-    fn seat(root: &Path) -> TeamRootRegistry {
+    pub(crate) fn seat(root: &Path) -> TeamRootRegistry {
         std::fs::create_dir_all(root.join("team")).unwrap();
         let config = json!({"schema_version":3,"name":"team","created_at":"2026-01-01T00:00:00Z","team_incarnation_id":"team-one","members":[{"name":"seat","role":"agent","cli_tool":"codex","project_path":root,"adapter_mode":"app_server"}]});
         std::fs::write(root.join("team/config.json"), config.to_string()).unwrap();

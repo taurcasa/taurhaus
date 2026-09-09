@@ -277,6 +277,14 @@ pub(crate) fn dispatch(
                 coordination_state,
             )
         }
+        #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
+        "coordination.hosted_transcript" | "coordination.hosted_input" | "coordination.hosted_interrupt" | "coordination.hosted_approval" => {
+            let operation = request.method.trim_start_matches("coordination.hosted_");
+            match crate::daemon::hosted::handle(&coordination_state.hosted, coordination_state.team_root_registry(), operation, &request.params) {
+                Ok(result) => DaemonResponse::ok(&request.id, result),
+                Err(error) => DaemonResponse::err(&request.id, "HOST_OPERATION_FAILED", error),
+            }
+        }
         _ => DaemonResponse::err(
             &request.id,
             "UNKNOWN_METHOD",

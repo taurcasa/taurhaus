@@ -30,3 +30,6 @@ pub(crate) mod team_move;
 pub(crate) mod team_runs;
 pub mod usage_poller;
 pub(crate) mod watch;
+
+#[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
+mod hosted;
