@@ -38,6 +38,6 @@ pub mod validation;
 pub(crate) mod mesh_contract_fixture;
 
 #[cfg(target_os = "linux")]
-pub(crate) mod hosted_process;
-#[cfg(target_os = "linux")]
 pub(crate) mod hosted;
+#[cfg(target_os = "linux")]
+pub(crate) mod hosted_process;

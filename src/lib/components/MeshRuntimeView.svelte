@@ -386,6 +386,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
       {#if detailNode}
         <MeshNodeDetail
           node={detailNode}
+          {teamName}
           mode="runtime"
           {dark}
           modelCatalog={catalog}

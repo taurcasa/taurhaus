@@ -149,3 +149,9 @@ export function onCoordinationResumeTeamProgress(callback) {
     })
   })
 }
+
+export function coordinationHosted(teamName, memberName, operation, params = {}) {
+  return invokeOrMock('coordination_hosted', { teamName, memberName, operation, params }, () => {
+    throw new Error('NOT_HOSTED')
+  })
+}

@@ -3,18 +3,20 @@
   import { activitySignal } from '../activitySignal.js'
   import { accountState } from '../accounts.svelte.js'
   import MarkdownRenderer from '../MarkdownRenderer.svelte'
+  import HostedThread from './HostedThread.svelte'
   import AccountPicker from './AccountPicker.svelte'
   import ModelSelect from './ModelSelect.svelte'
   import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
   import { normalizeTool } from '../meshDefaults.js'
   import { EMPTY_MODEL_CATALOG, defaultEffortFor, defaultModelFor } from '../modelCatalog.js'
   import { themeTokens } from '../themeTokens.js'
-  import { toolLabel as registeredToolLabel, tools } from '../toolRegistry.js'
+  import { toolLabel as registeredToolLabel, tools, supportsHostedControls } from '../toolRegistry.js'
   import { accountHeadroom as usageHeadroom, exhaustedUsage } from '../usageWindows.js'
   import { accountLineLabel } from './meshTabUtils.js'
 
   let {
     node = {},
+    teamName = '',
     mode = 'runtime',
     dark = false,
     editing = false,
@@ -1226,6 +1228,9 @@
         {/if}
 
         {#if !isEditing && configurationEntries.length > 0}
+          {#if normalizedContext === 'runtime' && supportsHostedControls(tool) && teamName}
+            <HostedThread {teamName} memberName={name} {dark} />
+          {/if}
           <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid={normalizedContext === 'runtime' ? 'mesh-node-detail-runtime' : 'mesh-node-detail-configuration'}>
             <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">Configuration</h3>
             <dl class="rounded-[20px] border px-5 py-4 {configTone}">

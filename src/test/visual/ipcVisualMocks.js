@@ -76,6 +76,7 @@ function createMockMap() {
     composeTeam: vi.fn(),
     coordinationAddAgent: vi.fn(),
     coordinationDisbandTeam: vi.fn(),
+    coordinationHosted: vi.fn(),
     coordinationGetLiveTeamStatus: vi.fn(),
     coordinationInitializeTeam: vi.fn(),
     coordinationListTeams: vi.fn(),
@@ -203,6 +204,7 @@ export function resetVisualIpcMocks(overrides = {}) {
   visualIpcMocks.composeTeam.mockResolvedValue({ roster: [], warnings: [], validationErrors: [] })
   visualIpcMocks.coordinationAddAgent.mockResolvedValue(undefined)
   visualIpcMocks.coordinationDisbandTeam.mockResolvedValue(undefined)
+  visualIpcMocks.coordinationHosted.mockRejectedValue(new Error('NOT_HOSTED'))
   visualIpcMocks.coordinationGetLiveTeamStatus.mockResolvedValue({ teamName: '', leadName: '', members: [] })
   visualIpcMocks.coordinationInitializeTeam.mockResolvedValue(undefined)
   visualIpcMocks.coordinationListTeams.mockResolvedValue([])

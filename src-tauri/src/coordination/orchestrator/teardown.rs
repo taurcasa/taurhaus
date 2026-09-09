@@ -103,10 +103,17 @@ impl CoordinationOrchestrator {
         let mut diagnostics = TeardownDiagnostics::default();
         #[cfg(target_os = "linux")]
         if runtime.is_some_and(|record| record.app_server.is_some()) {
-            diagnostics.steps.push(match self.hosted.stop(&self.root_registry, team_name, member_name) {
-                Ok(()) => step_succeeded("stop_host", "owned host stopped; named thread retained"),
-                Err(error) => step_failed("stop_host", error),
-            });
+            diagnostics.steps.push(
+                match self
+                    .hosted
+                    .stop(&self.root_registry, team_name, member_name)
+                {
+                    Ok(()) => {
+                        step_succeeded("stop_host", "owned host stopped; named thread retained")
+                    }
+                    Err(error) => step_failed("stop_host", error),
+                },
+            );
             return diagnostics;
         }
         let pane_record =

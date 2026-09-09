@@ -1922,3 +1922,41 @@ fn derive_cross_project_status(
 #[cfg(test)]
 #[path = "coordination/tests.rs"]
 mod tests;
+
+#[tauri::command]
+pub async fn coordination_hosted(
+    app: AppHandle,
+    team_name: String,
+    member_name: String,
+    operation: String,
+    params: Value,
+) -> IpcResult<Value> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !matches!(
+            operation.as_str(),
+            "transcript" | "input" | "interrupt" | "approval"
+        ) {
+            return Err(IpcError::internal("UNKNOWN_METHOD"));
+        }
+        let provider = app.state::<ProviderState>();
+        let daemon = provider
+            .daemon
+            .as_ref()
+            .ok_or_else(|| IpcError::internal("Hosted controls require the daemon"))?;
+        let mut params = params;
+        if !params.is_object() {
+            return Err(IpcError::internal("Expected host operation parameters"));
+        }
+        params["team_name"] = team_name.into();
+        params["member_name"] = member_name.into();
+        call_coordination_daemon(
+            &app,
+            daemon,
+            &format!("coordination.hosted_{operation}"),
+            params,
+        )
+        .map_err(|error| IpcError::internal(format!("{error:?}")))
+    })
+    .await
+    .map_err(|_| IpcError::internal("Hosted operation worker stopped"))?
+}

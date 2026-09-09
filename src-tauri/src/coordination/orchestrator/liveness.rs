@@ -48,7 +48,9 @@ impl CoordinationOrchestrator {
         for (member_name, mut runtime) in runtime_records {
             #[cfg(target_os = "linux")]
             if runtime.app_server.is_some() {
-                self.hosted.reconcile(&self.root_registry, team_name, &member_name).map_err(CoordinationError::Conflict)?;
+                self.hosted
+                    .reconcile(&self.root_registry, team_name, &member_name)
+                    .map_err(CoordinationError::Conflict)?;
                 continue;
             }
             let expected = MemberRuntimeSnapshot::capture(&runtime);
@@ -190,7 +192,9 @@ impl CoordinationOrchestrator {
         for (member_name, mut runtime) in runtime_records {
             #[cfg(target_os = "linux")]
             if runtime.app_server.is_some() {
-                self.hosted.reconcile(&self.root_registry, team_name, &member_name).map_err(CoordinationError::Conflict)?;
+                self.hosted
+                    .reconcile(&self.root_registry, team_name, &member_name)
+                    .map_err(CoordinationError::Conflict)?;
                 continue;
             }
             let expected = MemberRuntimeSnapshot::capture(&runtime);
@@ -678,7 +682,9 @@ impl CoordinationOrchestrator {
         for (member_name, mut runtime) in runtime_records {
             #[cfg(target_os = "linux")]
             if runtime.app_server.is_some() {
-                self.hosted.reconcile(&self.root_registry, team_name, &member_name).map_err(CoordinationError::Conflict)?;
+                self.hosted
+                    .reconcile(&self.root_registry, team_name, &member_name)
+                    .map_err(CoordinationError::Conflict)?;
                 continue;
             }
             let expected = MemberRuntimeSnapshot::capture(&runtime);
