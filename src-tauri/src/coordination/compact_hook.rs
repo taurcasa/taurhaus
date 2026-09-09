@@ -3232,7 +3232,9 @@ pub(crate) mod tests {
         let mut member = sample_member(&project);
         member.cli_tool = CliTool::Codex;
         // Regression: 4cae348e treated opt-in as a published host, dropping pane recovery.
-        member.extra.insert("adapter_mode".into(), json!("app_server"));
+        member
+            .extra
+            .insert("adapter_mode".into(), json!("app_server"));
         write_team_fixture(tmp.path(), "codex-team", &member, "session-codex");
         write_snapshot_fixture(tmp.path(), "codex-team", &member.name);
         let transcript_path = tmp
@@ -3272,7 +3274,10 @@ pub(crate) mod tests {
         let state = MemberCompactionStore::load(tmp.path(), "codex-team", &member.name)
             .expect("load compaction state")
             .expect("compaction state");
-        assert_eq!(state.last_delivery_result, CompactionDeliveryResult::Injected);
+        assert_eq!(
+            state.last_delivery_result,
+            CompactionDeliveryResult::Injected
+        );
         assert_eq!(state.last_session_id, "session-codex");
         assert_eq!(
             state.last_compaction_timestamp,

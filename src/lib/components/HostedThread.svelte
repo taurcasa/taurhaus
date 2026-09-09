@@ -12,7 +12,8 @@
   const lines = $derived((transcript?.thread?.turns ?? []).flatMap(turn =>
     (turn.items ?? []).flatMap(item => item.text ? [item.text] : (item.content ?? []).filter(c => c.type === 'text').map(c => c.text))))
   const requests = $derived(transcript?.requests ?? [])
-  const disabled = $derived(submitting || Boolean(transcript?.outcomeUnknown) || pending.startsWith('Recovery'))
+  const inactive = $derived(Boolean(transcript?.stopped || transcript?.orphanProcessId))
+  const disabled = $derived(submitting || inactive || Boolean(transcript?.outcomeUnknown) || pending.startsWith('Recovery'))
 
   $effect(() => {
     const team = teamName, member = memberName
@@ -47,7 +48,7 @@
   })
 
   async function submit(operation, params = {}) {
-    if (submitting || !transcript) return
+    if (submitting || !transcript || (inactive && operation !== 'reconcile')) return
     const team = teamName, member = memberName, generation = transcript.attachmentGeneration
     const current = () => team === teamName && member === memberName
     submitting = true
@@ -67,7 +68,7 @@
           ? 'Recovery must reach the next idle turn. Your draft is saved; send it when the turn is idle.'
           : 'Input deferred. Your draft is saved; retry when the member is ready.'
       } else {
-        error = message.startsWith('failed:') ? 'The turn changed before input was accepted. Refresh and retry.'
+        error = message.startsWith('failed:') ? 'The operation was not accepted. Refresh or resume the member before retrying.'
           : 'The operation could not be confirmed. Check the conversation before retrying.'
       }
     } finally { if (current()) submitting = false }
@@ -78,6 +79,11 @@
   <section class="space-y-3 rounded-xl border p-4 {t.keyline} {t.textPrimary}" aria-label="Hosted conversation">
     <h3 class="text-sm font-semibold">Conversation</h3>
     {#if transcript}
+      {#if transcript.orphanProcessId}
+        <p role="status">Orphaned host process {transcript.orphanProcessId} survived the previous daemon. Verify its recorded process start time, terminate that process manually, then stop and resume this member.</p>
+      {:else if transcript.stopped}
+        <p role="status">Member is stopped. Resume it before sending input.</p>
+      {/if}
       <div class="max-h-64 space-y-2 overflow-auto whitespace-pre-wrap text-sm" aria-label="Hosted transcript">
         {#each lines as line}<p>{line}</p>{/each}
       </div>
@@ -102,7 +108,7 @@
         <textarea id="hosted-input" class="w-full rounded border bg-transparent p-2 text-sm {t.keyline}" bind:value={draft} disabled={disabled} maxlength="8000" rows="3"></textarea>
         <div class="flex gap-3 text-sm">
           <button class="rounded border px-3 py-1 {t.keyline}" disabled={disabled || !draft.trim()} type="submit">Send</button>
-          <button disabled={submitting} type="button" onclick={() => submit('interrupt')}>Stop turn</button>
+          <button disabled={submitting || inactive} type="button" onclick={() => submit('interrupt')}>Stop turn</button>
         </div>
       </form>
     {/if}

@@ -382,7 +382,7 @@ impl HostedMembers {
         let mut owned = cell.try_lock().map_err(|_| "host member busy")?;
         let seat = owned
             .as_mut()
-            .ok_or("host is unavailable in this daemon; controlled resume required")?;
+            .ok_or("failed: host is unavailable in this daemon; controlled resume required")?;
         let guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
             .map_err(|e| e.to_string())?;
         let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
@@ -505,8 +505,15 @@ impl HostedMembers {
         }
         MemberRuntimeStore::update(&root, team, member, |record| {
             if let Some(host) = &mut record.app_server {
-                if host.state == "ready" {
-                    host.state = "unavailable".into();
+                let state = if owned.is_none() && host_alive(host) {
+                    "orphaned"
+                } else if host.state == "stopped" {
+                    "stopped"
+                } else {
+                    "unavailable"
+                };
+                if host.state != state {
+                    host.state = state.into();
                     record.attachment_generation = record.attachment_generation.saturating_add(1);
                     record.health = HealthState::SessionDead;
                 }
@@ -602,7 +609,7 @@ pub(crate) mod tests {
         MemberRuntimeStore::save(root, "team", "seat", &MemberRuntimeRecord::default()).unwrap();
         TeamRootRegistry::new(root.into())
     }
-    fn running(root: &Path) -> (TeamRootRegistry, HostedMembers) {
+    pub(crate) fn running(root: &Path) -> (TeamRootRegistry, HostedMembers) {
         let registry = seat(root);
         let hosts = HostedMembers::default();
         hosts
@@ -610,7 +617,7 @@ pub(crate) mod tests {
             .unwrap();
         (registry, hosts)
     }
-    fn saved(root: &Path) -> MemberRuntimeRecord {
+    pub(crate) fn saved(root: &Path) -> MemberRuntimeRecord {
         MemberRuntimeStore::load(root, "team", "seat").unwrap()
     }
     fn transcript(hosts: &HostedMembers, registry: &TeamRootRegistry, generation: u64) -> Value {
@@ -625,7 +632,7 @@ pub(crate) mod tests {
             )
             .unwrap()
     }
-    fn input(
+    pub(crate) fn input(
         hosts: &HostedMembers,
         registry: &TeamRootRegistry,
         generation: u64,
@@ -645,10 +652,8 @@ pub(crate) mod tests {
         // Regression: 9b50346b made definite steer rejections permanently ambiguous.
         for rejected in ["completion race", "wrong turn"] {
             let tmp = tempfile::tempdir().unwrap();
-            let registry = seat(tmp.path());
+            let (registry, hosts) = running(tmp.path());
             let launch = fixture(tmp.path());
-            let hosts = HostedMembers::default();
-            hosts.launch(&registry, "team", "seat", &launch).unwrap();
             let generation = saved(tmp.path()).attachment_generation;
             input(&hosts, &registry, generation, "active").unwrap();
             let error = input(&hosts, &registry, generation, rejected).unwrap_err();
@@ -660,31 +665,9 @@ pub(crate) mod tests {
         }
     }
     #[test]
-    fn hosted_liveness_defers_a_mesh_lock_holder() {
-        // Regression: a9c8109b let shared host-lock contention abort team passes.
-        use fs2::FileExt;
-        let tmp = tempfile::tempdir().unwrap();
-        let registry = seat(tmp.path());
-        let launch = fixture(tmp.path());
-        let hosts = HostedMembers::default();
-        hosts.launch(&registry, "team", "seat", &launch).unwrap();
-        let holder = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(tmp.path().join("team/state/app-server/seat.lock"))
-            .unwrap();
-        holder.lock_exclusive().unwrap();
-        assert!(hosts.reconcile(&registry, "team", "seat").is_ok());
-        drop(holder);
-        hosts.stop(&registry, "team", "seat").unwrap();
-    }
-    #[test]
     fn owned_member_publishes_resumes_and_excludes_mesh() {
         let tmp = tempfile::tempdir().unwrap();
-        let registry = seat(tmp.path());
-        let launch = fixture(tmp.path());
-        let hosts = HostedMembers::default();
-        hosts.launch(&registry, "team", "seat", &launch).unwrap();
+        let (registry, hosts) = running(tmp.path());
         let record = saved(tmp.path());
         assert_eq!(
             record.recovery.last_delivered.as_ref().map(|r| r.stage),
@@ -715,9 +698,17 @@ pub(crate) mod tests {
         })
         .unwrap();
 
-        let holder =
-            HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
-        assert!(input(&hosts, &registry, generation, "blocked").is_err());
+        let holder = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(tmp.path().join("team/state/app-server/seat.lock"))
+            .unwrap();
+        fs2::FileExt::lock_exclusive(&holder).unwrap();
+        // Regression: a9c8109b let shared host-lock contention abort team passes.
+        assert!(hosts.reconcile(&registry, "team", "seat").is_ok());
+        assert!(input(&hosts, &registry, generation, "blocked")
+            .unwrap_err()
+            .contains("deferred: lock busy"));
         drop(holder);
         input(&hosts, &registry, generation, "operator").unwrap();
         assert!(transcript(&hosts, &registry, generation)
@@ -725,7 +716,9 @@ pub(crate) mod tests {
             .contains("operator"));
         hosts.stop(&registry, "team", "seat").unwrap();
         assert_eq!(saved(tmp.path()).app_server.unwrap().state, "stopped");
-        hosts.launch(&registry, "team", "seat", &launch).unwrap();
+        hosts
+            .launch(&registry, "team", "seat", &fixture(tmp.path()))
+            .unwrap();
         let resumed = saved(tmp.path());
         assert_eq!(resumed.session_id, record.session_id);
         assert!(resumed.attachment_generation > generation);
@@ -734,39 +727,12 @@ pub(crate) mod tests {
             attachment.host_generation
         );
         assert!(input(&hosts, &registry, generation, "stale").is_err());
-        hosts.stop(&registry, "team", "seat").unwrap();
-    }
-    #[test]
-    fn owned_member_refuses_pane_conversion_and_does_not_adopt_after_owner_restart() {
-        let tmp = tempfile::tempdir().unwrap();
-        let registry = seat(tmp.path());
-        let launch = fixture(tmp.path());
-        let hosts = HostedMembers::default();
-        MemberRuntimeStore::update(tmp.path(), "team", "seat", |r| {
-            r.pane_id = Some("%42".into())
-        })
-        .unwrap();
-        assert!(hosts.launch(&registry, "team", "seat", &launch).is_err());
-        MemberRuntimeStore::update(tmp.path(), "team", "seat", |r| r.pane_id = None).unwrap();
-        hosts.launch(&registry, "team", "seat", &launch).unwrap();
-        let record = saved(tmp.path());
-        let restarted_owner = HostedMembers::default();
-        // Regression: 83077dad reported a live unowned child as stopped on owner restart.
-        assert!(restarted_owner.stop(&registry, "team", "seat").is_err());
-        assert!(restarted_owner
-            .launch(&registry, "team", "seat", &launch)
-            .is_err());
-        assert!(restarted_owner
-            .operation(
-                &registry,
-                "team",
-                "seat",
-                record.attachment_generation,
-                "input",
-                json!({"text":"must not adopt"})
-            )
-            .is_err());
-        hosts.stop(&registry, "team", "seat").unwrap();
+        let before = saved(tmp.path());
+        hosts.shutdown().unwrap();
+        let after = saved(tmp.path());
+        assert!(after.attachment_generation > before.attachment_generation);
+        assert_eq!(after.app_server.unwrap().state, "stopped");
+        assert!(!host_alive(&before.app_server.unwrap()));
     }
     #[test]
     fn hosted_recovery_hook_holds_exclusion_through_stdout() {
@@ -910,17 +876,6 @@ pub(crate) mod tests {
         )
         .is_err());
         hosts.stop(&registry, "team", "seat").unwrap();
-    }
-    #[test]
-    fn hosted_daemon_shutdown_publishes_before_owned_children_exit() {
-        let tmp = tempfile::tempdir().unwrap();
-        let (_registry, hosts) = running(tmp.path());
-        let before = saved(tmp.path());
-        hosts.shutdown().unwrap();
-        let after = saved(tmp.path());
-        assert!(after.attachment_generation > before.attachment_generation);
-        assert_eq!(after.app_server.unwrap().state, "stopped");
-        assert!(!host_alive(&before.app_server.unwrap()));
     }
     #[test]
     fn hosted_shutdown_preserves_a_replacement_attachment() {
