@@ -95,6 +95,9 @@ impl HostProcess {
             .filter(|s| !s.is_empty())
             .ok_or("unsupported app-server handshake")?
             .into();
+        if host.build != "0.153.4" {
+            return Err("unsupported app-server build; native input refused".into());
+        }
         rpc.write(&json!({"method":"initialized"}), guard)?;
         let (method, params) = match resume {
             Some(id) if !id.is_empty() => ("thread/resume", json!({"threadId":id, "cwd":cwd})),
@@ -403,7 +406,7 @@ def client(connection):
             result, error, approval = {}, None, None
             with lock:
                 if method == 'initialize':
-                    result = {'userAgent':'taurhaus_host/0.153.4', 'codexHome':root}
+                    result = {'userAgent':'taurhaus_host/'+os.environ.get('FAKE_BUILD','0.153.4'), 'codexHome':root}
                     if os.environ.get('FAKE_RUNTIME'):
                         with open(os.environ['FAKE_RUNTIME'], 'r+') as runtime:
                             fcntl.flock(runtime, fcntl.LOCK_EX)
@@ -558,6 +561,18 @@ with socket.socket(socket.AF_UNIX) as listener:
         host.transcript(&guard).unwrap();
         // Regression: 9b50346b checked the approval ID but not its thread identity.
         assert!(host.approval(&json!("permission-1"), true, &guard).is_err());
+    }
+
+
+    #[test]
+    fn fake_host_unknown_build_refuses_before_thread_creation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut launch = fixture(tmp.path());
+        launch.environment.insert("FAKE_BUILD".into(), "unreviewed".into());
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        // Regression: 9b50346b parsed any nonempty build as usable for native input.
+        assert!(HostProcess::launch(&launch, tmp.path(), &tmp.path().join("rpc.sock"), None, &guard).is_err());
+        assert!(!tmp.path().join("thread.json").exists());
     }
 
 }
