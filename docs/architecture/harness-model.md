@@ -161,7 +161,13 @@ Each change is a small PR with red-first regression tests naming the breaking co
 
 ## Owned Codex hosting (stage 5b, disabled pending pairing)
 
-Linux/WSL members opt in with `adapter_mode: "app_server"`; omission keeps panes. The existing launch/resume machinery resolves aliases, model, effort and explicit `CODEX_HOME`. The hosted render preserves account/permission/sandbox policy and refuses opaque wrappers, unsupported arguments and unnamed resume. Non-Linux opt-ins fail explicitly. `--dangerously-bypass-hook-trust` is incompatible with `app_server`: disable `codex_bypass_hook_trust` before opting in. Unsupported-argument refusals name the token; hosted hook trust remains unverified, so the flag is not silently dropped.
+At creation, initialize and add-agent accept optional seat `delivery`: omitted
+or `"tmux"` keeps the existing pane path; `"app_server"` writes
+`adapter_mode: "app_server"` on the member and launches from a fresh record.
+Only Codex on the Linux/WSL daemon supports hosting. The builder and add-agent
+form show **Delivery** only when the backend tool descriptor reports
+`hostingSupported: true`; fallback descriptors never enable it. Protocol 27
+(unreleased) makes this choice binding alongside canonical team messaging. The existing launch/resume machinery resolves aliases, model, effort and explicit `CODEX_HOME`. The hosted render preserves account/permission/sandbox policy and refuses opaque wrappers, unsupported arguments and unnamed resume. Non-Linux opt-ins fail explicitly. `--dangerously-bypass-hook-trust` is incompatible with `app_server`: disable `codex_bypass_hook_trust` before opting in. Unsupported-argument refusals name the token; hosted hook trust remains unverified, so the flag is not silently dropped.
 
 The daemon owns the child, private socket and persistent thread. `appServer` publishes contract, socket/thread/member/account, PID/start ticks, incarnation, build/host/configuration/trust/transport and lifecycle state with a new attachment generation in one compared commit. Startup becomes ready only after a recovery receipt. Stop publishes before killing; restart never adopts a PID or launches automatically. Controlled resume names the saved thread and account. After a daemon crash, a surviving child is published as `orphaned` and the conversation names its PID. The daemon never kills a recorded PID it does not own. For manual cleanup, verify that PID’s `/proc/<pid>/stat` start ticks still match `appServer.processStart`, terminate only that confirmed orphan, then stop and resume the member. A gone process becomes `unavailable`; named recovery remains possible.
 
@@ -171,7 +177,22 @@ Closing the pane closes a view; it does not stop the daemon-owned child. Resume 
 
 Published `hosted` status gates transcript/input/approval/cancel controls. The host lock revalidates attachment/root authority, excludes compaction through stdout/bookkeeping, and defers busy liveness. Ordinary operations get five seconds, cold launch thirty. Send starts an idle turn or steers an active one; pending recovery waits for the next idle turn, preserving the draft without queuing. The existing detector supplies compaction state; fallback prepends the recovery card to next-turn input. No new boundary is inferred from native output.
 
-Definite steer rejection permits a newly validated attempt; ambiguous input blocks replay. After stop, an explicit **abandon without replay** decision records the attachment generation and permits named relaunch without changing recovery receipts. Controlled opt-out rollback validates the dead child/root/account/thread, refuses unknown input or retained native attempts, and clears `appServer` and the retained TUI pane identity at a new fence, forcing plain-session recovery into a fresh pane. `hostRollback` retains old/new modes, opt-in, attachment tuple and unresolved attempts. Failed pane recovery retains that boundary; wrong-thread panes are cleaned up. Team-owned Mesh switching still needs the paired packet; hot conversion refuses.
+Definite steer rejection permits a newly validated attempt; ambiguous input blocks replay. After stop, an explicit **abandon without replay** decision records the attachment generation and permits named relaunch without changing recovery receipts. Controlled opt-out rollback validates the dead child/root/account/thread, refuses unknown input or retained native attempts, and closes the owned attached pane under `detach_tui` exclusion before clearing `appServer` and the retained TUI pane identity at a new fence, forcing plain-session recovery into a fresh pane. `hostRollback` retains old/new modes, opt-in, attachment tuple and unresolved attempts. Failed pane recovery retains that boundary; wrong-thread panes are cleaned up. Team-owned Mesh switching still needs the unbuilt paired packet; hot conversion
+refuses. On `delivery_owner: team`, direct rollback returns
+`app_server_rollback_on_team_owned_team: stop the seat, remove it, re-add it with delivery tmux`.
+Operational rollback is **stop → remove member → add agent with the same name and
+delivery tmux**. The replacement launches a plain pane with `terminalContract: 1`
+and no member daemon. It is a new seat, not a promise to resume the hosted thread.
+
+The paired record identities are `host: "taurhaus-daemon-owned-thread/1"`,
+`configuration: "strict-config/1"`, and `trust: "daemon-owned/1"`.
+`configurationDigest` retains the per-launch argument digest separately.
+These classes permit an exact compiled Mesh pin after the integration trial;
+they do not enable native delivery eligibility. Project instructions are allowed:
+`appServer.instructionSources` records the host's sources and one
+`hosted.instruction_sources.loaded` warning logs the thread ID and source count.
+The strict per-member view config still carries and reasserts the thread's model,
+effort, sandbox and approval policy.
 
 The Codex `0.153.4` transport pin is `unix-websocket`: HTTP/1.1 Upgrade with a random 16-byte key and verified RFC 6455 accept, then masked client text frames and unmasked server text frames. Each message is one JSON object without `jsonrpc`; `initialize` with `clientInfo` and `capabilities.experimentalApi: true` comes first, with per-connection request IDs. Fragmentation and ping/pong are supported; close, malformed frames and messages over 64 KiB fail closed. Every read/write uses the remaining host-operation deadline. Raw NDJSON produces EOF on this build (stage-5b regression `cadd533e`).
 
@@ -187,10 +208,9 @@ the effective thread/start or thread/resume response; only `auth.json` links to
 the selected account. No account config, instructions, hooks or skills are copied.
 The TUI config sets `project_doc_max_bytes = 0` to disable project instruction
 file discovery. It adds no personality, developer-instruction or project-trust
-entries. Host startup sends no extra instruction/config overrides; a nonempty or
-missing `instructionSources` response refuses attach with
-`host loaded unexpected instruction sources`. This remains fail-closed for projects
-whose host loads instruction files; the lane does not claim to suppress them via RPC.
+entries. Host startup sends no extra instruction/config overrides. Loaded host
+instruction sources are allowed and recorded; missing sources default to an empty
+list. The lane does not claim to suppress host project instructions via RPC.
 Workspace-write options are copied only when present and non-null. Approval enums
 are validated and normalized to config/request spelling, while settings comparisons
 retain the server's original wire spelling.

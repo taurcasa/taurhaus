@@ -5351,6 +5351,6 @@ fn seat_delivery_survives_ipc_to_daemon_mapping() {
         serde_json::to_value(mapped).unwrap()["delivery"],
         "app_server"
     );
-    assert_eq!(crate::daemon::protocol::PROTOCOL_VERSION, 27);
+    assert_eq!(taurhaus_lib::daemon::protocol::PROTOCOL_VERSION, 27);
     assert!(include_str!("../../daemon/protocol.rs").contains("seat `delivery` choice binding"));
 }

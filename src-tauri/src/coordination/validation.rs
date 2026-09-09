@@ -19,7 +19,7 @@ pub(crate) fn validate_member_configuration(
         .and_then(serde_json::Value::as_str)
         == Some("app_server")
     {
-        if !crate::session_scanner::launch::HostedLaunch::supports(member.cli_tool) {
+        if !taurhaus_lib::session_scanner::launch::HostedLaunch::supports(member.cli_tool) {
             return Err(invalid(
                 "delivery",
                 format!(

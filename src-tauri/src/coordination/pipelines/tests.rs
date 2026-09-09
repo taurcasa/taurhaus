@@ -8759,7 +8759,7 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
     assert!(report.resumed, "{}", report.message);
     assert_eq!(report.pane_id.as_deref(), Some("test-pane-2"));
     assert_ne!(report.pane_id, before.pane_id);
-    // Regression: efb1ddb8 cleared the retained TUI identity without closing its owned pane.
+    // Regression: 9d358935 cleared the retained TUI identity without closing its owned pane.
     assert!(runtime.calls().iter().any(|c| matches!(c,
         RuntimeCall::KillPane { pane_id } if Some(pane_id) == before.pane_id.as_ref())));
     assert!(runtime.calls().iter().all(|c| !matches!(c,
@@ -9325,4 +9325,93 @@ fn seat_delivery_canonical_creation_and_operational_rollback() {
         RuntimeCall::SpawnDaemon { .. } | RuntimeCall::SpawnDaemonAtRoot { .. }
     )));
     assert!(plain.daemon_pid.is_none());
+
+    orchestrator
+        .remove_member("canonical", &name, None)
+        .unwrap();
+    let before_hosted_add = runtime.calls().len();
+    // The fake owns one thread per account; a fresh fixture models the replacement seat.
+    let account = tmp.path().join("added-account");
+    fs::create_dir(&account).unwrap();
+    let added_launch = crate::coordination::hosted_process::tests::fixture(&account);
+    commands.codex.fresh = format!(
+        "CODEX_HOME='{}' '{}' --sandbox read-only --ask-for-approval never",
+        account.display(),
+        added_launch.program.display()
+    );
+    commands
+        .account_selector_dirs
+        .insert("CODEX_HOME".into(), account);
+    let added = orchestrator
+        .add_agent_to_team_with_cli_commands(
+            &AddAgentRequest {
+                team_name: "canonical".into(),
+                agent: request.agents[0].clone(),
+            },
+            &commands,
+        )
+        .unwrap();
+    assert!(added.failed_step.is_none(), "{added:?}");
+    let hosted = MemberRuntimeStore::load(tmp.path(), "canonical", &name).unwrap();
+    assert!(hosted.app_server.is_some());
+    assert!(hosted.daemon_pid.is_none());
+    assert!(!runtime.calls()[before_hosted_add..]
+        .iter()
+        .any(|c| matches!(
+            c,
+            RuntimeCall::SpawnDaemon { .. } | RuntimeCall::SpawnDaemonAtRoot { .. }
+        )));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn seat_delivery_hosted_lead_preserves_canonical_identity_and_legacy_default() {
+    for canonical in [true, false] {
+        let tmp = TempDir::new().unwrap();
+        let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator =
+            new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+        let mut commands = CliCommandSettings::default();
+        commands.codex.fresh = format!(
+            "CODEX_HOME='{}' '{}' --sandbox read-only --ask-for-approval never",
+            tmp.path().display(),
+            launch.program.display()
+        );
+        commands.codex_bypass_hook_trust = false;
+        commands
+            .account_selector_dirs
+            .insert("CODEX_HOME".into(), tmp.path().into());
+        let mut request = canonical_review_request(&tmp);
+        if !canonical {
+            request.messaging = None;
+        }
+        request.lead.delivery = Some("app_server".into());
+        let report = orchestrator
+            .initialize_team_with_cli_commands(&request, &commands)
+            .unwrap();
+        assert!(report.failed_step.is_none(), "{report:?}");
+        let config = TeamConfigStore::load(tmp.path(), "canonical").unwrap();
+        assert_eq!(config.members[0].extra["adapter_mode"], "app_server");
+        let record = MemberRuntimeStore::load(tmp.path(), "canonical", "lead").unwrap();
+        assert!(record.app_server.is_some());
+        assert!(record.daemon_pid.is_none());
+        assert!(!runtime.calls().iter().any(|c| matches!(
+            c,
+            RuntimeCall::SpawnDaemon { .. } | RuntimeCall::SpawnDaemonAtRoot { .. }
+        )));
+    }
+}
+
+#[test]
+fn seat_delivery_tmux_and_omission_produce_identical_member_config() {
+    let setup = setup_config("seat", "codex", "gpt-6-astra", "/scratch");
+    let before = super::helpers::member_from_agent_setup(&setup, MemberRole::Agent).unwrap();
+    let mut explicit = setup;
+    explicit.delivery = Some("tmux".into());
+    let after = super::helpers::member_from_agent_setup(&explicit, MemberRole::Agent).unwrap();
+    assert_eq!(
+        serde_json::to_vec(&before).unwrap(),
+        serde_json::to_vec(&after).unwrap()
+    );
 }

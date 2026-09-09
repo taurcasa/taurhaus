@@ -820,8 +820,12 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_instruction_sources_warn_and_continue() {
-        // Regression: b4a4b2dd refused every real project with loaded AGENTS.md instructions.
+        // Regression: 9d358935 refused every real project with loaded AGENTS.md instructions.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().unwrap();
+        let sink =
+            taurhaus_lib::logging::LogFileState::new(tmp.path().join("events.jsonl")).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
         let mut launch = fixture(tmp.path());
         launch.environment.insert(
             "FAKE_POLICY".into(),
@@ -838,6 +842,16 @@ with socket.socket(socket.AF_UNIX) as listener:
         assert_eq!(host.attach_config["model_reasoning_effort"], "low");
         assert_eq!(host.attach_config["sandbox_mode"], "read-only");
         assert_eq!(host.attach_config["approval_policy"], "never");
+        sink.flush_for_test().unwrap();
+        let events = std::fs::read_to_string(tmp.path().join("events.jsonl")).unwrap();
+        assert_eq!(
+            events.matches("hosted.instruction_sources.loaded").count(),
+            1
+        );
+        assert!(
+            !events.contains("AGENTS.md"),
+            "source contents/paths are not logged"
+        );
     }
 
     #[test]

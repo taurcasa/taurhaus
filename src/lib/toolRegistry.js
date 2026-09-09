@@ -28,6 +28,7 @@ const CAPABILITY_DEFAULTS = Object.freeze({
 export const FALLBACK_TOOLS = Object.freeze([
   {
     id: 'claude',
+    hostingSupported: false,
     label: 'Claude',
     displayName: 'Claude Code',
     accent: 'emerald',
@@ -104,6 +105,7 @@ export const FALLBACK_TOOLS = Object.freeze([
   },
   {
     id: 'agy',
+    hostingSupported: false,
     label: 'Antigravity',
     displayName: 'Antigravity CLI',
     accent: 'google-blue',
@@ -139,6 +141,7 @@ export const FALLBACK_TOOLS = Object.freeze([
   },
   {
     id: 'grok',
+    hostingSupported: false,
     label: 'Grok',
     displayName: 'Grok CLI',
     accent: 'graphite',
