@@ -404,6 +404,7 @@ impl CoordinationOrchestrator {
                     effort_resume_failure: None,
                     launch_account: Default::default(),
                     extra: Default::default(),
+                    ..Default::default()
                 },
             )?;
 
@@ -451,18 +452,7 @@ impl CoordinationOrchestrator {
         runtime_state.health = Some(HealthState::Healthy);
         self.commit_member_runtime(
             context,
-            RuntimeCommitPatch {
-                pane_id: Some(Some(pane_id.clone())),
-                pane_pid: Some(runtime_state.pane_pid),
-                pane_start_time: Some(runtime_state.pane_start_time),
-                session_id: Some(None),
-                jsonl_path: Some(None),
-                daemon_pid: Some(None),
-                attached_at: Some(runtime_state.attached_at),
-                health: Some(HealthState::Healthy),
-                launch_account: Some(runtime_state.launch_account.clone()),
-                applied_effort: Some(runtime_state.applied_effort.clone()),
-            },
+            RuntimeCommitPatch::from_pending_runtime_state(runtime_state),
         )?;
         Ok(pane_id)
     }

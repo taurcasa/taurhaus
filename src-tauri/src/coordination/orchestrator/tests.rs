@@ -2790,6 +2790,7 @@ fn startup_reconcile_removes_orphan_runtime_records() {
         effort_resume_failure: None,
         launch_account: Default::default(),
         extra: Default::default(),
+        ..Default::default()
     };
     MemberRuntimeStore::save(tmp.path(), team_name, "orphan-agent", &orphan_runtime)
         .expect("orphan runtime saved");
@@ -5546,8 +5547,8 @@ fn add_agent_to_team_full_success() {
             "launch_session",
             "join_mesh",
             "start_daemon",
-            "send_onboarding",
             "update_roster",
+            "send_onboarding",
         ]
     );
 
@@ -5785,8 +5786,8 @@ fn add_agent_step_ordering_is_stable() {
             "launch_session",
             "join_mesh",
             "start_daemon",
-            "send_onboarding",
             "update_roster",
+            "send_onboarding",
         ]
     );
 }

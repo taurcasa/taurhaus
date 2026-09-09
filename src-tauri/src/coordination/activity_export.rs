@@ -707,7 +707,7 @@ fn activity_snapshot_dir(teams_dir: &Path, team_name: &str) -> std::path::PathBu
     teams_dir.join(team_name).join("state").join("activity")
 }
 
-fn activity_snapshot_path(
+pub(crate) fn activity_snapshot_path(
     teams_dir: &Path,
     team_name: &str,
     member_name: &str,
@@ -823,6 +823,7 @@ mod tests {
                 effort_resume_failure: None,
                 launch_account: Default::default(),
                 extra: Default::default(),
+                ..Default::default()
             },
         )
         .expect("runtime saved");

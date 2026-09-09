@@ -45,6 +45,10 @@ const TAURHAUS_TMUX_SESSION_NAME: &str = "taurhaus";
 pub(crate) const MESH_CONTROL_TOKEN_ENV: &str = "MESH_CONTROL_TOKEN";
 
 pub trait CoordinationRuntime: Send + Sync {
+    fn tmux_address(&self, _pane: &str) -> Result<Option<(PathBuf, String)>, CoordinationError> {
+        Ok(None)
+    }
+
     fn create_aitx_pane(
         &self,
         project_id: &str,
@@ -724,6 +728,7 @@ mod tests {
             effort_resume_failure: None,
             launch_account: Default::default(),
             extra: Default::default(),
+            ..Default::default()
         }
     }
 

@@ -60,6 +60,7 @@ pub(crate) type ResumeProgressEmitter<'a> =
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct RuntimeCommitPatch {
+    pub(super) activation: Option<(String, Option<PathBuf>)>,
     pub(super) pane_id: Option<Option<String>>,
     pub(super) pane_pid: Option<Option<u32>>,
     pub(super) pane_start_time: Option<Option<u64>>,
@@ -75,6 +76,17 @@ pub(super) struct RuntimeCommitPatch {
 impl RuntimeCommitPatch {
     pub(super) fn from_pending_runtime_state(state: &PendingRuntimeState) -> Self {
         Self {
+            activation: state.attached_at.map(|at| {
+                (
+                    crate::coordination::recovery_card::digest(&(
+                        &state.pane_id,
+                        state.pane_pid,
+                        state.pane_start_time,
+                        at,
+                    )),
+                    state.harness_account_root.clone(),
+                )
+            }),
             pane_id: Some(state.pane_id.clone()),
             pane_pid: Some(state.pane_pid),
             pane_start_time: Some(state.pane_start_time),
@@ -94,6 +106,17 @@ impl RuntimeCommitPatch {
         health: HealthState,
     ) -> Self {
         Self {
+            activation: state.attached_at.map(|at| {
+                (
+                    crate::coordination::recovery_card::digest(&(
+                        &state.pane_id,
+                        state.pane_pid,
+                        state.pane_start_time,
+                        at,
+                    )),
+                    state.harness_account_root.clone(),
+                )
+            }),
             pane_id: Some(state.pane_id.clone()),
             pane_pid: Some(state.pane_pid),
             pane_start_time: Some(state.pane_start_time),
@@ -238,6 +261,7 @@ pub(super) fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {
         effort_resume_failure: None,
         launch_account: Default::default(),
         extra: Default::default(),
+        ..Default::default()
     }
 }
 

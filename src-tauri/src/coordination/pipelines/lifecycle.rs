@@ -272,6 +272,30 @@ impl CoordinationOrchestrator {
         patch: RuntimeCommitPatch,
         expected: &MemberRuntimeSnapshot,
     ) -> Result<RuntimeCommitOutcome, CoordinationError> {
+        // Resolve/probe before either record lock. Publish all facts and the
+        // existing recovery activation counter in the same record replacement.
+        let attachment = if patch.activation.is_some() {
+            let root = self.root_registry.resolve(&context.team_name)?;
+            let config = TeamConfigStore::load(&root, &context.team_name)?;
+            let root = std::fs::canonicalize(root)?;
+            Some(crate::coordination::stores::runtime::LaunchRoot {
+                claude_dir: root
+                    .parent()
+                    .ok_or_else(|| {
+                        CoordinationError::Validation("teams root has no parent".into())
+                    })?
+                    .to_path_buf(),
+                teams_dir: root,
+                team_incarnation_id: config.team_incarnation_id,
+                root_authority_revision: self.root_registry.revision(&context.team_name)?,
+            })
+        } else {
+            None
+        };
+        let address = match patch.pane_id.as_ref().and_then(Option::as_deref) {
+            Some(pane) => self.runtime.tmux_address(pane)?,
+            None => None,
+        };
         let guard = acquire_team_lock(&self.teams_dir, &context.team_name)?;
         let reached_a_level = patch
             .applied_effort
@@ -286,6 +310,35 @@ impl CoordinationOrchestrator {
             &context.member.name,
             expected,
             |runtime| {
+                if let Some((intent, account_root)) = patch.activation.as_ref() {
+                    runtime.reserve_activation(intent);
+                    runtime.recovery.reserved_attachment = patch.attached_at.flatten();
+                    runtime.recovery.reserved_effort = patch.applied_effort.clone().flatten();
+                    runtime.recovery.harness_account_root = account_root.as_ref().map(|p| {
+                        crate::provider::path::normalize_project_path(&p.to_string_lossy())
+                    });
+                    runtime.recovery.launch_namespace = Some(
+                        if cfg!(target_os = "windows") {
+                            "wsl"
+                        } else {
+                            "native"
+                        }
+                        .into(),
+                    );
+                    runtime.launch_root = attachment;
+                }
+                if let Some((socket, session)) = address {
+                    runtime.tmux_socket = Some(socket);
+                    runtime.tmux_session_id = Some(session);
+                }
+                runtime.harness = Some(context.member.cli_tool);
+                runtime.activity_snapshot_path = Some(
+                    crate::coordination::activity_export::activity_snapshot_path(
+                        &self.teams_dir,
+                        &context.team_name,
+                        &context.member.name,
+                    ),
+                );
                 runtime.cli_tool.get_or_insert(context.member.cli_tool);
                 if runtime.project_path.is_none() {
                     runtime.project_path = Some(context.member.project_path.clone());

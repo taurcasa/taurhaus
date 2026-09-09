@@ -129,6 +129,7 @@ impl TeamMemberView {
             effort_resume_failure: None,
             launch_account: self.launch_account.clone(),
             extra: Default::default(),
+            ..Default::default()
         })
     }
 
@@ -325,6 +326,7 @@ fn member_runtime_record_from_session(session: &RuntimeSession) -> MemberRuntime
         effort_resume_failure: None,
         launch_account: Default::default(),
         extra: Default::default(),
+        ..Default::default()
     }
 }
 
@@ -419,6 +421,7 @@ mod tests {
                 effort_resume_failure: None,
                 launch_account: Default::default(),
                 extra: Default::default(),
+                ..Default::default()
             },
         )
         .expect("save runtime");
