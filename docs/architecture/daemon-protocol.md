@@ -4,7 +4,7 @@ The daemon is a companion process that handles filesystem access, process scanni
 
 ![Daemon Protocol](../images/daemon-protocol.jpg)
 
-> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 55 callable methods (56 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 25; the tables below are authoritative.
+> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 55 callable methods (56 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 26; the tables below are authoritative.
 
 ## Why a daemon
 
