@@ -524,20 +524,21 @@ export function canonicalMessagingSupported(lock = meshLock) {
   return lock?.git_commit === '4388d6a1590e3072c9dfdc61ccd08b00bff2508b'
 }
 
+// Keep this literal valid JSON: the Rust Mesh contract reads this same policy.
 export const DEFAULT_CANONICAL_POLICY = Object.freeze({
-  capture_scope: 'mesh-producers-only',
-  synthetic_disposable: true,
-  dm_horizon_days: 7,
-  task_horizon_days: 30,
-  retry_horizon_days: 30,
-  archive_owner: 'lead',
-  archive_access: 'captured-audience',
-  closure: 'manual-disposal-after-evidence-export',
-  purge_implemented: false,
-  canonical_writers: 'mesh-only',
-  approved_by: 'taurhaus-operator',
-  inactive_horizon_days: 14,
-  review_horizon_days: 30,
+  "capture_scope": "mesh-producers-only",
+  "synthetic_disposable": true,
+  "dm_horizon_days": 7,
+  "task_horizon_days": 30,
+  "retry_horizon_days": 30,
+  "archive_owner": "lead",
+  "archive_access": "captured-audience",
+  "closure": "manual-disposal-after-evidence-export",
+  "purge_implemented": false,
+  "canonical_writers": "mesh-only",
+  "approved_by": "taurhaus-operator",
+  "inactive_horizon_days": 14,
+  "review_horizon_days": 30
 })
 
 export function buildInitializationRequest(

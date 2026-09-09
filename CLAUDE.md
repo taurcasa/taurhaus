@@ -162,6 +162,7 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `bunx tauri bu
 | `just infographics-dry-run` | Show which infographics are stale and what a regeneration run would cost. |
 | `just test-fast` | Fast iteration lane: Rust compile check (`cargo check --tests`) + frontend unit tests. |
 | `just test-mesh-contracts` | Linux operator gate for Mesh telemetry/wait changes; requires lock-matching Mesh (`MESH_CONTRACT_BIN` or `~/.local/bin/mesh`), Python 3 and `cc`. Default Rust unit/integration recipes exclude these binary fixtures; unit prints a NOT RUN notice. See [telemetry contracts](docs/operations/telemetry-contracts.md). |
+| `just test-canonical-mesh-contract` | Explicit canonical candidate gate (`MESH_CONTRACT_BIN` required); isolated creation, config round-trip and lead authorization. See [telemetry contracts](docs/operations/telemetry-contracts.md). |
 | `just check-quick` | Fast feedback for iteration: Rust format auto-fix (`cargo fmt`) + Rust compilation (`cargo check --tests`) + frontend typecheck + frontend unit tests. |
 | `just check` | Full quality gate, run as two parallel lanes that are joined on every lane's status: `fmt`, then Rust (`lint-rust` + `test-rust`) beside frontend (`lint-frontend` + `lint-workflows` + `typecheck` + `test-frontend`). Output is tee'd to `.check-logs/` (override with `TAURHAUS_CHECK_LOG_DIR`). Team-lead serialized runs or pre-release only. |
 | `just build-daemon` | Builds the WSL daemon binary (Linux target, runs in WSL2) |

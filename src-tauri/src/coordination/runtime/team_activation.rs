@@ -43,7 +43,26 @@ fn identity_args(team: &str, lead: &str, teams: &Path) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::coordination::stores::TeamConfigStore;
-    use serde_json::json;
+
+    fn frontend_canonical_policy() -> serde_json::Value {
+        // The shipping literal is valid JSON so this lane validates exactly the UI policy.
+        let source = include_str!("../../../../src/lib/components/meshTabUtils.js");
+        let literal = source
+            .split_once("export const DEFAULT_CANONICAL_POLICY = Object.freeze(")
+            .unwrap()
+            .1
+            .split_once("\n})")
+            .unwrap()
+            .0;
+        serde_json::from_str(&format!("{literal}\n}}"))
+            .expect("keep the shared policy literal valid JSON")
+    }
+
+    // Regression: 796bba0e duplicated the UI policy in the candidate contract.
+    #[test]
+    fn canonical_review_contract_reads_shipping_policy() {
+        assert!(frontend_canonical_policy().is_object());
+    }
 
     // Regression: b643834d retargeted parentless roots into an unintended nested teams directory.
     #[test]
@@ -79,14 +98,7 @@ mod tests {
         let teams = root.path().join("teams");
         std::fs::create_dir(&teams).unwrap();
         let policy_path = teams.join("policy.json");
-        let policy = json!({
-            "capture_scope": "mesh-producers-only", "synthetic_disposable": true,
-            "dm_horizon_days": 7, "task_horizon_days": 30, "retry_horizon_days": 30,
-            "archive_owner": "lead", "archive_access": "captured-audience",
-            "closure": "manual-disposal-after-evidence-export", "purge_implemented": false,
-            "canonical_writers": "mesh-only", "approved_by": "taurhaus-operator",
-            "inactive_horizon_days": 14, "review_horizon_days": 30
-        });
+        let policy = frontend_canonical_policy();
         std::fs::write(&policy_path, policy.to_string()).unwrap();
         let run = |args: &[String]| {
             let output = std::process::Command::new(&binary)
@@ -124,6 +136,15 @@ mod tests {
         let authority_before = std::fs::read(&authority).unwrap();
         let mut config = TeamConfigStore::load(&teams, "trial").unwrap();
         config.description = Some("adopted by Taurhaus".into());
+        config.members[0].role = crate::coordination::domain::MemberRole::Lead;
+        config.members[0].cli_tool = crate::session_scanner::cli_tool::CliTool::Codex;
+        config.members[0].model = Some("gpt-6-astra".into());
+        config.members[0].project_path = root.path().into();
+        let mut builder = config.members[0].clone();
+        builder.name = "builder".into();
+        builder.role = crate::coordination::domain::MemberRole::Agent;
+        builder.extra.clear();
+        config.members.push(builder);
         TeamConfigStore::save(&teams, "trial", &config).unwrap();
         let after: serde_json::Value =
             serde_json::from_slice(&std::fs::read(config_path).unwrap()).unwrap();
@@ -146,5 +167,29 @@ mod tests {
             after["members"][0]["agentId"],
             before["members"][0]["agentId"]
         );
+        // Mesh itself must still authenticate the adopted lead after Taurhaus saves.
+        // No seats are launched here: the expected refusal is the missing runtime.
+        let credential: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(teams.join("trial/state/control_auth/lead.json")).unwrap(),
+        )
+        .unwrap();
+        let output = std::process::Command::new(&binary)
+            .env_clear()
+            .env("HOME", root.path())
+            .env("PATH", "/usr/bin:/bin")
+            .env("MESH_CONTROL_TOKEN", credential["token"].as_str().unwrap())
+            .current_dir(root.path())
+            .args(delivery_args("trial", "lead", &teams))
+            .output()
+            .unwrap();
+        let refusal = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success());
+        assert!(
+            refusal.contains("pending: runtime lead:")
+                && refusal.contains("No such file or directory"),
+            "unexpected refusal: {}",
+            refusal.replace(credential["token"].as_str().unwrap(), "[redacted]")
+        );
+        assert!(!refusal.contains("is not authorized for team-wide control"));
     }
 }

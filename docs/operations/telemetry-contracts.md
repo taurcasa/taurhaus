@@ -43,8 +43,10 @@ It requires an explicitly selected canonical-capable binary; it never resolves
 `~/.local/bin/mesh`. Missing selection reports NOT RUN and exits nonzero; the
 ordinary unit lane reports NOT RUN and leaves this test ignored. The child runs
 with an empty environment, scratch HOME/cwd and explicit tempdir `--claude-dir`;
-it only checks help and creates a disposable team, with no harness, daemon or
-tmux launch. A passed creation contract does not prove live delivery eligibility.
+It checks help, creates a disposable team using the shipping frontend policy,
+and verifies that Mesh still authenticates the lead after Taurhaus saves the
+config (delivery refuses only for the missing runtime record). No harness, daemon
+or tmux is launched. A passed creation contract does not prove live delivery eligibility.
 
 ## Reader decisions
 
