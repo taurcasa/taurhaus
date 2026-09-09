@@ -300,6 +300,16 @@ impl HostedMembers {
         Ok(())
     }
 
+    pub fn shutdown(&self) -> Result<(), String> {
+        let seats: Vec<_> = self.seats.lock().map_err(|_| "host registry unavailable")?.iter().map(|(key, cell)| (key.clone(), cell.clone())).collect();
+        let mut failure = None;
+        for ((root, team, member), cell) in seats {
+            let active = match cell.try_lock() { Ok(seat) => seat.is_some(), Err(_) => { failure = Some("host member busy during shutdown".to_string()); continue; } };
+            if active { if let Err(error) = self.stop(&TeamRootRegistry::new(root), &team, &member) { failure = Some(error); } }
+        }
+        failure.map_or(Ok(()), Err)
+    }
+
     pub fn stop(
         &self,
         registry: &TeamRootRegistry,
@@ -533,6 +543,21 @@ pub(crate) mod tests {
         std::fs::write(path, config.to_string()).unwrap();
         assert!(hosts.operation(&registry, "team", "seat", record.attachment_generation, "input", json!({"text":"wrong incarnation"})).is_err());
         hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+
+    #[test]
+    fn hosted_daemon_shutdown_publishes_before_owned_children_exit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = seat(tmp.path());
+        let hosts = HostedMembers::default();
+        hosts.launch(&registry, "team", "seat", &fixture(tmp.path())).unwrap();
+        let before = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        hosts.shutdown().unwrap();
+        let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        assert!(after.attachment_generation > before.attachment_generation);
+        assert_eq!(after.app_server.unwrap().state, "stopped");
+        assert!(taurhaus_lib::platform::process_start_ticks(before.app_server.unwrap().process_id).is_none());
     }
 
 }

@@ -8523,11 +8523,11 @@ fn hosted_member_liveness_and_effort_relaunch_never_use_a_pane() {
         crate::coordination::roster::get_team_roster_with_runtime_sessions(tmp.path(), "team", &[])
             .unwrap();
     assert_eq!(roster[0].session_id.as_deref(), Some("owned-thread"));
+    // Regression: fa18910c lost appServer when roster teardown reconstructed runtime.
+    let attachment = roster[0].runtime_record().unwrap();
+    assert!(attachment.app_server.is_some());
     let result = orchestrator.teardown_member_resources_best_effort(
-        "team",
-        "seat",
-        Some(tmp.path()),
-        Some(&before),
+        "team", "seat", Some(tmp.path()), Some(&attachment),
     );
     assert!(result
         .steps
