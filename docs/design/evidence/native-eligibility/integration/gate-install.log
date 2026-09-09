@@ -1,0 +1,5 @@
+bun install v1.3.11 (af24e281)
+
+$ node -e "const ua=process.env.npm_config_user_agent||''; if(!ua.includes('bun/')){console.error('Use bun install (not npm/pnpm/yarn) in taurhaus'); process.exit(1)}"
+
+Checked 818 installs across 899 packages (no changes) [32.00ms]

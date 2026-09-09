@@ -1,0 +1,6 @@
+sh: 1: node: not found
+error: Backtick failed with exit code 127
+ ——▶ justfile:7:24
+  │
+7 │ windows_bun_version := `node -p 'require("./package.json").packageManager.split("@").slice(1).join("@")'`
+  │                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

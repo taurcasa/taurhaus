@@ -1,0 +1,12 @@
+{
+  "basis": "Reconstructed verbatim from executed controller and recorded root, not an additional execution.",
+  "shell": "/bin/bash",
+  "set": "-eu",
+  "commands": [
+    "/tmp/th-int-ssxg881f/home/.local/bin/mesh --claude-dir /tmp/th-int-ssxg881f/claude --team integration --name lead team create --messaging-canonical --isolated --retention-policy /tmp/th-int-ssxg881f/policy.json",
+    "/tmp/th-int-ssxg881f/home/.local/bin/mesh --claude-dir /tmp/th-int-ssxg881f/claude --team integration --name lead team delivery --owner team"
+  ],
+  "failing_command": 2,
+  "mesh_exit": null,
+  "exit_evidence": "Shell wait status is not exposed by launch_session; pane shows Mesh error, setup success sentinel absent, controller exit 1."
+}
