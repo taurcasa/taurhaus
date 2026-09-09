@@ -1,0 +1,50 @@
+{
+  "outcome": {
+    "report": {
+      "failed_step": "launch_host",
+      "member_name": "seat",
+      "message": "Conflict: app_server_switch_requires_5b_recoverable_relaunch_packet",
+      "pane_id": null,
+      "resumed": false,
+      "retryable": true,
+      "reused_pane": false,
+      "steps": [
+        {
+          "message": "request validated",
+          "status": "succeeded",
+          "step": "validate"
+        },
+        {
+          "message": "member and runtime state loaded",
+          "status": "succeeded",
+          "step": "load_member"
+        },
+        {
+          "message": "Conflict: app_server_switch_requires_5b_recoverable_relaunch_packet",
+          "status": "failed",
+          "step": "launch_host"
+        }
+      ],
+      "succeeded_steps": [
+        "validate",
+        "load_member"
+      ],
+      "team_name": "integration",
+      "warnings": []
+    },
+    "status": "completed"
+  },
+  "run_id": "resume_9047a57f21c549a998fc512834b5cdb0",
+  "steps": [
+    {
+      "message": null,
+      "status": "running",
+      "step": "prepare_member"
+    },
+    {
+      "message": "member request and runtime state prepared",
+      "status": "succeeded",
+      "step": "prepare_member"
+    }
+  ]
+}

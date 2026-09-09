@@ -1,7 +1,8 @@
 """Read-only audit of retained attempt 2 evidence and owned-process cleanup."""
-import json, re, socket, subprocess
+import json, os, re, socket, subprocess
 from pathlib import Path
-OUT = Path(__file__).parent / "attempt2"
+label = os.environ.get("TRIAL_EVIDENCE_LABEL", "attempt2")
+OUT = Path(__file__).parent / label
 RUN = OUT / "run"
 identities = json.loads((RUN / "identities.json").read_text())
 live = []
@@ -41,14 +42,21 @@ gate_root = Path(gate_isolation["environment"]["HOME"]).parent
 assert not live and port_closed and socket_closed and not root.exists()
 assert not hygiene and not mesh_status and not gate_root.exists()
 assert report["failed_step"] is None and steps.index("launch_sessions") < steps.index("opt_in_delivery")
-assert resume["failed_step"] == "load_member" and not resume["resumed"]
+expected_step = "load_member" if label == "attempt2" else "launch_host"
+assert resume["failed_step"] == expected_step and not resume["resumed"]
+if expected_step == "launch_host":
+    before = json.loads((RUN / "before-stop.json").read_text())
+    after = json.loads((RUN / "after-stop.json").read_text())
+    assert after["health"] == "session_dead" and before["paneId"] == after["paneId"]
+    assert next(row for row in rows if row["kind"] == "stop_verified")["pane_absent"]
+    assert "app_server_switch_requires_5b_recoverable_relaunch_packet" in resume["message"]
 assert not any(gates.values())
 result = {"owned_identities_checked":len(identities), "surviving_owned_identities":live,
     "root_removed":not root.exists(), "auth_removed":not (root / "codex/auth.json").exists(),
     "private_port":port, "port_closed":port_closed, "tmux_socket_closed":socket_closed,
     "mesh_worktree_clean":not mesh_status, "gate_root_removed":not gate_root.exists(),
     "evidence_hygiene_issues":hygiene, "initialize_passed":True,
-    "launch_before_opt_in":True, "step_1":"inconclusive: online-seat resume refused before hosted launch",
+    "launch_before_opt_in":True, "step_1":resume["message"],
     "steps_2_through_7":"not run", "gates":gates, "product_files_changed":[],
     "model_turns_observed":0, "model_spend_observed_usd":0}
 (OUT / "final-verification.json").write_text(json.dumps(result, indent=2) + "\n")

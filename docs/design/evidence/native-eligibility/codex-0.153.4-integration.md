@@ -407,3 +407,153 @@ Deviations and limits:
 
 Retained text pane captures and the contract-test log omit trailing blank lines;
 full pane output remains in the event JSONL.
+
+## Attempt 2 continuation — stop/reconcile succeeds; step 1 host switch refused
+
+2026-09-10, newly authorized by the user's instruction to continue from the
+current tree. Prior results and their commits remain intact. **Step 1 FAIL at
+`launch_host`; native eligibility remains disabled.** This continuation corrects
+the previous online-seat resume mistake: it calls the production `stop_session`
+RPC, waits for that owned pane to disappear, then calls
+`coordination.reconcile_live_presence` and verifies `health: session_dead` before
+setting the scratch member opt-in and resuming. The resume now passes
+`load_member` and reaches the host, which refuses:
+
+```text
+Conflict: app_server_switch_requires_5b_recoverable_relaunch_packet
+```
+
+This is an observed activation guard, not the previous controller prerequisite
+failure. It still does not test the app-server process or attached TUI: refusal
+precedes `HostProcess::launch`. No identity was erased by the controller to get
+past it. The user limited product changes to the two recorded defects (plus a
+registry entry if needed); a recoverable activation/switch packet is additional
+product scope. The trial stopped here, as the original stop-on-failure rule
+requires. Neither instruction-source refusal nor rollback pane leak was reached.
+
+| Step | Continuation outcome | Evidence |
+| --- | --- | --- |
+| 1. Daemon-owned host and attached strict TUI | **FAIL: activation refused** | Canonical initialize passes; daemon stops the pane and reconciles offline; resume reaches `launch_host` and returns the named switch-packet refusal. No host/thread/socket published. |
+| 2. Idle Mesh input and explicit read | **NOT RUN** | No send, native input, marker reply or native receipt. |
+| 3. Active steer | **NOT RUN** | No model turn or expectedTurnId. |
+| 4. Operator/socket interleave and host exclusion | **NOT RUN** | Stop used terminal exclusion; this is not proof of mutual host-operation exclusion. |
+| 5. Compaction | **NOT RUN** | Startup inbox acceptance does not establish compaction recovery. |
+| 6. Restart | **NOT RUN** | Fresh scratch run is not the daemon restart experiment. |
+| 7. Rollback | **NOT RUN** | No hosted attachment. Final owned-process cleanup passes separately. |
+
+### Continuation commands and S-runtime identities
+
+[Exact controller](integration/continuation-controller.py),
+[event JSONL](integration/attempt2-continuation/run/events.jsonl),
+[initialize report](integration/attempt2-continuation/run/initialize-result.json),
+[resume report](integration/attempt2-continuation/run/resume-result.json),
+[daemon log](integration/attempt2-continuation/run/daemon.log).
+Source pair: Taurhaus **`6ff97a25`** / canonical implementation **`06d1267b`**,
+protocol **27**; Mesh **`4388d6a`**. Both rebuilt locally; both builds exit **0**,
+each Cargo preflight exit **1**, no competing Cargo. Temporary descriptor diff
+still changes only 0.153.4 `disposition: trial`, `enabled: true`.
+
+Scratch root **`/tmp/th-int-4mx35359`**, private port **30058**; marker
+**`68573aa36d40ed95`**, never submitted. The same credential isolation, private
+tmux and PID namespace were used. The member project again contains a committed
+short AGENTS.md; only auth.json was copied into the otherwise-empty Codex home.
+Member model **gpt-5.6-luna**, effort **low**; Claude lead remains credential-free
+and takes no model turn. Binary digests are `events.jsonl:1–4`.
+
+Exact operation order and request IDs:
+
+1. `coordination.initialize_team`, request `50031efd220fdbcb`, run
+   `init_3de2ad0682bf4320a7e2210ddb8fa9e7` — all nine stages succeeded, including
+   launch before delivery opt-in (`events.jsonl:18–23`). Uses the unchanged
+   builder `DEFAULT_CANONICAL_POLICY` through the production RPC.
+2. `stop_session`, request `f1d2cf681888d633`, params
+   `{"tmux_pane":"%2","cli_tool":"codex"}` (`events.jsonl:30`). Private tmux
+   pane enumeration then confirms `%2` absent. The daemon's graceful-exit and
+   pane teardown messages are in the daemon log.
+3. `coordination.reconcile_live_presence`, request `4d905e5cd619d95e`, params
+   `{"team_name":"integration"}` (`events.jsonl:42`). Saved
+   [before-stop](integration/attempt2-continuation/run/before-stop.json) and
+   [after-stop](integration/attempt2-continuation/run/after-stop.json) records show
+   health changed from `healthy` to `session_dead`, while paneId **`%2`**, panePid
+   **134**, paneStartTime **21676363**, terminalContract **1** and attachment
+   generation **1** were retained. Session ID is null, appServer absent.
+4. Scratch member config `adapter_mode: app_server`, then
+   `coordination.resume_member`, request `7e6dd1af11606534`, run
+   `resume_9047a57f21c549a998fc512834b5cdb0` (`events.jsonl:46`). Result:
+
+```json
+{"failed_step":"launch_host","succeeded_steps":["validate","load_member"],"resumed":false,"message":"Conflict: app_server_switch_requires_5b_recoverable_relaunch_packet"}
+```
+
+`events.jsonl:55` records the immediate stop. The source explanation is now
+corroborated at runtime: `HostedMembers::launch` rejects a record with no
+appServer and an existing pane or session identity. Production reconciliation
+retains the old paneId even after that pane is gone. No guard was removed, no
+runtime record fabricated, and no additional feature was implemented.
+
+### Continuation receipts, cost and cleanup
+
+Only startup inbox observations exist. The member runtime's journal reference is
+message **`51b5a0fe-5c17-4002-957d-3085f1415615`**, delivery
+**`984ab1be-73d6-454b-b00e-42d69bd5d69f`**, sequence **2**, projection `pending`,
+stage `accepted`, path `inbox`, 2,273 accepted bytes, zero offered/read bytes.
+No native wire, native enqueue, explicit read, compaction card, or host-operation
+holder evidence was generated. Journal references are not original journal rows.
+
+[Cost ledger](integration/attempt2-continuation/run/cost-ledger.json): **0 observed
+Codex turns / $0 observed model spend**, **0 Claude turns / $0**, **0 compactions**.
+The [usage-event export](integration/attempt2-continuation/run/usage-events.json)
+is empty. No work prompt or model-turn submission was sent. Across attempt 1,
+attempt 2 and this continuation: **0 observed turns / $0**, versus caps of 8 and
+$3. No subscription invoice measurement is claimed.
+
+Controller exit **1**. Its finally block restored the Mesh descriptor with the
+specified `git checkout -- src/delivery/app_server/capabilities.rs` command,
+exit **0**, stopped and waited its own process groups, ended the private PID
+namespace and removed the scratch root/auth copy. Eight remaining owned process
+identities were recorded before final cleanup; the member pane had already
+closed through `stop_session`. [Cleanup](integration/attempt2-continuation/run/cleanup.json)
+reports no survivors and the private port closed. Both worktrees remain on the
+specified branches; no operator daemon, tmux server, home or standing team was used.
+
+Reproduction from this checkout root (the controller stops at the guard):
+
+```sh
+TRIAL_EVIDENCE_LABEL=attempt2-continuation python3 docs/design/evidence/native-eligibility/integration/attempt2-build.py
+python3 docs/design/evidence/native-eligibility/integration/continuation-controller.py attempt2-continuation/NEW_RUN
+TRIAL_EVIDENCE_LABEL=attempt2-continuation python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+```
+
+The optional evidence label on the build/gate helpers preserves previous results;
+default behavior is unchanged. Original attempt 2 controller remains unchanged.
+
+### Continuation gates and final disposition
+
+| Exact gate from checkout root | Exit | Result |
+| --- | --- | --- |
+| `just check-quick` | **0** | Rust test compilation, typecheck, 150 frontend files / 2,486 tests passed. |
+| `just lint` | **0** | All lint and recipe guards passed. |
+| `just test-contracts` | **0** | All 68 contract tests passed. |
+| `just test-rust-unit` | N/A | No `src-tauri/` diff. |
+| Mesh gates | N/A | No passing eligibility flip. |
+
+[Gate artifacts](integration/attempt2-continuation/gates),
+[final cleanup/evidence audit](integration/attempt2-continuation/final-verification.json).
+The read-only audit verifies offline reconciliation, retained pane identity,
+named host refusal, PID/start-tick absence, closed private port/socket, removed
+roots/auth copy, clean Mesh tree, and artifact hygiene. Text captures and logs
+omit trailing blank lines; complete captured pane bytes remain in event JSONL.
+
+**Descriptor flip: none. Mesh commit: none. Registry entry: not needed.** Product
+code changes **0**, non-evidence insertions **0 / 400**, tests added **0**, regression
+red/green **not applicable**: neither authorized defect was reached or fixed.
+The missing activation packet cannot be supplied by either requested defect fix.
+No runtime/native attachment or eligibility tuple was fabricated to bypass it.
+
+Continuation deviation: one newly authorized corrected setup run after the
+previous turn's stop, using production stop/reconcile before resume. This run
+stopped at its first failed stage. No numbered trial step was green; the completed
+deliverable is an evidence commit with the requested co-author trailer. The
+independent Opus lens remains unavailable. Original canonical journal rows and
+native wire receipts remain unproved; no model spend or uptake is inferred from
+startup inbox acceptance. No plan ledger, deployment or install changes.

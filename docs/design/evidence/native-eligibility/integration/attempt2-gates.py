@@ -9,7 +9,7 @@ import tempfile
 import time
 
 checkout = Path.cwd()
-out = Path(__file__).resolve().parent / "attempt2/gates"
+out = Path(__file__).resolve().parent / os.environ.get("TRIAL_EVIDENCE_LABEL", "attempt2") / "gates"
 out.mkdir(parents=True, exist_ok=True)
 root = Path(tempfile.mkdtemp(prefix="th-int-gates-"))
 operator = Path.home()

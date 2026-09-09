@@ -1,0 +1,42 @@
+[2m2026-09-09T23:23:45.189654Z[0m [32m INFO[0m [2mtaurhaus_daemon[0m[2m:[0m Auth token written [3mpath[0m[2m=[0m/tmp/th-int-4mx35359/data/daemon.token
+[2m2026-09-09T23:23:45.189702Z[0m [32m INFO[0m [2mtaurhaus_daemon[0m[2m:[0m taurhaus-daemon starting [3mport[0m[2m=[0m30058 [3mbind[0m[2m=[0m127.0.0.1 [3midle_timeout[0m[2m=[0mSome(600) [3mdata_root[0m[2m=[0m/tmp/th-int-4mx35359/data [3mauth[0m[2m=[0mtrue
+[2m2026-09-09T23:23:45.204354Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m daemon listening [3mport[0m[2m=[0m30058
+[2m2026-09-09T23:23:45.505328Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46472
+[2m2026-09-09T23:23:45.555605Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46482
+[2m2026-09-09T23:23:45.556365Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m Probing CLI version [3mprogram[0m[2m=[0m"codex" [3margv[0m[2m=[0m["/bin/bash", "-ilc", "codex --version"]
+[2m2026-09-09T23:23:45.605868Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46484
+[2m2026-09-09T23:23:45.632203Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI version probe completed [3mprogram[0m[2m=[0m"codex" [3mstatus[0m[2m=[0mSome(0) [3mraw_output[0m[2m=[0mThis message is shown once a day. To disable it please create the
+/tmp/th-int-4mx35359/home/.hushlogin file.
+codex-cli 0.153.4
+bash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: no job control in this shell
+Command 'update-motd' is available in the following places
+ * /sbin/update-motd
+ * /usr/sbin/update-motd
+The command could not be located because '/usr/sbin:/sbin' is not included in the PATH environment variable.
+This is most likely caused by the lack of administrative privileges associated with your user account.
+update-motd: command not found
+[2m2026-09-09T23:23:45.632290Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m Probing CLI version [3mprogram[0m[2m=[0m"claude" [3margv[0m[2m=[0m["/bin/bash", "-ilc", "claude --version"]
+[2m2026-09-09T23:23:45.657668Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI version probe completed [3mprogram[0m[2m=[0m"claude" [3mstatus[0m[2m=[0mSome(0) [3mraw_output[0m[2m=[0m2.1.267 (Claude Code)
+bash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: no job control in this shell
+[2m2026-09-09T23:23:45.657761Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m Probing CLI version [3mprogram[0m[2m=[0m"agy" [3margv[0m[2m=[0m["/bin/bash", "-ilc", "agy --version"]
+[2m2026-09-09T23:23:45.683195Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI version probe completed [3mprogram[0m[2m=[0m"agy" [3mstatus[0m[2m=[0mSome(77) [3mraw_output[0m[2m=[0mbash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: no job control in this shell
+[2m2026-09-09T23:23:45.683253Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI versions detected for native harness capability gates [3mcodex[0m[2m=[0mSome("0.153.4") [3mclaude[0m[2m=[0mSome("2.1.267") [3magy[0m[2m=[0mNone [3mcodex_compaction_hooks_supported[0m[2m=[0mtrue [3mcodex_notify_supported[0m[2m=[0mtrue [3mcodex_queue_wake_supported[0m[2m=[0mtrue [3magy_hooks_supported[0m[2m=[0mfalse
+[2m2026-09-09T23:23:46.308998Z[0m [32m INFO[0m [2mtaurhaus_lib::coordination::orchestrator::teardown[0m[2m:[0m team daemon ensured running after coordination wrapper [3mteam[0m[2m=[0mintegration [3moperator[0m[2m=[0mlead [3mpid[0m[2m=[0m264
+[2m2026-09-09T23:23:46.608352Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46496
+[2m2026-09-09T23:23:46.658602Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46510
+[2m2026-09-09T23:23:46.670639Z[0m [32m INFO[0m [2mtaurhaus_lib::session_scanner::control[0m[2m:[0m stop_session: polling for exit [3mpane[0m[2m=[0m%2
+[2m2026-09-09T23:23:46.701348Z[0m [33m WARN[0m [2mtaurhaus_lib::coordination::activity_export[0m[2m:[0m failed to load team roster while enriching session metadata [3mteam_name[0m[2m=[0m_active-project-teams [3merror[0m[2m=[0mNot found: team config not found for '_active-project-teams' at /tmp/th-int-4mx35359/claude/teams/_active-project-teams/config.json
+[2m2026-09-09T23:23:46.702762Z[0m [33m WARN[0m [2mtaurhaus_lib::coordination::activity_export[0m[2m:[0m failed to load team roster while enriching session metadata [3mteam_name[0m[2m=[0m_active-project-teams [3merror[0m[2m=[0mNot found: team config not found for '_active-project-teams' at /tmp/th-int-4mx35359/claude/teams/_active-project-teams/config.json
+[2m2026-09-09T23:23:47.074914Z[0m [32m INFO[0m [2mtaurhaus_lib::session_scanner::control[0m[2m:[0m stop_session: graceful exit confirmed, killing pane [3mpane[0m[2m=[0m%2 [3mcmd[0m[2m=[0mbash [3melapsed_ms[0m[2m=[0m400
+[2m2026-09-09T23:23:47.086979Z[0m [32m INFO[0m [2mtaurhaus_lib::session_scanner::control[0m[2m:[0m stop_session: kill-pane result [3mpane[0m[2m=[0m%2 [3msuccess[0m[2m=[0mOk(true)
+[2m2026-09-09T23:23:47.109967Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46524
+[2m2026-09-09T23:23:47.160204Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46540
+[2m2026-09-09T23:23:47.161018Z[0m [33m WARN[0m [2mtaurhaus_lib::commands::terminal_settings[0m[2m:[0m managed account hook reconciliation degraded [3merror[0m[2m=[0mNot found: team config not found for '_active-project-teams' at /tmp/th-int-4mx35359/claude/teams/_active-project-teams/config.json
+[2m2026-09-09T23:23:47.203680Z[0m [33m WARN[0m [2mtaurhaus_lib::coordination::activity_export[0m[2m:[0m failed to load team roster while enriching session metadata [3mteam_name[0m[2m=[0m_active-project-teams [3merror[0m[2m=[0mNot found: team config not found for '_active-project-teams' at /tmp/th-int-4mx35359/claude/teams/_active-project-teams/config.json
+[2m2026-09-09T23:23:47.204782Z[0m [33m WARN[0m [2mtaurhaus_lib::coordination::activity_export[0m[2m:[0m failed to load team roster while enriching session metadata [3mteam_name[0m[2m=[0m_active-project-teams [3merror[0m[2m=[0mNot found: team config not found for '_active-project-teams' at /tmp/th-int-4mx35359/claude/teams/_active-project-teams/config.json
+[2m2026-09-09T23:23:47.207585Z[0m [33m WARN[0m [2mtaurhaus_lib::coordination::activity_export[0m[2m:[0m failed to load team roster while enriching session metadata [3mteam_name[0m[2m=[0m_active-project-teams [3merror[0m[2m=[0mNot found: team config not found for '_active-project-teams' at /tmp/th-int-4mx35359/claude/teams/_active-project-teams/config.json
+[2m2026-09-09T23:23:47.208404Z[0m [33m WARN[0m [2mtaurhaus_lib::coordination::activity_export[0m[2m:[0m failed to load team roster for activity snapshot export [3mteam_name[0m[2m=[0m_active-project-teams [3merror[0m[2m=[0mNot found: team config not found for '_active-project-teams' at /tmp/th-int-4mx35359/claude/teams/_active-project-teams/config.json
+[2m2026-09-09T23:23:47.210439Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46542

@@ -2,7 +2,7 @@
 import json, os, signal, subprocess, time
 from pathlib import Path
 ROOT = Path.cwd()
-OUT = Path(__file__).parent / "attempt2"
+OUT = Path(__file__).parent / os.environ.get("TRIAL_EVIDENCE_LABEL", "attempt2")
 OUT.mkdir(exist_ok=True)
 MESH = Path("/home/mstie/projects/mesh-push")
 CAP = MESH / "src/delivery/app_server/capabilities.rs"
