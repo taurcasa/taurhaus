@@ -346,4 +346,3 @@ export function toolCounts(items, readTool) {
   }
   return { all: values.length, ...counts }
 }
-

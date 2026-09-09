@@ -339,7 +339,7 @@ The app uses the same authenticated JSON-line protocol on both platforms; only t
 
 **Version history:** v11 replaced the Claude-only account methods with generic `list_accounts` / `project_transcript` and added `refresh_usage`; v12 replaced the retired Google tool value with `agy`; v13 added `grok`; v14 retired the Codex compaction mode method; v15 moved the managed-task deadline pass into the daemon; v16 moved team initialization into the daemon; v17 moved add/resume/stop into the daemon; v18 moved resume-team/reonboard into the daemon; v19 moved standalone create/disband and roster edits into the daemon; v20 retired the redundant stop-member wire pair; v21 moved self-heal and effort passes into the daemon; v22 moved task-snapshot publication, live-presence reconciliation, and active-project mapping writes into the daemon; v23 added member account ids and the daemon-owned selector-account switch run; v24 added per-team root authority and Claude team account switching; v25 added versioned recovery receipts and explicit force/read reonboard intents; v26 corrects persistent runtime context-generation encoding to a string and member identity to camelCase (owned-host storage foundations only).
 
-**Commands (app → daemon, 55 callable methods — 56 constants, one of them unhandled):**
+**Commands (app → daemon, 60 callable methods — 61 constants, one of them unhandled):**
 - `ping`, `shutdown`, `watch`, `unwatch`, `scan_sessions`
 - `git_status`, `git_log`, `git_latest_commit_time`, `git_commits_in_range`, `git_commit_files`, `git_commit_diff`
 - `file_tree`, `read_file`, `read_readme`, `read_asset`, `list_directory` (a method constant with no handler — not callable)
@@ -354,6 +354,7 @@ The app uses the same authenticated JSON-line protocol on both platforms; only t
 - `coordination.create_team`, `coordination.create_team_status`, `coordination.disband_team`, `coordination.disband_team_status`, `coordination.add_member`, `coordination.add_member_status`, `coordination.remove_member`, `coordination.remove_member_status` (daemon-owned standalone team and roster mutations since v19)
 - `coordination.put_launch_settings`, `coordination.apply_task_effort`, `coordination.apply_task_effort_status` (daemon-owned background and task-arrival effort routing since v21)
 - `coordination.publish_operational_snapshots`, `coordination.reconcile_live_presence`, `coordination.set_active_project_team` (final daemon-owned team-state writers since v22)
+- `coordination.hosted_transcript`, `coordination.hosted_input`, `coordination.hosted_interrupt`, `coordination.hosted_approval`, `coordination.hosted_reconcile` (additive hosted operator controls; older daemons answer `UNKNOWN_METHOD`)
 
 ## Startup Sequence
 

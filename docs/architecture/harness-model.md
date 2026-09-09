@@ -134,7 +134,7 @@ Each change is a small PR with red-first regression tests naming the breaking co
 
 ## Owned Codex hosting (stage 5b, disabled pending pairing)
 
-Linux/WSL members opt in with `adapter_mode: "app_server"`; omission keeps panes. The existing launch/resume machinery resolves aliases, model, effort and explicit `CODEX_HOME`. The hosted render preserves account/permission/sandbox policy and refuses opaque wrappers, unsupported arguments and unnamed resume. Non-Linux opt-ins fail explicitly.
+Linux/WSL members opt in with `adapter_mode: "app_server"`; omission keeps panes. The existing launch/resume machinery resolves aliases, model, effort and explicit `CODEX_HOME`. The hosted render preserves account/permission/sandbox policy and refuses opaque wrappers, unsupported arguments and unnamed resume. Non-Linux opt-ins fail explicitly. `--dangerously-bypass-hook-trust` is incompatible with `app_server`: disable `codex_bypass_hook_trust` before opting in. Unsupported-argument refusals name the token; hosted hook trust remains unverified, so the flag is not silently dropped.
 
 The daemon owns the child, private socket and persistent thread. `appServer` publishes contract, socket/thread/member/account, PID/start ticks, incarnation, build/host/configuration/trust/transport and lifecycle state with a new attachment generation in one compared commit. Startup becomes ready only after a recovery receipt. Stop publishes before killing; restart never adopts a PID or launches automatically. Controlled resume names the saved thread and account.
 

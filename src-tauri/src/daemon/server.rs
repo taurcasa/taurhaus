@@ -374,10 +374,9 @@ fn serve(
     shutdown.store(true, Ordering::Relaxed);
     let _ = telemetry_handle.join();
     #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
-    coordination_state
-        .hosted
-        .shutdown()
-        .map_err(std::io::Error::other)?;
+    if let Err(error) = coordination_state.hosted.shutdown() {
+        tracing::warn!(%error, "owned hosts not cleanly stopped");
+    }
     tracing::info!("daemon shutting down");
     Ok(())
 }

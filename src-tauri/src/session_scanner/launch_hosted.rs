@@ -108,7 +108,7 @@ impl HostedLaunch {
                 "-m" | "--model" => Some("model"),
                 "-s" | "--sandbox" => Some("sandbox_mode"),
                 "-a" | "--ask-for-approval" => Some("approval_policy"),
-                _ => return Err("unsupported hosted launch argument; launch refused".into()),
+                _ => return Err(format!("unsupported hosted argument: {}", word.text)),
             };
             let value = &tokens
                 .get(cursor)
@@ -116,10 +116,7 @@ impl HostedLaunch {
                 .text;
             cursor += 1;
             let config = match key {
-                Some(key) => format!(
-                    "{key}={}",
-                    serde_json::to_string(value).map_err(|e| e.to_string())?
-                ),
+                Some(key) => format!("{key}={}", serde_json::json!(value)),
                 None => value.clone(),
             };
             if let Some(("model_reasoning_effort", value)) = config.split_once('=') {
@@ -146,8 +143,7 @@ impl HostedLaunch {
 mod tests {
     use super::*;
     use crate::daemon::protocol::LaunchMode;
-    use crate::session_scanner::cli_tool::CliTool;
-    use crate::session_scanner::launch::{LaunchSpec, ModelSpec};
+    use crate::session_scanner::launch::ModelSpec;
 
     #[test]
     fn hosted_render_preserves_account_model_effort_and_explicit_policy() {
@@ -167,50 +163,46 @@ mod tests {
         .render_app_server(None)
         .unwrap();
         assert_eq!(
-            launch.environment.get("CODEX_HOME").unwrap(),
+            launch.environment["CODEX_HOME"],
             tmp.path().to_str().unwrap()
         );
         assert_eq!(launch.applied_effort.as_deref(), Some("low"));
-        assert!(launch.arguments.contains(&"model=\"gpt-5.6-luna\"".into()));
-        assert!(launch
-            .arguments
-            .contains(&"sandbox_mode=\"read-only\"".into()));
-        assert!(launch
-            .arguments
-            .contains(&"approval_policy=\"never\"".into()));
-        assert_eq!(launch.arguments.last().unwrap(), "app-server");
+        assert_eq!(
+            launch.arguments.join(" "),
+            r#"-c model="gpt-5.6-luna" -c model_reasoning_effort="low" -c sandbox_mode="read-only" -c approval_policy="never" app-server"#
+        );
     }
 
     #[test]
     fn hosted_render_refuses_opaque_shell_missing_account_and_unnamed_resume() {
         let tmp = tempfile::tempdir().unwrap();
-        for command in [
-            "wrapper codex",
-            "codex && echo x",
-            "codex resume --last",
-            "codex --unknown",
-            "codex --dangerously-bypass-hook-trust",
+        // Regression: 76fa63c4 hid unsupported flags behind an opaque refusal.
+        let hook = "--dangerously-bypass-hook-trust";
+        for (command, reason) in [
+            ("wrapper codex", "opaque executable"),
+            ("codex && echo x", "resolved literal arguments"),
+            ("codex resume --last", "conversation mismatch"),
+            ("codex --unknown", "--unknown"),
+            ("codex --dangerously-bypass-hook-trust", hook),
         ] {
-            assert!(
-                HostedLaunch::from_rendered(command, tmp.path(), None).is_err(),
-                "{command}"
-            );
+            let command = format!("CODEX_HOME='{}' {command}", tmp.path().display());
+            let error = HostedLaunch::from_rendered(&command, tmp.path(), None)
+                .err()
+                .unwrap();
+            assert!(error.contains(reason), "{error}");
         }
-        assert!(
-            HostedLaunch::from_rendered("codex", std::path::Path::new("relative"), None).is_err()
-        );
+        for root in [tmp.path(), Path::new("relative")] {
+            assert!(HostedLaunch::from_rendered("codex", root, None).is_err());
+        }
         let command = format!(
             "CODEX_HOME='{}' codex resume owned-id --yolo",
             tmp.path().display()
         );
         let launch = HostedLaunch::from_rendered(&command, tmp.path(), Some("owned-id")).unwrap();
-        assert!(!launch
-            .arguments
-            .iter()
-            .any(|a| a == "resume" || a == "owned-id"));
-        assert!(launch
-            .arguments
-            .contains(&"sandbox_mode=\"danger-full-access\"".into()));
+        assert_eq!(
+            launch.arguments.join(" "),
+            r#"-c approval_policy="never" -c sandbox_mode="danger-full-access" app-server"#
+        );
         assert!(HostedLaunch::from_rendered(&command, tmp.path(), Some("another-id")).is_err());
     }
 }
