@@ -126,8 +126,7 @@ pub fn accept(
         check_capability(root, team, &actor)?;
         Ok((id, claude_dir, actor))
     })();
-    let (id, claude_dir, actor) = prepared
-        .map_err(|error| record_pre_submission_failure(root, team, member, message, error))?;
+    let (id, claude_dir, actor) = prepared.map_err(pre_submission_failure)?;
     let claude_dir = super::runtime::mesh_cli_claude_dir_arg_from_path(claude_dir);
     let key = idempotency_key(id);
     // Resolve the actor's control token through the existing daemon CLI seam.
@@ -162,7 +161,7 @@ pub fn accept(
     }
     let value = run(root, team, &actor, &args).map_err(|error| {
         if error.not_submitted {
-            record_pre_submission_failure(root, team, member, message, error.error)
+            pre_submission_failure(error.error)
         } else {
             error.error
         }
@@ -192,24 +191,19 @@ pub fn accept(
     })
 }
 
-fn record_pre_submission_failure(
-    root: &Path,
-    team: &str,
-    member: &str,
-    message: &MeshInboxMessage,
-    error: CoordinationError,
-) -> CoordinationError {
-    if super::recovery_delivery::observe_pre_submission_failure(root, team, member, message)
-        .is_err()
-    {
-        // Preserve the submission reason; the claim stays quarantined if persistence fails.
-        tracing::warn!(
-            team,
-            member,
-            "could not persist pre-submission failure receipt"
-        );
-    }
-    error
+// Preserve a typed preflight/spawn classification through the existing error
+// surface. The backend/hook owner, not this CLI adapter, records recovery state.
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+struct PreSubmissionFailure(CoordinationError);
+
+fn pre_submission_failure(error: CoordinationError) -> CoordinationError {
+    CoordinationError::Io(std::io::Error::other(PreSubmissionFailure(error)))
+}
+
+pub fn not_submitted(error: &CoordinationError) -> bool {
+    matches!(error, CoordinationError::Io(io)
+        if io.get_ref().is_some_and(|source| source.is::<PreSubmissionFailure>()))
 }
 
 struct CommandFailure {

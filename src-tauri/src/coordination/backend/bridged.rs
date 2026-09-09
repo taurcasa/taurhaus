@@ -461,7 +461,16 @@ impl MeshBridgedBackend {
             &payload.team_name,
             &payload.member_name,
             &message,
-        )?;
+        )
+        .inspect_err(|error| {
+            crate::coordination::recovery_delivery::observe_inbox_failure(
+                &self.teams_dir,
+                &payload.team_name,
+                &payload.member_name,
+                &message,
+                error,
+            );
+        })?;
         if let Some(receipt) = payload.recovery_card.as_mut() {
             receipt.journal = journal;
         }

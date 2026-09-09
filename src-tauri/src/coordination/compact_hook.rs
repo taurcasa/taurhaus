@@ -614,6 +614,13 @@ pub fn handle_compact_hook(
         ) {
             Ok(journal) => card.receipt.journal = journal,
             Err(error) => {
+                crate::coordination::recovery_delivery::observe_inbox_failure(
+                    &matched.teams_dir,
+                    &matched.team_name,
+                    &matched.member.name,
+                    &message,
+                    &error,
+                );
                 let _ = record_delivery_at(
                     &matched.teams_dir,
                     &matched.team_name,

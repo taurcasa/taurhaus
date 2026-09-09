@@ -429,9 +429,29 @@ pub fn read_current(
     Ok((card.text, receipt))
 }
 
+/// Called only by the daemon backend or native hook that owns delivery receipts.
+pub fn observe_inbox_failure(
+    root: &Path,
+    team: &str,
+    member: &str,
+    message: &crate::coordination::stores::MeshInboxMessage,
+    error: &CoordinationError,
+) {
+    if crate::coordination::journal::not_submitted(error)
+        && observe_pre_submission_failure(root, team, member, message).is_err()
+    {
+        // Preserve the submission error; persistence failure keeps the claim quarantined.
+        tracing::warn!(
+            team,
+            member,
+            "could not persist pre-submission failure receipt"
+        );
+    }
+}
+
 /// A failed preflight/spawn cannot have committed a journal record. Record that
 /// fact on the matching claim so RecoveryState's existing two-attempt budget applies.
-pub fn observe_pre_submission_failure(
+fn observe_pre_submission_failure(
     root: &Path,
     team: &str,
     member: &str,
@@ -821,7 +841,22 @@ mod tests {
                 );
                 let mut message = MeshInboxMessage::new("lead", card.text, None, Utc::now());
                 attach_receipt(&mut message, Some(&card.receipt));
-                assert!(MeshInboxStore::append(&root, "team", "seat", &message).is_err());
+                use crate::coordination::backend::{
+                    claude::ClaudeNativeBackend, CoordinationBackend,
+                };
+                use crate::coordination::requests::{DeliveryRequest, OperatorNoticeDelivery};
+                let backend = ClaudeNativeBackend::new(root.clone());
+                assert!(backend
+                    .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                        team_name: "team".into(),
+                        member_name: "seat".into(),
+                        message: message.text,
+                        sender_name: Some("lead".into()),
+                        recovery_card: Some(card.receipt),
+                        journal_links: None,
+                        operational_context: None,
+                    }))
+                    .is_err());
                 let runtime = MemberRuntimeStore::load(&root, "team", "seat").unwrap();
                 assert_eq!(runtime.recovery.claim.unwrap().stage, ReceiptStage::Failed);
             }
