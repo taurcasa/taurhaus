@@ -292,9 +292,8 @@ fn run(root: &Path, team: &str, member: &str, args: &[&str]) -> Result<Value, Co
                 output.status,
                 code.map(|c| format!(": {c}")).unwrap_or_default()
             )),
-            // A cached binary may have been replaced by an older CLI. Clap's
-            // explicit subcommand rejection precedes journal submission. Other
-            // failures, including coded refusals, remain quarantined.
+            // Clap rejects before submission if a cached binary was downgraded.
+            // Other failures, including coded refusals, remain quarantined.
             not_submitted: output.status.code() == Some(2)
                 && code.is_none()
                 && String::from_utf8_lossy(&output.stderr)

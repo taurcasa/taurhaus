@@ -475,12 +475,18 @@ mod tests {
             let message = MeshInboxMessage::new("lead", "notice".into(), None, Utc::now());
             MeshInboxStore::append(&root, "t", "agent", &message).unwrap();
             // Replace the binary at the same path after a successful cached probe.
-            fs::write(mesh.dir.path().join("mesh"), format!(
-                "#!/bin/sh\necho \"{diagnostic}\" >&2\nexit 2\n"
-            )).unwrap();
+            fs::write(
+                mesh.dir.path().join("mesh"),
+                format!("#!/bin/sh\necho \"{diagnostic}\" >&2\nexit 2\n"),
+            )
+            .unwrap();
             let next = MeshInboxMessage::new("lead", "next notice".into(), None, Utc::now());
             let error = MeshInboxStore::append(&root, "t", "agent", &next).unwrap_err();
-            assert_eq!(crate::coordination::journal::not_submitted(&error), pre_submission, "{error}");
+            assert_eq!(
+                crate::coordination::journal::not_submitted(&error),
+                pre_submission,
+                "{error}"
+            );
             assert!(!root.join("t/inboxes").exists());
         }
     }
@@ -502,7 +508,10 @@ mod tests {
             ("error: unauthorized: private body", "unauthorized"),
             ("error: IO error: journal: body_budget", "body_budget"),
             // Regression: 6efb08f5 omitted Mesh's actionable idempotency refusal.
-            ("error: IO error: journal: idempotency_conflict", "idempotency_conflict"),
+            (
+                "error: IO error: journal: idempotency_conflict",
+                "idempotency_conflict",
+            ),
         ] {
             let script = format!("echo '{}' >&2; exit 1", diagnostic);
             let mesh = crate::coordination::mesh_cli::FakeMesh::new(
@@ -573,7 +582,9 @@ mod tests {
             let message = MeshInboxMessage::new("agent", "notice".into(), None, Utc::now());
             // Regression: ec26f4be selected unrelated failures from the shared log sink.
             crate::coordination::journal::report_failure(
-                "other-team", "other-member", Some("foreign-delivery"),
+                "other-team",
+                "other-member",
+                Some("foreign-delivery"),
                 &crate::coordination::errors::CoordinationError::Backend("foreign failure".into()),
             );
             let error = MeshInboxStore::append(&root, "t", "agent", &message).unwrap_err();
@@ -582,14 +593,20 @@ mod tests {
             let event: Value = events
                 .lines()
                 .map(|line| serde_json::from_str::<Value>(line).unwrap())
-                .find(|v| v["event"] == "coordination.journal.accept_failed"
-                    && v["idempotency_key"] == format!("taurhaus-daemon:{}", message.id.as_deref().unwrap())
-                    && v["recipient"] == "agent")
+                .find(|v| {
+                    v["event"] == "coordination.journal.accept_failed"
+                        && v["idempotency_key"]
+                            == format!("taurhaus-daemon:{}", message.id.as_deref().unwrap())
+                        && v["recipient"] == "agent"
+                })
                 .unwrap();
             assert_eq!(event["reason"], error.to_string());
             assert_eq!(event["recipient"], "agent");
             assert_eq!(event["team"], "t");
-            assert!(!event.to_string().contains("notice"), "body must not be logged");
+            assert!(
+                !event.to_string().contains("notice"),
+                "body must not be logged"
+            );
             assert!(!root.join("t/inboxes").exists());
             assert!(mesh.argv().matches("accept\n").count() <= 1);
         }

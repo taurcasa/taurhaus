@@ -733,8 +733,15 @@ mod tests {
             let mut foreign = card.receipt.clone();
             foreign.delivery_id = "foreign-recovery-delivery".into();
             taurhaus_lib::logging::emit_global(
-                "info", "coordination", "onboarding.delivery.observed", None,
-                serde_json::to_value(foreign).unwrap().as_object().unwrap().clone(),
+                "info",
+                "coordination",
+                "onboarding.delivery.observed",
+                None,
+                serde_json::to_value(foreign)
+                    .unwrap()
+                    .as_object()
+                    .unwrap()
+                    .clone(),
             );
             let backend: Box<dyn CoordinationBackend> = if bridged {
                 Box::new(MeshBridgedBackend::new_with_teams_dir(root.clone()))
@@ -786,8 +793,10 @@ mod tests {
             let event: serde_json::Value = events
                 .lines()
                 .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
-                .find(|v| v["event"] == "onboarding.delivery.observed"
-                    && v["delivery_id"] == card.receipt.delivery_id)
+                .find(|v| {
+                    v["event"] == "onboarding.delivery.observed"
+                        && v["delivery_id"] == card.receipt.delivery_id
+                })
                 .unwrap();
             assert_eq!(event["journal"]["message_id"], "m1");
             assert_eq!(event["journal"]["delivery_id"], "d1");
