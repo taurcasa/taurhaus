@@ -164,9 +164,33 @@ The compaction-hook test probes exclusion during actual CLI stdout; the fallback
 test consumes existing pending compaction at its current context generation.
 The detector and compaction ledger retain their existing semantics.
 
-These are fake software proofs only. Pane conversion and rollback tests assert
-refusal pending the paired recoverable-relaunch contract, not successful switching.
+These are fake software proofs only. Pane conversion tests assert refusal pending the paired recoverable-relaunch
+contract. Successful switching and rollback remain unimplemented.
 The unresolved Unix framing mismatch and Mesh switch dependency are recorded in
 [the harness model](../architecture/harness-model.md#owned-codex-hosting-stage-5b-disabled-pending-pairing).
 No real harness, live daemon, operator tmux server, account credentials or paid
 trial is used. All native descriptors remain disabled.
+
+### Lane verification (2026-09-09)
+
+All gates ran from the hosting checkout with its own target directory. Each gate
+polled machine-wide Cargo activity before starting. Harness homes, app data and
+TMUX_TMPDIR were disposable; PATH guards refused ambient harness/tmux execution.
+No real Codex run, install, deployment, paid packet or descriptor activation ran.
+
+| Exact gate | Exit | Evidence |
+|---|---:|---|
+| `just check-quick` | 0 | Rust test compilation, frontend typecheck, 2,463 frontend tests |
+| `just lint` | 0 | Clippy, frontend dependency/structure and repository script checks |
+| `just test-contracts` | 0 | 15 renderer, 20 harness and 31 module-boundary tests |
+| `just test-rust-unit` | 101 | 2,598 passed, 5 failed, 9 ignored, 100 filtered |
+
+The five unit failures require real scratch tmux and were refused by the guard:
+`coordination::runtime::tmux::tests::{resume_add_nine_same_project_members_share_one_window,resume_add_other_policies_do_not_tile,resume_add_tiling_failure_removes_only_the_new_pane}`
+and `session_scanner::control::tests::{nine_same_project_members_share_one_window,scratch_tmux_resolves_binary_from_path}`.
+All 18 new Rust hosting/exclusion tests and three frontend hosted-control tests
+passed. Red was observed for the new seams and for attachment identity, member UI
+reuse, startup readiness, unreviewed builds, descriptor parity and declared module
+boundaries before their respective fixes. No render-role-section goldens changed.
+A visual cross-family review and successful paired switch/rollback proof remain
+outstanding; this evidence is not a completion or eligibility declaration.
