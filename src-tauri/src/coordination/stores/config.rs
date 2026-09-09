@@ -302,6 +302,16 @@ struct NativeMemberWire {
 }
 
 impl TeamConfigStore {
+    pub fn team_owns_delivery(root: &Path, team: &str) -> Result<bool, CoordinationError> {
+        match Self::load(root, team) {
+            Ok(config) => {
+                Ok(config.extra.get("delivery_owner").and_then(Value::as_str) == Some("team"))
+            }
+            Err(CoordinationError::NotFound(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
     /// Load a single team configuration from `<teams_dir>/<team_name>/config.json`.
     pub fn load(teams_dir: &Path, team_name: &str) -> Result<TeamConfig, CoordinationError> {
         let config_path = config_path(teams_dir, team_name);
@@ -363,8 +373,12 @@ impl TeamConfigStore {
         let target_path = config_path(teams_dir, team_name);
         let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
             .inspect_err(|err| log_config_store_error("lock", &target_path, err, None))?;
+        let mut original_lead_session = None;
         match super::lock::read_json_tolerating_torn(&target_lock) {
             Ok(current_raw) => {
+                original_lead_session = serde_json::from_str::<Value>(&current_raw)
+                    .ok()
+                    .and_then(|v| v["leadSessionId"].as_str().map(str::to_owned));
                 // The tolerant read has already waited out any torn-write
                 // transient, so a merge failure here is persistent
                 // corruption: repairing it with this save is deliberate (a
@@ -386,13 +400,15 @@ impl TeamConfigStore {
             }
             Err(err) => return Err(err),
         }
-        let payload =
-            serde_json::to_string_pretty(&mesh_compatible_wire(&normalized, &runtime_by_member))
-                .map_err(|err| {
-                    CoordinationError::StoreError(format!(
-                        "failed to serialize team config for '{team_name}': {err}"
-                    ))
-                })?;
+        let mut wire = mesh_compatible_wire(&normalized, &runtime_by_member);
+        if original_lead_session.is_some() {
+            wire.lead_session_id = original_lead_session;
+        }
+        let payload = serde_json::to_string_pretty(&wire).map_err(|err| {
+            CoordinationError::StoreError(format!(
+                "failed to serialize team config for '{team_name}': {err}"
+            ))
+        })?;
 
         persist_config_payload(
             teams_dir,
@@ -545,11 +561,39 @@ impl TeamConfigStore {
     /// Remove `<teams_dir>/<team_name>` recursively.
     pub fn delete(teams_dir: &Path, team_name: &str) -> Result<(), CoordinationError> {
         let path = team_dir(teams_dir, team_name);
-        match fs::remove_dir_all(path) {
+        match remove_team_payload(&path) {
             Ok(()) => Ok(()),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(err) => Err(CoordinationError::Io(err)),
         }
+    }
+}
+
+/// Keep terminal paths (including relocation aliases) for the team's lifetime.
+pub(crate) fn remove_team_payload(path: &Path) -> std::io::Result<()> {
+    if !path.join("state/terminal").exists() {
+        return fs::remove_dir_all(path);
+    }
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        if entry.file_name() == "state" {
+            for child in fs::read_dir(entry.path())? {
+                let child = child?;
+                if child.file_name() != "terminal" {
+                    remove_entry(&child)?;
+                }
+            }
+        } else {
+            remove_entry(&entry)?;
+        }
+    }
+    Ok(())
+}
+fn remove_entry(entry: &fs::DirEntry) -> std::io::Result<()> {
+    if entry.file_type()?.is_dir() {
+        fs::remove_dir_all(entry.path())
+    } else {
+        fs::remove_file(entry.path())
     }
 }
 
@@ -1369,6 +1413,23 @@ mod tests {
             }],
             extra: Default::default(),
         }
+    }
+
+    #[test]
+    fn lead_relaunch_preserves_published_team_identity() {
+        // Regression: 3ca169ed still regenerated leadSessionId on config save.
+        let tmp = TempDir::new().unwrap();
+        let config = sample_config("team");
+        TeamConfigStore::save(tmp.path(), "team", &config).unwrap();
+        let path = config_path(tmp.path(), "team");
+        let mut raw: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let incarnation = raw["team_incarnation_id"].clone();
+        raw["leadSessionId"] = "original-session".into();
+        fs::write(&path, serde_json::to_vec(&raw).unwrap()).unwrap();
+        TeamConfigStore::save(tmp.path(), "team", &config).unwrap();
+        let raw: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(raw["leadSessionId"], "original-session");
+        assert_eq!(raw["team_incarnation_id"], incarnation);
     }
 
     #[test]

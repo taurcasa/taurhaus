@@ -35,6 +35,12 @@ pub fn output(command: &mut Command) -> std::io::Result<Output> {
             "terminal hold deadline",
         ));
     }
+    // The production child supervises tmux independently of the original
+    // holder. Killing the holder cannot strand a client with the lifetime fd.
+    #[cfg(not(test))]
+    let mut supervisor = child_command(command, end)?;
+    #[cfg(not(test))]
+    let command = &mut supervisor;
     let mut child = command
         .stdin(Stdio::from(file))
         .stdout(Stdio::piped())
@@ -55,8 +61,91 @@ pub fn output(command: &mut Command) -> std::io::Result<Output> {
     }
 }
 
+const CHILD_MODE: &str = "--terminal-child";
+
+#[cfg(not(test))]
+fn child_command(command: &Command, end: Instant) -> std::io::Result<Command> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let remaining = end
+        .saturating_duration_since(Instant::now())
+        .saturating_sub(Duration::from_millis(50));
+    let deadline = (SystemTime::now() + remaining)
+        .duration_since(UNIX_EPOCH)
+        .map_err(std::io::Error::other)?
+        .as_millis();
+    let mut child = Command::new(std::env::current_exe()?);
+    child
+        .arg(CHILD_MODE)
+        .arg(deadline.to_string())
+        .arg(command.get_program())
+        .args(command.get_args());
+    for (key, value) in command.get_envs() {
+        if let Some(value) = value {
+            child.env(key, value);
+        } else {
+            child.env_remove(key);
+        }
+    }
+    if let Some(dir) = command.get_current_dir() {
+        child.current_dir(dir);
+    }
+    super::apply_background_command_settings(&mut child);
+    Ok(child)
+}
+
+/// Internal entry point, before app/daemon initialization. It inherits fd 0
+/// from the holder and passes it to exactly one bounded terminal transport.
+pub fn maybe_run_child() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let mut args = std::env::args_os().skip(1);
+    if args.next().as_deref() != Some(std::ffi::OsStr::new(CHILD_MODE)) {
+        return;
+    }
+    let deadline = args
+        .next()
+        .and_then(|s| s.to_str().and_then(|s| s.parse::<u64>().ok()));
+    let Some((deadline, program)) = deadline.zip(args.next()) else {
+        std::process::exit(2);
+    };
+    let remaining = (UNIX_EPOCH + Duration::from_millis(deadline))
+        .duration_since(SystemTime::now())
+        .unwrap_or_default()
+        .min(HOLD_BOUND);
+    let mut command = Command::new(program);
+    command
+        .args(args)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+    let code = run_child(remaining, &mut command)
+        .map(|s| s.code().unwrap_or(1))
+        .unwrap_or(124);
+    std::process::exit(code);
+}
+
+fn run_child(limit: Duration, command: &mut Command) -> std::io::Result<std::process::ExitStatus> {
+    let timeout = || std::io::Error::new(std::io::ErrorKind::TimedOut, "terminal child deadline");
+    if limit.is_zero() {
+        return Err(timeout());
+    }
+    let deadline = Instant::now() + limit.min(HOLD_BOUND);
+    let mut child = command.spawn()?;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(5)),
+            result => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(result.err().unwrap_or_else(timeout));
+            }
+        }
+    }
+}
+
 /// Resolve once per call, then explicitly address the same server. Never let
 /// the tmux client silently select a socket through inherited TMUX.
+#[cfg(not(target_os = "windows"))]
 pub fn socket_path() -> std::io::Result<PathBuf> {
     if let Some(path) = std::env::var("TMUX")
         .ok()
@@ -88,6 +177,24 @@ pub fn socket_path() -> std::io::Result<PathBuf> {
     Ok(root.join(format!("tmux-{uid}/default")))
 }
 
+#[cfg(target_os = "windows")]
+pub fn socket_path() -> std::io::Result<PathBuf> {
+    // This caller addresses WSL tmux, so resolve its uid/root in that namespace.
+    let output = crate::daemon::launcher::wsl_command()
+        .args([
+            "-e",
+            "sh",
+            "-c",
+            r#"printf '%s/tmux-%s/default' "${TMUX_TMPDIR:-/tmp}" "$(id -u)""#,
+        ])
+        .output()?;
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !output.status.success() || !path.starts_with('/') {
+        return Err(std::io::Error::other("WSL tmux socket unavailable"));
+    }
+    Ok(PathBuf::from(path))
+}
+
 /// Extension keeps existing command construction readable while routing all
 /// managed terminal children through the inherited lock and hold deadline.
 pub trait TerminalOutput {
@@ -96,5 +203,23 @@ pub trait TerminalOutput {
 impl TerminalOutput for Command {
     fn terminal_output(&mut self) -> std::io::Result<Output> {
         output(self)
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    #[test]
+    fn terminal_child_watchdog_reaps_its_own_timed_out_transport() {
+        let mut command = Command::new("/bin/sleep");
+        command.arg("1");
+        let started = Instant::now();
+        assert_eq!(
+            run_child(Duration::from_millis(20), &mut command)
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::TimedOut
+        );
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 }

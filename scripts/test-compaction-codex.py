@@ -135,7 +135,7 @@ def main() -> int:
         terminal = None
         turns = 0
         for turns in range(1, args.max_turns + 1):
-            tmux_send_literal(target.pane_id, prompt)
+            tmux_send_literal(target, prompt)
             try:
                 terminal = wait_for(
                     lambda: find_any_log_event(

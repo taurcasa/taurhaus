@@ -434,3 +434,22 @@ When adding a new persistent store:
 - [post-compaction-reinjection.md](./post-compaction-reinjection.md)
 - [team-member-master-data-audit.md](../analysis/team-member-master-data-audit.md)
 - [path-handling-guide.md](./path-handling-guide.md)
+
+## Shared runtime attachment contract (v1.1)
+
+Managed runtime records publish camelCase `attachmentGeneration`, `tmuxSocket`
+(absolute, addressed explicitly with `-S`), `tmuxSessionId` (`$N`), `paneId`,
+`panePid`, `paneStartTime` (Linux `/proc` field 22 ticks as a decimal string),
+`contextGeneration`, `harness`, `launchRoot` (`claudeDir`, `teamsDir`,
+`teamIncarnationId`, `rootAuthorityRevision`), `activitySnapshotPath`, and
+`terminalContract: 1`. The attachment counter is the existing onboarding
+activation counter, committed atomically with its pane identity; liveness saves
+preserve these facts and cannot rewind it. The existing activity snapshot is the
+only activity authority. `config.team_incarnation_id` identifies the team across
+lead relaunches, and the root registry revision distinguishes relocation cycles.
+Effort relaunch commits dead health and a new generation before taking the
+terminal flock for teardown, then launch takes it again for its send. Terminal
+locks are last and alone. Cleanup retains their inodes; native relocation leaves
+the original terminal directory and links the destination to it, including on
+cross-volume moves and return moves. Runtime extensions and `appliedEffort`
+remain Mesh-owned. These additive file fields require no daemon protocol bump.

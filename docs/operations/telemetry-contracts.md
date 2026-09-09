@@ -76,3 +76,20 @@ The locked-binary fixture emits both `--value failed` and `--value recorded`,
 followed by an independently countable `budget_raised` ruling. It proves both
 encodings are counted with recent and old launches. No live wave state or
 plan-ledger row is read or modified by these tests.
+
+## Runtime attachment and terminal exclusion (v1.1)
+
+Deploy the Taurhaus app and matching daemon that implement `terminalContract: 1`
+before opting a team into Mesh team-owned delivery; activation also requires the
+paired Mesh contract and its locked stage-2b-or-later binary. Taurhaus skips member
+daemon launch, liveness repair and inbox wake for `delivery_owner: "team"`.
+Claude's native mailbox remains its delivery path. Launch/resume sends,
+stop/interrupt, effort teardown and compaction-test injection share the permanent
+`teams/<team>/state/terminal/<member>.lock` flock. Acquisition waits at most 2 s;
+terminal children inherit the fd and share a 10 s hold deadline. Contention defers
+without clearing input; unavailable flock support refuses terminal I/O and reports
+`coordination.terminal.unavailable`. The adjacent `<member>.holder.json` is only
+`{owner, op, epoch, since}` diagnostics, replaced by the next acquirer and cleared
+on release. Recovery cards and deadline nudges remain inbox appends. Unit and
+contract tests use scratch roots and fake terminal transports; the compaction
+transport check is `python3 scripts/test_runtime_exclusion.py`.

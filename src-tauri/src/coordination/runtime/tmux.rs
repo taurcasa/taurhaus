@@ -9,8 +9,11 @@ use crate::tmux_layout::{
 use super::process::run_system_command;
 use super::TAURHAUS_TMUX_SESSION_NAME;
 
-fn tmux_command_invocation(args: &[String]) -> CommandInvocation {
-    mesh_cli::command_invocation("tmux", args)
+fn tmux_command_invocation(args: &[String]) -> Result<CommandInvocation, CoordinationError> {
+    let socket = taurhaus_lib::platform::terminal_io::socket_path()?;
+    let mut explicit = vec!["-S".to_string(), socket.to_string_lossy().into_owned()];
+    explicit.extend_from_slice(args);
+    Ok(mesh_cli::command_invocation("tmux", &explicit))
 }
 
 pub(super) fn run_tmux(args: &[String]) -> Result<String, CoordinationError> {
@@ -33,7 +36,7 @@ pub(super) fn run_tmux_output(args: &[String]) -> Result<std::process::Output, C
     if let Some(output) = tests::scratch_tmux_output(args) {
         return output;
     }
-    let invocation = tmux_command_invocation(args);
+    let invocation = tmux_command_invocation(args)?;
     run_system_command(&invocation)
 }
 

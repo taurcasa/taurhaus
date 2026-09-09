@@ -686,6 +686,23 @@ mod tests {
 
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    fn terminal_child_receives_the_locked_file_as_stdin() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("team/state/terminal/seat.lock");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "inherited-inode\n").unwrap();
+        let _guard =
+            TerminalLock::acquire(tmp.path(), "team", "seat", "test", 1, Duration::ZERO).unwrap();
+        let output = taurhaus_lib::platform::terminal_io::output(
+            std::process::Command::new("/bin/sh").args(["-c", "read value; printf %s \"$value\""]),
+        )
+        .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"inherited-inode");
+    }
+
     #[test]
     fn terminal_lock_bounds_wait_and_preserves_inode_and_diagnostics() {
         let tmp = TempDir::new().unwrap();

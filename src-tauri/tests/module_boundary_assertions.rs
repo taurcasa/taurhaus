@@ -880,6 +880,10 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "runtime store prunes stale WSL-native compaction state during locked saves",
         ),
         (
+            "src/coordination/stores/lock.rs",
+            "terminal exclusion reads registry authority to resolve pane-only stop requests; it never mutates the registry or runtime records",
+        ),
+        (
             "src/coordination/task_deadline_pass.rs",
             "daemon deadline scheduler owns task and snapshot CAS writes",
         ),
@@ -1489,4 +1493,70 @@ fn legacy_settings_replacement_stays_std_only_and_atomic() {
             .any(|line| line.starts_with("tempfile = ")),
         "tempfile must remain test-only"
     );
+}
+
+#[test]
+fn terminal_contract_pins_shared_spelling_and_write_boundaries() {
+    let runtime = include_str!("../src/coordination/stores/runtime.rs");
+    for key in [
+        "attachmentGeneration",
+        "tmuxSocket",
+        "tmuxSessionId",
+        "paneId",
+        "panePid",
+        "paneStartTime",
+        "contextGeneration",
+        "harness",
+        "launchRoot",
+        "activitySnapshotPath",
+        "terminalContract",
+    ] {
+        assert!(
+            runtime.contains(&format!("\"{key}\"")),
+            "missing shared key {key}"
+        );
+    }
+    let locks = include_str!("../src/coordination/stores/lock.rs");
+    assert!(locks.contains("state/terminal"));
+    assert!(locks.contains("{member}.lock"));
+    assert!(locks.contains("{member}.holder.json"));
+    let activation = include_str!("../src/coordination/pipelines/members.rs");
+    assert!(!activation.contains("reserve_recovery_generation"));
+    let commit = include_str!("../src/coordination/pipelines/lifecycle.rs");
+    assert!(commit.contains("runtime.reserve_activation(intent)"));
+    let system = include_str!("../src/coordination/runtime/system.rs");
+    assert!(!system.contains("#{pane_start_time}"));
+    assert!(system.contains("#{session_id}"));
+}
+
+#[cfg(unix)]
+#[test]
+fn terminal_child_mode_inherits_flock_and_exits_without_daemon_startup() {
+    use fs2::FileExt;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("terminal.lock");
+    fs::write(&path, "inherited-lock\n").unwrap();
+    let file = fs::File::open(&path).unwrap();
+    file.lock_exclusive().unwrap();
+    let deadline = (SystemTime::now() + Duration::from_secs(2))
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+        .to_string();
+    let output = Command::new(env!("CARGO_BIN_EXE_taurhaus-daemon"))
+        .args([
+            "--terminal-child",
+            &deadline,
+            "/bin/sh",
+            "-c",
+            "read value; printf %s \"$value\"",
+        ])
+        .stdin(Stdio::from(file))
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.stdout, b"inherited-lock");
+    assert!(fs::File::open(path).unwrap().try_lock_exclusive().is_ok());
 }

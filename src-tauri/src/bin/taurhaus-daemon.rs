@@ -15,6 +15,7 @@ use taurhaus_lib::provider::platform_paths::PlatformPaths;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
+    taurhaus_lib::platform::terminal_io::maybe_run_child();
     if maybe_run_codex_notify_mode() {
         return;
     }

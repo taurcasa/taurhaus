@@ -941,6 +941,12 @@ fn merge_current_extension_fields(
         return;
     };
     if let Ok(latest) = parse_runtime_record(current_raw, "", &record.member_name) {
+        if latest.attachment_generation > record.attachment_generation {
+            record.health = latest.health;
+            record.session_id = latest.session_id.clone();
+            record.jsonl_path = latest.jsonl_path.clone();
+            record.daemon_pid = latest.daemon_pid;
+        }
         if preserve_applied_effort || latest.attachment_generation > record.attachment_generation {
             record.attachment_generation = latest.attachment_generation;
             record.context_generation = latest.context_generation;
@@ -1439,14 +1445,62 @@ mod tests {
         assert_eq!(disk["terminalContract"], 1);
         disk["attachmentGeneration"] = 9.into();
         disk["paneId"] = "%99".into();
+        disk["panePid"] = 999.into();
+        disk["paneStartTime"] = "99999".into();
+        disk["tmuxSessionId"] = "$9".into();
+        disk["contextGeneration"] = 3.into();
+        disk["harness"] = "grok".into();
+        disk["launchRoot"] = serde_json::json!({"claudeDir": root, "teamsDir": root.join("teams"), "teamIncarnationId": "incarnation", "rootAuthorityRevision": 4});
+        disk["activitySnapshotPath"] = root
+            .join("activity.json")
+            .to_string_lossy()
+            .into_owned()
+            .into();
+        disk["health"] = "session_dead".into();
         disk["tmuxSocket"] = root.join("tmux.sock").to_string_lossy().into_owned().into();
         fs::write(&path, serde_json::to_vec(&disk).unwrap()).unwrap();
         MemberRuntimeStore::save_preserving_applied_effort(root, "team", "seat", &original)
             .unwrap();
         let saved: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        for key in ["attachmentGeneration", "paneId", "tmuxSocket"] {
+        for key in [
+            "attachmentGeneration",
+            "contextGeneration",
+            "paneId",
+            "panePid",
+            "paneStartTime",
+            "tmuxSocket",
+            "tmuxSessionId",
+            "harness",
+            "launchRoot",
+            "activitySnapshotPath",
+            "terminalContract",
+            "health",
+        ] {
             assert_eq!(saved[key], disk[key], "rewound {key}");
         }
+        let latest = MemberRuntimeStore::load(root, "team", "seat").unwrap();
+        let changed = MemberRuntimeSnapshot::capture(&original).changed_fields(Some(&latest));
+        for key in [
+            "attachment_generation",
+            "context_generation",
+            "tmux_socket",
+            "tmux_session_id",
+            "harness",
+            "launch_root",
+            "activity_snapshot_path",
+        ] {
+            assert!(changed.contains(&key), "unchecked {key}");
+        }
+        assert!(
+            MemberRuntimeStore::update(root, "team", "seat", |r| r.attachment_generation = 1)
+                .is_err()
+        );
+        assert_eq!(
+            MemberRuntimeStore::load(root, "team", "seat")
+                .unwrap()
+                .attachment_generation,
+            9
+        );
     }
 
     #[test]

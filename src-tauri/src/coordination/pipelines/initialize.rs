@@ -432,12 +432,20 @@ impl CoordinationOrchestrator {
         let launch =
             build_member_activation_launch_command(&self.teams_dir, context, cli_commands)?;
         record_context_launch_telemetry(&self.teams_dir, context, &launch);
-        let pane_id = launch_member_pane(
-            self.runtime.as_ref(),
-            per_project_anchor_panes,
-            tmux_layout,
-            &context.member.project_path.to_string_lossy(),
-            &launch.command,
+        let pane_id = crate::coordination::stores::lock::terminal_write(
+            &self.teams_dir,
+            &context.team_name,
+            &context.member.name,
+            "launch",
+            || {
+                launch_member_pane(
+                    self.runtime.as_ref(),
+                    per_project_anchor_panes,
+                    tmux_layout,
+                    &context.member.project_path.to_string_lossy(),
+                    &launch.command,
+                )
+            },
         )?;
         runtime_state.harness_account_root = launch.harness_account_root.clone();
         let account = launch.account_result();

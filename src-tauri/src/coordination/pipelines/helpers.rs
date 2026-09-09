@@ -1,3 +1,4 @@
+use crate::coordination::stores::TeamConfigStore;
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -313,7 +314,13 @@ pub(super) fn run_member_session_phase(
         MemberSessionPhase::LaunchOnly(cli_commands) => {
             let launch = build_member_activation_launch_command(teams_dir, context, cli_commands)?;
             record_context_launch_telemetry(teams_dir, context, &launch);
-            send_launch_command_with_retry(runtime, pane_id, launch.command.as_str())?;
+            crate::coordination::stores::lock::terminal_write(
+                teams_dir,
+                &context.team_name,
+                &context.member.name,
+                "launch",
+                || send_launch_command_with_retry(runtime, pane_id, launch.command.as_str()),
+            )?;
             runtime_state.attached_at = Some(Utc::now());
             let account = launch.account_result();
             runtime_state.launch_account = (!account.is_empty()).then_some(account);
@@ -452,7 +459,9 @@ pub(super) fn start_member_daemon_if_required(
     policy: MemberDaemonStartPolicy,
     warnings: Option<&mut Vec<String>>,
 ) -> Result<Option<u32>, CoordinationError> {
-    if !should_use_mesh_sidecar_for_cli_tool(cli_tool) {
+    if !should_use_mesh_sidecar_for_cli_tool(cli_tool)
+        || TeamConfigStore::team_owns_delivery(teams_dir, team_name)?
+    {
         return Ok(None);
     }
 

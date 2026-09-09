@@ -113,7 +113,9 @@ impl CoordinationOrchestrator {
             }
 
             let mut daemon_pid_to_terminate = None;
-            if !spec(member.cli_tool).capabilities.native_inbox_poller {
+            if !spec(member.cli_tool).capabilities.native_inbox_poller
+                && !TeamConfigStore::team_owns_delivery(&self.teams_dir, team_name)?
+            {
                 if let Some(pid) = runtime.daemon_pid {
                     match self.runtime.is_process_running_by_pid(pid) {
                         Ok(true) => daemon_pid_to_terminate = Some(pid),
@@ -244,7 +246,9 @@ impl CoordinationOrchestrator {
                 runtime.jsonl_path = None;
 
                 let mut daemon_pid_to_terminate = None;
-                if !spec(member.cli_tool).capabilities.native_inbox_poller {
+                if !spec(member.cli_tool).capabilities.native_inbox_poller
+                    && !TeamConfigStore::team_owns_delivery(&self.teams_dir, team_name)?
+                {
                     if let Some(pid) = runtime.daemon_pid {
                         match self.runtime.is_process_running_by_pid(pid) {
                             Ok(true) => daemon_pid_to_terminate = Some(pid),
@@ -307,7 +311,9 @@ impl CoordinationOrchestrator {
 
             let mut runtime_changed = metadata_backfilled;
             let mut spawned_daemon_pid = None;
-            if !spec(member.cli_tool).capabilities.native_inbox_poller {
+            if !spec(member.cli_tool).capabilities.native_inbox_poller
+                && !TeamConfigStore::team_owns_delivery(&self.teams_dir, team_name)?
+            {
                 let pane_id = runtime.pane_id.as_deref();
                 let discovered_daemon_pids = if let Some(pane_id) = pane_id {
                     match self.runtime.find_existing_mesh_daemon_pids(

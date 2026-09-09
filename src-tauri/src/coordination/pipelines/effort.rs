@@ -485,7 +485,10 @@ impl CoordinationOrchestrator {
             // A relaunch that resumed a member whose session is still running
             // would render a second one beside it, so a stop that did not land
             // ends the switch here rather than in the pipeline.
-            if let Err(reason) = self.stop_member_for_effort_resume(team_name, member) {
+            if let Err(reason) = self.stop_member_for_effort_resume(team_name, member, &pending) {
+                if reason.contains("terminal write deferred") {
+                    continue;
+                }
                 self.record_failed_effort_attempt(
                     team_name,
                     &member.name,
@@ -541,6 +544,9 @@ impl CoordinationOrchestrator {
                     );
                 }
                 Some(reason) => {
+                    if reason.contains("terminal write deferred") {
+                        continue;
+                    }
                     // The level never took effect and the member is stopped:
                     // recording it as applied would report success and
                     // suppress every later retry. Count the attempt instead.
@@ -590,11 +596,36 @@ impl CoordinationOrchestrator {
         &mut self,
         team_name: &str,
         member: &Member,
+        pending: &PendingEffort,
     ) -> Result<(), String> {
         let runtime = match MemberRuntimeStore::load(&self.teams_dir, team_name, &member.name) {
-            Ok(runtime) if runtime.health != HealthState::SessionDead => runtime,
+            Ok(runtime) => runtime,
             _ => return Ok(()),
         };
+        if runtime.health == HealthState::SessionDead
+            && runtime
+                .pane_id
+                .as_deref()
+                .is_none_or(|pane| self.runtime.pane_exists(pane).ok() == Some(false))
+        {
+            return Ok(());
+        }
+        if runtime.health != HealthState::SessionDead {
+            MemberRuntimeStore::update(&self.teams_dir, team_name, &member.name, |record| {
+                record.health = HealthState::SessionDead;
+                record.daemon_pid = None;
+                record.attachment_generation += 1;
+                // Zero additional attempts: this owner must retry its own
+                // stopped member after contention, including after restart.
+                record.effort_resume_failure = Some(EffortResumeFailure {
+                    task_id: pending.task_id.clone(),
+                    level: pending.requested.clone(),
+                    attempts: pending.failed_attempts,
+                    reason: Some("terminal_pending".into()),
+                });
+            })
+            .map_err(|e| e.to_string())?;
+        }
         let diagnostics = self.teardown_member_resources_best_effort(
             team_name,
             &member.name,
@@ -613,19 +644,6 @@ impl CoordinationOrchestrator {
                     .clone()
                     .unwrap_or_else(|| "pane was not terminated".to_string())
             ));
-        }
-        if let Err(err) =
-            MemberRuntimeStore::update(&self.teams_dir, team_name, &member.name, |record| {
-                record.health = HealthState::SessionDead;
-                record.daemon_pid = None;
-            })
-        {
-            tracing::warn!(
-                team = %team_name,
-                member = %member.name,
-                error = %err,
-                "failed to mark a member offline before its effort resume"
-            );
         }
         Ok(())
     }

@@ -81,7 +81,22 @@ impl CoordinationOrchestrator {
         }
 
         if let Some(pane_id) = runtime_state.pane_id.as_deref() {
-            if let Err(err) = self.runtime.kill_aitx_pane(pane_id) {
+            // This attempt owns the new pane. A damaged record must not
+            // prevent its locked rollback; epoch is diagnostic only.
+            let epoch =
+                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.agent.name)
+                    .map(|record| record.attachment_generation)
+                    .unwrap_or_default();
+            if let Err(err) = crate::coordination::stores::lock::TerminalLock::acquire(
+                &self.teams_dir,
+                &request.team_name,
+                &request.agent.name,
+                "rollback",
+                epoch,
+                std::time::Duration::from_secs(2),
+            )
+            .and_then(|_guard| self.runtime.kill_aitx_pane(pane_id))
+            {
                 tracing::warn!(
                     team = %request.team_name,
                     member = %request.agent.name,
@@ -178,7 +193,22 @@ impl CoordinationOrchestrator {
         }
 
         if let Some(pane_id) = runtime_state.created_pane_id.as_deref() {
-            if let Err(err) = self.runtime.kill_aitx_pane(pane_id) {
+            // This attempt owns the new pane. A damaged record must not
+            // prevent its locked rollback; epoch is diagnostic only.
+            let epoch =
+                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.member_name)
+                    .map(|record| record.attachment_generation)
+                    .unwrap_or_default();
+            if let Err(err) = crate::coordination::stores::lock::TerminalLock::acquire(
+                &self.teams_dir,
+                &request.team_name,
+                &request.member_name,
+                "rollback",
+                epoch,
+                std::time::Duration::from_secs(2),
+            )
+            .and_then(|_guard| self.runtime.kill_aitx_pane(pane_id))
+            {
                 tracing::warn!(
                     team = %request.team_name,
                     member = %request.member_name,

@@ -33,6 +33,9 @@ fn move_team_directory_with(
 ) -> Result<TeamMoveStrategy, CoordinationError> {
     let source = source_teams.join(team_name);
     let target = target_teams.join(team_name);
+    if source.join("state/terminal").exists() {
+        return move_with_terminal_inodes(&source, &target);
+    }
     if !source.is_dir() {
         return Err(CoordinationError::NotFound(format!(
             "team directory not found at '{}'",
@@ -87,10 +90,87 @@ fn move_team_directory_with(
     Ok(TeamMoveStrategy::CopyVerify)
 }
 
+#[cfg(unix)]
+fn move_with_terminal_inodes(
+    source: &Path,
+    target: &Path,
+) -> Result<TeamMoveStrategy, CoordinationError> {
+    let locks = fs::canonicalize(source.join("state/terminal"))?;
+    if target.join("config.json").exists() {
+        return Err(CoordinationError::Conflict(
+            "target team already exists".into(),
+        ));
+    }
+    let target_locks = target.join("state/terminal");
+    if target_locks.exists() && fs::canonicalize(&target_locks)? != locks {
+        return Err(CoordinationError::Conflict(
+            "target terminal inode authority differs".into(),
+        ));
+    }
+    let parent = target
+        .parent()
+        .ok_or_else(|| CoordinationError::Validation("team root missing".into()))?;
+    fs::create_dir_all(parent)?;
+    let staged = parent.join(format!(".terminal-move-{}", uuid::Uuid::new_v4()));
+    let publish = (|| -> Result<(), CoordinationError> {
+        let expected = snapshot_tree(source)?;
+        copy_tree(source, &staged)?;
+        verify_tree(&staged, &expected)?;
+        fs::create_dir_all(target.join("state"))?;
+        if !target_locks.exists() {
+            std::os::unix::fs::symlink(&locks, &target_locks)?;
+        }
+        // Publish config last. The registry still binds the source until this
+        // operation returns; rollback retains its complete payload on error.
+        for entry in fs::read_dir(&staged)? {
+            let entry = entry?;
+            if entry.file_name() == "config.json" {
+                continue;
+            }
+            if entry.file_name() == "state" {
+                for child in fs::read_dir(entry.path())? {
+                    let child = child?;
+                    fs::rename(child.path(), target.join("state").join(child.file_name()))?;
+                }
+            } else {
+                fs::rename(entry.path(), target.join(entry.file_name()))?;
+            }
+        }
+        fs::rename(staged.join("config.json"), target.join("config.json"))?;
+        Ok(())
+    })();
+    remove_dir_if_present(&staged);
+    if let Err(error) = publish {
+        let _ = crate::coordination::stores::config::remove_team_payload(target);
+        return Err(error);
+    }
+    crate::coordination::stores::config::remove_team_payload(source)?;
+    Ok(TeamMoveStrategy::CopyVerify)
+}
+#[cfg(not(unix))]
+fn move_with_terminal_inodes(
+    _source: &Path,
+    _target: &Path,
+) -> Result<TeamMoveStrategy, CoordinationError> {
+    Err(CoordinationError::Validation(
+        "terminal lock relocation requires the native daemon".into(),
+    ))
+}
+fn terminal_entry(entry: &fs::DirEntry) -> bool {
+    entry.file_name() == "terminal"
+        && entry
+            .path()
+            .parent()
+            .is_some_and(|p| p.file_name().is_some_and(|n| n == "state"))
+}
+
 fn copy_tree(source: &Path, target: &Path) -> Result<(), CoordinationError> {
     fs::create_dir(target)?;
     for entry in fs::read_dir(source)? {
         let entry = entry?;
+        if terminal_entry(&entry) {
+            continue;
+        }
         let file_type = entry.file_type()?;
         let destination = target.join(entry.file_name());
         if file_type.is_dir() {
@@ -115,6 +195,9 @@ fn snapshot_tree(root: &Path) -> Result<BTreeMap<PathBuf, (u64, String)>, Coordi
     ) -> Result<(), CoordinationError> {
         for entry in fs::read_dir(current)? {
             let entry = entry?;
+            if terminal_entry(&entry) {
+                continue;
+            }
             let file_type = entry.file_type()?;
             if file_type.is_dir() {
                 visit(root, &entry.path(), snapshot)?;
@@ -179,6 +262,31 @@ fn remove_dir_if_present(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn terminal_inode_survives_relocation_cycle_and_team_delete() {
+        use std::os::unix::fs::MetadataExt;
+        let tmp = tempfile::TempDir::new().unwrap();
+        let a = tmp.path().join("a/teams");
+        let b = tmp.path().join("b/teams");
+        let original = a.join("team/state/terminal/seat.lock");
+        fs::create_dir_all(original.parent().unwrap()).unwrap();
+        fs::write(&original, "").unwrap();
+        fs::write(a.join("team/config.json"), "{}").unwrap();
+        let inode = fs::metadata(&original).unwrap().ino();
+        move_team_directory(&a, &b, "team").unwrap();
+        assert_eq!(fs::metadata(&original).unwrap().ino(), inode);
+        assert_eq!(
+            fs::metadata(b.join("team/state/terminal/seat.lock"))
+                .unwrap()
+                .ino(),
+            inode
+        );
+        move_team_directory(&b, &a, "team").unwrap();
+        crate::coordination::stores::TeamConfigStore::delete(&a, "team").unwrap();
+        assert_eq!(fs::metadata(&original).unwrap().ino(), inode);
+    }
 
     #[test]
     fn rename_move_preserves_the_complete_team_tree() {

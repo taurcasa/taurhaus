@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import json
+import fcntl
 import os
 import subprocess
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -21,6 +23,9 @@ class CompactionTestError(RuntimeError):
 
 @dataclass
 class MemberTarget:
+    teams_dir: Path
+    tmux_socket: Path
+    attachment_generation: int
     team_name: str
     member_name: str
     model: Optional[str]
@@ -144,12 +149,18 @@ def resolve_member_target(teams_dir: Path, team_name: str, member_name: str) -> 
     operational_snapshot_path = operational_dir / f"{member_name}.json"
 
     runtime_jsonl_path = runtime.get("jsonl_path")
+    socket = runtime.get("tmuxSocket")
+    if not isinstance(socket, str) or not Path(socket).is_absolute() or runtime.get("terminalContract") != 1:
+        raise CompactionTestError("member has no terminal contract/socket; relaunch before injection")
     return MemberTarget(
+        teams_dir=teams_dir,
+        tmux_socket=Path(socket),
+        attachment_generation=runtime.get("attachmentGeneration", 0),
         team_name=team_name,
         member_name=member_name,
         model=model if isinstance(model, str) else None,
         cli_tool=cli_tool,
-        pane_id=pane_id,
+        pane_id=runtime.get("paneId") or pane_id,
         project_path=Path(project_path),
         runtime_session_id=runtime.get("session_id") if isinstance(runtime.get("session_id"), str) else None,
         runtime_health=runtime.get("health") if isinstance(runtime.get("health"), str) else None,
@@ -174,9 +185,38 @@ def ensure_resumable_task(snapshot_path: Path) -> Dict[str, Any]:
     return snapshot
 
 
-def tmux_send_literal(pane_id: str, text: str) -> None:
-    run_checked(["tmux", "send-keys", "-t", pane_id, "-l", text])
-    run_checked(["tmux", "send-keys", "-t", pane_id, "Enter"])
+def tmux_send_literal(target: MemberTarget, text: str) -> None:
+    for name in (target.team_name, target.member_name):
+        if not name or name in (".", "..") or "/" in name or "\\" in name:
+            raise CompactionTestError("invalid terminal member path")
+    if not target.tmux_socket.is_absolute():
+        raise CompactionTestError("terminal socket must be absolute")
+    terminal = target.teams_dir / target.team_name / "state/terminal"
+    terminal.mkdir(parents=True, exist_ok=True)
+    holder = terminal / f"{target.member_name}.holder.json"
+    with (terminal / f"{target.member_name}.lock").open("a+") as lock:
+        deadline = time.monotonic() + 2
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise CompactionTestError("terminal write deferred: lock busy")
+                time.sleep(0.01)
+            except OSError as error:
+                raise CompactionTestError(f"terminal writes disabled: flock unavailable: {error}") from error
+        try:
+            holder.write_text(json.dumps({"owner": "taurhaus", "op": "compaction-test", "epoch": target.attachment_generation, "since": to_iso(now_utc())}))
+            deadline = time.monotonic() + 10
+            env = dict(os.environ)
+            env.pop("TMUX", None)
+            for keys in (["-l", text], ["Enter"]):
+                result = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--terminal-child", str(deadline - 0.05), "tmux", "-S", str(target.tmux_socket), "send-keys", "-t", target.pane_id, *keys], stdin=lock, env=env, text=True, capture_output=True, timeout=max(0.001, deadline - time.monotonic()))
+                if result.returncode:
+                    raise CompactionTestError(f"terminal injection failed: {result.stderr}")
+        finally:
+            holder.unlink(missing_ok=True)
 
 
 def run_checked(argv: List[str]) -> subprocess.CompletedProcess[str]:
@@ -344,3 +384,15 @@ def find_codex_boundary(jsonl_path: Path, since: datetime) -> Optional[Dict[str,
         if record_type == "compacted" or payload_type == "context_compacted":
             matched = record
     return matched
+
+
+# An independent child owns the inherited fd and enforces its lifetime even
+# when the diagnostic injector process is killed. No team files are read here.
+if __name__ == "__main__" and len(sys.argv) > 3 and sys.argv[1] == "--terminal-child":
+    remaining = min(10.0, float(sys.argv[2]) - time.monotonic())
+    if remaining <= 0:
+        sys.exit(124)
+    try:
+        sys.exit(subprocess.run(sys.argv[3:], stdin=sys.stdin, timeout=remaining).returncode)
+    except subprocess.TimeoutExpired:
+        sys.exit(124)

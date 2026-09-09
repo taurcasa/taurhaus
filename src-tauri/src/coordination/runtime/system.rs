@@ -21,10 +21,10 @@ use super::{
     SESSION_DETECT_INTERVAL, TMUX_POST_ENTER_DELAY, TMUX_TEXT_TO_ENTER_DELAY,
 };
 
-// tmux 3.4 does not define `pane_start_time`; the empty slot keeps the wire
-// shape stable while Linux fills it from /proc process start ticks below.
-// macOS and Windows therefore retain only the pane PID portion of identity.
-const LIVE_PANE_FORMAT: &str = "#{pane_id}\t#{pane_pid}\t#{pane_start_time}\t#{pane_dead}\t#{pane_current_command}\t#{pane_current_path}";
+// Keep the empty slot for parser compatibility; only /proc start ticks
+// are the shared process identity, never tmux epoch seconds.
+const LIVE_PANE_FORMAT: &str =
+    "#{pane_id}\t#{pane_pid}\t\t#{pane_dead}\t#{pane_current_command}\t#{pane_current_path}";
 
 #[derive(Debug, Default)]
 pub struct SystemCoordinationRuntime;
@@ -117,6 +117,25 @@ impl Drop for RealRuntimeScan {
 }
 
 impl CoordinationRuntime for SystemCoordinationRuntime {
+    fn tmux_address(&self, pane: &str) -> Result<Option<(PathBuf, String)>, CoordinationError> {
+        let session = run_tmux(&[
+            "display-message".into(),
+            "-p".into(),
+            "-t".into(),
+            pane.into(),
+            "#{session_id}".into(),
+        ])?;
+        if !session.starts_with('$') {
+            return Err(CoordinationError::Backend(
+                "tmux session id unavailable".into(),
+            ));
+        }
+        Ok(Some((
+            taurhaus_lib::platform::terminal_io::socket_path()?,
+            session,
+        )))
+    }
+
     fn create_aitx_pane(
         &self,
         project_id: &str,
@@ -513,21 +532,28 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         else {
             return Ok(None);
         };
-        if live_pane.pane_start_time.is_none() {
-            live_pane.pane_start_time = live_pane
-                .pane_pid
-                .and_then(taurhaus_lib::platform::process_start_ticks);
-        }
+        live_pane.pane_start_time = live_pane
+            .pane_pid
+            .and_then(taurhaus_lib::platform::process_start_ticks);
         Ok(Some(live_pane))
     }
 
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
-        run_tmux(&[
-            "kill-pane".to_string(),
-            "-t".to_string(),
-            tmux_target_for_pane(pane_id),
-        ])
-        .map(|_| ())
+        let kill = || {
+            run_tmux(&[
+                "kill-pane".to_string(),
+                "-t".to_string(),
+                tmux_target_for_pane(pane_id),
+            ])
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+        };
+        if taurhaus_lib::platform::terminal_io::active() {
+            kill()
+        } else {
+            crate::coordination::stores::lock::terminal_write_for_pane(pane_id, "teardown", kill)
+        }
+        .map_err(CoordinationError::Backend)
     }
 
     fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError> {

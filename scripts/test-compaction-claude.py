@@ -96,12 +96,12 @@ def main() -> int:
             }, indent=2))
             return 0
 
-        tmux_send_literal(target.pane_id, fill_prompt)
+        tmux_send_literal(target, fill_prompt)
         time.sleep(args.fill_wait)
         trigger_at = now_utc()
         manual_run.triggered_at = to_iso(trigger_at)
         metadata_path.write_text(json.dumps(manual_run.to_dict(), indent=2) + "\n", encoding="utf-8")
-        tmux_send_literal(target.pane_id, "/compact")
+        tmux_send_literal(target, "/compact")
 
         precompact = wait_for(
             lambda: ({"line": line} if (line := find_debug_line(debug_log, trigger_at, "Getting matching hook commands for PreCompact with query: manual")) else None),
