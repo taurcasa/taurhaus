@@ -8542,8 +8542,29 @@ fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
         tmp.path().display(),
         launch.program.display()
     );
-    commands.codex.fresh = command.clone();
-    commands.codex.resume = format!("{command} resume {{session_id}}");
+    // Same resolved alias path as ordinary launches; selected scratch account wins.
+    commands.codex.fresh = "codex-seat".into();
+    commands.codex.resume = "codex-seat resume {session_id}".into();
+    for mode in [
+        crate::daemon::protocol::LaunchMode::Fresh,
+        crate::daemon::protocol::LaunchMode::Resume,
+    ] {
+        commands.resolved_bases.insert(
+            (CliTool::Codex, mode),
+            ResolvedBase {
+                command: if mode == crate::daemon::protocol::LaunchMode::Fresh {
+                    command.clone()
+                } else {
+                    format!("{command} resume {{session_id}}")
+                },
+                expansions: vec![AliasExpansion {
+                    name: "codex-seat".into(),
+                    body: command.clone(),
+                }],
+                opaque_head: None,
+            },
+        );
+    }
     commands.codex_bypass_hook_trust = false;
     commands
         .account_selector_dirs
@@ -8606,7 +8627,21 @@ fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
     assert_eq!(reattached.pane_pid, Some(1002));
     assert!(reattached.pane_start_time.is_some());
     assert!(reattached.tmux_socket.is_some());
-    orchestrator.hosted.stop(&registry, "team", "seat").unwrap();
+    let result = orchestrator.teardown_member_resources_best_effort(
+        "team",
+        "seat",
+        Some(tmp.path()),
+        Some(&reattached),
+    );
+    assert!(result
+        .steps
+        .iter()
+        .any(|s| s.step == "stop_host" && s.success));
+    // Regression: b4a4b2dd added the attached pane but inherited host-only teardown.
+    assert!(runtime
+        .calls()
+        .iter()
+        .any(|c| matches!(c, RuntimeCall::KillPane { pane_id } if pane_id == "test-pane-2")));
 }
 
 #[cfg(target_os = "linux")]

@@ -114,6 +114,32 @@ impl CoordinationOrchestrator {
                     Err(error) => step_failed("stop_host", error),
                 },
             );
+            if diagnostics.steps.iter().all(|step| step.success) {
+                if let Some(record) = runtime.filter(|record| record.pane_id.is_some()) {
+                    let pane = record.pane_id.as_deref().unwrap();
+                    let result = crate::coordination::stores::lock::terminal_write(
+                        &self.teams_dir,
+                        team_name,
+                        member_name,
+                        "detach_tui",
+                        || {
+                            if let Some(live) = self.runtime.live_pane(pane)? {
+                                if pane_belongs_to_member(record, &live) != PaneOwnership::Owned {
+                                    return Err(CoordinationError::Conflict(
+                                        "attached pane identity changed".into(),
+                                    ));
+                                }
+                                self.runtime.kill_aitx_pane(pane)?;
+                            }
+                            Ok(())
+                        },
+                    );
+                    diagnostics.steps.push(match result {
+                        Ok(()) => step_succeeded("kill_pane", "attached TUI closed"),
+                        Err(error) => step_failed("kill_pane", error.to_string()),
+                    });
+                }
+            }
             return diagnostics;
         }
         let pane_record =
