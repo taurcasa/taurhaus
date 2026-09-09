@@ -96,7 +96,7 @@ impl HostProcess {
             .filter(|s| !s.is_empty())
             .ok_or("unsupported app-server handshake")?
             .into();
-        if host.build != "0.153.4" {
+        if host.build != taurhaus_lib::session_scanner::launch::HostedDescriptor::codex().build {
             return Err("unsupported app-server build; native input refused".into());
         }
         rpc.write(&json!({"method":"initialized"}), guard)?;
@@ -402,6 +402,15 @@ pub(crate) mod tests {
         std::fs::write(&executable, r#"#!/usr/bin/python3
 import json, os, socket, sys, threading, fcntl, base64, hashlib, struct
 root = os.environ['CODEX_HOME']
+if '--remote' in sys.argv:
+    import signal
+    assert 'TMUX' not in os.environ
+    thread_id = sys.argv[sys.argv.index('resume')+1]
+    assert json.load(open(os.path.join(root, 'thread.json')))['id'] == thread_id
+    with open(os.path.join(root, 'attach-events.jsonl'), 'a') as output:
+        output.write(json.dumps({'argv':sys.argv, 'codexHome':root, 'tmux':os.environ.get('TMUX')})+'\n')
+    signal.pause()
+    sys.exit(0)
 address = sys.argv[sys.argv.index('--listen')+1].removeprefix('unix://')
 saved = os.path.join(root, 'thread.json')
 thread = json.load(open(saved)) if os.path.exists(saved) else None

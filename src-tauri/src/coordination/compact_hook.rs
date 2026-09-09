@@ -3699,6 +3699,7 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
             configuration: "fixture".into(),
             trust: "fixture".into(),
             transport: "unix-websocket".into(),
+            attach_argv: Vec::new(),
             state: "ready".into(),
         });
         MemberRuntimeStore::save(&teams, "drain-team", "architect", &runtime).unwrap();

@@ -8502,7 +8502,7 @@ fn reinitialize_resets_attachment_without_rewinding_generation() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn hosted_member_liveness_and_effort_relaunch_never_use_a_pane() {
+fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
     let tmp = TempDir::new().unwrap();
     let registry = crate::coordination::hosted::tests::seat(tmp.path());
     let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
@@ -8557,18 +8557,55 @@ fn hosted_member_liveness_and_effort_relaunch_never_use_a_pane() {
         .resume_member_with_cli_commands_and_layout(&request, &commands, "new_window")
         .unwrap();
     assert!(report.resumed, "{}", report.message);
-    assert_eq!(report.pane_id, None);
+    // Regression: cadd533e returned before opening the operator's attached TUI.
+    assert_eq!(report.pane_id.as_deref(), Some("test-pane-1"));
     let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
     assert_eq!(before.session_id, after.session_id);
     assert_eq!(after.applied_effort.as_deref(), Some("high"));
-    assert!(
-        !runtime
-            .calls()
-            .iter()
-            .any(|c| format!("{c:?}").contains("Pane")),
-        "{:?}",
-        runtime.calls()
+    let wire = serde_json::to_value(&after).unwrap();
+    let host = &wire["appServer"];
+    assert_eq!(
+        host["attachArgv"],
+        serde_json::json!([
+            launch.program.to_str().unwrap(),
+            "--remote",
+            format!("unix://{}", host["socketPath"].as_str().unwrap()),
+            "resume",
+            "owned-thread",
+            "--no-alt-screen"
+        ])
     );
+    assert!(runtime.calls().iter().any(|c| matches!(c,
+        RuntimeCall::SendKeys { keys, .. } if keys.contains("env -u TMUX")
+            && keys.contains("--remote") && keys.contains("owned-thread")
+            && keys.contains(tmp.path().to_str().unwrap()))));
+    let generation = after.attachment_generation;
+    let pid = host["processId"].clone();
+    let before_calls = runtime.calls().len();
+    let report = orchestrator
+        .resume_member_with_cli_commands_and_layout(&request, &commands, "new_window")
+        .unwrap();
+    assert!(report.resumed, "{}", report.message);
+    assert_eq!(report.pane_id.as_deref(), Some("test-pane-1"));
+    assert!(!runtime.calls()[before_calls..]
+        .iter()
+        .any(|c| matches!(c, RuntimeCall::SendKeys { .. })));
+    runtime.set_pane_exists("test-pane-1", false);
+    let report = orchestrator
+        .resume_member_with_cli_commands_and_layout(&request, &commands, "new_window")
+        .unwrap();
+    assert!(report.resumed, "{}", report.message);
+    assert_eq!(report.pane_id.as_deref(), Some("test-pane-2"));
+    let reattached = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    assert_eq!(reattached.attachment_generation, generation);
+    assert_eq!(
+        serde_json::to_value(&reattached).unwrap()["appServer"]["processId"],
+        pid
+    );
+    assert_eq!(reattached.session_id.as_deref(), Some("owned-thread"));
+    assert_eq!(reattached.pane_pid, Some(1002));
+    assert!(reattached.pane_start_time.is_some());
+    assert!(reattached.tmux_socket.is_some());
     orchestrator.hosted.stop(&registry, "team", "seat").unwrap();
 }
 

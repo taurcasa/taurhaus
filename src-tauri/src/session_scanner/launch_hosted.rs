@@ -5,6 +5,26 @@ use crate::session_scanner::cli_tool::CliTool;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// Runtime evidence pins transport and TUI together; a build bump needs a fresh
+/// HTTP Upgrade + initialize probe before changing this allowlist.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HostedDescriptor {
+    pub build: String,
+    pub transport: String,
+    pub attached_tui: String,
+    pub transport_probe_required_on_bump: bool,
+}
+impl HostedDescriptor {
+    pub fn codex() -> Self {
+        Self {
+            build: "0.153.4".into(),
+            transport: "unix-websocket".into(),
+            attached_tui: "verified on 0.153.4".into(),
+            transport_probe_required_on_bump: true,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct HostedLaunch {
     pub program: PathBuf,
@@ -30,6 +50,35 @@ impl LaunchSpec<'_> {
 }
 
 impl HostedLaunch {
+    pub fn attach_argv(&self, socket: &Path, thread: &str) -> Result<Vec<String>, String> {
+        if !socket.is_absolute() || thread.is_empty() || thread.starts_with('-') {
+            return Err("attached TUI requires an exact owned thread and absolute socket".into());
+        }
+        Ok(vec![
+            self.program.to_string_lossy().into_owned(),
+            "--remote".into(),
+            format!("unix://{}", socket.display()),
+            "resume".into(),
+            thread.into(),
+            "--no-alt-screen".into(),
+        ])
+    }
+
+    pub fn attach_command(&self, argv: &[String]) -> String {
+        let environment = self
+            .environment
+            .iter()
+            .map(|(key, value)| super::shell_escape(&format!("{key}={value}")))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let command = argv
+            .iter()
+            .map(|s| super::shell_escape(s))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!("env -u TMUX {environment} {command}")
+    }
+
     pub fn supports(tool: CliTool) -> bool {
         tool == CliTool::Codex
     }

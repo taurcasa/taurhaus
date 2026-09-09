@@ -131,6 +131,7 @@ fn fully_populated_settings() -> Settings {
         agy_hooks_supported: true,
     };
     let tools = vec![CliToolDescriptor {
+        app_server: None,
         id: CliTool::Codex,
         label: "Codex fixture".to_string(),
         display_name: "Codex fixture CLI".to_string(),

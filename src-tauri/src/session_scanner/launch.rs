@@ -6,7 +6,7 @@ use crate::session_scanner::shell_words::{leading_assignments, words};
 
 #[path = "launch_hosted.rs"]
 mod hosted;
-pub use hosted::HostedLaunch;
+pub use hosted::{HostedDescriptor, HostedLaunch};
 
 /// Model + effort as the role/member declared them. Parsed from the legacy single string
 /// ("gpt-5.4 high", "gpt-5.4-high", "gpt-5.4", "claude-opus-4-6", "") until PR 5a splits the schema.

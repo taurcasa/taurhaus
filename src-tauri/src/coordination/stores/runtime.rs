@@ -163,6 +163,9 @@ pub struct AppServerAttachment {
     pub configuration: String,
     pub trust: String,
     pub transport: String,
+    /// Exact remote-resume argv; account environment stays with the daemon.
+    #[serde(default)]
+    pub attach_argv: Vec<String>,
     /// Empty on an incomplete peer record; never evidence of a ready child.
     #[serde(default)]
     pub state: String,

@@ -21,6 +21,7 @@ type SeatKey = (PathBuf, String, String);
 type Seat = Arc<Mutex<Option<OwnedSeat>>>;
 struct OwnedSeat {
     host: HostProcess,
+    launch: HostedLaunch,
     generation: u64,
     attachment: AppServerAttachment,
     launch_root: LaunchRoot,
@@ -94,7 +95,19 @@ impl HostedMembers {
         }
         let cell = self.seat(&root, team, member)?;
         let mut owned = cell.try_lock().map_err(|_| "host member busy")?;
-        if owned.is_some() {
+        if let Some(seat) = owned.as_mut() {
+            let record =
+                MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
+            if seat.host.alive()
+                && record.app_server.as_ref() == Some(&seat.attachment)
+                && record.attachment_generation == seat.generation
+                && record.launch_root.as_ref() == Some(&authority)
+                && seat.launch.account_root == launch.account_root
+                && seat.launch.arguments == launch.arguments
+                && seat.launch.program == launch.program
+            {
+                return Ok(()); // Pane restart never resumes/recreates a live owned thread.
+            }
             return Err("owned host must be stopped before relaunch".into());
         }
         let guard = HostOperationLock::acquire_for_launch(&root, team, member)
@@ -110,7 +123,7 @@ impl HostedMembers {
         {
             return Err("outcome_unknown: recovery must be reconciled before relaunch".into());
         }
-        if before.pane_id.is_some() || (before.app_server.is_none() && before.session_id.is_some())
+        if before.app_server.is_none() && (before.pane_id.is_some() || before.session_id.is_some())
         {
             return Err("app_server_switch_requires_5b_recoverable_relaunch_packet".into());
         }
@@ -147,7 +160,7 @@ impl HostedMembers {
         record.session_id = Some(host.thread_id.clone());
         record.app_server = Some(AppServerAttachment {
             contract: 1,
-            socket_path: socket,
+            socket_path: socket.clone(),
             thread_id: host.thread_id.clone(),
             member_id: format!("{member}@{team}"),
             account_root: launch.account_root.clone(),
@@ -158,7 +171,8 @@ impl HostedMembers {
             host: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
             configuration: super::recovery_card::digest(&launch.arguments),
             trust: "unverified".into(),
-            transport: "unix-websocket".into(),
+            transport: taurhaus_lib::session_scanner::launch::HostedDescriptor::codex().transport,
+            attach_argv: launch.attach_argv(&socket, &host.thread_id)?,
             state: "recovering".into(),
         });
         record.launch_root = Some(authority);
@@ -243,12 +257,115 @@ impl HostedMembers {
         attachment.state = "ready".into();
         *owned = Some(OwnedSeat {
             host,
+            launch: launch.clone(),
             generation: record.attachment_generation,
             attachment,
             launch_root: record.launch_root.ok_or("host launch root missing")?,
             _socket_directory: directory,
         });
         Ok(())
+    }
+
+    /// Attach a view only after bounded RPC validation. Host and terminal locks
+    /// never overlap; the seat mutex excludes concurrent daemon stop/relaunch.
+    pub fn attach_pane(
+        &self,
+        registry: &TeamRootRegistry,
+        team: &str,
+        member: &str,
+        runtime: &dyn super::runtime::CoordinationRuntime,
+        layout: &str,
+    ) -> Result<String, String> {
+        let root = registry.resolve(team).map_err(|e| e.to_string())?;
+        let cell = self.seat(&root, team, member)?;
+        let mut owned = cell.try_lock().map_err(|_| "host member busy")?;
+        let seat = owned
+            .as_mut()
+            .ok_or("owned thread absent; TUI attach refused")?;
+        let guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
+            .map_err(|e| e.to_string())?;
+        let before = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
+        let config = TeamConfigStore::load(&root, team).map_err(|e| e.to_string())?;
+        let definition = config
+            .members
+            .iter()
+            .find(|m| {
+                m.name == member
+                    && m.extra.get("adapter_mode").and_then(Value::as_str) == Some("app_server")
+            })
+            .ok_or("host member missing or opted out")?;
+        if before.app_server.as_ref() != Some(&seat.attachment)
+            || before.attachment_generation != seat.generation
+            || before.launch_root.as_ref() != Some(&seat.launch_root)
+            || config.team_incarnation_id != seat.launch_root.team_incarnation_id
+            || registry.revision(team).map_err(|e| e.to_string())?
+                != seat.launch_root.root_authority_revision
+        {
+            return Err("host attachment changed before TUI attach".into());
+        }
+        seat.host.transcript(&guard)?; // Never open a TUI without its exact thread.
+        drop(guard);
+        let command = seat.launch.attach_command(&seat.attachment.attach_argv);
+        let (resolution, live, address) =
+            super::stores::lock::terminal_write(&root, team, member, "attach_tui", || {
+                let resolution = super::runtime::resolve_or_create_pane_for_member(
+                    runtime,
+                    definition,
+                    Some(&before),
+                    layout,
+                )?;
+                let pane = &resolution.pane_id;
+                let attached = (|| {
+                    if !resolution.reused_pane || runtime.pane_is_shell(pane)? {
+                        runtime.send_tmux_keys_with_enter(pane, &command)?;
+                    }
+                    let live =
+                        runtime
+                            .live_pane(pane)?
+                            .filter(|p| !p.is_dead)
+                            .ok_or_else(|| {
+                                CoordinationError::Conflict("attached pane disappeared".into())
+                            })?;
+                    Ok((live, runtime.tmux_address(pane)?))
+                })();
+                if attached.is_err() && resolution.created_new_pane {
+                    let _ = runtime.kill_aitx_pane(pane);
+                }
+                attached.map(|(live, address)| (resolution, live, address))
+            })
+            .map_err(|e| e.to_string())?;
+        // Terminal exclusion is released before any runtime data lock.
+        let data_guard = acquire_team_lock(&root, team).map_err(|e| e.to_string())?;
+        let outcome = MemberRuntimeStore::commit_if_unchanged(
+            &data_guard,
+            &root,
+            team,
+            member,
+            &MemberRuntimeSnapshot::capture(&before),
+            |record| {
+                record.pane_id = Some(resolution.pane_id.clone());
+                record.pane_pid = live.pane_pid;
+                record.pane_start_time = live.pane_start_time;
+                record.tmux_socket = address.as_ref().map(|a| a.0.clone());
+                record.tmux_session_id = address.as_ref().map(|a| a.1.clone());
+                record.attached_at = Some(chrono::Utc::now());
+            },
+        )
+        .map_err(|e| e.to_string());
+        drop(data_guard);
+        if !matches!(outcome, Ok(RuntimeCommitOutcome::Committed)) {
+            if resolution.created_new_pane {
+                let _ = super::stores::lock::terminal_write(
+                    &root,
+                    team,
+                    member,
+                    "attach_cleanup",
+                    || runtime.kill_aitx_pane(&resolution.pane_id),
+                );
+            }
+            return Err("host changed during TUI attach".into());
+        }
+        Ok(resolution.pane_id)
     }
 
     /// Taurhaus's rollback half. Live Mesh-owned delivery still needs the paired switch packet.
@@ -647,6 +764,145 @@ pub(crate) mod tests {
             json!({"text":text}),
         )
     }
+    #[test]
+    fn hosted_attach_absent_thread_never_opens_a_pane() {
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = seat(tmp.path());
+        let hosts = HostedMembers::default();
+        let runtime = super::super::runtime::RecordingCoordinationRuntime::default();
+        assert!(hosts
+            .attach_pane(&registry, "team", "seat", &runtime, "new_window")
+            .is_err());
+        hosts
+            .launch(&registry, "team", "seat", &fixture(tmp.path()))
+            .unwrap();
+        let cell = hosts.seat(tmp.path(), "team", "seat").unwrap();
+        cell.lock().unwrap().as_mut().unwrap().host.thread_id = "absent-thread".into();
+        assert!(hosts
+            .attach_pane(&registry, "team", "seat", &runtime, "new_window")
+            .is_err());
+        assert!(runtime.calls().is_empty());
+    }
+
+    #[test]
+    fn hosted_attach_command_survives_private_tmux_pane_restart() {
+        // Regression: cadd533e never opened a TUI for the owned thread.
+        use super::super::runtime::{RecordingCoordinationRuntime, RuntimeCall};
+        use std::process::{Child, Command, Stdio};
+        struct ScratchTmux {
+            root: PathBuf,
+            child: Child,
+        }
+        impl ScratchTmux {
+            fn command(&self) -> Command {
+                let mut command = Command::new("/usr/bin/tmux");
+                command
+                    .env_clear()
+                    .env("HOME", &self.root)
+                    .env("SHELL", "/bin/sh")
+                    .env("PATH", "/usr/bin:/bin")
+                    .args([
+                        "-S",
+                        self.root.join("tmux.sock").to_str().unwrap(),
+                        "-f",
+                        "/dev/null",
+                    ]);
+                command
+            }
+            fn run(&self, args: &[&str]) -> String {
+                let output = self.command().args(args).output().unwrap();
+                assert!(
+                    output.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                String::from_utf8(output.stdout).unwrap().trim().into()
+            }
+        }
+        impl Drop for ScratchTmux {
+            fn drop(&mut self) {
+                let _ = self.command().arg("kill-server").output();
+                let _ = self.child.kill(); // Only the foreground server this test spawned.
+                let _ = self.child.wait();
+            }
+        }
+        let tmp = tempfile::tempdir_in("/tmp").unwrap();
+        let (registry, hosts) = running(tmp.path());
+        let runtime = RecordingCoordinationRuntime::default();
+        hosts
+            .attach_pane(&registry, "team", "seat", &runtime, "new_window")
+            .unwrap();
+        let command = runtime
+            .calls()
+            .into_iter()
+            .find_map(|call| match call {
+                RuntimeCall::SendKeys { keys, .. } => Some(keys),
+                _ => None,
+            })
+            .unwrap();
+        let socket = tmp.path().join("tmux.sock");
+        let child = Command::new("/usr/bin/tmux")
+            .env_clear()
+            .env("HOME", tmp.path())
+            .env("SHELL", "/bin/sh")
+            .env("PATH", "/usr/bin:/bin")
+            .args(["-D", "-S", socket.to_str().unwrap(), "-f", "/dev/null"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let tmux = ScratchTmux {
+            root: tmp.path().into(),
+            child,
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while !socket.exists() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let original = saved(tmp.path());
+        for count in 1..=2 {
+            let pane = tmux.run(&[
+                "new-session",
+                "-d",
+                "-s",
+                "operator",
+                "-P",
+                "-F",
+                "#{pane_id}",
+                "/bin/sh",
+            ]);
+            tmux.run(&["send-keys", "-t", &pane, "-l", &command]);
+            tmux.run(&["send-keys", "-t", &pane, "Enter"]);
+            let path = tmp.path().join("attach-events.jsonl");
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            let events = loop {
+                let data = std::fs::read_to_string(&path).unwrap_or_default();
+                if data.lines().count() == count {
+                    break data;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "fake TUI did not start"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            };
+            let event: Value = serde_json::from_str(events.lines().last().unwrap()).unwrap();
+            assert_eq!(
+                event["argv"],
+                json!(original.app_server.as_ref().unwrap().attach_argv)
+            );
+            assert_eq!(event["codexHome"], tmp.path().to_str().unwrap());
+            assert!(event["tmux"].is_null());
+            tmux.run(&["kill-pane", "-t", &pane]);
+            assert_eq!(
+                transcript(&hosts, &registry, original.attachment_generation)["thread"]["id"],
+                "owned-thread"
+            );
+            assert_eq!(saved(tmp.path()).app_server, original.app_server);
+        }
+    }
+
     #[test]
     fn hosted_definite_rejection_allows_new_input_and_relaunch() {
         // Regression: 9b50346b made definite steer rejections permanently ambiguous.

@@ -260,7 +260,7 @@ impl CoordinationOrchestrator {
             Err(CoordinationError::NotFound(_)) => default_runtime_record(&request.member_name),
             Err(err) => return Err(err),
         };
-        if runtime.health != HealthState::SessionDead {
+        if runtime.health != HealthState::SessionDead && runtime.app_server.is_none() {
             return Err(CoordinationError::Conflict(format!(
                 "member '{}' in team '{}' is not offline",
                 request.member_name, request.team_name
@@ -702,7 +702,19 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             };
             launch_host().map_err(|e| ("launch_host".into(), e))?;
             self.record_step_success("launch_host", "owned thread resumed");
-            return Ok(String::new());
+            let pane = self
+                .orchestrator
+                .hosted
+                .attach_pane(
+                    &self.orchestrator.root_registry,
+                    &prepared.activation_context.team_name,
+                    &prepared.member.name,
+                    self.orchestrator.runtime.as_ref(),
+                    self.tmux_layout,
+                )
+                .map_err(|e| ("attach_tui".into(), CoordinationError::Conflict(e)))?;
+            self.runtime_state.pane_id = Some(pane.clone());
+            return Ok(pane);
         }
         if let Some(record) = prepared.previous_runtime.as_ref() {
             let old_host = record.app_server.clone().or_else(|| {
