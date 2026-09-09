@@ -8753,6 +8753,9 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
     assert!(report.resumed, "{}", report.message);
     assert_eq!(report.pane_id.as_deref(), Some("test-pane-2"));
     assert_ne!(report.pane_id, before.pane_id);
+    // Regression: efb1ddb8 cleared the retained TUI identity without closing its owned pane.
+    assert!(runtime.calls().iter().any(|c| matches!(c,
+        RuntimeCall::KillPane { pane_id } if Some(pane_id) == before.pane_id.as_ref())));
     assert!(runtime.calls().iter().all(|c| !matches!(c,
         RuntimeCall::SendKeys { pane_id, keys, .. } if Some(pane_id) == before.pane_id.as_ref() && !keys.contains("--remote"))));
     let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();

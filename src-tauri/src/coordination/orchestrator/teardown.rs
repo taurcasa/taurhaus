@@ -116,26 +116,13 @@ impl CoordinationOrchestrator {
             );
             if diagnostics.steps.iter().all(|step| step.success) {
                 if let Some(record) = runtime.filter(|record| record.pane_id.is_some()) {
-                    let pane = record.pane_id.as_deref().unwrap();
                     let result = self.root_registry.resolve(team_name).and_then(|root| {
-                        crate::coordination::stores::lock::terminal_write(
+                        crate::coordination::hosted::detach_owned_tui(
                             &root,
                             team_name,
                             member_name,
-                            "detach_tui",
-                            || {
-                                if let Some(live) = self.runtime.live_pane(pane)? {
-                                    if pane_belongs_to_member(record, &live) != PaneOwnership::Owned
-                                    {
-                                        return Err(CoordinationError::Conflict(
-                                            "attached pane identity changed".into(),
-                                        ));
-                                    }
-                                    self.runtime.kill_aitx_pane(pane)?;
-                                    return Ok(true);
-                                }
-                                Ok(false)
-                            },
+                            record,
+                            self.runtime.as_ref(),
                         )
                     });
                     diagnostics.steps.push(match result {

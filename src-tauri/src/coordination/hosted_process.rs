@@ -18,6 +18,7 @@ pub(crate) struct HostProcess {
     rpc: Option<Rpc>,
     pub thread_id: String,
     pub attach_config: Value,
+    pub instruction_sources: Vec<Value>,
     pub build: String,
     pub process_start: String,
     socket: PathBuf,
@@ -54,6 +55,7 @@ impl HostProcess {
             rpc: None,
             thread_id: String::new(),
             attach_config: Value::Null,
+            instruction_sources: Vec::new(),
             build: String::new(),
             process_start: String::new(),
             socket: socket.into(),
@@ -119,11 +121,24 @@ impl HostProcess {
         if resume.is_some_and(|id| id != host.thread_id) {
             return Err("host resumed a different thread".into());
         }
-        if !result["instructionSources"]
+        host.instruction_sources = result["instructionSources"]
             .as_array()
-            .is_some_and(Vec::is_empty)
-        {
-            return Err("host loaded unexpected instruction sources".into());
+            .cloned()
+            .unwrap_or_default();
+        if !host.instruction_sources.is_empty() {
+            tracing::warn!(event = "hosted.instruction_sources.loaded",
+                thread_id = %host.thread_id, count = host.instruction_sources.len(),
+                "Host loaded project instructions; strict TUI policy remains enforced");
+            taurhaus_lib::logging::emit_global(
+                "warn",
+                "coordination",
+                "hosted.instruction_sources.loaded",
+                Some("Host loaded project instructions; strict TUI policy remains enforced".into()),
+                serde_json::Map::from_iter([
+                    ("thread_id".into(), json!(host.thread_id)),
+                    ("count".into(), json!(host.instruction_sources.len())),
+                ]),
+            );
         }
         let sandbox = match result["sandbox"]["type"].as_str() {
             Some("readOnly") => "read-only",
@@ -804,8 +819,8 @@ with socket.socket(socket.AF_UNIX) as listener:
     }
 
     #[test]
-    fn hosted_instruction_sources_refuse_before_attach() {
-        // Regression: efb1ddb8 introduced an untested instruction-source refusal.
+    fn hosted_instruction_sources_warn_and_continue() {
+        // Regression: b4a4b2dd refused every real project with loaded AGENTS.md instructions.
         let tmp = tempfile::tempdir().unwrap();
         let mut launch = fixture(tmp.path());
         launch.environment.insert(
@@ -813,11 +828,16 @@ with socket.socket(socket.AF_UNIX) as listener:
             json!({"instructionSources":[tmp.path().join("AGENTS.md")]}).to_string(),
         );
         let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let host =
+            spawn(&launch, tmp.path(), None, &guard).expect("project instructions must be allowed");
         assert_eq!(
-            spawn(&launch, tmp.path(), None, &guard).err().as_deref(),
-            Some("host loaded unexpected instruction sources")
+            host.instruction_sources,
+            vec![json!(tmp.path().join("AGENTS.md"))]
         );
-        assert!(!tmp.path().join("tui").exists());
+        assert_eq!(host.attach_config["model"], "fake-model");
+        assert_eq!(host.attach_config["model_reasoning_effort"], "low");
+        assert_eq!(host.attach_config["sandbox_mode"], "read-only");
+        assert_eq!(host.attach_config["approval_policy"], "never");
     }
 
     #[test]

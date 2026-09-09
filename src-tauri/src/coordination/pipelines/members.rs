@@ -749,6 +749,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                             &self.orchestrator.root_registry,
                             &prepared.activation_context.team_name,
                             &prepared.member.name,
+                            self.orchestrator.runtime.as_ref(),
                         )
                         .map_err(|e| ("rollback_host".into(), CoordinationError::Conflict(e)))?;
                 }

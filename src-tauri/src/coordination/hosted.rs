@@ -57,6 +57,33 @@ fn host_alive(host: &AppServerAttachment) -> bool {
         == Some(&host.process_start)
 }
 
+/// Close only the recorded operator TUI under the shared terminal exclusion.
+pub(super) fn detach_owned_tui(
+    root: &Path,
+    team: &str,
+    member: &str,
+    record: &super::stores::MemberRuntimeRecord,
+    runtime: &dyn super::runtime::CoordinationRuntime,
+) -> Result<bool, CoordinationError> {
+    let Some(pane) = record.pane_id.as_deref() else {
+        return Ok(false);
+    };
+    super::stores::lock::terminal_write(root, team, member, "detach_tui", || {
+        let Some(live) = runtime.live_pane(pane)? else {
+            return Ok(false);
+        };
+        if super::runtime::pane_belongs_to_member(record, &live)
+            != super::runtime::PaneOwnership::Owned
+        {
+            return Err(CoordinationError::Conflict(
+                "attached pane identity changed".into(),
+            ));
+        }
+        runtime.kill_aitx_pane(pane)?;
+        Ok(true)
+    })
+}
+
 impl HostedMembers {
     fn seat(&self, root: &Path, team: &str, member: &str) -> Result<Seat, String> {
         let mut seats = self.seats.lock().map_err(|_| "host registry unavailable")?;
@@ -170,9 +197,11 @@ impl HostedMembers {
             process_start: host.process_start.clone(),
             host_generation: uuid::Uuid::new_v4().to_string(),
             build: host.build.clone(),
-            host: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
-            configuration: super::recovery_card::digest(&launch.arguments),
-            trust: "unverified".into(),
+            host: "taurhaus-daemon-owned-thread/1".into(),
+            configuration: "strict-config/1".into(),
+            configuration_digest: Some(super::recovery_card::digest(&launch.arguments)),
+            instruction_sources: host.instruction_sources.clone(),
+            trust: "daemon-owned/1".into(),
             transport: taurhaus_lib::session_scanner::launch::HostedDescriptor::codex().transport,
             attach_argv: launch.attach_argv(&socket, &host.thread_id)?,
             state: "recovering".into(),
@@ -399,6 +428,7 @@ impl HostedMembers {
         registry: &TeamRootRegistry,
         team: &str,
         member: &str,
+        runtime: &dyn super::runtime::CoordinationRuntime,
     ) -> Result<(), String> {
         let root = registry.resolve(team).map_err(|e| e.to_string())?;
         let cell = self.seat(&root, team, member)?;
@@ -461,25 +491,47 @@ impl HostedMembers {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.to_string()),
         }
-        MemberRuntimeStore::update(&root, team, member, |r| {
-            r.attachment_generation = r.attachment_generation.saturating_add(1);
-            r.host_rollback = Some(
-                json!({"oldMode":"app_server", "newMode":"tmux", "optIn":false,
+        drop(_guard); // Terminal exclusion must never overlap host or data locks.
+        detach_owned_tui(&root, team, member, &record, runtime).map_err(|e| e.to_string())?;
+        let _guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
+            .map_err(|e| e.to_string())?;
+        if registry.resolve(team).map_err(|e| e.to_string())? != root
+            || registry.revision(team).map_err(|e| e.to_string())?
+                != authority.root_authority_revision
+            || TeamConfigStore::load(&root, team).map_err(|e| e.to_string())? != config
+        {
+            return Err("host rollback authority changed".into());
+        }
+        let data_guard = acquire_team_lock(&root, team).map_err(|e| e.to_string())?;
+        let outcome = MemberRuntimeStore::commit_if_unchanged(
+            &data_guard,
+            &root,
+            team,
+            member,
+            &MemberRuntimeSnapshot::capture(&record),
+            |r| {
+                r.attachment_generation = r.attachment_generation.saturating_add(1);
+                r.host_rollback = Some(
+                    json!({"oldMode":"app_server", "newMode":"tmux", "optIn":false,
                 "attachment":attachment, "fence":r.attachment_generation, "unresolvedAttempts":[],
                 "abandonedAt":r.host_input_abandoned_at}),
-            );
-            r.app_server = None;
-            // Never type a plain launch into a retained remote TUI. The host is
-            // already stopped; rollback must resolve a fresh operator pane.
-            r.pane_id = None;
-            r.pane_pid = None;
-            r.pane_start_time = None;
-            r.tmux_socket = None;
-            r.tmux_session_id = None;
-            r.health = HealthState::SessionDead;
-        })
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+                );
+                r.app_server = None;
+                // Never type a plain launch into a retained remote TUI. The host is
+                // already stopped; rollback must resolve a fresh operator pane.
+                r.pane_id = None;
+                r.pane_pid = None;
+                r.pane_start_time = None;
+                r.tmux_socket = None;
+                r.tmux_session_id = None;
+                r.health = HealthState::SessionDead;
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        match outcome {
+            RuntimeCommitOutcome::Committed => Ok(()),
+            _ => Err("host attachment changed during rollback".into()),
+        }
     }
 
     pub fn abandon_unknown(
@@ -796,6 +848,21 @@ pub(crate) mod tests {
             json!({"text":text}),
         )
     }
+    #[test]
+    fn hosted_paired_identity_is_a_stable_class() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_registry, _hosts) = running(tmp.path());
+        let wire = serde_json::to_value(saved(tmp.path())).unwrap();
+        let host = &wire["appServer"];
+        assert_eq!(host["host"], "taurhaus-daemon-owned-thread/1");
+        assert_eq!(host["configuration"], "strict-config/1");
+        assert_eq!(host["trust"], "daemon-owned/1");
+        assert!(host["configurationDigest"]
+            .as_str()
+            .is_some_and(|v| !v.is_empty()));
+        assert_eq!(host["instructionSources"], json!([]));
+    }
+
     #[test]
     fn hosted_relaunch_retains_and_reuses_attached_pane() {
         // Regression: b4a4b2dd cleared the pane identity on host relaunch, orphaning its TUI.
