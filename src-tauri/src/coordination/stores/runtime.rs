@@ -33,6 +33,11 @@ const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
 /// Runtime record persisted at `teams/<team>/runtime/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberRuntimeRecord {
+    #[serde(default, rename = "hostInputUnknown", alias = "host_input_unknown")]
+    pub host_input_unknown: bool,
+    /// Operator abandoned the ambiguous input at this stopped attachment; no replay.
+    #[serde(default, rename = "hostInputAbandonedAt", alias = "host_input_abandoned_at")]
+    pub host_input_abandoned_at: Option<u64>,
     #[serde(
         default,
         rename = "appServer",
@@ -199,6 +204,8 @@ mod start_ticks {
 impl Default for MemberRuntimeRecord {
     fn default() -> Self {
         Self {
+            host_input_unknown: false,
+            host_input_abandoned_at: None,
             app_server: None,
             attachment_generation: 0,
             context_generation: 0,
@@ -329,6 +336,15 @@ impl MemberRuntimeSnapshot {
         };
 
         let mut changed = Vec::new();
+        if self.baseline.host_input_unknown != current.host_input_unknown
+            || self.baseline.host_input_abandoned_at != current.host_input_abandoned_at {
+            changed.push("hostInputUnknown");
+        }
+        if self.baseline.recovery != current.recovery { changed.push("recovery"); }
+        if self.baseline.launch_account != current.launch_account { changed.push("launch_account"); }
+        if self.baseline.attached_at != current.attached_at { changed.push("attached_at"); }
+        if self.baseline.last_seen_at != current.last_seen_at { changed.push("last_seen_at"); }
+        if self.baseline.effort_resume_failure != current.effort_resume_failure { changed.push("effort_resume_failure"); }
         if self.baseline.app_server != current.app_server {
             changed.push("appServer");
         }
@@ -923,6 +939,10 @@ fn parse_runtime_record(
 ) -> Result<MemberRuntimeRecord, CoordinationError> {
     #[derive(Debug, Deserialize)]
     struct RuntimeRecordWire {
+        #[serde(default, alias = "hostInputUnknown")]
+        host_input_unknown: bool,
+        #[serde(default, alias = "hostInputAbandonedAt")]
+        host_input_abandoned_at: Option<u64>,
         #[serde(default, rename = "appServer", alias = "app_server")]
         app_server: Option<AppServerAttachment>,
         #[serde(
@@ -1015,6 +1035,8 @@ fn parse_runtime_record(
     })?;
 
     Ok(MemberRuntimeRecord {
+        host_input_unknown: wire.host_input_unknown,
+        host_input_abandoned_at: wire.host_input_abandoned_at,
         app_server: wire.app_server,
         attachment_generation: wire
             .attachment_generation
@@ -1089,6 +1111,8 @@ fn merge_current_extension_fields(
             record.daemon_pid = latest.daemon_pid;
         }
         if preserve_applied_effort || latest.attachment_generation > record.attachment_generation {
+            record.host_input_unknown = latest.host_input_unknown;
+            record.host_input_abandoned_at = latest.host_input_abandoned_at;
             record.app_server = latest.app_server;
             record.attachment_generation = latest.attachment_generation;
             record.context_generation = latest.context_generation;
@@ -1160,6 +1184,8 @@ fn merge_current_extension_fields(
 // flattened fields in camelCase. The snake_case spellings remain listed
 // as read aliases for runtime records written before that contract settled.
 const RUNTIME_AUTHORED_KEYS: &[&str] = &[
+    "hostInputUnknown", "host_input_unknown",
+    "hostInputAbandonedAt", "host_input_abandoned_at",
     "appServer",
     "app_server",
     "recovery",

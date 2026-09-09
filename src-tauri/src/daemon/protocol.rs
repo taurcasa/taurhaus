@@ -125,6 +125,11 @@ pub mod method {
     pub const REFRESH_USAGE: &str = "refresh_usage";
     pub const LIST_WORKFLOW_RUNS: &str = "list_workflow_runs";
     pub const GET_WORKFLOW_RUN: &str = "get_workflow_run";
+    pub const COORDINATION_HOSTED_TRANSCRIPT: &str = "coordination.hosted_transcript";
+    pub const COORDINATION_HOSTED_INPUT: &str = "coordination.hosted_input";
+    pub const COORDINATION_HOSTED_INTERRUPT: &str = "coordination.hosted_interrupt";
+    pub const COORDINATION_HOSTED_APPROVAL: &str = "coordination.hosted_approval";
+    pub const COORDINATION_HOSTED_RECONCILE: &str = "coordination.hosted_reconcile";
     pub const COORDINATION_INITIALIZE_TEAM: &str = "coordination.initialize_team";
     pub const COORDINATION_INITIALIZE_STATUS: &str = "coordination.initialize_status";
     pub const COORDINATION_ADD_AGENT: &str = "coordination.add_agent";

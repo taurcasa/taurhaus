@@ -1931,13 +1931,17 @@ pub async fn coordination_hosted(
     operation: String,
     params: Value,
 ) -> IpcResult<Value> {
-    tauri::async_runtime::spawn_blocking(move || {
-        if !matches!(
-            operation.as_str(),
-            "transcript" | "input" | "interrupt" | "approval"
-        ) {
-            return Err(IpcError::internal("UNKNOWN_METHOD"));
-        }
+    let span = IpcCommandSpan::start("coordination_hosted");
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        use crate::daemon::protocol::method;
+        let method = match operation.as_str() {
+            "transcript" => method::COORDINATION_HOSTED_TRANSCRIPT,
+            "input" => method::COORDINATION_HOSTED_INPUT,
+            "interrupt" => method::COORDINATION_HOSTED_INTERRUPT,
+            "approval" => method::COORDINATION_HOSTED_APPROVAL,
+            "reconcile" => method::COORDINATION_HOSTED_RECONCILE,
+            _ => return Err(IpcError::internal("UNKNOWN_METHOD")),
+        };
         let provider = app.state::<ProviderState>();
         let daemon = provider
             .daemon
@@ -1952,11 +1956,13 @@ pub async fn coordination_hosted(
         call_coordination_daemon(
             &app,
             daemon,
-            &format!("coordination.hosted_{operation}"),
+            method,
             params,
         )
-        .map_err(|error| IpcError::internal(format!("{error:?}")))
+        .map_err(|error| IpcError::internal(error.into_message()))
     })
     .await
-    .map_err(|_| IpcError::internal("Hosted operation worker stopped"))?
+    .unwrap_or_else(|_| Err(IpcError::internal("Hosted operation worker stopped")));
+    span.finish_result(&result);
+    result
 }

@@ -197,7 +197,16 @@ impl HostProcess {
             "turn/start"
         };
         self.uncertain = true; // A lost/partial response never authorizes a resend.
-        let result = self.rpc.as_mut().unwrap().call(method, params, guard)?;
+        let result = match self.rpc.as_mut().unwrap().call(method, params, guard) {
+            Ok(result) => result,
+            Err(error) => {
+                if method == "turn/steer" && error.definite_rejection() {
+                    self.uncertain = false;
+                    return Err("failed: turn changed before input; refresh and retry".into());
+                }
+                return Err(format!("outcome_unknown: {}", String::from(error)));
+            }
+        };
         let turn = result["turn"]["id"]
             .as_str()
             .or_else(|| result["turnId"].as_str())
@@ -230,7 +239,7 @@ impl HostProcess {
             "turn/interrupt",
             json!({"threadId":self.thread_id,"turnId":turn["id"]}),
             guard,
-        )
+        ).map_err(String::from)
     }
 
     pub fn approval(
@@ -273,6 +282,35 @@ impl Drop for HostProcess {
             }
         }
         let _ = std::fs::remove_file(&self.socket);
+    }
+}
+
+#[derive(Debug)]
+enum RpcError {
+    Transport(String),
+    Rejected(Value),
+}
+impl From<String> for RpcError {
+    fn from(message: String) -> Self { Self::Transport(message) }
+}
+impl From<&str> for RpcError {
+    fn from(message: &str) -> Self { Self::Transport(message.into()) }
+}
+impl From<RpcError> for String {
+    fn from(error: RpcError) -> Self {
+        match error {
+            RpcError::Transport(message) => message,
+            // Preserve the error object for classification; never expose arbitrary host text.
+            RpcError::Rejected(_) => "host rejected request; reconcile before retrying".into(),
+        }
+    }
+}
+impl RpcError {
+    fn definite_rejection(&self) -> bool {
+        let Self::Rejected(error) = self else { return false };
+        let message = error["message"].as_str().unwrap_or_default().to_ascii_lowercase();
+        error["code"] == -32600 && (message == "no active turn to steer"
+            || (message.contains("expected turn id") && message.contains("actual turn id")))
     }
 }
 
@@ -340,7 +378,7 @@ impl Rpc {
         method: &str,
         params: Value,
         guard: &HostOperationLock,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, RpcError> {
         let id = uuid::Uuid::new_v4().to_string();
         self.write(&json!({"id":id,"method":method,"params":params}), guard)?;
         for _ in 0..128 {
@@ -360,7 +398,7 @@ impl Rpc {
                 }
             } else if frame["id"] == id {
                 if frame.get("error").is_some() {
-                    return Err("host rejected request; reconcile before retrying".into());
+                    return Err(RpcError::Rejected(frame["error"].clone()));
                 }
                 return frame
                     .get("result")
@@ -425,6 +463,9 @@ def client(connection):
                     turn = {'id':str(len(thread['turns'])+1), 'status':'completed', 'items':[{'type':'userMessage','content':params['input']}]}
                     thread['turns'].append(turn)
                     text = params['input'][0]['text']
+                    if text == 'active':
+                        turn['status'] = 'inProgress'
+                        thread['status']['type'] = 'active'
                     if text in ('approval', 'foreign approval'):
                         turn['status'] = 'inProgress'
                         thread['status'] = {'type':'active','activeFlags':['waitingOnApproval']}
@@ -433,7 +474,16 @@ def client(connection):
                     result = {'turn':turn, 'threadId':thread['id']}
                 elif method == 'turn/steer':
                     assert params['expectedTurnId'] == thread['turns'][-1]['id']
-                    result = {'turnId':params['expectedTurnId']}
+                    text = params['input'][0]['text']
+                    if text == 'completion race':
+                        error = {'code':-32600, 'message':'no active turn to steer'}
+                        thread['turns'][-1]['status'] = 'completed'
+                        thread['status']['type'] = 'idle'
+                    elif text == 'wrong turn':
+                        error = {'code':-32600, 'message':'expected turn id 1 but actual turn id 2'}
+                    elif text == 'unclassified':
+                        error = {'code':-32600, 'message':'unclassified rejection'}
+                    else: result = {'turnId':params['expectedTurnId']}
                 elif method == 'turn/interrupt':
                     thread['turns'][-1]['status'] = 'interrupted'
                     thread['status'] = {'type':'idle','activeFlags':[]}

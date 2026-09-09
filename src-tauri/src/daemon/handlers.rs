@@ -278,10 +278,11 @@ pub(crate) fn dispatch(
             )
         }
         #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
-        "coordination.hosted_transcript"
-        | "coordination.hosted_input"
-        | "coordination.hosted_interrupt"
-        | "coordination.hosted_approval" => {
+        protocol::method::COORDINATION_HOSTED_TRANSCRIPT
+        | protocol::method::COORDINATION_HOSTED_INPUT
+        | protocol::method::COORDINATION_HOSTED_INTERRUPT
+        | protocol::method::COORDINATION_HOSTED_APPROVAL
+        | protocol::method::COORDINATION_HOSTED_RECONCILE => {
             let operation = request.method.trim_start_matches("coordination.hosted_");
             match crate::daemon::hosted::handle(
                 &coordination_state.hosted,

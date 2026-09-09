@@ -287,6 +287,7 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             commands::coordination::coordination_reonboard,
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_get_live_team_status,
+            #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_hosted,
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_preflight_check,
