@@ -544,7 +544,7 @@ export function buildInitializationRequest(
   projectPath = '',
   catalog = EMPTY_MODEL_CATALOG
 ) {
-  const messaging = !(config?.canonicalMessaging ?? canonicalMessagingSupported())
+  const messaging = !(config?.canonicalMessaging ?? canonicalMessagingSupported(config?.meshStatus))
     ? {}
     : { messaging: { mode: 'canonical', retentionPolicy: DEFAULT_CANONICAL_POLICY } }
   const lead = config?.lead

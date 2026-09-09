@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 vi.mock('../ipc.js', () => ({
+  checkMeshInstallStatus: vi.fn().mockResolvedValue({ version: '0.2.29', canonical_messaging_supported: false }),
   deleteRoleTemplate: vi.fn(),
   exportRoleToFile: vi.fn(),
   getRoleTemplate: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 }))
 
 const {
+  checkMeshInstallStatus,
   deleteRoleTemplate,
   exportRoleToFile,
   getRoleTemplate,
@@ -1192,30 +1194,45 @@ describe('MeshTeamBuilder role-inherited reasoning effort', () => {
   })
 })
 
+// Regression: 9d09c883 disabled canonical defaults after a Mesh hash change.
 it('defaults canonical messaging on for a supported build and passes the operator toggle to initialization', async () => {
-  const capability = vi.spyOn(meshTabUtils, 'canonicalMessagingSupported').mockReturnValue(true)
+  const meshStatus = { version: '0.3.1', canonical_messaging_supported: true }
   const onInitialize = vi.fn()
-  renderBuilder({ onInitialize, teamConfig: { lead: { name: 'lead', tool: 'codex', model: 'gpt-5.4', projectId: '/projects/taurhaus' }, agents: [] } })
+  renderBuilder({ meshStatus, onInitialize, teamConfig: { lead: { name: 'lead', tool: 'codex', model: 'gpt-5.4', projectId: '/projects/taurhaus' }, agents: [] } })
   const toggle = screen.getByRole('checkbox', { name: 'Canonical messaging — mesh journal + team delivery (disposable team)' })
   expect(toggle).toBeChecked()
   expect(toggle).toHaveAccessibleDescription('Keeps messages in the mesh journal; dispose of the team after exporting evidence.')
   await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
   expect(onInitialize).toHaveBeenLastCalledWith({ canonicalMessaging: true })
+  expect(meshTabUtils.buildInitializationRequest(onInitialize.mock.lastCall[0], 'trial')).toHaveProperty('messaging.mode', 'canonical')
   await fireEvent.click(toggle)
   expect(toggle).not.toBeChecked()
   await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
   expect(onInitialize).toHaveBeenLastCalledWith({ canonicalMessaging: false })
-  capability.mockRestore()
 })
 
 // Regression: aafcc540 defaulted canonical on with the incompatible locked Mesh.
-it('keeps new teams on legacy messaging when the shipped Mesh lacks canonical creation', async () => {
+it('keeps new teams on legacy messaging when installed Mesh lacks canonical creation', async () => {
+  const meshStatus = { version: '0.2.29', canonical_messaging_supported: false }
   const onInitialize = vi.fn()
-  renderBuilder({ onInitialize, teamConfig: { lead: { name: 'lead', tool: 'codex', model: 'gpt-5.4', projectId: '/projects/taurhaus' }, agents: [] } })
+  renderBuilder({ meshStatus, onInitialize, teamConfig: { lead: { name: 'lead', tool: 'codex', model: 'gpt-5.4', projectId: '/projects/taurhaus' }, agents: [] } })
   const toggle = screen.getByRole('checkbox', { name: 'Canonical messaging — mesh journal + team delivery (disposable team)' })
   expect(toggle).not.toBeChecked()
   expect(toggle).toBeDisabled()
-  expect(toggle).toHaveAccessibleDescription('The bundled Mesh build does not support canonical teams; legacy messaging remains available.')
+  expect(toggle).toHaveAccessibleDescription('Requires Mesh 0.3.0 (installed 0.2.29)')
   await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
   expect(onInitialize).toHaveBeenLastCalledWith({ canonicalMessaging: false })
+  expect(meshTabUtils.buildInitializationRequest(onInitialize.mock.lastCall[0], 'trial')).not.toHaveProperty('messaging')
+})
+
+// Regression: 9d09c883 used a synchronous bundled hash instead of async installed status.
+it('defaults on when backend status arrives and preserves an explicit opt-out', async () => {
+  checkMeshInstallStatus.mockResolvedValueOnce({ version: '1.0.0', canonical_messaging_supported: true })
+  const view = renderBuilder()
+  const toggle = screen.getByRole('checkbox', { name: /Canonical messaging/ })
+  await waitFor(() => expect(toggle).toBeChecked())
+  expect(toggle).toBeEnabled()
+  await fireEvent.click(toggle)
+  await view.rerender(builderProps({ meshStatus: { version: '1.0.1', canonical_messaging_supported: true } }))
+  expect(toggle).not.toBeChecked()
 })

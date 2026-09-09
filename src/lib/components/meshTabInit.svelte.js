@@ -1,7 +1,5 @@
-import { canonicalMessagingSupported } from './meshTabUtils.js'
-
 export function createMeshTabInit({ state, refs, deps, gate, setup }) {
-  function handleInitialize({ canonicalMessaging = canonicalMessagingSupported() } = {}) {
+  function handleInitialize({ canonicalMessaging = state.teamConfig?.canonicalMessaging } = {}) {
     if (!state.canInitialize) return
     state.initProgress = deps.buildInitializationRequest(
       { ...state.teamConfig, canonicalMessaging },

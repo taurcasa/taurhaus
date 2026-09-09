@@ -672,3 +672,11 @@ it('uses backend capability, independent of lock identity or version', () => {
   expect(canonicalMessagingSupported({ version: '9.0.0', git_commit: '4388d6a1590e3072c9dfdc61ccd08b00bff2508b' })).toBe(false)
   expect(canonicalMessagingSupported()).toBe(false)
 })
+
+// Regression: 9d09c883 omitted messaging by consulting a bundled hash instead of status.
+it.each(['custom', 'preset'])('defaults %s requests from backend capability with explicit opt-out', (initializationMode) => {
+  const config = { initializationMode, presetId: 'trial', meshStatus: { canonical_messaging_supported: true } }
+  expect(buildInitializationRequest(config, 'trial')).toHaveProperty('messaging.mode', 'canonical')
+  expect(buildInitializationRequest({ ...config, canonicalMessaging: false }, 'trial')).not.toHaveProperty('messaging')
+  expect(buildInitializationRequest({ ...config, meshStatus: { canonical_messaging_supported: false } }, 'trial')).not.toHaveProperty('messaging')
+})
