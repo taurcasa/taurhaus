@@ -9093,6 +9093,41 @@ fn canonical_review_checkpoint_is_outside_the_team_tree() {
         .exists());
 }
 
+// Regression: 13beff81 moved retry checkpoints into a hidden teams-root directory,
+// which list() exposed as a team and startup hook reconciliation could not load.
+fn assert_canonical_checkpoint_does_not_pollute_discovery(refusal: Option<&str>) {
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    runtime.set_delivery_opt_in_failure(refusal);
+    let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+    let report = orchestrator
+        .initialize_team(&canonical_review_request(&tmp))
+        .unwrap();
+    assert_eq!(
+        report.failed_step.as_deref(),
+        refusal.map(|_| "opt_in_delivery")
+    );
+    let checkpoint_dir = tmp.path().join(".taurhaus-initialize-pending");
+    assert!(checkpoint_dir.is_dir());
+    assert_eq!(checkpoint_dir.join("canonical.json").exists(), refusal.is_some());
+
+    // This Codex-only roster requires no Claude hook installation: the startup
+    // scan must succeed without ever resolving or touching a real account home.
+    let hook_scan = crate::coordination::state::ensure_startup_claude_compact_hook(tmp.path());
+    assert!(matches!(hook_scan, Ok(false)), "{hook_scan:?}");
+    assert_eq!(TeamConfigStore::list(tmp.path()).unwrap(), vec!["canonical"]);
+}
+
+#[test]
+fn canonical_review_success_checkpoint_does_not_pollute_discovery() {
+    assert_canonical_checkpoint_does_not_pollute_discovery(None);
+}
+
+#[test]
+fn canonical_review_refused_checkpoint_does_not_pollute_discovery() {
+    assert_canonical_checkpoint_does_not_pollute_discovery(Some("mesh: runtime pending"));
+}
+
 // Regression: 796bba0e propagated checkpoint unlink errors after successful launch.
 #[test]
 fn canonical_review_checkpoint_cleanup_is_best_effort() {

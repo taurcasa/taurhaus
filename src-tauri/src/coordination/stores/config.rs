@@ -504,6 +504,11 @@ impl TeamConfigStore {
             if entry.file_type()?.is_dir() && !terminal_only {
                 let file_name = entry.file_name();
                 if let Some(name) = file_name.to_str() {
+                    // Match the root registry: hidden bookkeeping (including
+                    // canonical initialize checkpoints) is not a team.
+                    if name.starts_with('.') {
+                        continue;
+                    }
                     teams.push(name.to_string());
                 }
             }
