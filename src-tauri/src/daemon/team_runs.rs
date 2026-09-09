@@ -1264,7 +1264,7 @@ mod tests {
         .expect("Claude team switch");
 
         assert_eq!(report.switched_members, ["team-lead", "builder"]);
-        assert!(!default_teams.join("arch").exists());
+        assert!(!default_teams.join("arch/config.json").exists());
         assert!(TeamConfigStore::load(&target_teams, "arch").is_ok());
         assert_eq!(
             state.team_teams_dir("arch").expect("committed root"),
@@ -1329,7 +1329,7 @@ mod tests {
 
         assert!(error.to_string().contains("Is a directory"), "{error}");
         assert!(TeamConfigStore::load(&default_teams, "arch").is_ok());
-        assert!(!target_teams.join("arch").exists());
+        assert!(!target_teams.join("arch/config.json").exists());
         assert_eq!(
             state.team_teams_dir("arch").expect("old authority remains"),
             default_teams

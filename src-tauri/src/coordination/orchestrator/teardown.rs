@@ -320,7 +320,13 @@ impl CoordinationOrchestrator {
                         "verify_pane_ownership",
                         format!("pane {pane_id} matched its recorded member identity"),
                     ));
-                    if let Err(err) = self.runtime.kill_aitx_pane(pane_id) {
+                    if let Err(err) = crate::coordination::stores::lock::terminal_write(
+                        &self.teams_dir,
+                        team_name,
+                        member_name,
+                        "teardown",
+                        || self.runtime.kill_aitx_pane(pane_id),
+                    ) {
                         tracing::warn!(
                             team = %team_name,
                             member = %member_name,

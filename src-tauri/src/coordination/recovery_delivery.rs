@@ -25,7 +25,7 @@ pub fn reserve_activation(
     crate::coordination::validation::validate_team_name(team)?;
     crate::coordination::validation::validate_member_name(member)?;
     MemberRuntimeStore::update(root, team, member, |record| {
-        record.recovery.reserve_activation(intent)
+        record.reserve_activation(intent)
     })?;
     Ok(())
 }
@@ -102,13 +102,13 @@ fn prepare_inner(
         .team_incarnation_id
         .as_ref()
         .zip(runtime.recovery.member_incarnation_id.as_ref())
-        .filter(|_| runtime.recovery.activation_generation > 0)
+        .filter(|_| runtime.attachment_generation > 0)
         .map(|(team_id, member_id)| CardKey {
             card_schema: CARD_SCHEMA,
             recipient: (team_id.clone(), member_id.clone()),
             context: (
-                runtime.recovery.activation_generation,
-                runtime.recovery.compaction_generation + u64::from(compaction),
+                runtime.attachment_generation,
+                runtime.context_generation + u64::from(compaction),
             ),
             roots: Roots {
                 root_authority_revision: authority_revision.clone(),

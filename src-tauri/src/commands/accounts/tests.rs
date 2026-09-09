@@ -1075,6 +1075,7 @@ fn a_running_member_holds_the_team_under_the_account_it_launched_on() {
         effort_resume_failure: None,
         launch_account: Default::default(),
         extra: Default::default(),
+        ..Default::default()
     };
     runtime.launch_account.account_id = Some("codex-personal".to_string());
     runtime.launch_account.account_applied = Some(false);

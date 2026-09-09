@@ -1,3 +1,4 @@
+use crate::coordination::stores::TeamConfigStore;
 use chrono::Utc;
 
 use crate::coordination::audit::{
@@ -283,6 +284,19 @@ impl CoordinationOrchestrator {
         team_name: &str,
         member_name: &str,
     ) -> WakeDisposition {
+        match TeamConfigStore::team_owns_delivery(&self.teams_dir, team_name) {
+            Ok(true) => {
+                return WakeDisposition::NotAttempted {
+                    reason: "team owns delivery".into(),
+                }
+            }
+            Err(e) => {
+                return WakeDisposition::Failed {
+                    reason: e.to_string(),
+                }
+            }
+            Ok(false) => {}
+        }
         let runtime = match MemberRuntimeStore::load(&self.teams_dir, team_name, member_name) {
             Ok(runtime) => runtime,
             Err(err) => {

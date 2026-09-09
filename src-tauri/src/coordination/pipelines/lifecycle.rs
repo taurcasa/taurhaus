@@ -81,7 +81,22 @@ impl CoordinationOrchestrator {
         }
 
         if let Some(pane_id) = runtime_state.pane_id.as_deref() {
-            if let Err(err) = self.runtime.kill_aitx_pane(pane_id) {
+            // This attempt owns the new pane. A damaged record must not
+            // prevent its locked rollback; epoch is diagnostic only.
+            let epoch =
+                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.agent.name)
+                    .map(|record| record.attachment_generation)
+                    .unwrap_or_default();
+            if let Err(err) = crate::coordination::stores::lock::TerminalLock::acquire(
+                &self.teams_dir,
+                &request.team_name,
+                &request.agent.name,
+                "rollback",
+                epoch,
+                std::time::Duration::from_secs(2),
+            )
+            .and_then(|_guard| self.runtime.kill_aitx_pane(pane_id))
+            {
                 tracing::warn!(
                     team = %request.team_name,
                     member = %request.agent.name,
@@ -178,7 +193,22 @@ impl CoordinationOrchestrator {
         }
 
         if let Some(pane_id) = runtime_state.created_pane_id.as_deref() {
-            if let Err(err) = self.runtime.kill_aitx_pane(pane_id) {
+            // This attempt owns the new pane. A damaged record must not
+            // prevent its locked rollback; epoch is diagnostic only.
+            let epoch =
+                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.member_name)
+                    .map(|record| record.attachment_generation)
+                    .unwrap_or_default();
+            if let Err(err) = crate::coordination::stores::lock::TerminalLock::acquire(
+                &self.teams_dir,
+                &request.team_name,
+                &request.member_name,
+                "rollback",
+                epoch,
+                std::time::Duration::from_secs(2),
+            )
+            .and_then(|_guard| self.runtime.kill_aitx_pane(pane_id))
+            {
                 tracing::warn!(
                     team = %request.team_name,
                     member = %request.member_name,
@@ -272,6 +302,33 @@ impl CoordinationOrchestrator {
         patch: RuntimeCommitPatch,
         expected: &MemberRuntimeSnapshot,
     ) -> Result<RuntimeCommitOutcome, CoordinationError> {
+        // Resolve/probe before either record lock. Publish all facts and the
+        // existing recovery activation counter in the same record replacement.
+        let attachment = if patch.activation.is_some() {
+            let root = self.root_registry.resolve(&context.team_name)?;
+            let config = TeamConfigStore::load(&root, &context.team_name)?;
+            let root = std::fs::canonicalize(root)?;
+            Some(crate::coordination::stores::runtime::LaunchRoot {
+                claude_dir: root
+                    .parent()
+                    .ok_or_else(|| {
+                        CoordinationError::Validation("teams root has no parent".into())
+                    })?
+                    .to_path_buf(),
+                teams_dir: root,
+                team_incarnation_id: config.team_incarnation_id,
+                root_authority_revision: self.root_registry.revision(&context.team_name)?,
+            })
+        } else {
+            None
+        };
+        let address = match patch.pane_id.as_ref().and_then(Option::as_deref) {
+            Some(pane) => self.runtime.tmux_address(pane).unwrap_or_else(|error| {
+                tracing::warn!(pane, %error, "attachment address unavailable; delivery remains pending");
+                None
+            }),
+            None => None,
+        };
         let guard = acquire_team_lock(&self.teams_dir, &context.team_name)?;
         let reached_a_level = patch
             .applied_effort
@@ -286,6 +343,39 @@ impl CoordinationOrchestrator {
             &context.member.name,
             expected,
             |runtime| {
+                if let Some((intent, account_root)) = patch.activation.as_ref() {
+                    runtime.reserve_activation(intent);
+                    runtime.recovery.reserved_attachment = patch.attached_at.flatten();
+                    runtime.recovery.reserved_effort = patch.applied_effort.clone().flatten();
+                    runtime.recovery.harness_account_root = account_root.as_ref().map(|p| {
+                        crate::provider::path::normalize_project_path(&p.to_string_lossy())
+                    });
+                    runtime.recovery.launch_namespace = Some(
+                        if cfg!(target_os = "windows") {
+                            "wsl"
+                        } else {
+                            "native"
+                        }
+                        .into(),
+                    );
+                    runtime.launch_root = attachment;
+                    // A fresh attachment cannot inherit certification or an old address.
+                    runtime.terminal_contract = 0;
+                    runtime.tmux_socket = None;
+                    runtime.tmux_session_id = None;
+                }
+                if let Some((socket, session)) = address {
+                    runtime.tmux_socket = Some(socket);
+                    runtime.tmux_session_id = Some(session);
+                }
+                runtime.harness = Some(context.member.cli_tool);
+                runtime.activity_snapshot_path = Some(
+                    crate::coordination::activity_export::activity_snapshot_path(
+                        &self.teams_dir,
+                        &context.team_name,
+                        &context.member.name,
+                    ),
+                );
                 runtime.cli_tool.get_or_insert(context.member.cli_tool);
                 if runtime.project_path.is_none() {
                     runtime.project_path = Some(context.member.project_path.clone());
@@ -298,6 +388,25 @@ impl CoordinationOrchestrator {
                 }
                 if let Some(pane_start_time) = patch.pane_start_time {
                     runtime.pane_start_time = pane_start_time;
+                }
+                if patch.activation.is_some()
+                    && runtime
+                        .tmux_socket
+                        .as_ref()
+                        .is_some_and(|p| p.is_absolute())
+                    && runtime.tmux_session_id.as_ref().is_some_and(|s| {
+                        s.strip_prefix('$')
+                            .is_some_and(|n| n.parse::<u64>().is_ok())
+                    })
+                    && runtime.pane_id.is_some()
+                    && runtime.pane_pid.is_some()
+                    && runtime.pane_start_time.is_some()
+                    && runtime
+                        .launch_root
+                        .as_ref()
+                        .is_some_and(|r| r.team_incarnation_id.is_some())
+                {
+                    runtime.terminal_contract = 1;
                 }
                 if let Some(session_id) = patch.session_id {
                     runtime.session_id = session_id;

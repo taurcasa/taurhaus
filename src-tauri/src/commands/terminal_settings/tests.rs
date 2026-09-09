@@ -717,6 +717,7 @@ fn a_live_launch_without_an_account_id_marks_the_tool_unresolved() {
         effort_resume_failure: None,
         launch_account: Default::default(),
         extra: Default::default(),
+        ..Default::default()
     };
     crate::coordination::stores::MemberRuntimeStore::save(&teams_dir, "team-a", "builder", &record)
         .expect("live runtime without an account id");
@@ -1033,6 +1034,7 @@ fn live_runtime_record(
             ..Default::default()
         },
         extra: Default::default(),
+        ..Default::default()
     }
 }
 

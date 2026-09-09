@@ -2790,6 +2790,7 @@ fn startup_reconcile_removes_orphan_runtime_records() {
         effort_resume_failure: None,
         launch_account: Default::default(),
         extra: Default::default(),
+        ..Default::default()
     };
     MemberRuntimeStore::save(tmp.path(), team_name, "orphan-agent", &orphan_runtime)
         .expect("orphan runtime saved");
@@ -5383,7 +5384,9 @@ fn initialize_team_join_mesh_failure_reports_partial_and_cleans_up() {
         ]
     );
     assert!(
-        !tmp.path().join("architecture-final-join-failure").exists(),
+        !tmp.path()
+            .join("architecture-final-join-failure/config.json")
+            .exists(),
         "team should be cleaned up when join_mesh fails"
     );
 }
@@ -5451,7 +5454,10 @@ fn initialize_failure_send_onboarding_triggers_disband_teardown() {
         .initialize_team(&request)
         .expect("pipeline should return report");
     assert_eq!(report.failed_step.as_deref(), Some("send_onboarding"));
-    assert!(!tmp.path().join("architecture-final-init-cleanup").exists());
+    assert!(!tmp
+        .path()
+        .join("architecture-final-init-cleanup/config.json")
+        .exists());
     assert_eq!(
         fake.call_counts(),
         (0, 1, 0, 3),
@@ -5483,7 +5489,7 @@ fn initialize_failure_send_onboarding_cleans_up_mesh_backed_lead() {
     assert_eq!(report.failed_step.as_deref(), Some("send_onboarding"));
     assert!(!tmp
         .path()
-        .join("architecture-final-init-mesh-lead-cleanup")
+        .join("architecture-final-init-mesh-lead-cleanup/config.json")
         .exists());
 
     let calls = runtime.calls();
@@ -5546,8 +5552,8 @@ fn add_agent_to_team_full_success() {
             "launch_session",
             "join_mesh",
             "start_daemon",
-            "send_onboarding",
             "update_roster",
+            "send_onboarding",
         ]
     );
 
@@ -5785,8 +5791,8 @@ fn add_agent_step_ordering_is_stable() {
             "launch_session",
             "join_mesh",
             "start_daemon",
-            "send_onboarding",
             "update_roster",
+            "send_onboarding",
         ]
     );
 }
@@ -5849,4 +5855,28 @@ fn grok_runtime_identity_is_backfilled_once_its_registry_appears() {
             "{member_name} keeps its own grok session identity"
         );
     }
+}
+
+#[test]
+fn team_owned_inbox_append_does_not_wake_member_executor() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator =
+        new_inbox_delivery_orchestrator(&tmp, runtime.clone(), "team-owned", "seat");
+    let mut config = TeamConfigStore::load(tmp.path(), "team-owned").unwrap();
+    config.extra.insert("delivery_owner".into(), "team".into());
+    TeamConfigStore::save(tmp.path(), "team-owned", &config).unwrap();
+    set_delivery_runtime(tmp.path(), "team-owned", "seat", Some("%31"), None);
+    let result = deliver_inbox_notice(&mut orchestrator, "team-owned", "seat", None);
+    assert_eq!(
+        result.wake,
+        WakeDisposition::NotAttempted {
+            reason: "team owns delivery".into()
+        }
+    );
+    assert!(!runtime
+        .calls()
+        .iter()
+        .any(|c| matches!(c, RuntimeCall::SpawnDaemon { .. })));
+    assert_one_inbox_append(tmp.path(), "team-owned", "seat");
 }

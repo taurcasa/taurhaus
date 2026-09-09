@@ -353,7 +353,7 @@ impl CoordinationOrchestrator {
         Ok(())
     }
 
-    fn seed_initialize_roster(
+    pub(super) fn seed_initialize_roster(
         &mut self,
         team_name: &str,
         team_description: Option<String>,
@@ -380,32 +380,33 @@ impl CoordinationOrchestrator {
         )?;
 
         for member in members {
-            MemberRuntimeStore::save(
-                &self.teams_dir,
-                team_name,
-                &member.name,
-                &crate::coordination::stores::MemberRuntimeRecord {
-                    recovery: Default::default(),
-                    schema_version: 3,
-                    member_name: member.name.clone(),
-                    cli_tool: Some(member.cli_tool),
-                    project_path: Some(member.project_path.clone()),
-                    pane_id: None,
-                    pane_pid: None,
-                    pane_start_time: None,
-                    session_id: None,
-                    jsonl_path: None,
-                    daemon_pid: None,
-                    health: HealthState::SessionDead,
-                    delivery_lease: None,
-                    attached_at: None,
-                    last_seen_at: None,
-                    applied_effort: None,
-                    effort_resume_failure: None,
-                    launch_account: Default::default(),
-                    extra: Default::default(),
-                },
-            )?;
+            let seed = crate::coordination::stores::MemberRuntimeRecord {
+                schema_version: 3,
+                member_name: member.name.clone(),
+                cli_tool: Some(member.cli_tool),
+                project_path: Some(member.project_path.clone()),
+                health: HealthState::SessionDead,
+                ..Default::default()
+            };
+            match MemberRuntimeStore::update(&self.teams_dir, team_name, &member.name, |record| {
+                // Reset the current record, not a generation-zero snapshot that
+                // the stale-save protection would (correctly) discard.
+                let generation = record.attachment_generation + 1;
+                let context = record.context_generation;
+                let recovery = std::mem::take(&mut record.recovery);
+                let extra = std::mem::take(&mut record.extra);
+                *record = seed.clone();
+                record.attachment_generation = generation;
+                record.context_generation = context;
+                record.recovery = recovery;
+                record.extra = extra;
+            }) {
+                Ok(_) => {}
+                Err(CoordinationError::NotFound(_)) => {
+                    MemberRuntimeStore::save(&self.teams_dir, team_name, &member.name, &seed)?;
+                }
+                Err(error) => return Err(error),
+            }
 
             self.audit_log
                 .push(AuditEvent::MemberAdded(MemberAddedEvent {
@@ -431,12 +432,20 @@ impl CoordinationOrchestrator {
         let launch =
             build_member_activation_launch_command(&self.teams_dir, context, cli_commands)?;
         record_context_launch_telemetry(&self.teams_dir, context, &launch);
-        let pane_id = launch_member_pane(
-            self.runtime.as_ref(),
-            per_project_anchor_panes,
-            tmux_layout,
-            &context.member.project_path.to_string_lossy(),
-            &launch.command,
+        let pane_id = crate::coordination::stores::lock::terminal_write(
+            &self.teams_dir,
+            &context.team_name,
+            &context.member.name,
+            "launch",
+            || {
+                launch_member_pane(
+                    self.runtime.as_ref(),
+                    per_project_anchor_panes,
+                    tmux_layout,
+                    &context.member.project_path.to_string_lossy(),
+                    &launch.command,
+                )
+            },
         )?;
         runtime_state.harness_account_root = launch.harness_account_root.clone();
         let account = launch.account_result();
@@ -451,18 +460,7 @@ impl CoordinationOrchestrator {
         runtime_state.health = Some(HealthState::Healthy);
         self.commit_member_runtime(
             context,
-            RuntimeCommitPatch {
-                pane_id: Some(Some(pane_id.clone())),
-                pane_pid: Some(runtime_state.pane_pid),
-                pane_start_time: Some(runtime_state.pane_start_time),
-                session_id: Some(None),
-                jsonl_path: Some(None),
-                daemon_pid: Some(None),
-                attached_at: Some(runtime_state.attached_at),
-                health: Some(HealthState::Healthy),
-                launch_account: Some(runtime_state.launch_account.clone()),
-                applied_effort: Some(runtime_state.applied_effort.clone()),
-            },
+            RuntimeCommitPatch::from_pending_runtime_state(runtime_state),
         )?;
         Ok(pane_id)
     }

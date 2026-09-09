@@ -33,6 +33,31 @@ const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
 /// Runtime record persisted at `teams/<team>/runtime/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberRuntimeRecord {
+    #[serde(
+        default,
+        rename = "attachmentGeneration",
+        alias = "attachment_generation"
+    )]
+    pub attachment_generation: u64,
+    #[serde(default, rename = "contextGeneration", alias = "context_generation")]
+    pub context_generation: u64,
+    #[serde(default, rename = "tmuxSocket", alias = "tmux_socket")]
+    pub tmux_socket: Option<PathBuf>,
+    #[serde(default, rename = "tmuxSessionId", alias = "tmux_session_id")]
+    pub tmux_session_id: Option<String>,
+    #[serde(default)]
+    pub harness: Option<CliTool>,
+    #[serde(default, rename = "launchRoot", alias = "launch_root")]
+    pub launch_root: Option<LaunchRoot>,
+    #[serde(
+        default,
+        rename = "activitySnapshotPath",
+        alias = "activity_snapshot_path"
+    )]
+    pub activity_snapshot_path: Option<PathBuf>,
+    #[serde(default, rename = "terminalContract", alias = "terminal_contract")]
+    pub terminal_contract: u32,
+
     #[serde(default)]
     pub recovery: crate::coordination::recovery_card::RecoveryState,
     #[serde(default = "schema_version_one")]
@@ -41,10 +66,16 @@ pub struct MemberRuntimeRecord {
     pub member_name: String,
     pub cli_tool: Option<CliTool>,
     pub project_path: Option<PathBuf>,
+    #[serde(default, rename = "paneId", alias = "pane_id")]
     pub pane_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, rename = "panePid", alias = "pane_pid")]
     pub pane_pid: Option<u32>,
-    #[serde(default)]
+    #[serde(
+        default,
+        rename = "paneStartTime",
+        alias = "pane_start_time",
+        with = "start_ticks"
+    )]
     pub pane_start_time: Option<u64>,
     pub session_id: Option<String>,
     pub jsonl_path: Option<PathBuf>,
@@ -84,6 +115,114 @@ pub struct MemberRuntimeRecord {
     pub launch_account: LaunchAccountResult,
     #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extra: BTreeMap<String, Value>,
+}
+
+/// Registry-resolved launch authority, including relocation cycles.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchRoot {
+    pub claude_dir: PathBuf,
+    pub teams_dir: PathBuf,
+    pub team_incarnation_id: Option<String>,
+    pub root_authority_revision: u64,
+}
+
+mod start_ticks {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    pub fn serialize<S: Serializer>(ticks: &Option<u64>, s: S) -> Result<S::Ok, S::Error> {
+        ticks.map(|n| n.to_string()).serialize(s)
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u64>, D::Error> {
+        let value = Option::<serde_json::Value>::deserialize(d)?;
+        value
+            .map(|v| match v {
+                serde_json::Value::String(s) => s.parse().map_err(serde::de::Error::custom),
+                v => v
+                    .as_u64()
+                    .ok_or_else(|| serde::de::Error::custom("invalid process start ticks")),
+            })
+            .transpose()
+    }
+}
+
+impl Default for MemberRuntimeRecord {
+    fn default() -> Self {
+        Self {
+            attachment_generation: 0,
+            context_generation: 0,
+            tmux_socket: None,
+            tmux_session_id: None,
+            harness: None,
+            launch_root: None,
+            activity_snapshot_path: None,
+            terminal_contract: 0,
+            recovery: Default::default(),
+            schema_version: schema_version_one(),
+            member_name: String::new(),
+            cli_tool: None,
+            project_path: None,
+            pane_id: None,
+            pane_pid: None,
+            pane_start_time: None,
+            session_id: None,
+            jsonl_path: None,
+            daemon_pid: None,
+            health: default_runtime_health(),
+            delivery_lease: None,
+            attached_at: None,
+            last_seen_at: None,
+            applied_effort: None,
+            effort_resume_failure: None,
+            launch_account: Default::default(),
+            extra: BTreeMap::new(),
+        }
+    }
+}
+
+impl MemberRuntimeRecord {
+    pub fn context(&self) -> (u64, u64) {
+        (self.attachment_generation, self.context_generation)
+    }
+
+    /// Called by the activation owner only, after capture and before delivery.
+    pub fn reserve_activation(&mut self, intent: &str) {
+        if self.recovery.activation_intent.as_deref() == Some(intent) {
+            return;
+        }
+        self.recovery
+            .member_incarnation_id
+            .get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
+        self.recovery.activation_intent = Some(intent.to_string());
+        self.attachment_generation += 1;
+        self.context_generation = 0;
+        self.recovery.admitted_boundary = None;
+        self.recovery.baseline_binding = None;
+        self.recovery.claim = None;
+    }
+
+    /// Metadata only; the existing hook path decides which boundary is admitted.
+    pub fn admit_compaction(&mut self, boundary: &str) {
+        if self.recovery.admitted_boundary.as_deref() == Some(boundary) {
+            return;
+        }
+        self.recovery.admitted_boundary = Some(boundary.to_string());
+        self.context_generation += 1;
+        self.recovery.baseline_binding = None;
+        if self
+            .recovery
+            .claim
+            .as_ref()
+            .is_none_or(|r| r.card_key.context != self.context())
+        {
+            self.recovery.claim = None;
+        } else {
+            self.recovery.baseline_binding = self
+                .recovery
+                .claim
+                .as_ref()
+                .map(|r| r.obligation_key.clone());
+        }
+    }
 }
 
 /// How often a member has failed to reach one requested effort level.
@@ -158,6 +297,30 @@ impl MemberRuntimeSnapshot {
         }
         if self.baseline.applied_effort != current.applied_effort {
             changed.push("appliedEffort");
+        }
+        if self.baseline.attachment_generation != current.attachment_generation {
+            changed.push("attachmentGeneration");
+        }
+        if self.baseline.context_generation != current.context_generation {
+            changed.push("contextGeneration");
+        }
+        if self.baseline.tmux_socket != current.tmux_socket {
+            changed.push("tmuxSocket");
+        }
+        if self.baseline.tmux_session_id != current.tmux_session_id {
+            changed.push("tmuxSessionId");
+        }
+        if self.baseline.harness != current.harness {
+            changed.push("harness");
+        }
+        if self.baseline.launch_root != current.launch_root {
+            changed.push("launchRoot");
+        }
+        if self.baseline.activity_snapshot_path != current.activity_snapshot_path {
+            changed.push("activitySnapshotPath");
+        }
+        if self.baseline.terminal_contract != current.terminal_contract {
+            changed.push("terminalContract");
         }
         changed
     }
@@ -259,6 +422,12 @@ impl MemberRuntimeStore {
             true,
         );
         current.recovery = record.recovery.clone();
+        current.attachment_generation = current
+            .attachment_generation
+            .max(record.attachment_generation);
+        if record.attachment_generation == current.attachment_generation {
+            current.context_generation = record.context_generation;
+        }
         save_runtime_record_locked(teams_dir, team_name, member_name, &current, &target_lock)
     }
 
@@ -597,8 +766,16 @@ fn save_runtime_record_locked(
     record: &MemberRuntimeRecord,
     // Held for the duration of the publish: the caller's critical
     // section is what makes the read-merge-write above coherent.
-    _target_lock: &super::lock::TargetFileLock,
+    target_lock: &super::lock::TargetFileLock,
 ) -> Result<(), CoordinationError> {
+    let raw = target_lock.read_contents()?;
+    if let Ok(latest) = parse_runtime_record(&raw, team_name, member_name) {
+        if record.attachment_generation < latest.attachment_generation {
+            return Err(CoordinationError::Conflict(
+                "attachment generation cannot decrease".into(),
+            ));
+        }
+    }
     let mut normalized = record.clone();
     normalized.schema_version = RUNTIME_SCHEMA_VERSION;
     normalized.member_name = member_name.to_string();
@@ -672,6 +849,13 @@ fn save_runtime_record_locked(
     Ok(())
 }
 
+fn legacy_generation(raw: &str, key: &str) -> u64 {
+    serde_json::from_str::<Value>(raw)
+        .ok()
+        .and_then(|v| v["recovery"][key].as_u64())
+        .unwrap_or_default()
+}
+
 fn parse_runtime_record(
     raw: &str,
     team_name: &str,
@@ -679,6 +863,31 @@ fn parse_runtime_record(
 ) -> Result<MemberRuntimeRecord, CoordinationError> {
     #[derive(Debug, Deserialize)]
     struct RuntimeRecordWire {
+        #[serde(
+            default,
+            rename = "attachmentGeneration",
+            alias = "attachment_generation"
+        )]
+        attachment_generation: u64,
+        #[serde(default, rename = "contextGeneration", alias = "context_generation")]
+        context_generation: u64,
+        #[serde(default, rename = "tmuxSocket", alias = "tmux_socket")]
+        tmux_socket: Option<PathBuf>,
+        #[serde(default, rename = "tmuxSessionId", alias = "tmux_session_id")]
+        tmux_session_id: Option<String>,
+        #[serde(default)]
+        harness: Option<CliTool>,
+        #[serde(default, rename = "launchRoot", alias = "launch_root")]
+        launch_root: Option<LaunchRoot>,
+        #[serde(
+            default,
+            rename = "activitySnapshotPath",
+            alias = "activity_snapshot_path"
+        )]
+        activity_snapshot_path: Option<PathBuf>,
+        #[serde(default, rename = "terminalContract", alias = "terminal_contract")]
+        terminal_contract: u32,
+
         #[serde(default)]
         recovery: crate::coordination::recovery_card::RecoveryState,
         #[serde(default = "schema_version_one")]
@@ -693,7 +902,7 @@ fn parse_runtime_record(
         pane_id: Option<String>,
         #[serde(default, alias = "panePid")]
         pane_pid: Option<u32>,
-        #[serde(default, alias = "paneStartTime")]
+        #[serde(default, alias = "paneStartTime", with = "start_ticks")]
         pane_start_time: Option<u64>,
         #[serde(default, alias = "sessionId")]
         session_id: Option<String>,
@@ -739,6 +948,18 @@ fn parse_runtime_record(
     })?;
 
     Ok(MemberRuntimeRecord {
+        attachment_generation: wire
+            .attachment_generation
+            .max(legacy_generation(raw, "activation_generation")),
+        context_generation: wire
+            .context_generation
+            .max(legacy_generation(raw, "compaction_generation")),
+        tmux_socket: wire.tmux_socket,
+        tmux_session_id: wire.tmux_session_id,
+        harness: wire.harness,
+        launch_root: wire.launch_root,
+        activity_snapshot_path: wire.activity_snapshot_path,
+        terminal_contract: wire.terminal_contract,
         recovery: wire.recovery,
         schema_version: wire.schema_version,
         member_name: wire.member_name.unwrap_or_else(|| member_name.to_string()),
@@ -792,6 +1013,27 @@ fn merge_current_extension_fields(
         );
         return;
     };
+    if let Ok(latest) = parse_runtime_record(current_raw, "", &record.member_name) {
+        if latest.attachment_generation > record.attachment_generation {
+            record.health = latest.health;
+            record.session_id = latest.session_id.clone();
+            record.jsonl_path = latest.jsonl_path.clone();
+            record.daemon_pid = latest.daemon_pid;
+        }
+        if preserve_applied_effort || latest.attachment_generation > record.attachment_generation {
+            record.attachment_generation = latest.attachment_generation;
+            record.context_generation = latest.context_generation;
+            record.tmux_socket = latest.tmux_socket;
+            record.tmux_session_id = latest.tmux_session_id;
+            record.harness = latest.harness;
+            record.launch_root = latest.launch_root;
+            record.activity_snapshot_path = latest.activity_snapshot_path;
+            record.terminal_contract = latest.terminal_contract;
+            record.pane_id = latest.pane_id;
+            record.pane_pid = latest.pane_pid;
+            record.pane_start_time = latest.pane_start_time;
+        }
+    }
     if let Some(recovery) = current.get("recovery") {
         if let Ok(recovery) = serde_json::from_value(recovery.clone()) {
             record.recovery = recovery;
@@ -850,6 +1092,21 @@ fn merge_current_extension_fields(
 // as read aliases for runtime records written before that contract settled.
 const RUNTIME_AUTHORED_KEYS: &[&str] = &[
     "recovery",
+    "attachment_generation",
+    "attachmentGeneration",
+    "context_generation",
+    "contextGeneration",
+    "tmux_socket",
+    "tmuxSocket",
+    "tmux_session_id",
+    "tmuxSessionId",
+    "harness",
+    "launch_root",
+    "launchRoot",
+    "activity_snapshot_path",
+    "activitySnapshotPath",
+    "terminal_contract",
+    "terminalContract",
     "schema_version",
     "schemaVersion",
     "member_name",
@@ -1228,7 +1485,121 @@ mod tests {
             effort_resume_failure: None,
             launch_account: Default::default(),
             extra: BTreeMap::new(),
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn legacy_liveness_save_does_not_certify_attachment() {
+        // Regression: 80a83d08 stamped terminalContract on every save,
+        // letting pre-contract attachments pass mesh's opt-in gate.
+        let tmp = TempDir::new().unwrap();
+        let mut record = sample_record("seat");
+        record.terminal_contract = 0;
+        MemberRuntimeStore::save(tmp.path(), "team", "seat", &record).unwrap();
+        MemberRuntimeStore::save_preserving_applied_effort(tmp.path(), "team", "seat", &record)
+            .unwrap();
+        let saved = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        assert_eq!(saved.terminal_contract, 0);
+        assert_eq!(MemberRuntimeRecord::default().terminal_contract, 0);
+    }
+
+    #[test]
+    fn terminal_contract_spelling_and_stale_liveness_preservation() {
+        // Regression: 3ca169ed reserved activation before publishing identity and
+        // liveness could overwrite attachment facts added by another writer.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        let mut original = sample_record("seat");
+        original.reserve_activation("first");
+        original.terminal_contract = 1;
+        original.tmux_socket = Some(root.join("first-tmux.sock"));
+        original.tmux_session_id = Some("$1".into());
+        original.harness = Some(CliTool::Codex);
+        original.launch_root = Some(LaunchRoot {
+            claude_dir: root.into(),
+            teams_dir: root.join("teams"),
+            team_incarnation_id: Some("first".into()),
+            root_authority_revision: 0,
+        });
+        original.activity_snapshot_path = Some(root.join("activity-first.json"));
+        MemberRuntimeStore::save(root, "team", "seat", &original).unwrap();
+        let path = runtime_record_path(root, "team", "seat");
+        let mut disk: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(disk["attachmentGeneration"], 1);
+        assert_eq!(disk["contextGeneration"], 0);
+        assert_eq!(disk["paneStartTime"], "1755000000");
+        for key in [
+            "tmuxSocket",
+            "tmuxSessionId",
+            "paneId",
+            "panePid",
+            "harness",
+            "launchRoot",
+            "activitySnapshotPath",
+            "terminalContract",
+        ] {
+            assert!(!disk[key].is_null(), "missing {key}");
+        }
+        assert_eq!(disk["terminalContract"], 1);
+        disk["attachmentGeneration"] = 9.into();
+        disk["paneId"] = "%99".into();
+        disk["panePid"] = 999.into();
+        disk["paneStartTime"] = "99999".into();
+        disk["tmuxSessionId"] = "$9".into();
+        disk["contextGeneration"] = 3.into();
+        disk["harness"] = "grok".into();
+        disk["launchRoot"] = serde_json::json!({"claudeDir": root, "teamsDir": root.join("teams"), "teamIncarnationId": "incarnation", "rootAuthorityRevision": 4});
+        disk["activitySnapshotPath"] = root
+            .join("activity.json")
+            .to_string_lossy()
+            .into_owned()
+            .into();
+        disk["health"] = "session_dead".into();
+        disk["tmuxSocket"] = root.join("tmux.sock").to_string_lossy().into_owned().into();
+        fs::write(&path, serde_json::to_vec(&disk).unwrap()).unwrap();
+        MemberRuntimeStore::save_preserving_applied_effort(root, "team", "seat", &original)
+            .unwrap();
+        let saved: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        for key in [
+            "attachmentGeneration",
+            "contextGeneration",
+            "paneId",
+            "panePid",
+            "paneStartTime",
+            "tmuxSocket",
+            "tmuxSessionId",
+            "harness",
+            "launchRoot",
+            "activitySnapshotPath",
+            "terminalContract",
+            "health",
+        ] {
+            assert_eq!(saved[key], disk[key], "rewound {key}");
+        }
+        let latest = MemberRuntimeStore::load(root, "team", "seat").unwrap();
+        let changed = MemberRuntimeSnapshot::capture(&original).changed_fields(Some(&latest));
+        for key in [
+            "attachmentGeneration",
+            "contextGeneration",
+            "tmuxSocket",
+            "tmuxSessionId",
+            "harness",
+            "launchRoot",
+            "activitySnapshotPath",
+        ] {
+            assert!(changed.contains(&key), "unchecked {key}");
+        }
+        assert!(
+            MemberRuntimeStore::update(root, "team", "seat", |r| r.attachment_generation = 1)
+                .is_err()
+        );
+        assert_eq!(
+            MemberRuntimeStore::load(root, "team", "seat")
+                .unwrap()
+                .attachment_generation,
+            9
+        );
     }
 
     #[test]
@@ -1806,6 +2177,7 @@ mod tests {
             effort_resume_failure: None,
             launch_account: Default::default(),
             extra: BTreeMap::new(),
+            ..Default::default()
         };
 
         MemberRuntimeStore::save(teams_dir, team_name, "no-heartbeat", &no_timestamps)

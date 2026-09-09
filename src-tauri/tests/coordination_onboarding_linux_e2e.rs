@@ -202,6 +202,8 @@ fn onboarding_flow_launches_lead_and_agents_via_direct_tmux_commands() {
     let tmux_script = format!(
         r#"#!/usr/bin/env bash
 set -euo pipefail
+[[ "$1" == "-S" && "$2" == /* ]] || exit 2
+shift 2
 echo "tmux:$*" >> "{log}"
 cmd="${{1:-}}"
 if [[ "$cmd" == "has-session" ]]; then
@@ -369,9 +371,35 @@ int main(int argc, char **argv) {{
         project_api.to_string_lossy().as_ref(),
     );
 
-    let report = orchestrator
-        .initialize_team(&request)
-        .expect("initialize should succeed");
+    // Regression: c7226a4d re-executed the integration test host as the
+    // terminal supervisor. Exercise output() through the real child-only binary.
+    struct Cleanup<'a>(&'a Path, &'a Path);
+    impl Drop for Cleanup<'_> {
+        fn drop(&mut self) {
+            for member in ["frontend-dev", "reviewer"] {
+                let pid = fs::read_to_string(
+                    self.0
+                        .join(format!("linux-onboarding-e2e/daemons/{member}.pid")),
+                )
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok());
+                if let Some(pid) = pid {
+                    if fs::read_link(format!("/proc/{pid}/exe")).ok().as_deref() == Some(self.1) {
+                        let _ = Command::new("kill")
+                            .args(["-TERM", &pid.to_string()])
+                            .status();
+                    }
+                }
+            }
+        }
+    }
+    let fake_mesh = fake_mesh_bin.join("mesh");
+    let _cleanup = Cleanup(&teams_dir, &fake_mesh);
+    let report = taurhaus_lib::platform::terminal_io::with_child_executable(
+        Path::new(env!("CARGO_BIN_EXE_taurhaus-daemon")),
+        || orchestrator.initialize_team(&request),
+    )
+    .expect("initialize should succeed");
     assert!(
         report.failed_step.is_none(),
         "initialize unexpectedly failed: {report:?}"
@@ -381,11 +409,12 @@ int main(int argc, char **argv) {{
         .expect("lead runtime should exist");
     assert_eq!(lead_runtime.pane_id.as_deref(), Some("%1"));
     assert!(lead_runtime.daemon_pid.is_none());
-    let frontend_runtime =
+    let _frontend_runtime =
         MemberRuntimeStore::load(&teams_dir, "linux-onboarding-e2e", "frontend-dev")
             .expect("frontend runtime should exist");
-    let reviewer_runtime = MemberRuntimeStore::load(&teams_dir, "linux-onboarding-e2e", "reviewer")
-        .expect("reviewer runtime should exist");
+    let _reviewer_runtime =
+        MemberRuntimeStore::load(&teams_dir, "linux-onboarding-e2e", "reviewer")
+            .expect("reviewer runtime should exist");
     for member_name in ["team-lead", "frontend-dev", "reviewer"] {
         let inbox = MeshInboxStore::load(&teams_dir, "linux-onboarding-e2e", member_name)
             .expect("onboarding inbox should exist beneath the orchestrator teams root");
@@ -442,13 +471,4 @@ int main(int argc, char **argv) {{
     assert!(log.contains("mesh:join --team linux-onboarding-e2e --name reviewer"));
     assert!(log.contains("mesh:daemon --pane %2 --team linux-onboarding-e2e --name frontend-dev"));
     assert!(log.contains("mesh:daemon --pane %3 --team linux-onboarding-e2e --name reviewer"));
-
-    for pid in [frontend_runtime.daemon_pid, reviewer_runtime.daemon_pid]
-        .into_iter()
-        .flatten()
-    {
-        let _ = std::process::Command::new("kill")
-            .args(["-TERM", &pid.to_string()])
-            .status();
-    }
 }

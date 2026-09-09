@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
+use taurhaus_lib::platform::terminal_io::TerminalOutput;
 
 use serde::Deserialize;
 
@@ -784,11 +785,15 @@ pub(super) fn run_system_command(
 ) -> Result<std::process::Output, CoordinationError> {
     let output = if invocation.program == "wsl" {
         let mut cmd = mesh_cli::wsl_command_for_coordination();
-        cmd.args(&invocation.args).output()
+        cmd.env_remove("TMUX")
+            .args(&invocation.args)
+            .terminal_output()
     } else {
         let mut cmd = Command::new(&invocation.program);
         apply_background_command_settings(&mut cmd);
-        cmd.args(&invocation.args).output()
+        cmd.env_remove("TMUX")
+            .args(&invocation.args)
+            .terminal_output()
     };
     output.map_err(CoordinationError::Io)
 }
@@ -822,7 +827,9 @@ pub(super) fn run_mesh(args: &[&str], cwd: Option<&str>) -> Result<String, Coord
         if let Some(project_id) = cwd {
             cmd.args(["--cd", project_id]);
         }
-        cmd.args(&invocation.args).output()
+        cmd.env_remove("TMUX")
+            .args(&invocation.args)
+            .terminal_output()
     } else {
         let mut cmd = Command::new(&invocation.program);
         apply_background_command_settings(&mut cmd);

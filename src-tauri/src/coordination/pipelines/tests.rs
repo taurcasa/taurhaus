@@ -8286,3 +8286,215 @@ fn recovery_submission_recomposes_a_changed_view_without_spending_a_retry() {
     assert_eq!(receipt.attempt, 1);
     assert_ne!(receipt.content_revision, first.receipt.content_revision);
 }
+
+#[test]
+fn terminal_launch_defers_behind_holder_and_retries_after_release() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    let path = root.join("team/state/terminal/seat.lock");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let holder = File::create(path).unwrap();
+    holder.lock_exclusive().unwrap();
+    let agent = setup_config("seat", "codex", "gpt-5.4", root.to_str().unwrap());
+    let context =
+        MemberActivationContext::for_initialize_member("team", "lead", &agent, MemberRole::Agent)
+            .unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator =
+        new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+    orchestrator.create_team("team", None).unwrap();
+    orchestrator
+        .add_member(
+            "team",
+            member_from_agent_setup(&agent, MemberRole::Agent).unwrap(),
+        )
+        .unwrap();
+    let mut state = PendingRuntimeState::default();
+    let settings = CliCommandSettings::default();
+    assert!(run_member_session_phase(
+        runtime.as_ref(),
+        root,
+        &context,
+        "%1",
+        MemberSessionPhase::LaunchOnly(&settings),
+        &mut state
+    )
+    .is_err());
+    assert!(runtime.calls().is_empty());
+    assert!(orchestrator
+        .acquire_initialize_member_pane(
+            &context,
+            &settings,
+            "new_window",
+            &mut Default::default(),
+            &mut state
+        )
+        .is_err());
+    assert!(runtime.calls().is_empty());
+    holder.unlock().unwrap();
+    run_member_session_phase(
+        runtime.as_ref(),
+        root,
+        &context,
+        "%1",
+        MemberSessionPhase::LaunchOnly(&settings),
+        &mut state,
+    )
+    .unwrap();
+    assert!(!runtime.calls().is_empty());
+    orchestrator
+        .acquire_initialize_member_pane(
+            &context,
+            &settings,
+            "new_window",
+            &mut Default::default(),
+            &mut state,
+        )
+        .unwrap();
+    let record = MemberRuntimeStore::load(root, "team", "seat").unwrap();
+    // Regression: 80a83d08 certified launches even with null socket/session facts.
+    assert_eq!(record.tmux_socket, Some(root.join("recording-tmux.sock")));
+    assert_eq!(record.tmux_session_id.as_deref(), Some("$1"));
+    assert!(record.pane_pid.is_some());
+    assert!(record.pane_start_time.is_some());
+    assert!(record.harness.is_some());
+    assert!(record
+        .activity_snapshot_path
+        .as_ref()
+        .unwrap()
+        .is_absolute());
+    assert_eq!(record.terminal_contract, 1);
+    assert_eq!(record.attachment_generation, 1);
+    assert_eq!(record.pane_id, state.pane_id);
+    assert_eq!(
+        record.launch_root.unwrap().teams_dir,
+        root.canonicalize().unwrap()
+    );
+}
+
+#[test]
+fn team_owned_delivery_never_starts_or_heals_member_daemon() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, None);
+    let mut config = TeamConfigStore::load(tmp.path(), "effort-team").unwrap();
+    config.extra.insert("delivery_owner".into(), "team".into());
+    TeamConfigStore::save(tmp.path(), "effort-team", &config).unwrap();
+    let pid = start_member_daemon_if_required(
+        runtime.as_ref(),
+        "effort-team",
+        "builder",
+        "%21",
+        CliTool::Codex,
+        tmp.path(),
+        MemberDaemonStartPolicy::ReplaceStalePid {
+            previous_daemon_pid: None,
+        },
+        None,
+    )
+    .unwrap();
+    assert_eq!(pid, None);
+    MemberRuntimeStore::update(tmp.path(), "effort-team", "builder", |r| {
+        r.pane_id = Some("%21".into());
+        r.health = HealthState::Healthy;
+    })
+    .unwrap();
+    orchestrator.reconcile_team_liveness("effort-team").unwrap();
+    assert!(!runtime
+        .calls()
+        .iter()
+        .any(|c| matches!(c, RuntimeCall::SpawnDaemon { .. })));
+}
+
+#[test]
+fn terminal_effort_marks_dead_before_wait_and_retries_without_spending_budget() {
+    // Regression: 3ca169ed tore the pane down before invalidating its record.
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".into(),
+                member_name: "builder".into(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .unwrap();
+    assign_task(&tmp, "builder", "high", "review");
+    let before = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").unwrap();
+    let lock = File::options()
+        .write(true)
+        .open(tmp.path().join("effort-team/state/terminal/builder.lock"))
+        .unwrap();
+    lock.lock_exclusive().unwrap();
+    let offset = runtime.calls().len();
+    let result = orchestrator
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::BackgroundSweep,
+        )
+        .unwrap();
+    assert!(result.is_empty());
+    assert!(!runtime.calls()[offset..].iter().any(|c| matches!(
+        c,
+        RuntimeCall::KillPane { .. } | RuntimeCall::SendKeys { .. }
+    )));
+    let dead = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").unwrap();
+    assert_eq!(dead.health, HealthState::SessionDead);
+    assert_eq!(dead.attachment_generation, before.attachment_generation + 1);
+    assert_eq!(dead.effort_resume_failure.as_ref().unwrap().attempts, 0);
+    lock.unlock().unwrap();
+    let retried = orchestrator
+        .apply_pending_task_effort_outcome(
+            "effort-team",
+            &mut CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::BackgroundSweep,
+            &mut |_, _| {},
+        )
+        .unwrap();
+    assert_eq!(retried.switched, ["builder"], "{retried:?}");
+}
+
+#[test]
+fn reinitialize_resets_attachment_without_rewinding_generation() {
+    // Regression: 80a83d08 merged a fresh seed behind the on-disk generation,
+    // silently retaining its old healthy pane throughout reinitialization.
+    let tmp = TempDir::new().unwrap();
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        Arc::new(FakeBackend::default()),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    let lead = member(
+        "lead",
+        MemberRole::Lead,
+        CliTool::Codex,
+        tmp.path().to_str().unwrap(),
+    );
+    MemberRuntimeStore::save(
+        tmp.path(),
+        "team",
+        "lead",
+        &crate::coordination::stores::MemberRuntimeRecord {
+            attachment_generation: 7,
+            pane_id: Some("%old".into()),
+            health: HealthState::Healthy,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    orchestrator
+        .seed_initialize_roster("team", None, lead, &[])
+        .unwrap();
+    let record = MemberRuntimeStore::load(tmp.path(), "team", "lead").unwrap();
+    assert_eq!(record.health, HealthState::SessionDead);
+    assert!(record.pane_id.is_none());
+    assert!(record.attachment_generation >= 7);
+    assert_eq!(record.terminal_contract, 0);
+}

@@ -137,8 +137,6 @@ pub struct RecoveryState {
     pub reserved_attachment: Option<chrono::DateTime<chrono::Utc>>,
     #[serde(default)]
     pub reserved_effort: Option<String>,
-    pub activation_generation: u64,
-    pub compaction_generation: u64,
     pub admitted_boundary: Option<String>,
     pub baseline_binding: Option<ObligationKey>,
     pub claim: Option<CardReceipt>,
@@ -146,44 +144,6 @@ pub struct RecoveryState {
 }
 
 impl RecoveryState {
-    pub fn context(&self) -> (u64, u64) {
-        (self.activation_generation, self.compaction_generation)
-    }
-
-    /// Called by the activation owner only, after capture and before delivery.
-    pub fn reserve_activation(&mut self, intent: &str) {
-        if self.activation_intent.as_deref() == Some(intent) {
-            return;
-        }
-        self.member_incarnation_id
-            .get_or_insert_with(|| uuid::Uuid::new_v4().to_string());
-        self.activation_intent = Some(intent.to_string());
-        self.activation_generation += 1;
-        self.compaction_generation = 0;
-        self.admitted_boundary = None;
-        self.baseline_binding = None;
-        self.claim = None;
-    }
-
-    /// Metadata only; the existing hook path decides which boundary is admitted.
-    pub fn admit_compaction(&mut self, boundary: &str) {
-        if self.admitted_boundary.as_deref() == Some(boundary) {
-            return;
-        }
-        self.admitted_boundary = Some(boundary.to_string());
-        self.compaction_generation += 1;
-        self.baseline_binding = None;
-        if self
-            .claim
-            .as_ref()
-            .is_none_or(|r| r.card_key.context != self.context())
-        {
-            self.claim = None;
-        } else {
-            self.baseline_binding = self.claim.as_ref().map(|r| r.obligation_key.clone());
-        }
-    }
-
     pub fn claim(&mut self, key: &CardKey, revision: &str, path: &str) -> Option<CardReceipt> {
         let obligation = key.obligation_key();
         if let Some(last) = &self.last_delivered {
@@ -667,7 +627,9 @@ mod tests {
             "team",
             &member,
             None,
-            Some(key(&RecoveryState::default())),
+            Some(key(
+                &crate::coordination::stores::MemberRuntimeRecord::default(),
+            )),
             facts,
         );
         card.focal_files = (0..120)
@@ -697,7 +659,7 @@ mod tests {
         assert!(!text.ends_with("Next action: Run the review"));
     }
 
-    fn key(state: &RecoveryState) -> CardKey {
+    fn key(state: &crate::coordination::stores::MemberRuntimeRecord) -> CardKey {
         CardKey {
             card_schema: 1,
             recipient: ("team-incarnation".into(), "member-incarnation".into()),
@@ -709,14 +671,14 @@ mod tests {
 
     #[test]
     fn recovery_baseline_once_across_activation_entrypoints_and_worker_restart() {
-        let mut state = RecoveryState::default();
+        let mut state = crate::coordination::stores::MemberRuntimeRecord::default();
         state.reserve_activation("attachment-1");
         for entrypoint in ["init", "add", "resume", "reonboard", "worker-restart"] {
             let k = key(&state);
-            let claim = state.claim(&k, "view-1", "inbox");
+            let claim = state.recovery.claim(&k, "view-1", "inbox");
             if entrypoint == "init" {
                 let claim = claim.unwrap();
-                state.observe(&claim, ReceiptStage::Accepted, 123);
+                state.recovery.observe(&claim, ReceiptStage::Accepted, 123);
             } else {
                 assert!(claim.is_none(), "{entrypoint} replayed a baseline");
             }
@@ -726,7 +688,7 @@ mod tests {
 
     #[test]
     fn recovery_forced_intent_and_preserved_session_relaunch_reserve_once() {
-        let mut state = RecoveryState::default();
+        let mut state = crate::coordination::stores::MemberRuntimeRecord::default();
         state.reserve_activation("attachment-1");
         let first = key(&state);
         state.reserve_activation("force:operator-intent-1");
@@ -740,54 +702,67 @@ mod tests {
 
     #[test]
     fn recovery_skipped_compaction_pending_is_satisfied_by_next_receipt() {
-        let mut state = RecoveryState::default();
+        let mut state = crate::coordination::stores::MemberRuntimeRecord::default();
         state.reserve_activation("attachment-1");
         state.admit_compaction("boundary-1");
         let pending = key(&state);
         state.admit_compaction("boundary-1");
         assert_eq!(pending, key(&state));
-        let claim = state.claim(&pending, "assignment-view", "inbox").unwrap();
-        state.observe(&claim, ReceiptStage::Accepted, 123);
-        assert!(state.claim(&pending, "assignment-view", "inbox").is_none());
-        assert_eq!(state.last_delivered.unwrap().stage, ReceiptStage::Accepted);
+        let claim = state
+            .recovery
+            .claim(&pending, "assignment-view", "inbox")
+            .unwrap();
+        state.recovery.observe(&claim, ReceiptStage::Accepted, 123);
+        assert!(state
+            .recovery
+            .claim(&pending, "assignment-view", "inbox")
+            .is_none());
+        assert_eq!(
+            state.recovery.last_delivered.unwrap().stage,
+            ReceiptStage::Accepted
+        );
     }
 
     #[test]
     fn recovery_view_recomposition_keeps_delivery_id_and_retry_budget() {
-        let mut state = RecoveryState::default();
+        let mut state = crate::coordination::stores::MemberRuntimeRecord::default();
         state.reserve_activation("attachment-1");
         let k = key(&state);
-        let first = state.claim(&k, "assignment-a", "inbox").unwrap();
-        state.observe(&first, ReceiptStage::Failed, 0);
-        let second = state.claim(&k, "assignment-b", "inbox").unwrap();
+        let first = state.recovery.claim(&k, "assignment-a", "inbox").unwrap();
+        state.recovery.observe(&first, ReceiptStage::Failed, 0);
+        let second = state.recovery.claim(&k, "assignment-b", "inbox").unwrap();
         assert_eq!(first.delivery_id, second.delivery_id);
         assert_ne!(first.content_revision, second.content_revision);
         assert_eq!(second.attempt, 2);
-        state.observe(&second, ReceiptStage::Failed, 0);
-        assert!(state.claim(&k, "assignment-c", "inbox").is_none());
+        state.recovery.observe(&second, ReceiptStage::Failed, 0);
+        assert!(state.recovery.claim(&k, "assignment-c", "inbox").is_none());
     }
 
     #[test]
     fn recovery_unknown_hook_outcome_never_falls_back_to_inbox() {
-        let mut state = RecoveryState::default();
+        let mut state = crate::coordination::stores::MemberRuntimeRecord::default();
         state.reserve_activation("attachment-1");
         let k = key(&state);
-        let claim = state.claim(&k, "view", "hook_stdout").unwrap();
-        state.observe(&claim, ReceiptStage::OutcomeUnknown, 123);
-        assert!(state.claim(&k, "view", "inbox").is_none());
-        assert!(state.last_delivered.is_none());
+        let claim = state.recovery.claim(&k, "view", "hook_stdout").unwrap();
+        state
+            .recovery
+            .observe(&claim, ReceiptStage::OutcomeUnknown, 123);
+        assert!(state.recovery.claim(&k, "view", "inbox").is_none());
+        assert!(state.recovery.last_delivered.is_none());
     }
 
     #[test]
     fn recovery_latest_root_correction_names_single_delivered_predecessor() {
-        let mut state = RecoveryState::default();
+        let mut state = crate::coordination::stores::MemberRuntimeRecord::default();
         state.reserve_activation("attachment-1");
         let mut k = key(&state);
-        let baseline = state.claim(&k, "view", "inbox").unwrap();
-        state.observe(&baseline, ReceiptStage::Accepted, 100);
+        let baseline = state.recovery.claim(&k, "view", "inbox").unwrap();
+        state
+            .recovery
+            .observe(&baseline, ReceiptStage::Accepted, 100);
         k.roots.resolved_teams_root = "/new-root".into();
         k.contract.effective_role_revision = "latest-role".into();
-        let correction = state.claim(&k, "latest-view", "inbox").unwrap();
+        let correction = state.recovery.claim(&k, "latest-view", "inbox").unwrap();
         assert_eq!(correction.kind, DeliveryKind::Correction);
         assert_eq!(
             correction.supersedes_revision,
@@ -875,13 +850,13 @@ mod tests {
     #[test]
     fn recovery_root_change_after_claim_cannot_open_a_second_baseline() {
         // Regression: ff287130 opened another baseline when roots changed before acceptance.
-        let mut state = RecoveryState::default();
+        let mut state = crate::coordination::stores::MemberRuntimeRecord::default();
         state.reserve_activation("attachment");
         let mut k = key(&state);
-        state.claim(&k, "first", "inbox").unwrap();
+        state.recovery.claim(&k, "first", "inbox").unwrap();
         k.roots.resolved_teams_root = "/moved".into();
         assert_eq!(
-            state.claim(&k, "moved", "inbox").unwrap().kind,
+            state.recovery.claim(&k, "moved", "inbox").unwrap().kind,
             DeliveryKind::Correction
         );
     }
@@ -903,15 +878,19 @@ mod tests {
     #[test]
     fn recovery_hook_admission_retains_claimed_baseline_binding() {
         // Regression: f0a5bad7 reset the preview claim's binding while admitting its boundary.
-        let mut state = RecoveryState::default();
+        let mut state = crate::coordination::stores::MemberRuntimeRecord::default();
         state.reserve_activation("attachment");
         let mut preview = key(&state);
         preview.context.1 += 1;
-        state.claim(&preview, "hook-view", "hook_stdout").unwrap();
+        state
+            .recovery
+            .claim(&preview, "hook-view", "hook_stdout")
+            .unwrap();
         state.admit_compaction("boundary");
         preview.contract.packet_revision = "changed".into();
         assert_eq!(
             state
+                .recovery
                 .claim(&preview, "replacement", "hook_stdout")
                 .unwrap()
                 .kind,

@@ -1,3 +1,4 @@
+use crate::coordination::stores::TeamConfigStore;
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -60,6 +61,7 @@ pub(crate) type ResumeProgressEmitter<'a> =
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct RuntimeCommitPatch {
+    pub(super) activation: Option<(String, Option<PathBuf>)>,
     pub(super) pane_id: Option<Option<String>>,
     pub(super) pane_pid: Option<Option<u32>>,
     pub(super) pane_start_time: Option<Option<u64>>,
@@ -75,6 +77,17 @@ pub(super) struct RuntimeCommitPatch {
 impl RuntimeCommitPatch {
     pub(super) fn from_pending_runtime_state(state: &PendingRuntimeState) -> Self {
         Self {
+            activation: state.attached_at.map(|at| {
+                (
+                    crate::coordination::recovery_card::digest(&(
+                        &state.pane_id,
+                        state.pane_pid,
+                        state.pane_start_time,
+                        at,
+                    )),
+                    state.harness_account_root.clone(),
+                )
+            }),
             pane_id: Some(state.pane_id.clone()),
             pane_pid: Some(state.pane_pid),
             pane_start_time: Some(state.pane_start_time),
@@ -94,6 +107,17 @@ impl RuntimeCommitPatch {
         health: HealthState,
     ) -> Self {
         Self {
+            activation: state.attached_at.map(|at| {
+                (
+                    crate::coordination::recovery_card::digest(&(
+                        &state.pane_id,
+                        state.pane_pid,
+                        state.pane_start_time,
+                        at,
+                    )),
+                    state.harness_account_root.clone(),
+                )
+            }),
             pane_id: Some(state.pane_id.clone()),
             pane_pid: Some(state.pane_pid),
             pane_start_time: Some(state.pane_start_time),
@@ -238,6 +262,7 @@ pub(super) fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {
         effort_resume_failure: None,
         launch_account: Default::default(),
         extra: Default::default(),
+        ..Default::default()
     }
 }
 
@@ -289,7 +314,13 @@ pub(super) fn run_member_session_phase(
         MemberSessionPhase::LaunchOnly(cli_commands) => {
             let launch = build_member_activation_launch_command(teams_dir, context, cli_commands)?;
             record_context_launch_telemetry(teams_dir, context, &launch);
-            send_launch_command_with_retry(runtime, pane_id, launch.command.as_str())?;
+            crate::coordination::stores::lock::terminal_write(
+                teams_dir,
+                &context.team_name,
+                &context.member.name,
+                "launch",
+                || send_launch_command_with_retry(runtime, pane_id, launch.command.as_str()),
+            )?;
             runtime_state.attached_at = Some(Utc::now());
             let account = launch.account_result();
             runtime_state.launch_account = (!account.is_empty()).then_some(account);
@@ -428,7 +459,9 @@ pub(super) fn start_member_daemon_if_required(
     policy: MemberDaemonStartPolicy,
     warnings: Option<&mut Vec<String>>,
 ) -> Result<Option<u32>, CoordinationError> {
-    if !should_use_mesh_sidecar_for_cli_tool(cli_tool) {
+    if !should_use_mesh_sidecar_for_cli_tool(cli_tool)
+        || TeamConfigStore::team_owns_delivery(teams_dir, team_name)?
+    {
         return Ok(None);
     }
 

@@ -880,6 +880,10 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
             "runtime store prunes stale WSL-native compaction state during locked saves",
         ),
         (
+            "src/coordination/stores/lock.rs",
+            "terminal exclusion reads registry authority for pane-only stops; the native daemon creates lock/holder state, while the Windows app defers managed stops without writing team state",
+        ),
+        (
             "src/coordination/task_deadline_pass.rs",
             "daemon deadline scheduler owns task and snapshot CAS writes",
         ),
@@ -1489,4 +1493,84 @@ fn legacy_settings_replacement_stays_std_only_and_atomic() {
             .any(|line| line.starts_with("tempfile = ")),
         "tempfile must remain test-only"
     );
+}
+
+#[test]
+fn terminal_contract_pins_shared_spelling_and_write_boundaries() {
+    let runtime = include_str!("../src/coordination/stores/runtime.rs");
+    for key in [
+        "attachmentGeneration",
+        "tmuxSocket",
+        "tmuxSessionId",
+        "paneId",
+        "panePid",
+        "paneStartTime",
+        "contextGeneration",
+        "harness",
+        "launchRoot",
+        "activitySnapshotPath",
+        "terminalContract",
+    ] {
+        assert!(
+            runtime.contains(&format!("\"{key}\"")),
+            "missing shared key {key}"
+        );
+    }
+    let locks = include_str!("../src/coordination/stores/lock.rs");
+    assert!(locks.contains("state/terminal"));
+    assert!(locks.contains("{member}.lock"));
+    assert!(locks.contains("{member}.holder.json"));
+    let activation = include_str!("../src/coordination/pipelines/members.rs");
+    assert!(!activation.contains("reserve_recovery_generation"));
+    let commit = include_str!("../src/coordination/pipelines/lifecycle.rs");
+    assert!(commit.contains("runtime.reserve_activation(intent)"));
+    let system = include_str!("../src/coordination/runtime/system.rs");
+    assert!(!system.contains("#{pane_start_time}"));
+    assert!(system.contains("#{session_id}"));
+}
+
+#[cfg(unix)]
+#[test]
+fn terminal_child_mode_inherits_flock_and_exits_without_daemon_startup() {
+    use fs2::FileExt;
+    use std::process::Command;
+    use taurhaus_lib::platform::terminal_io;
+    // Regression: c7226a4d never tested output() through its production
+    // supervisor, hiding re-exec and argv/environment forwarding failures.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("terminal.lock");
+    fs::write(&path, "inherited-lock\n").unwrap();
+    let file = fs::File::open(&path).unwrap();
+    file.lock_exclusive().unwrap();
+    terminal_io::enter(file);
+    struct Leave;
+    impl Drop for Leave {
+        fn drop(&mut self) {
+            terminal_io::leave();
+        }
+    }
+    let guard = Leave;
+    let output = terminal_io::with_child_executable(
+        std::path::Path::new(env!("CARGO_BIN_EXE_taurhaus-daemon")),
+        || {
+            terminal_io::output(
+                Command::new("/bin/sh")
+                    .args([
+                        "-c",
+                        "read value; printf '%s:%s:%s' \"$value\" \"$CHECK_FORWARD\" \"$PWD\"",
+                    ])
+                    .env("CHECK_FORWARD", "forwarded")
+                    .env_remove("CHECK_REMOVED")
+                    .current_dir(tmp.path()),
+            )
+            .unwrap()
+        },
+    );
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!("inherited-lock:forwarded:{}", tmp.path().display())
+    );
+    drop(guard);
+    assert!(fs::File::open(path).unwrap().try_lock_exclusive().is_ok());
 }

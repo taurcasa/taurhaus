@@ -305,6 +305,7 @@ fn save_member_runtime(teams_dir: &Path, team_name: &str, member_name: &str, pan
             effort_resume_failure: None,
             launch_account: Default::default(),
             extra: Default::default(),
+            ..Default::default()
         },
     )
     .expect("save runtime record");
@@ -2203,6 +2204,7 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
             effort_resume_failure: None,
             launch_account: Default::default(),
             extra: Default::default(),
+            ..Default::default()
         },
     );
 
@@ -2507,6 +2509,7 @@ fn delegated_resume_reports_the_account_it_could_not_apply() {
             effort_resume_failure: None,
             launch_account: Default::default(),
             extra: Default::default(),
+            ..Default::default()
         },
     );
 
@@ -2582,6 +2585,7 @@ fn delegated_resume_without_a_requested_account_reports_nothing() {
             effort_resume_failure: None,
             launch_account: Default::default(),
             extra: Default::default(),
+            ..Default::default()
         },
     );
 
@@ -2657,6 +2661,7 @@ fn delegated_resume_with_an_opaque_base_reports_that_account_selection_is_not_gu
             effort_resume_failure: None,
             launch_account: Default::default(),
             extra: Default::default(),
+            ..Default::default()
         },
     );
 
@@ -2733,6 +2738,7 @@ fn delegated_resume_does_not_report_a_wrapper_from_the_unused_resume_base() {
             effort_resume_failure: None,
             launch_account: Default::default(),
             extra: Default::default(),
+            ..Default::default()
         },
     );
 

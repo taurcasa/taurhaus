@@ -655,10 +655,9 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         if !deferred_claude_lead_join {
             self.join_mesh(prepared)?;
         }
-        self.reserve_recovery_generation(prepared)?;
         self.start_member_daemon(prepared, &pane_id)?;
-        self.deliver_onboarding(prepared)?;
         self.commit_runtime(prepared)?;
+        self.deliver_onboarding(prepared)?;
         if deferred_claude_lead_join {
             self.join_mesh(prepared)?;
         }
@@ -1007,46 +1006,9 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 &pane_id,
                 &mut self.runtime_state,
             ) {
-            Ok(()) => self.reserve_recovery_generation(prepared),
+            Ok(()) => Ok(()),
             Err(err) => Err(("launch_sessions".to_string(), err)),
         }
-    }
-
-    fn reserve_recovery_generation(
-        &self,
-        prepared: &PreparedMemberActivation,
-    ) -> Result<(), (String, CoordinationError)> {
-        let intent = crate::coordination::recovery_card::digest(&(
-            &self.runtime_state.pane_id,
-            self.runtime_state.pane_pid,
-            self.runtime_state.pane_start_time,
-            &self.runtime_state.session_id,
-            self.runtime_state.attached_at,
-        ));
-        MemberRuntimeStore::update(
-            &self.orchestrator.teams_dir,
-            &prepared.activation_context.team_name,
-            &prepared.member.name,
-            |record| {
-                record.recovery.reserve_activation(&intent);
-                record.recovery.reserved_attachment = self.runtime_state.attached_at;
-                record.recovery.reserved_effort = self.runtime_state.applied_effort.clone();
-                record.recovery.harness_account_root =
-                    self.runtime_state.harness_account_root.as_ref().map(|p| {
-                        crate::provider::path::normalize_project_path(&p.to_string_lossy())
-                    });
-                record.recovery.launch_namespace = Some(
-                    if cfg!(target_os = "windows") {
-                        "wsl"
-                    } else {
-                        "native"
-                    }
-                    .into(),
-                );
-            },
-        )
-        .map(|_| ())
-        .map_err(|e| ("reserve_recovery_generation".into(), e))
     }
 
     fn load_initialize_pane_id(

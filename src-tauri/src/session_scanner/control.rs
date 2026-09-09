@@ -1,5 +1,6 @@
 //! tmux control — launch, stop, and navigate to CLI tool sessions.
 
+use crate::platform::terminal_io::TerminalOutput;
 use std::path::Path;
 use std::process::Command;
 
@@ -30,10 +31,10 @@ fn wsl_exec_command(program: &str) -> Command {
     cmd
 }
 
-fn tmux_command() -> Command {
+fn explicit_tmux_command() -> std::io::Result<Command> {
     #[cfg(all(test, target_os = "linux"))]
     if let Some(cmd) = tests::scratch_tmux_command() {
-        return cmd;
+        return Ok(cmd);
     }
 
     #[cfg(target_os = "windows")]
@@ -43,7 +44,10 @@ fn tmux_command() -> Command {
     let mut cmd = Command::new("tmux");
 
     apply_background_command_settings(&mut cmd);
-    cmd
+    cmd.env_remove("TMUX")
+        .arg("-S")
+        .arg(crate::platform::terminal_io::socket_path()?);
+    Ok(cmd)
 }
 
 fn project_path_exists_for_tmux(project_path: &str) -> Result<bool, String> {
@@ -51,7 +55,7 @@ fn project_path_exists_for_tmux(project_path: &str) -> Result<bool, String> {
     {
         let output = wsl_exec_command("test")
             .args(["-d", project_path])
-            .output()
+            .terminal_output()
             .map_err(|e| format!("Failed to validate WSL project path: {e}"))?;
 
         if output.status.success() {
@@ -75,6 +79,46 @@ fn project_path_exists_for_tmux(project_path: &str) -> Result<bool, String> {
     {
         Ok(Path::new(project_path).is_dir())
     }
+}
+
+fn tmux_command() -> Command {
+    explicit_tmux_command().unwrap_or_else(|error| {
+        tracing::error!(%error, "tmux socket unavailable; refusing terminal command");
+        crate::logging::emit_global(
+            "error",
+            "coordination",
+            "coordination.terminal.unavailable",
+            Some(format!("Tmux socket resolution failed: {error}")),
+            Default::default(),
+        );
+        Command::new("/nonexistent/taurhaus-tmux-socket-unavailable")
+    })
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn managed_terminal_write<T>(
+    pane: &str,
+    op: &str,
+    write: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    #[cfg(all(test, target_os = "linux"))]
+    if let Some(root) = tests::fake_root() {
+        return crate::coordination::stores::lock::terminal_write_for_pane_at_root(
+            &root.join("claude/teams"),
+            pane,
+            op,
+            write,
+        );
+    }
+    crate::coordination::stores::lock::terminal_write_for_pane(pane, op, write)
+}
+#[cfg(not(feature = "mesh-bridged-backend"))]
+fn managed_terminal_write<T>(
+    _pane: &str,
+    _op: &str,
+    write: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    write()
 }
 
 /// Launch a CLI tool session in tmux using the configured layout strategy.
@@ -182,7 +226,7 @@ fn list_tmux_windows(
             "-F",
             LIST_WINDOWS_FORMAT,
         ])
-        .output()
+        .terminal_output()
         .map_err(|e| format!("Failed to inspect tmux windows: {e}"))?;
 
     if !output.status.success() {
@@ -202,7 +246,7 @@ fn list_tmux_window_panes(
     let target = format!("{tmux_session}:{window_index}");
     let output = tmux_command()
         .args(["list-panes", "-t", &target, "-F", LIST_PANES_FORMAT])
-        .output()
+        .terminal_output()
         .map_err(|e| format!("Failed to inspect tmux panes for {target}: {e}"))?;
 
     if !output.status.success() {
@@ -222,7 +266,7 @@ fn resolve_split_target_pane_for_window(
 
     let validation = tmux_command()
         .args(["display-message", "-p", "-t", &target, "#{pane_id}"])
-        .output()
+        .terminal_output()
         .map_err(|e| format!("Failed to validate tmux pane target {target}: {e}"))?;
     if validation.status.success() {
         return Ok(target);
@@ -265,7 +309,7 @@ fn create_new_window_pane(
             "#{pane_id}",
             shell_cmd,
         ])
-        .output()
+        .terminal_output()
         .map_err(|e| format!("Failed to create tmux window: {e}"))?;
 
     if !output.status.success() {
@@ -282,7 +326,7 @@ fn split_tiled_pane(target_pane: &str, shell_cmd: &str) -> Result<String, String
     let pane_id = split_pane(target_pane, shell_cmd)?;
     let layout = tmux_command()
         .args(["select-layout", "-t", &pane_id, "tiled"])
-        .output()
+        .terminal_output()
         .map_err(|e| format!("Failed to tile tmux window: {e}"))
         .and_then(|output| {
             if output.status.success() {
@@ -296,7 +340,9 @@ fn split_tiled_pane(target_pane: &str, shell_cmd: &str) -> Result<String, String
         });
     if let Err(err) = layout {
         // The caller cannot record or clean up a pane whose launch returns Err.
-        let _ = tmux_command().args(["kill-pane", "-t", &pane_id]).output();
+        let _ = tmux_command()
+            .args(["kill-pane", "-t", &pane_id])
+            .terminal_output();
         return Err(err);
     }
     Ok(pane_id)
@@ -315,7 +361,7 @@ fn split_pane(target_pane: &str, shell_cmd: &str) -> Result<String, String> {
             "#{pane_id}",
             shell_cmd,
         ])
-        .output()
+        .terminal_output()
         .map_err(|e| format!("Failed to split tmux pane: {e}"))?;
 
     if !output.status.success() {
@@ -395,7 +441,12 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
         }
 
         // Kill the pane (noop if already gone)
-        let result = tmux_command().args(["kill-pane", "-t", &pane]).output();
+        let result = managed_terminal_write(&pane, "stop-teardown", || {
+            tmux_command()
+                .args(["kill-pane", "-t", &pane])
+                .terminal_output()
+                .map_err(|e| e.to_string())
+        });
         crate::session_scanner::notify_tmux_changed();
         tracing::info!(pane = %pane, success = ?result.as_ref().map(|o| o.status.success()), "stop_session: kill-pane result");
     });
@@ -530,7 +581,7 @@ fn pane_tty(pane: &str) -> Option<String> {
 fn pane_field(pane: &str, format: &str) -> Option<String> {
     tmux_command()
         .args(["display-message", "-p", "-t", pane, format])
-        .output()
+        .terminal_output()
         .ok()
         .filter(|output| output.status.success())
         .and_then(|output| String::from_utf8(output.stdout).ok())
@@ -548,7 +599,7 @@ fn pane_current_command(pane: &str) -> Option<String> {
             pane,
             "#{pane_current_command}",
         ])
-        .output()
+        .terminal_output()
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
@@ -569,7 +620,7 @@ pub fn navigate_to_pane(
     let target = format!("{tmux_session}:{tmux_window}");
     let output = tmux_command()
         .args(["select-window", "-t", &target])
-        .output()
+        .terminal_output()
         .map_err(|e| format!("Failed to select tmux window: {e}"))?;
 
     if !output.status.success() {
@@ -580,7 +631,7 @@ pub fn navigate_to_pane(
     // Select the pane
     let output = tmux_command()
         .args(["select-pane", "-t", tmux_pane])
-        .output()
+        .terminal_output()
         .map_err(|e| format!("Failed to select tmux pane: {e}"))?;
 
     if !output.status.success() {
@@ -661,14 +712,14 @@ fn ensure_taurhaus_session() -> Result<String, String> {
     // Check if session already exists
     let check = tmux_command()
         .args(["has-session", "-t", TMUX_SESSION_NAME])
-        .output()
+        .terminal_output()
         .map_err(|e| format!("tmux not available: {e}"))?;
 
     if !check.status.success() {
         // Create the session (detached — no client needed)
         let output = tmux_command()
             .args(["new-session", "-d", "-s", TMUX_SESSION_NAME])
-            .output()
+            .terminal_output()
             .map_err(|e| format!("Failed to create tmux session: {e}"))?;
 
         if !output.status.success() {
@@ -723,7 +774,7 @@ fn propagate_env_to_tmux() {
                 };
                 let _ = tmux_command()
                     .args(["set-environment", "-t", TMUX_SESSION_NAME, var, &val])
-                    .output();
+                    .terminal_output();
             }
         }
     }
@@ -733,7 +784,7 @@ fn sync_tmux_path_environment(path_value: &str) {
     if tmux_path_looks_windows_style(path_value) {
         let _ = tmux_command()
             .args(["set-environment", "-r", "-t", TMUX_SESSION_NAME, "PATH"])
-            .output();
+            .terminal_output();
         tracing::debug!(
             "Skipping tmux PATH propagation because the app PATH is Windows-style and would break tmux hooks"
         );
@@ -748,7 +799,7 @@ fn sync_tmux_path_environment(path_value: &str) {
             "PATH",
             path_value,
         ])
-        .output();
+        .terminal_output();
 }
 
 fn tmux_path_looks_windows_style(path_value: &str) -> bool {
@@ -765,17 +816,19 @@ fn build_tmux_shell_command(project_path: &str, command: &str) -> String {
 ///
 /// Used for control sequences like `C-c` (Ctrl+C) that aren't typed text.
 fn run_tmux_raw_key(pane: &str, key: &str) -> Result<(), String> {
-    let output = tmux_command()
-        .args(["send-keys", "-t", pane, key])
-        .output()
-        .map_err(|e| format!("Failed to send key to tmux pane {pane}: {e}"))?;
+    managed_terminal_write(pane, "interrupt", || {
+        let output = tmux_command()
+            .args(["send-keys", "-t", pane, key])
+            .terminal_output()
+            .map_err(|e| format!("Failed to send key to tmux pane {pane}: {e}"))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("tmux send-keys failed: {stderr}"));
-    }
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("tmux send-keys failed: {stderr}"));
+        }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Send keys to a tmux pane (with Enter).
@@ -784,32 +837,34 @@ fn run_tmux_raw_key(pane: &str, key: &str) -> Result<(), String> {
 /// then sends Enter separately. Without this delay, fast terminals can
 /// receive Enter before the text is fully rendered in the prompt.
 fn run_tmux_send_keys(pane: &str, keys: &str) -> Result<(), String> {
-    // Send the text
-    let output = tmux_command()
-        .args(["send-keys", "-t", pane, keys])
-        .output()
-        .map_err(|e| format!("Failed to send keys to tmux pane {pane}: {e}"))?;
+    managed_terminal_write(pane, "stop", || {
+        // Send the text
+        let output = tmux_command()
+            .args(["send-keys", "-t", pane, keys])
+            .terminal_output()
+            .map_err(|e| format!("Failed to send keys to tmux pane {pane}: {e}"))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("tmux send-keys failed: {stderr}"));
-    }
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("tmux send-keys failed: {stderr}"));
+        }
 
-    // Brief pause so the terminal processes the text before Enter (matches aitx @ 200ms)
-    std::thread::sleep(std::time::Duration::from_millis(200));
+        // Brief pause so the terminal processes the text before Enter (matches aitx @ 200ms)
+        std::thread::sleep(std::time::Duration::from_millis(200));
 
-    // Send Enter
-    let output = tmux_command()
-        .args(["send-keys", "-t", pane, "Enter"])
-        .output()
-        .map_err(|e| format!("Failed to send Enter to tmux pane {pane}: {e}"))?;
+        // Send Enter
+        let output = tmux_command()
+            .args(["send-keys", "-t", pane, "Enter"])
+            .terminal_output()
+            .map_err(|e| format!("Failed to send Enter to tmux pane {pane}: {e}"))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("tmux send-keys Enter failed: {stderr}"));
-    }
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("tmux send-keys Enter failed: {stderr}"));
+        }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 #[cfg(test)]
@@ -818,13 +873,81 @@ mod tests {
 
     use crate::session_scanner::process::ProcessInfo;
 
+    #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
+    #[test]
+    fn terminal_stop_and_interrupt_defer_then_retry_on_explicit_socket() {
+        use fs2::FileExt;
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path().join("claude/teams");
+        let team = root.join("team");
+        std::fs::create_dir_all(team.join("state/terminal")).unwrap();
+        std::fs::write(team.join("config.json"), "{}").unwrap();
+        crate::coordination::stores::MemberRuntimeStore::save(
+            &root,
+            "team",
+            "seat",
+            &crate::coordination::stores::MemberRuntimeRecord {
+                pane_id: Some("%1".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let fake = tmp.path().join("tmux");
+        std::fs::write(
+            &fake,
+            "#!/bin/sh\nif [ \"$1\" = --terminal-child ]; then shift 2; exec \"$@\"; fi\nprintf '%s\\n' \"$@\" >> \"$TMUX_TEST_LOG\"\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let log = tmp.path().join("calls");
+        // Regression: 1127823e replaced process-global PATH and roots, letting
+        // concurrent tests use the wrong inventory and write behind a holder.
+        TEST_FAKE_ROOT.with(|slot| *slot.borrow_mut() = Some(tmp.path().into()));
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                TEST_FAKE_ROOT.with(|slot| *slot.borrow_mut() = None);
+            }
+        }
+        let _reset = Reset;
+        crate::platform::terminal_io::with_child_executable(&fake, || {
+            let holder = std::fs::File::create(team.join("state/terminal/seat.lock")).unwrap();
+            holder.lock_exclusive().unwrap();
+            assert!(run_tmux_raw_key("%1", "C-c").is_err());
+            assert!(run_tmux_send_keys("%1", "/exit").is_err());
+            assert!(!log.exists());
+            holder.unlock().unwrap();
+            run_tmux_raw_key("%1", "C-c").unwrap();
+            run_tmux_send_keys("%1", "/exit").unwrap();
+            let calls = std::fs::read_to_string(&log).unwrap();
+            assert_eq!(calls.matches("-S\n").count(), 3);
+            assert!(calls.contains("C-c"));
+            assert!(calls.contains("Enter"));
+        });
+    }
+
     #[cfg(target_os = "linux")]
     thread_local! {
+        static TEST_FAKE_ROOT: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
         static TEST_TMUX_ROOT: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
     }
 
     #[cfg(target_os = "linux")]
+    pub(super) fn fake_root() -> Option<std::path::PathBuf> {
+        TEST_FAKE_ROOT.with(|slot| slot.borrow().clone())
+    }
+
+    #[cfg(target_os = "linux")]
     pub(super) fn scratch_tmux_command() -> Option<Command> {
+        if let Some(root) = fake_root() {
+            let mut cmd = Command::new(root.join("tmux"));
+            cmd.env_remove("TMUX")
+                .env("TMUX_TEST_LOG", root.join("calls"))
+                .arg("-S")
+                .arg(root.join("tmux.sock"));
+            return Some(cmd);
+        }
         TEST_TMUX_ROOT.with(|root| {
             root.borrow().as_ref().map(|root| {
                 let mut cmd = Command::new("tmux");

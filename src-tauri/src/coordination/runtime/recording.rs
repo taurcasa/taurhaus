@@ -341,6 +341,16 @@ impl RecordingCoordinationRuntime {
 }
 
 impl CoordinationRuntime for RecordingCoordinationRuntime {
+    fn tmux_address(&self, pane: &str) -> Result<Option<(PathBuf, String)>, CoordinationError> {
+        Ok(self.pane_path.lock().ok().and_then(|paths| {
+            paths
+                .get(pane)
+                .cloned()
+                .flatten()
+                .map(|path| (path.join("recording-tmux.sock"), "$1".into()))
+        }))
+    }
+
     fn create_aitx_pane(
         &self,
         project_id: &str,

@@ -203,14 +203,14 @@ pub fn record_delivery_at(
         if let Ok(mut runtime) = super::MemberRuntimeStore::load(teams_dir, team_name, member_name)
         {
             let boundary = format!("{session_id}:{compaction_timestamp}");
-            runtime.recovery.admit_compaction(&boundary);
+            runtime.admit_compaction(&boundary);
             if let Some((team_id, member_id)) = super::TeamConfigStore::load(teams_dir, team_name)
                 .ok()
                 .and_then(|c| c.team_incarnation_id)
                 .zip(runtime.recovery.member_incarnation_id.clone())
             {
                 if result == CompactionDeliveryResult::Skipped {
-                    pending_obligation = Some(((team_id, member_id), runtime.recovery.context()));
+                    pending_obligation = Some(((team_id, member_id), runtime.context()));
                 }
             }
             super::MemberRuntimeStore::save_recovery_locked(

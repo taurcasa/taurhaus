@@ -434,3 +434,29 @@ When adding a new persistent store:
 - [post-compaction-reinjection.md](./post-compaction-reinjection.md)
 - [team-member-master-data-audit.md](../analysis/team-member-master-data-audit.md)
 - [path-handling-guide.md](./path-handling-guide.md)
+
+## Shared runtime attachment contract (v1.1)
+
+Managed runtime records publish camelCase `attachmentGeneration`, `tmuxSocket`
+(absolute, addressed explicitly with `-S`), `tmuxSessionId` (`$N`), `paneId`,
+`panePid`, `paneStartTime` (Linux `/proc` field 22 ticks as a decimal string),
+`contextGeneration`, `harness`, `launchRoot` (`claudeDir`, `teamsDir`,
+`teamIncarnationId`, `rootAuthorityRevision`), `activitySnapshotPath`, and
+`terminalContract: 1`. The attachment counter is the existing onboarding
+activation counter, committed atomically with its pane identity; liveness saves
+preserve these facts and cannot rewind it. The existing activity snapshot is the
+only activity authority. `config.team_incarnation_id` identifies the team across
+lead relaunches, and the root registry revision distinguishes relocation cycles.
+Effort relaunch commits dead health and a new generation before taking the
+terminal flock for teardown, then launch takes it again for its send. Terminal
+locks are last and alone. Member cleanup retains their inodes; native relocation
+hard-links each lock into the destination, so removing the source account root
+cannot sever exclusion. Cross-volume relocation of a team with terminal locks
+refuses before publishing its config because it cannot preserve those inodes.
+Relocation remnants are excluded from team discovery; final disband removes the
+active team directory. Runtime extensions and `appliedEffort` remain Mesh-owned.
+Only a launch with complete attachment facts publishes `terminalContract: 1`;
+legacy or incomplete attachments remain at 0 and cannot opt in. Legacy epoch
+start times are not compared to ticks. No daemon protocol bump is made; unlike
+the new keys, the string representation of `paneStartTime` is incompatible with
+older app readers, so deployment must pair the app and daemon.

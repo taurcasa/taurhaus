@@ -82,9 +82,19 @@ pub fn list_clients() -> Vec<TmuxClient> {
         return scripted();
     }
 
-    let Some(output) =
-        super::process::run_with_timeout("tmux", &["list-clients", "-F", LIST_CLIENTS_FORMAT])
-    else {
+    let Ok(socket) = crate::platform::terminal_io::socket_path() else {
+        return Vec::new();
+    };
+    let Some(output) = super::process::run_with_timeout(
+        "tmux",
+        &[
+            "-S",
+            &socket.to_string_lossy(),
+            "list-clients",
+            "-F",
+            LIST_CLIENTS_FORMAT,
+        ],
+    ) else {
         return Vec::new();
     };
     parse_list_clients(&output)
@@ -188,9 +198,12 @@ pub fn list_panes() -> HashMap<String, TmuxPane> {
 ///
 /// Uses `run_with_timeout` to avoid hanging if tmux is unresponsive.
 fn run_tmux_list_panes() -> Option<String> {
+    let socket = crate::platform::terminal_io::socket_path().ok()?;
     super::process::run_with_timeout(
         "tmux",
         &[
+            "-S",
+            &socket.to_string_lossy(),
             "list-panes",
             "-a",
             "-F",

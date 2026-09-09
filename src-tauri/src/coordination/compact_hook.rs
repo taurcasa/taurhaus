@@ -1821,6 +1821,7 @@ mod tests {
                 effort_resume_failure: None,
                 launch_account: Default::default(),
                 extra: Default::default(),
+                ..Default::default()
             },
         )
         .expect("save runtime");
@@ -2678,6 +2679,7 @@ mod tests {
                     effort_resume_failure: None,
                     launch_account: Default::default(),
                     extra: Default::default(),
+                    ..Default::default()
                 },
             )
             .expect("save runtime");
