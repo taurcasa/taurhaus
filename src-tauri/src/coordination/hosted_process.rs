@@ -378,7 +378,7 @@ pub(crate) mod tests {
     ) -> taurhaus_lib::session_scanner::launch::HostedLaunch {
         let executable = root.join("codex");
         std::fs::write(&executable, r#"#!/usr/bin/python3
-import json, os, socket, sys, threading
+import json, os, socket, sys, threading, fcntl
 root = os.environ['CODEX_HOME']
 address = sys.argv[sys.argv.index('--listen')+1].removeprefix('unix://')
 saved = os.path.join(root, 'thread.json')
@@ -394,7 +394,14 @@ def client(connection):
             method, params = request.get('method'), request.get('params', {})
             result, error = {}, None
             with lock:
-                if method == 'initialize': result = {'userAgent':'taurhaus_host/0.153.4', 'codexHome':root}
+                if method == 'initialize':
+                    result = {'userAgent':'taurhaus_host/0.153.4', 'codexHome':root}
+                    if os.environ.get('FAKE_RUNTIME'):
+                        with open(os.environ['FAKE_RUNTIME'], 'r+') as runtime:
+                            fcntl.flock(runtime, fcntl.LOCK_EX)
+                            record = json.load(runtime); record['foreignClaim'] = 'concurrent'
+                            runtime.seek(0); json.dump(record, runtime); runtime.truncate()
+
                 elif method == 'thread/start':
                     assert thread is None
                     thread = {'id':'owned-thread', 'status':{'type':'idle','activeFlags':[]}, 'canAcceptDirectInput':True, 'turns':[]}

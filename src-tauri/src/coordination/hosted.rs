@@ -113,6 +113,11 @@ impl HostedMembers {
             before.session_id.as_deref(),
             &guard,
         )?;
+        if registry.resolve(team).map_err(|e| e.to_string())? != root
+            || registry.revision(team).map_err(|e| e.to_string())? != authority.root_authority_revision
+            || TeamConfigStore::load(&root, team).map_err(|e| e.to_string())? != config {
+            return Err("host launch authority changed".into());
+        }
         let mut record = before.clone();
         record.reserve_activation(&uuid::Uuid::new_v4().to_string());
         record.session_id = Some(host.thread_id.clone());
@@ -158,7 +163,11 @@ impl HostedMembers {
             team,
             member,
             &super::stores::runtime::MemberRuntimeSnapshot::capture(&before),
-            |current| *current = record.clone(),
+            |current| {
+                let foreign = std::mem::take(&mut current.extra);
+                *current = record.clone();
+                current.extra = foreign;
+            },
         )
         .map_err(|e| e.to_string())?;
         drop(data_guard);
@@ -203,6 +212,14 @@ impl HostedMembers {
             || attachment.state != "ready"
         {
             return Err("host attachment changed; refresh before another operation".into());
+        }
+        let config = TeamConfigStore::load(&root, team).map_err(|e| e.to_string())?;
+        let authority = record.launch_root.as_ref().ok_or("host launch root missing")?;
+        if registry.resolve(team).map_err(|e| e.to_string())? != authority.teams_dir
+            || registry.revision(team).map_err(|e| e.to_string())? != authority.root_authority_revision
+            || config.team_incarnation_id != authority.team_incarnation_id
+            || !config.members.iter().any(|m| m.name == member && m.extra.get("adapter_mode").and_then(Value::as_str) == Some("app_server")) {
+            return Err("host team/member authority changed".into());
         }
         match operation {
             "transcript" => seat.host.transcript(&guard),
@@ -494,6 +511,27 @@ pub(crate) mod tests {
         }
         assert_eq!(MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap().context_generation, 1);
         assert!(!MemberCompactionStore::load(tmp.path(), "team", "seat").unwrap().unwrap().pending);
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+
+    #[test]
+    fn hosted_publication_preserves_concurrent_foreign_fields_and_checks_incarnation() {
+        // Regression: 83077dad replaced the compared current record with a stale clone,
+        // losing Mesh extensions that are intentionally outside the attachment comparison.
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = seat(tmp.path());
+        let mut launch = fixture(tmp.path());
+        launch.environment.insert("FAKE_RUNTIME".into(), tmp.path().join("team/runtime/seat.json").to_string_lossy().into_owned());
+        let hosts = HostedMembers::default();
+        hosts.launch(&registry, "team", "seat", &launch).unwrap();
+        let record = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        assert_eq!(record.extra.get("foreignClaim"), Some(&json!("concurrent")));
+        let path = tmp.path().join("team/config.json");
+        let mut config: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        config["team_incarnation_id"] = json!("recreated");
+        std::fs::write(path, config.to_string()).unwrap();
+        assert!(hosts.operation(&registry, "team", "seat", record.attachment_generation, "input", json!({"text":"wrong incarnation"})).is_err());
         hosts.stop(&registry, "team", "seat").unwrap();
     }
 
