@@ -175,14 +175,25 @@ Definite steer rejection permits a newly validated attempt; ambiguous input bloc
 
 The Codex `0.153.4` transport pin is `unix-websocket`: HTTP/1.1 Upgrade with a random 16-byte key and verified RFC 6455 accept, then masked client text frames and unmasked server text frames. Each message is one JSON object without `jsonrpc`; `initialize` with `clientInfo` and `capabilities.experimentalApi: true` comes first, with per-connection request IDs. Fragmentation and ping/pong are supported; close, malformed frames and messages over 64 KiB fail closed. Every read/write uses the remaining host-operation deadline. Raw NDJSON produces EOF on this build (stage-5b regression `cadd533e`).
 
-The transport/attached-TUI evidence is scoped to build `0.153.4`. A CLI bump must rerun the HTTP Upgrade/initialize handshake probe before its descriptor remains enabled; an unknown build or failed handshake refuses before thread creation. Fake transports prove software only. Trust and paired Mesh eligibility remain separate and disabled pending their packet; this lane performs no paid trial or activation.
+The transport/attached-TUI evidence is scoped to build `0.153.4`. A CLI bump must rerun the HTTP Upgrade/initialize handshake probe before its descriptor remains enabled; an unknown build or failed handshake refuses before thread creation. The descriptor's `attachedTui: verified on 0.153.4` records the trial's exact-ID
+remote-resume primitive, not a production-config verification. The generated
+private home, `project_doc_max_bytes` and amendment-required `--strict-config`
+flag are integration changes covered by fakes, awaiting the real integration trial.
+Fake transports prove software only. Trust and paired Mesh eligibility remain separate and disabled pending their packet; this lane performs no paid trial or activation.
 
 The attached client uses a daemon-generated `config.toml` in a private per-host,
 per-member launch home. Model, effort, approval and sandbox settings come from
 the effective thread/start or thread/resume response; only `auth.json` links to
 the selected account. No account config, instructions, hooks or skills are copied.
-Project instruction discovery is disabled, developer instructions are empty, and
-the project is untrusted in this client home so project config cannot override it.
+The TUI config sets `project_doc_max_bytes = 0` to disable project instruction
+file discovery. It adds no personality, developer-instruction or project-trust
+entries. Host startup sends no extra instruction/config overrides; a nonempty or
+missing `instructionSources` response refuses attach with
+`host loaded unexpected instruction sources`. This remains fail-closed for projects
+whose host loads instruction files; the lane does not claim to suppress them via RPC.
+Workspace-write options are copied only when present and non-null. Approval enums
+are validated and normalized to config/request spelling, while settings comparisons
+retain the server's original wire spelling.
 `--strict-config` rejects unknown keys; it is not itself an isolation mechanism.
 The home is removed when the owned host is dropped. Runtime account identity
 continues to mean the selected credential account, not this disposable view home.

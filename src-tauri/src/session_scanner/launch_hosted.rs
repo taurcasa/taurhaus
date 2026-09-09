@@ -5,8 +5,9 @@ use crate::session_scanner::cli_tool::CliTool;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// Runtime evidence pins transport and TUI together; a build bump needs a fresh
-/// HTTP Upgrade + initialize probe before changing this allowlist.
+/// Runtime evidence pins the remote-resume primitive to this build. The generated
+/// home and amendment-required strict flag are software-tested integration changes.
+/// A build bump needs a fresh HTTP Upgrade + initialize probe before this allowlist changes.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostedDescriptor {

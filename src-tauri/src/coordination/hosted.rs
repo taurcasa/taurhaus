@@ -855,7 +855,7 @@ pub(crate) mod tests {
         assert_eq!(config["model_reasoning_effort"].as_str(), Some("low"));
         assert_eq!(config["sandbox_mode"].as_str(), Some("read-only"));
         assert_eq!(config["approval_policy"].as_str(), Some("never"));
-        assert_eq!(config["developer_instructions"].as_str(), Some(""));
+        assert!(config.get("developer_instructions").is_none());
         assert_eq!(config["project_doc_max_bytes"].as_integer(), Some(0));
         assert_eq!(
             std::fs::read_link(home.join("auth.json")).unwrap(),

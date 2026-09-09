@@ -105,14 +105,11 @@ impl HostProcess {
             return Err("unsupported app-server build; native input refused".into());
         }
         rpc.write(&json!({"method":"initialized"}), guard)?;
-        let (method, mut params) = match resume {
+        let (method, params) = match resume {
             Some(id) if !id.is_empty() => ("thread/resume", json!({"threadId":id, "cwd":cwd})),
             Some(_) => return Err("empty resume identity".into()),
             None => ("thread/start", json!({"cwd":cwd, "ephemeral":false})),
         };
-        // Disable instruction-file discovery for the owned thread as well as its TUI.
-        params["config"] = json!({"developer_instructions":"", "project_doc_max_bytes":0});
-        params["developerInstructions"] = json!("");
         let result = rpc.call(method, params, guard)?;
         host.thread_id = result["thread"]["id"]
             .as_str()
@@ -141,24 +138,37 @@ impl HostProcess {
         let effort = result["reasoningEffort"]
             .as_str()
             .ok_or("missing effective host effort")?;
-        let approval = result["approvalPolicy"]
-            .as_str()
-            .ok_or("unsupported effective host approval policy")?;
+        // RPC enums and config enums need not share their spelling. Keep the
+        // original response for settings comparisons; use config/request values below.
+        let approval = match result["approvalPolicy"].as_str() {
+            Some("untrusted" | "unlessTrusted") => "untrusted",
+            Some("onFailure" | "on-failure") => "on-failure",
+            Some("onRequest" | "on-request") => "on-request",
+            Some("never") => "never",
+            _ => return Err("unsupported effective host approval policy".into()),
+        };
         host.attach_config = json!({"model":model, "model_reasoning_effort":effort,
             "sandbox_mode":sandbox, "approval_policy":approval,
-            "developer_instructions":"", "project_doc_max_bytes":0,
-            "personality":"none", "projects":{cwd.to_string_lossy().as_ref():{"trust_level":"untrusted"}}});
+            "project_doc_max_bytes":0});
         if sandbox == "workspace-write" {
-            host.attach_config["sandbox_workspace_write"] = json!({
-                "network_access":result["sandbox"]["networkAccess"],
-                "writable_roots":result["sandbox"]["writableRoots"],
-                "exclude_tmpdir_env_var":result["sandbox"]["excludeTmpdirEnvVar"],
-                "exclude_slash_tmp":result["sandbox"]["excludeSlashTmp"]});
+            let mut workspace = serde_json::Map::new();
+            for (wire, config) in [
+                ("networkAccess", "network_access"),
+                ("writableRoots", "writable_roots"),
+                ("excludeTmpdirEnvVar", "exclude_tmpdir_env_var"),
+                ("excludeSlashTmp", "exclude_slash_tmp"),
+            ] {
+                let value = &result["sandbox"][wire];
+                if !value.is_null() {
+                    workspace.insert(config.into(), value.clone());
+                }
+            }
+            host.attach_config["sandbox_workspace_write"] = workspace.into();
         }
         let settings = json!({"model":model, "effort":effort,
-            "approvalPolicy":approval, "sandboxPolicy":result["sandbox"]});
+            "approvalPolicy":result["approvalPolicy"], "sandboxPolicy":result["sandbox"]});
         let resume = json!({"threadId":host.thread_id, "cwd":cwd, "model":model,
-            "approvalPolicy":approval, "sandbox":sandbox, "developerInstructions":"",
+            "approvalPolicy":approval, "sandbox":sandbox,
             "config":host.attach_config});
         rpc.policy = Some((settings, resume));
         Ok(host)
@@ -504,6 +514,7 @@ pub(crate) mod tests {
 import json, os, socket, sys, threading, fcntl, base64, hashlib, struct
 root = os.environ['CODEX_HOME']
 policy = {'model':'fake-model', 'reasoningEffort':'low', 'approvalPolicy':'never', 'sandbox':{'type':'readOnly','networkAccess':False}, 'instructionSources':[]}
+policy.update(json.loads(os.environ.get('FAKE_POLICY', '{}')))
 for i, arg in enumerate(sys.argv[:-1]):
     if arg == '-c':
         key, value = sys.argv[i+1].split('=',1)
@@ -516,7 +527,8 @@ if '--remote' in sys.argv:
     config = tomllib.load(open(os.path.join(root, 'config.toml'), 'rb'))
     assert config['model'] == policy['model']
     assert config['model_reasoning_effort'] == policy['reasoningEffort']
-    assert config['project_doc_max_bytes'] == 0 and config['developer_instructions'] == ''
+    assert config['project_doc_max_bytes'] == 0
+    assert not {'personality', 'developer_instructions', 'projects'} & config.keys()
     account_root = os.path.dirname(os.path.realpath(sys.argv[0]))
     thread_id = sys.argv[sys.argv.index('resume')+1]
     assert json.load(open(os.path.join(account_root, 'thread.json')))['id'] == thread_id
@@ -605,6 +617,7 @@ def client(connection):
 
                 elif method == 'thread/start':
                     assert thread is None
+                    with open(os.path.join(root, 'start.json'), 'w') as output: json.dump(params, output)
                     thread = {'id':'owned-thread', 'status':{'type':'idle','activeFlags':[]}, 'canAcceptDirectInput':True, 'turns':[]}
                     result = dict(policy, thread=thread)
                 elif method in ('thread/resume', 'thread/read'):
@@ -680,6 +693,133 @@ with socket.socket(socket.AF_UNIX) as listener:
         let socket = root.join(format!("{}.sock", uuid::Uuid::new_v4().simple()));
         HostProcess::launch(launch, root, &socket, resume, guard)
     }
+    #[test]
+    fn hosted_workspace_write_config_round_trips_optional_fields() {
+        // Regression: efb1ddb8 copied missing workspace sandbox fields as TOML nulls.
+        for sandbox in [
+            json!({"type":"workspaceWrite", "networkAccess":false}),
+            json!({"type":"workspaceWrite", "networkAccess":true, "writableRoots":[],
+                "excludeTmpdirEnvVar":true, "excludeSlashTmp":false}),
+            json!({"type":"workspaceWrite", "networkAccess":null, "writableRoots":null}),
+        ] {
+            let tmp = tempfile::tempdir().unwrap();
+            let mut launch = fixture(tmp.path());
+            launch
+                .environment
+                .insert("FAKE_POLICY".into(), json!({"sandbox":sandbox}).to_string());
+            let guard =
+                HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+            let host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+            let home = tmp.path().join("tui");
+            launch
+                .prepare_attach_home(&home, &host.attach_config)
+                .unwrap();
+            let config: toml::Value =
+                toml::from_str(&std::fs::read_to_string(home.join("config.toml")).unwrap())
+                    .unwrap();
+            assert_eq!(config["sandbox_mode"].as_str(), Some("workspace-write"));
+            let table = config["sandbox_workspace_write"].as_table().unwrap();
+            for (wire, key) in [
+                ("networkAccess", "network_access"),
+                ("writableRoots", "writable_roots"),
+                ("excludeTmpdirEnvVar", "exclude_tmpdir_env_var"),
+                ("excludeSlashTmp", "exclude_slash_tmp"),
+            ] {
+                if sandbox[wire].is_null() {
+                    assert!(!table.contains_key(key));
+                } else {
+                    assert_eq!(serde_json::to_value(&table[key]).unwrap(), sandbox[wire]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn hosted_approval_policy_normalizes_config_and_repair() {
+        // Regression: efb1ddb8 wrote unchecked RPC approval enums straight into TOML.
+        for (wire, config) in [
+            ("never", "never"),
+            ("untrusted", "untrusted"),
+            ("onRequest", "on-request"),
+            ("onFailure", "on-failure"),
+            ("on-request", "on-request"),
+            ("on-failure", "on-failure"),
+        ] {
+            let tmp = tempfile::tempdir().unwrap();
+            let mut launch = fixture(tmp.path());
+            launch.environment.insert(
+                "FAKE_POLICY".into(),
+                json!({"approvalPolicy":wire}).to_string(),
+            );
+            let guard =
+                HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+            let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+            assert_eq!(host.attach_config["approval_policy"], config);
+            std::fs::write(tmp.path().join("drift.json"), "{}").unwrap();
+            host.transcript(&guard).unwrap();
+            let params: Value = serde_json::from_str(
+                &std::fs::read_to_string(tmp.path().join("reassert.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(params["approvalPolicy"], config);
+            assert!(!host.rpc.as_ref().unwrap().policy_dirty);
+        }
+    }
+
+    #[test]
+    fn hosted_approval_policy_refuses_unknown_variant() {
+        // Regression: efb1ddb8 accepted arbitrary approval strings into strict TUI config.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut launch = fixture(tmp.path());
+        launch.environment.insert(
+            "FAKE_POLICY".into(),
+            json!({"approvalPolicy":"futurePolicy"}).to_string(),
+        );
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        assert_eq!(
+            spawn(&launch, tmp.path(), None, &guard).err().as_deref(),
+            Some("unsupported effective host approval policy")
+        );
+    }
+
+    #[test]
+    fn hosted_attach_config_omits_unattested_settings_and_rpc_overrides() {
+        // Regression: efb1ddb8 added unprobed strict-config keys and host instruction overrides.
+        let tmp = tempfile::tempdir().unwrap();
+        let launch = fixture(tmp.path());
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        for key in ["personality", "developer_instructions", "projects"] {
+            assert!(
+                host.attach_config.get(key).is_none(),
+                "unattested config key: {key}"
+            );
+        }
+        assert_eq!(host.attach_config["project_doc_max_bytes"], 0);
+        let params: Value =
+            serde_json::from_str(&std::fs::read_to_string(tmp.path().join("start.json")).unwrap())
+                .unwrap();
+        assert!(params.get("developerInstructions").is_none());
+        assert!(params.get("config").is_none());
+    }
+
+    #[test]
+    fn hosted_instruction_sources_refuse_before_attach() {
+        // Regression: efb1ddb8 introduced an untested instruction-source refusal.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut launch = fixture(tmp.path());
+        launch.environment.insert(
+            "FAKE_POLICY".into(),
+            json!({"instructionSources":[tmp.path().join("AGENTS.md")]}).to_string(),
+        );
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        assert_eq!(
+            spawn(&launch, tmp.path(), None, &guard).err().as_deref(),
+            Some("host loaded unexpected instruction sources")
+        );
+        assert!(!tmp.path().join("tui").exists());
+    }
+
     #[test]
     fn hosted_settings_drift_reasserts_policy_before_returning() {
         // Regression: b4a4b2dd silently queued settings pushes from the attached TUI.
