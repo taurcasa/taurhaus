@@ -4,7 +4,7 @@ The daemon is a companion process that handles filesystem access, process scanni
 
 ![Daemon Protocol](../images/daemon-protocol.jpg)
 
-> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 55 callable methods (56 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 25; the tables below are authoritative.
+> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 55 callable methods (56 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 26; the tables below are authoritative.
 
 ## Why a daemon
 
@@ -22,7 +22,7 @@ On every platform the daemon process hosts the single session hub: the app reads
 | Transport | TCP |
 | Default address | `127.0.0.1:17233` ([authoritative source](../../src-tauri/src/daemon/server.rs)) |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 25 (current) |
+| Protocol version | 26 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication
@@ -407,3 +407,18 @@ Separately, startup now validates that the connected daemon is serving from the 
 - [ARCHITECTURE.md](../../ARCHITECTURE.md) — system overview
 - [Platform abstraction](../platform-abstraction.md) — Linux/macOS dispatch details
 - [IPC reference](ipc-reference.md) — Tauri IPC commands that proxy through the daemon
+
+### Stage-5b pairing decision
+
+Protocol 26 is required by the corrected persistent runtime vocabulary:
+`contextGeneration` is written as a string and member identity as `memberName`.
+Protocol-25 runtime readers require a numeric generation and cannot decode the
+new records. New readers accept both the legacy numeric generation and the
+contract string; compaction bookkeeping still uses the existing internal counter.
+This is a changed encoding, not a bump merely for adding `appServer`.
+
+No hosted daemon methods have landed in this partial foundation. Purely additive
+methods still need no bump and return `UNKNOWN_METHOD` on an older daemon.
+App and daemon must release together, app first; this branch performs no install
+or release. Host transport and fenced switching remain blocked as described in
+[the harness model](harness-model.md#owned-codex-hosting-prerequisites-stage-5b-incomplete).

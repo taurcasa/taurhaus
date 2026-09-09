@@ -136,6 +136,8 @@ pub struct AppServerAttachment {
     pub configuration: String,
     pub trust: String,
     pub transport: String,
+    /// Empty on an incomplete peer record; never evidence of a ready child.
+    #[serde(default)]
     pub state: String,
 }
 

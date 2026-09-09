@@ -131,3 +131,30 @@ The daemon (WSL2 on Windows, native elsewhere) owns process inventory, session i
 ## How changes are made
 
 Each change is a small PR with red-first regression tests naming the breaking commit, implemented by one model family and reviewed by the other (Opus ↔ Codex) through two lenses — conformance to the spec, and an operational checklist (upgrade of persisted data, protocol bumps on wire vocabulary, Windows/WSL paths, user-config edit discipline, concurrency, honest tests, hygiene) — with the fix → re-review loop repeated until no majors remain. Implementers commit after every green step and never edit the ledger; the orchestrator writes the spec (reviewed by the other family first when it edits user config or persisted formats), fills the ledger at merge, and merges only on the check's conclusion. Each new CLI starts with two independent research reports (`docs/design/research/`), verified live on a host that has it; the plans' facts tables cite them.
+
+## Owned Codex hosting prerequisites (stage 5b, incomplete)
+
+The runtime store has an additive, typed `appServer` attachment containing the
+contract version, socket/thread/member/account identity, PID plus process start
+identity, host generation and exact build/host/configuration/trust/transport
+facts. Its optional `state` extension is empty on an incomplete peer record;
+empty state establishes no readiness. Snapshot comparisons include the complete
+attachment, and stale liveness saves preserve the current attachment.
+`memberName` is written in camelCase and `contextGeneration` as a decimal string,
+while the existing internal compaction counter and legacy numeric reads remain
+unchanged. These storage foundations do not launch or enable a hosted seat.
+
+Hosting remains blocked on the paired transport contract: the stage-5a contract
+specifies raw Unix NDJSON (`unix_ndjson`), whereas the
+[official app-server reference](https://learn.chatgpt.com/docs/app-server#protocol)
+specifies HTTP Upgrade and WebSocket framing for `--listen unix://PATH`.
+The frozen 0.153.4 probe exercised NDJSON on **stdio** and explicitly left other
+transports untested. A fake raw-NDJSON listener cannot establish compatibility
+with that documented Unix transport. A paired correction or pinned transport
+artifact is required before implementing this connection.
+
+The stage-5a switch also refuses every transition into or out of `app_server`.
+That Mesh extension needs a paired owner: this checkout has no switch surface
+that can remove the refusal. No host launch, interactive UI, effort relaunch,
+compaction transport or switch/rollback implementation is claimed here. Existing
+pane hosting remains in force and native descriptors remain disabled.

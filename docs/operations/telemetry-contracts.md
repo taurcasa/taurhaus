@@ -141,3 +141,25 @@ confirmed acceptance emits `deadline.nudge.unconfirmed` with team, member,
 task and deadline fields. Non-canonical teams keep direct append.
 This adapter adds no protocol version, terminal writer, delivery owner or
 activation permission; the existing runtime-exclusion contract still applies.
+
+## Stage-5b storage/exclusion foundations — not an eligibility packet
+
+`hosted_attachment_contract_and_stale_snapshot` exercises the typed runtime
+attachment and the runtime-exclusion v1.1 on-disk spelling in a tempdir.
+`host_operation_lock_excludes_mesh_and_never_replaces_inode` uses a fake flock
+holder to prove deferral and stable-inode reuse at
+`teams/TEAM/state/app-server/MEMBER.lock`.
+`host_operation_lock_is_acquired_after_data_locks_are_released` rejects nested
+team/host exclusion. Waits are capped at two seconds; the guard exposes a
+five-second remaining submission deadline for future I/O callers.
+
+The lock primitive is not yet wired to host operations. No runtime lock may span
+native RPC I/O; the hosting contract permits only short runtime snapshots under
+host exclusion. No model-turn wait belongs inside this guard. Closing a holder
+never unlinks the shared inode, and unsupported flock never permits unlocked I/O.
+
+These tests invoke no harness, daemon listener, account reader or tmux client.
+They prove neither native delivery nor intended-host eligibility. The paired
+Unix framing conflict and Mesh switch prerequisite are recorded in
+[harness-model.md](../architecture/harness-model.md#owned-codex-hosting-prerequisites-stage-5b-incomplete).
+All descriptors remain disabled; no paid trial or deployment was performed.

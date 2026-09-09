@@ -47,7 +47,8 @@ use serde::{Deserialize, Serialize};
 /// accept-then-poll selector-account switch operation.
 /// v24: per-team root authority and Claude team account switching.
 /// v25: versioned recovery receipts and explicit force/read reonboard intents.
-pub const PROTOCOL_VERSION: u32 = 25;
+/// v26: runtime context-generation encoding is a string, with camelCase member identity.
+pub const PROTOCOL_VERSION: u32 = 26;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -1519,7 +1520,9 @@ mod tests {
     // edit here, in ARCHITECTURE.md, and in docs/architecture/daemon-protocol.md.
     #[test]
     fn protocol_version_is_pinned() {
-        assert_eq!(PROTOCOL_VERSION, 25);
+        // The runtime context-generation slot changes from number to string;
+        // protocol-25 readers cannot decode the corrected persistent vocabulary.
+        assert_eq!(PROTOCOL_VERSION, 26);
     }
 
     #[test]
