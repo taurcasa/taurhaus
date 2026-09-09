@@ -26,6 +26,86 @@ pub(super) const READ_RETRY_BACKOFFS: [Duration; 3] = [
 
 thread_local! {
     static HELD_TEAM_LOCKS: RefCell<HashSet<PathBuf>> = RefCell::new(HashSet::new());
+    static HOST_OPERATION_HELD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Stable shared exclusion inode for an owned host's bounded operations.
+///
+/// Acquire after releasing data locks, never together with terminal exclusion.
+/// Contract v1 permits short runtime snapshots under this guard, but no data
+/// lock may span host I/O. Callers must give every read/write the remaining
+/// submission deadline; this guard must never span a model turn.
+#[derive(Debug)]
+pub struct HostOperationLock {
+    _file: File,
+    deadline: std::time::Instant,
+    _not_send: PhantomData<Rc<()>>,
+}
+
+impl HostOperationLock {
+    pub fn acquire(
+        root: &Path,
+        team: &str,
+        member: &str,
+        wait: Duration,
+    ) -> Result<Self, CoordinationError> {
+        crate::coordination::validation::validate_team_name(team)?;
+        crate::coordination::validation::validate_member_name(member)?;
+        if HOST_OPERATION_HELD.get()
+            || taurhaus_lib::platform::terminal_io::active()
+            || HELD_TEAM_LOCKS.with(|locks| !locks.borrow().is_empty())
+        {
+            return Err(CoordinationError::Conflict(
+                "host-operation lock must be last and alone".into(),
+            ));
+        }
+        let directory = root.join(team).join("state/app-server");
+        fs::create_dir_all(&directory)?;
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(directory.join(format!("{member}.lock")))?;
+        let deadline = std::time::Instant::now() + wait.min(Duration::from_secs(2));
+        loop {
+            match file.try_lock_exclusive() {
+                Ok(()) => break,
+                Err(error) if terminal_lock_contended(&error, cfg!(target_os = "windows")) => {
+                    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                    if remaining.is_zero() {
+                        return Err(CoordinationError::Conflict(
+                            "host operation deferred: lock busy".into(),
+                        ));
+                    }
+                    thread::sleep(remaining.min(Duration::from_millis(10)));
+                }
+                // Unsupported flock is a hard refusal, never unlocked I/O.
+                Err(error) => return Err(error.into()),
+            }
+        }
+        HOST_OPERATION_HELD.set(true);
+        Ok(Self {
+            _file: file,
+            deadline: std::time::Instant::now() + Duration::from_secs(5),
+            _not_send: PhantomData,
+        })
+    }
+
+    pub fn remaining(&self) -> Result<Duration, CoordinationError> {
+        let remaining = self.deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            return Err(CoordinationError::Conflict("host operation deadline expired".into()));
+        }
+        Ok(remaining)
+    }
+}
+
+impl Drop for HostOperationLock {
+    fn drop(&mut self) {
+        HOST_OPERATION_HELD.set(false);
+        // Closing the descriptor releases exclusion. Never unlink its inode.
+    }
 }
 
 /// Permanent per-member inode. Drop closes it; it is never unlinked.
@@ -47,7 +127,8 @@ impl TerminalLock {
     ) -> Result<Self, CoordinationError> {
         crate::coordination::validation::validate_team_name(team)?;
         crate::coordination::validation::validate_member_name(member)?;
-        if taurhaus_lib::platform::terminal_io::active()
+        if HOST_OPERATION_HELD.get()
+            || taurhaus_lib::platform::terminal_io::active()
             || HELD_TEAM_LOCKS.with(|h| !h.borrow().is_empty())
         {
             return Err(CoordinationError::Conflict(
@@ -724,6 +805,36 @@ fn inode_matches(_file: &File, _path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[cfg(unix)]
+    fn host_operation_lock_excludes_mesh_and_never_replaces_inode() {
+        use std::os::unix::fs::MetadataExt;
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("team/state/app-server/seat.lock");
+        let guard = super::HostOperationLock::acquire(tmp.path(), "team", "seat", std::time::Duration::ZERO).unwrap();
+        let inode = std::fs::metadata(&path).unwrap().ino();
+        let mesh = std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
+        assert!(fs2::FileExt::try_lock_exclusive(&mesh).is_err(), "mesh must defer");
+        assert!(super::TerminalLock::acquire(tmp.path(), "team", "seat", "test", 0, std::time::Duration::ZERO).is_err());
+        drop(guard);
+        fs2::FileExt::try_lock_exclusive(&mesh).unwrap();
+        let started = std::time::Instant::now();
+        assert!(super::HostOperationLock::acquire(tmp.path(), "team", "seat", std::time::Duration::from_millis(20)).is_err());
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+        fs2::FileExt::unlock(&mesh).unwrap();
+        let _guard = super::HostOperationLock::acquire(tmp.path(), "team", "seat", std::time::Duration::ZERO).unwrap();
+        assert_eq!(std::fs::metadata(path).unwrap().ino(), inode);
+    }
+
+    #[test]
+    fn host_operation_lock_is_acquired_after_data_locks_are_released() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let team = super::acquire_team_lock(tmp.path(), "team").unwrap();
+        assert!(super::HostOperationLock::acquire(tmp.path(), "team", "seat", std::time::Duration::ZERO).is_err());
+        drop(team);
+        let _host = super::HostOperationLock::acquire(tmp.path(), "team", "seat", std::time::Duration::ZERO).unwrap();
+        assert!(super::HostOperationLock::acquire(tmp.path(), "team", "seat", std::time::Duration::ZERO).is_err());
+    }
     use std::sync::{mpsc, Arc, Barrier};
     use std::thread;
 
