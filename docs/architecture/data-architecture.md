@@ -449,7 +449,14 @@ only activity authority. `config.team_incarnation_id` identifies the team across
 lead relaunches, and the root registry revision distinguishes relocation cycles.
 Effort relaunch commits dead health and a new generation before taking the
 terminal flock for teardown, then launch takes it again for its send. Terminal
-locks are last and alone. Cleanup retains their inodes; native relocation leaves
-the original terminal directory and links the destination to it, including on
-cross-volume moves and return moves. Runtime extensions and `appliedEffort`
-remain Mesh-owned. These additive file fields require no daemon protocol bump.
+locks are last and alone. Member cleanup retains their inodes; native relocation
+hard-links each lock into the destination, so removing the source account root
+cannot sever exclusion. Cross-volume relocation of a team with terminal locks
+refuses before publishing its config because it cannot preserve those inodes.
+Relocation remnants are excluded from team discovery; final disband removes the
+active team directory. Runtime extensions and `appliedEffort` remain Mesh-owned.
+Only a launch with complete attachment facts publishes `terminalContract: 1`;
+legacy or incomplete attachments remain at 0 and cannot opt in. Legacy epoch
+start times are not compared to ticks. No daemon protocol bump is made; unlike
+the new keys, the string representation of `paneStartTime` is incompatible with
+older app readers, so deployment must pair the app and daemon.

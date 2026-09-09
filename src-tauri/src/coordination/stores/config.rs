@@ -494,7 +494,14 @@ impl TeamConfigStore {
         let mut teams = Vec::new();
         for entry in fs::read_dir(teams_dir)? {
             let entry = entry?;
-            if entry.file_type()?.is_dir() {
+            // Relocation retains only lifetime lock links at the old root.
+            // Such a tombstone is not a discoverable team.
+            let path = entry.path();
+            let terminal_only = path.join("state/terminal").exists()
+                && !path.join("config.json").exists()
+                && !super::lock::displaced_path(&path.join("config.json")).exists()
+                && !path.join("runtime").exists();
+            if entry.file_type()?.is_dir() && !terminal_only {
                 let file_name = entry.file_name();
                 if let Some(name) = file_name.to_str() {
                     teams.push(name.to_string());
@@ -561,7 +568,7 @@ impl TeamConfigStore {
     /// Remove `<teams_dir>/<team_name>` recursively.
     pub fn delete(teams_dir: &Path, team_name: &str) -> Result<(), CoordinationError> {
         let path = team_dir(teams_dir, team_name);
-        match remove_team_payload(&path) {
+        match fs::remove_dir_all(&path) {
             Ok(()) => Ok(()),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(err) => Err(CoordinationError::Io(err)),
@@ -2044,6 +2051,19 @@ mod tests {
             other => panic!("expected not found, got {other:?}"),
         }
         assert_eq!(rewrites, 1);
+    }
+
+    #[test]
+    fn disband_removes_terminal_directory_and_team_listing() {
+        // Regression: 1127823e applied lifetime lock retention to final disband,
+        // leaving a listed ghost team and blocking reuse of the destination.
+        let tmp = TempDir::new().unwrap();
+        let terminal = tmp.path().join("team/state/terminal");
+        fs::create_dir_all(&terminal).unwrap();
+        fs::write(terminal.join("seat.lock"), "").unwrap();
+        TeamConfigStore::delete(tmp.path(), "team").unwrap();
+        assert!(!tmp.path().join("team").exists());
+        assert!(TeamConfigStore::list(tmp.path()).unwrap().is_empty());
     }
 
     #[test]

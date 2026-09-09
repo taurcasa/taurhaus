@@ -102,11 +102,6 @@ fn move_with_terminal_inodes(
         ));
     }
     let target_locks = target.join("state/terminal");
-    if target_locks.exists() && fs::canonicalize(&target_locks)? != locks {
-        return Err(CoordinationError::Conflict(
-            "target terminal inode authority differs".into(),
-        ));
-    }
     let parent = target
         .parent()
         .ok_or_else(|| CoordinationError::Validation("team root missing".into()))?;
@@ -117,8 +112,31 @@ fn move_with_terminal_inodes(
         copy_tree(source, &staged)?;
         verify_tree(&staged, &expected)?;
         fs::create_dir_all(target.join("state"))?;
-        if !target_locks.exists() {
-            std::os::unix::fs::symlink(&locks, &target_locks)?;
+        fs::create_dir_all(&target_locks)?;
+        for entry in fs::read_dir(&locks)? {
+            let entry = entry?;
+            if entry.path().extension().is_none_or(|ext| ext != "lock") {
+                continue;
+            }
+            let destination = target_locks.join(entry.file_name());
+            match fs::hard_link(entry.path(), &destination) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    use std::os::unix::fs::MetadataExt;
+                    let source = entry.metadata()?;
+                    let target = fs::metadata(destination)?;
+                    if (source.dev(), source.ino()) != (target.dev(), target.ino()) {
+                        return Err(CoordinationError::Conflict(
+                            "target terminal inode authority differs".into(),
+                        ));
+                    }
+                }
+                Err(error) => {
+                    return Err(CoordinationError::Validation(format!(
+                    "terminal relocation requires same-volume hard links; source retained: {error}"
+                )))
+                }
+            }
         }
         // Publish config last. The registry still binds the source until this
         // operation returns; rollback retains its complete payload on error.
@@ -265,7 +283,9 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn terminal_inode_survives_relocation_cycle_and_team_delete() {
+    fn terminal_inode_survives_relocation_cycle_until_disband() {
+        // Regression: 1127823e linked the target to its old account root and
+        // retained a ghost directory even after final disband.
         use std::os::unix::fs::MetadataExt;
         let tmp = tempfile::TempDir::new().unwrap();
         let a = tmp.path().join("a/teams");
@@ -283,9 +303,20 @@ mod tests {
                 .ino(),
             inode
         );
+        fs::remove_dir_all(tmp.path().join("a")).unwrap();
+        assert_eq!(
+            fs::metadata(b.join("team/state/terminal/seat.lock"))
+                .unwrap()
+                .ino(),
+            inode
+        );
         move_team_directory(&b, &a, "team").unwrap();
-        crate::coordination::stores::TeamConfigStore::delete(&a, "team").unwrap();
+        assert!(crate::coordination::stores::TeamConfigStore::list(&b)
+            .unwrap()
+            .is_empty());
         assert_eq!(fs::metadata(&original).unwrap().ino(), inode);
+        crate::coordination::stores::TeamConfigStore::delete(&a, "team").unwrap();
+        assert!(!a.join("team").exists());
     }
 
     #[test]
