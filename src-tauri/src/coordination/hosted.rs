@@ -64,7 +64,7 @@ impl HostedMembers {
             .iter()
             .find(|m| m.name == member)
             .ok_or("host member missing")?;
-        if definition.extra.get("adapter_mode").and_then(Value::as_str) != Some("app_server") {
+        if !HostedLaunch::supports(definition.cli_tool) || definition.extra.get("adapter_mode").and_then(Value::as_str) != Some("app_server") {
             return Err("owned hosting is not opted in for this member".into());
         }
         let authority = LaunchRoot {
@@ -150,6 +150,7 @@ impl HostedMembers {
         record.tmux_session_id = None;
         record.daemon_pid = None;
         record.applied_effort = launch.applied_effort.clone();
+        record.launch_account = launch.account.clone();
         record.attached_at = Some(chrono::Utc::now());
         record.recovery.launch_namespace = Some("native".into());
         record.recovery.harness_account_root =
@@ -321,6 +322,17 @@ impl HostedMembers {
         let mut owned = cell.try_lock().map_err(|_| "host member busy")?;
         let guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
             .map_err(|e| e.to_string())?;
+        let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
+        if let Some(attachment) = &record.app_server {
+            if let Some(seat) = owned.as_ref() {
+                if attachment.process_id != seat.host.pid() || attachment.process_start != seat.host.process_start {
+                    drop(owned.take());
+                    return Err("host attachment changed before shutdown".into());
+                }
+            } else if taurhaus_lib::platform::process_start_ticks(attachment.process_id).map(|v| v.to_string()).as_deref() == Some(&attachment.process_start) {
+                return Err("live host belongs to a previous daemon; cannot claim shutdown".into());
+            }
+        }
         MemberRuntimeStore::update(&root, team, member, |record| {
             record.attachment_generation = record.attachment_generation.saturating_add(1);
             record.health = HealthState::SessionDead;
@@ -454,6 +466,8 @@ pub(crate) mod tests {
         hosts.launch(&registry, "team", "seat", &launch).unwrap();
         let record = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
         let restarted_owner = HostedMembers::default();
+        // Regression: 83077dad reported a live unowned child as stopped on owner restart.
+        assert!(restarted_owner.stop(&registry, "team", "seat").is_err());
         assert!(restarted_owner
             .launch(&registry, "team", "seat", &launch)
             .is_err());
@@ -558,6 +572,25 @@ pub(crate) mod tests {
         assert!(after.attachment_generation > before.attachment_generation);
         assert_eq!(after.app_server.unwrap().state, "stopped");
         assert!(taurhaus_lib::platform::process_start_ticks(before.app_server.unwrap().process_id).is_none());
+    }
+
+
+    #[test]
+    fn hosted_launch_requires_codex_capability_and_records_account_selection() {
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = seat(tmp.path());
+        let mut config = TeamConfigStore::load(tmp.path(), "team").unwrap();
+        config.members[0].cli_tool = crate::session_scanner::cli_tool::CliTool::Grok;
+        TeamConfigStore::save(tmp.path(), "team", &config).unwrap();
+        let hosts = HostedMembers::default();
+        let launch = fixture(tmp.path());
+        // Regression: 83077dad allowed a Codex child to be published as another harness.
+        assert!(hosts.launch(&registry, "team", "seat", &launch).is_err());
+        config.members[0].cli_tool = crate::session_scanner::cli_tool::CliTool::Codex;
+        TeamConfigStore::save(tmp.path(), "team", &config).unwrap();
+        hosts.launch(&registry, "team", "seat", &launch).unwrap();
+        assert_eq!(MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap().launch_account.account_applied, Some(true));
+        hosts.stop(&registry, "team", "seat").unwrap();
     }
 
 }

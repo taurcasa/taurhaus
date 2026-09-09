@@ -12,6 +12,7 @@ pub struct HostedLaunch {
     pub environment: BTreeMap<String, String>,
     pub account_root: PathBuf,
     pub applied_effort: Option<String>,
+    pub account: crate::session_scanner::launch_base::LaunchAccountResult,
 }
 
 impl LaunchSpec<'_> {
@@ -29,6 +30,8 @@ impl LaunchSpec<'_> {
 }
 
 impl HostedLaunch {
+    pub fn supports(tool: CliTool) -> bool { tool == CliTool::Codex }
+
     /// Consume the existing resolved/rendered launch, without evaluating shell
     /// syntax. A named resume selects the thread via RPC, never a CLI picker.
     pub fn from_rendered(
@@ -129,6 +132,7 @@ impl HostedLaunch {
             environment,
             account_root: account_root.into(),
             applied_effort,
+            account: crate::session_scanner::launch_base::LaunchAccountResult { account_applied: Some(true), ..Default::default() },
         })
     }
 }

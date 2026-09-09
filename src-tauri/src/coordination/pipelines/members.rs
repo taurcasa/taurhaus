@@ -666,12 +666,13 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 let account = launch.harness_account_root.as_deref().ok_or_else(|| {
                     CoordinationError::Validation("host account root missing".into())
                 })?;
-                let hosted = taurhaus_lib::session_scanner::launch::HostedLaunch::from_rendered(
+                let mut hosted = taurhaus_lib::session_scanner::launch::HostedLaunch::from_rendered(
                     &launch.command,
                     account,
                     context.resume_session_id.as_deref(),
                 )
                 .map_err(CoordinationError::Validation)?;
+                hosted.account = launch.account;
                 self.orchestrator
                     .hosted
                     .launch(
