@@ -74,6 +74,8 @@ pub struct RemoveMemberStepResult {
 
 /// Top-level coordination service entrypoint.
 pub struct CoordinationOrchestrator {
+    #[cfg(target_os = "linux")]
+    pub(crate) hosted: Arc<crate::coordination::hosted::HostedMembers>,
     pub(crate) teams_dir: PathBuf,
     pub(crate) root_registry: crate::coordination::stores::TeamRootRegistry,
     pub(crate) template_root: PathBuf,
@@ -119,6 +121,8 @@ impl CoordinationOrchestrator {
         runtime: Arc<dyn CoordinationRuntime>,
     ) -> Self {
         Self {
+            #[cfg(target_os = "linux")]
+            hosted: Arc::new(Default::default()),
             root_registry: crate::coordination::stores::TeamRootRegistry::new(teams_dir.clone()),
             teams_dir,
             template_root,

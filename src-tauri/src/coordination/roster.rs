@@ -191,7 +191,8 @@ pub fn get_team_roster_with_runtime_sessions(
         .members
         .into_iter()
         .map(|member| {
-            let (runtime, workflow_activity) = runtime_by_member.get(&member.name).cloned().unzip();
+            let (mut runtime, workflow_activity) = runtime_by_member.get(&member.name).cloned().unzip();
+            if let Some(hosted) = persisted_by_member.get(&member.name).filter(|r| r.app_server.is_some()) { runtime = Some(hosted.clone()); }
             build_team_member_view(
                 team_name,
                 member,

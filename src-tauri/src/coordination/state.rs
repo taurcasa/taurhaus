@@ -614,6 +614,8 @@ impl CoordinationState {
         // inbox file delivery instead of mesh send, fixing auth failures on
         // Claude-only teams.
         orchestrator.root_registry = self.team_root_registry.clone();
+        #[cfg(target_os = "linux")]
+        { orchestrator.hosted = self.hosted.clone(); }
         orchestrator.claude_backend =
             Some(Arc::new(ClaudeNativeBackend::new(teams_dir.to_path_buf())));
         if let Err(err) = orchestrator.reconcile_runtime_state_on_startup() {
@@ -652,6 +654,8 @@ impl CoordinationState {
         let mut orchestrator =
             CoordinationOrchestrator::new_with_runtime(teams_dir.to_path_buf(), backend, runtime);
         orchestrator.root_registry = self.team_root_registry.clone();
+        #[cfg(target_os = "linux")]
+        { orchestrator.hosted = self.hosted.clone(); }
         orchestrator.claude_backend =
             Some(Arc::new(ClaudeNativeBackend::new(teams_dir.to_path_buf())));
         Ok(orchestrator)

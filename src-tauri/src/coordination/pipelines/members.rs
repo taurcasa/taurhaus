@@ -502,7 +502,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             message: "member resumed".to_string(),
             steps: self.steps,
             warnings: self.warnings,
-            pane_id: Some(pane_id),
+            pane_id: (!pane_id.is_empty()).then_some(pane_id),
             reused_pane: self.runtime_state.reused_pane,
         })
     }
@@ -644,6 +644,23 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         &mut self,
         prepared: &PreparedMemberActivation,
     ) -> Result<String, (String, CoordinationError)> {
+        #[cfg(target_os = "linux")]
+        if prepared.member.extra.get("adapter_mode").and_then(serde_json::Value::as_str) == Some("app_server") {
+            let launch_host = || -> Result<(), CoordinationError> {
+                let mut context = prepared.activation_context.clone();
+                context.resume_session_id = prepared.previous_runtime.as_ref().and_then(|r| r.session_id.clone());
+                let launch = build_member_activation_launch_command(&self.orchestrator.teams_dir, &context, self.cli_commands)?;
+                let account = launch.harness_account_root.as_deref().ok_or_else(|| CoordinationError::Validation("host account root missing".into()))?;
+                let hosted = crate::session_scanner::launch::HostedLaunch::from_rendered(&launch.command, account, context.resume_session_id.as_deref()).map_err(CoordinationError::Validation)?;
+                self.orchestrator.hosted.launch(&self.orchestrator.root_registry, &context.team_name, &context.member.name, &hosted).map_err(CoordinationError::Conflict)
+            };
+            launch_host().map_err(|e| ("launch_host".into(), e))?;
+            self.record_step_success("launch_host", "owned thread resumed");
+            return Ok(String::new());
+        }
+        if prepared.previous_runtime.as_ref().is_some_and(|r| r.app_server.is_some()) {
+            return Err(("switch_host".into(), CoordinationError::Conflict("app_server_switch_requires_5b_recoverable_relaunch_packet".into())));
+        }
         let pane_id = self.acquire_pane(prepared)?;
         self.launch_session(prepared, &pane_id)?;
         self.capture_session_identity(prepared, &pane_id)?;

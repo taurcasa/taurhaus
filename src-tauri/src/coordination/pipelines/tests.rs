@@ -8499,3 +8499,37 @@ fn reinitialize_resets_attachment_without_rewinding_generation() {
     assert!(record.attachment_generation >= 7);
     assert_eq!(record.terminal_contract, 0);
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn hosted_member_liveness_and_effort_relaunch_never_use_a_pane() {
+    let tmp = TempDir::new().unwrap();
+    let registry = crate::coordination::hosted::tests::seat(tmp.path());
+    let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+    orchestrator.hosted.launch(&registry, "team", "seat", &launch).unwrap();
+    orchestrator.reconcile_team_liveness("team").unwrap();
+    orchestrator.reconcile_team_presence_for_live_status_with_runtime_sessions("team", &[]).unwrap();
+    let before = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    assert_eq!(before.health, HealthState::Healthy);
+    let roster = crate::coordination::roster::get_team_roster_with_runtime_sessions(tmp.path(), "team", &[]).unwrap();
+    assert_eq!(roster[0].session_id.as_deref(), Some("owned-thread"));
+    let result = orchestrator.teardown_member_resources_best_effort("team", "seat", Some(tmp.path()), Some(&before));
+    assert!(result.steps.iter().any(|s| s.step == "stop_host" && s.success));
+    let mut commands = CliCommandSettings::default();
+    let command = format!("CODEX_HOME='{}' '{}' --sandbox read-only --ask-for-approval never", tmp.path().display(), launch.program.display());
+    commands.codex.fresh = command.clone();
+    commands.codex.resume = format!("{command} resume {{session_id}}");
+    commands.codex_bypass_hook_trust = false;
+    commands.account_selector_dirs.insert("CODEX_HOME".into(), tmp.path().into());
+    let request = ResumeMemberRequest { team_name: "team".into(), member_name: "seat".into(), reasoning_effort_override: Some("high".into()) };
+    let report = orchestrator.resume_member_with_cli_commands_and_layout(&request, &commands, "new_window").unwrap();
+    assert!(report.resumed, "{}", report.message);
+    assert_eq!(report.pane_id, None);
+    let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    assert_eq!(before.session_id, after.session_id);
+    assert_eq!(after.applied_effort.as_deref(), Some("high"));
+    assert!(!runtime.calls().iter().any(|c| format!("{c:?}").contains("Pane")), "{:?}", runtime.calls());
+    orchestrator.hosted.stop(&registry, "team", "seat").unwrap();
+}

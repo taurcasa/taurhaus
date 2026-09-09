@@ -58,7 +58,7 @@ impl CoordinationOrchestrator {
         if let Some(failed) = diagnostics
             .steps
             .iter()
-            .find(|step| step.step == "kill_pane" && !step.success)
+            .find(|step| matches!(step.step.as_str(), "kill_pane" | "stop_host") && !step.success)
             .filter(|_| !pane_was_already_missing)
         {
             return Err(format!(
@@ -101,6 +101,14 @@ impl CoordinationOrchestrator {
         runtime: Option<&MemberRuntimeRecord>,
     ) -> TeardownDiagnostics {
         let mut diagnostics = TeardownDiagnostics::default();
+        #[cfg(target_os = "linux")]
+        if runtime.is_some_and(|record| record.app_server.is_some()) {
+            diagnostics.steps.push(match self.hosted.stop(&self.root_registry, team_name, member_name) {
+                Ok(()) => step_succeeded("stop_host", "owned host stopped; named thread retained"),
+                Err(error) => step_failed("stop_host", error),
+            });
+            return diagnostics;
+        }
         let pane_record =
             runtime.and_then(|record| record.pane_id.as_deref().map(|pane_id| (pane_id, record)));
         let pane_id = pane_record.map(|(pane_id, _)| pane_id);

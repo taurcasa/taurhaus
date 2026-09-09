@@ -123,6 +123,26 @@ impl HostedMembers {
         }
     }
 
+    pub fn reconcile(&self, registry: &TeamRootRegistry, team: &str, member: &str) -> Result<(), String> {
+        let root = registry.resolve(team).map_err(|e| e.to_string())?;
+        let cell = self.seat(&root, team, member)?;
+        let Ok(mut owned) = cell.try_lock() else { return Ok(()); };
+        let guard = HostOperationLock::acquire(&root, team, member, Duration::ZERO).map_err(|e| e.to_string())?;
+        if owned.as_mut().is_some_and(|seat| seat.host.alive()) { return Ok(()); }
+        MemberRuntimeStore::update(&root, team, member, |record| {
+            if let Some(host) = &mut record.app_server {
+                if host.state == "ready" {
+                    host.state = "unavailable".into();
+                    record.attachment_generation = record.attachment_generation.saturating_add(1);
+                    record.health = HealthState::SessionDead;
+                }
+            }
+        }).map_err(|e| e.to_string())?;
+        drop(owned.take());
+        drop(guard);
+        Ok(())
+    }
+
     pub fn stop(&self, registry: &TeamRootRegistry, team: &str, member: &str) -> Result<(), String> {
         let root = registry.resolve(team).map_err(|e| e.to_string())?;
         let cell = self.seat(&root, team, member)?;
