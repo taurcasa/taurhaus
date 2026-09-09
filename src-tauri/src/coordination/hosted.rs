@@ -684,6 +684,25 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn hosted_compaction_refuses_an_old_thread_at_the_same_cwd() {
+        // Regression: 5c95d585 inherited cwd fallback and admitted a former host's compaction.
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = seat(tmp.path());
+        let hosts = HostedMembers::default();
+        hosts.launch(&registry, "team", "seat", &fixture(tmp.path())).unwrap();
+        super::super::compact_hook::tests::write_snapshot_fixture(tmp.path(), "team", "seat");
+        let before = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        let payload = json!({"hook_event_name":"SessionStart","source":"compact","session_id":"old-thread","cwd":tmp.path(),"transcript_path":tmp.path().join("rollout-old-thread.jsonl")});
+        let mut output = Vec::new();
+        assert!(super::super::compact_hook::run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, tmp.path()).is_err());
+        assert!(output.is_empty());
+        let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        assert_eq!(after.context_generation, before.context_generation);
+        assert_eq!(after.recovery, before.recovery);
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+    #[test]
     fn hosted_recovery_first_input_uses_existing_pending_compaction_without_new_generation() {
         use super::super::stores::{
             record_delivery_at, CompactionDeliveryResult, MemberCompactionStore,

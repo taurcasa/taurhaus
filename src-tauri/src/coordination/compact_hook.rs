@@ -498,9 +498,9 @@ fn handle_compact_hook_with_guard(
         }
     };
 
-    if MemberRuntimeStore::load(&matched.teams_dir, &matched.team_name, &matched.member.name)?
-        .app_server
-        .is_some()
+    let before = MemberRuntimeStore::load(&matched.teams_dir, &matched.team_name, &matched.member.name)?;
+    if before.app_server.is_some()
+        || matched.member.extra.get("adapter_mode").and_then(Value::as_str) == Some("app_server")
     {
         *host_guard = Some(
             crate::coordination::stores::lock::HostOperationLock::acquire(
@@ -510,6 +510,19 @@ fn handle_compact_hook_with_guard(
                 std::time::Duration::from_secs(2),
             )?,
         );
+        let current = MemberRuntimeStore::load(&matched.teams_dir, &matched.team_name, &matched.member.name)?;
+        let attachment = current.app_server.as_ref().ok_or_else(|| CoordinationError::Conflict("hosted compaction has no attachment".into()))?;
+        if current.app_server != before.app_server
+            || current.attachment_generation != before.attachment_generation
+            || current.launch_root != before.launch_root
+            || current.session_id.as_deref() != Some(payload.session_id.as_str())
+            || attachment.thread_id != payload.session_id
+            || attachment.contract != 1
+            || attachment.transport != "unix_ndjson"
+            || attachment.state != "ready"
+        {
+            return Err(CoordinationError::Conflict("hosted compaction attachment changed or is unavailable".into()));
+        }
     }
     emit_compact_hook_resolved(&payload, &matched);
 
