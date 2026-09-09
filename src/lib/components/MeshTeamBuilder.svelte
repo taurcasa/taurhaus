@@ -31,7 +31,7 @@
     toolLabel,
     tools,
   } from '../toolRegistry.js'
-  import { projectNameFromPath } from './meshTabUtils.js'
+  import { canonicalMessagingSupported, projectNameFromPath } from './meshTabUtils.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import MeshNodeDetail from './MeshNodeDetail.svelte'
   import MemberAccountPicker from './MemberAccountPicker.svelte'
@@ -79,7 +79,8 @@
     onSavePreset = () => {},
   } = $props()
 
-  let canonicalMessaging = $state(true)
+  const canonicalAvailable = canonicalMessagingSupported()
+  let canonicalMessaging = $state(canonicalAvailable)
 
   const t = $derived(themeTokens(dark))
   const modelCatalogContext = getModelCatalogContext()
@@ -2565,10 +2566,10 @@
 
         <footer class="shrink-0 space-y-3 border-t pt-3 {dark ? 'border-white/[0.08]' : 'border-zinc-200/70'}" data-testid="mesh-action-bar">
           <label class="flex items-start gap-2 text-xs {t.textPrimary}">
-            <input type="checkbox" bind:checked={canonicalMessaging} aria-labelledby="mesh-canonical-label" aria-describedby="mesh-canonical-description" class="mt-0.5 accent-brand-600" />
+            <input type="checkbox" disabled={!canonicalAvailable} bind:checked={canonicalMessaging} aria-labelledby="mesh-canonical-label" aria-describedby="mesh-canonical-description" class="mt-0.5 accent-brand-600" />
             <span>
               <span id="mesh-canonical-label">Canonical messaging — mesh journal + team delivery (disposable team)</span>
-              <span id="mesh-canonical-description" class="mt-1 block {t.textSecondary}">Keeps messages in the mesh journal; dispose of the team after exporting evidence.</span>
+              <span id="mesh-canonical-description" class="mt-1 block {t.textSecondary}">{#if canonicalAvailable}Keeps messages in the mesh journal; dispose of the team after exporting evidence.{:else}The bundled Mesh build does not support canonical teams; legacy messaging remains available.{/if}</span>
             </span>
           </label>
           <div class="w-full" title={!canInitialize ? initializeButtonTitle : undefined} data-testid="mesh-action-initialize-hint">

@@ -31,6 +31,8 @@ const {
 const { open, save } = await import('@tauri-apps/plugin-dialog')
 const { writeTextFile } = await import('@tauri-apps/plugin-fs')
 
+import * as meshTabUtils from './meshTabUtils.js'
+
 import MeshTeamBuilder from './MeshTeamBuilder.svelte'
 import { TEST_MODEL_CATALOG } from '../../test/fixtures/modelCatalog.js'
 
@@ -1190,7 +1192,8 @@ describe('MeshTeamBuilder role-inherited reasoning effort', () => {
   })
 })
 
-it('defaults canonical messaging on and passes the operator toggle to initialization', async () => {
+it('defaults canonical messaging on for a supported build and passes the operator toggle to initialization', async () => {
+  const capability = vi.spyOn(meshTabUtils, 'canonicalMessagingSupported').mockReturnValue(true)
   const onInitialize = vi.fn()
   renderBuilder({ onInitialize, teamConfig: { lead: { name: 'lead', tool: 'codex', model: 'gpt-5.4', projectId: '/projects/taurhaus' }, agents: [] } })
   const toggle = screen.getByRole('checkbox', { name: 'Canonical messaging — mesh journal + team delivery (disposable team)' })
@@ -1200,6 +1203,19 @@ it('defaults canonical messaging on and passes the operator toggle to initializa
   expect(onInitialize).toHaveBeenLastCalledWith({ canonicalMessaging: true })
   await fireEvent.click(toggle)
   expect(toggle).not.toBeChecked()
+  await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+  expect(onInitialize).toHaveBeenLastCalledWith({ canonicalMessaging: false })
+  capability.mockRestore()
+})
+
+// Regression: aafcc540 defaulted canonical on with the incompatible locked Mesh.
+it('keeps new teams on legacy messaging when the shipped Mesh lacks canonical creation', async () => {
+  const onInitialize = vi.fn()
+  renderBuilder({ onInitialize, teamConfig: { lead: { name: 'lead', tool: 'codex', model: 'gpt-5.4', projectId: '/projects/taurhaus' }, agents: [] } })
+  const toggle = screen.getByRole('checkbox', { name: 'Canonical messaging — mesh journal + team delivery (disposable team)' })
+  expect(toggle).not.toBeChecked()
+  expect(toggle).toBeDisabled()
+  expect(toggle).toHaveAccessibleDescription('The bundled Mesh build does not support canonical teams; legacy messaging remains available.')
   await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
   expect(onInitialize).toHaveBeenLastCalledWith({ canonicalMessaging: false })
 })

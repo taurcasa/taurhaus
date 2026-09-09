@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { TEST_MODEL_CATALOG as CATALOG } from '../../test/fixtures/modelCatalog.js'
 import {
   accountLineLabel,
+  canonicalMessagingSupported,
   buildInitializationRequest,
   buildTeamConfigFromPreset,
   buildTeamConfigFromRuntimeStatus,
@@ -645,7 +646,7 @@ describe('meshTabUtils launch account note', () => {
 
 describe('canonical messaging initialization', () => {
   it.each(['custom', 'preset'])('includes the disposable policy for %s teams and omits it when disabled', (initializationMode) => {
-    const config = { initializationMode, presetId: 'trial', lead: {}, agents: [] }
+    const config = { initializationMode, presetId: 'trial', lead: {}, agents: [], canonicalMessaging: true }
     const request = buildInitializationRequest(config, 'trial')
     expect(request.messaging).toEqual({ mode: 'canonical', retentionPolicy: {
       capture_scope: 'mesh-producers-only', synthetic_disposable: true,
@@ -657,4 +658,15 @@ describe('canonical messaging initialization', () => {
     } })
     expect(buildInitializationRequest({ ...config, canonicalMessaging: false }, 'trial')).not.toHaveProperty('messaging')
   })
+})
+
+// Regression: aafcc540 also opted callers without a toggle value into unsupported Mesh commands.
+it('omits canonical messaging by default for the shipped Mesh lock', () => {
+  expect(buildInitializationRequest({ lead: {}, agents: [] }, 'trial')).not.toHaveProperty('messaging')
+})
+
+it('gates canonical support on evidenced build identity rather than the shared version', () => {
+  expect(canonicalMessagingSupported({ version: '0.2.29', git_commit: '4388d6a1590e3072c9dfdc61ccd08b00bff2508b' })).toBe(true)
+  expect(canonicalMessagingSupported({ version: '0.2.29', git_commit: '6789201c5511b51be704fe30c6e4d025f3e64f8c' })).toBe(false)
+  expect(canonicalMessagingSupported({ version: '9.0.0', git_commit: null })).toBe(false)
 })

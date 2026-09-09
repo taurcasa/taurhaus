@@ -1,3 +1,4 @@
+import meshLock from '../../../src-tauri/resources/mesh.lock.json'
 import { activityLevel } from '../activitySignal.js'
 import {
   toolOptions,
@@ -517,6 +518,12 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
   }
 }
 
+// Candidate and shipped Mesh share version 0.2.29. Only an evidenced build may
+// enable this default; review this identity alongside a future Mesh lock bump.
+export function canonicalMessagingSupported(lock = meshLock) {
+  return lock?.git_commit === '4388d6a1590e3072c9dfdc61ccd08b00bff2508b'
+}
+
 export const DEFAULT_CANONICAL_POLICY = Object.freeze({
   capture_scope: 'mesh-producers-only',
   synthetic_disposable: true,
@@ -539,7 +546,7 @@ export function buildInitializationRequest(
   projectPath = '',
   catalog = EMPTY_MODEL_CATALOG
 ) {
-  const messaging = config?.canonicalMessaging === false
+  const messaging = !(config?.canonicalMessaging ?? canonicalMessagingSupported())
     ? {}
     : { messaging: { mode: 'canonical', retentionPolicy: DEFAULT_CANONICAL_POLICY } }
   const lead = config?.lead

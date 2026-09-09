@@ -2,7 +2,7 @@
 
 User guide for the Mesh template system, with the correct mental model for role design.
 
-New teams default to **Canonical messaging — mesh journal + team delivery (disposable team)** in the team builder. Turn it off for legacy messaging; canonical teams retain evidence in the mesh journal and require manual disposal after evidence export.
+With a verified canonical-capable bundled Mesh build, new teams default to **Canonical messaging — mesh journal + team delivery (disposable team)** in the team builder. The current legacy Mesh lock keeps the toggle disabled and defaults to legacy messaging. On supported builds, turn it off for legacy messaging; canonical teams retain evidence in the mesh journal and require manual disposal after evidence export.
 
 ## Why Roles Matter
 
