@@ -1156,7 +1156,10 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
     // mirror of `command_settings_for` that the task-effort relaunch needs to
     // rewrite one tool's configured resume base. Field selection per tool has
     // to name the tools; the registry is where that is allowed to happen.
-    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 86;
+    // 94: the separate native delivery hook slice adds eight references for its
+    // Claude/Codex eligibility and installation envelopes. Generic consumers
+    // gained none; keep both the file boundary and exact count pinned.
+    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 94;
 
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src"), &mut files);
