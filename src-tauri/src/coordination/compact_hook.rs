@@ -401,10 +401,11 @@ fn emit_hook_degraded(tool: CliTool, config_dir: &Path, executable: &str) {
     );
 }
 
-pub fn handle_compact_hook_stdin<R: Read>(
-    mut stdin: R,
-    teams_dir: &Path,
-) -> Result<CompactHookResponse, CoordinationError> {
+pub fn handle_compact_hook_stdin<R: Read>(stdin: R, teams_dir: &Path) -> Result<CompactHookResponse, CoordinationError> {
+    read_hosted_hook(stdin, teams_dir, &mut None)
+}
+
+fn read_hosted_hook<R: Read>(mut stdin: R, teams_dir: &Path, host_guard: &mut Option<crate::coordination::stores::lock::HostOperationLock>) -> Result<CompactHookResponse, CoordinationError> {
     let mut raw = String::new();
     stdin.read_to_string(&mut raw).map_err(|error| {
         emit_compact_hook_failed(
@@ -418,13 +419,17 @@ pub fn handle_compact_hook_stdin<R: Read>(
         );
         CoordinationError::Io(error)
     })?;
-    handle_compact_hook(&raw, teams_dir)
+    handle_compact_hook_with_guard(&raw, teams_dir, host_guard)
 }
 
 pub fn handle_compact_hook(
     raw: &str,
     teams_dir: &Path,
 ) -> Result<CompactHookResponse, CoordinationError> {
+    handle_compact_hook_with_guard(raw, teams_dir, &mut None)
+}
+
+fn handle_compact_hook_with_guard(raw: &str, teams_dir: &Path, host_guard: &mut Option<crate::coordination::stores::lock::HostOperationLock>) -> Result<CompactHookResponse, CoordinationError> {
     let payload = parse_compact_hook_input(raw).map_err(|err| {
         emit_compact_hook_parse_payload_debug(raw, &err.to_string());
         emit_compact_hook_failed(
@@ -482,6 +487,9 @@ pub fn handle_compact_hook(
         }
     };
 
+    if MemberRuntimeStore::load(&matched.teams_dir, &matched.team_name, &matched.member.name)?.app_server.is_some() {
+        *host_guard = Some(crate::coordination::stores::lock::HostOperationLock::acquire(&matched.teams_dir, &matched.team_name, &matched.member.name, std::time::Duration::from_secs(2))?);
+    }
     emit_compact_hook_resolved(&payload, &matched);
 
     if crate::session_scanner::cli_tool::spec(tool)
@@ -964,7 +972,8 @@ pub fn run_compact_hook_cli<R: Read, W: Write>(
     mut stdout: W,
     teams_dir: &Path,
 ) -> Result<(), CoordinationError> {
-    let response = handle_compact_hook_stdin(stdin, teams_dir)?;
+    let mut host_guard = None;
+    let response = read_hosted_hook(stdin, teams_dir, &mut host_guard)?;
     serde_json::to_writer(&mut stdout, &response).map_err(|error| {
         CoordinationError::StoreError(format!(
             "failed to serialize compact hook response: {error}"
@@ -1698,7 +1707,7 @@ fn runtime_path_string(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     use chrono::DateTime;
@@ -1839,7 +1848,7 @@ mod tests {
         .expect("save runtime");
     }
 
-    fn write_snapshot_fixture(teams_dir: &Path, team_name: &str, member_name: &str) {
+    pub(crate) fn write_snapshot_fixture(teams_dir: &Path, team_name: &str, member_name: &str) {
         OperationalContextSnapshotStore::save(
             teams_dir,
             &OperationalContextSnapshot {

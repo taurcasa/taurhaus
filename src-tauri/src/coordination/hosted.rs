@@ -146,6 +146,7 @@ impl HostedMembers {
         record.daemon_pid = None;
         record.applied_effort = launch.applied_effort.clone();
         record.attached_at = Some(chrono::Utc::now());
+        record.recovery.launch_namespace = Some("native".into());
         record.recovery.harness_account_root =
             Some(launch.account_root.to_string_lossy().into_owned());
         // One compared replacement publishes the generation, socket and thread together.
@@ -210,12 +211,27 @@ impl HostedMembers {
                     return Err("outcome_unknown: previous input requires reconciliation".into());
                 }
                 let text = params["text"].as_str().ok_or("missing input text")?;
+                use super::recovery_card::ReceiptStage;
+                if record.recovery.claim.as_ref().is_some_and(|claim| claim.card_key.context == record.context() && claim.stage == ReceiptStage::OutcomeUnknown) {
+                    return Err("outcome_unknown: recovery offer requires reconciliation".into());
+                }
+                let needs_recovery = record.recovery.last_delivered.as_ref().is_none_or(|receipt| receipt.card_key.context != record.context());
+                let card = if needs_recovery {
+                    // A fallback card belongs to the first next turn, never an active-turn steer.
+                    if seat.host.transcript(&guard)?["thread"]["status"]["type"] != "idle" { return Err("pending: recovery requires the next idle turn".into()); }
+                    super::recovery_delivery::prepare(registry, &root, team, member, "app_server").map_err(|e| e.to_string())?
+                } else { None };
+                let input = card.as_ref().map_or_else(|| text.to_string(), |card| format!("{}\n\n{}", card.text, text));
                 // Persist ambiguity before any possible input bytes, including owner crashes.
                 MemberRuntimeStore::update(&root, team, member, |r| {
                     r.extra.insert("hostInputUnknown".into(), json!(true));
                 })
                 .map_err(|e| e.to_string())?;
-                let result = seat.host.input(text, &guard);
+                let result = seat.host.input(&input, &guard);
+                if let Some(card) = card {
+                    let stage = if result.is_ok() { ReceiptStage::Submitted } else if seat.host.outcome_unknown() { ReceiptStage::OutcomeUnknown } else { ReceiptStage::Failed };
+                    super::recovery_delivery::observe(registry, &root, team, member, &card.receipt, stage).map_err(|e| e.to_string())?;
+                }
                 if result.is_ok() || !seat.host.outcome_unknown() {
                     MemberRuntimeStore::update(&root, team, member, |r| {
                         r.extra.insert("hostInputUnknown".into(), json!(false));
@@ -426,4 +442,59 @@ pub(crate) mod tests {
             .is_err());
         hosts.stop(&registry, "team", "seat").unwrap();
     }
+
+    #[test]
+    fn hosted_recovery_hook_holds_exclusion_through_stdout() {
+        struct CheckedOutput { path: PathBuf, bytes: Vec<u8> }
+        impl std::io::Write for CheckedOutput {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                use fs2::FileExt;
+                let file = std::fs::OpenOptions::new().read(true).write(true).open(&self.path)?;
+                assert!(file.try_lock_exclusive().is_err(), "hook stdout must exclude mesh");
+                self.bytes.extend_from_slice(bytes); Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = seat(tmp.path());
+        let hosts = HostedMembers::default();
+        hosts.launch(&registry, "team", "seat", &fixture(tmp.path())).unwrap();
+        super::super::compact_hook::tests::write_snapshot_fixture(tmp.path(), "team", "seat");
+        let payload = json!({"hook_event_name":"SessionStart","source":"compact","session_id":"owned-thread","cwd":tmp.path(),"transcript_path":tmp.path().join("rollout-owned-thread.jsonl")});
+        let mut output = CheckedOutput { path: tmp.path().join("team/state/app-server/seat.lock"), bytes: Vec::new() };
+        super::super::compact_hook::run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, tmp.path()).unwrap();
+        let response: Value = serde_json::from_slice(&output.bytes).unwrap();
+        assert!(response["hookSpecificOutput"]["additionalContext"].as_str().unwrap().contains("Current task: #680"));
+        let record = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        assert_eq!(record.context_generation, 1);
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+    #[test]
+    fn hosted_recovery_first_input_uses_existing_pending_compaction_without_new_generation() {
+        use super::super::stores::{record_delivery_at, CompactionDeliveryResult, MemberCompactionStore};
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = seat(tmp.path());
+        let hosts = HostedMembers::default();
+        hosts.launch(&registry, "team", "seat", &fixture(tmp.path())).unwrap();
+        super::super::compact_hook::tests::write_snapshot_fixture(tmp.path(), "team", "seat");
+        let generation = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap().attachment_generation;
+        hosts.operation(&registry, "team", "seat", generation, "input", json!({"text":"startup marker"})).unwrap();
+        {
+            let _guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+            record_delivery_at(tmp.path(), "team", "seat", crate::session_scanner::cli_tool::CliTool::Codex, "owned-thread", chrono::Utc::now(), CompactionDeliveryResult::Skipped).unwrap();
+        }
+        assert!(MemberCompactionStore::load(tmp.path(), "team", "seat").unwrap().unwrap().pending);
+        hosts.operation(&registry, "team", "seat", generation, "input", json!({"text":"after compact"})).unwrap();
+        let transcript = hosts.operation(&registry, "team", "seat", generation, "transcript", Value::Null).unwrap();
+        for (i, marker) in ["startup marker", "after compact"].iter().enumerate() {
+            let text = transcript["thread"]["turns"][i]["items"][0]["content"][0]["text"].as_str().unwrap();
+            assert!(text.starts_with("[taurhaus] recovery_card"));
+            assert!(text.ends_with(marker));
+        }
+        assert_eq!(MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap().context_generation, 1);
+        assert!(!MemberCompactionStore::load(tmp.path(), "team", "seat").unwrap().unwrap().pending);
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
 }
