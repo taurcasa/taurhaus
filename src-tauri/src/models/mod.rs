@@ -1279,6 +1279,10 @@ pub struct MeshCompatibilityIssue {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MeshInstallStatus {
+    /// Mesh 0.3.0 is the first lock shipping canonical creation and delivery ownership.
+    /// Derived from the installed contract when present, otherwise the bundled one.
+    #[serde(default)]
+    pub canonical_messaging_supported: bool,
     /// Whether the mesh binary exists in ~/.local/bin/mesh (or WSL equivalent).
     pub installed: bool,
     /// Version of the installed mesh binary, if available.

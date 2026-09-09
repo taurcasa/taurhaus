@@ -1620,6 +1620,7 @@ describe('ipc module', () => {
     it('returns mock data in non-Tauri mode', async () => {
       const result = await ipc.checkMeshInstallStatus()
       expect(result).toEqual({
+        canonical_messaging_supported: false,
         installed: true,
         version: '0.1.0',
         bundled_version: '0.1.0',
@@ -1640,6 +1641,16 @@ describe('ipc module', () => {
         environment_available: true,
         error: null,
       })
+    })
+
+    // Regression: 9d09c883 ignored runtime capability in favor of the bundled hash.
+    it.each([true, false, undefined])('normalizes canonical capability %s', async (supported) => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({ canonicalMessagingSupported: supported })
+      const result = await ipc.checkMeshInstallStatus()
+      expect(result.canonical_messaging_supported).toBe(supported ?? false)
+      expect(result).not.toHaveProperty('canonicalMessagingSupported')
+      delete window.__TAURI_INTERNALS__
     })
 
     it('calls check_mesh_install_status in Tauri mode', async () => {
@@ -1703,6 +1714,7 @@ describe('ipc module', () => {
       const result = await ipc.checkMeshInstallStatus()
 
       expect(result).toEqual({
+        canonical_messaging_supported: false,
         installed: true,
         version: '0.1.0',
         bundled_version: '0.1.1',

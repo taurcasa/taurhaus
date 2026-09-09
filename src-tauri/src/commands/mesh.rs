@@ -334,12 +334,31 @@ fn compare_mesh_contracts(
     issues
 }
 
+fn canonical_messaging_supported(version: &str) -> bool {
+    let mut parts = version.split('.');
+    let mut numbers = [0_u64; 3];
+    for number in &mut numbers {
+        let Some(part) = parts.next() else {
+            return false;
+        };
+        if part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()) {
+            return false;
+        }
+        let Ok(value) = part.parse() else {
+            return false;
+        };
+        *number = value;
+    }
+    parts.next().is_none() && numbers >= [0, 3, 0]
+}
+
 fn mesh_status_not_installed(
     bundled_contract: &MeshCompatibilityContract,
     environment_available: bool,
     error: Option<String>,
 ) -> MeshInstallStatus {
     MeshInstallStatus {
+        canonical_messaging_supported: canonical_messaging_supported(&bundled_contract.version),
         installed: false,
         version: None,
         bundled_version: bundled_contract.version.clone(),
@@ -360,6 +379,12 @@ fn mesh_status_from_contract(
     error: Option<String>,
 ) -> MeshInstallStatus {
     MeshInstallStatus {
+        canonical_messaging_supported: canonical_messaging_supported(
+            &installed_contract
+                .as_ref()
+                .unwrap_or(bundled_contract)
+                .version,
+        ),
         installed: true,
         version: installed_contract
             .as_ref()
@@ -386,6 +411,7 @@ fn mesh_status_unrunnable(
     read_error: String,
 ) -> MeshInstallStatus {
     MeshInstallStatus {
+        canonical_messaging_supported: canonical_messaging_supported(&bundled_contract.version),
         installed: false,
         version: None,
         bundled_version: bundled_contract.version.clone(),
@@ -1819,6 +1845,7 @@ exit 0
     #[test]
     fn mesh_install_required_when_binary_missing() {
         let status = MeshInstallStatus {
+            canonical_messaging_supported: false,
             installed: false,
             version: None,
             bundled_version: "0.2.13".to_string(),
@@ -1841,6 +1868,7 @@ exit 0
     #[test]
     fn mesh_install_required_when_contract_drifts() {
         let status = MeshInstallStatus {
+            canonical_messaging_supported: false,
             installed: true,
             version: Some("0.2.12".to_string()),
             bundled_version: "0.2.13".to_string(),
@@ -1873,6 +1901,7 @@ exit 0
     #[test]
     fn mesh_install_required_skips_when_environment_unavailable() {
         let status = MeshInstallStatus {
+            canonical_messaging_supported: false,
             installed: false,
             version: None,
             bundled_version: "0.2.13".to_string(),
@@ -2168,3 +2197,7 @@ exit 0
         );
     }
 }
+
+#[cfg(test)]
+#[path = "mesh/tests.rs"]
+mod canonical_tests;
