@@ -15,6 +15,11 @@
 
   $effect(() => {
     const team = teamName, member = memberName
+    transcript = null
+    draft = ''
+    error = ''
+    unavailable = false
+    submitting = false
     let disposed = false, timer
     async function refresh() {
       try {
@@ -36,16 +41,21 @@
 
   async function submit(operation, params = {}) {
     if (submitting || !transcript) return
+    const team = teamName, member = memberName, generation = transcript.attachmentGeneration
+    const current = () => team === teamName && member === memberName
     submitting = true
     error = ''
     try {
-      await coordinationHosted(teamName, memberName, operation, { generation: transcript.attachmentGeneration, ...params })
+      await coordinationHosted(team, member, operation, { generation, ...params })
+      if (!current()) return
       if (operation === 'input') draft = ''
-      transcript = await coordinationHosted(teamName, memberName, 'transcript', {})
+      const next = await coordinationHosted(team, member, 'transcript', {})
+      if (current()) transcript = next
     } catch (cause) {
+      if (!current()) return
       error = String(cause?.message ?? cause)
       if (operation === 'input') transcript = { ...transcript, outcomeUnknown: true }
-    } finally { submitting = false }
+    } finally { if (current()) submitting = false }
   }
 </script>
 

@@ -28,3 +28,16 @@ it('explains older daemons without offering an input control', async () => {
   expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument()
   unmount()
 })
+
+it('clears the previous member before the next transcript is available', async () => {
+  // Regression: a9c8109b reused a member detail component with the old draft and attachment.
+  coordinationHosted.mockResolvedValueOnce({ attachmentGeneration: 7, thread: { turns: [{ items: [{ text: 'First member' }] }] } })
+  coordinationHosted.mockImplementation(() => new Promise(() => {}))
+  const { rerender, unmount } = render(HostedThread, { teamName: 'team', memberName: 'first' })
+  await screen.findByText('First member')
+  await fireEvent.input(screen.getByLabelText('Message hosted member'), { target: { value: 'Private draft' } })
+  await rerender({ teamName: 'team', memberName: 'second' })
+  await waitFor(() => expect(screen.queryByText('First member')).not.toBeInTheDocument())
+  expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument()
+  unmount()
+})
