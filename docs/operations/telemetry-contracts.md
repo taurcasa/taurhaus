@@ -146,7 +146,7 @@ activation permission; the existing runtime-exclusion contract still applies.
 
 Tempdir fake Unix WebSocket transports pin HTTP Upgrade, masked client frames, fragmented server messages, ping/pong, close and bounded frame refusal. Raw NDJSON EOF is the regression guard for `cadd533e`. Production native eligibility remains disabled pending the paired Mesh packet in [the harness model](../architecture/harness-model.md#owned-codex-hosting-stage-5b-disabled-pending-pairing). The stable `state/app-server/MEMBER.lock` excludes input, effort, compaction, shutdown and publication. Wait is at most two seconds; ordinary operations get five seconds, cold launch thirty. No data lock spans RPC and no lock spans a turn.
 
-The build-pinned attached-TUI path publishes `appServer.attachArgv` and the existing `threadId`, plus normal pane PID/start ticks and tmux address fields. It uses `env -u TMUX`, the member-selected `CODEX_HOME` and the resolved launch executable. No account contents or environment secrets are emitted. Terminal holder diagnostics use `attach_tui` / `attach_cleanup` / `detach_tui`; these locks never overlap host RPC or runtime data locks. Pane restart preserves host/thread identity and does not promote a delivery receipt. Tests execute the rendered command only with a fake executable in a foreground private tmux server, then kill and reap that owned server. Descriptor transport and attached-TUI evidence are scoped to `0.153.4`; every build bump requires a fresh Upgrade/initialize probe before enablement.
+The build-pinned attached-TUI path publishes `appServer.attachArgv` and the existing `threadId`, plus normal pane PID/start ticks and tmux address fields. It uses `env -u TMUX`, a private generated `CODEX_HOME` (only auth links to the selected account), `--strict-config` and the resolved launch executable. No account contents or environment secrets are emitted. Terminal holder diagnostics use `attach_tui` / `attach_cleanup` / `detach_tui`; these locks never overlap host RPC or runtime data locks. Pane restart preserves host/thread identity and does not promote a delivery receipt. Tests execute the rendered command only with a fake executable in a foreground private tmux server, then kill and reap that owned server. Descriptor transport and attached-TUI evidence are scoped to `0.153.4`; every build bump requires a fresh Upgrade/initialize probe before enablement.
 
 Recovery retains `onboarding.delivery.observed` and existing compaction bookkeeping. A native receipt is submission, never read/acceptance. Typed `hostInputUnknown` is persisted before possible input. Classified definite steer rejection clears ambiguity; transport loss does not. Explicit stopped-member reconciliation records `hostInputAbandonedAt`, preserving receipts and abandoning input without replay. IPC operations emit the usual lifecycle spans, correlated with daemon RPC events. Lock contention defers liveness instead of failing the team's pass. Busy-seat shutdown emits `owned hosts not cleanly stopped` at warn level and continues the normal daemon shutdown path.
 
@@ -190,3 +190,11 @@ Claude native-mailbox exclusion still blocks activation in Mesh. agy/Grok and St
 continuation remain inactive. Daemon protocol 26 excludes protocol-25 readers of
 the new string runtime context generation. No transport retirement,
 canonical-writer expansion or live deployment is implied.
+
+`hosted.settings.diverged` is a warn event carrying only the owned thread ID,
+never settings, instruction text or credentials. It triggers one bounded named
+resume to restore model/effort/approval/sandbox parity before completing the
+operation. A failed or divergent repair fails closed and remains pending for the
+next operation. Attach, cleanup and detach resolve the same registered team root
+for terminal exclusion. Host relaunch preserves the recorded pane identity until
+ownership-checked reuse or retirement; it does not leave an unrecorded old view.

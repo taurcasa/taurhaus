@@ -74,8 +74,7 @@ export const FALLBACK_TOOLS = Object.freeze([
     appServer: {
       build: '0.153.4',
       transport: 'unix-websocket',
-      attached_tui: 'verified on 0.153.4',
-      transport_probe_required_on_bump: true,
+      attachedTui: 'verified on 0.153.4',
     },
     capabilities: {
       modelFlag: '-m',

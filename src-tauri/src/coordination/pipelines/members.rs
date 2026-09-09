@@ -702,7 +702,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             };
             launch_host().map_err(|e| ("launch_host".into(), e))?;
             self.record_step_success("launch_host", "owned thread resumed");
-            let pane = self
+            let (pane, reused_pane) = self
                 .orchestrator
                 .hosted
                 .attach_pane(
@@ -713,7 +713,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                     self.tmux_layout,
                 )
                 .map_err(|e| ("attach_tui".into(), CoordinationError::Conflict(e)))?;
-            self.runtime_state.pane_id = Some(pane.clone());
+            self.runtime_state.reused_pane = reused_pane;
             return Ok(pane);
         }
         if let Some(record) = prepared.previous_runtime.as_ref() {

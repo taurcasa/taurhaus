@@ -17,6 +17,7 @@ pub(crate) struct HostProcess {
     child: Child,
     rpc: Option<Rpc>,
     pub thread_id: String,
+    pub attach_config: Value,
     pub build: String,
     pub process_start: String,
     socket: PathBuf,
@@ -52,6 +53,7 @@ impl HostProcess {
             child,
             rpc: None,
             thread_id: String::new(),
+            attach_config: Value::Null,
             build: String::new(),
             process_start: String::new(),
             socket: socket.into(),
@@ -79,6 +81,9 @@ impl HostProcess {
                     events: VecDeque::new(),
                     requests: Vec::new(),
                     truncated: false,
+                    policy: None,
+                    repairing: false,
+                    policy_dirty: false,
                 });
                 break;
             }
@@ -100,11 +105,14 @@ impl HostProcess {
             return Err("unsupported app-server build; native input refused".into());
         }
         rpc.write(&json!({"method":"initialized"}), guard)?;
-        let (method, params) = match resume {
+        let (method, mut params) = match resume {
             Some(id) if !id.is_empty() => ("thread/resume", json!({"threadId":id, "cwd":cwd})),
             Some(_) => return Err("empty resume identity".into()),
             None => ("thread/start", json!({"cwd":cwd, "ephemeral":false})),
         };
+        // Disable instruction-file discovery for the owned thread as well as its TUI.
+        params["config"] = json!({"developer_instructions":"", "project_doc_max_bytes":0});
+        params["developerInstructions"] = json!("");
         let result = rpc.call(method, params, guard)?;
         host.thread_id = result["thread"]["id"]
             .as_str()
@@ -114,6 +122,45 @@ impl HostProcess {
         if resume.is_some_and(|id| id != host.thread_id) {
             return Err("host resumed a different thread".into());
         }
+        if !result["instructionSources"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+        {
+            return Err("host loaded unexpected instruction sources".into());
+        }
+        let sandbox = match result["sandbox"]["type"].as_str() {
+            Some("readOnly") => "read-only",
+            Some("workspaceWrite") => "workspace-write",
+            Some("dangerFullAccess") => "danger-full-access",
+            _ => return Err("unsupported effective host sandbox".into()),
+        };
+        let model = result["model"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .ok_or("missing effective host model")?;
+        let effort = result["reasoningEffort"]
+            .as_str()
+            .ok_or("missing effective host effort")?;
+        let approval = result["approvalPolicy"]
+            .as_str()
+            .ok_or("unsupported effective host approval policy")?;
+        host.attach_config = json!({"model":model, "model_reasoning_effort":effort,
+            "sandbox_mode":sandbox, "approval_policy":approval,
+            "developer_instructions":"", "project_doc_max_bytes":0,
+            "personality":"none", "projects":{cwd.to_string_lossy().as_ref():{"trust_level":"untrusted"}}});
+        if sandbox == "workspace-write" {
+            host.attach_config["sandbox_workspace_write"] = json!({
+                "network_access":result["sandbox"]["networkAccess"],
+                "writable_roots":result["sandbox"]["writableRoots"],
+                "exclude_tmpdir_env_var":result["sandbox"]["excludeTmpdirEnvVar"],
+                "exclude_slash_tmp":result["sandbox"]["excludeSlashTmp"]});
+        }
+        let settings = json!({"model":model, "effort":effort,
+            "approvalPolicy":approval, "sandboxPolicy":result["sandbox"]});
+        let resume = json!({"threadId":host.thread_id, "cwd":cwd, "model":model,
+            "approvalPolicy":approval, "sandbox":sandbox, "developerInstructions":"",
+            "config":host.attach_config});
+        rpc.policy = Some((settings, resume));
         Ok(host)
     }
 
@@ -334,6 +381,9 @@ struct Rpc {
     events: VecDeque<Value>,
     requests: Vec<Value>,
     truncated: bool,
+    policy: Option<(Value, Value)>,
+    repairing: bool,
+    policy_dirty: bool,
 }
 impl Rpc {
     fn write(&mut self, value: &Value, guard: &HostOperationLock) -> Result<(), String> {
@@ -368,6 +418,40 @@ impl Rpc {
                     }
                     self.requests.push(frame);
                 } else {
+                    if frame["method"] == "thread/settings/updated" {
+                        if let Some((expected, resume)) = &self.policy {
+                            if frame["params"]["threadId"] == resume["threadId"] {
+                                let settings = &frame["params"]["threadSettings"];
+                                let differs = expected
+                                    .as_object()
+                                    .unwrap()
+                                    .iter()
+                                    .any(|(k, v)| settings[k] != *v);
+                                if differs {
+                                    if self.repairing {
+                                        return Err(
+                                            "host settings diverged during reassertion".into()
+                                        );
+                                    }
+                                    self.policy_dirty = true;
+                                    tracing::warn!(event = "hosted.settings.diverged", thread_id = %resume["threadId"], "attached TUI changed owned thread policy; reasserting");
+                                    taurhaus_lib::logging::emit_global(
+                                        "warn",
+                                        "coordination",
+                                        "hosted.settings.diverged",
+                                        Some(
+                                            "Attached TUI changed owned thread policy; reasserting"
+                                                .into(),
+                                        ),
+                                        serde_json::Map::from_iter([(
+                                            "thread_id".into(),
+                                            resume["threadId"].clone(),
+                                        )]),
+                                    );
+                                }
+                            }
+                        }
+                    }
                     if self.events.len() == 64 {
                         self.events.pop_front();
                         self.truncated = true;
@@ -378,10 +462,27 @@ impl Rpc {
                 if frame.get("error").is_some() {
                     return Err(RpcError::Rejected(frame["error"].clone()));
                 }
-                return frame
-                    .get("result")
-                    .cloned()
-                    .ok_or("missing host result".into());
+                let result = frame.get("result").cloned().ok_or("missing host result")?;
+                if self.policy_dirty && !self.repairing {
+                    // Finish the in-flight response first: never lose correlation to a
+                    // nested repair. One repair only, under this same bounded deadline.
+                    let params = self.policy.as_ref().unwrap().1.clone();
+                    self.repairing = true;
+                    let repaired = self.call("thread/resume", params, guard);
+                    self.repairing = false;
+                    let repaired = repaired?;
+                    let (expected, resume) = self.policy.as_ref().unwrap();
+                    if repaired["thread"]["id"] != resume["threadId"]
+                        || repaired["model"] != expected["model"]
+                        || repaired["reasoningEffort"] != expected["effort"]
+                        || repaired["approvalPolicy"] != expected["approvalPolicy"]
+                        || repaired["sandbox"] != expected["sandboxPolicy"]
+                    {
+                        return Err("host did not restore owned thread policy".into());
+                    }
+                    self.policy_dirty = false;
+                }
+                return Ok(result);
             } else {
                 return Err("uncorrelated host response".into());
             }
@@ -402,12 +503,24 @@ pub(crate) mod tests {
         std::fs::write(&executable, r#"#!/usr/bin/python3
 import json, os, socket, sys, threading, fcntl, base64, hashlib, struct
 root = os.environ['CODEX_HOME']
+policy = {'model':'fake-model', 'reasoningEffort':'low', 'approvalPolicy':'never', 'sandbox':{'type':'readOnly','networkAccess':False}, 'instructionSources':[]}
+for i, arg in enumerate(sys.argv[:-1]):
+    if arg == '-c':
+        key, value = sys.argv[i+1].split('=',1)
+        if key in ('model','model_reasoning_effort'):
+            policy['model' if key == 'model' else 'reasoningEffort'] = json.loads(value)
 if '--remote' in sys.argv:
-    import signal
+    import signal, tomllib
     assert 'TMUX' not in os.environ
+    assert '--strict-config' in sys.argv
+    config = tomllib.load(open(os.path.join(root, 'config.toml'), 'rb'))
+    assert config['model'] == policy['model']
+    assert config['model_reasoning_effort'] == policy['reasoningEffort']
+    assert config['project_doc_max_bytes'] == 0 and config['developer_instructions'] == ''
+    account_root = os.path.dirname(os.path.realpath(sys.argv[0]))
     thread_id = sys.argv[sys.argv.index('resume')+1]
-    assert json.load(open(os.path.join(root, 'thread.json')))['id'] == thread_id
-    with open(os.path.join(root, 'attach-events.jsonl'), 'a') as output:
+    assert json.load(open(os.path.join(account_root, 'thread.json')))['id'] == thread_id
+    with open(os.path.join(account_root, 'attach-events.jsonl'), 'a') as output:
         output.write(json.dumps({'argv':sys.argv, 'codexHome':root, 'tmux':os.environ.get('TMUX')})+'\n')
     signal.pause()
     sys.exit(0)
@@ -493,10 +606,18 @@ def client(connection):
                 elif method == 'thread/start':
                     assert thread is None
                     thread = {'id':'owned-thread', 'status':{'type':'idle','activeFlags':[]}, 'canAcceptDirectInput':True, 'turns':[]}
-                    result = {'thread':thread}
+                    result = dict(policy, thread=thread)
                 elif method in ('thread/resume', 'thread/read'):
                     if thread is None or params['threadId'] != thread['id']: error = {'code':-32600,'message':'unknown thread'}
-                    else: result = {'thread':thread}
+                    else:
+                        result = dict(policy, thread=thread)
+                        marker = os.path.join(root, 'drift.json')
+                        if method == 'thread/read' and os.path.exists(marker):
+                            settings = json.load(open(marker)); os.unlink(marker)
+                            emit({'method':'thread/settings/updated', 'params':{'threadId':thread['id'], 'threadSettings':settings}})
+                        if method == 'thread/resume':
+                            if os.path.exists(os.path.join(root, 'reject-repair')): error = {'code':-32600,'message':'repair refused'}
+                            with open(os.path.join(root, 'reassert.json'), 'w') as output: json.dump(params, output)
                 elif method == 'turn/start':
                     assert params['threadId'] == thread['id']
                     turn = {'id':str(len(thread['turns'])+1), 'status':'completed', 'items':[{'type':'userMessage','content':params['input']}]}
@@ -559,6 +680,46 @@ with socket.socket(socket.AF_UNIX) as listener:
         let socket = root.join(format!("{}.sock", uuid::Uuid::new_v4().simple()));
         HostProcess::launch(launch, root, &socket, resume, guard)
     }
+    #[test]
+    fn hosted_settings_drift_reasserts_policy_before_returning() {
+        // Regression: b4a4b2dd silently queued settings pushes from the attached TUI.
+        let tmp = tempfile::tempdir().unwrap();
+        let launch = fixture(tmp.path());
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        std::fs::write(tmp.path().join("drift.json"), json!({"model":"operator-model", "effort":"high", "approvalPolicy":"on-request", "sandboxPolicy":{"type":"dangerFullAccess"}}).to_string()).unwrap();
+        host.transcript(&guard).unwrap();
+        let path = tmp.path().join("reassert.json");
+        assert!(path.exists(), "settings drift must be reasserted");
+        let params: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(params["threadId"], "owned-thread");
+        assert_eq!(params["model"], "fake-model");
+        assert_eq!(params["config"]["model_reasoning_effort"], "low");
+        assert_eq!(params["approvalPolicy"], "never");
+        assert_eq!(params["sandbox"], "read-only");
+    }
+
+    #[test]
+    fn hosted_settings_parity_is_inert_and_failed_repair_stays_gated() {
+        // Regression: b4a4b2dd treated attached-client policy drift as an inert event.
+        let tmp = tempfile::tempdir().unwrap();
+        let launch = fixture(tmp.path());
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        let policy = json!({"model":"fake-model", "effort":"low", "approvalPolicy":"never", "sandboxPolicy":{"type":"readOnly","networkAccess":false}});
+        std::fs::write(tmp.path().join("drift.json"), policy.to_string()).unwrap();
+        host.transcript(&guard).unwrap();
+        assert!(!tmp.path().join("reassert.json").exists());
+        std::fs::write(tmp.path().join("drift.json"), "{}").unwrap();
+        std::fs::write(tmp.path().join("reject-repair"), "").unwrap();
+        assert!(host.input("must not submit", &guard).is_err());
+        assert!(host.input("still must not submit", &guard).is_err());
+        std::fs::remove_file(tmp.path().join("reject-repair")).unwrap();
+        let state = host.transcript(&guard).unwrap();
+        assert_eq!(state["thread"]["turns"], json!([]));
+        assert!(!host.rpc.as_ref().unwrap().policy_dirty);
+    }
+
     #[test]
     fn fake_host_round_trip_named_resume_and_owned_cleanup() {
         let tmp = tempfile::tempdir().unwrap();

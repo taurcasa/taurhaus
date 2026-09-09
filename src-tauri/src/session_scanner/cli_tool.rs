@@ -1257,12 +1257,8 @@ mod tests {
         assert_eq!(descriptor["appServer"]["build"], "0.153.4");
         assert_eq!(descriptor["appServer"]["transport"], "unix-websocket");
         assert_eq!(
-            descriptor["appServer"]["attached_tui"],
+            descriptor["appServer"]["attachedTui"],
             "verified on 0.153.4"
-        );
-        assert_eq!(
-            descriptor["appServer"]["transport_probe_required_on_bump"],
-            true
         );
     }
 

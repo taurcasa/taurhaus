@@ -8593,7 +8593,8 @@ fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
             format!("unix://{}", host["socketPath"].as_str().unwrap()),
             "resume",
             "owned-thread",
-            "--no-alt-screen"
+            "--no-alt-screen",
+            "--strict-config"
         ])
     );
     assert!(runtime.calls().iter().any(|c| matches!(c,
@@ -8608,6 +8609,7 @@ fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
         .unwrap();
     assert!(report.resumed, "{}", report.message);
     assert_eq!(report.pane_id.as_deref(), Some("test-pane-1"));
+    assert!(report.reused_pane);
     assert!(!runtime.calls()[before_calls..]
         .iter()
         .any(|c| matches!(c, RuntimeCall::SendKeys { .. })));

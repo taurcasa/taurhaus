@@ -2,14 +2,14 @@
 use super::HostOperationLock;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use rand::RngCore;
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 
 pub(super) const FRAME_LIMIT: usize = 65_536;
-pub(super) struct WebSocket(UnixStream);
+pub(super) struct WebSocket(BufReader<UnixStream>);
 impl WebSocket {
     pub fn connect(stream: UnixStream, guard: &HostOperationLock) -> Result<Self, String> {
-        let mut socket = Self(stream);
+        let mut socket = Self(BufReader::with_capacity(1024, stream));
         let mut nonce = [0; 16];
         rand::rngs::OsRng.fill_bytes(&mut nonce);
         let key = STANDARD.encode(nonce);
@@ -64,9 +64,14 @@ impl WebSocket {
         guard: &HostOperationLock,
     ) -> Result<(), String> {
         while !bytes.is_empty() {
-            self.0
-                .set_read_timeout(Some(guard.remaining().map_err(|e| e.to_string())?))
-                .map_err(|e| e.to_string())?;
+            // Buffered Upgrade bytes (including a following frame) need no
+            // syscall. Refresh the total deadline only before a socket read.
+            if self.0.buffer().is_empty() {
+                self.0
+                    .get_ref()
+                    .set_read_timeout(Some(guard.remaining().map_err(|e| e.to_string())?))
+                    .map_err(|e| e.to_string())?;
+            }
             let n = self
                 .0
                 .read(bytes)
@@ -81,10 +86,12 @@ impl WebSocket {
     fn write_all(&mut self, mut bytes: &[u8], guard: &HostOperationLock) -> Result<(), String> {
         while !bytes.is_empty() {
             self.0
+                .get_ref()
                 .set_write_timeout(Some(guard.remaining().map_err(|e| e.to_string())?))
                 .map_err(|e| e.to_string())?;
             let n = self
                 .0
+                .get_mut()
                 .write(bytes)
                 .map_err(|_| "host write failed; outcome may be unknown")?;
             if n == 0 {

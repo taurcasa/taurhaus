@@ -554,7 +554,8 @@ fn handle_compaction_decision(
             || current.session_id.as_deref() != Some(payload.session_id.as_str())
             || attachment.thread_id != payload.session_id
             || attachment.contract != 1
-            || attachment.transport != "unix-websocket"
+            || attachment.transport
+                != taurhaus_lib::session_scanner::launch::HostedDescriptor::codex().transport
             || attachment.state != "ready"
         {
             return Err(CoordinationError::Conflict(
