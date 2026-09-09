@@ -59,6 +59,7 @@
       {#each requests as request}
         <div class="space-x-2 text-sm">
           <span>Permission requested</span>
+          <pre class="max-h-32 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(request.params, null, 2)}</pre>
           <button disabled={submitting} onclick={() => submit('approval', { requestId: request.id, accept: true })}>Allow</button>
           <button disabled={submitting} onclick={() => submit('approval', { requestId: request.id, accept: false })}>Deny</button>
         </div>

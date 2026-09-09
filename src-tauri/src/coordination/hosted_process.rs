@@ -242,6 +242,9 @@ impl HostProcess {
             .iter()
             .position(|r| &r["id"] == request)
             .ok_or("approval is no longer pending")?;
+        if rpc.requests[index]["params"]["threadId"].as_str() != Some(&self.thread_id) {
+            return Err("approval thread identity mismatch".into());
+        }
         if !matches!(
             rpc.requests[index]["method"].as_str(),
             Some("item/commandExecution/requestApproval" | "item/fileChange/requestApproval")
@@ -391,8 +394,13 @@ def client(connection):
             request = json.loads(line)
             assert 'jsonrpc' not in request
             if 'id' not in request: continue
+            if 'method' not in request:
+                thread['approvalDecision'] = request['result']['decision']
+                thread['canAcceptDirectInput'] = True
+                thread['status']['activeFlags'] = []
+                continue
             method, params = request.get('method'), request.get('params', {})
-            result, error = {}, None
+            result, error, approval = {}, None, None
             with lock:
                 if method == 'initialize':
                     result = {'userAgent':'taurhaus_host/0.153.4', 'codexHome':root}
@@ -413,14 +421,29 @@ def client(connection):
                     assert params['threadId'] == thread['id']
                     turn = {'id':str(len(thread['turns'])+1), 'status':'completed', 'items':[{'type':'userMessage','content':params['input']}]}
                     thread['turns'].append(turn)
+                    text = params['input'][0]['text']
+                    if text in ('approval', 'foreign approval'):
+                        turn['status'] = 'inProgress'
+                        thread['status'] = {'type':'active','activeFlags':['waitingOnApproval']}
+                        thread['canAcceptDirectInput'] = False
+                        approval = {'id':'permission-1','method':'item/commandExecution/requestApproval','params':{'threadId':thread['id'] if text == 'approval' else 'foreign-thread','command':'echo marker'}}
                     result = {'turn':turn, 'threadId':thread['id']}
-                elif method == 'turn/interrupt': result = {}
+                elif method == 'turn/steer':
+                    assert params['expectedTurnId'] == thread['turns'][-1]['id']
+                    result = {'turnId':params['expectedTurnId']}
+                elif method == 'turn/interrupt':
+                    thread['turns'][-1]['status'] = 'interrupted'
+                    thread['status'] = {'type':'idle','activeFlags':[]}
+                    thread['canAcceptDirectInput'] = True
+                    result = {}
                 else: error = {'code':-32601,'message':'unsupported fake method'}
                 if thread is not None:
                     with open(saved, 'w') as output: json.dump(thread, output)
                 if method == 'turn/start' and params['input'][0]['text'] == 'disconnect': return
                 reply = {'id':request['id'], 'error':error} if error else {'id':request['id'], 'result':result}
-                stream.write((json.dumps(reply)+'\n').encode()); stream.flush()
+                stream.write((json.dumps(reply)+'\n').encode())
+                if approval: stream.write((json.dumps(approval)+'\n').encode())
+                stream.flush()
 with socket.socket(socket.AF_UNIX) as listener:
     listener.bind(address); listener.listen(4)
     while True:
@@ -517,4 +540,24 @@ with socket.socket(socket.AF_UNIX) as listener:
         assert!(persisted.contains("disconnect"));
         assert!(!persisted.contains("must not replay"));
     }
+
+    #[test]
+    fn fake_host_permission_wait_deny_steer_and_cancel_preserve_thread() {
+        let tmp = tempfile::tempdir().unwrap();
+        let launch = fixture(tmp.path());
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = HostProcess::launch(&launch, tmp.path(), &tmp.path().join("rpc.sock"), None, &guard).unwrap();
+        host.input("approval", &guard).unwrap();
+        assert!(host.input("blocked by approval", &guard).is_err());
+        host.approval(&json!("permission-1"), false, &guard).unwrap();
+        assert_eq!(host.transcript(&guard).unwrap()["thread"]["approvalDecision"], "decline");
+        assert_eq!(host.input("steer marker", &guard).unwrap()["turnId"], "1");
+        host.interrupt(&guard).unwrap();
+        assert_eq!(host.transcript(&guard).unwrap()["thread"]["status"]["type"], "idle");
+        host.input("foreign approval", &guard).unwrap();
+        host.transcript(&guard).unwrap();
+        // Regression: 9b50346b checked the approval ID but not its thread identity.
+        assert!(host.approval(&json!("permission-1"), true, &guard).is_err());
+    }
+
 }
