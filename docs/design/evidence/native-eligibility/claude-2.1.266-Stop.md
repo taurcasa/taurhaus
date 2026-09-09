@@ -1,6 +1,13 @@
-# Claude Code 2.1.266 — Stop
+# Claude Code — Stop (pin 2.1.263; original preflight 2.1.266)
 
-2026-09-09. **NOT RUN / version-mismatch preflight; eligibility disabled.**
+2026-09-09. **NOT RUN / categorical Claude drain refusal; eligibility disabled.**
+
+Mesh `src/delivery/hook/mod.rs:111` rejects every `harness == "claude"`
+boundary as `unverified_boundary_identity_or_native_mailbox`. A descriptor
+flip cannot lift this refusal. The pinned 2.1.263 binary is available locally;
+version procurement is not the operative blocker. In round 1, a read-only
+mount of that pinned binary returned `2.1.263 (Claude Code)` in scratch
+(exit 0); no Claude model or credentials were used.
 
 ## Observed preflight (S-runtime)
 
@@ -33,10 +40,12 @@ The actual release-candidate Mesh binary returned the following pin via
 ```
 
 The brief requires an exact pinned build and says **a mismatch means disabled,
-no trial**. Installed 2.1.266 differs from pinned 2.1.263. No older binary was
-substituted, no pin was broadened to 2.1.x, and no Claude credential was accessed.
+no trial**. The original controller selected 2.1.266 instead of the available
+`/home/mstie/.local/share/claude/versions/2.1.263`. Selecting that pinned binary
+would resolve the mismatch; it cannot resolve the categorical drain refusal.
+No pin was broadened and no Claude credential was accessed.
 
-## Additional software prerequisites (S-source, not runtime uptake)
+## Dispositive software prerequisites (S-source, not runtime uptake)
 
 The paired bridge excludes `Stop` from `Descriptor::supported()` in
 `src-tauri/src/coordination/compact_hook/drain.rs`. The compiled Mesh Stop
@@ -50,7 +59,7 @@ Both Claude boundaries also encounter
 `request.runtime.harness == "claude"` with
 `unverified_boundary_identity_or_native_mailbox`. The supplied contract preserves
 native-mailbox exclusion until independent native-consumer exclusion is proved.
-A descriptor flip alone cannot remove that restriction. These are additional
+A descriptor flip alone cannot remove that restriction. These are dispositive
 source findings, not claims that the installed harness rejected a trial.
 
 ## Acceptance and spend
@@ -61,13 +70,12 @@ source findings, not claims that the installed harness rejected a trial.
   HOME, CLAUDE_CONFIG_DIR, TAURHAUS_CLAUDE_DIR, CODEX_HOME, data and tmux
   directories were private. No team or model session was created for this boundary.
 - Planned marker: `ELIG_STOP_B6A32B078D`. **Never delivered**; no model output exists.
-- Control on `claude-haiku-4-5-20251001`: **not run** because version preflight
-  failed; model actually used: none.
+- Control on `claude-haiku-4-5-20251001`: **not run** because the paired software categorically refuses Claude drains; model actually used: none.
 - Boundary turns, generations and tokens: **0**. Spend: **$0.00**.
 - `hook_response_offered`: none. Explicit read: not performed.
   `consumed_by_read`: none. No receipt or uptake was inferred from capability JSON.
 - Hook-mode selection / team delivery owner / scratch-enabled pin: **not set up**
-  following the mandated version-mismatch stop.
+  because the paired software refuses this boundary.
 - Cleanup: version/help commands exited and were reaped; no Claude process,
   tmux session, hook registration, or credential mount was left by this boundary.
 - Descriptor changes / Mesh commits: **none**.

@@ -61,6 +61,31 @@ Server stdout/stderr were empty. Controller exit 0; owned child PID
 `1392891` terminated by SIGTERM (wait status `-15`) and reaped in `finally`.
 The private PID namespace kills any descendants when its init exits.
 
+## Shipped clients falsified by this wire observation (S-source)
+
+Taurhaus `src-tauri/src/coordination/hosted_process.rs:41` launches
+`--listen unix://<socket>`. `HostProcess::launch` wraps that raw UnixStream in
+`BufReader` at line 77; `Rpc::write` and `Rpc::reply` (lines 332–407) send/read
+newline-delimited JSON without an HTTP upgrade. Therefore #154 (`cadd533e`)
+cannot finish its initialize handshake with real Codex 0.153.4. Its hosted
+transcript, input, compaction delivery and rollback paths are unavailable on
+that real build, regardless of the Mesh descriptor flag.
+
+The Python fake app-server in `hosted_process.rs:439–520` binds AF_UNIX itself,
+iterates `for line in stream`, and asserts `'jsonrpc' not in request`. It models
+the refuted Unix framing. Green hosting tests validate logic against that fake;
+they establish nothing about interoperability with the real Unix transport.
+
+Mesh `src/delivery/app_server/rpc.rs` is the second raw Unix client;
+`src/delivery/app_server/capabilities.rs:3` declares `TRANSPORT = "unix_ndjson"`.
+The transport-repair lane therefore spans **both clients and their fakes**, not
+just the stage-5 contract document. No transport code changes belong in this packet.
+
+The build's observed help advertises `--listen stdio://` (default),
+`ws://IP:PORT`, and Unix sockets. `codex app-server proxy` advertises bridging
+stdio to the control socket. These are inputs to a separate transport-repair
+lane, not tested replacements for the owned two-client contract here.
+
 ## Acceptance and spend
 
 | Signal | Result |

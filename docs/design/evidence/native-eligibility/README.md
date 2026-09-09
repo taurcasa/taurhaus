@@ -1,63 +1,61 @@
-# Native eligibility — RESULT
+# Native eligibility — RESULT (round 1)
 
-2026-09-09. **No eligibility enabled.** The commissioned app-server framing
-probe failed; Claude failed exact-build preflight; Codex composed drain is
-blocked by the supplied binary's compiled activation seam. These findings are
-not model-uptake passes. [Execution audit](execution-audit.md) retains isolation,
-commands, hashes, cleanup and gate logs.
+2026-09-09. **No eligibility enabled.** The compact trial now includes a
+scratch-only Mesh rebuild and real Codex model/compaction observations. Uptake
+and recovery-card composition remain unproved. [Execution audit](execution-audit.md)
+retains the initial run plus the corrective controllers, regression checks and gates.
 
-Candidates: Taurhaus `cadd533ebd83d75d848e289e32974a2db64875c9` (#154), protocol
-26; Mesh `504b2b6bf8f9017c7a5ce7957cd59b2a0ffafc08` (embedded build metadata
-matches, clean). Host: Linux/WSL2 x86_64. Work stayed in `taurhaus-elig`; the
-explicitly named Mesh worktree was inspected and left unchanged.
+Pair: Taurhaus `cadd533ebd83d75d848e289e32974a2db64875c9` (#154), protocol 26;
+Mesh `504b2b6bf8f9017c7a5ce7957cd59b2a0ffafc08`. Host: Linux/WSL2 x86_64.
+Only the disposable Mesh source archive/binary enabled a pin; the Mesh worktree
+and its supplied release-candidate binary remain unchanged.
 
-| Ordered trial | Outcome / evidence | Model turns / spend |
+| Ordered trial | Outcome / evidence | Turns / spend |
 |---|---|---|
-| 1. Codex 0.153.4 Unix app-server; idle start and active steer | **FAIL framing**: raw NDJSON got EOF; HTTP upgrade got `101 Switching Protocols`. Start/steer/completed-steer trials stopped before a thread existed. [Wire evidence](codex-0.153.4-app-server.md) | 0 / $0.00 |
-| 2a. Claude UserPromptSubmit | **NOT RUN**: installed 2.1.266 differs from pin 2.1.263. [Evidence](claude-2.1.266-UserPromptSubmit.md) | 0 / $0.00 |
-| 2b. Claude Stop continuation | **NOT RUN**: same mismatch; continuation is also unsupported by the paired bridge. [Evidence](claude-2.1.266-Stop.md) | 0 / $0.00 |
-| 3. Codex 0.153.4 SessionStart(compact) composition | **INCONCLUSIVE**: no scratch-enabled compiled pin; bridge filters it and owner independently refuses it. No compaction/model trial. [Evidence](codex-0.153.4-SessionStart-compact.md) | 0 / $0.00 |
+| 1. Codex 0.153.4 Unix app-server | **FAIL framing**: NDJSON EOF; WebSocket upgrade 101. Taurhaus `src-tauri/src/coordination/hosted_process.rs:41` and its raw Rpc cannot initialize this build; its Python fake models the refuted framing. Mesh `src/delivery/app_server/rpc.rs` and `capabilities.rs::TRANSPORT` need paired repair. Start/steer stopped before a thread existed. [Evidence](codex-0.153.4-app-server.md) | 0 / $0.00 |
+| 2a. Claude UserPromptSubmit | **NOT RUN**: Mesh categorically refuses `harness == "claude"`; a descriptor flip cannot lift it. Pinned 2.1.263 is locally available and verified runnable; original preflight selected 2.1.266. [Evidence](claude-2.1.266-UserPromptSubmit.md) | 0 / $0.00 |
+| 2b. Claude Stop continuation | **NOT RUN**: same categorical refusal, plus Taurhaus excludes Stop and v1 permits no continuation. Build procurement is not a blocker. [Evidence](claude-2.1.266-Stop.md) | 0 / $0.00 |
+| 3. Codex 0.153.4 SessionStart(compact) | **INCONCLUSIVE**: scratch compact pin enabled successfully. Stdio: READY, automatic compaction, NO_MARKER, no hook invocation. TUI: same session, NO_MARKER, no compaction. No real offer or intact card join. The initial stdio runtime fixture also had incorrect session-field spelling, corrected for TUI. [Evidence and turn IDs](codex-0.153.4-SessionStart-compact.md) | 3 user turns + 1 compaction; metered API-equivalent $0.00531472; combined conservative estimate < $0.17; billed USD/compaction usage unreported |
 | agy / Grok | Not commissioned; not run; disabled | 0 / $0.00 |
 
-**Spend ledger:** Codex 0.153.4 total **0/5 model turns, $0.00/$2.00**, zero
-generations/tokens; Claude total **0 turns, $0.00**. The planned Haiku control
-was not run after the mandated version-mismatch stop. Model actually used in
-trials: none. No harness credentials were accessed. Planned hook markers are
-recorded in their boundary files, explicitly labeled never delivered. There
-are **no model replies, session/turn IDs, bridge offers, native enqueue receipts,
-or explicit-read consumption receipts** to claim as uptake.
+**Spend ledger:** Codex 0.153.4: **3/5 user turns**, three visible generations
+plus one compaction (four conservatively accounted generation slots); no further
+paid turn. Reported ordinary usage: 36,572 input, including 11,776 cached; 100
+output, including 77 reasoning. All user turns used `gpt-5.6-luna`, low effort.
+Dollar billing and compaction token usage were not emitted. The linked evidence
+shows the rate calculation and its assumptions: **$0.166959 conservative estimate
+versus $2 authorized**, not a fabricated exact charge. Claude: **0 turns / $0.00**;
+Haiku control omitted because the paired software categorically refuses the drains.
 
-**Descriptors flipped: none. Mesh commit IDs: none.** All compiled hook/native
-pins remain disabled. No Taurhaus registry entry was added. The software needs
-an independently scoped activation path for a real hook trial; Claude also
-needs native-consumer exclusion and a Stop envelope/continuation contract.
-Fixing Unix transport or adding those mechanisms exceeds this evidence packet.
+**Descriptors flipped: none. Mesh commit IDs: none. Mesh gate exit codes: N/A**
+(`just check-quick`, `just lint`, `just test` conditional on a passing flip).
+Scratch-only `just build-release`: **0**. No Taurhaus registry entry or production
+code changed. The compact flag was a removable setup prerequisite, not an
+independent product refusal. Both inbox markers remained explicitly readable;
+final real read-back showed both read, but `outcomes: []` and no hook offers.
 
-| Verification | Exit code / result |
+| Verification rerun | Exit / result |
 |---|---|
-| `just build-daemon` | 101 initially (missing ignored resource); 0 after `just ensure-tauri-resources` (0) |
-| Scratch daemon authenticated ping | 0; protocol 26 and exact private data root |
-| `just check-quick` | 0; 150 frontend files / 2,469 tests passed, typecheck and Rust test compilation passed |
+| Evidence regression checks (embedded in audit) | 0; 3 tests after observed red |
+| `just check-quick` | 0; Rust test compilation, typecheck, 150 frontend files / 2,469 tests |
 | `just lint` | 0 |
-| `just test-contracts` | 0; 68 tests passed (15 renderer, 20 harness, 33 boundary) |
+| `just test-contracts` | 0; 68 tests passed |
 | `just test-rust-unit` | Not required: no `src-tauri/` diff |
-| Mesh `just check-quick`, `just lint`, `just test` | Not run; exit codes N/A: their descriptor-flip condition never occurred |
 
-All builds/gates use this checkout's own `target/`, scratch writable product
-roots and inert harness shims. Cargo was checked before every recipe with the
-requested process pattern; no competing Cargo was observed. No new tests or
-production logic were added; runtime transport falsification preceded the
-first evidence commit. Non-evidence inserted-line budget: **0/600**.
+Gates used separate credential-free scratch homes, inert harness/tmux shims and
+this checkout's own `target/`. Cargo preflight polled every 30 seconds before
+each recipe and waited for competing work. Non-evidence inserted lines: **0/600**.
 
-**Cleanup:** both persistent owned children were terminated and reaped. The
-scratch daemon used probed port **30021**, which refused connections afterward;
-no private daemon survives. No tmux server was started, and private TMUX_TMPDIR
-was empty. Port 17233, operator sessions, installed daemons and real account
-homes were untouched.
+**Cleanup:** owned Bubblewrap/PID namespaces ended; private Mesh owners, daemon
+and tmux servers stopped. Ports **25817/22077**, tmux sockets `private.sock` and
+`tui.sock` all refused connections (errno 111); copied auth.json removed. Initial
+run cleanup on 30021 remains recorded. No operator process was killed or contacted.
 
-**Deviations / review:** no paid uptake could be established on these candidates;
-all missing acceptance signals are named above. The daemon build needed the
-existing resource-bootstrap recipe. No release, install, activation bypass,
-transport repair or ledger edits were made. The brief's Opus evidence lens is
-left to the orchestrator review route; no Opus reviewer was available in this
-implementer lane, and no extra review-model spend was made.
+**Deviations / remaining limits:** the initial packet's removable compact-pin
+blocker and avoidable Claude version rationale are corrected. The hook trial used
+stdio, then a named-session TUI continuation, without reopening the stopped Unix
+trial. Scratch runtime/snapshot fixtures do not prove daemon launch/publication;
+TUI never reached compaction. Unreported compaction billing limits exact spend
+verification. No transport repair, new activation feature, release, install,
+ledger edit or descriptor broadening. The transport-repair lane must cover both
+shipped clients and the fake app-server, not just the contract document.
