@@ -1,4 +1,3 @@
-import meshLock from '../../../src-tauri/resources/mesh.lock.json'
 import { activityLevel } from '../activitySignal.js'
 import {
   toolOptions,
@@ -518,10 +517,8 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
   }
 }
 
-// Candidate and shipped Mesh share version 0.2.29. Only an evidenced build may
-// enable this default; review this identity alongside a future Mesh lock bump.
-export function canonicalMessagingSupported(lock = meshLock) {
-  return lock?.git_commit === '4388d6a1590e3072c9dfdc61ccd08b00bff2508b'
+export function canonicalMessagingSupported(status) {
+  return status?.canonical_messaging_supported === true
 }
 
 // Keep this literal valid JSON: the Rust Mesh contract reads this same policy.

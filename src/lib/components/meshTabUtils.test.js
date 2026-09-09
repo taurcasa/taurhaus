@@ -661,12 +661,14 @@ describe('canonical messaging initialization', () => {
 })
 
 // Regression: aafcc540 also opted callers without a toggle value into unsupported Mesh commands.
-it('omits canonical messaging by default for the shipped Mesh lock', () => {
+it('omits canonical messaging by default without a backend capability', () => {
   expect(buildInitializationRequest({ lead: {}, agents: [] }, 'trial')).not.toHaveProperty('messaging')
 })
 
-it('gates canonical support on evidenced build identity rather than the shared version', () => {
-  expect(canonicalMessagingSupported({ version: '0.2.29', git_commit: '4388d6a1590e3072c9dfdc61ccd08b00bff2508b' })).toBe(true)
-  expect(canonicalMessagingSupported({ version: '0.2.29', git_commit: '6789201c5511b51be704fe30c6e4d025f3e64f8c' })).toBe(false)
-  expect(canonicalMessagingSupported({ version: '9.0.0', git_commit: null })).toBe(false)
+// Regression: 9d09c883 pinned support to one hash, disabling later canonical releases.
+it('uses backend capability, independent of lock identity or version', () => {
+  expect(canonicalMessagingSupported({ canonical_messaging_supported: true })).toBe(true)
+  expect(canonicalMessagingSupported({ canonical_messaging_supported: false })).toBe(false)
+  expect(canonicalMessagingSupported({ version: '9.0.0', git_commit: '4388d6a1590e3072c9dfdc61ccd08b00bff2508b' })).toBe(false)
+  expect(canonicalMessagingSupported()).toBe(false)
 })
