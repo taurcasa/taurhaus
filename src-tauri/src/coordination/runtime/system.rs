@@ -726,6 +726,26 @@ fn non_empty(raw: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
+fn run_team_activation(
+    args: &[String],
+    team: &str,
+    lead: &str,
+    teams: &std::path::Path,
+) -> Result<(), CoordinationError> {
+    let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let invocation = super::mesh_command_invocation_for_member_at(&refs, team, lead, teams);
+    let output = run_system_command(&invocation)?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(CoordinationError::Backend(format!(
+            "mesh team activation failed: {}{}",
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stdout)
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -966,25 +986,5 @@ mod tests {
             1,
             "the guard counts only the scans of the test that installed it"
         );
-    }
-}
-
-fn run_team_activation(
-    args: &[String],
-    team: &str,
-    lead: &str,
-    teams: &std::path::Path,
-) -> Result<(), CoordinationError> {
-    let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-    let invocation = super::mesh_command_invocation_for_member_at(&refs, team, lead, teams);
-    let output = run_system_command(&invocation)?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(CoordinationError::Backend(format!(
-            "mesh team activation failed: {}{}",
-            String::from_utf8_lossy(&output.stderr),
-            String::from_utf8_lossy(&output.stdout)
-        )))
     }
 }
