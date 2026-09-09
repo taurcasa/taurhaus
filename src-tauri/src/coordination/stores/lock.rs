@@ -93,7 +93,11 @@ impl HostOperationLock {
     }
 
     /// Cold process startup has its own bound; ordinary submissions stay at five seconds.
-    pub fn acquire_for_launch(root: &Path, team: &str, member: &str) -> Result<Self, CoordinationError> {
+    pub fn acquire_for_launch(
+        root: &Path,
+        team: &str,
+        member: &str,
+    ) -> Result<Self, CoordinationError> {
         let mut guard = Self::acquire(root, team, member, Duration::from_secs(2))?;
         guard.deadline = std::time::Instant::now() + Duration::from_secs(30);
         Ok(guard)

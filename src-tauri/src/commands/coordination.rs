@@ -1933,7 +1933,7 @@ pub async fn coordination_hosted(
 ) -> IpcResult<Value> {
     let span = IpcCommandSpan::start("coordination_hosted");
     let result = tauri::async_runtime::spawn_blocking(move || {
-        use crate::daemon::protocol::method;
+        use taurhaus_lib::daemon_api::protocol::method;
         let method = match operation.as_str() {
             "transcript" => method::COORDINATION_HOSTED_TRANSCRIPT,
             "input" => method::COORDINATION_HOSTED_INPUT,
@@ -1953,13 +1953,8 @@ pub async fn coordination_hosted(
         }
         params["team_name"] = team_name.into();
         params["member_name"] = member_name.into();
-        call_coordination_daemon(
-            &app,
-            daemon,
-            method,
-            params,
-        )
-        .map_err(|error| IpcError::internal(error.into_message()))
+        call_coordination_daemon(&app, daemon, method, params)
+            .map_err(|error| IpcError::internal(error.into_message()))
     })
     .await
     .unwrap_or_else(|_| Err(IpcError::internal("Hosted operation worker stopped")));

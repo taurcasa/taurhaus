@@ -235,11 +235,15 @@ impl HostProcess {
         let [turn] = active.as_slice() else {
             return Err("no single active turn to cancel".into());
         };
-        self.rpc.as_mut().unwrap().call(
-            "turn/interrupt",
-            json!({"threadId":self.thread_id,"turnId":turn["id"]}),
-            guard,
-        ).map_err(String::from)
+        self.rpc
+            .as_mut()
+            .unwrap()
+            .call(
+                "turn/interrupt",
+                json!({"threadId":self.thread_id,"turnId":turn["id"]}),
+                guard,
+            )
+            .map_err(String::from)
     }
 
     pub fn approval(
@@ -291,10 +295,14 @@ enum RpcError {
     Rejected(Value),
 }
 impl From<String> for RpcError {
-    fn from(message: String) -> Self { Self::Transport(message) }
+    fn from(message: String) -> Self {
+        Self::Transport(message)
+    }
 }
 impl From<&str> for RpcError {
-    fn from(message: &str) -> Self { Self::Transport(message.into()) }
+    fn from(message: &str) -> Self {
+        Self::Transport(message.into())
+    }
 }
 impl From<RpcError> for String {
     fn from(error: RpcError) -> Self {
@@ -307,10 +315,16 @@ impl From<RpcError> for String {
 }
 impl RpcError {
     fn definite_rejection(&self) -> bool {
-        let Self::Rejected(error) = self else { return false };
-        let message = error["message"].as_str().unwrap_or_default().to_ascii_lowercase();
-        error["code"] == -32600 && (message == "no active turn to steer"
-            || (message.contains("expected turn id") && message.contains("actual turn id")))
+        let Self::Rejected(error) = self else {
+            return false;
+        };
+        let message = error["message"]
+            .as_str()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        error["code"] == -32600
+            && (message == "no active turn to steer"
+                || (message.contains("expected turn id") && message.contains("actual turn id")))
     }
 }
 

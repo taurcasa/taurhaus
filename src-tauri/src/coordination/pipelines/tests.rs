@@ -8590,7 +8590,11 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
     orchestrator.hosted.stop(&registry, "team", "seat").unwrap();
     let mut config = TeamConfigStore::load(tmp.path(), "team").unwrap();
     config.members[0].extra.remove("adapter_mode");
-    std::fs::write(tmp.path().join("team/config.json"), serde_json::to_vec(&config).unwrap()).unwrap();
+    std::fs::write(
+        tmp.path().join("team/config.json"),
+        serde_json::to_vec(&config).unwrap(),
+    )
+    .unwrap();
     runtime.set_detected_runtime_session("test-pane-1", CliTool::Codex, Some("owned-thread"), None);
     let mut commands = CliCommandSettings::default();
     let command = format!(
@@ -8620,5 +8624,8 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
     assert!(after.attachment_generation > before.attachment_generation);
     assert!(runtime.calls().iter().any(|c| matches!(c,
         RuntimeCall::SendKeys { keys, .. } if (keys.contains("resume") && keys.contains("owned-thread")) && keys.contains(tmp.path().to_str().unwrap()))));
-    assert!(taurhaus_lib::platform::process_start_ticks(before.app_server.unwrap().process_id).is_none());
+    assert!(
+        taurhaus_lib::platform::process_start_ticks(before.app_server.unwrap().process_id)
+            .is_none()
+    );
 }

@@ -34,12 +34,21 @@ const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberRuntimeRecord {
     /// Recoverable stopped-host boundary, retained if pane relaunch fails.
-    #[serde(default, rename = "hostRollback", alias = "host_rollback", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "hostRollback",
+        alias = "host_rollback",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub host_rollback: Option<Value>,
     #[serde(default, rename = "hostInputUnknown", alias = "host_input_unknown")]
     pub host_input_unknown: bool,
     /// Operator abandoned the ambiguous input at this stopped attachment; no replay.
-    #[serde(default, rename = "hostInputAbandonedAt", alias = "host_input_abandoned_at")]
+    #[serde(
+        default,
+        rename = "hostInputAbandonedAt",
+        alias = "host_input_abandoned_at"
+    )]
     pub host_input_abandoned_at: Option<u64>,
     #[serde(
         default,
@@ -340,16 +349,29 @@ impl MemberRuntimeSnapshot {
         };
 
         let mut changed = Vec::new();
-        if self.baseline.host_rollback != current.host_rollback { changed.push("hostRollback"); }
+        if self.baseline.host_rollback != current.host_rollback {
+            changed.push("hostRollback");
+        }
         if self.baseline.host_input_unknown != current.host_input_unknown
-            || self.baseline.host_input_abandoned_at != current.host_input_abandoned_at {
+            || self.baseline.host_input_abandoned_at != current.host_input_abandoned_at
+        {
             changed.push("hostInputUnknown");
         }
-        if self.baseline.recovery != current.recovery { changed.push("recovery"); }
-        if self.baseline.launch_account != current.launch_account { changed.push("launch_account"); }
-        if self.baseline.attached_at != current.attached_at { changed.push("attached_at"); }
-        if self.baseline.last_seen_at != current.last_seen_at { changed.push("last_seen_at"); }
-        if self.baseline.effort_resume_failure != current.effort_resume_failure { changed.push("effort_resume_failure"); }
+        if self.baseline.recovery != current.recovery {
+            changed.push("recovery");
+        }
+        if self.baseline.launch_account != current.launch_account {
+            changed.push("launch_account");
+        }
+        if self.baseline.attached_at != current.attached_at {
+            changed.push("attached_at");
+        }
+        if self.baseline.last_seen_at != current.last_seen_at {
+            changed.push("last_seen_at");
+        }
+        if self.baseline.effort_resume_failure != current.effort_resume_failure {
+            changed.push("effort_resume_failure");
+        }
         if self.baseline.app_server != current.app_server {
             changed.push("appServer");
         }
@@ -1193,9 +1215,12 @@ fn merge_current_extension_fields(
 // flattened fields in camelCase. The snake_case spellings remain listed
 // as read aliases for runtime records written before that contract settled.
 const RUNTIME_AUTHORED_KEYS: &[&str] = &[
-    "hostRollback", "host_rollback",
-    "hostInputUnknown", "host_input_unknown",
-    "hostInputAbandonedAt", "host_input_abandoned_at",
+    "hostRollback",
+    "host_rollback",
+    "hostInputUnknown",
+    "host_input_unknown",
+    "hostInputAbandonedAt",
+    "host_input_abandoned_at",
     "appServer",
     "app_server",
     "recovery",

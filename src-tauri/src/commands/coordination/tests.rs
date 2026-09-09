@@ -5281,8 +5281,14 @@ fn hosted_runtime_publishes_operator_control_authority() {
     let registry = crate::coordination::hosted::tests::seat(tmp.path());
     let state = test_state(tmp.path().into());
     let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
-    state.hosted.launch(&registry, "team", "seat", &launch).unwrap();
+    state
+        .hosted
+        .launch(&registry, "team", "seat", &launch)
+        .unwrap();
     let view = coordination_get_live_team_status_impl(&state, None, "team".into()).unwrap();
-    assert_eq!(serde_json::to_value(&view).unwrap()["members"][0]["hosted"], true);
+    assert_eq!(
+        serde_json::to_value(&view).unwrap()["members"][0]["hosted"],
+        true
+    );
     state.hosted.stop(&registry, "team", "seat").unwrap();
 }
