@@ -916,10 +916,8 @@ impl From<&CliToolSpec> for CliToolDescriptor {
             account_login_command: value.account_login_command.map(str::to_string),
             account_dir_name: value.base_dir_name.to_string(),
             capabilities: value.capabilities.into(),
-            app_server: match value.tool {
-                CliTool::Codex => Some(crate::session_scanner::launch::HostedDescriptor::codex()),
-                _ => None,
-            },
+            app_server: crate::session_scanner::launch::HostedLaunch::supports(value.tool)
+                .then(crate::session_scanner::launch::HostedDescriptor::codex),
         }
     }
 }
