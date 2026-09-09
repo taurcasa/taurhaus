@@ -39,7 +39,12 @@ pub struct MemberRuntimeRecord {
         alias = "attachment_generation"
     )]
     pub attachment_generation: u64,
-    #[serde(default, rename = "contextGeneration", alias = "context_generation")]
+    #[serde(
+        default,
+        rename = "contextGeneration",
+        alias = "context_generation",
+        with = "context_key"
+    )]
     pub context_generation: u64,
     #[serde(default, rename = "tmuxSocket", alias = "tmux_socket")]
     pub tmux_socket: Option<PathBuf>,
@@ -125,6 +130,21 @@ pub struct LaunchRoot {
     pub teams_dir: PathBuf,
     pub team_incarnation_id: Option<String>,
     pub root_authority_revision: u64,
+}
+
+// The card counter stays numeric internally; v1.1 publishes its opaque string key.
+mod context_key {
+    use serde::{Deserialize, Deserializer, Serializer};
+    pub fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&value.to_string())
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        value
+            .as_u64()
+            .or_else(|| value.as_str()?.parse().ok())
+            .ok_or_else(|| serde::de::Error::custom("invalid context generation"))
+    }
 }
 
 mod start_ticks {
@@ -780,6 +800,11 @@ fn save_runtime_record_locked(
     normalized.schema_version = RUNTIME_SCHEMA_VERSION;
     normalized.member_name = member_name.to_string();
     normalized.extra = extension_fields_only(normalized.extra, RUNTIME_AUTHORED_KEYS);
+    // Only the runtime session capture publishes harness identity; hooks never invent it.
+    normalized.extra.insert(
+        "hookSessionId".into(),
+        serde_json::json!(normalized.session_id),
+    );
 
     let runtime_dir = runtime_dir_path(teams_dir, team_name);
     fs::create_dir_all(&runtime_dir).map_err(|err| {
@@ -869,7 +894,12 @@ fn parse_runtime_record(
             alias = "attachment_generation"
         )]
         attachment_generation: u64,
-        #[serde(default, rename = "contextGeneration", alias = "context_generation")]
+        #[serde(
+            default,
+            rename = "contextGeneration",
+            alias = "context_generation",
+            with = "context_key"
+        )]
         context_generation: u64,
         #[serde(default, rename = "tmuxSocket", alias = "tmux_socket")]
         tmux_socket: Option<PathBuf>,
@@ -1096,6 +1126,7 @@ const RUNTIME_AUTHORED_KEYS: &[&str] = &[
     "attachmentGeneration",
     "context_generation",
     "contextGeneration",
+    "hookSessionId",
     "tmux_socket",
     "tmuxSocket",
     "tmux_session_id",
@@ -1527,7 +1558,7 @@ mod tests {
         let path = runtime_record_path(root, "team", "seat");
         let mut disk: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(disk["attachmentGeneration"], 1);
-        assert_eq!(disk["contextGeneration"], 0);
+        assert_eq!(disk["contextGeneration"], "0");
         assert_eq!(disk["paneStartTime"], "1755000000");
         for key in [
             "tmuxSocket",
@@ -1547,7 +1578,7 @@ mod tests {
         disk["panePid"] = 999.into();
         disk["paneStartTime"] = "99999".into();
         disk["tmuxSessionId"] = "$9".into();
-        disk["contextGeneration"] = 3.into();
+        disk["contextGeneration"] = "3".into();
         disk["harness"] = "grok".into();
         disk["launchRoot"] = serde_json::json!({"claudeDir": root, "teamsDir": root.join("teams"), "teamIncarnationId": "incarnation", "rootAuthorityRevision": 4});
         disk["activitySnapshotPath"] = root
@@ -2840,5 +2871,45 @@ mod tests {
             }
             other => panic!("expected io error, got {other:?}"),
         }
+    }
+    #[test]
+    fn string_runtime_context_requires_new_reader_protocol() {
+        // Regression: c408b68a changed persisted contextGeneration to a string
+        // without excluding protocol-25 apps, whose u64 reader rejects the record.
+        #[derive(Deserialize)]
+        struct LegacyRecord {
+            #[serde(default, rename = "contextGeneration")]
+            _context_generation: u64,
+        }
+        let wire = serde_json::to_value(sample_record("seat")).unwrap();
+        assert!(serde_json::from_value::<LegacyRecord>(wire).is_err());
+        let incompatible_reader_protocol = 25;
+        assert!(taurhaus_lib::daemon::protocol::PROTOCOL_VERSION > incompatible_reader_protocol);
+    }
+
+    #[test]
+    fn hook_runtime_wire_uses_verified_session_and_string_context() {
+        // Regression: 3ca169ed published a numeric contextGeneration, incompatible with v1.1.
+        let mut record = sample_record("seat");
+        record.context_generation = 3;
+        let wire = serde_json::to_value(&record).unwrap();
+        assert_eq!(wire["contextGeneration"], "3");
+        let tmp = TempDir::new().unwrap();
+        MemberRuntimeStore::save(tmp.path(), "team", "seat", &record).unwrap();
+        let disk: Value = serde_json::from_str(
+            &fs::read_to_string(runtime_record_path(tmp.path(), "team", "seat")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(disk["hookSessionId"], "session-123");
+        let read: MemberRuntimeRecord = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(read.context_generation, 3);
+        let mut legacy = wire;
+        legacy["contextGeneration"] = serde_json::json!(3);
+        assert_eq!(
+            serde_json::from_value::<MemberRuntimeRecord>(legacy)
+                .unwrap()
+                .context_generation,
+            3
+        );
     }
 }
