@@ -9109,13 +9109,19 @@ fn assert_canonical_checkpoint_does_not_pollute_discovery(refusal: Option<&str>)
     );
     let checkpoint_dir = tmp.path().join(".taurhaus-initialize-pending");
     assert!(checkpoint_dir.is_dir());
-    assert_eq!(checkpoint_dir.join("canonical.json").exists(), refusal.is_some());
+    assert_eq!(
+        checkpoint_dir.join("canonical.json").exists(),
+        refusal.is_some()
+    );
 
     // This Codex-only roster requires no Claude hook installation: the startup
     // scan must succeed without ever resolving or touching a real account home.
     let hook_scan = crate::coordination::state::ensure_startup_claude_compact_hook(tmp.path());
     assert!(matches!(hook_scan, Ok(false)), "{hook_scan:?}");
-    assert_eq!(TeamConfigStore::list(tmp.path()).unwrap(), vec!["canonical"]);
+    assert_eq!(
+        TeamConfigStore::list(tmp.path()).unwrap(),
+        vec!["canonical"]
+    );
 }
 
 #[test]
