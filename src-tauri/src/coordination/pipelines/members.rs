@@ -502,7 +502,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             message: "member resumed".to_string(),
             steps: self.steps,
             warnings: self.warnings,
-            pane_id: Some(pane_id),
+            pane_id: (!pane_id.is_empty()).then_some(pane_id),
             reused_pane: self.runtime_state.reused_pane,
         })
     }
@@ -632,6 +632,9 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                     .or(activation_context.member.reasoning_effort);
             }
         }
+        if runtime_record.app_server.is_some() || runtime_record.host_rollback.is_some() {
+            activation_context.resume_session_id = runtime_record.session_id.clone();
+        }
         Ok(PreparedMemberActivation {
             member,
             activation_context,
@@ -644,9 +647,125 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         &mut self,
         prepared: &PreparedMemberActivation,
     ) -> Result<String, (String, CoordinationError)> {
+        #[cfg(not(target_os = "linux"))]
+        if prepared
+            .member
+            .extra
+            .get("adapter_mode")
+            .and_then(serde_json::Value::as_str)
+            == Some("app_server")
+        {
+            return Err((
+                "launch_host".into(),
+                CoordinationError::Validation("Owned hosting is Linux/WSL only".into()),
+            ));
+        }
+        #[cfg(target_os = "linux")]
+        if prepared
+            .member
+            .extra
+            .get("adapter_mode")
+            .and_then(serde_json::Value::as_str)
+            == Some("app_server")
+        {
+            let launch_host = || -> Result<(), CoordinationError> {
+                let mut context = prepared.activation_context.clone();
+                context.resume_session_id = prepared
+                    .previous_runtime
+                    .as_ref()
+                    .and_then(|r| r.session_id.clone());
+                let launch = build_member_activation_launch_command(
+                    &self.orchestrator.teams_dir,
+                    &context,
+                    self.cli_commands,
+                )?;
+                let account = launch.harness_account_root.as_deref().ok_or_else(|| {
+                    CoordinationError::Validation("host account root missing".into())
+                })?;
+                let mut hosted =
+                    taurhaus_lib::session_scanner::launch::HostedLaunch::from_rendered(
+                        &launch.command,
+                        account,
+                        context.resume_session_id.as_deref(),
+                    )
+                    .map_err(CoordinationError::Validation)?;
+                hosted.account = launch.account;
+                self.orchestrator
+                    .hosted
+                    .launch(
+                        &self.orchestrator.root_registry,
+                        &context.team_name,
+                        &context.member.name,
+                        &hosted,
+                    )
+                    .map_err(CoordinationError::Conflict)
+            };
+            launch_host().map_err(|e| ("launch_host".into(), e))?;
+            self.record_step_success("launch_host", "owned thread resumed");
+            return Ok(String::new());
+        }
+        if let Some(record) = prepared.previous_runtime.as_ref() {
+            let old_host = record.app_server.clone().or_else(|| {
+                record
+                    .host_rollback
+                    .as_ref()
+                    .and_then(|packet| serde_json::from_value(packet["attachment"].clone()).ok())
+            });
+            if let Some(old_host) = old_host {
+                let launch = build_member_activation_launch_command(
+                    &self.orchestrator.teams_dir,
+                    &prepared.activation_context,
+                    self.cli_commands,
+                )
+                .map_err(|e| ("rollback_host".into(), e))?;
+                if launch.harness_account_root.as_deref() != Some(old_host.account_root.as_path())
+                    || prepared.activation_context.resume_session_id.as_deref()
+                        != Some(&old_host.thread_id)
+                {
+                    return Err((
+                        "rollback_host".into(),
+                        CoordinationError::Conflict(
+                            "rollback account/thread identity mismatch".into(),
+                        ),
+                    ));
+                }
+                #[cfg(target_os = "linux")]
+                if record.app_server.is_some() {
+                    self.orchestrator
+                        .hosted
+                        .rollback_to_pane(
+                            &self.orchestrator.root_registry,
+                            &prepared.activation_context.team_name,
+                            &prepared.member.name,
+                        )
+                        .map_err(|e| ("rollback_host".into(), CoordinationError::Conflict(e)))?;
+                }
+                #[cfg(not(target_os = "linux"))]
+                if record.app_server.is_some() {
+                    return Err((
+                        "rollback_host".into(),
+                        CoordinationError::Conflict("Owned hosting is Linux/WSL only".into()),
+                    ));
+                }
+            }
+        }
         let pane_id = self.acquire_pane(prepared)?;
         self.launch_session(prepared, &pane_id)?;
         self.capture_session_identity(prepared, &pane_id)?;
+        if prepared
+            .previous_runtime
+            .as_ref()
+            .is_some_and(|r| r.app_server.is_some() || r.host_rollback.is_some())
+            && self.runtime_state.session_id != prepared.activation_context.resume_session_id
+        {
+            self.cleanup_failure();
+            return Err((
+                "rollback_host".into(),
+                CoordinationError::Conflict(
+                    "rollback did not recover the named thread; stopped boundary retained".into(),
+                ),
+            ));
+        }
         let deferred_claude_lead_join =
             crate::session_scanner::cli_tool::spec(prepared.member.cli_tool)
                 .capabilities

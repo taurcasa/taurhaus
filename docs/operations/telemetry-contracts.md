@@ -142,6 +142,14 @@ task and deadline fields. Non-canonical teams keep direct append.
 This adapter adds no protocol version, terminal writer, delivery owner or
 activation permission; the existing runtime-exclusion contract still applies.
 
+## Stage-5b owned-host evidence — not an eligibility packet
+
+Only tempdir fake NDJSON transports are tested. Native descriptors remain disabled; the Unix framing question and paired Mesh switch remain open in [the harness model](../architecture/harness-model.md#owned-codex-hosting-stage-5b-disabled-pending-pairing). The stable `state/app-server/MEMBER.lock` excludes input, effort, compaction, shutdown and publication. Wait is at most two seconds; ordinary operations get five seconds, cold launch thirty. No data lock spans RPC and no lock spans a turn.
+
+Recovery retains `onboarding.delivery.observed` and existing compaction bookkeeping. A native receipt is submission, never read/acceptance. Typed `hostInputUnknown` is persisted before possible input. Classified definite steer rejection clears ambiguity; transport loss does not. Explicit stopped-member reconciliation records `hostInputAbandonedAt`, preserving receipts and abandoning input without replay. IPC operations emit the usual lifecycle spans, correlated with daemon RPC events. Lock contention defers liveness instead of failing the team's pass. Busy-seat shutdown emits `owned hosts not cleanly stopped` at warn level and continues the normal daemon shutdown path.
+
+Controlled pre-eligibility rollback retains `hostRollback`: old/new mode, opt-in, old attachment/build/host, new-generation fence, unresolved attempts and any abandon decision. It requires a stopped child, exact root/session/account and no retained native attempts. Failed pane relaunch leaves a recoverable boundary. Team-owned Mesh switching still requires its paired packet; no tmux delivery is retired by this lane. See the protocol document for additive UI/reconcile methods.
+
 ## Native hook bridge — software conformance only
 
 The software seam follows Mesh 4a source `adc9b831756de2fd4282198f4e63a72ba24fe928`;

@@ -23,6 +23,7 @@ pub enum TeamMemberActivityState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TeamMemberView {
+    hosted_runtime: Option<MemberRuntimeRecord>,
     pub team_name: String,
     pub member_name: String,
     pub role: MemberRole,
@@ -105,6 +106,9 @@ impl TeamMemberView {
     }
 
     pub fn runtime_record(&self) -> Option<MemberRuntimeRecord> {
+        if self.hosted_runtime.is_some() {
+            return self.hosted_runtime.clone();
+        }
         if !self.has_runtime_record {
             return None;
         }
@@ -191,7 +195,14 @@ pub fn get_team_roster_with_runtime_sessions(
         .members
         .into_iter()
         .map(|member| {
-            let (runtime, workflow_activity) = runtime_by_member.get(&member.name).cloned().unzip();
+            let (mut runtime, workflow_activity) =
+                runtime_by_member.get(&member.name).cloned().unzip();
+            if let Some(hosted) = persisted_by_member
+                .get(&member.name)
+                .filter(|r| r.app_server.is_some())
+            {
+                runtime = Some(hosted.clone());
+            }
             build_team_member_view(
                 team_name,
                 member,
@@ -217,6 +228,7 @@ fn build_team_member_view(
         .unwrap_or_default();
 
     TeamMemberView {
+        hosted_runtime: runtime.as_ref().filter(|r| r.app_server.is_some()).cloned(),
         team_name: team_name.to_string(),
         member_name: member.name,
         role: member.role,

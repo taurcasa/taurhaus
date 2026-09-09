@@ -220,6 +220,7 @@ fn fully_populated_live_team_status() -> LiveTeamStatus {
         lead_name: "team-lead".to_string(),
         runtime_snapshot_freshness: LiveRuntimeSnapshotFreshness::Fresh,
         members: vec![LiveAgentStatus {
+            hosted: false,
             name: "fixture-developer".to_string(),
             role: AgentRole::Member,
             cli_tool: "codex".to_string(),

@@ -46,6 +46,13 @@ impl CoordinationOrchestrator {
         let mut reconciled_members = HashSet::new();
 
         for (member_name, mut runtime) in runtime_records {
+            #[cfg(target_os = "linux")]
+            if runtime.app_server.is_some() {
+                self.hosted
+                    .reconcile(&self.root_registry, team_name, &member_name)
+                    .map_err(CoordinationError::Conflict)?;
+                continue;
+            }
             let expected = MemberRuntimeSnapshot::capture(&runtime);
             let Some(member) = members_by_name.get(&member_name) else {
                 continue;
@@ -183,6 +190,13 @@ impl CoordinationOrchestrator {
         let runtime_records = MemberRuntimeStore::load_all(&self.teams_dir, team_name)?;
 
         for (member_name, mut runtime) in runtime_records {
+            #[cfg(target_os = "linux")]
+            if runtime.app_server.is_some() {
+                self.hosted
+                    .reconcile(&self.root_registry, team_name, &member_name)
+                    .map_err(CoordinationError::Conflict)?;
+                continue;
+            }
             let expected = MemberRuntimeSnapshot::capture(&runtime);
             let Some(member) = members_by_name.get(&member_name) else {
                 continue;
@@ -666,6 +680,13 @@ impl CoordinationOrchestrator {
         let runtime_records = MemberRuntimeStore::load_all(&self.teams_dir, team_name)?;
 
         for (member_name, mut runtime) in runtime_records {
+            #[cfg(target_os = "linux")]
+            if runtime.app_server.is_some() {
+                self.hosted
+                    .reconcile(&self.root_registry, team_name, &member_name)
+                    .map_err(CoordinationError::Conflict)?;
+                continue;
+            }
             let expected = MemberRuntimeSnapshot::capture(&runtime);
             if !member_names.contains(&member_name) {
                 tracing::warn!(

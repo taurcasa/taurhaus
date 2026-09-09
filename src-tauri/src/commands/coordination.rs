@@ -1922,3 +1922,42 @@ fn derive_cross_project_status(
 #[cfg(test)]
 #[path = "coordination/tests.rs"]
 mod tests;
+
+#[tauri::command]
+pub async fn coordination_hosted(
+    app: AppHandle,
+    team_name: String,
+    member_name: String,
+    operation: String,
+    params: Value,
+) -> IpcResult<Value> {
+    let span = IpcCommandSpan::start("coordination_hosted");
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        use taurhaus_lib::daemon_api::protocol::method;
+        let method = match operation.as_str() {
+            "transcript" => method::COORDINATION_HOSTED_TRANSCRIPT,
+            "input" => method::COORDINATION_HOSTED_INPUT,
+            "interrupt" => method::COORDINATION_HOSTED_INTERRUPT,
+            "approval" => method::COORDINATION_HOSTED_APPROVAL,
+            "reconcile" => method::COORDINATION_HOSTED_RECONCILE,
+            _ => return Err(IpcError::internal("UNKNOWN_METHOD")),
+        };
+        let provider = app.state::<ProviderState>();
+        let daemon = provider
+            .daemon
+            .as_ref()
+            .ok_or_else(|| IpcError::internal("Hosted controls require the daemon"))?;
+        let mut params = params;
+        if !params.is_object() {
+            return Err(IpcError::internal("Expected host operation parameters"));
+        }
+        params["team_name"] = team_name.into();
+        params["member_name"] = member_name.into();
+        call_coordination_daemon(&app, daemon, method, params)
+            .map_err(|error| IpcError::internal(error.into_message()))
+    })
+    .await
+    .unwrap_or_else(|_| Err(IpcError::internal("Hosted operation worker stopped")));
+    span.finish_result(&result);
+    result
+}

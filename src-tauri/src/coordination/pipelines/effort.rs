@@ -635,7 +635,7 @@ impl CoordinationOrchestrator {
         if let Some(failed) = diagnostics
             .steps
             .iter()
-            .find(|step| step.step == "kill_pane" && !step.success)
+            .find(|step| matches!(step.step.as_str(), "kill_pane" | "stop_host") && !step.success)
         {
             return Err(format!(
                 "stop failed: {}",

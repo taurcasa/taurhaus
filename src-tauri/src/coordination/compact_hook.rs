@@ -403,9 +403,10 @@ fn emit_hook_degraded(tool: CliTool, config_dir: &Path, executable: &str) {
     );
 }
 
-pub fn handle_compact_hook_stdin<R: Read>(
+fn read_hosted_hook<R: Read>(
     stdin: R,
     teams_dir: &Path,
+    host_guard: &mut Option<crate::coordination::stores::lock::HostOperationLock>,
 ) -> Result<CompactHookResponse, CoordinationError> {
     let mut raw = Vec::new();
     stdin
@@ -438,12 +439,20 @@ pub fn handle_compact_hook_stdin<R: Read>(
     }
     let raw = String::from_utf8(raw)
         .map_err(|_| CoordinationError::Validation("invalid hook UTF-8".into()))?;
-    handle_compact_hook(&raw, teams_dir)
+    handle_compact_hook_with_guard(&raw, teams_dir, host_guard)
 }
 
 pub fn handle_compact_hook(
     raw: &str,
     teams_dir: &Path,
+) -> Result<CompactHookResponse, CoordinationError> {
+    handle_compact_hook_with_guard(raw, teams_dir, &mut None)
+}
+
+fn handle_compact_hook_with_guard(
+    raw: &str,
+    teams_dir: &Path,
+    host_guard: &mut Option<crate::coordination::stores::lock::HostOperationLock>,
 ) -> Result<CompactHookResponse, CoordinationError> {
     let payload = parse_compact_hook_input(raw).map_err(|err| {
         emit_compact_hook_parse_payload_debug(raw, &err.to_string());
@@ -473,14 +482,19 @@ pub fn handle_compact_hook(
             base_compact_hook_fields(Some(&payload), None),
         );
     }
-    let mut response = handle_compaction_decision(&payload, teams_dir)?;
-    drain::append(teams_dir, &payload, &mut response);
+    let mut response = handle_compaction_decision(&payload, teams_dir, host_guard)?;
+    // Hosted compaction keeps exclusion through stdout and its local recovery receipt.
+    // Mesh drain subprocess round-trips must not consume that bounded lock budget.
+    if host_guard.is_none() {
+        drain::append(teams_dir, &payload, &mut response);
+    }
     Ok(response)
 }
 
 fn handle_compaction_decision(
     payload: &CompactHookInput,
     teams_dir: &Path,
+    host_guard: &mut Option<crate::coordination::stores::lock::HostOperationLock>,
 ) -> Result<CompactHookResponse, CoordinationError> {
     let is_post_compact = hook_event_is(&payload.hook_event_name, POST_COMPACT_HOOK_EVENT);
     if !is_post_compact
@@ -518,6 +532,36 @@ fn handle_compaction_decision(
         }
     };
 
+    let before =
+        MemberRuntimeStore::load(&matched.teams_dir, &matched.team_name, &matched.member.name)?;
+    if before.app_server.is_some() {
+        *host_guard = Some(
+            crate::coordination::stores::lock::HostOperationLock::acquire(
+                &matched.teams_dir,
+                &matched.team_name,
+                &matched.member.name,
+                std::time::Duration::from_secs(2),
+            )?,
+        );
+        let current =
+            MemberRuntimeStore::load(&matched.teams_dir, &matched.team_name, &matched.member.name)?;
+        let attachment = current.app_server.as_ref().ok_or_else(|| {
+            CoordinationError::Conflict("hosted compaction has no attachment".into())
+        })?;
+        if current.app_server != before.app_server
+            || current.attachment_generation != before.attachment_generation
+            || current.launch_root != before.launch_root
+            || current.session_id.as_deref() != Some(payload.session_id.as_str())
+            || attachment.thread_id != payload.session_id
+            || attachment.contract != 1
+            || attachment.transport != "unix_ndjson"
+            || attachment.state != "ready"
+        {
+            return Err(CoordinationError::Conflict(
+                "hosted compaction attachment changed or is unavailable".into(),
+            ));
+        }
+    }
     emit_compact_hook_resolved(payload, &matched);
 
     if crate::session_scanner::cli_tool::spec(tool)
@@ -1048,8 +1092,12 @@ pub fn run_compact_hook_cli<R: Read, W: Write>(
     mut stdout: W,
     teams_dir: &Path,
 ) -> Result<(), CoordinationError> {
-    let response = match handle_compact_hook_stdin(stdin, teams_dir) {
+    let mut host_guard = None;
+    let response = match read_hosted_hook(stdin, teams_dir, &mut host_guard) {
         Ok(response) => response,
+        // Preserve the hosted boundary's silent refusal: this attachment has
+        // not authorized any output, and no drain offer was requested.
+        Err(error) if host_guard.is_some() => return Err(error),
         Err(error) => {
             stdout.write_all(b"{}\n")?;
             stdout.flush()?;
@@ -1797,7 +1845,7 @@ fn runtime_path_string(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     use chrono::DateTime;
@@ -1938,7 +1986,7 @@ mod tests {
         .expect("save runtime");
     }
 
-    fn write_snapshot_fixture(teams_dir: &Path, team_name: &str, member_name: &str) {
+    pub(crate) fn write_snapshot_fixture(teams_dir: &Path, team_name: &str, member_name: &str) {
         OperationalContextSnapshotStore::save(
             teams_dir,
             &OperationalContextSnapshot {
@@ -3275,7 +3323,7 @@ mod tests {
     }
 
     #[test]
-    fn compact_hook_records_the_transcript_compaction_timestamp() {
+    fn compact_hook_preserves_opted_in_pane_recovery_and_timestamp() {
         // Regression: 6fe0aa3 recorded Utc::now() for hook delivery while the
         // transcript fallback recorded the compacted event timestamp, defeating dedupe.
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -3283,6 +3331,10 @@ mod tests {
         fs::create_dir_all(&project).expect("project dir");
         let mut member = sample_member(&project);
         member.cli_tool = CliTool::Codex;
+        // Regression: 4cae348e treated opt-in as a published host, dropping pane recovery.
+        member
+            .extra
+            .insert("adapter_mode".into(), json!("app_server"));
         write_team_fixture(tmp.path(), "codex-team", &member, "session-codex");
         write_snapshot_fixture(tmp.path(), "codex-team", &member.name);
         let transcript_path = tmp
@@ -3299,7 +3351,7 @@ mod tests {
         )
         .expect("write transcript");
 
-        handle_compact_hook(
+        let response = handle_compact_hook(
             &json!({
                 "hook_event_name": "SessionStart",
                 "session_id": "session-codex",
@@ -3311,10 +3363,22 @@ mod tests {
             tmp.path(),
         )
         .expect("handle Codex compact hook");
+        assert!(response
+            .hook_specific_output
+            .unwrap()
+            .additional_context
+            .contains("Current task: #680"));
+        let record = MemberRuntimeStore::load(tmp.path(), "codex-team", &member.name).unwrap();
+        assert!(record.pane_id.is_some() && record.app_server.is_none());
 
         let state = MemberCompactionStore::load(tmp.path(), "codex-team", &member.name)
             .expect("load compaction state")
             .expect("compaction state");
+        assert_eq!(
+            state.last_delivery_result,
+            CompactionDeliveryResult::Injected
+        );
+        assert_eq!(state.last_session_id, "session-codex");
         assert_eq!(
             state.last_compaction_timestamp,
             DateTime::parse_from_rfc3339("2026-08-26T06:00:00.123Z")
@@ -3603,6 +3667,65 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
         fs::write(root.join("mesh"), script).unwrap();
         let payload = json!({"hook_event_name":"PostToolUse","session_id":"verified-session","cwd":root,"transcript_path":root.join(".codex/rollout-test.jsonl")});
         (fake, payload, teams)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hosted_compaction_delivers_recovery_without_mesh_drain_subprocesses() {
+        // Regression: 7b686594 ran drain capabilities, delivery and receipt subprocesses
+        // under HostOperationLock, exceeding its budget and blocking operator controls.
+        let (fake, mut payload, teams) = hook_drain_fixture();
+        let root = fake.dir.path();
+        let script = fs::read_to_string(root.join("mesh"))
+            .unwrap()
+            .replace("PostToolUse", "SessionStart")
+            .replace("'source':'ordinary'", "'source':'compact'");
+        fs::write(root.join("mesh"), script).unwrap();
+        write_snapshot_fixture(&teams, "drain-team", "architect");
+        payload["hook_event_name"] = json!("SessionStart");
+        payload["source"] = json!("compact");
+        let mut runtime = MemberRuntimeStore::load(&teams, "drain-team", "architect").unwrap();
+        runtime.app_server = Some(crate::coordination::stores::runtime::AppServerAttachment {
+            contract: 1,
+            socket_path: root.join("host.sock"),
+            thread_id: "verified-session".into(),
+            member_id: "architect".into(),
+            account_root: root.into(),
+            process_id: 123,
+            process_start: "456".into(),
+            host_generation: "host-1".into(),
+            build: "fixture".into(),
+            host: "fixture".into(),
+            configuration: "fixture".into(),
+            trust: "fixture".into(),
+            transport: "unix_ndjson".into(),
+            state: "ready".into(),
+        });
+        MemberRuntimeStore::save(&teams, "drain-team", "architect", &runtime).unwrap();
+
+        crate::coordination::recovery_delivery::reserve_activation(
+            &teams,
+            "drain-team",
+            "architect",
+            "activation",
+        )
+        .unwrap();
+        let mut output = Vec::new();
+        run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, &teams).unwrap();
+        let output: Value = serde_json::from_slice(&output).unwrap();
+        assert!(output["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap()
+            .contains("Current task: #680"));
+        let runtime = MemberRuntimeStore::load(&teams, "drain-team", "architect").unwrap();
+        assert_eq!(
+            runtime.recovery.claim.unwrap().stage,
+            crate::coordination::recovery_card::ReceiptStage::HookResponseOffered
+        );
+        assert!(
+            hook_drain_calls(&fake).is_empty(),
+            "hosted compaction must not spawn Mesh while excluding operator controls"
+        );
     }
 
     #[cfg(unix)]

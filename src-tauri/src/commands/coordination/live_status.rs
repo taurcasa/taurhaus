@@ -678,6 +678,9 @@ fn live_agent_status_from_roster(
     let (task_effort, task_effort_why) =
         member_task_effort(teams_dir, team_name, &member.member_name);
     LiveAgentStatus {
+        hosted: member
+            .runtime_record()
+            .is_some_and(|r| r.app_server.is_some()),
         name: member.member_name,
         role: match member.role {
             MemberRole::Lead => AgentRole::Lead,
@@ -734,6 +737,9 @@ fn fast_agent_snapshot_from_roster(
     let (task_effort, task_effort_why) =
         member_task_effort(teams_dir, team_name, &member.member_name);
     FastAgentSnapshot {
+        hosted: member
+            .runtime_record()
+            .is_some_and(|r| r.app_server.is_some()),
         name: member.member_name,
         role: match member.role {
             MemberRole::Lead => AgentRole::Lead,

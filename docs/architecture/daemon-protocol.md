@@ -4,7 +4,7 @@ The daemon is a companion process that handles filesystem access, process scanni
 
 ![Daemon Protocol](../images/daemon-protocol.jpg)
 
-> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 55 callable methods (56 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 26; the tables below are authoritative.
+> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 60 callable methods (61 constants — `list_directory` has no handler) plus 3 push events (`file_changed`, `git_changed`, `session_file_created`) at protocol 26; the tables below are authoritative.
 
 ## Why a daemon
 
@@ -22,7 +22,7 @@ On every platform the daemon process hosts the single session hub: the app reads
 | Transport | TCP |
 | Default address | `127.0.0.1:17233` ([authoritative source](../../src-tauri/src/daemon/server.rs)) |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 25 (current) |
+| Protocol version | 26 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication
@@ -373,9 +373,9 @@ Managed Codex launches render the `notify` flag only when all four hold (`comman
 
 ### Protocol version check
 
-On connect, the app sends `ping` and checks `protocol_version` in the response. The gate is exact-match, not a floor: any version *different* from what the app expects (current: v25) is rejected, so a newer daemon is disconnected the same way an older one is, and the user is warned to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
+On connect, the app sends `ping` and checks `protocol_version` in the response. The gate is exact-match, not a floor: any version *different* from what the app expects (current: v26) is rejected, so a newer daemon is disconnected the same way an older one is, and the user is warned to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
 
-The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness (`daemon_lifecycle.rs`), and every reconnect confirms it before the daemon counts as connected — `DaemonProvider::reconnect_checked` is the gate the inline and manual paths use (runtime-snapshot IPC, task sync, the Start Daemon button), so reachability alone never adopts a daemon. A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use. v9 added `set_codex_compaction_mode` (retired again in v14); v10 added the scanner-blackout cursor; v11 replaced the Claude-only account methods with generic account methods (`list_accounts`, `project_transcript`, `refresh_usage`) and added `account_observations` to both session snapshot results; v12 replaced the retired Google value in the `CliTool` wire vocabulary with `agy`; v13 added `grok`; v14 removed `set_codex_compaction_mode` along with the Codex transcript compaction pipeline; v15 moved the managed-task deadline pass into the daemon; v16 moved team initialization; v17 moved add-agent/resume-member/stop-member; v18 moved resume-team/reonboard; v19 moved standalone create/disband and roster edits; v20 retired the redundant stop-member pair; v21 moved self-heal and effort passes; v22 moved the final task-snapshot, live-presence, and active-project writers and installed the structural boundary assertion; v23 added member account ids and the daemon-owned selector-account switch run; v24 added per-team root authority and Claude team account switching; v25 added versioned recovery receipts and explicit force/read reonboard intents. The B-phase writer target remains complete: the Windows app never mutates team state directly; the daemon and hook processes are the only writers. v12 and v13 are vocabulary-only changes, and they bump the version because either side decodes the other's tool value as `Unknown`. The regression tests that pin this live in `daemon/protocol.rs` (`protocol_version_excludes_daemons_*`).
+The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness (`daemon_lifecycle.rs`), and every reconnect confirms it before the daemon counts as connected — `DaemonProvider::reconnect_checked` is the gate the inline and manual paths use (runtime-snapshot IPC, task sync, the Start Daemon button), so reachability alone never adopts a daemon. A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use. v9 added `set_codex_compaction_mode` (retired again in v14); v10 added the scanner-blackout cursor; v11 replaced the Claude-only account methods with generic account methods (`list_accounts`, `project_transcript`, `refresh_usage`) and added `account_observations` to both session snapshot results; v12 replaced the retired Google value in the `CliTool` wire vocabulary with `agy`; v13 added `grok`; v14 removed `set_codex_compaction_mode` along with the Codex transcript compaction pipeline; v15 moved the managed-task deadline pass into the daemon; v16 moved team initialization; v17 moved add-agent/resume-member/stop-member; v18 moved resume-team/reonboard; v19 moved standalone create/disband and roster edits; v20 retired the redundant stop-member pair; v21 moved self-heal and effort passes; v22 moved the final task-snapshot, live-presence, and active-project writers and installed the structural boundary assertion; v23 added member account ids and the daemon-owned selector-account switch run; v24 added per-team root authority and Claude team account switching; v25 added versioned recovery receipts and explicit force/read reonboard intents; v26 made the runtime record's `contextGeneration` a string (the hook-drain bridge wire) and added drain-capable hook registration facts; protocol-25 apps cannot read the new records. Hosted storage uses the same string encoding and camelCase member identity; the hosted transcript, input, interrupt, approval and reconciliation methods are additive and require no further bump. The B-phase writer target remains complete: the Windows app never mutates team state directly; the daemon and hook processes are the only writers. v12 and v13 are vocabulary-only changes, and they bump the version because either side decodes the other's tool value as `Unknown`. The regression tests that pin this live in `daemon/protocol.rs` (`protocol_version_excludes_daemons_*`).
 
 Separately, startup now validates that the connected daemon is serving from the current installed binary. A daemon still running from a replaced or deleted inode is terminated and restarted before Taurhaus keeps the connection.
 
@@ -407,3 +407,19 @@ Separately, startup now validates that the connected daemon is serving from the 
 - [ARCHITECTURE.md](../../ARCHITECTURE.md) — system overview
 - [Platform abstraction](../platform-abstraction.md) — Linux/macOS dispatch details
 - [IPC reference](ipc-reference.md) — Tauri IPC commands that proxy through the daemon
+
+### Stage-5b pairing decision
+
+Protocol remains **26** for the earlier context-generation string encoding correction. Defaulted `hosted` status flags and additive methods need no further bump. The app and daemon release together, app first; nothing is installed here.
+
+The additive Linux/WSL methods below need no additional bump. All require `team_name` and `member_name`; mutations also require the transcript's numeric `generation`. The Tauri command `coordination_hosted` proxies these methods and never creates a second process owner.
+
+| Method | Additional parameters | Result |
+|---|---|---|
+| `coordination.hosted_transcript` | None | Owned `thread`, bounded `events`/`requests`, `eventsTruncated`, `outcomeUnknown` |
+| `coordination.hosted_input` | `text` | Correlated start/steer receipt |
+| `coordination.hosted_interrupt` | None | Correlated interrupt response |
+| `coordination.hosted_approval` | `requestId`, boolean `accept` | Approval response for an owned thread's pending request |
+| `coordination.hosted_reconcile` | boolean `abandonUnknown: true` | After stop, explicitly abandon uncertain operator input without replay; exact attachment generation required |
+
+Results carry `attachmentGeneration`. Host errors use `HOST_OPERATION_FAILED`. Older daemons return `UNKNOWN_METHOD` / `Unknown method: ...`; the UI stops polling and explains the update. `coordination_hosted` uses shared constants and an IPC lifecycle span. Stopped transcripts return `stopped`, `outcomeUnknown` and the generation, without claiming a live read. An orphaned attachment returns `orphanProcessId` instead of a live thread; controls remain disabled until manual cleanup and controlled resume. Reconciliation records the explicit abandon decision at that stopped generation, preserves recovery receipts, and permits named relaunch without resending abandoned input. Receipts prove submission, never consumption. Framing and paired switching remain unverified as recorded in [the harness model](harness-model.md#owned-codex-hosting-stage-5b-disabled-pending-pairing).

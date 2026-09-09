@@ -783,6 +783,11 @@ fn team_state_write_apis_stay_daemon_or_native_hook_owned() {
     // from one. Keeping this list explicit makes every new caller a reviewable
     // architecture change.
     const ALLOWED_WRITERS: &[(&str, &str)] = &[
+        // Regression: 83077dad introduced the Linux daemon's owned-host writer.
+        (
+            "src/coordination/hosted.rs",
+            "daemon-owned host lifecycle publishes attachments and bounded recovery receipts",
+        ),
         (
             "src/coordination/recovery_delivery.rs",
             "daemon/native-hook recovery delivery owns claims, snapshot descriptors and receipt bookkeeping",
@@ -1147,6 +1152,8 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/session_scanner/idle/codex.rs",
         "src/session_scanner/idle/agy.rs",
         "src/session_scanner/launch.rs",
+        // Regression: 76fa63c4 split the Codex hosted render into its own capability slice.
+        "src/session_scanner/launch_hosted.rs",
         "src/session_scanner/transcript_boundary.rs",
         "src/task_scanner/claude.rs",
         "src/task_scanner/codex.rs",
@@ -1156,10 +1163,9 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
     // mirror of `command_settings_for` that the task-effort relaunch needs to
     // rewrite one tool's configured resume base. Field selection per tool has
     // to name the tools; the registry is where that is allowed to happen.
-    // 94: the separate native delivery hook slice adds eight references for its
-    // Claude/Codex eligibility and installation envelopes. Generic consumers
-    // gained none; keep both the file boundary and exact count pinned.
-    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 94;
+    // Both branches: eight native delivery-hook references and two hosted
+    // Codex launch guards. Generic consumers gained none.
+    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 96;
 
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src"), &mut files);

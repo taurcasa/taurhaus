@@ -48,6 +48,7 @@ use serde::{Deserialize, Serialize};
 /// v24: per-team root authority and Claude team account switching.
 /// v25: versioned recovery receipts and explicit force/read reonboard intents.
 /// v26: persisted runtime contextGeneration became a string; v25 apps reject it.
+/// Hosted storage shares this encoding and camelCase member identity; hosted methods are additive.
 pub const PROTOCOL_VERSION: u32 = 26;
 
 // ---------------------------------------------------------------------------
@@ -125,6 +126,11 @@ pub mod method {
     pub const REFRESH_USAGE: &str = "refresh_usage";
     pub const LIST_WORKFLOW_RUNS: &str = "list_workflow_runs";
     pub const GET_WORKFLOW_RUN: &str = "get_workflow_run";
+    pub const COORDINATION_HOSTED_TRANSCRIPT: &str = "coordination.hosted_transcript";
+    pub const COORDINATION_HOSTED_INPUT: &str = "coordination.hosted_input";
+    pub const COORDINATION_HOSTED_INTERRUPT: &str = "coordination.hosted_interrupt";
+    pub const COORDINATION_HOSTED_APPROVAL: &str = "coordination.hosted_approval";
+    pub const COORDINATION_HOSTED_RECONCILE: &str = "coordination.hosted_reconcile";
     pub const COORDINATION_INITIALIZE_TEAM: &str = "coordination.initialize_team";
     pub const COORDINATION_INITIALIZE_STATUS: &str = "coordination.initialize_status";
     pub const COORDINATION_ADD_AGENT: &str = "coordination.add_agent";
@@ -1520,6 +1526,8 @@ mod tests {
     // edit here, in ARCHITECTURE.md, and in docs/architecture/daemon-protocol.md.
     #[test]
     fn protocol_version_is_pinned() {
+        // The runtime context-generation slot changes from number to string;
+        // protocol-25 readers cannot decode the corrected persistent vocabulary.
         assert_eq!(PROTOCOL_VERSION, 26);
     }
 

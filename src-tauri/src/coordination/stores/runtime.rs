@@ -33,6 +33,30 @@ const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
 /// Runtime record persisted at `teams/<team>/runtime/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberRuntimeRecord {
+    /// Recoverable stopped-host boundary, retained if pane relaunch fails.
+    #[serde(
+        default,
+        rename = "hostRollback",
+        alias = "host_rollback",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub host_rollback: Option<Value>,
+    #[serde(default, rename = "hostInputUnknown", alias = "host_input_unknown")]
+    pub host_input_unknown: bool,
+    /// Operator abandoned the ambiguous input at this stopped attachment; no replay.
+    #[serde(
+        default,
+        rename = "hostInputAbandonedAt",
+        alias = "host_input_abandoned_at"
+    )]
+    pub host_input_abandoned_at: Option<u64>,
+    #[serde(
+        default,
+        rename = "appServer",
+        alias = "app_server",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub app_server: Option<AppServerAttachment>,
     #[serde(
         default,
         rename = "attachmentGeneration",
@@ -67,7 +91,7 @@ pub struct MemberRuntimeRecord {
     pub recovery: crate::coordination::recovery_card::RecoveryState,
     #[serde(default = "schema_version_one")]
     pub schema_version: u32,
-    #[serde(default)]
+    #[serde(default, rename = "memberName", alias = "member_name")]
     pub member_name: String,
     pub cli_tool: Option<CliTool>,
     pub project_path: Option<PathBuf>,
@@ -122,6 +146,28 @@ pub struct MemberRuntimeRecord {
     pub extra: BTreeMap<String, Value>,
 }
 
+/// Owned native attachment. Legacy pane slots stay empty; this is never a tmux address.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppServerAttachment {
+    pub contract: u32,
+    pub socket_path: PathBuf,
+    pub thread_id: String,
+    pub member_id: String,
+    pub account_root: PathBuf,
+    pub process_id: u32,
+    pub process_start: String,
+    pub host_generation: String,
+    pub build: String,
+    pub host: String,
+    pub configuration: String,
+    pub trust: String,
+    pub transport: String,
+    /// Empty on an incomplete peer record; never evidence of a ready child.
+    #[serde(default)]
+    pub state: String,
+}
+
 /// Registry-resolved launch authority, including relocation cycles.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,6 +214,10 @@ mod start_ticks {
 impl Default for MemberRuntimeRecord {
     fn default() -> Self {
         Self {
+            host_rollback: None,
+            host_input_unknown: false,
+            host_input_abandoned_at: None,
+            app_server: None,
             attachment_generation: 0,
             context_generation: 0,
             tmux_socket: None,
@@ -297,6 +347,32 @@ impl MemberRuntimeSnapshot {
         };
 
         let mut changed = Vec::new();
+        if self.baseline.host_rollback != current.host_rollback {
+            changed.push("hostRollback");
+        }
+        if self.baseline.host_input_unknown != current.host_input_unknown
+            || self.baseline.host_input_abandoned_at != current.host_input_abandoned_at
+        {
+            changed.push("hostInputUnknown");
+        }
+        if self.baseline.recovery != current.recovery {
+            changed.push("recovery");
+        }
+        if self.baseline.launch_account != current.launch_account {
+            changed.push("launch_account");
+        }
+        if self.baseline.attached_at != current.attached_at {
+            changed.push("attached_at");
+        }
+        if self.baseline.last_seen_at != current.last_seen_at {
+            changed.push("last_seen_at");
+        }
+        if self.baseline.effort_resume_failure != current.effort_resume_failure {
+            changed.push("effort_resume_failure");
+        }
+        if self.baseline.app_server != current.app_server {
+            changed.push("appServer");
+        }
         if self.baseline.pane_id != current.pane_id {
             changed.push("pane_id");
         }
@@ -815,7 +891,12 @@ fn save_runtime_record_locked(
 
     let target_path = runtime_record_path(teams_dir, team_name, member_name);
     let tmp_path = runtime_tmp_path(teams_dir, team_name, member_name);
-    let payload = serde_json::to_string_pretty(&normalized).map_err(|err| {
+    let mut wire = serde_json::to_value(&normalized)
+        .map_err(|err| CoordinationError::StoreError(err.to_string()))?;
+    if normalized.app_server.is_some() && normalized.health == HealthState::Healthy {
+        wire["health"] = Value::String("active".into());
+    }
+    let payload = serde_json::to_string_pretty(&wire).map_err(|err| {
         CoordinationError::StoreError(format!(
             "failed to serialize runtime record for '{member_name}': {err}"
         ))
@@ -888,6 +969,14 @@ fn parse_runtime_record(
 ) -> Result<MemberRuntimeRecord, CoordinationError> {
     #[derive(Debug, Deserialize)]
     struct RuntimeRecordWire {
+        #[serde(default, alias = "hostRollback")]
+        host_rollback: Option<Value>,
+        #[serde(default, alias = "hostInputUnknown")]
+        host_input_unknown: bool,
+        #[serde(default, alias = "hostInputAbandonedAt")]
+        host_input_abandoned_at: Option<u64>,
+        #[serde(default, rename = "appServer", alias = "app_server")]
+        app_server: Option<AppServerAttachment>,
         #[serde(
             default,
             rename = "attachmentGeneration",
@@ -922,7 +1011,7 @@ fn parse_runtime_record(
         recovery: crate::coordination::recovery_card::RecoveryState,
         #[serde(default = "schema_version_one")]
         schema_version: u32,
-        #[serde(default)]
+        #[serde(default, alias = "memberName")]
         member_name: Option<String>,
         #[serde(default, alias = "cliTool")]
         cli_tool: Option<CliTool>,
@@ -978,6 +1067,10 @@ fn parse_runtime_record(
     })?;
 
     Ok(MemberRuntimeRecord {
+        host_rollback: wire.host_rollback,
+        host_input_unknown: wire.host_input_unknown,
+        host_input_abandoned_at: wire.host_input_abandoned_at,
+        app_server: wire.app_server,
         attachment_generation: wire
             .attachment_generation
             .max(legacy_generation(raw, "activation_generation")),
@@ -1051,6 +1144,10 @@ fn merge_current_extension_fields(
             record.daemon_pid = latest.daemon_pid;
         }
         if preserve_applied_effort || latest.attachment_generation > record.attachment_generation {
+            record.host_rollback = latest.host_rollback;
+            record.host_input_unknown = latest.host_input_unknown;
+            record.host_input_abandoned_at = latest.host_input_abandoned_at;
+            record.app_server = latest.app_server;
             record.attachment_generation = latest.attachment_generation;
             record.context_generation = latest.context_generation;
             record.tmux_socket = latest.tmux_socket;
@@ -1121,6 +1218,14 @@ fn merge_current_extension_fields(
 // flattened fields in camelCase. The snake_case spellings remain listed
 // as read aliases for runtime records written before that contract settled.
 const RUNTIME_AUTHORED_KEYS: &[&str] = &[
+    "hostRollback",
+    "host_rollback",
+    "hostInputUnknown",
+    "host_input_unknown",
+    "hostInputAbandonedAt",
+    "host_input_abandoned_at",
+    "appServer",
+    "app_server",
     "recovery",
     "attachment_generation",
     "attachmentGeneration",
@@ -1467,6 +1572,9 @@ where
     D: Deserializer<'de>,
 {
     let value = Value::deserialize(deserializer)?;
+    if value == "active" {
+        return Ok(HealthState::Healthy);
+    }
     Ok(serde_json::from_value(value).unwrap_or_else(|_| default_runtime_health()))
 }
 
@@ -1518,6 +1626,50 @@ mod tests {
             extra: BTreeMap::new(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn hosted_attachment_contract_and_stale_snapshot() {
+        let tmp = TempDir::new().unwrap();
+        let mut record = sample_record("seat");
+        record.reserve_activation("host-one");
+        record.context_generation = 2;
+        let mut wire = serde_json::to_value(&record).unwrap();
+        wire["appServer"] = serde_json::json!({
+            "contract": 1, "socketPath": tmp.path().join("host.sock"),
+            "threadId": "owned-thread", "memberId": "seat-incarnation",
+            "accountRoot": tmp.path().join("account"), "processId": 123,
+            "processStart": "456", "hostGeneration": "host-one",
+            "build": "fake", "host": "test", "configuration": "policy",
+            "trust": "test", "transport": "unix_ndjson", "state": "ready"
+        });
+        let record: MemberRuntimeRecord = serde_json::from_value(wire).unwrap();
+        MemberRuntimeStore::save(tmp.path(), "team", "seat", &record).unwrap();
+        let before = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        let snapshot = MemberRuntimeSnapshot::capture(&before);
+        let mut next = serde_json::to_value(&before).unwrap();
+        next["appServer"]["state"] = "stopped".into();
+        let next: MemberRuntimeRecord = serde_json::from_value(next).unwrap();
+        assert!(snapshot.changed_fields(Some(&next)).contains(&"appServer"));
+        let disk = serde_json::to_value(&before).unwrap();
+        // Regression: 50a07ab6 published a numeric context generation although
+        // runtime-exclusion v1.1 pins a string for the native attachment reader.
+        assert_eq!(disk["contextGeneration"], "2");
+        assert_eq!(disk["memberName"], "seat");
+        // Integration: 026627bb's hook identity must coexist with 6dab7aa6's
+        // hosted attachment after a stale liveness save.
+        let mut stale = before.clone();
+        stale.context_generation = 0;
+        stale.app_server = None;
+        MemberRuntimeStore::save_preserving_applied_effort(tmp.path(), "team", "seat", &stale)
+            .unwrap();
+        let persisted: Value = serde_json::from_str(
+            &fs::read_to_string(tmp.path().join("team/runtime/seat.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(persisted["contextGeneration"], "2");
+        assert_eq!(persisted["hookSessionId"], "session-123");
+        assert_eq!(persisted["appServer"], disk["appServer"]);
     }
 
     #[test]

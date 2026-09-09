@@ -76,6 +76,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
       contextSummary: selectedNode.contextSummary ?? selectedNode.context_summary ?? '',
       behaviorSummary: selectedNode.behaviorSummary ?? selectedNode.behavior_summary ?? '',
       paneId: selectedNode.paneId ?? selectedNode.pane_id ?? '',
+      hosted: selectedNode.hosted === true,
       sessionId: selectedNode.sessionId ?? selectedNode.session_id ?? '',
       sessionState: selectedNode.sessionState ?? selectedNode.session_status ?? '',
       accountId: selectedNode.accountId ?? selectedNode.account_id ?? '',
@@ -386,6 +387,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
       {#if detailNode}
         <MeshNodeDetail
           node={detailNode}
+          {teamName}
           mode="runtime"
           {dark}
           modelCatalog={catalog}
