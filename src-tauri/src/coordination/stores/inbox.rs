@@ -539,13 +539,20 @@ mod tests {
             )
             .unwrap();
             let message = MeshInboxMessage::new("agent", "notice".into(), None, Utc::now());
+            // Regression: ec26f4be selected unrelated failures from the shared log sink.
+            crate::coordination::journal::report_failure(
+                "other-team", "other-member", Some("foreign-delivery"),
+                &crate::coordination::errors::CoordinationError::Backend("foreign failure".into()),
+            );
             let error = MeshInboxStore::append(&root, "t", "agent", &message).unwrap_err();
             sink.flush_for_test().unwrap();
             let events = fs::read_to_string(log_path).unwrap();
             let event: Value = events
                 .lines()
                 .map(|line| serde_json::from_str::<Value>(line).unwrap())
-                .find(|v| v["event"] == "coordination.journal.accept_failed")
+                .find(|v| v["event"] == "coordination.journal.accept_failed"
+                    && v["idempotency_key"] == format!("taurhaus-daemon:{}", message.id.as_deref().unwrap())
+                    && v["recipient"] == "agent")
                 .unwrap();
             assert_eq!(event["reason"], error.to_string());
             assert_eq!(event["recipient"], "agent");
