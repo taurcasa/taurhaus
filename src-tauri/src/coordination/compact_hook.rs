@@ -130,7 +130,6 @@ struct HookMemberMatch {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CompactHookSkipReason {
-    NonCompactSessionStart,
     PostCompactSignalOnly,
     DuplicateCompatImport,
     ToolInferenceUnavailable,
@@ -143,7 +142,6 @@ enum CompactHookSkipReason {
 impl CompactHookSkipReason {
     fn as_str(self) -> &'static str {
         match self {
-            Self::NonCompactSessionStart => "non_compact_session_start",
             Self::PostCompactSignalOnly => "post_compact_signal_only",
             Self::DuplicateCompatImport => "duplicate_compat_import",
             Self::ToolInferenceUnavailable => "tool_inference_unavailable",
@@ -409,10 +407,10 @@ pub fn handle_compact_hook_stdin<R: Read>(
     stdin: R,
     teams_dir: &Path,
 ) -> Result<CompactHookResponse, CoordinationError> {
-    let mut raw = String::new();
+    let mut raw = Vec::new();
     stdin
         .take(64 * 1024 + 1)
-        .read_to_string(&mut raw)
+        .read_to_end(&mut raw)
         .map_err(|error| {
             emit_compact_hook_failed(
                 CompactHookFailureStage::ReadStdin,
@@ -426,8 +424,11 @@ pub fn handle_compact_hook_stdin<R: Read>(
             CoordinationError::Io(error)
         })?;
     if raw.len() > 64 * 1024 {
-        return Err(CoordinationError::Validation("hook input budget".into()));
+        emit_global("debug", "coordination", "delivery.hook.skipped", None,
+            json!({"reason":"hook_input_budget"}).as_object().unwrap().clone());
+        return Ok(CompactHookResponse::default());
     }
+    let raw = String::from_utf8(raw).map_err(|_| CoordinationError::Validation("invalid hook UTF-8".into()))?;
     handle_compact_hook(&raw, teams_dir)
 }
 
@@ -449,7 +450,14 @@ pub fn handle_compact_hook(
         CoordinationError::Validation(format!("invalid compact hook payload: {err}"))
     })?;
 
-    emit_compact_hook_received(&payload, raw.len());
+    if hook_event_is(&payload.hook_event_name, POST_COMPACT_HOOK_EVENT)
+        || (hook_event_is(&payload.hook_event_name, SESSION_START_HOOK_EVENT)
+            && payload.source.as_deref() == Some(COMPACT_SOURCE)) {
+        emit_compact_hook_received(&payload, raw.len());
+    } else {
+        emit_global("debug", "coordination", "delivery.hook.received", None,
+            base_compact_hook_fields(Some(&payload), None));
+    }
     let mut response = handle_compaction_decision(&payload, teams_dir)?;
     drain::append(teams_dir, &payload, &mut response);
     Ok(response)
@@ -464,7 +472,6 @@ fn handle_compaction_decision(
         && (!hook_event_is(&payload.hook_event_name, SESSION_START_HOOK_EVENT)
             || payload.source.as_deref() != Some(COMPACT_SOURCE))
     {
-        emit_compact_hook_skipped(payload, None, CompactHookSkipReason::NonCompactSessionStart);
         return Ok(CompactHookResponse::default());
     }
 
@@ -749,7 +756,10 @@ pub fn remove_compact_hook(teams_dir: &Path) -> Result<bool, CoordinationError> 
             teams_dir.display()
         )));
     };
-    ClaudeCompactionSignalSource.remove(claude_dir)
+    let exe = std::env::current_exe()?;
+    let compact_changed = ClaudeCompactionSignalSource.remove(claude_dir)?;
+    let drain_changed = drain::reconcile_home(claude_dir, CliTool::Claude, &[], &exe)?;
+    Ok(compact_changed || drain_changed)
 }
 
 pub fn ensure_codex_compact_hook_installed(taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
@@ -1033,6 +1043,7 @@ pub fn run_compact_hook_cli<R: Read, W: Write>(
         Ok(())
     })();
     // Release the final output executor before any receipt; this offer emits no more bytes.
+    // Native fd 1 is dead from here on and may be reused by child sockets. Never use stdout again.
     drop(stdout);
     if let Some(offer) = response.drain_receipt {
         offer.finish(output_result.is_ok());
@@ -3802,11 +3813,17 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
                 1,
                 "{mode}"
             );
+            // Regression: c408b68a sent null offer IDs, which Mesh always refuses.
+            let has_id = !matches!(mode, "invalid" | "oversized");
             assert_eq!(
                 calls.iter().filter(|c| c["argv"][7] == "receipt").count(),
-                1,
+                usize::from(has_id),
                 "{mode}"
             );
+            if !has_id {
+                assert!(!context.contains("fixture marker"));
+                continue;
+            }
             let receipt = &calls.last().unwrap()["stdin"];
             let offered = matches!(mode, "ok" | "receipt-failure" | "stderr");
             assert_eq!(
@@ -3869,6 +3886,60 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
         assert_eq!(calls.len(), 3);
         assert_eq!(calls[2]["stdin"]["stage"], "outcome_unknown");
         assert_eq!(calls[2]["stdin"]["offer_id"], "offer-1");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_foreign_hook_shapes_remain_tolerated() {
+        // Regression: 15f222bd made valid foreign hook entries fatal after compaction install.
+        let (fake, _, teams) = hook_drain_fixture();
+        let settings = fake.dir.path().join("settings.json");
+        let foreign = json!({"PreToolUse":[{"matcher":"Bash"}],"PostToolUse":"foreign"});
+        fs::write(&settings, json!({"hooks":foreign}).to_string()).unwrap();
+        ensure_compact_hook_installed(&teams, &fake.dir.path().join("mesh")).unwrap();
+        let value: Value = serde_json::from_slice(&fs::read(settings).unwrap()).unwrap();
+        for event in ["PreToolUse", "PostToolUse"] { assert_eq!(value["hooks"][event], foreign[event]); }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_old_root_removal_cleans_ordinary_registrations() {
+        // Regression: 15f222bd installed drain entries but root-switch removal only removed compaction.
+        let (fake, _, teams) = hook_drain_fixture();
+        let root = fake.dir.path();
+        let mesh = root.join("mesh");
+        fs::write(&mesh, fs::read_to_string(&mesh).unwrap().replace("codex", "claude")).unwrap();
+        let bindings = vec![(teams.clone(), "drain-team".into(), "architect".into())];
+        ensure_compact_hook_installed(&teams, &mesh).unwrap();
+        drain::reconcile_home(root, CliTool::Claude, &bindings, &mesh).unwrap();
+        assert!(remove_compact_hook(&teams).unwrap());
+        let settings = fs::read_to_string(root.join("settings.json")).unwrap();
+        assert!(!settings.contains("taurhaus-delivery-drain"));
+        assert!(!settings.contains("taurhaus-session-start-compact"));
+        assert!(!remove_compact_hook(&teams).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_drain_sequence_zero_is_valid_but_missing_sequence_is_not() {
+        // Regression: c408b68a conflated a valid sequence zero with missing sequence.
+        for (sequence, offered) in [("0", true), ("None", false)] {
+            let (fake, payload, teams) = hook_drain_fixture();
+            let mesh = fake.dir.path().join("mesh");
+            fs::write(&mesh, fs::read_to_string(&mesh).unwrap().replace("'sequence':1", &format!("'sequence':{sequence}"))).unwrap();
+            let response = handle_compact_hook(&payload.to_string(), &teams).unwrap();
+            assert_eq!(response.hook_specific_output.is_some(), offered);
+        }
+    }
+
+    #[test]
+    fn hook_drain_oversized_input_skips_without_hook_failure() {
+        // Regression: 734e93ed made ordinary prompt/tool payloads over 64 KiB fail the hook.
+        let root = tempfile::tempdir().unwrap();
+        let payload = json!({"hook_event_name":"PreToolUse","session_id":"session","tool_input":"界".repeat(65 * 1024)});
+        let mut output = Vec::new();
+        run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, root.path()).unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&output).unwrap(), json!({}));
     }
 
     #[cfg(unix)]

@@ -789,13 +789,6 @@ fn run_compact_hook_cli() -> i32 {
     0
 }
 
-#[cfg(all(test, feature = "mesh-bridged-backend"))]
-fn write_claude_compact_hook_stdout<W: io::Write>(mut stdout: W, payload: &str) -> io::Result<()> {
-    stdout.write_all(payload.as_bytes())?;
-    stdout.write_all(b"\n")?;
-    stdout.flush()
-}
-
 #[cfg(feature = "mesh-bridged-backend")]
 fn init_coordination_cli_log_sink() -> Option<crate::commands::logging::LogFileState> {
     let log_path = crate::provider::platform_paths::PlatformPaths::log_path();
@@ -817,7 +810,7 @@ fn init_coordination_cli_log_sink() -> Option<crate::commands::logging::LogFileS
 
 #[cfg(all(test, feature = "mesh-bridged-backend"))]
 mod tests {
-    use super::{init_coordination_cli_log_sink, write_claude_compact_hook_stdout};
+    use super::init_coordination_cli_log_sink;
 
     use serde_json::Value;
     use std::fs;
@@ -876,16 +869,5 @@ mod tests {
         assert_eq!(entry["component"], "coordination");
     }
 
-    #[test]
-    fn claude_compact_hook_stdout_writer_emits_only_json_payload() {
-        let mut stdout = Vec::new();
 
-        write_claude_compact_hook_stdout(&mut stdout, "{\"hookSpecificOutput\":null}")
-            .expect("stdout write should succeed");
-
-        assert_eq!(
-            String::from_utf8(stdout).expect("utf8"),
-            "{\"hookSpecificOutput\":null}\n"
-        );
-    }
 }

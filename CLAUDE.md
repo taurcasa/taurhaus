@@ -20,6 +20,7 @@ Tauri 2 + Svelte 5 + Rust backend + Tailwind v4. Same stack as MIR. Geist font f
 ## Code Standards
 
 - **Production quality from day one.** Clean foundations steer future code quality.
+- **Unsafe code exemption**: the crate denies unsafe code. Only the standalone native hook’s `compact_hook::hook_stdout` may take fd 1 once, so closing its executor sends EOF before a delivery receipt. This exemption does not authorize other unsafe blocks or later stdout use.
 - **Svelte 5 runes only**: `$state`, `$derived`, `$effect`, `$props`. No legacy stores, no legacy reactive syntax.
 - **Dark mode via `$derived` tokens**: All color switching through named `$derived` variables. Never inline ternaries for colors in the template.
 - **Tailwind v4 with `@theme` tokens**: Custom design tokens defined in `app.css`. Document any non-standard arbitrary values.

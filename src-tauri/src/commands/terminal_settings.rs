@@ -651,8 +651,9 @@ pub(crate) fn reconcile_managed_account_hooks_for_launch(
 /// The launch reconciler is the only other place that sees account-scoped
 /// homes, and a launch is exactly what never happens again once the last
 /// member using one is gone: disbanding the only team on `~/.codex-work` left
-/// the taurhaus hook in that home forever. Removal only — installing stays
-/// with the launch that knows which account it is about to use.
+/// the taurhaus hook in that home forever. Compaction reconciliation only removes;
+/// its installation stays with the launch. Ordinary delivery hooks also install
+/// from verified live-home bindings and enabled Mesh descriptors.
 pub(crate) fn reconcile_managed_account_hooks_for_roots(
     teams_roots: &[std::path::PathBuf],
     grok_enabled: bool,

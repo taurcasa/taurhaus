@@ -162,8 +162,8 @@ fn candidate(teams: &Path, payload: &CompactHookInput) -> Option<(HookMemberMatc
             .join("config.json"),
         1024 * 1024,
     )?;
-    if config["delivery_owner"] != "team"
-        || config["messaging_format"] != 2
+    if !TeamConfigStore::team_owns_delivery(&matched.teams_dir, &matched.team_name).ok()?
+        || !crate::coordination::journal::canonical(&matched.teams_dir, &matched.team_name).ok()?
         || config["team_incarnation_id"].as_str()? != launch.team_incarnation_id.as_deref()?
     {
         return None;
@@ -287,6 +287,11 @@ pub(super) fn append(teams: &Path, payload: &CompactHookInput, response: &mut Co
             return;
         }
     }
+    if offer.id.is_none() {
+        emit_global("debug", "coordination", "delivery.hook.outcome_unknown", None,
+            json!({"team":offer.team,"member":offer.member,"reason":offer.reason}).as_object().unwrap().clone());
+        return;
+    }
     response.drain_receipt = Some(offer);
 }
 
@@ -318,7 +323,7 @@ fn valid_batch(value: &Value, selection: &Value, pin: &Descriptor, prefix: &str)
     let text = value["text"].as_str().unwrap_or_default();
     let encoded = serde_json::to_string(&format!("{prefix}{text}")).expect("string serialization");
     let mut ids = std::collections::HashSet::new();
-    let mut last_sequence = 0;
+    let mut last_sequence = None;
     value["stage"] == "bridge_rendered"
         && value["offer_id"]
             .as_str()
@@ -336,9 +341,9 @@ fn valid_batch(value: &Value, selection: &Value, pin: &Descriptor, prefix: &str)
                 .is_some_and(|id| !id.is_empty() && ids.insert(format!("a:{id}")))
         })
         && items.iter().all(|item| {
-            let sequence = item["sequence"].as_u64().unwrap_or(0);
-            let ordered = sequence > last_sequence;
-            last_sequence = sequence;
+            let Some(sequence) = item["sequence"].as_u64() else { return false; };
+            let ordered = last_sequence.is_none_or(|last| sequence > last);
+            last_sequence = Some(sequence);
             ordered
                 && item["coverage"] == "full_body"
                 && item["body_bytes"].as_u64().is_some_and(|n| n <= 16 * 1024)
@@ -395,7 +400,7 @@ fn exchange(
     verb: &str,
     input: &Value,
 ) -> Exchange {
-    let input = serde_json::to_vec(input).unwrap_or_default();
+    let input = serde_json::to_vec(input).expect("JSON value serialization");
     let mut output = Vec::new();
     // Reserve room for Mesh's additive RPC routing envelope.
     let routing = json!({"root":root,"team":team,"name":member,"op":verb});
@@ -456,7 +461,8 @@ fn child_exchange(
     let mut offset = 0;
     let mut stdout_eof = false;
     let mut stderr_eof = false;
-    let mut captured_error = Vec::new();
+    let mut stdin_closed = false;
+    let mut stdin_failed = false;
     loop {
         if Instant::now() >= end {
             return Err(std::io::Error::new(
@@ -464,44 +470,42 @@ fn child_exchange(
                 "hook child deadline",
             ));
         }
-        if offset < input.len() {
+        if !stdin_closed && offset < input.len() {
             match stdin.write(&input[offset..]) {
                 Ok(0) => return Err(std::io::ErrorKind::WriteZero.into()),
                 Ok(n) => {
                     offset += n;
-                    if offset == input.len() {
-                        stdin.shutdown(std::net::Shutdown::Write)?;
-                    }
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(e) if matches!(e.kind(), std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset) => {
+                    // Capabilities may exit without reading stdin. Drain its response
+                    // before deciding; a successful document remains authoritative.
+                    stdin_closed = true;
+                    stdin_failed = true;
+                }
                 Err(e) => return Err(e),
             }
         }
-        for (pipe, bytes, eof, limit, strict) in [
-            (
-                &mut stdout,
-                &mut *output,
-                &mut stdout_eof,
-                OUTPUT_LIMIT,
-                true,
-            ),
-            (
-                &mut stderr,
-                &mut captured_error,
-                &mut stderr_eof,
-                4096,
-                false,
-            ),
+        if !stdin_closed && offset == input.len() {
+            stdin.shutdown(std::net::Shutdown::Write)?;
+            stdin_closed = true;
+        }
+        for (pipe, bytes, eof) in [
+            (&mut stdout, Some(&mut *output), &mut stdout_eof),
+            (&mut stderr, None, &mut stderr_eof),
         ] {
             // One chunk per pipe per cycle: even a flooding child cannot starve the deadline.
             let mut buffer = [0; 4096];
             match pipe.read(&mut buffer) {
                 Ok(0) => *eof = true,
                 Ok(n) => {
-                    if strict && bytes.len() + n > limit {
-                        return Err(std::io::Error::other("response_budget"));
-                    }
-                    bytes.extend_from_slice(&buffer[..n.min(limit.saturating_sub(bytes.len()))]);
+                    if let Some(bytes) = bytes {
+                        if bytes.len() + n > OUTPUT_LIMIT {
+                            return Err(std::io::Error::other("response_budget"));
+                        }
+                        bytes.extend_from_slice(&buffer[..n]);
+                    } // Stderr is drained and discarded, never logged as payload.
+
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(e) => return Err(e),
@@ -509,7 +513,7 @@ fn child_exchange(
         }
         if let Some(status) = child.0.try_wait()? {
             if stdout_eof && stderr_eof {
-                return if status.success() {
+                return if status.success() && !(stdin_failed && output.is_empty()) {
                     Ok(())
                 } else {
                     Err(std::io::Error::other("child_nonzero"))
@@ -561,58 +565,57 @@ pub fn reconcile_home(
     if settings["disableAllHooks"] != true
         && hook_executable_exists(home, &runtime_path_string(exe, runtime)?)
     {
-        {
-            for (teams, team, member) in bindings {
-                let Some(config) = read_json(&teams.join(team).join("config.json"), 1024 * 1024)
-                else {
-                    continue;
-                };
-                if config["delivery_owner"] != "team" || config["messaging_format"] != 2 {
+        for (teams, team, member) in bindings {
+            let Some(config) = read_json(&teams.join(team).join("config.json"), 1024 * 1024)
+            else {
+                continue;
+            };
+            if !TeamConfigStore::team_owns_delivery(teams, team)?
+                || !crate::coordination::journal::canonical(teams, team)? {
+                continue;
+            }
+            if !config["members"].as_array().is_some_and(|members| {
+                members
+                    .iter()
+                    .any(|m| m["name"] == *member && m["isActive"] != false)
+            }) {
+                continue;
+            }
+            let Some(state) = read_json(
+                &teams
+                    .join(team)
+                    .join(format!("state/delivery/adapter-{member}.json")),
+                4 * 1024 * 1024,
+            ) else {
+                continue;
+            };
+            if state["mode"] != "hook" {
+                continue;
+            }
+            let Some(root) = teams.parent() else {
+                continue;
+            };
+            let Some(pins) = descriptors(&mesh, root, team, member) else {
+                return Ok(false);
+            };
+            for pin in pins {
+                if pin.harness != tool.to_string() || pin.source == COMPACT_SOURCE {
                     continue;
                 }
-                if !config["members"].as_array().is_some_and(|members| {
-                    members
-                        .iter()
-                        .any(|m| m["name"] == *member && m["isActive"] != false)
-                }) {
+                // The ordinary SessionStart descriptor has an exact source matcher;
+                // prose from a disabled discovery descriptor never becomes config.
+                if pin.event == SESSION_START_HOOK_EVENT && pin.matcher != pin.source {
                     continue;
                 }
-                let Some(state) = read_json(
-                    &teams
-                        .join(team)
-                        .join(format!("state/delivery/adapter-{member}.json")),
-                    4 * 1024 * 1024,
-                ) else {
-                    continue;
-                };
-                if state["mode"] != "hook" {
-                    continue;
-                }
-                let Some(root) = teams.parent() else {
-                    continue;
-                };
-                let Some(pins) = descriptors(&mesh, root, team, member) else {
-                    return Ok(false);
-                };
-                for pin in pins {
-                    if pin.harness != tool.to_string() || pin.source == COMPACT_SOURCE {
-                        continue;
-                    }
-                    // The ordinary SessionStart descriptor has an exact source matcher;
-                    // prose from a disabled discovery descriptor never becomes config.
-                    if pin.event == SESSION_START_HOOK_EVENT && pin.matcher != pin.source {
-                        continue;
-                    }
-                    use sha2::{Digest, Sha256};
-                    let key = hex::encode(Sha256::digest(root.to_string_lossy().as_bytes()));
-                    desired.insert(
-                        (key, pin.event.clone(), pin.matcher.clone()),
-                        (root.to_path_buf(), pin),
-                    );
-                }
+                use sha2::{Digest, Sha256};
+                let key = hex::encode(Sha256::digest(root.to_string_lossy().as_bytes()));
+                desired.insert(
+                    (key, pin.event.clone(), pin.matcher.clone()),
+                    (root.to_path_buf(), pin),
+                );
             }
         }
-    }
+}
     let owned = |hook: &Value| {
         let Some(command) = hook["command"].as_str() else {
             return false;
@@ -661,16 +664,9 @@ pub fn reconcile_home(
         .ok_or_else(|| CoordinationError::Validation("hook events object required".into()))?;
     let mut old_scripts = Vec::new();
     for entries in hooks.values_mut() {
-        let entries = entries
-            .as_array_mut()
-            .ok_or_else(|| CoordinationError::Validation("hook entries array required".into()))?;
+        let Some(entries) = entries.as_array_mut() else { continue; };
         for entry in entries.iter_mut() {
-            let commands = entry
-                .get_mut("hooks")
-                .and_then(Value::as_array_mut)
-                .ok_or_else(|| {
-                    CoordinationError::Validation("hook commands array required".into())
-                })?;
+            let Some(commands) = entry.get_mut("hooks").and_then(Value::as_array_mut) else { continue; };
             commands.retain(|hook| {
                 if owned(hook) {
                     old_scripts.push(hook["command"].clone());
@@ -702,14 +698,11 @@ pub fn reconcile_home(
             &command,
             (tool == CliTool::Codex).then_some(pin.max_chars as u64),
         );
-        hooks
-            .entry(event)
-            .or_insert_with(|| json!([]))
-            .as_array_mut()
-            .expect("validated entries")
-            .push(json!({"matcher":matcher,"hooks":[hook]}));
+        let Some(entries) = hooks.entry(event).or_insert_with(|| json!([])).as_array_mut() else { continue; };
+        entries.push(json!({"matcher":matcher,"hooks":[hook]}));
         scripts.push((script, root));
     }
+    if hooks.is_empty() { settings.as_object_mut().expect("settings object").remove("hooks"); }
     // Validate everything before mutation, install every target before config teardown.
     let mut changed = false;
     for (script, root) in &scripts {

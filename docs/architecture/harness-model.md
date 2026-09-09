@@ -150,6 +150,11 @@ descriptor-only for drains. Stop continuation is unsupported. Production pins st
 disabled pending separately commissioned, scoped harness uptake; see
 [the bridge telemetry contract](../operations/telemetry-contracts.md#native-hook-bridge--software-conformance-only).
 
+Drain reconciliation stands down when native Mesh or capability evidence is unavailable,
+including the Windows app, preserving WSL-daemon-owned registrations. Runtime
+`contextGeneration` string publication requires daemon protocol 26 so older apps
+cannot accept an incompatible persisted runtime record.
+
 ## How changes are made
 
 Each change is a small PR with red-first regression tests naming the breaking commit, implemented by one model family and reviewed by the other (Opus ↔ Codex) through two lenses — conformance to the spec, and an operational checklist (upgrade of persisted data, protocol bumps on wire vocabulary, Windows/WSL paths, user-config edit discipline, concurrency, honest tests, hygiene) — with the fix → re-review loop repeated until no majors remain. Implementers commit after every green step and never edit the ledger; the orchestrator writes the spec (reviewed by the other family first when it edits user config or persisted formats), fills the ledger at merge, and merges only on the check's conclusion. Each new CLI starts with two independent research reports (`docs/design/research/`), verified live on a host that has it; the plans' facts tables cite them.
