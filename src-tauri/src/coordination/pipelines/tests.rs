@@ -8648,6 +8648,40 @@ fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn hosted_teardown_reports_already_closed_pane() {
+    // Regression: efb1ddb8 reported a successful pane kill even when the TUI was absent.
+    let tmp = TempDir::new().unwrap();
+    let registry = crate::coordination::hosted::tests::seat(tmp.path());
+    let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+    orchestrator
+        .hosted
+        .launch(&registry, "team", "seat", &launch)
+        .unwrap();
+    orchestrator
+        .hosted
+        .attach_pane(&registry, "team", "seat", runtime.as_ref(), "new_window")
+        .unwrap();
+    let record = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    runtime.set_pane_exists(record.pane_id.as_deref().unwrap(), false);
+    let result = orchestrator.teardown_member_resources_best_effort(
+        "team",
+        "seat",
+        Some(tmp.path()),
+        Some(&record),
+    );
+    assert!(result.steps.iter().any(|step| step.step == "kill_pane"
+        && step.success
+        && step.message.as_deref() == Some("attached TUI already closed")));
+    assert!(!runtime
+        .calls()
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::KillPane { .. })));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
     // Regression: fa18910c made hosted-to-pane rollback permanently refuse.
     let tmp = TempDir::new().unwrap();
@@ -8660,7 +8694,13 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
         .hosted
         .launch(&registry, "team", "seat", &launch)
         .unwrap();
+    // Regression: efb1ddb8 retained the attached TUI identity into plain-pane rollback.
+    orchestrator
+        .hosted
+        .attach_pane(&registry, "team", "seat", runtime.as_ref(), "new_window")
+        .unwrap();
     let before = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    runtime.set_pane_shell(before.pane_id.as_deref().unwrap(), false);
     orchestrator.hosted.stop(&registry, "team", "seat").unwrap();
     let mut config = TeamConfigStore::load(tmp.path(), "team").unwrap();
     config.members[0].extra.remove("adapter_mode");
@@ -8669,7 +8709,7 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
         serde_json::to_vec(&config).unwrap(),
     )
     .unwrap();
-    runtime.set_detected_runtime_session("test-pane-1", CliTool::Codex, Some("owned-thread"), None);
+    runtime.set_detected_runtime_session("test-pane-2", CliTool::Codex, Some("owned-thread"), None);
     let mut commands = CliCommandSettings::default();
     let command = format!(
         "CODEX_HOME='{}' '{}' --sandbox read-only --ask-for-approval never",
@@ -8691,7 +8731,10 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
         .resume_member_with_cli_commands_and_layout(&request, &commands, "new_window")
         .unwrap();
     assert!(report.resumed, "{}", report.message);
-    assert_eq!(report.pane_id.as_deref(), Some("test-pane-1"));
+    assert_eq!(report.pane_id.as_deref(), Some("test-pane-2"));
+    assert_ne!(report.pane_id, before.pane_id);
+    assert!(runtime.calls().iter().all(|c| !matches!(c,
+        RuntimeCall::SendKeys { pane_id, keys, .. } if Some(pane_id) == before.pane_id.as_ref() && !keys.contains("--remote"))));
     let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
     assert_eq!(before.session_id, after.session_id);
     assert!(after.app_server.is_none());

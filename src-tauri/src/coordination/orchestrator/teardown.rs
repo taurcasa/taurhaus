@@ -132,13 +132,15 @@ impl CoordinationOrchestrator {
                                         ));
                                     }
                                     self.runtime.kill_aitx_pane(pane)?;
+                                    return Ok(true);
                                 }
-                                Ok(())
+                                Ok(false)
                             },
                         )
                     });
                     diagnostics.steps.push(match result {
-                        Ok(()) => step_succeeded("kill_pane", "attached TUI closed"),
+                        Ok(true) => step_succeeded("kill_pane", "attached TUI closed"),
+                        Ok(false) => step_succeeded("kill_pane", "attached TUI already closed"),
                         Err(error) => step_failed("kill_pane", error.to_string()),
                     });
                 }

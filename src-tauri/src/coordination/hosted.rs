@@ -469,6 +469,13 @@ impl HostedMembers {
                 "abandonedAt":r.host_input_abandoned_at}),
             );
             r.app_server = None;
+            // Never type a plain launch into a retained remote TUI. The host is
+            // already stopped; rollback must resolve a fresh operator pane.
+            r.pane_id = None;
+            r.pane_pid = None;
+            r.pane_start_time = None;
+            r.tmux_socket = None;
+            r.tmux_session_id = None;
             r.health = HealthState::SessionDead;
         })
         .map(|_| ())

@@ -183,7 +183,7 @@ impl WebSocket {
                             return Err("invalid close frame".into());
                         }
                     }
-                    self.send(8, &payload, guard)?;
+                    let _ = self.send(8, &payload, guard);
                     return Err("host WebSocket closed".into());
                 }
                 9 => {
@@ -260,4 +260,23 @@ fn sha1(input: &[u8]) -> [u8; 20] {
         bytes.copy_from_slice(&value.to_be_bytes());
     }
     digest
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn close_error_survives_failed_echo() {
+        // Regression: c754d470 propagated a failed close echo as an ambiguous write.
+        let tmp = tempfile::tempdir().unwrap();
+        let guard =
+            HostOperationLock::acquire(tmp.path(), "team", "seat", std::time::Duration::ZERO)
+                .unwrap();
+        let (client, mut server) = UnixStream::pair().unwrap();
+        server.write_all(&[0x88, 2, 0x03, 0xe8]).unwrap();
+        server.shutdown(std::net::Shutdown::Both).unwrap();
+        let mut socket = WebSocket(BufReader::new(client));
+        assert_eq!(socket.read(&guard).unwrap_err(), "host WebSocket closed");
+    }
 }
