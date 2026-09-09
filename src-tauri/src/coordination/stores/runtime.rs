@@ -33,13 +33,15 @@ const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
 /// Runtime record persisted at `teams/<team>/runtime/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberRuntimeRecord {
+    #[serde(default, rename = "appServer", alias = "app_server", skip_serializing_if = "Option::is_none")]
+    pub app_server: Option<AppServerAttachment>,
     #[serde(
         default,
         rename = "attachmentGeneration",
         alias = "attachment_generation"
     )]
     pub attachment_generation: u64,
-    #[serde(default, rename = "contextGeneration", alias = "context_generation")]
+    #[serde(default, rename = "contextGeneration", alias = "context_generation", with = "context_generation_wire")]
     pub context_generation: u64,
     #[serde(default, rename = "tmuxSocket", alias = "tmux_socket")]
     pub tmux_socket: Option<PathBuf>,
@@ -62,7 +64,7 @@ pub struct MemberRuntimeRecord {
     pub recovery: crate::coordination::recovery_card::RecoveryState,
     #[serde(default = "schema_version_one")]
     pub schema_version: u32,
-    #[serde(default)]
+    #[serde(default, rename = "memberName", alias = "member_name")]
     pub member_name: String,
     pub cli_tool: Option<CliTool>,
     pub project_path: Option<PathBuf>,
@@ -117,6 +119,41 @@ pub struct MemberRuntimeRecord {
     pub extra: BTreeMap<String, Value>,
 }
 
+/// Owned native attachment. Legacy pane slots stay empty; this is never a tmux address.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppServerAttachment {
+    pub contract: u32,
+    pub socket_path: PathBuf,
+    pub thread_id: String,
+    pub member_id: String,
+    pub account_root: PathBuf,
+    pub process_id: u32,
+    pub process_start: String,
+    pub host_generation: String,
+    pub build: String,
+    pub host: String,
+    pub configuration: String,
+    pub trust: String,
+    pub transport: String,
+    pub state: String,
+}
+
+// Keep the existing compaction counter and legacy-reader compatibility. Only
+// its wire encoding changes to runtime-exclusion v1.1's opaque string slot.
+mod context_generation_wire {
+    use serde::{Deserialize, Deserializer, Serializer};
+    pub fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&value.to_string())
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+        match serde_json::Value::deserialize(deserializer)? {
+            serde_json::Value::String(s) => s.parse().map_err(serde::de::Error::custom),
+            value => value.as_u64().ok_or_else(|| serde::de::Error::custom("invalid context generation")),
+        }
+    }
+}
+
 /// Registry-resolved launch authority, including relocation cycles.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -148,6 +185,7 @@ mod start_ticks {
 impl Default for MemberRuntimeRecord {
     fn default() -> Self {
         Self {
+            app_server: None,
             attachment_generation: 0,
             context_generation: 0,
             tmux_socket: None,
@@ -277,6 +315,9 @@ impl MemberRuntimeSnapshot {
         };
 
         let mut changed = Vec::new();
+        if self.baseline.app_server != current.app_server {
+            changed.push("appServer");
+        }
         if self.baseline.pane_id != current.pane_id {
             changed.push("pane_id");
         }
@@ -863,13 +904,15 @@ fn parse_runtime_record(
 ) -> Result<MemberRuntimeRecord, CoordinationError> {
     #[derive(Debug, Deserialize)]
     struct RuntimeRecordWire {
+        #[serde(default, rename = "appServer", alias = "app_server")]
+        app_server: Option<AppServerAttachment>,
         #[serde(
             default,
             rename = "attachmentGeneration",
             alias = "attachment_generation"
         )]
         attachment_generation: u64,
-        #[serde(default, rename = "contextGeneration", alias = "context_generation")]
+        #[serde(default, rename = "contextGeneration", alias = "context_generation", with = "context_generation_wire")]
         context_generation: u64,
         #[serde(default, rename = "tmuxSocket", alias = "tmux_socket")]
         tmux_socket: Option<PathBuf>,
@@ -892,7 +935,7 @@ fn parse_runtime_record(
         recovery: crate::coordination::recovery_card::RecoveryState,
         #[serde(default = "schema_version_one")]
         schema_version: u32,
-        #[serde(default)]
+        #[serde(default, alias = "memberName")]
         member_name: Option<String>,
         #[serde(default, alias = "cliTool")]
         cli_tool: Option<CliTool>,
@@ -948,6 +991,7 @@ fn parse_runtime_record(
     })?;
 
     Ok(MemberRuntimeRecord {
+        app_server: wire.app_server,
         attachment_generation: wire
             .attachment_generation
             .max(legacy_generation(raw, "activation_generation")),
@@ -1021,6 +1065,7 @@ fn merge_current_extension_fields(
             record.daemon_pid = latest.daemon_pid;
         }
         if preserve_applied_effort || latest.attachment_generation > record.attachment_generation {
+            record.app_server = latest.app_server;
             record.attachment_generation = latest.attachment_generation;
             record.context_generation = latest.context_generation;
             record.tmux_socket = latest.tmux_socket;
@@ -1091,6 +1136,8 @@ fn merge_current_extension_fields(
 // flattened fields in camelCase. The snake_case spellings remain listed
 // as read aliases for runtime records written before that contract settled.
 const RUNTIME_AUTHORED_KEYS: &[&str] = &[
+    "appServer",
+    "app_server",
     "recovery",
     "attachment_generation",
     "attachmentGeneration",
@@ -1490,6 +1537,36 @@ mod tests {
     }
 
     #[test]
+    fn hosted_attachment_contract_and_stale_snapshot() {
+        let tmp = TempDir::new().unwrap();
+        let mut record = sample_record("seat");
+        record.reserve_activation("host-one");
+        record.context_generation = 2;
+        let mut wire = serde_json::to_value(&record).unwrap();
+        wire["appServer"] = serde_json::json!({
+            "contract": 1, "socketPath": tmp.path().join("host.sock"),
+            "threadId": "owned-thread", "memberId": "seat-incarnation",
+            "accountRoot": tmp.path().join("account"), "processId": 123,
+            "processStart": "456", "hostGeneration": "host-one",
+            "build": "fake", "host": "test", "configuration": "policy",
+            "trust": "test", "transport": "unix_ndjson", "state": "ready"
+        });
+        let record: MemberRuntimeRecord = serde_json::from_value(wire).unwrap();
+        MemberRuntimeStore::save(tmp.path(), "team", "seat", &record).unwrap();
+        let before = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+        let snapshot = MemberRuntimeSnapshot::capture(&before);
+        let mut next = serde_json::to_value(&before).unwrap();
+        next["appServer"]["state"] = "stopped".into();
+        let next: MemberRuntimeRecord = serde_json::from_value(next).unwrap();
+        assert!(snapshot.changed_fields(Some(&next)).contains(&"appServer"));
+        let disk = serde_json::to_value(&before).unwrap();
+        // Regression: 50a07ab6 published a numeric context generation although
+        // runtime-exclusion v1.1 pins a string for the native attachment reader.
+        assert_eq!(disk["contextGeneration"], "2");
+        assert_eq!(disk["memberName"], "seat");
+    }
+
+    #[test]
     fn legacy_liveness_save_does_not_certify_attachment() {
         // Regression: 80a83d08 stamped terminalContract on every save,
         // letting pre-contract attachments pass mesh's opt-in gate.
@@ -1527,7 +1604,7 @@ mod tests {
         let path = runtime_record_path(root, "team", "seat");
         let mut disk: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(disk["attachmentGeneration"], 1);
-        assert_eq!(disk["contextGeneration"], 0);
+        assert_eq!(disk["contextGeneration"], "0");
         assert_eq!(disk["paneStartTime"], "1755000000");
         for key in [
             "tmuxSocket",
@@ -1547,7 +1624,7 @@ mod tests {
         disk["panePid"] = 999.into();
         disk["paneStartTime"] = "99999".into();
         disk["tmuxSessionId"] = "$9".into();
-        disk["contextGeneration"] = 3.into();
+        disk["contextGeneration"] = "3".into();
         disk["harness"] = "grok".into();
         disk["launchRoot"] = serde_json::json!({"claudeDir": root, "teamsDir": root.join("teams"), "teamIncarnationId": "incarnation", "rootAuthorityRevision": 4});
         disk["activitySnapshotPath"] = root
