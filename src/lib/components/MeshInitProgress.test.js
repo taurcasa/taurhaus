@@ -38,6 +38,18 @@ describe('MeshInitProgress', () => {
     })
   })
 
+  it('shows canonical delivery opt-in in launch order before onboarding', async () => {
+    const pending = deferred()
+    coordinationInitializeTeam.mockReturnValueOnce(pending.promise)
+    render(MeshInitProgress, { props: { request: { teamName: 'trial', messaging: { mode: 'canonical', retentionPolicy: {} } } } })
+    await waitFor(() => expect(screen.getByTestId('mesh-init-step-opt_in_delivery')).toHaveTextContent('Enabling team delivery'))
+    const launch = screen.getByTestId('mesh-init-step-launch_sessions')
+    const optIn = screen.getByTestId('mesh-init-step-opt_in_delivery')
+    const onboarding = screen.getByTestId('mesh-init-step-send_onboarding')
+    expect(launch.compareDocumentPosition(optIn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(optIn.compareDocumentPosition(onboarding) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('renders pending steps initially', async () => {
     const pending = deferred()
     coordinationInitializeTeam.mockReturnValueOnce(pending.promise)

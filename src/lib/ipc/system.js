@@ -406,6 +406,7 @@ function normalizeMeshInstallStatus(raw) {
 
   const normalized = {
     ...status,
+    canonical_messaging_supported: status.canonical_messaging_supported ?? status.canonicalMessagingSupported ?? false,
     installed: Boolean(status.installed),
     version: status.version ?? null,
     bundled_version: status.bundled_version ?? status.bundledVersion ?? '',
@@ -439,6 +440,7 @@ function normalizeMeshInstallStatus(raw) {
       status.environment_available ?? status.environmentAvailable ?? true,
     error: status.error ?? null,
   }
+  delete normalized.canonicalMessagingSupported
   delete normalized.bundledVersion
   delete normalized.needsUpdate
   delete normalized.bundledContract

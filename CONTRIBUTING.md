@@ -208,6 +208,8 @@ When a Taurhaus change depends on a mesh source change, keep the embedded build 
 6. Run `just install-mesh`, then restart running member daemons so the development host uses the lock-matching binary.
 7. Commit `src-tauri/resources/mesh.lock.json`, `mesh.manifest.json`, and `mesh.version` with the Taurhaus change. Use the normal Taurhaus release recipes afterward.
 
+Canonical creation and delivery ownership first ship in Mesh 0.3.0. The backend reports `canonicalMessagingSupported` from the installed contract when present, otherwise the bundled contract, using a numeric version gate (>= 0.3.0; unparseable versions are unsupported). The frontend consumes that status; no frontend hash edits or lock-import refresh are needed after a Mesh update. Supported builders default canonical messaging on; untick it to create a legacy team.
+
 If the mesh repository has no configured remote, stop after the local commit; do not invent a push target.
 
 ### Commit Messages

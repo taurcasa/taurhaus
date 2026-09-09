@@ -96,6 +96,7 @@ fn wave2_review_initialize_checks_names_before_seat_configuration() {
         let mut orchestrator =
             new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
         let request = InitializeTeamRequest {
+            messaging: None,
             team_name: "invalid-team".into(),
             team_description: None,
             lead: setup_config("lead", "claude", "opus", tmp.path().to_str().unwrap()),
@@ -140,6 +141,7 @@ fn wave2_member_validation_rejects_invalid_create_add_and_resume_before_launch()
             }
         }
         let request = InitializeTeamRequest {
+            messaging: None,
             team_name: "invalid-team".to_string(),
             team_description: None,
             lead: setup_config("lead", "claude", "opus", project),
@@ -1283,6 +1285,7 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
     let initialize_report = initialize_orchestrator
         .initialize_team_with_cli_commands_and_layout(
             &InitializeTeamRequest {
+                messaging: None,
                 team_name: "initialize-team".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
@@ -1474,6 +1477,7 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
     let initialize_claude_report = initialize_orchestrator
         .initialize_team_with_cli_commands_and_layout(
             &InitializeTeamRequest {
+                messaging: None,
                 team_name: "initialize-claude".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
@@ -1550,6 +1554,7 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
     let initialize_sidecar_report = initialize_sidecar_orchestrator
         .initialize_team_with_cli_commands_and_layout(
             &InitializeTeamRequest {
+                messaging: None,
                 team_name: "initialize-sidecar".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
@@ -1805,6 +1810,7 @@ fn shared_stage_onboarding_and_runtime_commit_policies_assert_wrapper_difference
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
 
     let initialize_request = InitializeTeamRequest {
+        messaging: None,
         team_name: "initialize-team".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -2738,6 +2744,7 @@ fn initialized_member_persists_the_opaque_base_account_note() {
     let report = orchestrator
         .initialize_team_with_cli_commands_and_layout(
             &InitializeTeamRequest {
+                messaging: None,
                 team_name: "opaque-runtime-team".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
@@ -3228,6 +3235,7 @@ fn initialize_pipeline_claude_template_agent_receives_role_context_message() {
     claude_agent.capabilities = Some(vec!["analysis".to_string(), "research".to_string()]);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3289,6 +3297,7 @@ fn initialize_pipeline_claude_agent_without_role_context_receives_unassigned_car
     let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3336,6 +3345,7 @@ fn initialize_onboarding_entries_use_deferred_barrier_policy() {
     let orchestrator = new_orchestrator(&tmp, backend, runtime);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3377,6 +3387,7 @@ fn initialize_onboarding_waits_for_member_activation_barrier() {
         CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3445,6 +3456,7 @@ fn initialize_pipeline_persists_codex_agent_session_id() {
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3496,6 +3508,7 @@ fn initialize_pipeline_per_project_layout_reuses_anchor_pane() {
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3587,6 +3600,7 @@ fn initialize_pipeline_retries_transient_send_keys_failure_for_codex_agent() {
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3643,6 +3657,7 @@ fn initialize_pipeline_reports_pane_diagnostics_after_send_keys_retries_exhaust(
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3691,6 +3706,7 @@ fn initialize_pipeline_persists_claude_agent_session_id() {
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -3742,6 +3758,7 @@ fn initialize_pipeline_seeds_full_roster_before_reload_dependent_steps() {
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: Some("Review pipeline".to_string()),
         lead_mode: LeadMode::LaunchNew,
@@ -3813,6 +3830,7 @@ fn initialize_pipeline_progress_callback_preserves_batch_step_order() {
     let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
 
     let request = InitializeTeamRequest {
+        messaging: None,
         team_name: "architecture-final".to_string(),
         team_description: None,
         lead_mode: LeadMode::LaunchNew,
@@ -4338,6 +4356,7 @@ fn claude_lead_join_failure_is_nonfatal_after_activation_commit() {
     let initialize_report = initialize_orchestrator
         .initialize_team_with_cli_commands_and_layout(
             &InitializeTeamRequest {
+                messaging: None,
                 team_name: "lead-join-initialize".to_string(),
                 team_description: None,
                 lead_mode: LeadMode::LaunchNew,
@@ -8464,6 +8483,7 @@ fn terminal_effort_marks_dead_before_wait_and_retries_without_spending_budget() 
 
 #[test]
 fn reinitialize_resets_attachment_without_rewinding_generation() {
+    // Regression: b643834d required an existing config even on the legacy path.
     // Regression: 80a83d08 merged a fresh seed behind the on-disk generation,
     // silently retaining its old healthy pane throughout reinitialization.
     let tmp = TempDir::new().unwrap();
@@ -8491,7 +8511,7 @@ fn reinitialize_resets_attachment_without_rewinding_generation() {
     )
     .unwrap();
     orchestrator
-        .seed_initialize_roster("team", None, lead, &[])
+        .seed_initialize_roster("team", None, lead, &[], false)
         .unwrap();
     let record = MemberRuntimeStore::load(tmp.path(), "team", "lead").unwrap();
     assert_eq!(record.health, HealthState::SessionDead);
@@ -8745,4 +8765,421 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
         taurhaus_lib::platform::process_start_ticks(before.app_server.unwrap().process_id)
             .is_none()
     );
+}
+
+// Regression: 50a07ab6 (#151) added team-owned runtime exclusion, but initialize still
+// created legacy teams and could not activate the canonical delivery owner.
+#[test]
+fn canonical_initialize_adopts_mesh_config_and_launches_before_delivery() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator =
+        new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+    let project = tmp.path().to_str().unwrap();
+    let request: InitializeTeamRequest = serde_json::from_value(serde_json::json!({
+        "team_name": "canonical", "team_description": "Disposable trial",
+        "lead_mode": "launch_new",
+        "lead": setup_config("lead", "codex", "gpt-6-astra", project),
+        "agents": [setup_config("builder", "codex", "gpt-6-astra", project)],
+        "messaging": {"mode": "canonical", "retentionPolicy": {"synthetic_disposable": true}}
+    }))
+    .unwrap();
+    let report = orchestrator.initialize_team(&request).unwrap();
+    assert!(report.failed_step.is_none(), "{report:?}");
+    let config = TeamConfigStore::load(tmp.path(), "canonical").unwrap();
+    assert_eq!(
+        config.extra.get("messaging_format"),
+        Some(&serde_json::json!(2))
+    );
+    assert_eq!(config.members.len(), 2);
+    assert_eq!(
+        config.members.iter().filter(|m| m.name == "lead").count(),
+        1
+    );
+    assert!(!runtime.calls().iter().any(|c| matches!(
+        c,
+        RuntimeCall::SpawnDaemon { .. } | RuntimeCall::SpawnDaemonAtRoot { .. }
+    )));
+    let launch = report
+        .succeeded_steps
+        .iter()
+        .position(|s| s == "launch_sessions")
+        .unwrap();
+    let opt_in = report
+        .succeeded_steps
+        .iter()
+        .position(|s| s == "opt_in_delivery")
+        .unwrap();
+    let calls = runtime.calls();
+    let RuntimeCall::CreateCanonicalTeam { args } = &calls[0] else {
+        panic!("{calls:?}")
+    };
+    let policy_path = Path::new(&args[5]);
+    assert_eq!(policy_path.parent(), Some(tmp.path()));
+    assert!(policy_path
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .starts_with(".canonical-policy-"));
+    assert!(!policy_path.exists());
+    let root = tmp.path().parent().unwrap().to_str().unwrap();
+    assert_eq!(
+        args,
+        &vec![
+            "team",
+            "create",
+            "--messaging-canonical",
+            "--isolated",
+            "--retention-policy",
+            policy_path.to_str().unwrap(),
+            "--claude-dir",
+            root,
+            "--team",
+            "canonical",
+            "--name",
+            "lead"
+        ]
+    );
+    let delivery = calls
+        .iter()
+        .position(|call| matches!(call, RuntimeCall::OptInTeamDelivery { .. }))
+        .unwrap();
+    let daemon = calls
+        .iter()
+        .position(|call| matches!(call, RuntimeCall::SpawnTeamDaemon { .. }))
+        .unwrap();
+    assert!(delivery < daemon);
+    assert!(
+        calls[..delivery]
+            .iter()
+            .filter(|call| matches!(call, RuntimeCall::DetectSessionId { .. }))
+            .count()
+            >= 2
+    );
+    assert_eq!(
+        calls[delivery],
+        RuntimeCall::OptInTeamDelivery {
+            args: vec![
+                "team",
+                "delivery",
+                "--owner",
+                "team",
+                "--claude-dir",
+                root,
+                "--team",
+                "canonical",
+                "--name",
+                "lead"
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
+        }
+    );
+    let lead = config.members.iter().find(|m| m.name == "lead").unwrap();
+    assert_eq!(lead.role, MemberRole::Lead);
+    assert_eq!(lead.cli_tool, CliTool::Codex);
+    assert_eq!(lead.model.as_deref(), Some("gpt-6-astra"));
+    assert_eq!(lead.project_path, tmp.path());
+    assert_eq!(lead.extra["controlAuthTokenHash"], "recording-only-hash");
+    assert_eq!(
+        config.team_incarnation_id.as_deref(),
+        Some("recorded-incarnation")
+    );
+    assert_eq!(config.extra["minimum_writer"], "mesh-journal/2");
+    assert_eq!(config.extra["delivery_owner"], "team");
+    assert_eq!(
+        config.extra["messaging_policy"],
+        serde_json::json!({"synthetic_disposable": true})
+    );
+    for name in ["lead", "builder"] {
+        assert_eq!(
+            MemberRuntimeStore::load(tmp.path(), "canonical", name)
+                .unwrap()
+                .terminal_contract,
+            1
+        );
+    }
+    assert!(launch < opt_in);
+}
+
+#[test]
+fn canonical_initialize_refusals_preserve_unowned_or_retryable_teams() {
+    for creation_failure in [true, false] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator =
+            new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+        let project = tmp.path().to_str().unwrap();
+        let mut request: InitializeTeamRequest = serde_json::from_value(serde_json::json!({
+            "team_name": "canonical", "team_description": "Disposable trial",
+            "lead_mode": "launch_new",
+            "lead": setup_config("lead", "codex", "gpt-6-astra", project),
+            "agents": [setup_config("builder", "codex", "gpt-6-astra", project)],
+            "messaging": {"mode": "canonical", "retentionPolicy": {"synthetic_disposable": true}}
+        }))
+        .unwrap();
+
+        if creation_failure {
+            runtime.set_canonical_create_failure(Some("mesh: policy refused"));
+        } else {
+            runtime.set_delivery_opt_in_failure(Some(
+                "mesh: OLD executor lead: terminalContract: 1 required",
+            ));
+        }
+        let report = orchestrator.initialize_team(&request).unwrap();
+        assert_eq!(
+            report.failed_step.as_deref(),
+            Some(if creation_failure {
+                "create_team"
+            } else {
+                "opt_in_delivery"
+            })
+        );
+        assert!(report.retryable);
+        assert!(
+            report.message.contains(if creation_failure {
+                "mesh: policy refused"
+            } else {
+                "mesh: OLD executor lead"
+            }),
+            "{report:?}"
+        );
+        // The fake publishes a team before refusing, modeling another creator.
+        // Only a successful Mesh create transfers cleanup ownership to Taurhaus.
+        assert!(tmp.path().join("canonical/config.json").exists());
+        assert!(!runtime
+            .calls()
+            .iter()
+            .any(|c| matches!(c, RuntimeCall::SpawnTeamDaemon { .. })));
+        assert!(!fs::read_dir(tmp.path()).unwrap().any(|entry| entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".canonical-policy-")));
+        // An absent field follows the original path (covered by the unchanged
+        // batch-order and launch goldens). A conflict must never delete it.
+        if !creation_failure {
+            request.messaging = None;
+            let original = fs::read(tmp.path().join("canonical/config.json")).unwrap();
+            let retry = orchestrator.initialize_team(&request).unwrap();
+            assert_eq!(retry.failed_step.as_deref(), Some("create_team"));
+            assert_eq!(
+                fs::read(tmp.path().join("canonical/config.json")).unwrap(),
+                original
+            );
+            let messaging = serde_json::from_value(serde_json::json!({"mode": "canonical", "retentionPolicy": {"synthetic_disposable": true}})).unwrap();
+            request.messaging = Some(messaging);
+            runtime.set_delivery_opt_in_failure(None);
+            let before = runtime.calls().len();
+            let retried = orchestrator.initialize_team(&request).unwrap();
+            assert!(retried.failed_step.is_none(), "{retried:?}");
+            assert!(!runtime.calls()[before..].iter().any(|c| matches!(
+                c,
+                RuntimeCall::CreateCanonicalTeam { .. }
+                    | RuntimeCall::CreatePane { .. }
+                    | RuntimeCall::SendKeys { .. }
+            )));
+            assert!(!tmp
+                .path()
+                .join(".taurhaus-initialize-pending/canonical.json")
+                .exists());
+        }
+    }
+}
+
+fn canonical_review_request(tmp: &TempDir) -> InitializeTeamRequest {
+    serde_json::from_value(serde_json::json!({
+        "team_name": "canonical", "lead_mode": "launch_new",
+        "lead": setup_config("lead", "codex", "gpt-6-astra", tmp.path().to_str().unwrap()),
+        "agents": [],
+        "messaging": {"mode": "canonical", "retentionPolicy": {"synthetic_disposable": true}}
+    }))
+    .unwrap()
+}
+
+// Regression: b643834d surfaced clap usage when the installed Mesh lacked team create.
+#[test]
+fn canonical_review_unsupported_mesh_has_actionable_error() {
+    for refusal in [
+        "error: unrecognized subcommand 'team'",
+        "error: unexpected argument '--messaging-canonical' found",
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_canonical_create_failure(Some(refusal));
+        let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+        let report = orchestrator
+            .initialize_team(&canonical_review_request(&tmp))
+            .unwrap();
+        assert_eq!(report.failed_step.as_deref(), Some("create_team"));
+        assert!(
+            report
+                .message
+                .contains("installed Mesh does not support canonical teams"),
+            "{report:?}"
+        );
+        assert!(
+            report.message.contains("disable Canonical messaging"),
+            "{report:?}"
+        );
+    }
+}
+
+// Regression: 796bba0e retained launched steps without checking stale pane identities.
+#[test]
+fn canonical_review_retry_refuses_missing_dead_reused_or_unprobeable_seats() {
+    for problem in ["missing", "dead", "reused", "probe"] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_delivery_opt_in_failure(Some("mesh: runtime pending"));
+        let mut orchestrator =
+            new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+        let request = canonical_review_request(&tmp);
+        assert_eq!(
+            orchestrator
+                .initialize_team(&request)
+                .unwrap()
+                .failed_step
+                .as_deref(),
+            Some("opt_in_delivery")
+        );
+        let record = MemberRuntimeStore::load(tmp.path(), "canonical", "lead").unwrap();
+        let pane = record.pane_id.unwrap();
+        match problem {
+            "missing" => runtime.set_pane_exists(&pane, false),
+            "dead" => runtime.set_pane_dead(&pane, true),
+            "reused" => runtime.set_pane_identity(&pane, Some(999999), Some(999999)),
+            _ => runtime.set_live_pane_failure(&pane, "probe failed"),
+        }
+        runtime.set_delivery_opt_in_failure(None);
+        let before = runtime.calls().len();
+        let report = orchestrator.initialize_team(&request).unwrap();
+        assert_eq!(
+            report.failed_step.as_deref(),
+            Some("launch_sessions"),
+            "{problem}: {report:?}"
+        );
+        assert!(
+            report.message.contains("disband and re-initialize"),
+            "{report:?}"
+        );
+        assert!(!runtime.calls()[before..].iter().any(|c| matches!(
+            c,
+            RuntimeCall::OptInTeamDelivery { .. } | RuntimeCall::SpawnTeamDaemon { .. }
+        )));
+        assert!(tmp.path().join("canonical/config.json").exists());
+    }
+}
+
+// Regression: 796bba0e placed Taurhaus retry bookkeeping inside Mesh-owned state.
+#[test]
+fn canonical_review_checkpoint_is_outside_the_team_tree() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    runtime.set_delivery_opt_in_failure(Some("mesh: runtime pending"));
+    let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+    orchestrator
+        .initialize_team(&canonical_review_request(&tmp))
+        .unwrap();
+    assert!(!tmp
+        .path()
+        .join("canonical/state/taurhaus-initialize-pending.json")
+        .exists());
+    assert!(tmp
+        .path()
+        .join(".taurhaus-initialize-pending/canonical.json")
+        .exists());
+}
+
+// Regression: 13beff81 moved retry checkpoints into a hidden teams-root directory,
+// which list() exposed as a team and startup hook reconciliation could not load.
+fn assert_canonical_checkpoint_does_not_pollute_discovery(refusal: Option<&str>) {
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    runtime.set_delivery_opt_in_failure(refusal);
+    let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+    let report = orchestrator
+        .initialize_team(&canonical_review_request(&tmp))
+        .unwrap();
+    assert_eq!(
+        report.failed_step.as_deref(),
+        refusal.map(|_| "opt_in_delivery")
+    );
+    let checkpoint_dir = tmp.path().join(".taurhaus-initialize-pending");
+    assert!(checkpoint_dir.is_dir());
+    assert_eq!(
+        checkpoint_dir.join("canonical.json").exists(),
+        refusal.is_some()
+    );
+
+    // This Codex-only roster requires no Claude hook installation: the startup
+    // scan must succeed without ever resolving or touching a real account home.
+    let hook_scan = crate::coordination::state::ensure_startup_claude_compact_hook(tmp.path());
+    assert!(matches!(hook_scan, Ok(false)), "{hook_scan:?}");
+    assert_eq!(
+        TeamConfigStore::list(tmp.path()).unwrap(),
+        vec!["canonical"]
+    );
+}
+
+#[test]
+fn canonical_review_success_checkpoint_does_not_pollute_discovery() {
+    assert_canonical_checkpoint_does_not_pollute_discovery(None);
+}
+
+#[test]
+fn canonical_review_refused_checkpoint_does_not_pollute_discovery() {
+    assert_canonical_checkpoint_does_not_pollute_discovery(Some("mesh: runtime pending"));
+}
+
+// Regression: 796bba0e propagated checkpoint unlink errors after successful launch.
+#[test]
+fn canonical_review_checkpoint_cleanup_is_best_effort() {
+    for replace_with_directory in [false, true] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+        let report = orchestrator
+            .initialize_team_with_cli_commands_and_layout_and_progress(
+                &canonical_review_request(&tmp),
+                &CliCommandSettings::default(),
+                "new_window",
+                Some(&mut |step, status, _| {
+                    if step == "send_onboarding" && status == StepStatus::Succeeded {
+                        for relative in [
+                            "canonical/state/taurhaus-initialize-pending.json",
+                            ".taurhaus-initialize-pending/canonical.json",
+                        ] {
+                            let path = tmp.path().join(relative);
+                            if path.is_file() {
+                                fs::remove_file(&path).unwrap();
+                                if replace_with_directory {
+                                    fs::create_dir(path).unwrap();
+                                }
+                            }
+                        }
+                    }
+                }),
+            )
+            .expect("bookkeeping cannot discard a successful report");
+        assert!(report.failed_step.is_none(), "{report:?}");
+    }
+}
+
+// Regression: b643834d disbanded a concurrently published team on Mesh create refusal.
+#[test]
+fn canonical_review_create_refusal_never_removes_a_concurrently_published_team() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    // This fake publishes Mesh-shaped config before refusing: a competing creator
+    // won the creation lock after Taurhaus's unlocked directory pre-check.
+    runtime.set_canonical_create_failure(Some("mesh: new canonical team required"));
+    let mut orchestrator = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+    let report = orchestrator
+        .initialize_team(&canonical_review_request(&tmp))
+        .unwrap();
+    assert_eq!(report.failed_step.as_deref(), Some("create_team"));
+    assert!(tmp.path().join("canonical/config.json").exists());
 }

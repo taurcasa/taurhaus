@@ -115,6 +115,13 @@ impl InitializeTeamService {
                             }
                             Ok((report, target_root))
                         }
+                        Ok(report) if report.failed_step.as_deref() == Some("opt_in_delivery") => {
+                            // The launched team remains retryable at its selected root.
+                            state
+                                .team_root_registry()
+                                .set(&params.request.team_name, &target_root)?;
+                            Ok((report, target_root))
+                        }
                         Ok(report) => {
                             state
                                 .team_root_registry()
@@ -457,6 +464,7 @@ mod tests {
         let builder_project = project.join("builder").display().to_string();
         CoordinationInitializeParams {
             request: InitializeTeamRequest {
+                messaging: None,
                 team_name: "daemon-init".to_string(),
                 team_description: Some("daemon pipeline test".to_string()),
                 lead_mode: LeadMode::LaunchNew,
@@ -583,6 +591,15 @@ mod tests {
 
     #[test]
     fn initialize_places_a_claude_team_in_the_selected_account_root() {
+        check_selected_initialize_root(false);
+    }
+
+    #[test]
+    fn canonical_initialize_refusal_keeps_selected_root_registered() {
+        check_selected_initialize_root(true);
+    }
+
+    fn check_selected_initialize_root(refuse_delivery: bool) {
         // Regression: 25ba6532 validated baseline roots before creation published selected-root authority.
         let temp = tempfile::TempDir::new().expect("tempdir");
         let default_teams = temp.path().join("default/teams");
@@ -620,6 +637,15 @@ mod tests {
         params.request.lead.model = "opus".to_string();
         params.request.lead.account_id = Some("claude-work".to_string());
 
+        if refuse_delivery {
+            params.request.messaging = Some(
+                serde_json::from_value(serde_json::json!({
+                    "mode": "canonical", "retentionPolicy": {"synthetic_disposable": true}
+                }))
+                .unwrap(),
+            );
+            runtime.set_delivery_opt_in_failure(Some("mesh opt-in refused"));
+        }
         let run_id = service.start(params).expect("daemon worker starts");
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
@@ -629,6 +655,12 @@ mod tests {
                     matches!(status.outcome, InitializeRunOutcome::Completed { .. }),
                     "{status:?}"
                 );
+                if let InitializeRunOutcome::Completed { report } = status.outcome {
+                    assert_eq!(
+                        report.failed_step.as_deref(),
+                        refuse_delivery.then_some("opt_in_delivery")
+                    );
+                }
                 break;
             }
             assert!(Instant::now() < deadline, "daemon initialize timed out");
@@ -648,12 +680,15 @@ mod tests {
             RuntimeCall::JoinMesh { claude_dir, .. }
                 if claude_dir == &temp.path().join("claude-work").display().to_string()
         )));
-        assert!(runtime.calls().iter().any(|call| matches!(
-            call,
-            RuntimeCall::SpawnDaemonAtRoot { member_name, claude_dir, .. }
-                if member_name == "builder"
-                    && claude_dir == &temp.path().join("claude-work").display().to_string()
-        )));
+        assert_eq!(
+            runtime.calls().iter().any(|call| matches!(
+                call,
+                RuntimeCall::SpawnDaemonAtRoot { member_name, claude_dir, .. }
+                    if member_name == "builder"
+                        && claude_dir == &temp.path().join("claude-work").display().to_string()
+            )),
+            !refuse_delivery
+        );
     }
 
     #[test]

@@ -716,6 +716,7 @@ fn every_registry_entry_launches_and_receives_an_operator_notice_through_the_flo
         );
         let report = orchestrator
             .initialize_team(&InitializeTeamRequest {
+                messaging: None,
                 team_name: team_name.clone(),
                 team_description: Some("harness conformance".to_string()),
                 lead_mode: LeadMode::LaunchNew,

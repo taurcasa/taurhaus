@@ -2,6 +2,8 @@
 
 User guide for the Mesh template system, with the correct mental model for role design.
 
+New teams default to **Canonical messaging — mesh journal + team delivery (disposable team)** when the backend reports Mesh >= 0.3.0, the first release with canonical creation and delivery ownership. This capability uses the installed contract when present, otherwise the bundled contract. Older or unparseable versions leave the toggle off and disabled with `Requires Mesh 0.3.0 (installed <version>)`. Initialization stays disabled while the tab checks Mesh capability; a failed check offers a retry. The tab retains the capability and your explicit opt-out across builder remounts. On supported versions, untick it for legacy messaging; canonical teams retain evidence in the mesh journal and require manual disposal after evidence export.
+
 ## Why Roles Matter
 
 Roles are not mainly about listing what a model can do. They exist to define a **context domain**.

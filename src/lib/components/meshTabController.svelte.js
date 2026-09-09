@@ -1,5 +1,6 @@
 import { untrack } from 'svelte'
 import {
+  checkMeshInstallStatus,
   composeTeam,
   coordinationAddAgent,
   coordinationDisbandTeam,
@@ -74,6 +75,23 @@ export function createMeshTabController({
 }) {
   const state = createMeshTabState(QUICK_PRESETS)
   const refs = createMeshTabRefs()
+  const capability = $state({ status: null, error: '', optOut: false })
+  let capabilityRefresh = $state(0)
+
+  function refreshMeshStatus() {
+    capability.status = null
+    capability.error = ''
+    capabilityRefresh += 1
+  }
+
+  $effect(() => {
+    void capabilityRefresh
+    let cancelled = false
+    checkMeshInstallStatus()
+      .then((status) => { if (!cancelled) capability.status = status })
+      .catch(() => { if (!cancelled) capability.error = 'Could not check Mesh. Try again.' })
+    return () => { cancelled = true }
+  })
 
   const gate = createMeshTabGate({
     state,
@@ -139,6 +157,8 @@ export function createMeshTabController({
     setup,
     deps: {
       buildInitializationRequest,
+      getMeshStatus: () => capability.status,
+      getCanonicalMessaging: () => capability.optOut ? false : undefined,
       createLead,
       getModelCatalog,
       getProjectPath,
@@ -274,5 +294,9 @@ export function createMeshTabController({
   $effect(() => runtime.createRuntimePollingEffect())
   $effect(() => runtime.createResumeTeamProgressEffect())
 
-  return createMeshTabPublicApi({ state, gate, setup, init, runtime })
+  return Object.assign(createMeshTabPublicApi({ state, gate, setup, init, runtime }), {
+    capability,
+    refreshMeshStatus,
+    handleCanonicalMessagingChange: (enabled) => { capability.optOut = !enabled },
+  })
 }

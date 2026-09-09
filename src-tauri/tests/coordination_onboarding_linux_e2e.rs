@@ -89,6 +89,7 @@ fn make_request(
     reviewer_project: &str,
 ) -> InitializeTeamRequest {
     InitializeTeamRequest {
+        messaging: None,
         team_name: team_name.to_string(),
         team_description: Some("linux onboarding e2e".to_string()),
         lead_mode: LeadMode::LaunchNew,

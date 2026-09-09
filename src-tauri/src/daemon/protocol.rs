@@ -49,7 +49,10 @@ use serde::{Deserialize, Serialize};
 /// v25: versioned recovery receipts and explicit force/read reonboard intents.
 /// v26: persisted runtime contextGeneration became a string; v25 apps reject it.
 /// Hosted storage shares this encoding and camelCase member identity; hosted methods are additive.
-pub const PROTOCOL_VERSION: u32 = 26;
+/// v27: a canonical `messaging` initialize request must be honored by the daemon (create through
+/// `mesh team create --messaging-canonical`, then `opt_in_delivery`); a v26 daemon would drop the
+/// field and silently create a legacy team, so the pair must be rebuilt together.
+pub const PROTOCOL_VERSION: u32 = 27;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -1528,7 +1531,7 @@ mod tests {
     fn protocol_version_is_pinned() {
         // The runtime context-generation slot changes from number to string;
         // protocol-25 readers cannot decode the corrected persistent vocabulary.
-        assert_eq!(PROTOCOL_VERSION, 26);
+        assert_eq!(PROTOCOL_VERSION, 27);
     }
 
     #[test]
@@ -1623,6 +1626,7 @@ mod tests {
     fn coordination_initialize_method_contract_roundtrips() {
         let params = CoordinationInitializeParams {
             request: crate::coordination::requests::InitializeTeamRequest {
+                messaging: None,
                 team_name: "daemon-init".to_string(),
                 team_description: Some("Runs in the daemon".to_string()),
                 lead_mode: crate::coordination::requests::LeadMode::LaunchNew,

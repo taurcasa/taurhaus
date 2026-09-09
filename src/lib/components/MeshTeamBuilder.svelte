@@ -31,7 +31,7 @@
     toolLabel,
     tools,
   } from '../toolRegistry.js'
-  import { projectNameFromPath } from './meshTabUtils.js'
+  import { canonicalMessagingSupported, projectNameFromPath } from './meshTabUtils.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import MeshNodeDetail from './MeshNodeDetail.svelte'
   import MemberAccountPicker from './MemberAccountPicker.svelte'
@@ -55,6 +55,11 @@
     mode = 'empty',
     teamName = '',
     teamConfig = null,
+    meshStatus = null,
+    meshStatusError = '',
+    canonicalOptOut = false,
+    onRetryMeshStatus = () => {},
+    onCanonicalMessagingChange = () => {},
     roleTemplates = [],
     presets = [],
     availableProjects = [],
@@ -78,6 +83,15 @@
     onReset = () => {},
     onSavePreset = () => {},
   } = $props()
+
+  const capabilityPending = $derived(meshStatus == null)
+  const canonicalAvailable = $derived(canonicalMessagingSupported(meshStatus))
+  const canonicalMessaging = $derived(canonicalAvailable && !canonicalOptOut)
+  const canonicalUnavailableReason = $derived(
+    capabilityPending
+      ? meshStatusError || 'Checking Mesh…'
+      : `Requires Mesh 0.3.0 (installed ${meshStatus?.version ?? 'unknown'})`
+  )
 
   const t = $derived(themeTokens(dark))
   const modelCatalogContext = getModelCatalogContext()
@@ -347,11 +361,13 @@
     return issues
   })
   const canInitialize = $derived(
-    Boolean(normalizedTeam?.lead) && !validationIssues.some((issue) => issue.severity === 'error')
+    !capabilityPending && Boolean(normalizedTeam?.lead) && !validationIssues.some((issue) => issue.severity === 'error')
   )
   const firstValidationIssue = $derived(validationIssues[0] ?? null)
   const initializeButtonTitle = $derived(
-    canInitialize
+    capabilityPending
+      ? canonicalUnavailableReason
+      : canInitialize
       ? 'Initialize this team'
       : firstValidationIssue?.message ?? 'Resolve the roster issues before initializing.'
   )
@@ -1177,6 +1193,7 @@
   }
 
   async function handleInitializeClick() {
+    if (capabilityPending) return
     if (memberRemovalTimers.size > 0) {
       const pendingAgentIds = [...memberRemovalTimers.keys()]
       for (const agentId of pendingAgentIds) {
@@ -1191,7 +1208,7 @@
       await tick()
     }
 
-    onInitialize()
+    onInitialize({ canonicalMessaging })
   }
 
   function toggleLeadDetails() {
@@ -2562,6 +2579,16 @@
         </div>
 
         <footer class="shrink-0 space-y-3 border-t pt-3 {dark ? 'border-white/[0.08]' : 'border-zinc-200/70'}" data-testid="mesh-action-bar">
+          <label class="flex items-start gap-2 text-xs {t.textPrimary}">
+            <input type="checkbox" disabled={!canonicalAvailable} checked={canonicalMessaging} onchange={(event) => { canonicalOptOut = !event.currentTarget.checked; onCanonicalMessagingChange(event.currentTarget.checked) }} aria-labelledby="mesh-canonical-label" aria-describedby="mesh-canonical-description" class="mt-0.5 accent-brand-600" />
+            <span>
+              <span id="mesh-canonical-label">Canonical messaging — mesh journal + team delivery (disposable team)</span>
+              <span id="mesh-canonical-description" class="mt-1 block {t.textSecondary}">{#if canonicalAvailable}Keeps messages in the mesh journal; dispose of the team after exporting evidence.{:else}{canonicalUnavailableReason}{/if}</span>
+            </span>
+          </label>
+          {#if meshStatusError}
+            <button type="button" class="text-xs underline {t.textSecondary}" onclick={onRetryMeshStatus}>Retry Mesh check</button>
+          {/if}
           <div class="w-full" title={!canInitialize ? initializeButtonTitle : undefined} data-testid="mesh-action-initialize-hint">
             <button
               class="flex h-12 w-full items-center justify-center gap-2 rounded-[18px] bg-brand-600 px-4 text-[13px] font-semibold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"

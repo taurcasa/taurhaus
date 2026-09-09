@@ -517,12 +517,36 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
   }
 }
 
+export function canonicalMessagingSupported(status) {
+  return status?.canonical_messaging_supported === true
+}
+
+// Keep this literal valid JSON: the Rust Mesh contract reads this same policy.
+export const DEFAULT_CANONICAL_POLICY = Object.freeze({
+  "capture_scope": "mesh-producers-only",
+  "synthetic_disposable": true,
+  "dm_horizon_days": 7,
+  "task_horizon_days": 30,
+  "retry_horizon_days": 30,
+  "archive_owner": "lead",
+  "archive_access": "captured-audience",
+  "closure": "manual-disposal-after-evidence-export",
+  "purge_implemented": false,
+  "canonical_writers": "mesh-only",
+  "approved_by": "taurhaus-operator",
+  "inactive_horizon_days": 14,
+  "review_horizon_days": 30
+})
+
 export function buildInitializationRequest(
   config,
   teamName,
   projectPath = '',
   catalog = EMPTY_MODEL_CATALOG
 ) {
+  const messaging = !(config?.canonicalMessaging ?? canonicalMessagingSupported(config?.meshStatus))
+    ? {}
+    : { messaging: { mode: 'canonical', retentionPolicy: DEFAULT_CANONICAL_POLICY } }
   const lead = config?.lead
   const agents = Array.isArray(config?.agents) ? config.agents : []
   const isPresetInitialization = config?.initializationMode === 'preset' && String(config?.presetId ?? '').trim()
@@ -532,6 +556,7 @@ export function buildInitializationRequest(
       teamName: teamName.trim() || inferTeamName(projectPath),
       teamDescription: String(config?.description ?? '').trim() || null,
       leadMode: 'launch_new',
+      ...messaging,
       presetId: String(config?.presetId ?? '').trim(),
       lead: {
         name: lead?.name ?? 'team-lead',
@@ -574,6 +599,7 @@ export function buildInitializationRequest(
     teamName: teamName.trim() || inferTeamName(projectPath),
     teamDescription: String(config?.description ?? '').trim() || null,
     leadMode: 'launch_new',
+    ...messaging,
     lead: {
       name: lead?.name ?? 'team-lead',
       cliTool: normalizeOptionalTool(lead?.tool),

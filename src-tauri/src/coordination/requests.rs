@@ -563,9 +563,21 @@ pub struct AgentDefinition {
     pub capabilities: Option<Vec<String>>,
 }
 
+/// Opt-in setup for a new disposable canonical team. Mesh validates the policy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum TeamMessagingSetup {
+    Canonical {
+        #[serde(rename = "retentionPolicy")]
+        retention_policy: serde_json::Map<String, serde_json::Value>,
+    },
+}
+
 /// Domain contract for full team initialization.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InitializeTeam {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messaging: Option<TeamMessagingSetup>,
     pub team_name: String,
     pub team_description: Option<String>,
     pub lead_mode: LeadMode,
@@ -947,6 +959,7 @@ mod tests {
     #[test]
     fn initialize_contract_round_trip() {
         let req = InitializeTeam {
+            messaging: None,
             team_name: "architecture-final".to_string(),
             team_description: Some("Cross-project team".to_string()),
             lead_mode: LeadMode::AttachExisting,

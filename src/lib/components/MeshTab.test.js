@@ -2333,6 +2333,45 @@ describe('MeshTab', () => {
     expect(screen.queryByTestId('team-customizer-panel')).not.toBeInTheDocument()
   })
 
+  // Regression: 5e4cf925 let a valid roster initialize as legacy while status was pending.
+  it('waits for capability before initializing a canonical team through the shipped setup path', async () => {
+    const status = deferred()
+    checkMeshInstallStatus.mockReturnValue(status.promise)
+    render(MeshTab, { props: { projectPath: '/projects/taurhaus', modelCatalog: TEST_MODEL_CATALOG } })
+    await fireEvent.click(await screen.findByTestId('mesh-builder-role-lead-default'))
+    const initialize = await screen.findByTestId('mesh-action-initialize')
+    const toggle = screen.getByRole('checkbox', { name: /Canonical messaging/ })
+    await fireEvent.click(initialize)
+    expect(coordinationInitializeTeam).not.toHaveBeenCalled()
+    expect(initialize).toBeDisabled()
+    expect(toggle).toHaveAccessibleDescription('Checking Mesh…')
+    status.resolve({ version: '0.3.0', canonical_messaging_supported: true })
+    await waitFor(() => expect(initialize).toBeEnabled())
+    expect(toggle).toBeChecked()
+    expect(checkMeshInstallStatus).toHaveBeenCalledTimes(1)
+    await fireEvent.click(initialize)
+    await waitFor(() => expect(coordinationInitializeTeam).toHaveBeenCalledWith(
+      expect.objectContaining({ messaging: expect.objectContaining({ mode: 'canonical' }) })
+    ))
+  })
+
+  // Regression: 5e4cf925 refetched status and lost the legacy choice on builder remount.
+  it('preserves the capability and explicit legacy choice across setup builder remounts', async () => {
+    checkMeshInstallStatus.mockResolvedValue({ version: '0.3.0', canonical_messaging_supported: true })
+    render(MeshTab, { props: { projectPath: '/projects/taurhaus', modelCatalog: TEST_MODEL_CATALOG } })
+    await screen.findByTestId('mesh-builder-role-lead-default')
+    const toggle = screen.getByRole('checkbox', { name: /Canonical messaging/ })
+    await waitFor(() => expect(toggle).toBeChecked())
+    await fireEvent.click(toggle)
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-lead-default'))
+    await screen.findByTestId('mesh-mode-setup')
+    expect(screen.getByRole('checkbox', { name: /Canonical messaging/ })).not.toBeChecked()
+    expect(checkMeshInstallStatus).toHaveBeenCalledTimes(1)
+    await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+    await waitFor(() => expect(coordinationInitializeTeam).toHaveBeenCalled())
+    expect(coordinationInitializeTeam.mock.lastCall[0]).not.toHaveProperty('messaging')
+  })
+
   it('initializes cleanly after selecting a lead role from the inline catalog', async () => {
     render(MeshTab, {
       props: {

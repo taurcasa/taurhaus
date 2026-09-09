@@ -16,6 +16,8 @@ Neighboring docs have narrower jobs:
 - [`../coordination-architecture.md`](../coordination-architecture.md): coordination design decisions, invariants, and runtime behavior
 - [`data-model.md`](./data-model.md): SQLite schema and search-index structure
 
+Canonical team creation is Mesh-owned: when initialize carries `messaging: {mode: "canonical", retentionPolicy: {...}}`, Taurhaus invokes `mesh team create --messaging-canonical --isolated` against the selected team root with a temporary policy file. Mesh writes config, the incarnation, journal and authority state and joins the lead. Taurhaus loads that config, adopts the lead and preserves Mesh-owned extensions on every subsequent save. Requests without `messaging` keep the format-1 writer path. `<teams-root>/.taurhaus-initialize-pending/<team>.json`, outside the Mesh-owned team tree, is a root-scoped Taurhaus retry checkpoint for the exact initialize request after all seats launch; retry verifies every retained pane identity and liveness, and removal on success is best-effort.
+
 ## Scope
 
 This document covers:

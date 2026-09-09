@@ -19,6 +19,7 @@ use crate::session_scanner::process::detect_cli_tool;
 mod process;
 mod recording;
 mod system;
+pub(crate) mod team_activation;
 mod tmux;
 
 pub(crate) use process::{
@@ -144,6 +145,29 @@ pub trait CoordinationRuntime: Send + Sync {
         _teams_dir: &std::path::Path,
     ) -> Result<u32, CoordinationError> {
         self.spawn_mesh_daemon(pane_id, team_name, member_name)
+    }
+
+    fn create_canonical_team(
+        &self,
+        _team_name: &str,
+        _lead_name: &str,
+        _teams_dir: &Path,
+        _policy_path: &Path,
+    ) -> Result<(), CoordinationError> {
+        Err(CoordinationError::Backend(
+            "canonical team creation not implemented".into(),
+        ))
+    }
+
+    fn opt_in_team_delivery(
+        &self,
+        _team_name: &str,
+        _lead_name: &str,
+        _teams_dir: &Path,
+    ) -> Result<(), CoordinationError> {
+        Err(CoordinationError::Backend(
+            "team delivery opt-in not implemented".into(),
+        ))
     }
 
     fn spawn_team_daemon(

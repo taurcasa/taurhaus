@@ -34,6 +34,20 @@ record sequence remains asserted. Fake-clock wait regressions run in the
 default unit lane (or `python3 scripts/mesh-contract-fixture.py --self-test`),
 without starting any CLI.
 
+## Canonical activation candidate contract
+
+`MESH_CONTRACT_BIN=/absolute/path/to/candidate/mesh just test-canonical-mesh-contract`
+selects one ignored real-binary test for canonical team creation and
+`TeamConfigStore` round-trip preservation, including Mesh's joined lead identity.
+It requires an explicitly selected canonical-capable binary; it never resolves
+`~/.local/bin/mesh`. Missing selection reports NOT RUN and exits nonzero; the
+ordinary unit lane reports NOT RUN and leaves this test ignored. The child runs
+with an empty environment, scratch HOME/cwd and explicit tempdir `--claude-dir`.
+It checks help, creates a disposable team using the shipping frontend policy,
+and verifies that Mesh still authenticates the lead after Taurhaus saves the
+config (delivery refuses only for the missing runtime record). No harness, daemon
+or tmux is launched. A passed creation contract does not prove live delivery eligibility.
+
 ## Reader decisions
 
 - Monitor metadata and workflow echoes are joined by originating message ID.

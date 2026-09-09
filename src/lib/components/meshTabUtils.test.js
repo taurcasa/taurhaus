@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { TEST_MODEL_CATALOG as CATALOG } from '../../test/fixtures/modelCatalog.js'
 import {
   accountLineLabel,
+  canonicalMessagingSupported,
   buildInitializationRequest,
   buildTeamConfigFromPreset,
   buildTeamConfigFromRuntimeStatus,
@@ -262,6 +263,7 @@ describe('meshTabUtils cross-project metadata', () => {
   it('builds a minimal preset initialization payload and omits role metadata', () => {
     const request = buildInitializationRequest({
       initializationMode: 'preset',
+      canonicalMessaging: false,
       presetId: 'full-team',
       lead: {
         name: 'team-lead',
@@ -640,4 +642,62 @@ describe('meshTabUtils launch account note', () => {
       accountNoteDetail: 'team-wrapper',
     }))
   })
+})
+
+describe('canonical messaging initialization', () => {
+  it.each(['custom', 'preset'])('includes the disposable policy for %s teams and omits it when disabled', (initializationMode) => {
+    const config = { initializationMode, presetId: 'trial', lead: {}, agents: [], canonicalMessaging: true }
+    const request = buildInitializationRequest(config, 'trial')
+    expect(request.messaging).toEqual({ mode: 'canonical', retentionPolicy: {
+      capture_scope: 'mesh-producers-only', synthetic_disposable: true,
+      dm_horizon_days: 7, task_horizon_days: 30, retry_horizon_days: 30,
+      archive_owner: 'lead', archive_access: 'captured-audience',
+      closure: 'manual-disposal-after-evidence-export', purge_implemented: false,
+      canonical_writers: 'mesh-only', approved_by: 'taurhaus-operator',
+      inactive_horizon_days: 14, review_horizon_days: 30,
+    } })
+    expect(buildInitializationRequest({ ...config, canonicalMessaging: false }, 'trial')).not.toHaveProperty('messaging')
+  })
+})
+
+// Regression: aafcc540 also opted callers without a toggle value into unsupported Mesh commands.
+it('omits canonical messaging by default without a backend capability', () => {
+  expect(buildInitializationRequest({ lead: {}, agents: [] }, 'trial')).not.toHaveProperty('messaging')
+})
+
+// Regression: 9d09c883 pinned support to one hash, disabling later canonical releases.
+it('uses backend capability, independent of lock identity or version', () => {
+  expect(canonicalMessagingSupported({ canonical_messaging_supported: true })).toBe(true)
+  expect(canonicalMessagingSupported({ canonical_messaging_supported: false })).toBe(false)
+  expect(canonicalMessagingSupported({ version: '9.0.0', git_commit: '4388d6a1590e3072c9dfdc61ccd08b00bff2508b' })).toBe(false)
+  expect(canonicalMessagingSupported()).toBe(false)
+})
+
+// Regression: 9d09c883 omitted messaging by consulting a bundled hash instead of status.
+it.each(['custom', 'preset'])('defaults %s requests from backend capability with explicit opt-out', (initializationMode) => {
+  const config = { initializationMode, presetId: 'trial', meshStatus: { canonical_messaging_supported: true } }
+  expect(buildInitializationRequest(config, 'trial')).toHaveProperty('messaging.mode', 'canonical')
+  expect(buildInitializationRequest({ ...config, canonicalMessaging: false }, 'trial')).not.toHaveProperty('messaging')
+  expect(buildInitializationRequest({ ...config, meshStatus: { canonical_messaging_supported: false } }, 'trial')).not.toHaveProperty('messaging')
+})
+
+// Regression: 5e4cf925 never supplied runtime status to the initialization fallback.
+it('uses resolved runtime capability for initialization without a builder flag', async () => {
+  const { createMeshTabInit } = await import('./meshTabInit.svelte.js')
+  const state = { canInitialize: true, teamConfig: { lead: {}, agents: [] }, teamName: 'trial' }
+  let status = null
+  const init = createMeshTabInit({ state, deps: {
+    buildInitializationRequest,
+    getProjectPath: () => '',
+    getModelCatalog: () => undefined,
+    getMeshStatus: () => status,
+    getCanonicalMessaging: () => undefined,
+  } })
+  init.handleInitialize()
+  expect(state.initProgress).toBeUndefined()
+  status = { canonical_messaging_supported: true }
+  init.handleInitialize()
+  expect(state.initProgress).toHaveProperty('messaging.mode', 'canonical')
+  init.handleInitialize({ canonicalMessaging: false })
+  expect(state.initProgress).not.toHaveProperty('messaging')
 })
