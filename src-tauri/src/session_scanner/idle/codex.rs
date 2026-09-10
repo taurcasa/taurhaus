@@ -1101,7 +1101,7 @@ mod tests {
         assert!(!busy.authoritative);
     }
 
-    // Regression: b9e4a855's multi-lock refusal, L1 run 4d: an ephemeral
+    // Regression: 6398bfa3's multi-lock refusal, L1 run 4d: an ephemeral
     // thread beside the bound seat must not erase identity or consume its notify.
     #[test]
     #[cfg(target_os = "linux")]
