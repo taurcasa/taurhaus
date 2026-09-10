@@ -122,3 +122,29 @@ it('shows the compaction boundary and its recovery turn', async () => {
   expect(await screen.findByRole('separator', { name: 'Context compacted' })).toBeVisible()
   expect(screen.getByText('[taurhaus] recovery_card boundary')).toBeVisible()
 })
+
+it('preserves the transcript and silently retries a busy hosted read on the next tick', async () => {
+  // Regression: 3000bc3e (#161) background refresh made a9c8109b's poller surface seat contention.
+  vi.useFakeTimers()
+  try {
+    const transcript = text => ({ thread: { turns: [{ items: [{ text }] }] } })
+    coordinationHosted.mockRejectedValueOnce(new Error('HOST_OPERATION_FAILED: host member busy'))
+      .mockResolvedValueOnce(transcript('Last transcript'))
+      .mockRejectedValueOnce(new Error('HOST_OPERATION_FAILED: host member busy'))
+      .mockResolvedValue(transcript('Updated transcript'))
+    render(HostedThread, { teamName: 'team', memberName: 'seat' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(screen.getByText('Last transcript')).toBeVisible()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(screen.getByText('Last transcript')).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(coordinationHosted).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(screen.getByText('Updated transcript')).toBeVisible()
+    expect(coordinationHosted).toHaveBeenCalledTimes(4)
+  } finally { cleanup(); vi.useRealTimers() }
+})
