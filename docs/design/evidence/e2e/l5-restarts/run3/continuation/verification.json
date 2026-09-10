@@ -1,0 +1,19 @@
+{
+  "syntax": "pass",
+  "offline_tests": 13,
+  "packet_files": 209,
+  "unique_payloads": 133,
+  "payload_hashes": "pass",
+  "sanitization": "pass",
+  "pane_bound": "<=60 lines",
+  "daemon_jsonl_sha256": "471a7cc833b2a72d33d9c03c60b369698268008f504478c9c99b28833f0c0f5f",
+  "scratch_survivors": [],
+  "scratch_root_absent": true,
+  "product_diff": false,
+  "mesh_clean": true,
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  }
+}

@@ -1,10 +1,12 @@
-# Lane 5 run3 — UNAVAILABLE: step 3 harness failure after the Taurhaus restart
+# Lane 5 run3 continuation — INCOMPLETE: six runtime checks PASS; timing and review limits
 
-Latest attempt: **run3; step 1 PASS; step 2 pending-state PASS with a duration
-shortfall; step 3 FAIL (harness); steps 4–6 NOT RUN.** Both markers were pending
-when the Taurhaus restart began. The Mesh restart and complete cross-boundary
-reconciliation remain unproved. All required gates and cleanup pass.
-See [run3 evidence](#run3-third-attempt-evidence) below. Prior attempts remain history.
+The user-authorized continuation completed and committed **all six runtime
+checks**. Both restart boundaries carried pending mail on both transports; every
+baseline and backlog ID has exactly one transport receipt and an explicit read.
+All gates and teardown pass. Full lane certification remains **incomplete**:
+the first boundary's >=30-second duration was not achieved, and the independent
+Opus review remains outstanding. See [continuation evidence](#run3-continuation--six-runtime-checks-completed).
+Prior attempts below are historical.
 
 ## Historical first attempt and offline continuation
 
@@ -586,3 +588,190 @@ Reproduction order: `build.py`, offline unittest discovery, `execute.py`, then
 removes duplicate direct files; rerunning the read-only audit requires unpacking
 them first. **This is a failed instrument run to inspect, not a certified passing
 controller to replay unchanged.**
+
+
+## Run3 continuation — six runtime checks completed
+
+This fresh isolated run followed the user's instruction to continue. The preceding
+run3 runtime had already been destroyed, so continuation could not reuse its team
+or pending IDs. Its complete evidence remains unchanged in the parent directory.
+The new runtime used the spec's per-attempt **20-input / $0.30 metered / 15-minute**
+budget. No product files, descriptor, branch, installed runtime, or plan ledger
+were changed. The only Mesh work was the authorized build at **310144d**.
+
+Two controller faults were repaired test-first: `checkpoint()` now requests a
+fresh process snapshot, and `stopped:true` from hosted_transcript triggers the
+supported `coordination.resume_member` operation. Both regression comments name
+`2600f95a`. Tests first produced one stale-PID assertion failure and one missing
+helper import error; all **13 tests** then passed. Repair commit **1d01e588**.
+[Red](l5-restarts/run3/continuation/red.txt),
+[green](l5-restarts/run3/continuation/green.txt),
+[exact controller](l5-restarts/run3/continuation/controller.py),
+[step driver](l5-restarts/run3/continuation/steps.py),
+[supervisor](l5-restarts/run3/continuation/execute.py).
+
+### Ordered outcomes
+
+| Step | Outcome / classification | Commit / evidence |
+|---|---|---|
+| 1. Initialize and complete/read baselines | **PASS — runtime** | **31c7a8e7**. Canonical builder policy, login-only Claude lead, alpha tmux and beta app_server; both baseline replies, receipts and reads. |
+| 2. Pending while working | **Pending checks PASS; duration incomplete — harness** | **429ad5cd**. Both matching sessions attributed active, each marker accepted with no transport receipt; immediate first restart. The first paced commands selected missing `python`, leaving the >=30-second duration unproved. |
+| 3. Taurhaus stop/restart and recovery | **PASS — runtime** | **5bf21b68**. SIGINT through the normal shutdown handler, new PID/start ticks, identical arguments and protocol 27; one successful supported beta resume. |
+| 4. First backlog and no baseline replay | **PASS — runtime** | **d85a1cb0**. Same logical sessions/team, monotonic generations, both original pending IDs delivered once and explicitly read; no duplicate baseline receipt. |
+| 5. Fresh backlog and Mesh restart-self | **PASS — runtime** | **dc8990f2**. Both seats pending; one restart-self, epoch 2→3, new team-owner PID; no overlapping owner in passive samples; both original fresh IDs delivered once and read. |
+| 6. Reconcile/read both boundaries | **PASS — runtime** | **b073b016**. All six accepted baseline/backlog targets reconcile to one transport receipt each and explicit read; no lost obligation or duplicate transport exposure in this bounded run. |
+
+The original numbered outcome files record the controller's predicate PASS.
+The headline and final assessment explicitly qualify step 2's duration; it is not
+silently promoted to full spec compliance. No blanket exactly-once guarantee or
+release approval is implied. [Final assessment](l5-restarts/run3/continuation/final-audit.json).
+
+### Runtime identities, boundaries and receipts
+
+Initialize → cleanup: **2026-09-10T23:50:50.526157+00:00 → 2026-09-10T23:52:46.424558+00:00**, **115.898 s**.
+
+Candidate: Taurhaus product code **a7e6db7e**, protocol **27**; Mesh **310144d**,
+shipped Codex **0.153.4** app-server descriptor **enabled, unchanged**. Both native
+Codex siblings were copied and version checked. Both seats used **gpt-5.6-luna / low**.
+The final assessment retains every executable SHA-256 and exact initialization.
+All builds (`just ensure-tauri-resources`, `just build-daemon`, designated Mesh
+`cargo build --bin mesh`) exited **0**, with checkout-local targets and one Cargo job.
+
+Team incarnation:
+`b0e31a5a0761796dc24cac95f47f8c41bc5074aa5bdc94f79f9eeb8764591483`.
+Alpha session `01a08dbb-35e1-7e53-a54d-e74c5d569e50`, generation **1→1**;
+beta thread `01a08dbb-3cc7-7c81-b822-125de6d52f00`, generation **1→3** after
+ordinary host stop and supported resume. Both logical identities continued
+through the Mesh restart. The replaced Taurhaus host stopped; the new daemon
+recovered beta through one `resume_member`, without manual state clearing.
+
+Taurhaus boundary: daemon **2801780 / 30478800** → **2811030 / 30482017**
+(host PID / start ticks). Both markers were proven pending at the joint sample;
+SIGINT was initiated **3.744 ms** later, before either transport receipt.
+The same daemon executable, scratch data root and original port arguments were used.
+
+Mesh boundary: team owner namespace **PID 2648 / ticks 30479457 / epoch 2** →
+**PID 5802 / ticks 30484467 / epoch 3**. Restart-self was initiated **0.208 ms**
+after the joint pending sample. No receipt wait, capture or commit intervened.
+The command reported the old owner stopped and the replacement started; passive
+owner observations never contained more than one owner. Sampling is bounded
+runtime evidence, not proof about every instant outside this run.
+
+| Marker | Seat | Message ID | Delivery ID | Sole transport receipt |
+|---|---|---|---|---|
+| baseline | alpha | `06b13aa1-b7f4-4f95-927e-4aaf6ce516dc` | `9066e6ab-33c9-4329-abc1-38bd0747d059` | submitted, 2026-09-10T23:51:05.334451554+00:00 |
+| baseline | beta | `bfb931e1-0acf-413d-8786-4363fb460918` | `e2d406f6-5b50-4307-a256-5def08f00fae` | native_enqueued, 2026-09-10T23:51:12.234474299+00:00 |
+| taurhaus-backlog | alpha | `bef27735-df81-482f-8d69-0f702caa0049` | `b4c2d404-1b80-4000-bfb3-82d319fdfa93` | submitted, 2026-09-10T23:51:27.800297415+00:00 |
+| taurhaus-backlog | beta | `669b0240-3022-4112-bc95-85ffc82e077e` | `db299baf-38ce-4c73-be10-269d76585715` | native_enqueued, 2026-09-10T23:51:36.678426873+00:00 |
+| mesh-backlog | alpha | `d402d85e-8aee-4360-a876-d2f55783cb9e` | `f40833d2-2050-49a4-a450-fa036754f860` | submitted, 2026-09-10T23:52:30.394104970+00:00 |
+| mesh-backlog | beta | `209ed304-d871-4533-87f1-7e17831f1b5b` | `c9536fe3-f7a8-412c-88c5-1fd5f3fb1341` | native_enqueued, 2026-09-10T23:52:35.253405234+00:00 |
+
+Every marker has an explicit `consumed_by_read` receipt as well as its transport
+receipt and observed native reply. The four backlog transport timestamps are
+strictly after their respective restart initiation. Pending samples use actual
+accepted-target rows and attributed working state; no `stage: pending` row is
+required. Canonical journal and unread/mark-read calls preserved their filters
+and followed returned cursors until `done`, including empty final inbox reads.
+
+### Duration limitation
+
+The continuation requested one ordinary Python task printing 1–400, one per line,
+with 0.1-second intervals, then `done`. This changed the bounded workload from
+free-form streaming to a paced tool command; it did not signal, freeze or alter a
+product process, write fake activity, or change freshness rules. The first tasks
+selected `python`, which was unavailable (exit **127**, retained tool output).
+Alpha's first turn ended after **7.593 s**; beta's first turn was interrupted by
+the sanctioned shutdown, then its recovered turn also reported missing Python.
+Both pending states and the restart crossing were nevertheless directly observed.
+The >=30-second duration at the first boundary remains **unproved**.
+
+For the second boundary, both seats chose `python3`, completed the requested task,
+and stayed in their turns for **44.955 s (alpha)** and **45.649 s (beta)**.
+The original controller and model tool outputs are preserved; no post-hoc repair
+is represented as the executed first workload, and no additional restart was run.
+
+### Every input and spend
+
+| Turn ID | Purpose | Metered generations | USD |
+|---|---|---:|---:|
+| `01a08dbb-4242-72c0-80f0-a9e2458df810` | beta onboarding | 1 | $0.00104724 |
+| `01a08dbb-4ee8-71d2-8879-f23b71640de3` | alpha onboarding | 2 | $0.00255760 |
+| `01a08dbb-50be-7712-92a3-7be76fd35c7d` | notify-only startup, attribution unproved | 0 | unknown |
+| `01a08dbb-6b61-70e1-9cfc-a2be754aea88` | alpha baseline | 2 | $0.00108956 |
+| `01a08dbb-860b-7192-ac52-75df81ea4ee3` | beta baseline | 1 | $0.00059888 |
+| `01a08dbb-a381-7473-a868-71d190c54d8b` | alpha first paced task | 2 | $0.00323616 |
+| `01a08dbb-a48f-7020-b929-ae5b831461d7` | beta first paced task, interrupted | 0 | unknown |
+| `01a08dbb-bb32-7800-a439-148df3c7aadc` | beta supported recovery | 2 | $0.00129540 |
+| `01a08dbb-c321-7880-bfb4-f7097dea9334` | alpha first backlog | 2 | $0.00108740 |
+| `01a08dbb-e5c4-7662-9d90-d7363cef470f` | beta first backlog | 1 | $0.00048484 |
+| `01a08dbc-03ae-77b2-a188-1451c98da694` | alpha second paced task | 4 | $0.00221988 |
+| `01a08dbc-04b2-7163-b6e5-7c672ee51c52` | beta second paced task | 3 | $0.00281900 |
+| `01a08dbc-b799-7850-8557-398c88861d69` | alpha second backlog | 2 | $0.00126312 |
+| `01a08dbc-ca7f-7413-af48-9e94ea42fe3a` | beta second backlog | 1 | $0.00037340 |
+
+**14 observed inputs; 23 metered generations; $0.01807248 metered; two
+unknown-cost inputs.** Each generation's input/cache/output tokens and cost are
+in [cost-ledger.json](l5-restarts/run3/continuation/runtime/cost-ledger.json) and
+the final assessment. No Claude paid turn was observed. Rates are the inherited
+packet's $0.20/$0.02/$1.20 per million input/cached/output, not invoice measurements.
+The alternative conservative estimate is **$0.35763960** for the metered subset;
+it is not the ruling's metered cap measure. The metered sum is below $0.30, while
+complete billed spend remains unverified. Unknown turns were counted and never
+priced as zero. No lifecycle operation was gated by metering.
+
+Checkpoint observations (inputs / metered USD): step 1 **5 / 0.00529328**;
+step 2's preparatory checkpoint **5 / 0.00529328**; step 3 **9 / 0.00852944**;
+step 4 **10 / 0.01139708**; steps 5 and 6 **14 / 0.01807248**. These are
+observation-time totals; the per-turn table allocates later-arriving usage to its
+actual input. Previous run3 spend remains separate history. Implementer/reviewer
+spend is orchestrator-owned and not measurable from this seat ledger.
+
+### Gates, retention and cleanup
+
+| Exact command, after teardown | Exit | Duration |
+|---|---:|---:|
+| `just check-quick` | **0** | 30.94 s |
+| `just lint` | **0** | 37.29 s |
+| `just test-contracts` | **0** | 21.57 s |
+| Offline regression suite | **0** | 13 tests |
+| `just test-rust-unit` | NOT REQUIRED | No `src-tauri/` diff |
+
+The Cargo preflights each saw one foreign Cargo process and proceeded under the
+three-process limit; none was stopped. Every gate used credential-free isolated
+roots, blocked real CLI wrappers, this checkout's target and one Cargo job.
+Gate processes were reaped and their scratch root removed. [Gate records](l5-restarts/run3/continuation/gates/).
+
+Controller exit **0**; cleanup verifies **zero survivors**, private port closed,
+auth copy explicitly deleted before scratch-root deletion, and scratch root gone.
+Both native siblings, all owned hosts/TUIs/Codex processes, daemon and private tmux
+server were removed/reaped; no foreign process was killed. The authorized source
+was the sole auth file copied into scratch CODEX_HOME, mode 0600, never logged.
+Operator homes were hidden from children; runtime and unpaid gates used separate
+scratch roots. No observer connected to an app-server socket; hosted observation
+used daemon RPC. **Zero transient busy refusals** occurred; the 65-second retry
+branches remained available. No load, stress, forced lock, crash injection,
+installation, release, product fix or Mesh commit occurred.
+
+[Complete daemon JSONL](l5-restarts/run3/continuation/runtime/taurhaus.log.jsonl):
+**440 rows**, SHA-256
+`471a7cc833b2a72d33d9c03c60b369698268008f504478c9c99b28833f0c0f5f`.
+[Snapshot packet](l5-restarts/run3/continuation/runtime/snapshots.json): **209 files,
+133 unique payloads**, losslessly recoverable with `pack.unpack`. It includes
+runtime/config/epoch identities, all commands and exits, pending samples,
+journals/reads, passive locks and pane captures of at most 60 lines. Complete host
+items and rollout/tool output remain available. Controller and contract-test
+stdout are preserved as JSON strings to retain exact whitespace. No tokens,
+auth contents, installation IDs or account usage rows are included.
+
+Remaining deviations are limited to the first duration failure, the ordinary
+paced-Python workload adaptation, two unknown-cost turns, and unavailable Opus
+review. The earlier missing reference checkout limitation is unchanged; its
+committed controller files were available in this checkout. The independent Opus
+lens remains with the invoking orchestrator: six passing runtime predicates do
+not substitute for it. The document therefore remains **INCOMPLETE**, with the
+completed transport/restart evidence available for review.
+
+Reproduction: `build.py`, unittest discovery, `execute.py`; after teardown,
+`gates.py`, `audit.py`, `pack.py`, and `verify.py`. Audit precedes packing; unpack
+first if re-running it against the retained packet. The exact pacing prompt's
+first-boundary limitation must be accounted for before any future full certification.

@@ -1,0 +1,14 @@
+{
+  "command": [
+    "just",
+    "lint"
+  ],
+  "exit": 0,
+  "seconds": 37.29293005599175,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "2831413 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --test delivery_handoff --test delivery_adapter --test journal_stage3\n"
+    }
+  ]
+}

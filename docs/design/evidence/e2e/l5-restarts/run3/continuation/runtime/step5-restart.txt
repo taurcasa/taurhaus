@@ -1,2 +1,0 @@
-[mesh team-daemon] stopped (PID 2648)
-[mesh] restarted team-daemon (PID 5802)
