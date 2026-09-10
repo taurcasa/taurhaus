@@ -21,6 +21,8 @@ static TEAM_DAEMON_SKIP_EVENTS: OnceLock<Mutex<HashMap<PathBuf, String>>> = Once
 const MISSING_LEAD_CREDENTIAL_REASON: &str = "missing_lead_control_credential";
 const MISSING_LEAD_CONFIG_HASH_REASON: &str = "missing_lead_control_auth_token_hash";
 const INACTIVE_LEAD_REASON: &str = "inactive_lead_control_identity";
+const MISSING_LEAD_RUNTIME_RECORD_REASON: &str = "missing_lead_runtime_record";
+const UNREADABLE_LEAD_RUNTIME_RECORD_REASON: &str = "unreadable_lead_runtime_record";
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct TeardownDiagnostics {
@@ -724,8 +726,10 @@ impl CoordinationOrchestrator {
         // Code's isActive flag describes activity, never control-identity liveness.
         let live = match MemberRuntimeStore::load(&self.teams_dir, team_name, operator_name) {
             Ok(record) => record.health != HealthState::SessionDead,
-            Err(CoordinationError::NotFound(_)) => return Ok(Some("missing_lead_runtime_record")),
-            Err(_) => return Ok(Some("unreadable_lead_runtime_record")),
+            Err(CoordinationError::NotFound(_)) => {
+                return Ok(Some(MISSING_LEAD_RUNTIME_RECORD_REASON));
+            }
+            Err(_) => return Ok(Some(UNREADABLE_LEAD_RUNTIME_RECORD_REASON)),
         };
         if !live {
             return Ok(Some(INACTIVE_LEAD_REASON));

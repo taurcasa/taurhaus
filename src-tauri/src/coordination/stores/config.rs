@@ -960,6 +960,13 @@ fn mesh_compatible_wire(
                     .insert(key)
             {
                 let mut fields = serde_json::Map::new();
+                if let Some(team) = config_path
+                    .parent()
+                    .and_then(|dir| dir.file_name())
+                    .and_then(|name| name.to_str())
+                {
+                    fields.insert("team".into(), Value::String(team.to_string()));
+                }
                 fields.insert("member".into(), Value::String(member.name.clone()));
                 fields.insert("repaired".into(), Value::Bool(is_active.is_some()));
                 if let Some(reason) = extra.get("lastActivityReason") {
@@ -1715,11 +1722,18 @@ mod tests {
         }
         sink.flush_for_test().unwrap();
         let log = fs::read_to_string(path).unwrap();
+        // Sibling tests share the process-global sink; keep only this test's teams.
         let records: Vec<Value> = log
             .lines()
-            .map(|line| serde_json::from_str(line).unwrap())
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .filter(|record| {
+                matches!(
+                    record["team"].as_str(),
+                    Some("without-reason") | Some("with-reason")
+                )
+            })
             .collect();
-        assert_eq!(records.len(), 2);
+        assert_eq!(records.len(), 2, "{log}");
         for record in &records {
             assert_eq!(
                 record["event"],
@@ -1736,6 +1750,7 @@ mod tests {
 
     #[test]
     fn save_activity_flags_preserves_format_two_and_repairs_legacy() {
+        let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: 5cebfef8, L1 run 3: repair-on-save overwrote Claude activity.
         for format in [1, 2] {
             for flag in [None, Some(false), Some(true)] {
