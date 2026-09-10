@@ -3,9 +3,14 @@
 use crate::coordination::stores::lock::HostOperationLock;
 use serde_json::{json, Value};
 use std::collections::VecDeque;
+use std::io::{ErrorKind, Read};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::time::{Duration, Instant};
 use taurhaus_lib::session_scanner::launch::HostedLaunch;
 
@@ -13,8 +18,72 @@ use taurhaus_lib::session_scanner::launch::HostedLaunch;
 mod websocket;
 use websocket::WebSocket;
 
+struct StderrTail {
+    bytes: Arc<Mutex<VecDeque<u8>>>,
+    stop: Arc<AtomicBool>,
+    reader: Option<std::thread::JoinHandle<()>>,
+}
+impl StderrTail {
+    fn start(mut pipe: std::process::ChildStderr) -> std::io::Result<Self> {
+        // fcntl(O_NONBLOCK) also works on pipes; no raw descriptor ownership transfer.
+        socket2::SockRef::from(&pipe).set_nonblocking(true)?;
+        let bytes = Arc::new(Mutex::new(VecDeque::with_capacity(4096)));
+        let stop = Arc::new(AtomicBool::new(false));
+        let (buffer, stopping) = (bytes.clone(), stop.clone());
+        let reader = std::thread::Builder::new()
+            .name("host-stderr".into())
+            .spawn(move || {
+                let mut chunk = [0; 4096];
+                let mut deadline = None;
+                loop {
+                    if stopping.load(Ordering::Relaxed) {
+                        let end = deadline
+                            .get_or_insert_with(|| Instant::now() + Duration::from_millis(50));
+                        if Instant::now() >= *end {
+                            break;
+                        }
+                    }
+                    match pipe.read(&mut chunk) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            let mut tail = buffer.lock().unwrap();
+                            let excess = (tail.len() + n).saturating_sub(4096);
+                            tail.drain(..excess);
+                            tail.extend(&chunk[..n]);
+                        }
+                        Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+                        Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                            if stopping.load(Ordering::Relaxed) {
+                                break;
+                            }
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            })?;
+        Ok(Self {
+            bytes,
+            stop,
+            reader: Some(reader),
+        })
+    }
+    fn finish(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
+    }
+}
+impl Drop for StderrTail {
+    fn drop(&mut self) {
+        self.finish();
+    }
+}
+
 pub(crate) struct HostProcess {
     child: Child,
+    stderr: Option<StderrTail>,
     rpc: Option<Rpc>,
     pub thread_id: String,
     pub attach_config: Value,
@@ -51,11 +120,12 @@ impl HostProcess {
             .current_dir(cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| e.to_string())?;
         let mut host = Self {
             child,
+            stderr: None,
             rpc: None,
             thread_id: String::new(),
             attach_config: Value::Null,
@@ -69,6 +139,8 @@ impl HostProcess {
             reconnect_after: None,
             deferred_compaction: None,
         };
+        host.stderr =
+            Some(StderrTail::start(host.child.stderr.take().unwrap()).map_err(|e| e.to_string())?);
         host.process_start = taurhaus_lib::platform::process_start_ticks(host.child.id())
             .ok_or("host process identity unavailable")?
             .to_string();
@@ -519,6 +591,9 @@ impl Drop for HostProcess {
                 std::thread::sleep(Duration::from_millis(5));
             }
         }
+        if let Some(stderr) = &mut self.stderr {
+            stderr.finish();
+        }
         let _ = std::fs::remove_file(&self.socket);
     }
 }
@@ -913,6 +988,42 @@ impl Rpc {
 pub(crate) mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn stderr_reader_drains_and_keeps_last_4k() {
+        // Regression: cadd533e discarded child stderr, hiding launch failures.
+        let tmp = tempfile::tempdir().unwrap();
+        let script = tmp.path().join("writer.sh");
+        std::fs::write(
+            &script,
+            "head -c 1048576 /dev/zero >&2; printf END >&2; exit 23",
+        )
+        .unwrap();
+        let mut child = Command::new("/bin/sh")
+            .arg(script)
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut tail = StderrTail::start(child.stderr.take().unwrap()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while child.try_wait().unwrap().is_none() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let status = child.try_wait().unwrap();
+        if status.is_none() {
+            child.kill().unwrap();
+        }
+        child.wait().unwrap();
+        tail.finish();
+        assert_eq!(
+            status.unwrap().code(),
+            Some(23),
+            "pipe must never block child"
+        );
+        let bytes = tail.bytes.lock().unwrap();
+        assert_eq!(bytes.len(), 4096);
+        assert!(bytes.iter().copied().collect::<Vec<_>>().ends_with(b"END"));
+    }
 
     pub(crate) fn fixture(
         root: &std::path::Path,
