@@ -1,0 +1,66 @@
+{
+  "paid_inputs": 1,
+  "turns": [
+    {
+      "turn_id": "01a08c5c-67a2-76d1-b779-f3eab40b93d8",
+      "usd": 0.0022737200000000003,
+      "completed": true,
+      "usage": {
+        "input_tokens": 20413,
+        "cached_input_tokens": 11776,
+        "output_tokens": 259
+      },
+      "conservative_usd": 0.0248064
+    },
+    {
+      "turn_id": "01a08c5c-6fb6-7ae1-a9b1-4a5afbc08d62",
+      "usd": null,
+      "completed": true,
+      "source": "notify-only",
+      "classification": "unknown-but-not-a-model-input"
+    }
+  ],
+  "usage_rows": [
+    {
+      "at": "2026-09-10T17:27:47.447Z",
+      "turn_id": "01a08c5c-67a2-76d1-b779-f3eab40b93d8",
+      "usage": {
+        "input_tokens": 9027,
+        "cached_input_tokens": 3840,
+        "output_tokens": 146
+      },
+      "usd": 0.0012894
+    },
+    {
+      "at": "2026-09-10T17:27:51.648Z",
+      "turn_id": "01a08c5c-67a2-76d1-b779-f3eab40b93d8",
+      "usage": {
+        "input_tokens": 11386,
+        "cached_input_tokens": 7936,
+        "output_tokens": 113
+      },
+      "usd": 0.0009843200000000001
+    }
+  ],
+  "metering_complete": true,
+  "api_equivalent_usd": 0.00227372,
+  "conservative_usd": 0.0248064,
+  "rates_usd_per_million": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+  "input_reservations": [
+    {
+      "reason": "production initialization/onboarding",
+      "step": 1,
+      "at": 1789061259.4927263,
+      "generation": null
+    }
+  ],
+  "rollout_turns": 1,
+  "controller_input_attempts": 0,
+  "controller_issued_inputs": 0,
+  "mesh_terminal_deliveries": 1
+}

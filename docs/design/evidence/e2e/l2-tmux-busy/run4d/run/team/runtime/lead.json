@@ -1,0 +1,197 @@
+{
+  "activitySnapshotPath": "/tmp/th-l2-y7a0aky6/claude/teams/l2-busy/state/activity/lead.json",
+  "attached_at": "2026-09-10T17:27:39.790669123Z",
+  "attachmentGeneration": 1,
+  "cli_tool": "claude",
+  "contextGeneration": "0",
+  "daemon_pid": null,
+  "delivery_lease": null,
+  "harness": "claude",
+  "health": "healthy",
+  "hookSessionId": null,
+  "hostInputAbandonedAt": null,
+  "hostInputUnknown": false,
+  "jsonl_path": null,
+  "last_seen_at": "2026-09-10T17:27:40.181172588Z",
+  "launchRoot": {
+    "claudeDir": "/tmp/th-l2-y7a0aky6/claude",
+    "rootAuthorityRevision": 0,
+    "teamIncarnationId": "abcbca9be68d4633833fd7bea47f993238b584759ddf158a8c67c58d6806df3e",
+    "teamsDir": "/tmp/th-l2-y7a0aky6/claude/teams"
+  },
+  "memberName": "lead",
+  "paneId": "%1",
+  "panePid": 115,
+  "paneStartTime": "28179757",
+  "project_path": "/tmp/th-l2-y7a0aky6/project",
+  "recovery": {
+    "activation_intent": "250df1c7e9f04f6cb444088abec09e408b04797f396966c1ed96477a74952790",
+    "admitted_boundary": null,
+    "baseline_binding": [
+      [
+        "abcbca9be68d4633833fd7bea47f993238b584759ddf158a8c67c58d6806df3e",
+        "3cb20fbf-349d-48fa-9c35-53344d49b220"
+      ],
+      [
+        1,
+        0
+      ]
+    ],
+    "claim": {
+      "accepted_bytes": 2249,
+      "attempt": 1,
+      "card_key": {
+        "card_schema": 1,
+        "context": [
+          1,
+          0
+        ],
+        "contract": {
+          "effective_role_revision": "37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b",
+          "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+          "packet_revision": "",
+          "role_id": ""
+        },
+        "recipient": [
+          "abcbca9be68d4633833fd7bea47f993238b584759ddf158a8c67c58d6806df3e",
+          "3cb20fbf-349d-48fa-9c35-53344d49b220"
+        ],
+        "roots": {
+          "harness_account_root": "/tmp/th-l2-y7a0aky6/claude",
+          "launch_namespace": "native",
+          "resolved_mesh_config_root": "/tmp/th-l2-y7a0aky6/claude",
+          "resolved_project_root": "/tmp/th-l2-y7a0aky6/project",
+          "resolved_teams_root": "/tmp/th-l2-y7a0aky6/claude/teams",
+          "root_authority_revision": "0"
+        }
+      },
+      "content_revision": "21ebe815878974406e15aae4e10ae8bc86ef449fec1fdfe631367be8f40f3bb4",
+      "delivery_id": "327bc79755c7bee044f2256ff8970e53308c2f54ce6a77c211674165fcac881f",
+      "generated_bytes": 2249,
+      "journal": {
+        "delivery_id": "fec6fdfa-dce4-4a49-b4c2-c1e04b93d9a7",
+        "message_id": "4a5d59b1-c0db-4d3e-8325-3af11509d437",
+        "projection": "pending",
+        "sequence": 1
+      },
+      "kind": "baseline",
+      "obligation_key": [
+        [
+          "abcbca9be68d4633833fd7bea47f993238b584759ddf158a8c67c58d6806df3e",
+          "3cb20fbf-349d-48fa-9c35-53344d49b220"
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "observations": [
+        [
+          "accepted",
+          "2026-09-10T17:27:40.177253950Z",
+          "inbox"
+        ]
+      ],
+      "offered_bytes": 0,
+      "path": "inbox",
+      "returned_by_read_bytes": 0,
+      "satisfied_obligations": [
+        [
+          [
+            "abcbca9be68d4633833fd7bea47f993238b584759ddf158a8c67c58d6806df3e",
+            "3cb20fbf-349d-48fa-9c35-53344d49b220"
+          ],
+          [
+            1,
+            0
+          ]
+        ]
+      ],
+      "stage": "accepted",
+      "supersedes_revision": null
+    },
+    "harness_account_root": "/tmp/th-l2-y7a0aky6/claude",
+    "last_delivered": {
+      "accepted_bytes": 2249,
+      "attempt": 1,
+      "card_key": {
+        "card_schema": 1,
+        "context": [
+          1,
+          0
+        ],
+        "contract": {
+          "effective_role_revision": "37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b",
+          "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+          "packet_revision": "",
+          "role_id": ""
+        },
+        "recipient": [
+          "abcbca9be68d4633833fd7bea47f993238b584759ddf158a8c67c58d6806df3e",
+          "3cb20fbf-349d-48fa-9c35-53344d49b220"
+        ],
+        "roots": {
+          "harness_account_root": "/tmp/th-l2-y7a0aky6/claude",
+          "launch_namespace": "native",
+          "resolved_mesh_config_root": "/tmp/th-l2-y7a0aky6/claude",
+          "resolved_project_root": "/tmp/th-l2-y7a0aky6/project",
+          "resolved_teams_root": "/tmp/th-l2-y7a0aky6/claude/teams",
+          "root_authority_revision": "0"
+        }
+      },
+      "content_revision": "21ebe815878974406e15aae4e10ae8bc86ef449fec1fdfe631367be8f40f3bb4",
+      "delivery_id": "327bc79755c7bee044f2256ff8970e53308c2f54ce6a77c211674165fcac881f",
+      "generated_bytes": 2249,
+      "journal": {
+        "delivery_id": "fec6fdfa-dce4-4a49-b4c2-c1e04b93d9a7",
+        "message_id": "4a5d59b1-c0db-4d3e-8325-3af11509d437",
+        "projection": "pending",
+        "sequence": 1
+      },
+      "kind": "baseline",
+      "obligation_key": [
+        [
+          "abcbca9be68d4633833fd7bea47f993238b584759ddf158a8c67c58d6806df3e",
+          "3cb20fbf-349d-48fa-9c35-53344d49b220"
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "observations": [
+        [
+          "accepted",
+          "2026-09-10T17:27:40.177253950Z",
+          "inbox"
+        ]
+      ],
+      "offered_bytes": 0,
+      "path": "inbox",
+      "returned_by_read_bytes": 0,
+      "satisfied_obligations": [
+        [
+          [
+            "abcbca9be68d4633833fd7bea47f993238b584759ddf158a8c67c58d6806df3e",
+            "3cb20fbf-349d-48fa-9c35-53344d49b220"
+          ],
+          [
+            1,
+            0
+          ]
+        ]
+      ],
+      "stage": "accepted",
+      "supersedes_revision": null
+    },
+    "launch_namespace": "native",
+    "member_incarnation_id": "3cb20fbf-349d-48fa-9c35-53344d49b220",
+    "reserved_attachment": "2026-09-10T17:27:39.790669123Z",
+    "reserved_effort": null
+  },
+  "schema_version": 3,
+  "session_id": null,
+  "terminalContract": 1,
+  "tmuxSessionId": "$0",
+  "tmuxSocket": "/tmp/th-l2-y7a0aky6/tmux/tmux-1000/default"
+}
