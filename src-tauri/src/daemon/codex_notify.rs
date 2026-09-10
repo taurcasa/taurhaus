@@ -273,6 +273,13 @@ pub(crate) fn latest_record_for_session_after(
         let Some(record_session_id) = record.session_id.as_ref() else {
             continue;
         };
+        let latest_key = (record_session_id.clone(), String::new());
+        if records
+            .get(&latest_key)
+            .is_none_or(|previous: &CodexNotifyRecord| previous.ts <= record.ts)
+        {
+            records.insert(latest_key, record.clone());
+        }
         records.insert((record_session_id.clone(), record.event.clone()), record);
     }
     let result = records.get(&key).cloned();

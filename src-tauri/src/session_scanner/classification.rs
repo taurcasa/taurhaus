@@ -195,9 +195,19 @@ where
                 deterministic_file_owner,
             );
 
+            let seat_observation = idle::codex_readiness::observation(
+                proc.pid,
+                &proc.project_path,
+                tmux_pane.map(|pane| pane.pane_id.as_str()),
+            );
             // Hysteresis smooths a noisy heuristic; an authoritative status has
             // no noise to smooth, so it lands on the poll that observed it.
-            let (state, previous_state) = if authoritative {
+            let (state, previous_state) = if let Some(observed) = &seat_observation {
+                (
+                    observed.state,
+                    record_authoritative_state(proc.pid, observed.state),
+                )
+            } else if authoritative {
                 (
                     observed_state,
                     record_authoritative_state(proc.pid, observed_state),
@@ -223,14 +233,27 @@ where
                     previous_state,
                     state,
                     activity_source(
-                        authoritative_state.map(|reported| reported.source),
+                        seat_observation
+                            .as_ref()
+                            .map(|o| o.source)
+                            .or_else(|| authoritative_state.map(|reported| reported.source)),
                         process_active,
                         file_active,
                     ),
                 );
             }
             let (activity_confidence, activity_attribution, project_unattributed_active) =
-                if state == SessionState::Active {
+                if let Some(observed) = &seat_observation {
+                    (
+                        if observed.source == "launch_ready" {
+                            ActivityConfidence::Medium
+                        } else {
+                            ActivityConfidence::High
+                        },
+                        ActivityAttribution::Attributed,
+                        false,
+                    )
+                } else if state == SessionState::Active {
                     (decision.confidence, decision.attribution, false)
                 } else if decision.project_unattributed_active {
                     (

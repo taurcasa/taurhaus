@@ -84,6 +84,7 @@ impl CodexResolver {
         pane_id: Option<&str>,
         records: &[crate::coordination::stores::MemberRuntimeRecord],
     ) -> IdleResult {
+        super::codex_readiness::invalidate(pid);
         let Some((seat_root, excluded)) = codex_identity_scope(project_path, pid, pane_id, records)
         else {
             return unresolved_identity(pid, "codex_runtime_scope_unavailable");
@@ -108,7 +109,9 @@ impl CodexResolver {
                 path.to_str()
                     .is_some_and(|p| crate::platform::process_has_open_path(pid, p))
             });
-        apply_notify_edge(result, &self.notify_path)
+        let mut result = apply_notify_edge(result, &self.notify_path);
+        super::codex_readiness::refresh(&mut result, project_path, pid, records, &self.notify_path);
+        result
     }
 }
 
@@ -417,14 +420,12 @@ pub(super) fn codex_detect_idle(project_path: &str, sessions_dir: &Path) -> Idle
     }
 }
 
-/// Scope a TUI by the recorded launch, never by the newest project transcript.
-/// PID ancestry plus start ticks also disambiguates equal pane IDs on private servers.
-fn codex_identity_scope(
+pub(super) fn codex_runtime_matches(
+    record: &crate::coordination::stores::MemberRuntimeRecord,
     project: &str,
     pid: u32,
     pane: Option<&str>,
-    records: &[crate::coordination::stores::MemberRuntimeRecord],
-) -> Option<(Option<PathBuf>, std::collections::HashSet<String>)> {
+) -> bool {
     let mut ancestors = std::collections::HashSet::new();
     let mut parent = pid;
     for _ in 0..64 {
@@ -436,6 +437,27 @@ fn codex_identity_scope(
         };
         parent = next;
     }
+    record.app_server.is_none()
+        && record.cli_tool.is_some_and(is_codex)
+        && record.project_path.as_deref().is_some_and(|p| {
+            normalize_project_path(&p.to_string_lossy()) == normalize_project_path(project)
+        })
+        && pane.is_none_or(|p| record.pane_id.as_deref() == Some(p))
+        && record.pane_pid.is_some_and(|p| {
+            ancestors.contains(&p)
+                && record.pane_start_time.is_some()
+                && crate::platform::process_start_ticks(p) == record.pane_start_time
+        })
+}
+
+/// Scope a TUI by the recorded launch, never by the newest project transcript.
+/// PID ancestry plus start ticks also disambiguates equal pane IDs on private servers.
+fn codex_identity_scope(
+    project: &str,
+    pid: u32,
+    pane: Option<&str>,
+    records: &[crate::coordination::stores::MemberRuntimeRecord],
+) -> Option<(Option<PathBuf>, std::collections::HashSet<String>)> {
     let mut account = None;
     let mut excluded = std::collections::HashSet::new();
     for record in records {
@@ -443,16 +465,7 @@ fn codex_identity_scope(
             excluded.insert(host.thread_id.clone());
             continue;
         }
-        let bound = record.cli_tool.is_some_and(is_codex)
-            && record.project_path.as_deref().is_some_and(|p| {
-                normalize_project_path(&p.to_string_lossy()) == normalize_project_path(project)
-            })
-            && pane.is_none_or(|p| record.pane_id.as_deref() == Some(p))
-            && record.pane_pid.is_some_and(|p| {
-                ancestors.contains(&p)
-                    && record.pane_start_time.is_some()
-                    && crate::platform::process_start_ticks(p) == record.pane_start_time
-            });
+        let bound = codex_runtime_matches(record, project, pid, pane);
         if bound {
             if let Some(root) = record
                 .recovery
@@ -472,6 +485,7 @@ fn codex_identity_scope(
 }
 
 fn unresolved_identity(pid: u32, source: &'static str) -> IdleResult {
+    super::codex_readiness::invalidate(pid);
     tracing::debug!(pid, source, "Codex identity uncertain");
     IdleResult::idle()
 }
@@ -900,6 +914,13 @@ mod tests {
             "rollout-2026-09-10T08-30-00-seat-thread.jsonl",
             project.to_str().unwrap(),
         );
+        let metadata = fs::read_to_string(&file)
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap()
+            .to_owned();
+        fs::write(&file, metadata).unwrap();
         filetime_set_mtime(&file, SystemTime::now() - Duration::from_secs(120));
         let executable = tmp.path().join("codex");
         std::os::unix::fs::symlink("/bin/sleep", &executable).unwrap();
@@ -909,6 +930,7 @@ mod tests {
             .env_clear()
             .env("HOME", tmp.path())
             .env("PATH", "/usr/bin:/bin")
+            .env("LANG", "C.UTF-8")
             .env("CODEX_HOME", tmp.path().join("wrong-process-account"))
             .args([
                 "-S",
@@ -924,7 +946,7 @@ mod tests {
                 project.to_str().unwrap(),
             ])
             .arg(format!(
-                "exec {} 60 3<{}",
+                "printf '› \n'; exec {} 60 3<{}",
                 executable.display(),
                 file.display()
             ))
@@ -948,6 +970,7 @@ mod tests {
         let record = serde_json::from_value(serde_json::json!({
             "paneId":parts[1],"panePid":pid,"paneStartTime":crate::platform::process_start_ticks(pid).unwrap().to_string(),
             "tmuxSocket":socket,"cli_tool":"codex","project_path":project,
+            "attachedAt": Utc::now() - chrono::Duration::seconds(30),
             "recovery":{"harness_account_root":home}
         })).unwrap();
         MemberRuntimeStore::save(&teams, "trial", "seat", &record).unwrap();
@@ -1014,6 +1037,23 @@ mod tests {
         );
         assert_eq!(result.session_id.as_deref(), Some("seat-thread"));
         assert_eq!(result.state, SessionState::Idle);
+        // Regression: 32bfd698 resolved this fake seat but could not admit onboarding.
+        super::super::codex_readiness::elapse_quiet_window(pid);
+        resolver.detect_idle_for_pid_in(project.to_str().unwrap(), pid, Some(parts[1]), &records);
+        let observed = super::super::codex_readiness::observation(
+            pid,
+            project.to_str().unwrap(),
+            Some(parts[1]),
+        )
+        .unwrap();
+        assert_eq!(observed.source, "launch_ready");
+        assert_eq!(observed.state, SessionState::Idle);
+        assert!(
+            Utc::now()
+                .signed_duration_since(observed.last_observed_at)
+                .num_seconds()
+                < 2
+        );
         drop(server);
     }
 
