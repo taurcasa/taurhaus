@@ -1643,6 +1643,16 @@ describe('ipc module', () => {
       })
     })
 
+    // Regression: 6398bfa3 had no hosted-admissibility field in the app status.
+    it.each([true, false])('normalizes hosted capability %s', async (supported) => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({ hostedDeliverySupported: supported })
+      const result = await ipc.checkMeshInstallStatus()
+      expect(result.hosted_delivery_supported).toBe(supported)
+      expect(result).not.toHaveProperty('hostedDeliverySupported')
+      delete window.__TAURI_INTERNALS__
+    })
+
     // Regression: 9d09c883 ignored runtime capability in favor of the bundled hash.
     it.each([true, false, undefined])('normalizes canonical capability %s', async (supported) => {
       window.__TAURI_INTERNALS__ = {}
