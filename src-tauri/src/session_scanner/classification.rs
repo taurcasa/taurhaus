@@ -198,7 +198,7 @@ where
             let (process_active, recent_io) = if authoritative {
                 (authoritative_active, authoritative_active)
             } else {
-                let recent_io = tool_spec.process_active(proc.pid);
+                let recent_io = (tool_spec.process_active)(proc.pid);
                 (recent_io, recent_io)
             };
             process_signal_ms += process_signal_started.elapsed();
