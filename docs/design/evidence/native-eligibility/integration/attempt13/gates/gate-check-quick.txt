@@ -1,0 +1,6 @@
+cd src-tauri && cargo fmt
+cd src-tauri && cargo check --tests
+    Checking taurhaus v0.9.7 (/home/mstie/projects/taurhaus-trial/src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.37s
+bun run typecheck
+$ svelte-check

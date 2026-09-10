@@ -2979,3 +2979,13 @@ identities and `/proc` flock/fdinfo records. No process was paused or signaled.
 Evidence: `integration/attempt13/run/step4-markers.json`, `step4-pending.json`,
 `step4-exposure.json`, `step4-locks.jsonl`, `step4-receipts.json`, and final panes.
 
+### Step 5 — PASS (S-runtime)
+
+`/compact` completed in the attached TUI. The daemon observed the boundary,
+advanced contextGeneration and delivered the recovery card into the same thread;
+the attached pane shows the card. No hosted-read contention aborted the window.
+Evidence: `integration/attempt13/run/step5-boundary-events.json`,
+`step5-runtime-{before,boundary,after}.json`, `step5-final-pane-2.txt`, and complete
+daemon JSONL (`compaction.codex_host.received` / `.delivered`). Token-class resets
+are accounted as metering limitations in the final ledger, not step predicates.
+
