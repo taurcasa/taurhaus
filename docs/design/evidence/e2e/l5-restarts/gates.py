@@ -10,8 +10,9 @@ import tempfile
 import time
 
 checkout = Path.cwd()
-out = Path(__file__).resolve().parent / "gates"
-assert (out.parent / "run/cleanup.json").exists(), "teardown required first"
+base = Path(__file__).resolve().parent
+out = base / os.environ.get("GATE_EVIDENCE_DIR", "gates")
+assert (base / "run/cleanup.json").exists(), "teardown required first"
 out.mkdir(parents=True, exist_ok=True)
 root = Path(tempfile.mkdtemp(prefix="th-int-gates-"))
 operator = Path.home()

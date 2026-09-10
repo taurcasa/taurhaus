@@ -21,7 +21,6 @@ class Acceptance(unittest.TestCase):
   self.assertTrue(identity_preserved(before,dict(before,attachmentGeneration=2)))
   self.assertFalse(identity_preserved(before,dict(before,session_id='b')))
   self.assertFalse(identity_preserved(dict(before,attachmentGeneration=2),before))
-if __name__=='__main__':unittest.main()
 
 class HostedActivity(unittest.TestCase):
  def test_host_state_comes_from_fresh_attributed_daemon_snapshot(self):
@@ -41,3 +40,25 @@ class EvidencePacking(unittest.TestCase):
   packet=pack(files)
   self.assertEqual(len(packet['payloads']),2)
   self.assertEqual(unpack(packet),files)
+
+class TmuxActivityRegression(unittest.TestCase):
+ def test_daemon_active_overrides_missing_or_old_sidecar_state(self):
+  # // Regression: f95ec193 used the optional sidecar state as the tmux activity authority.
+  from support import attributed_activity
+  session={'session_id':'alpha','state':'active','source':None,'activity_attribution':'attributed'}
+  for sidecar in [{}, {'state':'idle'}, {'activity_confidence':'active'}]:
+   with self.subTest(sidecar=sidecar):
+    actual=attributed_activity(session,sidecar,2)
+    self.assertEqual(actual['state'],'active')
+    self.assertEqual(actual['session_id'],'alpha')
+    self.assertFalse(delivered([{'stage':'submitted'},{'kind':'consumed_by_read'}],actual,'alpha'))
+ def test_idle_requires_current_daemon_state_and_attribution(self):
+  from support import attributed_activity
+  for state in [None, 'active']:
+   session={'session_id':'alpha','state':state,'activity_attribution':'attributed'}
+   actual=attributed_activity(session,{'state':'idle'},1)
+   self.assertFalse(delivered([{'stage':'submitted'},{'kind':'consumed_by_read'}],actual,'alpha'))
+  actual=attributed_activity({'session_id':'alpha','state':'idle','activity_attribution':'unattributed'},{},1)
+  self.assertIsNone(actual['session_id'])
+
+if __name__=='__main__':unittest.main()

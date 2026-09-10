@@ -116,6 +116,8 @@ def identity_preserved(before, after):
 
 def attributed_activity(session, sidecar, age):
     attributed=session.get('activity_attribution')=='attributed'
-    state=session.get('state') if session.get('source')=='host' else sidecar.get('state')
+    # The daemon attributes state to the matched session on both transports.
+    # The activity sidecar is freshness evidence, not a fallback state authority.
+    state=session.get('state')
     return {'state':state,'age':age,'session_id':session.get('session_id') if attributed else None,
             'runtime':session,'snapshot':sidecar}
