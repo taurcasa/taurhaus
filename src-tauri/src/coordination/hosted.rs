@@ -189,6 +189,7 @@ impl HostedMembers {
             &socket,
             before.session_id.as_deref(),
             &guard,
+            (team, member),
         )?;
         if registry.resolve(team).map_err(|e| e.to_string())? != root
             || registry.revision(team).map_err(|e| e.to_string())?
@@ -299,7 +300,7 @@ impl HostedMembers {
                     )
                 };
                 let Ok(guard) = guard else { return };
-                let disconnected = !seat.attachment.socket_path.exists() || !seat.host.alive();
+                let disconnected = !seat.host.alive() || !seat.attachment.socket_path.exists();
                 let closed = !disconnected
                     && seat
                         .host

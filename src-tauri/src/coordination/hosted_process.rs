@@ -3,9 +3,14 @@
 use crate::coordination::stores::lock::HostOperationLock;
 use serde_json::{json, Value};
 use std::collections::VecDeque;
+use std::io::{ErrorKind, Read};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::time::{Duration, Instant};
 use taurhaus_lib::session_scanner::launch::HostedLaunch;
 
@@ -13,8 +18,167 @@ use taurhaus_lib::session_scanner::launch::HostedLaunch;
 mod websocket;
 use websocket::WebSocket;
 
+struct StderrTail {
+    bytes: Arc<Mutex<VecDeque<u8>>>,
+    stop: Arc<AtomicBool>,
+    reader: Option<std::thread::JoinHandle<()>>,
+}
+impl StderrTail {
+    fn start(mut pipe: std::process::ChildStderr) -> std::io::Result<Self> {
+        // fcntl(O_NONBLOCK) also works on pipes; no raw descriptor ownership transfer.
+        socket2::SockRef::from(&pipe).set_nonblocking(true)?;
+        let bytes = Arc::new(Mutex::new(VecDeque::with_capacity(4096)));
+        let stop = Arc::new(AtomicBool::new(false));
+        let (buffer, stopping) = (bytes.clone(), stop.clone());
+        let reader = std::thread::Builder::new()
+            .name("host-stderr".into())
+            .spawn(move || {
+                let mut chunk = [0; 4096];
+                let mut deadline = None;
+                loop {
+                    if stopping.load(Ordering::Relaxed) {
+                        let end = deadline
+                            .get_or_insert_with(|| Instant::now() + Duration::from_millis(50));
+                        if Instant::now() >= *end {
+                            break;
+                        }
+                    }
+                    match pipe.read(&mut chunk) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            let mut tail = buffer.lock().unwrap();
+                            let excess = (tail.len() + n).saturating_sub(4096);
+                            tail.drain(..excess);
+                            tail.extend(&chunk[..n]);
+                        }
+                        Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+                        Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                            if stopping.load(Ordering::Relaxed) {
+                                break;
+                            }
+                            // Idle pace only: a burst drains without sleeping on the Ok path,
+                            // and the 64 KiB pipe buffer absorbs the wake-up latency.
+                            std::thread::sleep(Duration::from_millis(100));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            })?;
+        Ok(Self {
+            bytes,
+            stop,
+            reader: Some(reader),
+        })
+    }
+    fn sanitized(&self) -> String {
+        let bytes: Vec<_> = self.bytes.lock().unwrap().iter().copied().collect();
+        sanitize_stderr(&bytes)
+    }
+    fn finish(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
+    }
+}
+impl Drop for StderrTail {
+    fn drop(&mut self) {
+        self.finish();
+    }
+}
+
+fn sanitize_stderr(bytes: &[u8]) -> String {
+    // A ring cut can remove a credential's prefix: discard the leading fragment.
+    let bytes = if bytes.len() == 4096 {
+        // Drop only the leading fragment; a window without a separator, or whose
+        // remainder is empty or blank, keeps the whole window (redaction still runs).
+        match bytes
+            .iter()
+            .position(|b| b.is_ascii_whitespace() || b.is_ascii_control())
+        {
+            Some(start)
+                if bytes[start..]
+                    .iter()
+                    .any(|b| !b.is_ascii_whitespace() && !b.is_ascii_control()) =>
+            {
+                &bytes[start..]
+            }
+            _ => bytes,
+        }
+    } else {
+        bytes
+    };
+    let mut text = String::new();
+    let mut escape = 0;
+    for c in String::from_utf8_lossy(bytes).chars() {
+        match (escape, c) {
+            (0, '\u{1b}') => escape = 1,
+            (0, '\u{9b}') => escape = 2,
+            (0, '\u{9d}') => escape = 3,
+            (1, '[') => escape = 2,
+            (1, ']' | 'P' | '^' | '_') => escape = 3,
+            (1, ' '..='/') => {}
+            (1, _) | (2, '@'..='~') | (3, '\u{7}') | (4, '\\') => escape = 0,
+            (3, '\u{1b}') => escape = 4,
+            (4, _) => escape = 3,
+            (0, c) if c.is_whitespace() => text.push(' '),
+            (0, c) if !c.is_control() => text.push(c),
+            _ => {}
+        }
+    }
+    let mut cursor = 0;
+    while cursor < text.len() {
+        let lower = text[cursor..].to_ascii_lowercase();
+        let found = [
+            "sk-",
+            "bearer ",
+            "\"access_token\"",
+            "\"api_key\"",
+            "'access_token'",
+            "'api_key'",
+        ]
+        .iter()
+        .filter_map(|key| lower.find(key).map(|i| (i, *key)))
+        .min_by_key(|v| v.0);
+        let Some((offset, key)) = found else {
+            break;
+        };
+        let start = cursor + offset;
+        let value = if key == "sk-" {
+            start
+        } else {
+            start + key.len() + text[start + key.len()..].len()
+                - text[start + key.len()..]
+                    .trim_start_matches([' ', ':', '='])
+                    .len()
+        };
+        let rest = &text[value..];
+        let end = if rest.starts_with('"') {
+            let mut json = serde_json::Deserializer::from_str(rest).into_iter::<String>();
+            if json.next().is_some_and(|v| v.is_ok()) {
+                value + json.byte_offset()
+            } else {
+                text.len()
+            }
+        } else if let Some(quoted) = rest.strip_prefix('\'') {
+            quoted.find('\'').map_or(text.len(), |i| value + i + 2)
+        } else {
+            rest.find([' ', '\"', '\'', ',', ';', '}', ']'])
+                .map_or(text.len(), |i| value + i)
+        };
+        text.replace_range(start..end, "[redacted]");
+        cursor = start + "[redacted]".len();
+    }
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let start = text.char_indices().rev().nth(511).map_or(0, |(i, _)| i);
+    text[start..].into()
+}
+
 pub(crate) struct HostProcess {
     child: Child,
+    stderr: Option<StderrTail>,
+    identity: (String, String),
+    exit_logged: bool,
     rpc: Option<Rpc>,
     pub thread_id: String,
     pub attach_config: Value,
@@ -36,6 +200,7 @@ impl HostProcess {
         socket: &Path,
         resume: Option<&str>,
         guard: &HostOperationLock,
+        identity: (&str, &str),
     ) -> Result<Self, String> {
         if !socket.is_absolute()
             || socket.as_os_str().len() > 100
@@ -43,6 +208,7 @@ impl HostProcess {
         {
             return Err("host socket must be a new short absolute private path".into());
         }
+        let timeout_seconds = guard.remaining().map_err(|e| e.to_string())?.as_secs_f64();
         let child = Command::new(&launch.program)
             .args(&launch.arguments)
             .args(["--listen", &format!("unix://{}", socket.display())])
@@ -51,11 +217,14 @@ impl HostProcess {
             .current_dir(cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| e.to_string())?;
         let mut host = Self {
             child,
+            stderr: None,
+            identity: (identity.0.into(), identity.1.into()),
+            exit_logged: false,
             rpc: None,
             thread_id: String::new(),
             attach_config: Value::Null,
@@ -69,14 +238,31 @@ impl HostProcess {
             reconnect_after: None,
             deferred_compaction: None,
         };
+        host.stderr =
+            Some(StderrTail::start(host.child.stderr.take().unwrap()).map_err(|e| e.to_string())?);
         host.process_start = taurhaus_lib::platform::process_start_ticks(host.child.id())
             .ok_or("host process identity unavailable")?
             .to_string();
         loop {
-            let remaining = guard.remaining().map_err(|e| e.to_string())?;
-            if host.child.try_wait().map_err(|e| e.to_string())?.is_some() {
-                return Err("app-server exited before transport readiness".into());
+            if let Some(status) = host.child.try_wait().map_err(|e| e.to_string())? {
+                let (status, tail) = host.exit_details(status);
+                host.diagnostic(
+                    "hosted.launch.failed",
+                    json!({"exit_status":status,
+                    "stderr_tail":tail, "reason":"exited_before_readiness"}),
+                );
+                return Err(format!(
+                    "app-server exited before transport readiness (exit {status}): {tail}"
+                ));
             }
+            let remaining = guard.remaining().map_err(|e| {
+                host.diagnostic(
+                    "hosted.launch.timed_out",
+                    json!({"timeout_seconds":timeout_seconds,
+                    "stderr_tail":host.stderr.as_ref().unwrap().sanitized()}),
+                );
+                e.to_string()
+            })?;
             let connection =
                 socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::STREAM, None)
                     .map_err(|e| e.to_string())?;
@@ -209,6 +395,30 @@ impl HostProcess {
         self.rpc.as_mut().unwrap().socket = None;
     }
 
+    fn diagnostic(&self, event: &str, mut fields: Value) {
+        fields["team"] = json!(self.identity.0);
+        fields["member"] = json!(self.identity.1);
+        tracing::warn!(event, fields = %fields, "Hosted child diagnostics");
+        taurhaus_lib::logging::emit_global(
+            "warn",
+            "coordination",
+            event,
+            Some("Hosted child diagnostics".into()),
+            fields.as_object().unwrap().clone(),
+        );
+    }
+
+    fn exit_details(&mut self, status: std::process::ExitStatus) -> (String, String) {
+        let stderr = self.stderr.as_mut().unwrap();
+        stderr.finish();
+        (
+            status
+                .code()
+                .map_or_else(|| status.to_string(), |code| code.to_string()),
+            stderr.sanitized(),
+        )
+    }
+
     pub fn outcome_unknown(&self) -> bool {
         self.uncertain
     }
@@ -217,11 +427,21 @@ impl HostProcess {
         self.child.id()
     }
     pub fn alive(&mut self) -> bool {
-        self.child.try_wait().ok().flatten().is_none()
-            && taurhaus_lib::platform::process_start_ticks(self.child.id())
-                .map(|v| v.to_string())
-                .as_deref()
-                == Some(&self.process_start)
+        if let Ok(Some(status)) = self.child.try_wait() {
+            if !self.exit_logged {
+                let (status, tail) = self.exit_details(status);
+                self.diagnostic(
+                    "hosted.process.exited",
+                    json!({"exit_status":status, "stderr_tail":tail}),
+                );
+                self.exit_logged = true;
+            }
+            return false;
+        }
+        taurhaus_lib::platform::process_start_ticks(self.child.id())
+            .map(|v| v.to_string())
+            .as_deref()
+            == Some(&self.process_start)
     }
 
     pub fn needs_reconnect(&self) -> bool {
@@ -518,6 +738,9 @@ impl Drop for HostProcess {
             while self.child.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
                 std::thread::sleep(Duration::from_millis(5));
             }
+        }
+        if let Some(stderr) = &mut self.stderr {
+            stderr.finish();
         }
         let _ = std::fs::remove_file(&self.socket);
     }
@@ -914,6 +1137,138 @@ pub(crate) mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
+    #[test]
+    fn stderr_sanitizer_bounds_unicode_and_redacts_quoted_credentials() {
+        // Regression: cadd533e discarded stderr; a8cb4821 missed single-quoted tokens.
+        assert_eq!(
+            sanitize_stderr("é".repeat(600).as_bytes()).chars().count(),
+            512
+        );
+        assert!(!sanitize_stderr(b"'access_token': 'fake-secret'").contains("fake"));
+        assert_eq!(
+            sanitize_stderr(b"\x1b]0;hidden\x07visible\x1b[0m"),
+            "visible"
+        );
+        // Regression: 77a1432e's ring-cut guard emptied a full window that held one
+        // unbroken line (its only separator the trailing newline) or no separator at all.
+        let mut one_line = vec![b'x'; 4095];
+        one_line.push(b'\n');
+        assert_eq!(sanitize_stderr(&one_line).len(), 512);
+        assert_eq!(sanitize_stderr(&[b'y'; 4096]).len(), 512);
+        let mut cut = b"cret-fragment error: ".to_vec();
+        cut.resize(4096, b'z');
+        let cut = sanitize_stderr(&cut);
+        assert_eq!(cut.len(), 512);
+        assert!(!cut.contains("fragment"));
+        assert!(!sanitize_stderr(b"{'api_key': 'fake-secret'}").contains("fake"));
+    }
+
+    #[test]
+    fn stderr_reader_drains_and_keeps_last_4k() {
+        // Regression: cadd533e discarded child stderr, hiding launch failures.
+        let tmp = tempfile::tempdir().unwrap();
+        let script = tmp.path().join("writer.sh");
+        std::fs::write(
+            &script,
+            "head -c 1048576 /dev/zero >&2; printf END >&2; exit 23",
+        )
+        .unwrap();
+        let mut child = Command::new("/bin/sh")
+            .arg(script)
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut tail = StderrTail::start(child.stderr.take().unwrap()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while child.try_wait().unwrap().is_none() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let status = child.try_wait().unwrap();
+        if status.is_none() {
+            child.kill().unwrap();
+        }
+        child.wait().unwrap();
+        tail.finish();
+        assert_eq!(status.unwrap().code(), Some(23));
+        assert!(tail.reader.is_none());
+        let bytes = tail.bytes.lock().unwrap();
+        assert_eq!(bytes.len(), 4096);
+        assert!(bytes.iter().copied().collect::<Vec<_>>().ends_with(b"END"));
+    }
+
+    #[test]
+    fn launch_error_has_sanitized_stderr_and_status() {
+        // Regression: cadd533e returned a bare readiness error and discarded stderr.
+        let _logs = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let sink =
+            taurhaus_lib::logging::LogFileState::new(tmp.path().join("events.jsonl")).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
+        let launch = fixture(tmp.path());
+        std::fs::write(&launch.program, r#"#!/bin/sh
+head -c 5000 /dev/zero >&2
+printf '\033[31mfailed\033[0m sk-fake-secret Bearer fake-bearer "access_token": "fake-access"\nfinal reason\001' >&2
+exit 23
+"#.replace("failed", &format!("{}failed", "é".repeat(600)))).unwrap();
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let error = spawn(&launch, tmp.path(), None, &guard).err().unwrap();
+        assert!(error.contains("(exit 23):"), "{error}");
+        assert_eq!(error.split_once(": ").unwrap().1.chars().count(), 512);
+        assert!(error.contains("failed") && error.ends_with("final reason"));
+        for forbidden in ["fake-", "\u{1b}", "\n", "\u{1}"] {
+            assert!(!error.contains(forbidden));
+        }
+        drop(guard);
+        std::fs::write(
+            &launch.program,
+            "#!/bin/sh\nprintf waiting >&2; exec sleep 60",
+        )
+        .unwrap();
+        let guard = HostOperationLock::acquire_for_activity(tmp.path(), "team", "seat").unwrap();
+        assert!(spawn(&launch, tmp.path(), None, &guard).is_err());
+        drop(guard);
+        let launch = fixture(tmp.path());
+        let script = std::fs::read_to_string(&launch.program).unwrap().replace(
+            "root = os.environ",
+            "sys.stderr.write('mid-run reason\\n'); sys.stderr.flush()\nroot = os.environ",
+        );
+        std::fs::write(&launch.program, script).unwrap();
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        host.child.kill().unwrap();
+        host.child.wait().unwrap();
+        assert!(!host.alive());
+        assert!(!host.alive());
+        drop(host);
+        sink.flush_for_test().unwrap();
+        let events: Vec<Value> = std::fs::read_to_string(tmp.path().join("events.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|s| serde_json::from_str(s).unwrap())
+            .collect();
+        for (name, tail) in [
+            ("hosted.launch.failed", error.split_once(": ").unwrap().1),
+            ("hosted.launch.timed_out", "waiting"),
+            ("hosted.process.exited", "mid-run reason"),
+        ] {
+            let rows: Vec<_> = events.iter().filter(|e| e["event"] == name).collect();
+            assert_eq!(rows.len(), 1, "{name}");
+            assert_eq!(rows[0]["level"], "WARN");
+            let fields = rows[0];
+            assert_eq!(fields["team"], "team");
+            assert_eq!(fields["member"], "seat");
+            assert_eq!(fields["stderr_tail"], tail);
+            if name.ends_with("failed") {
+                assert_eq!(fields["exit_status"], "23");
+                assert_eq!(fields["reason"], "exited_before_readiness");
+            } else if name.ends_with("exited") {
+                assert!(fields["exit_status"].as_str().unwrap().contains("signal"));
+            } else {
+                assert!(fields["timeout_seconds"].as_f64().unwrap() > 0.0);
+            }
+        }
+    }
+
     pub(crate) fn fixture(
         root: &std::path::Path,
     ) -> taurhaus_lib::session_scanner::launch::HostedLaunch {
@@ -1188,7 +1543,7 @@ with socket.socket(socket.AF_UNIX) as listener:
         guard: &HostOperationLock,
     ) -> Result<HostProcess, String> {
         let socket = root.join(format!("{}.sock", uuid::Uuid::new_v4().simple()));
-        HostProcess::launch(launch, root, &socket, resume, guard)
+        HostProcess::launch(launch, root, &socket, resume, guard, ("team", "seat"))
     }
 
     #[test]
