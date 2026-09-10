@@ -22,6 +22,7 @@ pub(crate) struct HostProcess {
     pub build: String,
     pub process_start: String,
     socket: PathBuf,
+    account_root: PathBuf,
     uncertain: bool,
 }
 
@@ -59,6 +60,7 @@ impl HostProcess {
             build: String::new(),
             process_start: String::new(),
             socket: socket.into(),
+            account_root: launch.account_root.clone(),
             uncertain: false,
         };
         host.process_start = taurhaus_lib::platform::process_start_ticks(host.child.id())
@@ -79,7 +81,7 @@ impl HostProcess {
             {
                 let stream: UnixStream = connection.into();
                 host.rpc = Some(Rpc {
-                    socket: WebSocket::connect(stream, guard)?,
+                    socket: Some(WebSocket::connect(stream, guard)?),
                     activity_socket: socket.into(),
                     events: VecDeque::new(),
                     thread_id: String::new(),
@@ -210,8 +212,9 @@ impl HostProcess {
                 == Some(&self.process_start)
     }
 
-    /// Drain notifications with one bounded read, without copying transcript/event history.
+    /// Read the thread response and queued notifications, without cloning cached events/requests.
     pub fn refresh_activity(&mut self, guard: &HostOperationLock) -> Result<(), String> {
+        self.reconnect(guard)?;
         self.rpc
             .as_mut()
             .ok_or("host connection unavailable")?
@@ -224,6 +227,7 @@ impl HostProcess {
         if !self.alive() {
             return Err("owned host stopped".into());
         }
+        self.reconnect(guard)?;
         let rpc = self.rpc.as_mut().ok_or("host connection unavailable")?;
         let mut pending = false;
         let mut result = loop {
@@ -254,6 +258,70 @@ impl HostProcess {
         result["eventsTruncated"] = json!(rpc.truncated);
         result["outcomeUnknown"] = json!(self.uncertain);
         Ok(result)
+    }
+
+    /// A failed frame is never reused. Reinitialize and revalidate the same owned thread;
+    /// keep history and the unknown-input fence, but never replay an input or approval.
+    fn reconnect(&mut self, guard: &HostOperationLock) -> Result<(), String> {
+        let rpc = self.rpc.as_mut().ok_or("host connection unavailable")?;
+        if rpc.socket.is_some() {
+            return Ok(());
+        }
+        rpc.requests.clear(); // Request IDs belong to the old connection.
+        let thread = std::mem::take(&mut rpc.thread_id);
+        rpc.repairing = true;
+        let result = (|| -> Result<Value, String> {
+            let connection =
+                socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::STREAM, None)
+                    .map_err(|e| e.to_string())?;
+            connection
+                .connect_timeout(
+                    &socket2::SockAddr::unix(&self.socket).map_err(|e| e.to_string())?,
+                    guard.remaining().map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
+            rpc.socket = Some(WebSocket::connect(connection.into(), guard)?);
+            let handshake = rpc.call("initialize", json!({"clientInfo":{"name":"taurhaus_host","version":"1"},"capabilities":{"experimentalApi":true}}), guard)?;
+            if handshake["codexHome"].as_str().map(Path::new) != Some(&self.account_root)
+                || handshake["userAgent"]
+                    .as_str()
+                    .and_then(|s| s.strip_prefix("taurhaus_host/"))
+                    .and_then(|s| s.split_whitespace().next())
+                    != Some(&self.build)
+            {
+                return Err("app-server reconnect identity mismatch".into());
+            }
+            rpc.write(&json!({"method":"initialized"}), guard)?;
+            let (expected, resume, sources) =
+                rpc.policy.clone().ok_or("host policy unavailable")?;
+            let resumed = rpc.call("thread/resume", resume, guard)?;
+            if resumed["thread"]["id"] != thread
+                || resumed["model"] != expected["model"]
+                || resumed["reasoningEffort"] != expected["effort"]
+                || resumed["approvalPolicy"] != expected["approvalPolicy"]
+                || resumed["sandbox"] != expected["sandboxPolicy"]
+                || instruction_sources(&resumed) != sources
+            {
+                return Err("host did not restore owned thread policy".into());
+            }
+            Ok(resumed["thread"]["status"].clone())
+        })();
+        rpc.thread_id = thread;
+        rpc.repairing = false;
+        match result {
+            Ok(status) => {
+                rpc.policy_dirty = false;
+                rpc.set_status(&status);
+                rpc.publish_activity();
+                Ok(())
+            }
+            Err(error) => {
+                rpc.socket = None;
+                rpc.set_status(&Value::Null);
+                rpc.publish_activity();
+                Err(error)
+            }
+        }
     }
 
     pub fn input(&mut self, text: &str, guard: &HostOperationLock) -> Result<Value, String> {
@@ -508,7 +576,7 @@ fn event_turns(events: &VecDeque<Value>, thread_id: &str) -> Vec<Value> {
 
 struct Rpc {
     activity_socket: PathBuf,
-    socket: WebSocket,
+    socket: Option<WebSocket>,
     events: VecDeque<Value>,
     thread_id: String,
     status: Value,
@@ -567,14 +635,21 @@ impl Rpc {
     }
 
     fn write(&mut self, value: &Value, guard: &HostOperationLock) -> Result<(), String> {
-        self.socket.send(
-            1,
-            &serde_json::to_vec(value).map_err(|e| e.to_string())?,
-            guard,
-        )
+        self.socket
+            .as_mut()
+            .ok_or("host connection unavailable")?
+            .send(
+                1,
+                &serde_json::to_vec(value).map_err(|e| e.to_string())?,
+                guard,
+            )
     }
     fn read(&mut self, guard: &HostOperationLock) -> Result<Value, String> {
-        let message = self.socket.read(guard)?;
+        let message = self
+            .socket
+            .as_mut()
+            .ok_or("host connection unavailable")?
+            .read(guard)?;
         let value: Value = serde_json::from_slice(&message).map_err(|_| "malformed host frame")?;
         if !value.is_object() {
             return Err("host frame must contain one JSON object".into());
@@ -582,6 +657,23 @@ impl Rpc {
         Ok(value)
     }
     fn call(
+        &mut self,
+        method: &str,
+        params: Value,
+        guard: &HostOperationLock,
+    ) -> Result<Value, RpcError> {
+        let result = self.call_inner(method, params, guard);
+        if matches!(result, Err(RpcError::Transport(_))) {
+            // Header/payload bytes or an RPC reply may already be consumed. Close
+            // the transport on every ambiguous failure; never parse its tail again.
+            self.socket = None;
+            self.set_status(&Value::Null);
+            self.publish_activity();
+        }
+        result
+    }
+
+    fn call_inner(
         &mut self,
         method: &str,
         params: Value,

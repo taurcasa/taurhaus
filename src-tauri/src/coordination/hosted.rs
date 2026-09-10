@@ -914,6 +914,63 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn hosted_activity_regression_recovers_after_mid_frame_deadline() {
+        // Regression: 011ca88c imposed 250ms reads but reused a partially consumed frame.
+        let tmp = tempfile::tempdir().unwrap();
+        let registry = seat(tmp.path());
+        let hosts = HostedMembers::default();
+        let launch = fixture(tmp.path());
+        let script = std::fs::read_to_string(&launch.program).unwrap().replace(
+            "                emit(reply)",
+            "                marker = os.path.join(root, 'split-frame')\n                if method == 'thread/read' and os.path.exists(marker):\n                    os.unlink(marker)\n                    payload = json.dumps(reply).encode()\n                    stream.write(b'\\x81\\x7e'+struct.pack('!H', len(payload))+payload[:1]); stream.flush()\n                    import time; time.sleep(0.4)\n                    stream.write(payload[1:]); stream.flush()\n                    continue\n                emit(reply)",
+        );
+        std::fs::write(&launch.program, script).unwrap();
+        hosts.launch(&registry, "team", "seat", &launch).unwrap();
+        let generation = saved(tmp.path()).attachment_generation;
+        let hub = SessionActivityHub::shared();
+        let source = || {
+            hub.runtime_snapshot()
+                .runtime_sessions
+                .into_iter()
+                .find(|s| s.project_path == tmp.path().to_str().unwrap())
+                .unwrap()
+                .source
+        };
+        input(&hosts, &registry, generation, "active").unwrap();
+        transcript(&hosts, &registry, generation);
+        std::fs::write(tmp.path().join("split-frame"), "").unwrap();
+        hub.refresh_hosts();
+        let after_timeout = source();
+        // A new user deadline must recover the socket without replaying any input.
+        let recovered = hosts.operation(
+            &registry,
+            "team",
+            "seat",
+            generation,
+            "transcript",
+            Value::Null,
+        );
+        assert!(recovered.is_ok(), "failed to recover: {recovered:?}");
+        assert_eq!(after_timeout.as_deref(), Some("host_unavailable"));
+        assert_eq!(source().as_deref(), Some("host"));
+        hosts
+            .operation(
+                &registry,
+                "team",
+                "seat",
+                generation,
+                "interrupt",
+                Value::Null,
+            )
+            .unwrap();
+        input(&hosts, &registry, generation, "after timeout").unwrap();
+        assert!(transcript(&hosts, &registry, generation)
+            .to_string()
+            .contains("after timeout"));
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+    #[test]
     fn hosted_probe_preserves_authority_while_thread_read_is_pending() {
         // Regression: 1b19edd2 blocked the global scanner for 5s and called pending a disconnect.
         let tmp = tempfile::tempdir().unwrap();

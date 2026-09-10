@@ -1,5 +1,6 @@
 //! Host publication shares the hub lock with scan commits: a scan cannot overwrite a newer edge.
 use super::{HubState, SessionActivityHub};
+use crate::provider::path::normalize_project_path;
 use crate::session_scanner::process::ProcessInfo;
 use crate::session_scanner::RuntimeSession;
 use std::path::{Path, PathBuf};
@@ -34,7 +35,9 @@ impl Drop for HostedActivityLease {
     }
 }
 fn same_seat(a: &RuntimeSession, b: &RuntimeSession) -> bool {
-    a.project_path == b.project_path && a.group_id == b.group_id && a.member_name == b.member_name
+    normalize_project_path(&a.project_path) == normalize_project_path(&b.project_path)
+        && a.group_id == b.group_id
+        && a.member_name == b.member_name
 }
 
 pub(super) fn overlay_hosted(state: &mut HubState, sessions: &mut Vec<RuntimeSession>) {
@@ -152,7 +155,8 @@ impl SessionActivityHub {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let entry = state.hosted.get_mut(socket).filter(|e| {
             e.session.session_id.as_deref() == Some(thread)
-                && e.session.project_path == process.project_path
+                && normalize_project_path(&e.session.project_path)
+                    == normalize_project_path(&process.project_path)
                 && e.session
                     .tmux_pane
                     .as_deref()
@@ -204,6 +208,50 @@ impl SessionActivityHub {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn hosted_activity_regression_normalizes_identity_and_overlay() {
+        // Regression: 1b19edd2 compared configured paths with kernel cwd verbatim.
+        let hub = Arc::new(SessionActivityHub::new());
+        let tmp = tempfile::tempdir().unwrap();
+        let socket = tmp.path().join("socket");
+        let session = RuntimeSession {
+            project_path: format!("{}//", tmp.path().display()),
+            session_id: Some("thread".into()),
+            group_id: Some("team".into()),
+            member_name: Some("seat".into()),
+            ..Default::default()
+        };
+        let _lease = hub.register_host(
+            socket.clone(),
+            tmp.path().into(),
+            session.clone(),
+            Arc::new(|| {}),
+        );
+        let process = ProcessInfo {
+            pid: 42,
+            project_path: tmp.path().to_string_lossy().into_owned(),
+            tty: "pts/42".into(),
+            args: format!("codex --remote unix://{} resume thread", socket.display()),
+            cli_tool: crate::session_scanner::cli_tool::CliTool::Codex,
+        };
+        let resolved = hub.host_session(&socket, "thread", &process, Some("%42"));
+        // Check overlay independently too: enrichment stamps membership on the cwd row.
+        let mut sessions = vec![RuntimeSession {
+            project_path: process.project_path.clone(),
+            pid: process.pid,
+            tmux_pane: Some("%42".into()),
+            ..session
+        }];
+        overlay_hosted(&mut hub.state.lock().unwrap(), &mut sessions);
+        assert_eq!(sessions.len(), 1, "one seat must not survive as two rows");
+        let resolved = resolved
+            .expect("normalized cwd must resolve the owned seat")
+            .0;
+        assert_eq!(resolved.session_id.as_deref(), Some("thread"));
+        assert_eq!(sessions[0].pid, process.pid);
+        assert_eq!(sessions[0].tmux_pane.as_deref(), Some("%42"));
+    }
+
     #[test]
     fn missing_hosted_transcript_is_not_walked_each_cycle() {
         // Regression: 1b19edd2 walked the account history at scanner frequency after a miss.
