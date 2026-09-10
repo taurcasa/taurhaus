@@ -117,10 +117,16 @@ fn sanitize_stderr(bytes: &[u8]) -> String {
     let mut cursor = 0;
     while cursor < text.len() {
         let lower = text[cursor..].to_ascii_lowercase();
-        let found = ["sk-", "bearer ", "\"access_token\"", "\"api_key\""]
-            .iter()
-            .filter_map(|key| lower.find(key).map(|i| (i, *key)))
-            .min_by_key(|v| v.0);
+        let found = [
+            "sk-",
+            "bearer ",
+            "\"access_token\"",
+            "\"api_key\"",
+            "'access_token'",
+        ]
+        .iter()
+        .filter_map(|key| lower.find(key).map(|i| (i, *key)))
+        .min_by_key(|v| v.0);
         let Some((offset, key)) = found else {
             break;
         };
@@ -1119,6 +1125,20 @@ pub(crate) mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     #[test]
+    fn stderr_sanitizer_bounds_unicode_and_redacts_quoted_credentials() {
+        // Regression: cadd533e discarded stderr; a8cb4821 missed single-quoted tokens.
+        assert_eq!(
+            sanitize_stderr("é".repeat(600).as_bytes()).chars().count(),
+            512
+        );
+        assert!(!sanitize_stderr(b"'access_token': 'fake-secret'").contains("fake"));
+        assert_eq!(
+            sanitize_stderr(b"\x1b]0;hidden\x07visible\x1b[0m"),
+            "visible"
+        );
+    }
+
+    #[test]
     fn stderr_reader_drains_and_keeps_last_4k() {
         // Regression: cadd533e discarded child stderr, hiding launch failures.
         let tmp = tempfile::tempdir().unwrap();
@@ -1144,11 +1164,8 @@ pub(crate) mod tests {
         }
         child.wait().unwrap();
         tail.finish();
-        assert_eq!(
-            status.unwrap().code(),
-            Some(23),
-            "pipe must never block child"
-        );
+        assert_eq!(status.unwrap().code(), Some(23));
+        assert!(tail.reader.is_none());
         let bytes = tail.bytes.lock().unwrap();
         assert_eq!(bytes.len(), 4096);
         assert!(bytes.iter().copied().collect::<Vec<_>>().ends_with(b"END"));
@@ -1164,12 +1181,14 @@ pub(crate) mod tests {
         taurhaus_lib::logging::install_global_sink(&sink);
         let launch = fixture(tmp.path());
         std::fs::write(&launch.program, r#"#!/bin/sh
+head -c 5000 /dev/zero >&2
 printf '\033[31mfailed\033[0m sk-fake-secret Bearer fake-bearer "access_token": "fake-access"\nfinal reason\001' >&2
 exit 23
-"#).unwrap();
+"#.replace("failed", &format!("{}failed", "é".repeat(600)))).unwrap();
         let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
         let error = spawn(&launch, tmp.path(), None, &guard).err().unwrap();
         assert!(error.contains("(exit 23):"), "{error}");
+        assert_eq!(error.split_once(": ").unwrap().1.chars().count(), 512);
         assert!(error.contains("failed") && error.ends_with("final reason"));
         for forbidden in ["fake-", "\u{1b}", "\n", "\u{1}"] {
             assert!(!error.contains(forbidden));
