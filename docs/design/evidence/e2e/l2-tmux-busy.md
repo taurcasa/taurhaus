@@ -860,3 +860,21 @@ paid action was admitted. [all usage increments and turns](l2-tmux-busy/run4c/ru
   **451ec092**, step 1 as **5c7c6d38**, and step 2 as **1661296e** immediately
   after their green outcomes. This attempt makes no PASS claim for the complete
   lane or managed stop/resume.
+
+#### Run 4c continuation verification
+
+The continuation began at **c3b98cf9** with a clean tree. Steps 1 and 2 were
+already committed as **5c7c6d38** and **1661296e**; no completed green runtime
+step remained uncommitted. The frozen evidence reconciliation and all **28**
+offline tests passed again, as did the read-only cleanup/export audit.
+
+Fresh exact gates from this checkout root all exited **0**:
+`just check-quick`, `just lint`, and `just test-contracts`.
+[Continuation gate results](l2-tmux-busy/run4c/continuation-checks.json).
+The product diff against **1db4f9bf** remains empty, so the conditional Rust-unit
+gate does not apply. Original run gate records remain unchanged.
+
+No paid runtime was restarted and no additional seat spend occurred. Step 3's
+recorded failure and removed scratch runtime prevent an ordered step-4
+continuation under the specification's stop-on-failure rule. Steps 4–6 remain
+**NOT RUN**; the incomplete metering and missing Opus review remain unresolved.
