@@ -451,7 +451,7 @@ class Lane:
             except (ConnectionRefusedError,FileNotFoundError):
                 if time.monotonic()>=deadline: raise
                 time.sleep(.2)
-        capabilities=self.mesh(['delivery','capabilities','--json'],'delivery-capabilities')
+        capabilities=self.mesh(['delivery','capabilities'],'delivery-capabilities')
         descriptors=capabilities if isinstance(capabilities,list) else capabilities.get('native_descriptors',[])
         assert any(d.get('adapter')=='app_server' and d.get('build')=='0.153.4' and d.get('enabled') is True for d in descriptors), 'shipped 0.153.4 app_server descriptor not enabled'
         source=(CHECKOUT/'src/lib/components/meshTabUtils.js').read_text()

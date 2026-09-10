@@ -1,0 +1,22 @@
+{
+  "taurhaus_base": "e4de06f9",
+  "taurhaus_head": "f9f43e0f62668dd35cdb0368e27dc9c13fbb4784",
+  "controller_commit": "f9f43e0f62668dd35cdb0368e27dc9c13fbb4784",
+  "branch": "feat/e2e-l4-resume-team",
+  "mesh_commit": "310144de1f7939e7fbb2d80ab42ebd00580ce15d",
+  "mesh_descriptor": "shipped enabled; unmodified",
+  "protocol": 27,
+  "runtime_model": "gpt-5.6-luna",
+  "effort": "low",
+  "codex_version_required": "0.153.4",
+  "fresh_budget": {
+    "inputs": 16,
+    "usd": 0.25,
+    "runtime_seconds": 900
+  },
+  "attempt9_reference": {
+    "exit": 128,
+    "reason": "referenced worktree does not exist; run4 sandbox retained"
+  },
+  "review": "independent Opus lens reserved for invoking orchestrator"
+}
