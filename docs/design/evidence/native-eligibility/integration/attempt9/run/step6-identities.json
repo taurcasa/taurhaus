@@ -1,0 +1,211 @@
+[
+  {
+    "pid": 3769728,
+    "start_ticks": "25173469",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-1vc78b94",
+      "/tmp/th-int-1vc78b94",
+      "--chdir",
+      "/tmp/th-int-1vc78b94/project",
+      "/bin/bash",
+      "/tmp/th-int-1vc78b94/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3769729,
+    "start_ticks": "25173469",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-1vc78b94",
+      "/tmp/th-int-1vc78b94",
+      "--chdir",
+      "/tmp/th-int-1vc78b94/project",
+      "/bin/bash",
+      "/tmp/th-int-1vc78b94/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3769730,
+    "start_ticks": "25173469",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-int-1vc78b94/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3769731,
+    "start_ticks": "25173469",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 3769737,
+    "start_ticks": "25173480",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3769851,
+    "start_ticks": "25173541",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-int-1vc78b94/project' && CLAUDE_DIR='/tmp/th-int-1vc78b94/claude' CLAUDE_CONFIG_DIR='/tmp/th-int-1vc78b94/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'integration' --agent-name 'lead' --agent-id 'lead@integration' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3769854,
+    "start_ticks": "25173541",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "integration",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@integration",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3771288,
+    "start_ticks": "25173801",
+    "argv": [
+      "/tmp/th-int-1vc78b94/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "integration",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-int-1vc78b94/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 3819638,
+    "start_ticks": "25197310",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-int-1vc78b94/home/.local/bin/taurhaus-daemon --port 31269 --data-dir /tmp/th-int-1vc78b94/data >>/tmp/th-int-1vc78b94/daemon-restart.log 2>&1",
+      ""
+    ]
+  },
+  {
+    "pid": 3819644,
+    "start_ticks": "25197310",
+    "argv": [
+      "/tmp/th-int-1vc78b94/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "31269",
+      "--data-dir",
+      "/tmp/th-int-1vc78b94/data",
+      ""
+    ]
+  },
+  {
+    "pid": 3819838,
+    "start_ticks": "25197339",
+    "argv": [
+      "codex",
+      "-c",
+      "sandbox_mode=\"read-only\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "notify=[\"/tmp/th-int-1vc78b94/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-c",
+      "model=\"gpt-5.6-luna\"",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      "app-server",
+      "--listen",
+      "unix:///tmp/th-int-1vc78b94/tmp/th-host-53199c5067a24f61a30131fdb5c433ba/rpc.sock",
+      ""
+    ]
+  },
+  {
+    "pid": 3820327,
+    "start_ticks": "25197397",
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3820574,
+    "start_ticks": "25197434",
+    "argv": [
+      "codex",
+      "--remote",
+      "unix:///tmp/th-int-1vc78b94/tmp/th-host-53199c5067a24f61a30131fdb5c433ba/rpc.sock",
+      "resume",
+      "01a08a91-af30-78f1-8cda-ee5e52d604e0",
+      "--no-alt-screen",
+      "--strict-config",
+      ""
+    ]
+  },
+  {
+    "pid": 3821153,
+    "start_ticks": "25197509",
+    "argv": [
+      "sleep",
+      "1",
+      ""
+    ]
+  }
+]

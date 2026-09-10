@@ -1944,7 +1944,7 @@ No observer socket connection and no fault injection.
 | 3. Active deferral | PASS | step3-pending.json records pending/thread_active; step3-receipts.json records eventual native_enqueued turn/start; step3-exposure.json proves one user item and one reply; step3-final-pane-2.txt. |
 | 4. Typed input/passive locks | PASS | step4-pending.json; step4-exposure.json shows one user and reply per marker, typed reply before socket reply; step4-final-pane-2.txt; step4-locks.jsonl has real daemon and Mesh flock/fdinfo holders on one inode. |
 | 5. Compaction recovery | PASS | step5-runtime-before/after.json: contextGeneration 0→1, same thread; taurhaus.log.jsonl: compaction.codex_host.received/delivered; step5-boundary-events.json: recovery card user item; step5-final-pane-2.txt shows card immediately after Context compacted. |
-| 6. Daemon restart | NOT RUN | Pending ordered execution. |
+| 6. Daemon restart | PASS | events.jsonl records normal SIGINT stop/start; step6-resume-result.json reports owned thread resumed in pane %14; step6-runtime-before/after.json preserves thread; post-restart mesh send/reply and native_enqueued receipt land (step6-receipts.json, step6-final-pane-14.txt). |
 | 7. Operational rollback | NOT RUN | Pending ordered execution. |
 
 Thread: `01a08a91-af30-78f1-8cda-ee5e52d604e0`.
@@ -1989,3 +1989,7 @@ ordinary metered subtotal **$0.00721920**, conservative **$0.1193172**.
 Compaction token classes are zero with a nonzero totalTokens reset. Its billed
 cost is **unreported, not zero**; final accounting will identify that gap rather
 than treating the inherited live ledger's zero calculation as a billing claim.
+
+Step 6 cumulative: 10 protocol turns; ordinary metered subtotal
+**$0.00839556**, conservative **$0.1533144**, plus
+the already-disclosed unreported compaction cost. All three required gates exit 0.
