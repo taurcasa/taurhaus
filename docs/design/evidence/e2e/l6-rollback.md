@@ -249,4 +249,22 @@ daemon, member executor, tmux server or model seat was started. Historical spend
 remains $0.00320184 + $0.00222672 + one unknown ordinary turn; its total cap
 remains unverified. Step 1 is unproved (harness); step 2 remains FAIL (Mesh);
 steps 3–6 remain NOT RUN. The dead boundary bindings and unused controller state
-were removed. Gate rerun results follow after verification.
+were removed. Replaying the retained B observation through the corrected
+predicate returned no pending evidence, as required.
+
+| Fix-round exact root command | Exit | Observed result |
+| --- | --- | --- |
+| `just check-quick` | **0** | Rust compile/typecheck and all **2,519** frontend tests pass |
+| `just lint` | **0** | Rust/frontend/workflow/recipe lint pass |
+| `just test-contracts` | **101 initial; 0 retry** | Retry passes all **68** contracts (15 renderer, 20 harness, 33 boundary) |
+
+The initial contracts run scanned its own output under `.check-logs/l6-review`
+and flagged its printed retired-tool test name. Moving only these generated
+logs to excluded `src-tauri/target/l6-review/` resolved the harness artifact
+collision; the exact command passed unchanged. Both attempts are retained in
+that local ignored directory; the original committed gate sidecars are unchanged.
+Cargo admission found zero existing Cargo processes before each gate. Every
+gate used this checkout's `src-tauri/target`, one build job, and ran after the
+historical teardown, with no paid window. No tracked `src-tauri/` change occurred,
+so `just test-rust-unit` was not required. This fix round adds no live rollback
+coverage and leaves the original unknown spend explicitly unresolved.
