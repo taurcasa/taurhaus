@@ -788,3 +788,37 @@ pub fn reconcile_home(
     }
     Ok(changed)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn activity_flag_membership_preserves_legacy_removal_rule() {
+        // Regression: 026627bb, L1 run 3: format-2 activity is not removal.
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.json");
+        for format in [Value::Null, json!(1), json!(2)] {
+            for active in [Value::Null, json!(false), json!(true)] {
+                for removed in [false, true] {
+                    let mut config = json!({"members":[{"name":"lead"}]});
+                    if !format.is_null() {
+                        config["messaging_format"] = format.clone();
+                    }
+                    if !active.is_null() {
+                        config["members"][0]["isActive"] = active.clone();
+                    }
+                    if removed {
+                        config["members"][0]["removedAt"] = json!("2026-09-10T12:44:00Z");
+                    }
+                    fs::write(&path, config.to_string()).unwrap();
+                    let config = read_json(&path, 4096).unwrap();
+                    assert_eq!(
+                        member_present(&config, &config["members"][0]),
+                        !removed && (format == 2 || active != false)
+                    );
+                }
+            }
+        }
+    }
+}

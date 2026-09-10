@@ -1675,6 +1675,52 @@ mod tests {
     }
 
     #[test]
+    fn activity_flag_observation_is_debug_with_optional_reason() {
+        // Regression: 5cebfef8, L1 run 3: normal Claude activity triggered a repair warning.
+        let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("events.jsonl");
+        let sink = taurhaus_lib::logging::LogFileState::new(path.clone()).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
+        for (team, reason) in [
+            ("without-reason", None),
+            ("with-reason", Some("message_sent")),
+        ] {
+            let mut config = sample_config(team);
+            config.members[0].project_path = tmp.path().to_path_buf();
+            config
+                .extra
+                .insert("messaging_format".into(), serde_json::json!(2));
+            config.members[0]
+                .extra
+                .insert("isActive".into(), serde_json::json!(false));
+            if let Some(reason) = reason {
+                config.members[0]
+                    .extra
+                    .insert("lastActivityReason".into(), serde_json::json!(reason));
+            }
+            TeamConfigStore::save(tmp.path(), team, &config).unwrap();
+        }
+        sink.flush_for_test().unwrap();
+        let records: Vec<Value> = fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(records.len(), 2);
+        for record in &records {
+            assert_eq!(
+                record["event"],
+                "coordination.member.activity_flag_observed"
+            );
+            assert_eq!(record["level"], "DEBUG");
+            assert_eq!(record["member"], "team-lead");
+        }
+        assert!(records[0].get("lastActivityReason").is_none());
+        assert_eq!(records[1]["lastActivityReason"], "message_sent");
+    }
+
+    #[test]
     fn save_activity_flags_preserves_format_two_and_repairs_legacy() {
         // Regression: 5cebfef8, L1 run 3: repair-on-save overwrote Claude activity.
         for format in [1, 2] {

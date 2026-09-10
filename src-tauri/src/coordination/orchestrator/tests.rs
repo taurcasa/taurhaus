@@ -4661,6 +4661,20 @@ fn team_daemon_ensures_live_lead_despite_claude_activity_flag() {
     assert!(!std::fs::read_to_string(log_path)
         .unwrap()
         .contains("coordination.team_daemon.skipped"));
+    // An activity flag cannot make a dead runtime live either (L1 run 3).
+    let path = tmp.path().join(team).join("config.json");
+    let mut config: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    config["members"][0]["isActive"] = serde_json::json!(true);
+    std::fs::write(path, config.to_string()).unwrap();
+    MemberRuntimeStore::update(tmp.path(), team, "lead", |record| {
+        record.health = HealthState::SessionDead;
+    })
+    .unwrap();
+    assert!(!orchestrator.ensure_team_daemon_running_best_effort(team));
+    let (ensured, warning) = orchestrator.ensure_team_daemon_for_wrapper(team).unwrap();
+    assert!(!ensured);
+    assert!(warning.unwrap().contains("runtime session is not live"));
 }
 
 #[test]
@@ -4703,7 +4717,16 @@ fn team_daemon_is_skipped_when_the_credential_file_has_no_config_hash() {
         .expect("create team");
     let mut lead = sample_member("team-lead", CliTool::Claude);
     lead.role = MemberRole::Lead;
+    // Regression: e19ffad0, L1 run 3: ignoring activity must not bypass lead auth.
+    lead.project_path = tmp.path().to_path_buf();
+    lead.extra
+        .insert("isActive".into(), serde_json::json!(false));
     orchestrator.add_member(team_name, lead).expect("add lead");
+    MemberRuntimeStore::update(tmp.path(), team_name, "team-lead", |record| {
+        record.health = HealthState::Healthy;
+        record.session_id = Some("live-without-auth".into());
+    })
+    .unwrap();
     let credential_dir = tmp
         .path()
         .join(team_name)

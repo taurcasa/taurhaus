@@ -3808,7 +3808,7 @@ else: print(json.dumps({'protocol':protocol,'status':'recorded','text':'','deliv
             let root = fake.dir.path();
             let path = teams.join("drain-team/config.json");
             let mut config: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-            config["members"][0]["isActive"] = json!(false);
+            config["members"][0]["isActive"] = json!(removed);
             config["members"][0]["lastActivityReason"] = json!("message_sent");
             if removed {
                 config["members"][0]["removedAt"] = json!("2026-09-10T12:44:00Z");
