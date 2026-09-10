@@ -3130,3 +3130,65 @@ The preserved controllers contain the exact daemon requests, private tmux
 commands and Mesh sends. `run/events.jsonl` records their ordering, timestamps,
 arguments and results; each numbered outcome and pane capture stays beside it.
 
+#### Cleanup, retention and deviations
+
+The finally path stopped only controller-owned process groups and their private
+PID namespace. All 21 captured PID/start identities are gone; the ownership-token
+scan found no trial survivor. Port **25438** is closed, the scratch root and copied
+credential are removed, and the app-server/TUI/tmux server do not survive.
+`cleanup.json`: `survivors:[]`, `port_closed:true`, `root_removed:true`,
+`descriptor_restore_exit:0`, `mesh_trial_artifact_removed:true`. Mesh remains
+clean, detached at `ed59187`; no `feat/descriptor-flip` branch or flip commit was
+created, and the trial-enabled `target/debug/mesh` was removed.
+
+The complete daemon JSONL is retained: **1,037 unique rows**, with no event-family
+filter. Existing sanitizer redacts credential/account identity keys and disallowed
+operator paths; identical rows are deduplicated. Host notifications are appended
+once per observation cursor, without `item/agentMessage/delta`; every pane capture
+is at most 60 lines. The event trace retains exact request IDs and timestamps.
+Gate logs are committed sidecars, not ephemeral `/tmp` references.
+
+No Taurhaus product files, registry, dependencies, plan-ledger rows, bundled pins,
+release state, standing teams, operator tmux or installed daemons were changed.
+No extra trial, stress run, transport implementation or unsolicited feature was
+added. Mesh's named `runtime_record_missing:<member>` fix and its gates are
+**NOT RUN** because the seven-step PASS condition was not met.
+
+Deviations/limitations: step 7's inherited controller marker condition mismatches
+the tmux notice/read contract; observed delivery is not promoted to full PASS.
+The executed controller stays unchanged so the reproduction retains that failure.
+Compaction cost classes and actual subscription billing remain unreported; the
+plain-TUI usage rows are explicitly supplemental rollout evidence. No direct
+observer connection was opened; all host reads used the daemon after launch.
+Both transient-read guards were retained and tested offline, but neither refusal
+occurred in this runtime. The requested **Opus evidence lens was unavailable**
+(no callable Opus model/tool in this session); no cross-family review is claimed.
+No `/security-audit` skill was available in the checkout/session; the offline
+audit performs the retained-evidence privacy and ownership/cleanup checks described
+here. No authorization question or metering gate interrupted execution.
+
+#### Final verification gates
+
+All exact commands ran from the checkout root through the unchanged credential-free
+`attempt13-gates.py` wrapper. Each waited for competing Cargo processes; build
+artifacts stayed in the checkout-local target. The wrapper exited **0**.
+
+| Gate | Exit | Command execution time (excludes Cargo wait) |
+|---|---|---|
+| `just check-quick` | 0 | 30.73 s |
+| `just lint` | 0 | 20.37 s |
+| `just test-contracts` | 0 | 6.64 s |
+
+`just test-rust-unit`: not required, because there is no `src-tauri/` diff.
+Conditional Mesh `just check-quick`, `just lint`, `just test`: not run (no flip).
+The 15 offline guards passed (exit 0); final evidence audit passed (exit 0);
+`git diff --check` passed (exit 0). Build commands both exited 0.
+The paid step/controller exits are **1**, as recorded, not hidden by green gates.
+
+Retained `gates/gate-{check-quick,lint,test-contracts}.{txt,json}` contain complete
+output, exact commands, exit codes, execution times and Cargo preflight history;
+`gate-isolation.json` and `gate-cleanup.json` prove the credential-free environment,
+waited children and deleted gate root. `final-audit.json` records all seven outcomes,
+the tmux receipt, every spend, stopped-process verification and daemon log digest.
+
+Daemon JSONL SHA-256: `f632312a12291e24af08a8f7a47dcc0e19e54ef94fc3a6701444b49479155cf8`.
