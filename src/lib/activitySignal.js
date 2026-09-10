@@ -172,6 +172,11 @@ export function activitySignal(record) {
 
   if (record?.degraded === true) return signal('uncertain', 'degraded', 'low')
   if (isStalePresence(record)) return signal('uncertain', 'stale', 'low')
+  if (record?.source === 'host_unavailable') return signal('uncertain', 'host_unavailable', 'low')
+  if (record?.source === 'host') {
+    const level = base === 'active' && attribution(record) === 'attributed' ? 'working' : base
+    return signal(level, 'host', 'high')
+  }
   if (base === 'uncertain') return signal('uncertain', 'status', 'low')
   if (isUnattributed(record)) return signal('uncertain', 'project', 'low')
 
