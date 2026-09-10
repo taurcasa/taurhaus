@@ -1,0 +1,23 @@
+{
+  "aliases": {
+    "step1-final-pane-0.txt": "final-pane-0.txt",
+    "step1-final-pane-1.txt": "final-pane-1.txt",
+    "step1-initial-pane-0.txt": "final-pane-0.txt",
+    "step1-initial-pane-1.txt": "final-pane-1.txt",
+    "step3-delivered-pane-0.txt": "final-pane-0.txt",
+    "step3-delivered-pane-1.txt": "final-pane-1.txt",
+    "step3-pending-pane-0.txt": "final-pane-0.txt",
+    "step3-pending-pane-1.txt": "final-pane-1.txt",
+    "step3-pending.json": "pending/3bb37236-22fd-4b9b-a6d4-a41f0f861048.json",
+    "step4-pending-pane-0.txt": "final-pane-0.txt",
+    "step4-pending-pane-1.txt": "final-pane-1.txt",
+    "step4-pending.json": "pending/5e277ee4-1db4-45c5-bd39-d41da8013aef.json",
+    "step5-delivered-pane-0.txt": "final-pane-0.txt",
+    "step5-delivered-pane-1.txt": "final-pane-1.txt",
+    "step5-delivered-pane-5.txt": "final-pane-5.txt",
+    "step5-metering-observation.json": "cost-ledger.json",
+    "step5-resumed.json": "final-runtime.json",
+    "team/runtime/alpha.json": "final-runtime.json"
+  },
+  "sanitization": "Drop account rate_limits; retain per-turn token counts and every daemon JSONL row."
+}

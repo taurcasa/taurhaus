@@ -1,0 +1,1248 @@
+[
+  {
+    "pid": 1860433,
+    "start_ticks": "29747279",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l2-d9vmymco",
+      "/tmp/th-l2-d9vmymco",
+      "--chdir",
+      "/tmp/th-l2-d9vmymco/project",
+      "/bin/bash",
+      "/tmp/th-l2-d9vmymco/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1860434,
+    "start_ticks": "29747279",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l2-d9vmymco",
+      "/tmp/th-l2-d9vmymco",
+      "--chdir",
+      "/tmp/th-l2-d9vmymco/project",
+      "/bin/bash",
+      "/tmp/th-l2-d9vmymco/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1860435,
+    "start_ticks": "29747279",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l2-d9vmymco/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1860436,
+    "start_ticks": "29747280",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 1860442,
+    "start_ticks": "29747290",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 1860445,
+    "start_ticks": "29747290",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "48695",
+      "--data-dir",
+      "/tmp/th-l2-d9vmymco/data",
+      ""
+    ]
+  },
+  {
+    "pid": 1860564,
+    "start_ticks": "29747307",
+    "argv": [
+      "/bin/bash",
+      "-ilc",
+      "codex --version",
+      ""
+    ]
+  },
+  {
+    "pid": 1860720,
+    "start_ticks": "29747331",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l2-d9vmymco/project' && CLAUDE_DIR='/tmp/th-l2-d9vmymco/claude' CLAUDE_CONFIG_DIR='/tmp/th-l2-d9vmymco/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l2-busy' --agent-name 'lead' --agent-id 'lead@l2-busy' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 1860723,
+    "start_ticks": "29747332",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "l2-busy",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@l2-busy",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1860731,
+    "start_ticks": "29747334",
+    "argv": [
+      "/init",
+      "/mnt/c/Windows/System32/reg.exe",
+      "/mnt/c/Windows/System32/reg.exe",
+      "query",
+      "HKLM\\SOFTWARE\\Policies\\ClaudeCode",
+      "/v",
+      "Settings",
+      ""
+    ]
+  },
+  {
+    "pid": 1860732,
+    "start_ticks": "29747335",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/taurhaus-daemon",
+      "--terminal-child",
+      "1789076945495",
+      "tmux",
+      "-S",
+      "/tmp/th-l2-d9vmymco/tmux/tmux-1000/default",
+      "set-environment",
+      "-t",
+      "taurhaus",
+      "PATH",
+      "/tmp/th-l2-d9vmymco/home/.local/bin:/usr/bin:/bin",
+      ""
+    ]
+  },
+  {
+    "pid": 1860733,
+    "start_ticks": "29747335",
+    "argv": [
+      "/init",
+      "/mnt/c/Windows/System32/reg.exe",
+      "/mnt/c/Windows/System32/reg.exe",
+      "query",
+      "HKCU\\SOFTWARE\\Policies\\ClaudeCode",
+      "/v",
+      "Settings",
+      ""
+    ]
+  },
+  {
+    "pid": 1860739,
+    "start_ticks": "29747337",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l2-d9vmymco/project' && CLAUDE_DIR='/tmp/th-l2-d9vmymco/claude' CODEX_HOME='/tmp/th-l2-d9vmymco/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l2-d9vmymco/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 1860742,
+    "start_ticks": "29747337",
+    "argv": [
+      "codex",
+      "--yolo",
+      "--dangerously-bypass-hook-trust",
+      "-c",
+      "notify=[\"/tmp/th-l2-d9vmymco/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 1860786,
+    "start_ticks": "29747339",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh",
+      "join",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      "--type",
+      "lead",
+      "--model",
+      "claude-haiku-4-5",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 1860790,
+    "start_ticks": "29747342",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh",
+      "team",
+      "delivery",
+      "--owner",
+      "team",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1860797,
+    "start_ticks": "29747344",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 1860810,
+    "start_ticks": "29747349",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1860836,
+    "start_ticks": "29747351",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1860995,
+    "start_ticks": "29747360",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "lead",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: lead on l2-busy; key={\"card_schema\":1,\"recipient\":[\"5f43c2bffd5b9d9d983aa90e99fbb76065ca6024d62374e7b867ed0e5d20385f\",\"96483565-bfa9-49bf-be36-8ee78021035c\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l2-d9vmymco/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l2-d9vmymco/claude\",\"harness_account_root\":\"/tmp/th-l2-d9vmymco/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l2-d9vmymco/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 7dd202e88778d6f1ef4a1744f8d24db7f1a91c17c3979d7fa80348b8049e2a4d; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-l2-d9vmymco/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 21:48:55.760601098 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nHOLD: minimal role steering unavailable; owner: team lead.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:7af08a0edb9f5c4f55ef5d08ceec1904969dcb25d20b2c1681f59133e8ea0954",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1861065,
+    "start_ticks": "29747375",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "alpha",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: alpha on l2-busy; key={\"card_schema\":1,\"recipient\":[\"5f43c2bffd5b9d9d983aa90e99fbb76065ca6024d62374e7b867ed0e5d20385f\",\"5f7eeadc-e679-4f81-ac44-0f77b41adc06\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l2-d9vmymco/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l2-d9vmymco/claude\",\"harness_account_root\":\"/tmp/th-l2-d9vmymco/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l2-d9vmymco/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"bb80b8a0546ec4a737117a5e83df361adeb3072fc2e0f6bd1fe36379b172fa30\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: cf1d8a3c119f1b2497e3f898f76d96e636ad20f30b0d9de367e5b01eef314111; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l2-d9vmymco/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 21:48:55.937803562 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \"$CLAUDE_DIR\" --team l2-busy --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l2-busy --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:1fab1c8ba8e5ac2b0e33c60bd1e4f6d30c1d0f92f8ea491924d621ccb5d59562",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1861101,
+    "start_ticks": "29747388",
+    "argv": [
+      "tmux",
+      "-S",
+      "/tmp/th-l2-d9vmymco/tmux/tmux-1000/default",
+      "display-message",
+      "-p",
+      "-t",
+      "%2",
+      "#{socket_path} #{session_id} #{pane_id} #{pane_pid}",
+      ""
+    ]
+  },
+  {
+    "pid": 1861221,
+    "start_ticks": "29747390",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1861286,
+    "start_ticks": "29747431",
+    "argv": [
+      "/usr/bin/zsh",
+      "-lc",
+      "if [[ -n \"$ZDOTDIR\" ]]; then\n  rc=\"$ZDOTDIR/.zshrc\"\nelse\n  rc=\"$HOME/.zshrc\"\nfi\n[[ -r \"$rc\" ]] && . \"$rc\"\nprint '# Snapshot file'\nprint '# Unset all aliases to avoid conflicts with functions'\nprint 'unalias -a 2>/dev/null || true'\nprint '# Functions'\nfunctions\nprint ''\nsetopt_count=$(setopt | wc -l | tr -d ' ')\nprint \"# setopts $setopt_count\"\nsetopt | sed 's/^/setopt /'\nprint ''\nalias_count=$(alias -L | wc -l | tr -d ' ')\nprint \"# aliases $alias_count\"\nalias -L\nprint ''\n# Capture exported variables\nexport_lines=$(export -p | awk '\n/^(export|declare -x|typeset -x) / {\n  line=$0\n  name=line\n  sub(/^(export|declare -x|typeset -x) /, \"\", name)\n  if (name ~ /^-[A-Za-z]*r[A-Za-z]* /) {\n    next\n  }\n  if (name ~ /^-[A-Za-z]*T[A-Za-z]* /) {\n    sub(/^-[A-Za-z]*T[A-Za-z]* /, \"\", name)\n    sub(/ [A-Za-z_][A-Za-z0-9_]*=.*/, \"\", name)\n  }\n  sub(/=.*/, \"\", name)\n  if (name ~ /^(PWD|OLDPWD)$/) {\n    next\n  }\n  if (name ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {\n    print line\n  }\n}')\nexport_count=$(printf '%s\\n' \"$export_lines\" | sed '/^$/d' | wc -l | tr -d ' ')\nprint \"# exports $export_count\"\nif [[ -n \"$export_lines\" ]]; then\n  print -r -- \"$export_lines\"\nfi\n",
+      ""
+    ]
+  },
+  {
+    "pid": 1861417,
+    "start_ticks": "29747456",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1861513,
+    "start_ticks": "29747464",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1861515,
+    "start_ticks": "29747464",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1862728,
+    "start_ticks": "29747524",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1862847,
+    "start_ticks": "29747541",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1863418,
+    "start_ticks": "29747589",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1863489,
+    "start_ticks": "29747600",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1863597,
+    "start_ticks": "29747611",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1863662,
+    "start_ticks": "29747615",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1863878,
+    "start_ticks": "29747662",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1863897,
+    "start_ticks": "29747665",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1863928,
+    "start_ticks": "29747669",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1864065,
+    "start_ticks": "29747726",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1864205,
+    "start_ticks": "29747767",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1864221,
+    "start_ticks": "29747771",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1864275,
+    "start_ticks": "29747786",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1864388,
+    "start_ticks": "29747823",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1864813,
+    "start_ticks": "29747982",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1864815,
+    "start_ticks": "29747982",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1864845,
+    "start_ticks": "29747987",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1864916,
+    "start_ticks": "29748011",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1864950,
+    "start_ticks": "29748038",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1865037,
+    "start_ticks": "29748067",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1865089,
+    "start_ticks": "29748083",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/codex-code-mode-host",
+      ""
+    ]
+  },
+  {
+    "pid": 1865109,
+    "start_ticks": "29748086",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--unread",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 1865212,
+    "start_ticks": "29748122",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1865576,
+    "start_ticks": "29748216",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1865578,
+    "start_ticks": "29748216",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1867142,
+    "start_ticks": "29748656",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1867188,
+    "start_ticks": "29748660",
+    "argv": [
+      "mesh",
+      "send",
+      "--help",
+      ""
+    ]
+  },
+  {
+    "pid": 1869280,
+    "start_ticks": "29749078",
+    "argv": [
+      "mesh",
+      "send",
+      "lead",
+      "No current assignment or required context is present. Please provide the task, first action, and completion signal.",
+      "--team",
+      "l2-busy",
+      "--name",
+      "alpha",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--summary",
+      "Missing assignment context",
+      "--expectation",
+      "info",
+      ""
+    ]
+  },
+  {
+    "pid": 1869651,
+    "start_ticks": "29749218",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1869940,
+    "start_ticks": "29749346",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh send alpha 'ACTION REQUIRED: Read this message explicitly, then reply exactly Q-38d97181.' --summary Q --claude-dir /tmp/th-l2-d9vmymco/claude --team l2-busy --name lead >/tmp/th-l2-d9vmymco/720f4989.out 2>&1; echo $? >/tmp/th-l2-d9vmymco/720f4989.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 1869942,
+    "start_ticks": "29749346",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh",
+      "send",
+      "alpha",
+      "ACTION REQUIRED: Read this message explicitly, then reply exactly Q-38d97181.",
+      "--summary",
+      "Q",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1874303,
+    "start_ticks": "29751042",
+    "argv": [
+      "tmux",
+      "-S",
+      "/tmp/th-l2-d9vmymco/tmux/tmux-1000/default",
+      "list-clients",
+      "-F",
+      "#{client_flags}\t#{session_name}\t#{window_index}\t#{pane_id}\t#{client_activity}",
+      ""
+    ]
+  },
+  {
+    "pid": 1874543,
+    "start_ticks": "29751442",
+    "argv": [
+      "tmux",
+      "-S",
+      "/tmp/th-l2-d9vmymco/tmux/tmux-1000/default",
+      "list-clients",
+      "-F",
+      "#{client_flags}\t#{session_name}\t#{window_index}\t#{pane_id}\t#{client_activity}",
+      ""
+    ]
+  },
+  {
+    "pid": 1876826,
+    "start_ticks": "29752554",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--unread",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 1877499,
+    "start_ticks": "29752842",
+    "argv": [
+      "tmux",
+      "-S",
+      "/tmp/th-l2-d9vmymco/tmux/tmux-1000/default",
+      "list-clients",
+      "-F",
+      "#{client_flags}\t#{session_name}\t#{window_index}\t#{pane_id}\t#{client_activity}",
+      ""
+    ]
+  },
+  {
+    "pid": 1877514,
+    "start_ticks": "29752954",
+    "argv": [
+      "mesh",
+      "send",
+      "lead",
+      "Q-38d97181",
+      "--team",
+      "l2-busy",
+      "--name",
+      "alpha",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--summary",
+      "Q-38d97181",
+      "--expectation",
+      "info",
+      ""
+    ]
+  },
+  {
+    "pid": 1877566,
+    "start_ticks": "29753081",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1878184,
+    "start_ticks": "29753144",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh send alpha 'ACTION REQUIRED: Read this message explicitly, then reply exactly Q2-a95ffaf6.' --summary Q2 --claude-dir /tmp/th-l2-d9vmymco/claude --team l2-busy --name lead >/tmp/th-l2-d9vmymco/02e62057.out 2>&1; echo $? >/tmp/th-l2-d9vmymco/02e62057.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 1878188,
+    "start_ticks": "29753144",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh",
+      "send",
+      "alpha",
+      "ACTION REQUIRED: Read this message explicitly, then reply exactly Q2-a95ffaf6.",
+      "--summary",
+      "Q2",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1878290,
+    "start_ticks": "29753181",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1878335,
+    "start_ticks": "29753261",
+    "argv": [
+      ""
+    ]
+  },
+  {
+    "pid": 1878536,
+    "start_ticks": "29753322",
+    "argv": [
+      "tmux",
+      "-S",
+      "/tmp/th-l2-d9vmymco/tmux/tmux-1000/default",
+      "display-message",
+      "-p",
+      "-t",
+      "%2",
+      "#{pane_current_command}",
+      ""
+    ]
+  },
+  {
+    "pid": 1880813,
+    "start_ticks": "29754052",
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 1880855,
+    "start_ticks": "29754090",
+    "argv": [
+      "codex",
+      "--yolo",
+      "-c",
+      "notify=[\"/tmp/th-l2-d9vmymco/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 1880924,
+    "start_ticks": "29754102",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881001,
+    "start_ticks": "29754105",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881163,
+    "start_ticks": "29754117",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881165,
+    "start_ticks": "29754117",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881166,
+    "start_ticks": "29754118",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881167,
+    "start_ticks": "29754118",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881169,
+    "start_ticks": "29754118",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881266,
+    "start_ticks": "29754127",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881339,
+    "start_ticks": "29754142",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881358,
+    "start_ticks": "29754144",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881375,
+    "start_ticks": "29754149",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881564,
+    "start_ticks": "29754163",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881641,
+    "start_ticks": "29754165",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1881690,
+    "start_ticks": "29754191",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh",
+      "join",
+      "--team",
+      "l2-busy",
+      "--name",
+      "alpha",
+      "--type",
+      "general-purpose",
+      "--model",
+      "gpt-5.6-luna",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 1881716,
+    "start_ticks": "29754200",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "alpha",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: alpha on l2-busy; key={\"card_schema\":1,\"recipient\":[\"5f43c2bffd5b9d9d983aa90e99fbb76065ca6024d62374e7b867ed0e5d20385f\",\"5f7eeadc-e679-4f81-ac44-0f77b41adc06\"],\"context\":[2,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l2-d9vmymco/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l2-d9vmymco/claude\",\"harness_account_root\":\"/tmp/th-l2-d9vmymco/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l2-d9vmymco/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"bb80b8a0546ec4a737117a5e83df361adeb3072fc2e0f6bd1fe36379b172fa30\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 4387c9e5f5ba03acb7b74e0e9daae270872ea650f92db3bb3ff0416e09426eb7; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l2-d9vmymco/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 21:50:04.188452340 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \"$CLAUDE_DIR\" --team l2-busy --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l2-busy --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:38cbd15a2cb437df1cde1b4fa14bd2a5ded3268b5945cb4a201b0e4e3787108e",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1881793,
+    "start_ticks": "29754211",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1882086,
+    "start_ticks": "29754292",
+    "argv": [
+      "tmux",
+      "-S",
+      "/tmp/th-l2-d9vmymco/tmux/tmux-1000/default",
+      "list-panes",
+      "-a",
+      "-F",
+      "#{pane_id} #{pane_tty} #{window_index} #{window_name} #{session_name}",
+      ""
+    ]
+  },
+  {
+    "pid": 1882104,
+    "start_ticks": "29754309",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1882290,
+    "start_ticks": "29754436",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1882385,
+    "start_ticks": "29754512",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1883125,
+    "start_ticks": "29754869",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/codex-code-mode-host",
+      ""
+    ]
+  },
+  {
+    "pid": 1883145,
+    "start_ticks": "29754874",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--unread",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 1883910,
+    "start_ticks": "29755229",
+    "argv": [
+      "mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 1884515,
+    "start_ticks": "29755537",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 1885598,
+    "start_ticks": "29755983",
+    "argv": [
+      "mesh",
+      "send",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "alpha",
+      "lead",
+      "Q2-a95ffaf6",
+      ""
+    ]
+  },
+  {
+    "pid": 1885889,
+    "start_ticks": "29756151",
+    "argv": [
+      "/bin/bash",
+      "-c",
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh read --json --mark-read --last 16 --claude-dir /tmp/th-l2-d9vmymco/claude --team l2-busy --name alpha >/tmp/th-l2-d9vmymco/d841e419.out 2>&1; echo $? >/tmp/th-l2-d9vmymco/d841e419.exit",
+      ""
+    ]
+  },
+  {
+    "pid": 1885891,
+    "start_ticks": "29756151",
+    "argv": [
+      "/tmp/th-l2-d9vmymco/home/.local/bin/mesh",
+      "read",
+      "--json",
+      "--mark-read",
+      "--last",
+      "16",
+      "--claude-dir",
+      "/tmp/th-l2-d9vmymco/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "alpha",
+      ""
+    ]
+  },
+  {
+    "pid": 1885893,
+    "start_ticks": "29756177",
+    "argv": [
+      "tmux",
+      "new-window",
+      "-d",
+      "-t",
+      "taurhaus",
+      "/bin/bash -c '/tmp/th-l2-d9vmymco/home/.local/bin/mesh journal reconcile --claude-dir /tmp/th-l2-d9vmymco/claude --team l2-busy --name lead >/tmp/th-l2-d9vmymco/c28f2a6b.out 2>&1; echo $? >/tmp/th-l2-d9vmymco/c28f2a6b.exit'",
+      ""
+    ]
+  }
+]

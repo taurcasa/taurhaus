@@ -1,4 +1,4 @@
-# IN PROGRESS — Run 5: candidate preparation green; runtime pending
+# INCOMPLETE — Run 5: all six runtime steps PASS; independent Opus review pending
 
 ## Historical run 2 — FAIL at step 1: idle Codex prompt, onboarding permanently pending
 
@@ -1302,3 +1302,117 @@ no real CLI, harness home or credential is accessed by those tests. See
 
 The independent Opus evidence lens is on the orchestrator's review route;
 this implementer has no callable Opus reviewer and cannot claim review approval.
+
+
+## Run 5 — six runtime steps PASS, including resumed attribution and fresh idle
+
+**S-runtime PASS; workflow incomplete until the independent Opus evidence lens.**
+One paid trial completed in **90.495 seconds**, controller exit **0**, with
+**6/10 Codex inputs** and **$0.01756232/$0.20 metered**. No product change,
+descriptor edit, automatic paid retry, hosted seat, or Claude model input.
+The login-only lead and real alpha used the canonical production initialize
+request. [Controller exit](l2-tmux-busy/run5/run/controller-exit.json),
+[cleanup/evidence audit](l2-tmux-busy/run5/final-audit.json).
+
+| Ordered audit step | Outcome / classification | Evidence |
+| --- | --- | --- |
+| 1. Initialize and record terminal/runtime identities | **PASS — S-runtime verified** | `terminalContract: 1`, canonical root/incarnation, generation 1, socket/session/pane/PID/start ticks and stable terminal-lock inode retained. Composer appeared after 1.010 s; onboarding then submitted, read and completed at attributed fresh idle. [Ready](l2-tmux-busy/run5/run/step1-ready.json), [lock](l2-tmux-busy/run5/run/step1-terminal-lock.json), [startup](l2-tmux-busy/run5/run/startup-preflight.json). |
+| 2. Ordinary response, production working, send Q | **PASS — S-runtime verified** | Input confirmed by empty composer and new turn; Q accepted while production working. [Submission](l2-tmux-busy/run5/run/Q-work-confirmation.json), [working](l2-tmux-busy/run5/run/Q-work-working.json), [Q](l2-tmux-busy/run5/run/Q-accepted.json). |
+| 3. Busy deferral, fresh-idle delivery, read/reply | **PASS — S-runtime verified** | Q had no message-scoped receipt while working; one submission after **28.106 s**, with idle snapshot age **0.653 s**, matching generation 1/pane identity; explicit read and alpha journal reply. [Pending](l2-tmux-busy/run5/run/pending/3bb37236-22fd-4b9b-a6d4-a41f0f861048.json), [delivery](l2-tmux-busy/run5/run/step3-delivery.json). |
+| 4. Second response, Q2 pending, managed stop | **PASS — S-runtime verified** | Second input confirmed; Q2 accepted and observed pending during work; one supported `stop_session`, stopped record retained. Passive FLOCK samples include Taurhaus `interrupt` and `stop-teardown`. [Pending](l2-tmux-busy/run5/run/pending/5e277ee4-1db4-45c5-bd39-d41da8013aef.json), [stop](l2-tmux-busy/run5/run/step4-stop-result.json), [stopped](l2-tmux-busy/run5/run/step4-stopped.json), [locks](l2-tmux-busy/run5/run/terminal-locks.jsonl). |
+| 5. Resume once, new generation, Q2 once, no Q replay | **PASS — S-runtime verified** | One `coordination.resume_member` at low; generation **1→2**, pane **%2→%5**. Q2 submitted once at generation 2 after **12.427 s**, idle age **1.478 s**; no old-generation Q2 submission and Q remains at one submission. Alpha read and sent the marker reply. Post-reply fresh idle arrived **12.323 s** later, sourced from `notify`, at the new session/PID. [Operation](l2-tmux-busy/run5/run/step5-operation.json), [delivery](l2-tmux-busy/run5/run/step5-delivery.json), [new proof](l2-tmux-busy/run5/resume-proof.json). |
+| 6. Explicit read/mark, reconcile, export and teardown | **PASS — S-runtime verified** | Alpha read/mark pages reached `done`; journal reconcile returned `reconciled`, sequence 28. Transport submission, explicit read and alpha action remain distinct. Export and ownership-checked teardown completed. [Pages](l2-tmux-busy/run5/run/step6-read-pages.json), [reconciliation](l2-tmux-busy/run5/run/step6-reconciliation.json), [journal reconcile](l2-tmux-busy/run5/run/step6-journal-reconcile.json), [cleanup](l2-tmux-busy/run5/run/cleanup.json). |
+
+Q is `3bb37236-22fd-4b9b-a6d4-a41f0f861048` / `Q-38d97181`; Q2 is
+`5e277ee4-1db4-45c5-bd39-d41da8013aef` / `Q2-a95ffaf6`.
+The complete accepted/pending/submitted/read/reply chain is retained, including
+message-scoped busy observations; scheduler `last_defer_reason` is corroboration.
+Card bodies appear in native tool results after `mesh read`, not user rows.
+
+**The new proof beyond run4f:** initial session
+`01a08d4b-9746-7510-91cb-bd70cf74daeb` became
+`01a08d4c-9cd5-7a80-a5d9-34424510ad24`. The resumed runtime record and
+activity scanner agree on that new session. The final runtime snapshot binds
+Codex PID **3494** to pane **%5**, `activity_attribution: attributed`, high
+confidence and idle. Pane shell PID/start ticks are **3478 / 29754052**
+(previously **134 / 29747337**); these are private-namespace identities.
+The corresponding rollout and writer-lock filenames are in the
+[session inventory](l2-tmux-busy/run5/run/codex-session-inventory.json).
+Daemon JSONL **line 266** records PID 3494 and the new session/rollout,
+`active → idle`, `source: notify`, at **21:50:23.628 UTC**. The fresh activity
+snapshot was only **0.029 s old** when observed. No `source: none` follows
+Q2's reply through teardown. [Proof](l2-tmux-busy/run5/resume-proof.json),
+[runtime snapshot](l2-tmux-busy/run5/run/final-runtime-sessions.json),
+[activity](l2-tmux-busy/run5/run/final-activity.json),
+[complete daemon stream](l2-tmux-busy/run5/run/taurhaus.log.jsonl).
+
+Exact limitation: the runtime record's `jsonl_path` remains null, while its
+`session_id` agrees with the resolved rollout in the runtime snapshot and
+daemon activity rows. There is a transient `source: none` at resumed startup,
+before Q2's turn; it is not a post-reply decay. Both facts remain in the packet.
+No claim is made about idle persistence beyond this bounded trial.
+
+Spend is **2 confirmed controller inputs + 4 Mesh terminal deliveries = 6**.
+Five rollout turn IDs and two notify-only IDs are retained. Resume itself is
+not a model input. The interrupted ordinary turn counts as one input with
+**cost unknown**; it did not gate resume or any observation window.
+The four metered turns sum to **$0.01756232**, from **14 usage increments**.
+
+| Turn ID | Spend | Meaning |
+| --- | ---: | --- |
+| `01a08d4b-9cb3-7813-b7b6-a07558315b2b` | $0.00755876 | Initial onboarding |
+| `01a08d4b-e040-7920-8c97-18d3d383691d` | $0.00224604 | First ordinary response |
+| `01a08d4c-4fe8-7991-9199-e6fe02fd86de` | $0.00250924 | Q read/reply |
+| `01a08d4c-763b-7850-b1e4-bd0ae94ab3a6` | unknown | Interrupted second ordinary response, no usage row |
+| `01a08d4c-a71d-7363-a33e-0b73e3f38c8a` | $0.00524828 | Resumed Q2 read/reply; two terminal deliveries in this activation |
+| `01a08d4b-a08d-7162-a0e6-ae11e3252ea5` | unknown | Notify-only ID; not an additional submitted input |
+| `01a08d4c-a8ec-72f3-824a-469cd3da0fff` | unknown | Notify-only ID; not an additional submitted input |
+
+[Cost ledger](l2-tmux-busy/run5/run/cost-ledger.json) retains every usage
+increment, reservation, generation, turn total and input count. Rates are the
+inherited Luna estimates: $0.20/M input, $0.02/M cached input, $1.20/M output;
+API-equivalent estimates, not subscription invoices. `metering_complete: false`
+truthfully reflects the interrupted unknown-cost turn. The retained obsolete
+all-tokens-at-$1.20 column is **$0.232128**; the binding cap uses the metered
+rate-aware total under the consolidated ruling, not that diagnostic column.
+
+Builds and gates, all from the authorized worktrees:
+
+- Taurhaus product base **a7e6db7e**, protocol **27**, product diff empty;
+  `just build-daemon` exit **0**, checkout-local `src-tauri/target`.
+  Daemon SHA-256 `381664f92aa6d807e36f488b524b40d338998661a05f21e8df51502cb459a9f5`.
+- Mesh **310144d** in the separate `mesh-l2` worktree; `cargo build --bin mesh`
+  exit **0**. No descriptor edit or Mesh commit. Mesh SHA-256
+  `d255de30f43ddf7d32a740f5117e2905e91ec1d2f18ebbf030a89e2fe5561306`.
+  [Build commands/exits](l2-tmux-busy/run5/builds.json).
+- Actual Codex **0.153.4**, **gpt-5.6-luna low**, both native siblings copied;
+  all binary digests, isolated roots, exact commands/RPCs and exits are in
+  [events](l2-tmux-busy/run5/run/events.jsonl).
+- **`just check-quick` exit 0** (2,519 frontend assertions), **`just lint`
+  exit 0**, **`just test-contracts` exit 0** (15 CLI renderer, 20 harness
+  conformance, 33 boundary assertions). No `src-tauri/` diff, so
+  `just test-rust-unit` was not required or run. [Gate results](l2-tmux-busy/run5/checks-result.json).
+  Cargo probes found fewer than three active Cargo processes before each
+  command; no contention wait was required. The compiler's own package-cache
+  lock waits are retained separately in the lint log tail.
+- Retained **268 complete daemon JSONL rows**, preserving event order and all
+  event families, with private fields sanitized. **10 FLOCK-bearing samples**
+  show normal launch, Mesh paste/submit, stop/interrupt and resumed launch;
+  no forced contention, fault injection, signal-as-experiment or stress.
+- Export audit exit **0**: every JSONL line parses, pane files ≤60 lines,
+  forbidden export fields absent. **18 byte-identical file aliases** were
+  removed and mapped without dropping evidence. [Alias manifest](l2-tmux-busy/run5/export-manifest.json).
+  Teardown and a separate post-run audit found **zero survivors**, port
+  **48695 closed**, copied auth removed, entire scratch root removed.
+
+Deviations/limits: candidate pins and required commit trailer were adapted in
+addition to the evidence label; Cargo scheduling wrappers were updated to the
+run5 rule. Trial sequence and delivery/submission/reply/metering predicates
+remain run4f's. Startup briefly had `source: none` after the session rebinding;
+the required post-reply idle is attributed and notify-sourced. The runtime
+record's rollout path remains null as documented above. Unknown-cost turns
+remain unknown and never gated lifecycle operations. The independent Opus
+lens is unavailable to this implementer and remains on the orchestrator's
+review route, so this packet claims **six runtime PASS outcomes, not a fully
+reviewed workflow PASS**. Preparation and each green numbered step were
+committed separately with both required trailers. No plan-ledger rows changed.
