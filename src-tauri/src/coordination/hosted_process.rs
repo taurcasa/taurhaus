@@ -212,9 +212,12 @@ impl HostProcess {
 
     /// Drain notifications with one bounded read, without copying transcript/event history.
     pub fn refresh_activity(&mut self, guard: &HostOperationLock) -> Result<(), String> {
-        self.rpc.as_mut().ok_or("host connection unavailable")?
+        self.rpc
+            .as_mut()
+            .ok_or("host connection unavailable")?
             .call("thread/read", json!({"threadId":self.thread_id}), guard)
-            .map(|_| ()).map_err(String::from)
+            .map(|_| ())
+            .map_err(String::from)
     }
 
     pub fn transcript(&mut self, guard: &HostOperationLock) -> Result<Value, String> {

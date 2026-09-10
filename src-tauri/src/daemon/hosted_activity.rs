@@ -162,9 +162,19 @@ impl SessionActivityHub {
         entry.session.tty = process.tty.clone();
         entry.session.args = process.args.clone();
         entry.session.tmux_pane = pane.map(str::to_owned);
-        let needs_transcript = entry.session.jsonl_path.as_deref().is_none_or(|p| !Path::new(p).is_file());
-        let account = (needs_transcript && entry.transcript_attempt.is_none_or(|at| at.elapsed() >= std::time::Duration::from_secs(30)))
-            .then(|| { entry.transcript_attempt = Some(std::time::Instant::now()); entry.account_root.clone() });
+        let needs_transcript = entry
+            .session
+            .jsonl_path
+            .as_deref()
+            .is_none_or(|p| !Path::new(p).is_file());
+        let account = (needs_transcript
+            && entry
+                .transcript_attempt
+                .is_none_or(|at| at.elapsed() >= std::time::Duration::from_secs(30)))
+        .then(|| {
+            entry.transcript_attempt = Some(std::time::Instant::now());
+            entry.account_root.clone()
+        });
         Some((entry.session.clone(), account))
     }
 
@@ -200,22 +210,54 @@ mod tests {
         let hub = SessionActivityHub::shared();
         let tmp = tempfile::tempdir().unwrap();
         let socket = tmp.path().join("socket");
-        let _lease = hub.register_host(socket.clone(), tmp.path().into(), RuntimeSession {
-            session_id: Some("thread".into()), project_path: tmp.path().to_string_lossy().into_owned(),
-            ..Default::default()
-        }, Arc::new(|| {}));
-        let process = ProcessInfo { pid: 42, project_path: tmp.path().to_string_lossy().into_owned(),
-            tty: "pts/42".into(), args: format!("codex --remote unix://{} resume thread", socket.display()),
-            cli_tool: crate::session_scanner::cli_tool::CliTool::Codex };
+        let _lease = hub.register_host(
+            socket.clone(),
+            tmp.path().into(),
+            RuntimeSession {
+                session_id: Some("thread".into()),
+                project_path: tmp.path().to_string_lossy().into_owned(),
+                ..Default::default()
+            },
+            Arc::new(|| {}),
+        );
+        let process = ProcessInfo {
+            pid: 42,
+            project_path: tmp.path().to_string_lossy().into_owned(),
+            tty: "pts/42".into(),
+            args: format!("codex --remote unix://{} resume thread", socket.display()),
+            cli_tool: crate::session_scanner::cli_tool::CliTool::Codex,
+        };
         let source = crate::session_scanner::cli_tool::spec(process.cli_tool).session_source();
-        assert!(source.process_session(&process, None).unwrap().jsonl_path.is_none());
+        assert!(source
+            .process_session(&process, None)
+            .unwrap()
+            .jsonl_path
+            .is_none());
         std::fs::create_dir(tmp.path().join("sessions")).unwrap();
-        std::fs::write(tmp.path().join("sessions/rollout-thread.jsonl"),
-            serde_json::json!({"type":"session_meta","payload":{"id":"thread","cwd":tmp.path()}}).to_string()).unwrap();
-        assert!(source.process_session(&process, None).unwrap().jsonl_path.is_none());
-        hub.state.lock().unwrap().hosted.get_mut(&socket).unwrap().transcript_attempt =
+        std::fs::write(
+            tmp.path().join("sessions/rollout-thread.jsonl"),
+            serde_json::json!({"type":"session_meta","payload":{"id":"thread","cwd":tmp.path()}})
+                .to_string(),
+        )
+        .unwrap();
+        assert!(source
+            .process_session(&process, None)
+            .unwrap()
+            .jsonl_path
+            .is_none());
+        hub.state
+            .lock()
+            .unwrap()
+            .hosted
+            .get_mut(&socket)
+            .unwrap()
+            .transcript_attempt =
             Some(std::time::Instant::now() - std::time::Duration::from_secs(31));
-        assert!(source.process_session(&process, None).unwrap().jsonl_path.is_some());
+        assert!(source
+            .process_session(&process, None)
+            .unwrap()
+            .jsonl_path
+            .is_some());
     }
 
     #[test]
@@ -223,10 +265,19 @@ mod tests {
         // Regression: 1b19edd2 replayed a dead TUI pid/pane from the owned entry.
         let hub = Arc::new(SessionActivityHub::new());
         let tmp = tempfile::tempdir().unwrap();
-        let _lease = hub.register_host(tmp.path().join("socket"), tmp.path().into(), RuntimeSession {
-            session_id: Some("thread".into()), pid: 42, tty: "pts/42".into(), args: "remote".into(),
-            tmux_pane: Some("%42".into()), ..Default::default()
-        }, Arc::new(|| {}));
+        let _lease = hub.register_host(
+            tmp.path().join("socket"),
+            tmp.path().into(),
+            RuntimeSession {
+                session_id: Some("thread".into()),
+                pid: 42,
+                tty: "pts/42".into(),
+                args: "remote".into(),
+                tmux_pane: Some("%42".into()),
+                ..Default::default()
+            },
+            Arc::new(|| {}),
+        );
         let mut sessions = Vec::new();
         overlay_hosted(&mut hub.state.lock().unwrap(), &mut sessions);
         assert_eq!(sessions[0].pid, 0);

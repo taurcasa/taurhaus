@@ -216,12 +216,23 @@ fn export_activity_snapshots_for_team_locations_with_runtime(
             continue;
         }
 
-        let unavailable = |name: &str| sessions_by_member
-            .get(&(team_name.clone(), name.to_owned()))
-            .is_some_and(|session| session.source.as_deref() == Some("host_unavailable"));
-        for member in roster.iter().filter(|member| unavailable(&member.member_name)) {
-            if let Err(error) = fs::remove_file(activity_snapshot_path(teams_dir, team_name, &member.member_name)) {
-                if error.kind() != std::io::ErrorKind::NotFound { stats.write_failures += 1; }
+        let unavailable = |name: &str| {
+            sessions_by_member
+                .get(&(team_name.clone(), name.to_owned()))
+                .is_some_and(|session| session.source.as_deref() == Some("host_unavailable"))
+        };
+        for member in roster
+            .iter()
+            .filter(|member| unavailable(&member.member_name))
+        {
+            if let Err(error) = fs::remove_file(activity_snapshot_path(
+                teams_dir,
+                team_name,
+                &member.member_name,
+            )) {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    stats.write_failures += 1;
+                }
             }
         }
 
@@ -247,7 +258,9 @@ fn export_activity_snapshots_for_team_locations_with_runtime(
         stats.teams_exported += 1;
         for (member, live_pane) in roster.iter().zip(live_panes) {
             let member_name = &member.member_name;
-            if unavailable(member_name) { continue; }
+            if unavailable(member_name) {
+                continue;
+            }
             let runtime_record = member.runtime_record().map(|mut record| {
                 record.cli_tool = Some(member.configured_cli_tool);
                 record.project_path = Some(member.configured_project_path.clone());
@@ -955,7 +968,12 @@ mod tests {
     fn unavailable_host_removes_export_instead_of_publishing_false_idle() {
         // Regression: 1b19edd2 exported the idle backing state of an unavailable host.
         let tmp = TempDir::new().unwrap();
-        TeamConfigStore::save(tmp.path(), "team", &sample_team_config("team", "seat", "/fixture")).unwrap();
+        TeamConfigStore::save(
+            tmp.path(),
+            "team",
+            &sample_team_config("team", "seat", "/fixture"),
+        )
+        .unwrap();
         save_runtime(tmp.path(), "team", "seat", "%12");
         let runtime = RecordingCoordinationRuntime::default();
         runtime.set_pane_exists("%12", true);
@@ -965,7 +983,12 @@ mod tests {
         let path = activity_snapshot_path(tmp.path(), "team", "seat");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, "stale activity").unwrap();
-        export_activity_snapshots_for_sessions_with_runtime(tmp.path(), &[session], Utc::now(), &runtime);
+        export_activity_snapshots_for_sessions_with_runtime(
+            tmp.path(),
+            &[session],
+            Utc::now(),
+            &runtime,
+        );
         assert!(!path.exists());
     }
 

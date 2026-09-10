@@ -21,9 +21,13 @@ use taurhaus_lib::daemon::session_activity::{
 use taurhaus_lib::session_scanner::{launch::HostedLaunch, RuntimeSession, SessionGroupKind};
 
 fn host_connection_closed(error: &str) -> bool {
-    matches!(error.strip_prefix("outcome_unknown: ").unwrap_or(error),
-        "host connection closed" | "host connection closed during write" |
-        "host WebSocket closed" | "host connection unavailable")
+    matches!(
+        error.strip_prefix("outcome_unknown: ").unwrap_or(error),
+        "host connection closed"
+            | "host connection closed during write"
+            | "host WebSocket closed"
+            | "host connection unavailable"
+    )
 }
 
 type SeatKey = (PathBuf, String, String);
@@ -276,13 +280,18 @@ impl HostedMembers {
                 };
                 let Some(seat) = owned.as_mut() else { return };
                 let Ok(guard) = HostOperationLock::acquire_for_activity(
-                    &refresh_root, &refresh_team, &refresh_member,
+                    &refresh_root,
+                    &refresh_team,
+                    &refresh_member,
                 ) else {
                     return;
                 };
                 let disconnected = !seat.attachment.socket_path.exists() || !seat.host.alive();
-                let closed = !disconnected && seat.host.refresh_activity(&guard).is_err_and(|error|
-                    host_connection_closed(&error));
+                let closed = !disconnected
+                    && seat
+                        .host
+                        .refresh_activity(&guard)
+                        .is_err_and(|error| host_connection_closed(&error));
                 if disconnected || closed {
                     SessionActivityHub::shared().publish_host_status(
                         &seat.attachment.socket_path,
@@ -682,7 +691,7 @@ impl HostedMembers {
         {
             return Err("host team/member authority changed".into());
         }
-        let result = (|| { match operation {
+        let result = (|| match operation {
             "transcript" => seat.host.transcript(&guard),
             "input" => {
                 if record.host_input_unknown {
@@ -748,10 +757,16 @@ impl HostedMembers {
                 &guard,
             ),
             _ => Err("UNKNOWN_METHOD".into()),
-        } })();
-        if result.as_ref().is_err_and(|error| host_connection_closed(error)) {
+        })();
+        if result
+            .as_ref()
+            .is_err_and(|error| host_connection_closed(error))
+        {
             SessionActivityHub::shared().publish_host_status(
-                &seat.attachment.socket_path, &seat.host.thread_id, &Value::Null);
+                &seat.attachment.socket_path,
+                &seat.host.thread_id,
+                &Value::Null,
+            );
         }
         result
     }
@@ -909,8 +924,12 @@ pub(crate) mod tests {
         let started = std::time::Instant::now();
         SessionActivityHub::shared().refresh_hosts();
         let elapsed = started.elapsed();
-        let row = SessionActivityHub::shared().runtime_snapshot().runtime_sessions
-            .into_iter().find(|s| s.project_path == tmp.path().to_str().unwrap()).unwrap();
+        let row = SessionActivityHub::shared()
+            .runtime_snapshot()
+            .runtime_sessions
+            .into_iter()
+            .find(|s| s.project_path == tmp.path().to_str().unwrap())
+            .unwrap();
         assert_eq!(row.source.as_deref(), Some("host"));
         assert!(elapsed < Duration::from_secs(1), "probe took {elapsed:?}");
     }

@@ -646,10 +646,16 @@ impl SessionActivityHub {
                 let Some(hub) = hub.upgrade() else { break };
                 hub.refresh_hosts();
                 drop(hub);
-                if host_stop.park(ACTIVE_SCAN_INTERVAL) { break; }
+                if host_stop.park(ACTIVE_SCAN_INTERVAL) {
+                    break;
+                }
             }
         });
-        *scanner = Some(ScannerThread { stop, handle, host_handle });
+        *scanner = Some(ScannerThread {
+            stop,
+            handle,
+            host_handle,
+        });
     }
 
     /// Stop this hub's scanner thread and wait for it to finish.
@@ -663,7 +669,12 @@ impl SessionActivityHub {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .take();
-        let Some(ScannerThread { stop, handle, host_handle }) = scanner else {
+        let Some(ScannerThread {
+            stop,
+            handle,
+            host_handle,
+        }) = scanner
+        else {
             return;
         };
         stop.request();

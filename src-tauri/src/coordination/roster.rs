@@ -245,8 +245,12 @@ fn build_team_member_view(
     TeamMemberView {
         host_activity: runtime
             .as_ref()
-            .filter(|r| r.health != HealthState::SessionDead
-                && r.app_server.as_ref().is_some_and(|host| host.state == "ready"))
+            .filter(|r| {
+                r.health != HealthState::SessionDead
+                    && r.app_server
+                        .as_ref()
+                        .is_some_and(|host| host.state == "ready")
+            })
             .map(|_| taurhaus_lib::session_scanner::HostActivity::unavailable()),
         hosted_runtime: runtime.as_ref().filter(|r| r.app_server.is_some()).cloned(),
         team_name: team_name.to_string(),
