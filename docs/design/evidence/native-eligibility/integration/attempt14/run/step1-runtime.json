@@ -1,0 +1,215 @@
+{
+  "activitySnapshotPath": null,
+  "appServer": {
+    "accountRoot": "/tmp/th-int-g31c78ep/codex",
+    "attachArgv": [
+      "codex",
+      "--remote",
+      "unix:///tmp/th-int-g31c78ep/tmp/th-host-17946ff4d3d248fa936b9274474ac44d/rpc.sock",
+      "resume",
+      "01a08caa-26c7-7c61-bc1f-2778f1c2c6d8",
+      "--no-alt-screen",
+      "--strict-config"
+    ],
+    "build": "0.153.4",
+    "configuration": "strict-config/1",
+    "configurationDigest": "eacd825cbebb1a2d4ff4c50343e31339d92403979050aa2f2ff8a9bb676756af",
+    "contract": 1,
+    "host": "taurhaus-daemon-owned-thread/1",
+    "hostGeneration": "ccbaecb5-dc11-497f-801a-16d90a5918c3",
+    "instructionSources": [
+      "/tmp/th-int-g31c78ep/project/AGENTS.md"
+    ],
+    "memberId": "seat@integration",
+    "processId": 127,
+    "processStart": "28689151",
+    "socketPath": "/tmp/th-int-g31c78ep/tmp/th-host-17946ff4d3d248fa936b9274474ac44d/rpc.sock",
+    "state": "ready",
+    "threadId": "01a08caa-26c7-7c61-bc1f-2778f1c2c6d8",
+    "transport": "unix-websocket",
+    "trust": "daemon-owned/1"
+  },
+  "appliedEffort": "low",
+  "attached_at": "2026-09-10T18:52:39.538618147Z",
+  "attachmentGeneration": 1,
+  "cli_tool": "codex",
+  "contextGeneration": "0",
+  "daemon_pid": null,
+  "delivery_lease": null,
+  "harness": "codex",
+  "health": "active",
+  "hookSessionId": "01a08caa-26c7-7c61-bc1f-2778f1c2c6d8",
+  "hostInputAbandonedAt": null,
+  "hostInputUnknown": false,
+  "jsonl_path": null,
+  "last_seen_at": null,
+  "launchRoot": {
+    "claudeDir": "/tmp/th-int-g31c78ep/claude",
+    "rootAuthorityRevision": 0,
+    "teamIncarnationId": "735953b0b454c8ddd99041fe7172c125da6f82901b1dd81eea155a3b448365fb",
+    "teamsDir": "/tmp/th-int-g31c78ep/claude/teams"
+  },
+  "memberName": "seat",
+  "paneId": "%2",
+  "panePid": 677,
+  "paneStartTime": "28689593",
+  "project_path": "/tmp/th-int-g31c78ep/project",
+  "recovery": {
+    "activation_intent": "de34234c-85de-40e0-b7cf-41a116c03b8e",
+    "admitted_boundary": null,
+    "baseline_binding": [
+      [
+        "735953b0b454c8ddd99041fe7172c125da6f82901b1dd81eea155a3b448365fb",
+        "ad91bffd-e952-438b-9978-8d9c20c5d1d9"
+      ],
+      [
+        1,
+        0
+      ]
+    ],
+    "claim": {
+      "accepted_bytes": 0,
+      "attempt": 1,
+      "card_key": {
+        "card_schema": 1,
+        "context": [
+          1,
+          0
+        ],
+        "contract": {
+          "effective_role_revision": "44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf",
+          "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+          "packet_revision": "",
+          "role_id": ""
+        },
+        "recipient": [
+          "735953b0b454c8ddd99041fe7172c125da6f82901b1dd81eea155a3b448365fb",
+          "ad91bffd-e952-438b-9978-8d9c20c5d1d9"
+        ],
+        "roots": {
+          "harness_account_root": "/tmp/th-int-g31c78ep/codex",
+          "launch_namespace": "native",
+          "resolved_mesh_config_root": "/tmp/th-int-g31c78ep/claude",
+          "resolved_project_root": "/tmp/th-int-g31c78ep/project",
+          "resolved_teams_root": "/tmp/th-int-g31c78ep/claude/teams",
+          "root_authority_revision": "0"
+        }
+      },
+      "content_revision": "b19ca3e16c6d80f69cea4ed8afbc392f332419dac378d3c3ead9a532a548de93",
+      "delivery_id": "c32aaf0a5c67946ca5eb10bec57fde1aff5a0d81a28c13d4230f13af216c27fd",
+      "generated_bytes": 2172,
+      "kind": "baseline",
+      "obligation_key": [
+        [
+          "735953b0b454c8ddd99041fe7172c125da6f82901b1dd81eea155a3b448365fb",
+          "ad91bffd-e952-438b-9978-8d9c20c5d1d9"
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "observations": [
+        [
+          "submitted",
+          "2026-09-10T18:52:37.937928954Z",
+          "app_server"
+        ]
+      ],
+      "offered_bytes": 2172,
+      "path": "app_server",
+      "returned_by_read_bytes": 0,
+      "satisfied_obligations": [
+        [
+          [
+            "735953b0b454c8ddd99041fe7172c125da6f82901b1dd81eea155a3b448365fb",
+            "ad91bffd-e952-438b-9978-8d9c20c5d1d9"
+          ],
+          [
+            1,
+            0
+          ]
+        ]
+      ],
+      "stage": "submitted",
+      "supersedes_revision": null
+    },
+    "harness_account_root": "/tmp/th-int-g31c78ep/codex",
+    "last_delivered": {
+      "accepted_bytes": 0,
+      "attempt": 1,
+      "card_key": {
+        "card_schema": 1,
+        "context": [
+          1,
+          0
+        ],
+        "contract": {
+          "effective_role_revision": "44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf",
+          "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+          "packet_revision": "",
+          "role_id": ""
+        },
+        "recipient": [
+          "735953b0b454c8ddd99041fe7172c125da6f82901b1dd81eea155a3b448365fb",
+          "ad91bffd-e952-438b-9978-8d9c20c5d1d9"
+        ],
+        "roots": {
+          "harness_account_root": "/tmp/th-int-g31c78ep/codex",
+          "launch_namespace": "native",
+          "resolved_mesh_config_root": "/tmp/th-int-g31c78ep/claude",
+          "resolved_project_root": "/tmp/th-int-g31c78ep/project",
+          "resolved_teams_root": "/tmp/th-int-g31c78ep/claude/teams",
+          "root_authority_revision": "0"
+        }
+      },
+      "content_revision": "b19ca3e16c6d80f69cea4ed8afbc392f332419dac378d3c3ead9a532a548de93",
+      "delivery_id": "c32aaf0a5c67946ca5eb10bec57fde1aff5a0d81a28c13d4230f13af216c27fd",
+      "generated_bytes": 2172,
+      "kind": "baseline",
+      "obligation_key": [
+        [
+          "735953b0b454c8ddd99041fe7172c125da6f82901b1dd81eea155a3b448365fb",
+          "ad91bffd-e952-438b-9978-8d9c20c5d1d9"
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "observations": [
+        [
+          "submitted",
+          "2026-09-10T18:52:37.937928954Z",
+          "app_server"
+        ]
+      ],
+      "offered_bytes": 2172,
+      "path": "app_server",
+      "returned_by_read_bytes": 0,
+      "satisfied_obligations": [
+        [
+          [
+            "735953b0b454c8ddd99041fe7172c125da6f82901b1dd81eea155a3b448365fb",
+            "ad91bffd-e952-438b-9978-8d9c20c5d1d9"
+          ],
+          [
+            1,
+            0
+          ]
+        ]
+      ],
+      "stage": "submitted",
+      "supersedes_revision": null
+    },
+    "launch_namespace": "native",
+    "member_incarnation_id": "ad91bffd-e952-438b-9978-8d9c20c5d1d9",
+    "reserved_attachment": null,
+    "reserved_effort": null
+  },
+  "schema_version": 3,
+  "session_id": "01a08caa-26c7-7c61-bc1f-2778f1c2c6d8",
+  "terminalContract": 1,
+  "tmuxSessionId": "$0",
+  "tmuxSocket": "/tmp/th-int-g31c78ep/tmux/tmux-1000/default"
+}
