@@ -26,7 +26,8 @@ mod agy;
 mod claude;
 mod claude_registry;
 mod codex;
-pub(crate) mod codex_readiness;
+#[doc(hidden)]
+pub mod codex_readiness;
 mod grok;
 
 pub(crate) use agy::presence_lock_is_held;

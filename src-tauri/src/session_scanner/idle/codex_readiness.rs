@@ -3,7 +3,7 @@ use super::*;
 use chrono::{DateTime, Utc};
 
 #[derive(Clone, Debug)]
-pub(crate) struct Observation {
+pub struct Observation {
     pub state: SessionState,
     pub source: &'static str,
     pub last_observed_at: DateTime<Utc>,
@@ -118,7 +118,7 @@ pub(super) fn elapse_quiet_window(pid: u32) {
         Some(Utc::now() - chrono::Duration::seconds(10));
 }
 
-pub(crate) fn observation(
+pub fn observation(
     tool: CliTool,
     pid: u32,
     project: &str,
