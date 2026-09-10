@@ -140,5 +140,9 @@ fn hosted_status_uses_same_contract_fallback_and_camel_case_wire() {
 fn hosted_capability_rejects_cli_and_mesh_matching_an_unpaired_build() {
     let mut capabilities = hosted_descriptor();
     capabilities["native_descriptors"][0]["build"] = serde_json::json!("0.153.5");
-    assert!(!hosted_delivery_supported("0.3.0", Some("0.153.5"), &capabilities));
+    assert!(!hosted_delivery_supported(
+        "0.3.0",
+        Some("0.153.5"),
+        &capabilities
+    ));
 }

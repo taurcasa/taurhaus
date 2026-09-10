@@ -237,7 +237,8 @@ impl HostedMembers {
             host_generation: uuid::Uuid::new_v4().to_string(),
             build: host.build.clone(),
             host: taurhaus_lib::session_scanner::launch::HostedDescriptor::HOST.into(),
-            configuration: taurhaus_lib::session_scanner::launch::HostedDescriptor::CONFIGURATION.into(),
+            configuration: taurhaus_lib::session_scanner::launch::HostedDescriptor::CONFIGURATION
+                .into(),
             configuration_digest: Some(super::recovery_card::digest(&launch.arguments)),
             instruction_sources: host.instruction_sources.clone(),
             trust: taurhaus_lib::session_scanner::launch::HostedDescriptor::TRUST.into(),

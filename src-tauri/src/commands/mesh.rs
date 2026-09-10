@@ -376,18 +376,20 @@ fn hosted_delivery_supported(
     let paired = HostedDescriptor::codex();
     canonical_messaging_supported(version)
         && codex == Some(paired.build.as_str())
-        && capabilities["native_descriptors"].as_array().is_some_and(|descriptors| {
-            descriptors.iter().any(|d| {
-                d["enabled"] == true
-                    && d["adapter"] == "app_server"
-                    && d["harness"] == "codex"
-                    && d["build"] == paired.build
-                    && d["host"] == HostedDescriptor::HOST
-                    && d["configuration"] == HostedDescriptor::CONFIGURATION
-                    && d["trust"] == HostedDescriptor::TRUST
-                    && d["transport"] == paired.transport
+        && capabilities["native_descriptors"]
+            .as_array()
+            .is_some_and(|descriptors| {
+                descriptors.iter().any(|d| {
+                    d["enabled"] == true
+                        && d["adapter"] == "app_server"
+                        && d["harness"] == "codex"
+                        && d["build"] == paired.build
+                        && d["host"] == HostedDescriptor::HOST
+                        && d["configuration"] == HostedDescriptor::CONFIGURATION
+                        && d["trust"] == HostedDescriptor::TRUST
+                        && d["transport"] == paired.transport
+                })
             })
-        })
 }
 
 // All three status constructions share this finalization at the IPC boundary.
@@ -414,13 +416,17 @@ fn read_hosted_capabilities(
         let binary = if installed {
             native_mesh_binary_path().map_err(|_| "home_unavailable")?
         } else {
-            resolve_bundled_mesh_assets(app).map_err(|_| "bundled_assets_unavailable")?.0
+            resolve_bundled_mesh_assets(app)
+                .map_err(|_| "bundled_assets_unavailable")?
+                .0
         };
         let mut command = std::process::Command::new(binary);
         command.args(["delivery", "capabilities"]);
         command
     } else {
-        let distro = detect_default_distro().map_err(|_| "distro_probe_failed")?.ok_or("no_default_distro")?;
+        let distro = detect_default_distro()
+            .map_err(|_| "distro_probe_failed")?
+            .ok_or("no_default_distro")?;
         validate_wsl_distro(&distro).map_err(|_| "invalid_distro")?;
         let mut command = wsl_command();
         if installed {
@@ -430,8 +436,11 @@ fn read_hosted_capabilities(
                 &format!("\"{WSL_MESH_BINARY_PATH}\" delivery capabilities"),
             ));
         } else {
-            let binary = resolve_bundled_mesh_assets(app).map_err(|_| "bundled_assets_unavailable")?.0;
-            let linux = crate::provider::path::to_linux(&binary.to_string_lossy()).ok_or("bundled_path_unavailable")?;
+            let binary = resolve_bundled_mesh_assets(app)
+                .map_err(|_| "bundled_assets_unavailable")?
+                .0;
+            let linux = crate::provider::path::to_linux(&binary.to_string_lossy())
+                .ok_or("bundled_path_unavailable")?;
             command.args(["-d", &distro, "--exec", &linux, "delivery", "capabilities"]);
         }
         command
@@ -555,13 +564,18 @@ fn mesh_status_for_native_binary(
 }
 
 fn native_mesh_binary_path() -> Result<PathBuf, String> {
-    Ok(dirs::home_dir().ok_or("Could not determine home directory")?.join(".local/bin/mesh"))
+    Ok(dirs::home_dir()
+        .ok_or("Could not determine home directory")?
+        .join(".local/bin/mesh"))
 }
 
 fn check_mesh_install_native(
     bundled_contract: &MeshCompatibilityContract,
 ) -> Result<MeshInstallStatus, String> {
-    Ok(mesh_status_for_native_binary(bundled_contract, &native_mesh_binary_path()?))
+    Ok(mesh_status_for_native_binary(
+        bundled_contract,
+        &native_mesh_binary_path()?,
+    ))
 }
 
 fn check_mesh_install_wsl(

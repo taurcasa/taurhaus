@@ -91,7 +91,11 @@ pub(crate) fn validate_member_configuration_for_team(
     config: &crate::coordination::stores::TeamConfig,
 ) -> Result<(), CoordinationError> {
     validate_member_configuration(member, template_root)?;
-    if member.extra.get("adapter_mode").and_then(serde_json::Value::as_str) == Some("app_server")
+    if member
+        .extra
+        .get("adapter_mode")
+        .and_then(serde_json::Value::as_str)
+        == Some("app_server")
         && config.extra.get("messaging_format") != Some(&serde_json::json!(2))
     {
         return Err(CoordinationError::Validation(format!(
