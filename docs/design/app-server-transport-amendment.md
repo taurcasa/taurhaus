@@ -232,9 +232,16 @@ turn/completed {threadId, turn:{id, status:"completed", items:[]}}
 The completed item is authoritative for the owned thread. Daemon reconciliation
 and hosted operations admit a generation-keyed pending obligation with source
 `host_notification`; hook and notification identities deduplicate by thread and
-turn/item. Under host exclusion, idle permits a card-only `turn/start` using the
-existing recovery renderer and submitted receipt. A bounded busy wait preserves
-the obligation for the first operator input. Unknown input outcomes never replay.
+matching turn/item IDs, or a 30-second timestamp window between opposite observers
+when IDs are absent (the documented hook envelope has none). Conflicting known IDs
+remain distinct. Under host exclusion, idle permits a card-only `turn/start` using
+the existing recovery renderer and submitted receipt. Busy recovery defers immediately;
+background pending reads try once, preserving the obligation for later reconciliation
+or first operator input. Recovery errors never abort an alive seat's team liveness pass.
+An unread boundary backlog collapses to the newest context before admission.
+Hosted hooks emit `received` plus the `compaction.codex_host.*` family. They restore
+the hosted control contract even without a resumable task snapshot, like startup;
+the shared card then describes the current idle/wait state. Unknown input outcomes never replay.
 The transcript retains the compaction item and recovery turn. No wire change or
 protocol bump: `contextGeneration` remains a string, protocol 27 remains unreleased.
 The requested `attached-tui/installed-schema` directory is absent in both supplied

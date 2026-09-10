@@ -183,8 +183,11 @@ pending obligation (`source: host_notification`). Daemon reconciliation services
 this connection even without the panel open. On tracked idle, the daemon submits
 the same recovery card as a card-only `turn/start`, recording `injected` with
 `delivery: host_turn` and a submitted receipt. If the host stays busy through the
-bounded deadline, fallback prepends the pending card to the next operator input.
-Thread plus turn/item identity deduplicates a matching hook in either order.
+first read, recovery defers to later reconciliation or the next operator input.
+Thread plus matching turn/item IDs deduplicates either observer order; when IDs are
+absent, opposite observers use a 30-second timestamp window (known conflicts stay separate).
+Hosted hooks restore the control contract without the pane hook's resumable-task gate;
+their logging is `received` plus `compaction.codex_host.*`.
 The transcript shows the compaction note and card turn.
 
 On Codex 0.153.4, plain `thread/read` verifies identity, status, direct-input

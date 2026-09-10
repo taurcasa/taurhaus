@@ -2,7 +2,9 @@
 > proved that hosted `/compact` completes without the Codex hook. The daemon now
 > admits owned-thread `item/completed` contextCompaction notifications, deduplicates
 > hook boundaries, and submits the canonical recovery card on idle under host
-> exclusion. A bounded busy wait leaves recovery pending for first operator input.
+> exclusion. Round-1 correction (2026-09-10): busy recovery defers immediately,
+> background pending reads try once, and recovery failure does not abort team liveness.
+> ID-less hooks deduplicate opposite observers within 30 seconds on the same thread.
 > See [Compaction boundary on 0.153.4](../../app-server-transport-amendment.md#compaction-boundary-on-01534).
 > This is fake-host software coverage, not a new real-host eligibility verdict.
 

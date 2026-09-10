@@ -182,23 +182,33 @@ pub(crate) fn record_host_boundary(
     source: &str,
 ) -> Result<bool, CoordinationError> {
     let thread = boundary["threadId"].as_str().unwrap_or_default();
-    let timestamp = boundary["completedAtMs"]
+    let mut timestamp = boundary["completedAtMs"]
         .as_i64()
         .and_then(DateTime::from_timestamp_millis)
         .unwrap_or_else(Utc::now);
-    if let Some(previous) = MemberCompactionStore::load(root, team, member)? {
-        let same_id = previous.host_boundary.as_ref().is_some_and(|old| {
-            ["turnId", "itemId"].iter().any(|key| {
-                boundary[key]
-                    .as_str()
-                    .filter(|v| !v.is_empty())
-                    .is_some_and(|v| old[key] == v)
-            })
-        });
+    if let Some(mut previous) = MemberCompactionStore::load(root, team, member)? {
+        let old = previous.host_boundary.clone().unwrap_or_default();
+        let ids: Vec<_> = ["turnId", "itemId"].iter().filter_map(|key| {
+            boundary[key].as_str().filter(|v| !v.is_empty())
+                .zip(old[key].as_str().filter(|v| !v.is_empty()))
+        }).collect();
+        let same_id = !ids.is_empty() && ids.iter().all(|(a, b)| a == b);
+        // Hooks have no turn/item IDs. Correlate opposite observers within 30 seconds,
+        // never merge conflicting known IDs or two distinct notifications by time alone.
+        let close = ids.is_empty() && previous.source.as_deref() != Some(source)
+            && (previous.last_compaction_timestamp - timestamp).num_milliseconds().abs() <= 30_000;
         if previous.last_session_id == thread
-            && (same_id || previous.last_compaction_timestamp == timestamp)
+            && (same_id || close || (ids.is_empty() && previous.last_compaction_timestamp == timestamp))
         {
+            if source == "host_notification" {
+                previous.host_boundary = Some(boundary.clone());
+                MemberCompactionStore::save(root, team, member, &previous)?;
+            }
             return Ok(false);
+        }
+        // Distinct known IDs may share a millisecond; keep the runtime's timestamp key unique.
+        if previous.last_compaction_timestamp == timestamp {
+            timestamp += chrono::Duration::nanoseconds(1);
         }
     }
     let tool = super::MemberRuntimeStore::load(root, team, member)?
@@ -226,7 +236,7 @@ pub(crate) fn emit_host_compaction(
     member: &str,
     boundary: &serde_json::Value,
     event: &str,
-    reason: &str,
+    reason: Option<&str>,
 ) {
     let mut fields = serde_json::Map::new();
     for (key, value) in [
@@ -238,12 +248,14 @@ pub(crate) fn emit_host_compaction(
         ),
         ("turn_id", boundary["turnId"].as_str().unwrap_or_default()),
         ("item_id", boundary["itemId"].as_str().unwrap_or_default()),
-        ("reason", reason),
     ] {
         fields.insert(
             key.into(),
             serde_json::Value::String(value.chars().take(256).collect()),
         );
+    }
+    if let Some(reason) = reason {
+        fields.insert("reason".into(), serde_json::Value::String(reason.chars().take(256).collect()));
     }
     taurhaus_lib::logging::emit_global("info", "coordination", event, None, fields);
 }
@@ -300,6 +312,22 @@ pub(crate) fn record_delivery_with_journal_at(
     compaction_timestamp: DateTime<Utc>,
     result: CompactionDeliveryResult,
     journal: Option<crate::coordination::journal::JournalReceipt>,
+) -> Result<(), CoordinationError> {
+    record_delivery_with_transport_at(teams_dir, team_name, member_name, tool, session_id,
+        compaction_timestamp, result, journal, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn record_delivery_with_transport_at(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+    tool: CliTool,
+    session_id: &str,
+    compaction_timestamp: DateTime<Utc>,
+    result: CompactionDeliveryResult,
+    journal: Option<crate::coordination::journal::JournalReceipt>,
+    delivery: Option<&str>,
 ) -> Result<(), CoordinationError> {
     let guard = super::lock::acquire_team_lock(teams_dir, team_name)?;
     let mut pending_obligation = None;
@@ -370,15 +398,8 @@ pub(crate) fn record_delivery_with_journal_at(
     };
     MemberCompactionStore::save_locked(&guard, teams_dir, team_name, member_name, &state)?;
     drop(guard);
-    emit_compaction_delivery_event(
-        team_name,
-        member_name,
-        tool,
-        session_id,
-        compaction_timestamp,
-        result,
-        None,
-        None,
+    emit_compaction_delivery_with_transport(
+        team_name, member_name, tool, session_id, compaction_timestamp, result, None, None, delivery,
     );
     Ok(())
 }
@@ -419,6 +440,22 @@ pub fn emit_compaction_delivery_event(
     skip_reason: Option<&str>,
     fail_reason: Option<&str>,
 ) {
+    emit_compaction_delivery_with_transport(team_name, member_name, tool, session_id,
+        compaction_timestamp, result, skip_reason, fail_reason, None);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_compaction_delivery_with_transport(
+    team_name: &str,
+    member_name: &str,
+    tool: CliTool,
+    session_id: &str,
+    compaction_timestamp: DateTime<Utc>,
+    result: CompactionDeliveryResult,
+    skip_reason: Option<&str>,
+    fail_reason: Option<&str>,
+    delivery: Option<&str>,
+) {
     let event = match result {
         CompactionDeliveryResult::Injected => "compaction.injected",
         CompactionDeliveryResult::Skipped => "compaction.skipped",
@@ -437,7 +474,7 @@ pub fn emit_compaction_delivery_event(
     emit_compaction_delivery(
         event,
         CompactionDeliveryEvent {
-            delivery: None,
+            delivery: delivery.map(ToOwned::to_owned),
             tool,
             team_name: team_name.to_string(),
             member_name: member_name.to_string(),

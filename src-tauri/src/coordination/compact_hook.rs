@@ -585,7 +585,7 @@ fn handle_compaction_decision(
                 &matched.member.name,
                 &boundary,
                 "compaction.codex_host.skipped",
-                "already_recorded",
+                Some("already_recorded"),
             );
             return Ok(CompactHookResponse::default());
         }
@@ -603,7 +603,7 @@ fn handle_compaction_decision(
                 &matched.team_name,
                 &matched.member.name,
             )?
-            .unwrap();
+            .ok_or_else(|| CoordinationError::Conflict("host compaction state missing".into()))?;
             record_delivery_at(
                 &matched.teams_dir,
                 &matched.team_name,
