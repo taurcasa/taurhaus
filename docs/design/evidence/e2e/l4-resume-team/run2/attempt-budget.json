@@ -1,0 +1,16 @@
+{
+  "earlier_attempt_paid_inputs": 0,
+  "earlier_attempt_usd": 0,
+  "continuation_paid_inputs": 0,
+  "continuation_turn_ids": [],
+  "codex_seat_launch_attempts_upper_bound": 2,
+  "host_process_start_failure_observed": 1,
+  "inputs_plus_launch_attempts_upper_bound": 2,
+  "cap": 16,
+  "alpha_usd": 0,
+  "beta_usd": 0,
+  "claude_usd": 0,
+  "total_usd": 0,
+  "usd_cap": 0.25,
+  "basis": "Initialize failed in create_panes/launch_host before send_onboarding. No marker/hosted_input/turn-start RPC was issued; no token-usage or turn event was found. Host exited before transport readiness. CLI version probes are not paid inputs. Startup attempts are conservatively counted separately."
+}

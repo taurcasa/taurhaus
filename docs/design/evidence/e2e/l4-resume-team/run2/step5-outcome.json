@@ -1,0 +1,6 @@
+{
+  "step": 5,
+  "outcome": "NOT RUN",
+  "classification": "not evaluated",
+  "reason": "Stopped after step 1 launch_host failure, as required."
+}

@@ -29,8 +29,3 @@ def require_headroom(ledger, inputs):
     assert ledger['paid_inputs'] + inputs <= 16, 'input cap'
     assert not ledger['unmetered'], 'unmetered turns before next paid input'
     assert ledger['conservative_usd'] + .05 * inputs <= .25, 'cost headroom'
-
-
-def require_resume_success(report):
-    assert report.get('resumed') and not report.get('failed_members'), 'resume members failed'
-    assert report.get('started_team_daemon') and not report.get('team_daemon_warning'), 'resume team-daemon startup refused'

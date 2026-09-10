@@ -1,0 +1,155 @@
+{
+  "files": {},
+  "journal": [],
+  "processes": [
+    {
+      "pid": 3393574,
+      "start_ticks": "25011461",
+      "namespace_pids": [
+        "3393574"
+      ],
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l4-run2-4kzjugim",
+        "/tmp/th-l4-run2-4kzjugim",
+        "--chdir",
+        "/tmp/th-l4-run2-4kzjugim/project",
+        "/bin/bash",
+        "/tmp/th-l4-run2-4kzjugim/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3393575,
+      "start_ticks": "25011462",
+      "namespace_pids": [
+        "3393575",
+        "1"
+      ],
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l4-run2-4kzjugim",
+        "/tmp/th-l4-run2-4kzjugim",
+        "--chdir",
+        "/tmp/th-l4-run2-4kzjugim/project",
+        "/bin/bash",
+        "/tmp/th-l4-run2-4kzjugim/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3393576,
+      "start_ticks": "25011462",
+      "namespace_pids": [
+        "3393576",
+        "2"
+      ],
+      "argv": [
+        "/bin/bash",
+        "/tmp/th-l4-run2-4kzjugim/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3393577,
+      "start_ticks": "25011462",
+      "namespace_pids": [
+        "3393577",
+        "3"
+      ],
+      "argv": [
+        "tmux",
+        "-D",
+        "-f",
+        "/dev/null",
+        ""
+      ]
+    },
+    {
+      "pid": 3393587,
+      "start_ticks": "25011473",
+      "namespace_pids": [
+        "3393587",
+        "9"
+      ],
+      "argv": [
+        "/bin/bash",
+        ""
+      ]
+    },
+    {
+      "pid": 3393589,
+      "start_ticks": "25011473",
+      "namespace_pids": [
+        "3393589",
+        "11"
+      ],
+      "argv": [
+        "/tmp/th-l4-run2-4kzjugim<operator-path-redacted>",
+        "--port",
+        "46147",
+        "--data-dir",
+        "/tmp/th-l4-run2-4kzjugim/data",
+        ""
+      ]
+    },
+    {
+      "pid": 3393703,
+      "start_ticks": "25011542",
+      "namespace_pids": [
+        "3393703",
+        "119"
+      ],
+      "argv": [
+        "claude",
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-haiku-4-5",
+        "--team-name",
+        "l4-resume",
+        "--agent-name",
+        "lead",
+        "--agent-id",
+        "lead@l4-resume",
+        "--agent-type",
+        "orchestrator",
+        "-n",
+        "lead",
+        ""
+      ]
+    }
+  ],
+  "tasks": []
+}

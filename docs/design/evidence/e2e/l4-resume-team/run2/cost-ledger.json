@@ -1,0 +1,18 @@
+{
+  "paid_inputs": 0,
+  "turn_ids": [],
+  "turns": [],
+  "unmetered": [],
+  "api_equivalent_usd": 0,
+  "conservative_usd": 0,
+  "basis": "Prior trial packet Luna input/cached/output rates $0.20/$0.02/$1.20 per million; conservative all tokens at $1.20/M, not an invoice.",
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "max_inputs": 16,
+  "max_usd": 0.25,
+  "completed_turn_ids": [],
+  "attachment_generations": {
+    "alpha": null,
+    "beta": null
+  }
+}

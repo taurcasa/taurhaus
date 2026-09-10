@@ -2,7 +2,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from preflight import auth_source, meter, require_headroom
+from preflight import auth_source, meter, require_headroom, require_resume_success
 
 class LaneTests(unittest.TestCase):
     def test_authorized_default_auth_source_without_opening_it(self):
@@ -24,6 +24,14 @@ class LaneTests(unittest.TestCase):
     def test_missing_usage_blocks_the_next_paid_input(self):
         with self.assertRaisesRegex(AssertionError, 'unmetered'):
             require_headroom(meter(['t'], []), 1)
+
+    def test_resume_terminal_status_does_not_hide_a_startup_refusal(self):
+        # // Regression: 4f946ee5 treated terminal RPC status as whole-team success.
+        with self.assertRaisesRegex(AssertionError, 'team-daemon'):
+            require_resume_success({'resumed':True,'failed_members':[], 'started_team_daemon':False, 'team_daemon_warning':'startup refused'})
+        with self.assertRaisesRegex(AssertionError, 'members'):
+            require_resume_success({'resumed':False,'failed_members':[{'member_name':'beta'}], 'started_team_daemon':True})
+        require_resume_success({'resumed':True,'failed_members':[], 'started_team_daemon':True, 'team_daemon_warning':None})
 
     def test_caps_include_automatic_startup_and_recovery(self):
         with self.assertRaisesRegex(AssertionError, 'input cap'):
