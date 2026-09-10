@@ -31,7 +31,7 @@ def reply(marker):
 def idle():
     return read_json(OUT/'hosted-transcript.json').get('thread',{}).get('status',{}).get('type')=='idle'
 def wait_reply(marker):
-    wait_for(lambda: reply(marker) and idle() and read_json(OUT/'cost-ledger.json')['metering_complete'], 'missing completed reply '+marker)
+    wait_for(lambda: reply(marker) and idle(), 'missing completed reply '+marker)
 def send(marker, name): mesh(['send','seat','ACTION REQUIRED: Reply exactly '+marker+'. Do not execute tools.','--team','integration','--name','lead','--summary',name], name+'-send.txt')
 def status(name): mesh(['team-daemon','status','--team','integration'],name+'-status.txt')
 def journals():
@@ -57,7 +57,7 @@ if __name__=='__main__':
     step=int(sys.argv[1]); action({'op':'step','step':step})
     try:
         if step==1:
-            wait_for(lambda: idle() and read_json(OUT/'cost-ledger.json')['metering_complete'] and any('[taurhaus] recovery_card' in json.dumps(e) for e in events()), 'startup card did not complete', timeout=120)
+            wait_for(lambda: idle() and any('[taurhaus] recovery_card' in json.dumps(e) for e in events()), 'startup card did not complete', timeout=120)
             capture('step1-final');status('step1')
             rec=read_json(OUT/'team/runtime/seat.json')
             assert rec['terminalContract']==1 and rec['appServer']['instructionSources']

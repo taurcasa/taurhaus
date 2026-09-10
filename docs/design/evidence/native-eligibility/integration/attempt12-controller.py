@@ -209,7 +209,7 @@ def budget_check():
 
 def poll_host(force=False):
     global last_host_poll, previous_host_events
-    if not host_poll_enabled: return
+    if not host_poll_enabled: return 'disabled'
     if not force and time.monotonic() - last_host_poll < 1:
         return
     last_host_poll = time.monotonic()
@@ -468,7 +468,9 @@ finally:
         saved = ROOT / "claude/teams" / TEAM / "runtime" / (MEMBER + ".json")
         if saved.exists() and json.loads(saved.read_text()).get("appServer"):
             for _ in range(30):
-                if not poll_host(force=True):
+                polled = poll_host(force=True)
+                if polled == 'disabled': break
+                if not polled:
                     time.sleep(1)
                     continue
                 view = json.loads((OUT / "hosted-transcript.json").read_text())

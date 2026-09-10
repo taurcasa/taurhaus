@@ -2864,6 +2864,10 @@ signalled. Mesh source is clean at `ed59187`; `target/debug/mesh` is absent.
 The **complete daemon JSONL** is retained: **910 unique rows**, including every
 emitted event family; SHA-256
 `424e4dd4fff44500e6865f8def6435a0afe01f0cd447b5185f6a8d1f66c75bee`.
+Retention applies `attempt5_support.clean()`: it removes `rate_limits`/`rateLimits`
+keys and `account/` method objects, and redacts credential, installation/account
+identity fields and operator paths; no daemon row in this run uses an `account/`
+method, so completeness here describes the emitted event families after sanitization.
 Host event history retains 135 rows with incremental overlap removal, no
 `item/agentMessage/delta` rows, and pane captures stay at most 60 lines.
 Credentials and operator paths are absent from evidence; synthetic fixture paths
@@ -2878,3 +2882,29 @@ brief's requested **Opus evidence lens did not run**: no callable Opus review
 model/tool is available in this session. This report does not claim that review;
 it remains for the surrounding cross-family review workflow. All work stopped
 at the original step failure, with no product patch or extra paid trial.
+
+### Attempt 12 review correction — offline controller fixes
+
+The review confirmed a harness fault: `b6b906ba` inherited the usage-ID join as
+a step gate, so a metering limitation aborted step 6 despite its observed reply
+and idle thread. The corrected controller waits for reply plus idle only;
+startup likewise waits for the recovery card plus idle. Budget caps and the
+pre-submission turn guard remain enforced. `finalize_metering` still records
+unmatched usage as a limitation with unknown totals, never a fabricated zero.
+Disabled hosted polling now returns a distinct `disabled` result, ending both
+the startup wait and final drain without an RPC, transcript read or back-off.
+The support docstring now identifies attempt 12 and its fresh budget, and the
+retention paragraph above states the sanitizer's redactions.
+
+Offline regression tests use synthetic state and extracted functions only;
+they never import the live controller or launch a CLI. After correcting an AST
+test setup error, the pre-fix run exited **1** with four failed assertions across
+the reply, startup and disabled-poll tests (`integration/attempt12-review-red.txt`).
+The fixed run exited **0**, **15 tests** (`integration/attempt12-review-green.txt`),
+including the existing transient-refusal deadline/cursor and fatal-refusal tests.
+The regression comments identify the introducing commit `b6b906ba`.
+
+This review adds **0 paid turns / USD 0**. The historical step outcomes, every
+spend row and raw failure artifacts above remain the record of the stopped run;
+the offline fixes do not establish step 7 or authorize a descriptor flip.
+No additional runtime trial, Mesh edit or Taurhaus product change was made.

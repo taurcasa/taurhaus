@@ -1,4 +1,4 @@
-"""Attempt-10 evidence policy; reuses receipt and transcript helpers from attempt 8."""
+"""Attempt-12 evidence policy with a fresh budget; reuses attempt-8 helpers."""
 import json
 from attempt8_continuation_support import wait_receipt, compaction_metering_gaps
 from attempt5_support import clean, ledger

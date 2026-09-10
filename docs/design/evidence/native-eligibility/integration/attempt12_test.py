@@ -19,6 +19,46 @@ def helper(file, name, bindings=None):
     return scope[name]
 
 class TrialGuards(unittest.TestCase):
+    def test_reply_completion_does_not_depend_on_usage_id_join(self):
+        # // Regression: b6b906ba inherited the usage-ID join in wait_reply;
+        # a completed step was reported as a missing reply when metering lagged.
+        for replied, idle in [(True, True), (False, True), (True, False)]:
+            with self.subTest(replied=replied, idle=idle):
+                wait = Mock()
+                read = Mock(return_value={'metering_complete': False})
+                helper('attempt12-steps.py', 'wait_reply', dict(
+                    wait_for=wait, reply=lambda marker: replied, idle=lambda: idle,
+                    read_json=read, OUT=Path('/synthetic')))('marker')
+                predicate, message = wait.call_args.args
+                self.assertEqual(predicate(), replied and idle)
+                self.assertEqual(message, 'missing completed reply marker')
+                read.assert_not_called()
+
+    def test_startup_completion_does_not_depend_on_usage_id_join(self):
+        # // Regression: b6b906ba also coupled startup-card completion to metering.
+        tree = ast.parse((B/'attempt12-steps.py').read_text())
+        call = next(n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                    and any(isinstance(a, ast.Constant) and a.value ==
+                            'startup card did not complete' for a in n.args))
+        for idle, card in [(True, True), (False, True), (True, False)]:
+            with self.subTest(idle=idle, card=card):
+                wait = Mock()
+                read = Mock(return_value={'metering_complete': False})
+                scope = dict(wait_for=wait, idle=lambda: idle, json=json,
+                    events=lambda: [{'text': '[taurhaus] recovery_card'}] if card else [],
+                    read_json=read, OUT=Path('/synthetic'))
+                exec(compile(ast.fix_missing_locations(ast.Module(body=[ast.Expr(value=call)], type_ignores=[])),
+                             'startup-completion', 'exec'), scope)
+                self.assertEqual(wait.call_args.args[0](), idle and card)
+                self.assertGreaterEqual(wait.call_args.kwargs['timeout'], 60)
+                read.assert_not_called()
+
+    def test_hard_budget_caps_remain_enforced(self):
+        enforce = helper('attempt12_support.py', 'enforce_budget')
+        enforce(16, 3)
+        for turns, usd, reason in [(17, 0, 'turn budget'), (1, 3.01, 'cost budget')]:
+            with self.assertRaisesRegex(AssertionError, reason): enforce(turns, usd)
+
     def test_complete_native_runtime(self):
         # // Regression: 5c4132a9 inherited a codex-only copy, omitting code-mode-host.
         copy = helper('attempt12-controller.py', 'copy_native_runtime')
@@ -96,6 +136,25 @@ class ControllerRaces(unittest.TestCase):
             poll(force=True)
             self.assertEqual(scope['host_events'], ok['result']['events'])
             self.assertEqual(len((Path(tmp)/'host-events.jsonl').read_text().splitlines()), 1)
+
+    def test_disabled_poll_skips_wait_and_final_drain_without_transcript(self):
+        # // Regression: b6b906ba returned None for disabled polling, causing
+        # false busy deadlines and a 30-second teardown drain after rollback.
+        tree = ast.parse((B/'attempt12-controller.py').read_text())
+        loop = next(n for n in ast.walk(tree) if isinstance(n, ast.For)
+                    and ast.unparse(n.iter) == 'range(30)')
+        with tempfile.TemporaryDirectory() as tmp:
+            poll, scope = self.poll_fixture(Path(tmp), [])
+            scope['host_poll_enabled'] = False
+            self.assertEqual(poll(force=True), 'disabled')
+            scope['poll_host'] = Mock(side_effect=poll)
+            helper('attempt12-controller.py', 'wait_host_poll', scope)()
+            self.assertEqual(scope['poll_host'].call_count, 1)
+            exec(compile(ast.Module(body=[loop], type_ignores=[]), 'final-drain', 'exec'), scope)
+            self.assertEqual(scope['poll_host'].call_count, 2)
+            self.assertEqual(scope['time'].now, 10)
+            scope['rpc'].assert_not_called()
+            self.assertEqual(list(Path(tmp).iterdir()), [])
 
     def test_flock_refusal_defers_and_preserves_cursor(self):
         # // Regression: 19ffe981 handled only the seat mutex; a native compact
