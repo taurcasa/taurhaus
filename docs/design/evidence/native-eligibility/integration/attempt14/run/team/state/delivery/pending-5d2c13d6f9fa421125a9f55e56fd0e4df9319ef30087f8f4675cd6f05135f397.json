@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "1cb94bbf-a2ec-4490-b0e4-47d322912c41",
+      "delivery_id": "36b74c0b-9be5-465d-8863-0f8c6e50315d",
+      "recipient": "seat",
+      "source_generation": "868964cf-54eb-42b4-8815-2d55977b7ce5",
+      "source_position": 10,
+      "body": "ACTION REQUIRED: Reply exactly aspen6ced46. Do not execute tools."
+    },
+    "since": "2026-09-10T18:53:24.119581973+00:00"
+  }
+]

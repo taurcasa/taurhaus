@@ -131,47 +131,6 @@
     ]
   },
   {
-    "pid": 603464,
-    "start_ticks": "28689151",
-    "argv": [
-      "codex",
-      "-c",
-      "sandbox_mode=\"read-only\"",
-      "-c",
-      "approval_policy=\"never\"",
-      "-c",
-      "model=\"gpt-5.6-luna\"",
-      "-c",
-      "model_reasoning_effort=\"low\"",
-      "app-server",
-      "--listen",
-      "unix:///tmp/th-int-g31c78ep/tmp/th-host-17946ff4d3d248fa936b9274474ac44d/rpc.sock",
-      ""
-    ]
-  },
-  {
-    "pid": 604506,
-    "start_ticks": "28689593",
-    "argv": [
-      "-bash",
-      ""
-    ]
-  },
-  {
-    "pid": 604577,
-    "start_ticks": "28689630",
-    "argv": [
-      "codex",
-      "--remote",
-      "unix:///tmp/th-int-g31c78ep/tmp/th-host-17946ff4d3d248fa936b9274474ac44d/rpc.sock",
-      "resume",
-      "01a08caa-26c7-7c61-bc1f-2778f1c2c6d8",
-      "--no-alt-screen",
-      "--strict-config",
-      ""
-    ]
-  },
-  {
     "pid": 605027,
     "start_ticks": "28689742",
     "argv": [
@@ -184,6 +143,32 @@
       "lead",
       "--claude-dir",
       "/tmp/th-int-g31c78ep/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 615381,
+    "start_ticks": "28693533",
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 615405,
+    "start_ticks": "28693570",
+    "argv": [
+      "codex",
+      "--sandbox",
+      "read-only",
+      "--ask-for-approval",
+      "never",
+      "-c",
+      "notify=[\"/tmp/th-int-g31c78ep/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
       ""
     ]
   }

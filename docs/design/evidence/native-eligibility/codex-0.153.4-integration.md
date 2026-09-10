@@ -3206,3 +3206,42 @@ not code errors. With only that check disabled,
 `git -c core.whitespace=-blank-at-eof diff --check 1bc5294f..HEAD` exited **0**.
 Exact diagnostics are retained in `integration/attempt13/whitespace-check.json`;
 raw captures were preserved. The earlier unqualified working-tree check exited 0.
+
+
+### Attempt 13 review — corrected step-7 continuation (attempt14 sidecars)
+
+**PASS across attempt 13 steps 1–6 and the corrected live step 7.** The original
+attempt13-steps.py and its FAIL artifacts remain unchanged. The next controller,
+`integration/attempt14-steps.py`, checks a `submitted` / `tmux/1` /
+`tmux_send_keys` receipt plus the matching identity, sender, `Summary: step7`
+and `mesh read --unread --mark-read --team integration --name seat` notice in
+the replacement pane. It requires neither the full body nor model tool execution.
+
+The offline guard was run against the copied, still-defective predicate: exit 1,
+two behavioral assertion failures (a valid notice rejected; a body-only marker
+accepted). After correction: exit 0, 16 tests. A separate remaining-budget guard
+also failed behaviorally before correction, then passed in the 17-test suite.
+`attempt14-{review,budget}-{red,green}.txt` retain these runs. The cwd regression
+guard in `attempt13_test.py` failed on implicit cwd, then passed (16 tests);
+`attempt13-audit.py` also ran successfully from `/tmp`. Its correct root is
+`BASE.parents[5]`: BASE includes the attempt13 directory, so the suggested
+parents[4] would select docs instead of the checkout. The initial test-authoring
+AST error was corrected before retaining the behavioral cwd red.
+
+Attempt 13's scratch root had already been destroyed. The continuation therefore
+rebuilt the same product base and scratch Mesh descriptor, created one new
+canonical hosted seat, verified startup (step 1 as setup), and executed **step 7
+only**; steps 2–6 were not repeated. Production stop/remove/re-add completed;
+the plain tmux seat was attributed and idle with a notify source; the submitted
+receipt and matching notice passed the corrected predicate. Setup, step runner,
+controller and runtime audit each exited 0. Both builds exited 0. No Taurhaus
+product code or registry entry changed. The full seven-step verdict combines
+retained and new observations; it does not claim a fresh seven-step sequence.
+
+Runtime proof is under `integration/attempt14/run/`: step7 lifecycle RPC results,
+runtime before/after, activity snapshots, refusal, send, receipt, pane, outcome,
+complete daemon JSONL and rollout usage. `attempt14/runtime-audit.json` verifies
+the receipt against the actual controller predicate, all owned PID/start
+identities, closed private port, removed scratch root and absent ownership-token
+processes. The controller restored the scratch descriptor and removed the trial
+binary before the conditional descriptor work. No started process survived.
