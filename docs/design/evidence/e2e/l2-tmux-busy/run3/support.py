@@ -5,7 +5,7 @@ import re
 
 def clean(value):
     if isinstance(value, dict):
-        return {k:clean(v) for k,v in value.items() if not any(word in k.lower().replace('_','') for word in ('installationid','accountusage','accesstoken','refreshtoken','authorization')) and k not in ('auth','token')}
+        return {k:clean(v) for k,v in value.items() if not any(word in k.lower().replace('_','') for word in ('installationid','accountusage','accountobservations','idtoken','apikey','accesstoken','refreshtoken','authorization')) and k not in ('auth','token')}
     if isinstance(value,list):return [clean(v) for v in value]
     if isinstance(value,str):
         return re.sub(r'(?<![\w/.-])/home/[^/\s]+/(?!projects/(?:taurhaus-l2-tmux-busy|mesh-l2)(?:/|\b))[^\s"\']*','<operator-path-redacted>',value)
@@ -88,3 +88,8 @@ def pending_observation(rows,message_id,health):
     if accepted and health.get('last_defer_reason') and health['heartbeat']>=accepted['committed_at']:
         return {'source':'scheduler_health (not a receipt)','message_id':message_id,'accepted':accepted,'health':health}
     return None
+
+
+def ready_session(record,snapshot):
+    if snapshot.get('degraded'):return None
+    return next((row for row in snapshot.get('runtime_sessions',[]) if row.get('session_id')==record.get('session_id') and record.get('session_id') and row.get('tmux_pane')==record.get('paneId') and row.get('state')=='idle' and row.get('activity_attribution')=='attributed'),None)

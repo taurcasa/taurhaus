@@ -21,7 +21,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from preflight import credential_source
-from support import clean, complete_rows, meter, native_runtime, retained_daemon_rows, evidence_jsonl, attributed_idle, pending_observation
+from support import clean, complete_rows, meter, native_runtime, retained_daemon_rows, evidence_jsonl, attributed_idle, pending_observation, ready_session
 
 BASE=Path(__file__).resolve().parent
 CHECKOUT=BASE.parents[5]
@@ -265,7 +265,12 @@ class Trial:
         def onboarded():
             return self.fresh_idle() and self.exposure('[taurhaus] recovery_card','user') and any(r.get('payload',{}).get('recipient')=='alpha' and r.get('payload',{}).get('stage')=='submitted' for r in self.journals()) and any(p.get('type')=='task_complete' for rows in self.sessions() for r in rows if r.get('type')=='event_msg' for p in [r.get('payload',{})]) and self.budget()['metering_complete']
         self.wait(onboarded,'alpha onboarding not delivered/completed with fresh idle activity',90)
-        self.save('step1-ready.json',{'runtime':self.record(),'activity':self.activity(),'runtime_sessions':self.rpc('get_runtime_session_snapshot',{}) ,'journal':self.journals()})
+        def attributed():
+            snapshot=self.rpc('get_runtime_session_snapshot',{})
+            row=ready_session(self.record(),snapshot)
+            return {'snapshot':snapshot,'alpha':row} if row and self.fresh_idle() else None
+        attribution=self.wait(attributed,'alpha runtime attribution/idle not confirmed',90)
+        self.save('step1-ready.json',{'runtime':self.record(),'activity':self.activity(),'attribution':attribution,'journal':self.journals()})
         self.capture('step1-final');self.pass_step()
 
     def pass_step(self):
@@ -396,6 +401,9 @@ class Trial:
         if self.record():
             try:self.capture('final')
             except Exception as e:self.log('capture_error',error=str(e))
+        if self.record():
+            try:self.save('final-runtime-sessions.json',self.rpc('get_runtime_session_snapshot',{}))
+            except Exception as e:self.log('runtime_snapshot_error',error=str(e))
         self.save('final-runtime.json',self.record());self.save('final-activity.json',self.activity())
         # Namespace PID 1 exit reaps every descendant. No foreign process is signalled.
         before=self.identities()

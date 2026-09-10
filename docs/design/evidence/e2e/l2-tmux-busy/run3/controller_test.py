@@ -2,7 +2,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from support import native_runtime, retained_daemon_rows, attributed_idle, evidence_jsonl, pending_observation
+from support import native_runtime, retained_daemon_rows, attributed_idle, evidence_jsonl, pending_observation, ready_session
 
 class Run3Tests(unittest.TestCase):
     def test_complete_native_runtime_required_before_copy(self):
@@ -35,6 +35,18 @@ class Run3Tests(unittest.TestCase):
         self.assertEqual(pending_observation([accepted],'Q',health)['source'],'scheduler_health (not a receipt)')
         submitted={'payload':{'message_id':'Q','stage':'submitted'}}
         self.assertIsNone(pending_observation([accepted,submitted],'Q',health))
+
+    def test_ready_runtime_row_matches_seat_identity_and_attribution(self):
+        record={'session_id':'thread','paneId':'%2'}
+        row={'session_id':'thread','tmux_pane':'%2','state':'idle','activity_attribution':'attributed'}
+        snapshot={'runtime_sessions':[row],'degraded':False}
+        self.assertEqual(ready_session(record,snapshot),row)
+        row['tmux_pane']='%3'
+        self.assertIsNone(ready_session(record,snapshot))
+        row['tmux_pane']='%2';row['activity_attribution']='none'
+        self.assertIsNone(ready_session(record,snapshot))
+        row['activity_attribution']='attributed';snapshot['degraded']=True
+        self.assertIsNone(ready_session(record,snapshot))
 
     def test_journal_export_is_complete_jsonl(self):
         self.assertEqual(evidence_jsonl([{'a':1},{'a':2}]),'{"a": 1}\n{"a": 2}\n')
