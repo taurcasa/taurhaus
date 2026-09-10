@@ -1287,6 +1287,9 @@ pub struct MeshCompatibilityIssue {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MeshInstallStatus {
+    /// App-local admission hint; Mesh still validates the live attachment.
+    #[serde(default)]
+    pub hosted_delivery_supported: bool,
     /// Mesh 0.3.0 is the first lock shipping canonical creation and delivery ownership.
     /// Derived from the installed contract when present, otherwise the bundled one.
     #[serde(default)]
