@@ -631,7 +631,21 @@ exited **0**. Builds/gates use checkout-local target directories and one Cargo
 build job, with the exact machine-wide `pgrep` probe before each command. Waits
 apply only at three or more existing Cargo processes, at 30-second intervals,
 up to 30 minutes. Tauri resource placeholders were prepared using the recipe.
-Required gates are running; final exits will be recorded below.
+All required gates passed from the checkout root:
+
+| Exact gate | Exit | Evidence |
+|---|---:|---|
+| `just check-quick` | **0** | [Result](l4-resume-team/run5/gates/check-quick.json); 150 frontend files / 2519 tests passed |
+| `just lint` | **0** | [Result](l4-resume-team/run5/gates/lint.json) |
+| `just test-contracts` | **0** | [Result](l4-resume-team/run5/gates/test-contracts.json) |
+| Process/privacy audit | **0** | [Result](l4-resume-team/run5/final-audit.json) |
+| `git diff --check` | **0** | No whitespace errors |
+
+The gate runner exited **0** and waited for its owned children. No `src-tauri/`
+diff exists, so `just test-rust-unit` is not required. Passing gates do not change
+the failed runtime assertion or establish resume success. Steps 1 and 2 each had
+their own green evidence commit before the next step; step 3 has a failure/cleanup
+commit, with no passing commit claimed for steps 3–6.
 
 Cleanup completed (exit **0**): seven owned PID/start-tick identities rechecked,
 **zero survivors**, private port closed, scratch root/auth removed, Mesh source
