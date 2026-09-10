@@ -18,4 +18,6 @@ regexes = [
   '''idempotency_key":\s*"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"''',
   # RFC 6455 client handshake nonce captured in native-eligibility host-event evidence: single-use, public on the wire
   '''Sec-WebSocket-Key: [A-Za-z0-9+/]{22}==''',
+  # Mesh team config's controlAuthTokenHash: a truncated hash of a scratch team's per-team control token, captured in e2e evidence after the team was destroyed; the token itself is never recorded
+  '''controlAuthTokenHash":\s*"[0-9a-f]{16,64}"''',
 ]
