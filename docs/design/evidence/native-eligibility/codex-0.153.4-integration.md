@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — FAIL step 3 (attempt 8; controller artifact)
+# Codex 0.153.4 integration — IN PROGRESS (attempt 8 continuation)
 
 2026-09-09. **Eligibility remains disabled.** The prescribed canonical setup
 stopped before member launch: the real Mesh command `team delivery --owner team`
@@ -1775,3 +1775,7 @@ Four offline regression/budget tests observed red then green. Earlier controller
 remain unchanged as evidence; continuation uses `attempt8-continuation-*.py` and
 sidecars under `integration/attempt8/continuation/`. Steps remain unclaimed until
 re-observed. The sampler still has no process-control or app-server socket calls.
+
+Continuation step 1 **PASS**: fresh hosted thread `01a089c5-2225-7bb3-973a-2a77719269f1`,
+startup card/reply, strict config, app-server child and attached TUI verified.
+One additional metered turn ($0.00094644 API-equivalent); cumulative five turns.

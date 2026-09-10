@@ -1,0 +1,77 @@
+{
+  "attachmentGeneration": 1,
+  "eventsTruncated": false,
+  "outcomeUnknown": false,
+  "requests": [],
+  "thread": {
+    "agentNickname": null,
+    "agentRole": null,
+    "canAcceptDirectInput": true,
+    "cliVersion": "0.153.4",
+    "createdAt": 1789017793,
+    "cwd": "/tmp/th-int-u97c8_bn/project",
+    "ephemeral": false,
+    "extra": null,
+    "forkedFromId": null,
+    "gitInfo": {
+      "branch": "master",
+      "originUrl": null,
+      "sha": "d2ffb607c368d37cf477ce6bf41ff559e3fbe848"
+    },
+    "historyMode": "paginated",
+    "id": "01a089c5-2225-7bb3-973a-2a77719269f1",
+    "model": "gpt-5.6-luna",
+    "modelProvider": "openai",
+    "name": "Recover taurhaus card",
+    "parentThreadId": null,
+    "path": "/tmp/th-int-u97c8_bn/codex/sessions/2026/09/10/rollout-2026-09-10T07-23-13-01a089c5-2225-7bb3-973a-2a77719269f1.jsonl",
+    "preview": "[taurhaus] recovery_card\nIdentity: seat on integration; key={\"card_schema\":1,\"recipient\":[\"4715d37f17e9ab7dd6222bd77d5a6885af78d64d62bf5780d5a654b6156741b1\",\"65d518bf-fbe7-4c3d-a694-3209027a79cf\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-int-u97c8_bn/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-int-u97c8_bn/claude\",\"harness_account_root\":\"/tmp/th-int-u97c8_bn/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-int-u97c8_bn/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: c7017c7c11c8e3c6e6b5d54e1d62c189dc12091fe00482b8a9e7fb82a6f7b0a5; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-int-u97c8_bn/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 05:23:13.084628866 UTC\nCurrent task: # \u2014 \nOperational constraints: unavailable\nFocal files: unavailable\nRole: unavailable\nPurpose: Isolated transport trial. Reply briefly. Never execute tools or commands.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+    "projectId": null,
+    "reasoningEffort": "low",
+    "recencyAt": 1789017793,
+    "section": null,
+    "sectionEnteredAt": null,
+    "sessionId": "01a089c5-2225-7bb3-973a-2a77719269f1",
+    "source": "vscode",
+    "status": {
+      "type": "idle"
+    },
+    "threadSource": null,
+    "turns": [
+      {
+        "completedAt": 1789017796,
+        "durationMs": 2979,
+        "error": null,
+        "id": "01a089c5-2251-7860-9837-bb2c3e888f0a",
+        "items": [
+          {
+            "clientId": null,
+            "content": [
+              {
+                "text": "[taurhaus] recovery_card\nIdentity: seat on integration; key={\"card_schema\":1,\"recipient\":[\"4715d37f17e9ab7dd6222bd77d5a6885af78d64d62bf5780d5a654b6156741b1\",\"65d518bf-fbe7-4c3d-a694-3209027a79cf\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-int-u97c8_bn/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-int-u97c8_bn/claude\",\"harness_account_root\":\"/tmp/th-int-u97c8_bn/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-int-u97c8_bn/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: c7017c7c11c8e3c6e6b5d54e1d62c189dc12091fe00482b8a9e7fb82a6f7b0a5; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-int-u97c8_bn/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 05:23:13.084628866 UTC\nCurrent task: # \u2014 \nOperational constraints: unavailable\nFocal files: unavailable\nRole: unavailable\nPurpose: Isolated transport trial. Reply briefly. Never execute tools or commands.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+                "text_elements": [],
+                "type": "text"
+              }
+            ],
+            "id": "01a089c5-287e-73c0-a8c4-25ca69b10b17",
+            "type": "userMessage"
+          },
+          {
+            "delivery": null,
+            "id": "msg_0a579ab3f6934bde016aa23ebf7df087d2b8b07195bc5344db",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "Team lead: assignment, identity, release, and required context are missing. I\u2019m preserving the unassigned/terminal wait state.",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789017793,
+        "status": "completed"
+      }
+    ],
+    "updatedAt": 1789017796
+  },
+  "evidenceEvents": "host-events.jsonl"
+}
