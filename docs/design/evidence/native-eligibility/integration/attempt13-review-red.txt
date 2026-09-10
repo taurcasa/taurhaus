@@ -1,0 +1,13 @@
+............F...
+======================================================================
+FAIL: test_product_diff_audit_pins_its_own_checkout (__main__.TrialGuards.test_product_diff_audit_pins_its_own_checkout)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt13_test.py", line 35, in test_product_diff_audit_pins_its_own_checkout
+    self.assertEqual(check.call_args.kwargs.get('cwd'), Path(__file__).resolve().parents[5])
+AssertionError: None != PosixPath('/home/mstie/projects/taurhaus-trial')
+
+----------------------------------------------------------------------
+Ran 16 tests in 5.595s
+
+FAILED (failures=1)

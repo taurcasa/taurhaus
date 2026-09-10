@@ -19,20 +19,30 @@ def helper(file, name, bindings=None):
     return scope[name]
 
 class TrialGuards(unittest.TestCase):
-    def test_product_diff_audit_pins_its_own_checkout(self):
-        # // Regression: 1fbc59d8 audited the caller's repository via implicit cwd.
-        tree = ast.parse((B/'attempt13-audit.py').read_text())
-        call = next(n for n in ast.walk(tree) if isinstance(n, ast.Call)
-                    and isinstance(n.func, ast.Attribute) and n.func.attr == 'check_output'
-                    and n.args and isinstance(n.args[0], ast.List)
-                    and all(isinstance(v, ast.Constant) for v in n.args[0].elts)
-                    and ast.literal_eval(n.args[0]) == ['git', 'diff', '206f88b0', '--', 'src', 'src-tauri'])
-        check = Mock(return_value='')
-        scope = dict(subprocess=SimpleNamespace(check_output=check),
-                     BASE=(B/'attempt13').resolve())
-        exec(compile(ast.fix_missing_locations(ast.Module(body=[ast.Expr(value=call)], type_ignores=[])),
-                     'audit-checkout', 'exec'), scope)
-        self.assertEqual(check.call_args.kwargs.get('cwd'), Path(__file__).resolve().parents[5])
+    def test_tmux_delivery_requires_receipt_and_notice_not_body(self):
+        # // Regression: 4e8e5306 copied 383c148c3's body-marker predicate;
+        # tmux sends only a notice, while onboarding forbids tool-based reads.
+        tree = ast.parse((B/'attempt14-steps.py').read_text())
+        node = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == 'delivered')
+        notice = ('[mesh] You are "seat" on team "integration". Inbox update from lead. Summary: step7. '
+                  'Check inbox and act if the message requests it: mesh read --unread --mark-read --team integration --name seat')
+        good = {'payload': {'stage': 'submitted', 'adapter': 'tmux/1', 'origin': 'tmux_send_keys'}}
+        cases = [(notice, [good], True), (notice, [], False),
+                 (notice.replace('Summary: step7.', 'Summary: other.'), [good], False),
+                 (notice.replace('mesh read --unread --mark-read', 'missing command'), [good], False),
+                 ('body-marker-only', [good], False),
+                 (notice, [{'payload': dict(good['payload'], stage='pending')}], False),
+                 (notice, [{'payload': dict(good['payload'], adapter='app_server/1')}], False)]
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            for pane, rows, expected in cases:
+                with self.subTest(pane=pane, rows=rows):
+                    (out/'step7-final-pane-18.txt').write_text(pane)
+                    scope = dict(OUT=out, after={'paneId':'%18'}, capture=Mock(), status=Mock(),
+                                 action=Mock(), save=Mock(), current_receipts=lambda name: rows,
+                                 marker='body-marker-only')
+                    exec(compile(ast.Module(body=[node], type_ignores=[]), 'tmux-delivered', 'exec'), scope)
+                    self.assertEqual(scope['delivered'](), expected)
 
     def test_reply_completion_does_not_depend_on_usage_id_join(self):
         # // Regression: b6b906ba inherited the usage-ID join in wait_reply;
@@ -41,7 +51,7 @@ class TrialGuards(unittest.TestCase):
             with self.subTest(replied=replied, idle=idle):
                 wait = Mock()
                 read = Mock(return_value={'metering_complete': False})
-                helper('attempt13-steps.py', 'wait_reply', dict(
+                helper('attempt14-steps.py', 'wait_reply', dict(
                     wait_for=wait, reply=lambda marker: replied, idle=lambda: idle,
                     read_json=read, OUT=Path('/synthetic')))('marker')
                 predicate, message = wait.call_args.args
@@ -51,7 +61,7 @@ class TrialGuards(unittest.TestCase):
 
     def test_startup_completion_does_not_depend_on_usage_id_join(self):
         # // Regression: b6b906ba also coupled startup-card completion to metering.
-        tree = ast.parse((B/'attempt13-steps.py').read_text())
+        tree = ast.parse((B/'attempt14-steps.py').read_text())
         call = next(n for n in ast.walk(tree) if isinstance(n, ast.Call)
                     and any(isinstance(a, ast.Constant) and a.value ==
                             'startup card did not complete' for a in n.args))
@@ -69,14 +79,14 @@ class TrialGuards(unittest.TestCase):
                 read.assert_not_called()
 
     def test_hard_budget_caps_remain_enforced(self):
-        enforce = helper('attempt13_support.py', 'enforce_budget')
+        enforce = helper('attempt14_support.py', 'enforce_budget')
         enforce(16, 3)
         for turns, usd, reason in [(17, 0, 'turn budget'), (1, 3.01, 'cost budget')]:
             with self.assertRaisesRegex(AssertionError, reason): enforce(turns, usd)
 
     def test_complete_native_runtime(self):
         # // Regression: 5c4132a9 inherited a codex-only copy, omitting code-mode-host.
-        copy = helper('attempt13-controller.py', 'copy_native_runtime')
+        copy = helper('attempt14-controller.py', 'copy_native_runtime')
         with tempfile.TemporaryDirectory() as tmp:
             src, dst = Path(tmp)/'source', Path(tmp)/'bin'
             src.mkdir(); dst.mkdir()
@@ -89,7 +99,7 @@ class TrialGuards(unittest.TestCase):
 
     def test_missing_metering_is_not_zero_spend(self):
         # // Regression: 5c4132a9 ledger reports a zero sum when no usage was captured.
-        finalize = helper('attempt13_support.py', 'finalize_metering')
+        finalize = helper('attempt14_support.py', 'finalize_metering')
         row = {'generations': [], 'unmetered_turn_ids': ['started'],
                'api_equivalent_usd': 0, 'conservative_usd': 0}
         result = finalize(row)
@@ -100,7 +110,7 @@ class TrialGuards(unittest.TestCase):
 
     def test_rollback_requires_attributed_idle(self):
         # // Regression: e98ffd7a reached an unattributed pane; delivery stayed pending.
-        check = helper('attempt13_support.py', 'validate_tmux_activity')
+        check = helper('attempt14_support.py', 'validate_tmux_activity')
         good = {'runtime_sessions':[{'member_name':'seat','cli_tool':'codex','pid':123,
             'session_id':'new-thread','tmux_pane':'%18','state':'idle',
             'activity_attribution':'attributed','activity_confidence':'medium'}]}
@@ -130,7 +140,7 @@ class ControllerRaces(unittest.TestCase):
             host_poll_enabled=True, last_host_poll=0, previous_host_events=[],
             host_events=[], new_events=lambda old, new: [e for e in new if e not in old],
             retain_host_event=lambda e: True, retained_view=lambda v: v, budget_check=Mock())
-        poll = helper('attempt13-controller.py', 'poll_host', scope)
+        poll = helper('attempt14-controller.py', 'poll_host', scope)
         return poll, poll.__globals__
 
     def test_busy_poll_defers_without_losing_or_duplicating_events(self):
@@ -155,7 +165,7 @@ class ControllerRaces(unittest.TestCase):
     def test_disabled_poll_skips_wait_and_final_drain_without_transcript(self):
         # // Regression: b6b906ba returned None for disabled polling, causing
         # false busy deadlines and a 30-second teardown drain after rollback.
-        tree = ast.parse((B/'attempt13-controller.py').read_text())
+        tree = ast.parse((B/'attempt14-controller.py').read_text())
         loop = next(n for n in ast.walk(tree) if isinstance(n, ast.For)
                     and ast.unparse(n.iter) == 'range(30)')
         with tempfile.TemporaryDirectory() as tmp:
@@ -163,7 +173,7 @@ class ControllerRaces(unittest.TestCase):
             scope['host_poll_enabled'] = False
             self.assertEqual(poll(force=True), 'disabled')
             scope['poll_host'] = Mock(side_effect=poll)
-            helper('attempt13-controller.py', 'wait_host_poll', scope)()
+            helper('attempt14-controller.py', 'wait_host_poll', scope)()
             self.assertEqual(scope['poll_host'].call_count, 1)
             exec(compile(ast.Module(body=[loop], type_ignores=[]), 'final-drain', 'exec'), scope)
             self.assertEqual(scope['poll_host'].call_count, 2)
@@ -201,7 +211,7 @@ class ControllerRaces(unittest.TestCase):
                     responses = [busy] * 119 + ([{'result': {'events': []}}] if succeeds else [busy])
                     poll, scope = self.poll_fixture(Path(tmp), responses)
                     scope['poll_host'] = poll
-                    wait = helper('attempt13-controller.py', 'wait_host_poll', scope)
+                    wait = helper('attempt14-controller.py', 'wait_host_poll', scope)
                     if succeeds:
                         wait()
                         self.assertEqual(scope['time'].now, 129)
@@ -226,22 +236,22 @@ class ControllerRaces(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             _, scope = self.poll_fixture(Path(tmp), [])
             scope['poll_host'] = Mock(side_effect=[False, False, True])
-            wait = helper('attempt13-controller.py', 'wait_host_poll', scope)
+            wait = helper('attempt14-controller.py', 'wait_host_poll', scope)
             wait()
             self.assertEqual(scope['time'].now, 12)
             self.assertEqual(scope['poll_host'].call_count, 3)
             scope['poll_host'] = Mock(return_value=False)
-            wait = helper('attempt13-controller.py', 'wait_host_poll', scope)
+            wait = helper('attempt14-controller.py', 'wait_host_poll', scope)
             with self.assertRaisesRegex(AssertionError, 'step 1.*host member busy'): wait()
             self.assertEqual(scope['time'].now, 132)
             self.assertEqual(scope['poll_host'].call_count, 120)
             self.assertGreaterEqual(scope['budget_check'].call_count, 120)
             scope['poll_host'] = Mock(side_effect=RuntimeError('NOT_HOSTED'))
             with self.assertRaisesRegex(RuntimeError, 'NOT_HOSTED'):
-                helper('attempt13-controller.py', 'wait_host_poll', scope)()
+                helper('attempt14-controller.py', 'wait_host_poll', scope)()
 
     def test_final_drain_retries_busy_without_reading_absent_transcript(self):
-        tree = ast.parse((B/'attempt13-controller.py').read_text())
+        tree = ast.parse((B/'attempt14-controller.py').read_text())
         loop = next(n for n in ast.walk(tree) if isinstance(n, ast.For)
                     and ast.unparse(n.iter) == 'range(30)')
         with tempfile.TemporaryDirectory() as tmp:
@@ -256,7 +266,7 @@ class ControllerRaces(unittest.TestCase):
             self.assertEqual(poller.call_count, 2)
 
     def test_rollback_refreshes_null_and_missing_activity_until_ready(self):
-        tree = ast.parse((B/'attempt13-steps.py').read_text())
+        tree = ast.parse((B/'attempt14-steps.py').read_text())
         body = next(n.body for n in ast.walk(tree) if isinstance(n, ast.If)
                     and any(isinstance(c, ast.FunctionDef) and c.name == 'attributed' for c in n.body))
         start = next(i for i,n in enumerate(body) if isinstance(n, ast.FunctionDef) and n.name == 'attributed')
@@ -297,7 +307,7 @@ class ControllerRaces(unittest.TestCase):
 
     def test_cleanup_verdict_precedes_sanitize_and_binary_files_are_skipped(self):
         # // Regression: 15633a94 put text decoding ahead of the cleanup verdict.
-        tree = ast.parse((B/'attempt13-controller.py').read_text())
+        tree = ast.parse((B/'attempt14-controller.py').read_text())
         final = next(n.finalbody for n in tree.body if isinstance(n, ast.Try) and n.finalbody)
         start = next(i for i,n in enumerate(final) if ast.unparse(n) == 'EVENTS.close()') + 1
         code = compile(ast.Module(body=final[start:], type_ignores=[]), 'sanitize', 'exec')

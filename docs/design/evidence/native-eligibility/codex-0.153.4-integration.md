@@ -3015,6 +3015,12 @@ no `appServer`, and `daemon_pid:null`. The session snapshot reports Codex PID 61
 `state:idle`, `activity_attribution:attributed`, confidence `high`; the separate
 Mesh activity file reports `source:notify`, `state:idle`.
 
+The complete daemon JSONL also contains two `compaction.codex_hook.degraded`
+WARN rows at 18:21:43.447Z and 18:22:20.075Z: “Managed launch continued without
+compact-hook trust”, with `Not found: team config not found for
+'_active-project-teams' at /tmp/th-int-4fvqnzt5/claude/teams/_active-project-teams/config.json`;
+these did not affect the step’s rollback, attribution or delivery criteria.
+
 In-place rollback's exact refusal was:
 
 ```text

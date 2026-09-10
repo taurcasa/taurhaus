@@ -102,7 +102,7 @@ assert subprocess.check_output(['git', '-C', str(mesh), 'rev-parse', '--short', 
 assert not subprocess.check_output(['git', '-C', str(mesh), 'status', '--porcelain'], text=True)
 assert not (mesh / 'target/debug/mesh').exists()
 assert 'disposition: "disabled", enabled: false' in (mesh / 'src/delivery/app_server/capabilities.rs').read_text()
-assert not subprocess.check_output(['git', 'diff', '206f88b0', '--', 'src', 'src-tauri'], text=True)
+assert not subprocess.check_output(['git', 'diff', '206f88b0', '--', 'src', 'src-tauri'], text=True, cwd=BASE.parents[5])
 for path in BASE.rglob('*'):
     if not path.is_file(): continue
     content = path.read_text()
