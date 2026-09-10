@@ -7,6 +7,25 @@ from pathlib import Path
 from support import native_runtime, retained_daemon_rows, attributed_idle, evidence_jsonl, pending_observation, ready_session
 
 class Run3Tests(unittest.TestCase):
+    def test_pack_replays_raw_captures_and_checks_alias_identity(self):
+        # // Regression: ced815e8 normalized exports without a replayable transform.
+        from pack import replay
+        events = []
+        for _ in range(2):
+            events += [
+                {'kind': 'command', 'argv': ['tmux', 'list-panes']},
+                {'kind': 'command_result', 'exit': 0, 'output': '%0\n'},
+                {'kind': 'command', 'argv': ['tmux', 'capture-pane', '-t', '%0']},
+                {'kind': 'command_result', 'exit': 0, 'output': 'keep spaces  \n\n\n'},
+            ]
+        manifest = {'aliases': {'step1-initial-pane-0.txt': 'final-pane-0.txt'},
+                    'pane_normalization': [{'path': 'final-pane-0.txt', 'before_lines': 3, 'after_lines': 1}]}
+        result = replay(events, manifest)
+        self.assertEqual(result, {'final-pane-0.txt': 'keep spaces  \n'})
+        events[-1]['output'] = 'different\n\n\n'
+        with self.assertRaisesRegex(ValueError, 'not byte-identical'):
+            replay(events, manifest)
+
     def test_wait_classifies_only_its_failed_assertion(self):
         # // Regression: 57c8ff36 preset step 1's owner before probes could fail.
         trial = Trial.__new__(Trial)
