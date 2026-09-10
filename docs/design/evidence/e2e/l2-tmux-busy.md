@@ -198,7 +198,7 @@ remain historical; this real runtime result supersedes their unavailable verdict
 session identity to `01a08b57-d623-7511-b516-86d018112f06`, but it does **not**
 establish attributed fresh idle readiness in this real trial. At a ready
 **Codex 0.153.4 / gpt-5.6-luna low** prompt, the production member activity
-snapshot alternates `active` / `uncertain`; it never reports `idle`. The final
+snapshot reports `active`, `likely_working` and `uncertain`; it never reports `idle`. The final
 runtime-session row has `state: idle`, `activity_attribution: none`,
 `activity_confidence: low`, `jsonl_path: null`. Mesh keeps onboarding
 `pending: activity not freshly idle`. No `launch_ready` event was observed.
@@ -301,7 +301,9 @@ managed-stop exclusion evidence. No lock was acquired by an observer; no process
 was paused, frozen, signalled as an experiment, or subjected to load/stress.
 All pane captures are at most 60 lines. Identical files were deduplicated with
 [explicit aliases](l2-tmux-busy/run3/export-manifest.json); distinct daemon and
-journal rows remain intact. No evidence-size cap aborted the step.
+journal rows remain intact. Offline pane exports remove trailing blank lines
+only, resolving the initial whitespace-check failure; the exact captures remain
+in the command log. No evidence-size cap aborted the step.
 
 ### Run 3 spend, cleanup, tests and gates
 

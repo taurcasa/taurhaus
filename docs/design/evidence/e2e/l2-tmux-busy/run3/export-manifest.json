@@ -4,5 +4,28 @@
     "step1-initial-pane-0.txt": "final-pane-0.txt",
     "step1-initial-pane-1.txt": "final-pane-1.txt"
   },
-  "method": "Byte-identical deduplication only; full daemon JSONL and all distinct rows retained"
+  "method": "Byte-identical deduplication only; full daemon JSONL and all distinct rows retained",
+  "pane_normalization": [
+    {
+      "path": "final-pane-2.txt",
+      "before_lines": 60,
+      "after_lines": 39
+    },
+    {
+      "path": "final-pane-1.txt",
+      "before_lines": 48,
+      "after_lines": 37
+    },
+    {
+      "path": "step1-initial-pane-2.txt",
+      "before_lines": 59,
+      "after_lines": 23
+    },
+    {
+      "path": "final-pane-0.txt",
+      "before_lines": 48,
+      "after_lines": 1
+    }
+  ],
+  "pane_originals": "Exact command output remains in run/events.jsonl; exports remove trailing blank lines only."
 }
