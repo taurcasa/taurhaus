@@ -878,3 +878,25 @@ No paid runtime was restarted and no additional seat spend occurred. Step 3's
 recorded failure and removed scratch runtime prevent an ordered step-4
 continuation under the specification's stop-on-failure rule. Steps 4–6 remain
 **NOT RUN**; the incomplete metering and missing Opus review remain unresolved.
+
+#### Run 4d — controller preparation
+
+Run 4d applies the fourth-attempt ruling to the inherited run-4c controller.
+Four synthetic tests first failed for missing reply, separate-wait and
+message-scoped deferral handling; a further schema test failed until the
+journal author used canonical `payload.author.name`. All **32** offline tests
+then passed. Tests use generated dictionaries/tempdirs, never real credentials
+or CLIs. See [red](l2-tmux-busy/run4d/reply-red.txt),
+[schema red](l2-tmux-busy/run4d/journal-schema-red.txt),
+[green](l2-tmux-busy/run4d/green.txt).
+
+The reply predicate accepts alpha's journal reply or any rollout row after
+that message's submission. Reply, subsequent fresh idle and metering now have
+three separately named waits and artifacts. Pending evidence is message-scoped
+(acceptance, working snapshot, no receipt); scheduler health is corroboration.
+The inherited scratch-only `model_context_window=16384` override is removed:
+4c showed it caused automatic compactions with unpriced counters. The model's
+normal context limit applies; no compaction is requested. All other isolation,
+confirmed-submission, low-effort, budgets and ordered-step rules remain in force.
+No product or Mesh descriptor changes. An independent Opus lens is left to the
+orchestrator: this implementer session exposes no callable Opus reviewer.
