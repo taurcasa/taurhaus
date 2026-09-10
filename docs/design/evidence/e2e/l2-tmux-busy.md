@@ -1,4 +1,6 @@
-# FAIL — Lane 2 stops at step 1: idle Codex prompt, onboarding permanently pending
+# Run 3 — PREPARING; no runtime verdict yet
+
+## Historical run 2 — FAIL at step 1: idle Codex prompt, onboarding permanently pending
 
 **Classification: Taurhaus product defect.** Canonical initialization succeeds,
 but alpha never receives its onboarding card during a **90.2-second** positive
@@ -188,3 +190,20 @@ above. The required independent **Opus lens is unavailable** in this session
 (no callable Opus reviewer; the login-only Claude lead must not take model turns),
 so no review approval or lane PASS is claimed. Earlier preflight/gate packets
 remain historical; this real runtime result supersedes their unavailable verdict.
+
+
+## Run 3 — identity-merge rerun
+
+Run 3 uses the merged #163 identity fix, protocol 27, and the designated Mesh RC
+at `fcb9647`. Its controller is [run3/controller.py](l2-tmux-busy/run3/controller.py).
+Five synthetic offline checks observed red before passing: complete native runtime,
+full daemon JSONL retention, attributed fresh-idle readiness, complete JSONL framing,
+and message-scoped pre-claim deferral. These tests never launch a CLI or access
+real harness homes. The authorization applies only to the live controller's one
+explicit auth-file copy. No product files changed.
+
+Builds are waiting for the shared Cargo queue, bounded to 30 minutes, before
+checkout-local daemon and Mesh builds. Steps 1–6 have not started. The runtime
+gets one fresh budget (10 inputs, $0.20, 12 minutes); no paid automatic retry.
+The independent Opus evidence lens remains an orchestrator handoff: this session
+has no callable Opus reviewer, and the scratch Claude lead takes no model turn.
