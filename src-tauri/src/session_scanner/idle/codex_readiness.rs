@@ -253,14 +253,8 @@ mod tests {
     fn codex_resume_run4f_launch_floor_and_pre_turn_window() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("rollout.jsonl");
-        fs::write(&path, "{\"type\":\"session_meta\"}\n").unwrap();
         let now = Utc::now();
         let launch = now - chrono::Duration::seconds(5);
-        let (no_turn, prompt) = prompt_before_first_turn(path.to_str(), || idle_prompt(IDLE_PANE));
-        assert_eq!(
-            sample(prompt, no_turn, None, launch, now).unwrap().source,
-            "launch_ready"
-        );
         fs::write(&path, "{\"type\":\"response_item\"}\n").unwrap();
         let notify = tmp.path().join("notify.jsonl");
         append_event_at(

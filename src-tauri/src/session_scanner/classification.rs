@@ -252,6 +252,8 @@ where
                         process_active,
                         file_active,
                     ),
+                    // Pane-bound identity is resolved above with the pane and
+                    // must travel with its transition for runtime correlation.
                     tool_spec.pane_binding.then_some(&idle_result),
                 );
             }
@@ -570,6 +572,7 @@ mod tests {
     // Regression: b9e4a855 bypassed the activity registry for launch readiness.
     #[test]
     fn codex_review_readiness_uses_activity_slice_and_classification() {
+        let capture = StateChangeCapture::install();
         let _lock = SCANNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         struct Reset;
         impl Drop for Reset {
@@ -578,11 +581,19 @@ mod tests {
             }
         }
         let _reset = Reset;
-        set_runtime_idle_detector_override(Some(|_| idle_result(SessionState::Idle, false)));
+        // Regression: 06b432d omitted event identity; L2 run 4f's rebound
+        // session must agree through classification, export and telemetry.
+        set_runtime_idle_detector_override(Some(|proc| idle::IdleResult {
+            session_id: Some("01a08c80-6beb-7433-8d1c-4b4c15e7f335".into()),
+            jsonl_path: Some(format!("{}/rebound.jsonl", proc.project_path)),
+            ..idle::IdleResult::idle()
+        }));
         let pid = 941_030;
         let tool = CliTool::Codex;
-        let project = "/scratch/review";
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().to_str().unwrap();
         let pane = "%review";
+        cache::record_authoritative_state(pid, SessionState::Active);
         let activity = crate::session_scanner::cli_tool::spec(tool).activity_source();
         for (source, state, confidence) in [
             (
@@ -639,6 +650,15 @@ mod tests {
                 ActivityAttribution::Attributed
             );
             assert!(!session.project_unattributed_active);
+            let event = capture
+                .events
+                .try_iter()
+                .find(|e| e["event"] == "activity.state.changed")
+                .unwrap();
+            let fields = &event["fields"];
+            assert_eq!(fields["session_id"], session.session_id.as_deref().unwrap());
+            assert_eq!(fields["jsonl_path"], session.jsonl_path.as_deref().unwrap());
+            assert_eq!(fields["source"], source);
             use crate::coordination::activity_export::{
                 build_member_activity_snapshot, PaneActivityProbe,
             };
@@ -687,72 +707,6 @@ mod tests {
         );
         assert!(activity.observation(pid, project, Some(pane)).is_none());
         cache::remove_state_tracker(pid);
-    }
-
-    // Regression: 06b432d's activity event omitted identity; L2 run 4f could
-    // not correlate a resumed Codex PID's transition with its rebound rollout.
-    #[test]
-    fn codex_resume_run4f_classification_and_event_keep_rebound_identity() {
-        let capture = StateChangeCapture::install();
-        let _lock = SCANNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        struct Reset;
-        impl Drop for Reset {
-            fn drop(&mut self) {
-                set_runtime_idle_detector_override(None);
-                cache::remove_state_tracker(941_096);
-            }
-        }
-        let _reset = Reset;
-        set_runtime_idle_detector_override(Some(|proc| idle::IdleResult {
-            session_id: Some("01a08c80-6beb-7433-8d1c-4b4c15e7f335".into()),
-            jsonl_path: Some(format!("{}/rebound.jsonl", proc.project_path)),
-            authoritative: true,
-            ..idle::IdleResult::idle()
-        }));
-        let tmp = tempfile::tempdir().unwrap();
-        let project = tmp.path().to_str().unwrap();
-        idle::codex_readiness::seed_observation_for_test(
-            941_096,
-            project,
-            "%5",
-            "notify",
-            SessionState::Idle,
-            chrono::Utc::now(),
-        );
-        cache::record_authoritative_state(941_096, SessionState::Active);
-        let (sessions, _, _, _) = classify_display_runtime_sessions_with(
-            vec![process::ProcessInfo {
-                pid: 941_096,
-                project_path: project.into(),
-                tty: "fixture".into(),
-                args: "codex".into(),
-                cli_tool: CliTool::Codex,
-            }],
-            tmux::parse_tmux_output("%5 fixture 0 test test"),
-            &HashMap::new(),
-            &|_| unreachable!(),
-        );
-        let session = &sessions[0];
-        assert_eq!(
-            session.activity_attribution,
-            ActivityAttribution::Attributed
-        );
-        assert_eq!(session.activity_confidence, ActivityConfidence::High);
-        assert_eq!(session.state, SessionState::Idle);
-        let event = capture
-            .events
-            .try_iter()
-            .find(|e| e["event"] == "activity.state.changed")
-            .unwrap();
-        assert_eq!(
-            event["fields"]["session_id"],
-            session.session_id.as_deref().unwrap()
-        );
-        assert_eq!(
-            event["fields"]["jsonl_path"],
-            session.jsonl_path.as_deref().unwrap()
-        );
-        assert_eq!(event["fields"]["source"], "notify");
     }
 
     #[test]
