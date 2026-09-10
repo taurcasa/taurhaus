@@ -633,21 +633,20 @@ impl HostedMembers {
         {
             return Err("host team/member authority changed".into());
         }
-        let (state, recovery_turn) = if matches!(operation, "transcript" | "recover" | "input") {
+        let (mut state, recovery_turn) = if matches!(operation, "transcript" | "recover" | "input") {
             let host = &mut seat.host;
             poll_compaction(host, &root, team, member, &guard, operation == "recover")?
         } else {
             (Value::Null, false)
         };
         let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
-        let requested = operation;
         let operation = if recovery_turn && operation != "input" {
             "recovery_input"
         } else {
             operation
         };
-        match operation {
-            "transcript" | "recover" => Ok(state),
+        let result = (|| match operation {
+            "transcript" | "recover" => Ok(state.clone()),
             "input" | "recovery_input" => {
                 if record.host_input_unknown {
                     return Err("outcome_unknown: previous input requires reconciliation".into());
@@ -678,6 +677,9 @@ impl HostedMembers {
                 } else {
                     None
                 };
+                if operation == "recovery_input" && card.is_none() {
+                    return Ok(state.clone());
+                }
                 let input = card.as_ref().map_or_else(
                     || text.to_string(),
                     |card| {
@@ -714,11 +716,7 @@ impl HostedMembers {
                     })
                     .map_err(|e| e.to_string())?;
                 }
-                if requested == "transcript" && result.is_ok() {
-                    seat.host.transcript(&guard)
-                } else {
-                    result
-                }
+                result
             }
             "interrupt" => seat.host.interrupt(&guard),
             "approval" => seat.host.approval(
@@ -729,7 +727,20 @@ impl HostedMembers {
                 &guard,
             ),
             _ => Err("UNKNOWN_METHOD".into()),
+        })();
+        if matches!(operation, "transcript" | "recover" | "recovery_input") {
+            if operation == "recovery_input" {
+                match &result {
+                    Ok(_) => state = seat.host.transcript(&guard).unwrap_or(state),
+                    Err(_) => tracing::debug!(team, member, "host recovery deferred; preserving transcript"),
+                }
+            }
+            state["outcomeUnknown"] = serde_json::json!(seat.host.outcome_unknown()
+                || record.host_input_unknown || record.recovery.claim.as_ref().is_some_and(|c|
+                    c.card_key.context == record.context() && c.stage == ReceiptStage::OutcomeUnknown));
+            return Ok(state);
         }
+        result
     }
 
     pub fn reconcile(
@@ -1414,6 +1425,45 @@ pub(crate) mod tests {
         MemberCompactionStore::load(root, "team", "seat")
             .unwrap()
             .unwrap()
+    }
+    #[test]
+    fn hosted_compaction_reads_survive_unknown_and_exhausted_recovery() {
+        // Regression: 8fab0c8d, attempt-8 continuation: recovery errors hid the transcript.
+        let mut failures = Vec::new();
+        for failure in ["input_unknown", "claim_unknown", "exhausted"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path();
+            let (registry, hosts) = running(root);
+            let generation = saved(root).attachment_generation;
+            transcript(&hosts, &registry, generation);
+            std::fs::write(root.join("compact.json"), r#"{"busy":true}"#).unwrap();
+            hosts.reconcile(&registry, "team", "seat").unwrap();
+            if failure == "input_unknown" {
+                MemberRuntimeStore::update(root, "team", "seat", |r| r.host_input_unknown = true).unwrap();
+            } else {
+                for _ in 0..2 {
+                    let card = recovery_delivery::prepare(&registry, root, "team", "seat", "app_server").unwrap().unwrap();
+                    if failure == "claim_unknown" { break; }
+                    recovery_delivery::observe(&registry, root, "team", "seat", &card.receipt, ReceiptStage::Failed).unwrap();
+                }
+            }
+            std::fs::write(root.join("compact.json"), "{}").unwrap();
+            let before = std::fs::read_to_string(root.join("requests.jsonl")).unwrap();
+            for operation in ["transcript", "recover", "transcript"] {
+                let result = hosts.operation(&registry, "team", "seat", generation, operation, Value::Null);
+                let view = match result {
+                    Ok(view) => view,
+                    Err(error) => { failures.push(format!("{failure}/{operation}: {error}")); continue; }
+                };
+                assert_eq!(view["outcomeUnknown"], failure.ends_with("unknown"));
+                assert!(view["thread"]["turns"].as_array().unwrap().iter().any(|t| t["items"][0]["type"] == "contextCompaction"));
+            }
+            let after = std::fs::read_to_string(root.join("requests.jsonl")).unwrap();
+            assert_eq!(before.matches("turn/start").count(), after.matches("turn/start").count());
+            assert!(compaction(root).pending);
+            hosts.stop(&registry, "team", "seat").unwrap();
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
     }
     #[test]
     fn hosted_reconcile_defers_contention_pending_reads_and_changed_authority() {
