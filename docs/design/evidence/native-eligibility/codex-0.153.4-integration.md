@@ -1452,3 +1452,7 @@ Build reproduction: `TRIAL_EVIDENCE_LABEL=attempt7 python3 docs/design/evidence/
 Step 1 spend: turn `01a089a4-21b1-7660-9d59-c37505975bd3`, input/cached/output 10773/6912/30, **$0.00094644** API-equivalent, $0.0129636 conservative. Claude lead is at login, zero Claude turns.
 
 Offline TDD: `attempt7_test.py` first failed on the 1.1 MB evidence sample and on the missed seventeenth host-only turn. After the controller correction: three tests pass; three existing `continuation_retention_test.py` tests pass. No product files changed.
+
+| 2 | **PASS** | `step2-status-after.txt`: seat mode=app_server source=config; `step2-pane-2.txt`: saffron7c82ab input and reply; message 7bc10aed-1448-4372-b95f-41c5e5d30c06, native_enqueued turn/start 01a089a5-2174-76c1-a7d4-3ee845098b65. Journal sequences 1–6 have no consumed_by_read; `step2-read-receipt.json` records it at sequence 7 after the explicit read. |
+
+Step 2 spend: {"thread_id": "01a089a4-2183-70a1-b1c6-566c00026910", "turn_id": "01a089a5-2174-76c1-a7d4-3ee845098b65", "input": 11838, "cached_input": 9984, "output": 11, "reasoning_output": 0, "api_equivalent_usd": 0.00058368, "conservative_usd": 0.0142188}

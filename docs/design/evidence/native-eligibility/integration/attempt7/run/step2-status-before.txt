@@ -1,0 +1,6 @@
+[mesh] team-daemon is running for team integration (PID 1123)
+[mesh] delivery owner=team epoch=2 live=true
+[mesh] adapter lead: mode=tmux source=default diagnostic=none
+[mesh] adapter seat: mode=app_server source=config diagnostic=none
+[mesh] delivery lead: root=/tmp/th-int-9n5s3dud/claude incarnation=6be64971ac7ff295d2e30075431390218adb8bf9403646739d433a1fa759fd8c epoch=2 heartbeat=2026-09-10T04:48:13.750151453+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=0 completed=1 error=none deferred=none stale=false
+[mesh] delivery seat: root=/tmp/th-int-9n5s3dud/claude incarnation=6be64971ac7ff295d2e30075431390218adb8bf9403646739d433a1fa759fd8c epoch=2 heartbeat=2026-09-10T04:48:13.616973387+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=1 completed=0 error=none deferred=none stale=false
