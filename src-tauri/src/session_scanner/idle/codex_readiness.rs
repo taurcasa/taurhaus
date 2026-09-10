@@ -2,12 +2,7 @@
 use super::*;
 use chrono::{DateTime, Utc};
 
-#[derive(Clone, Debug)]
-pub struct Observation {
-    pub state: SessionState,
-    pub source: &'static str,
-    pub last_observed_at: DateTime<Utc>,
-}
+use super::ActivityObservation as Observation;
 
 #[derive(Default)]
 struct Quiet {
@@ -39,7 +34,14 @@ fn sample(
     }
     quiet.sampled_at = Some(now);
     quiet.previous = Some(rchar);
-    let notify = notify.filter(|record| record.ts >= launch && record.ts <= now);
+    let notify = notify.filter(|record| {
+        record.ts >= launch
+            && record.ts <= now
+            && matches!(
+                record.event.as_str(),
+                "agent-turn-complete" | "agent-turn-started"
+            )
+    });
     let (state, source) = if changed {
         (SessionState::Active, "process_io")
     } else if let Some(record) = notify {
@@ -90,6 +92,11 @@ fn no_turn_yet(path: Option<&str>) -> bool {
         })
 }
 
+fn prompt_before_first_turn(path: Option<&str>, probe: impl FnOnce() -> bool) -> (bool, bool) {
+    let no_rollout = no_turn_yet(path);
+    (no_rollout, no_rollout && probe())
+}
+
 struct Seat {
     identity: String,
     project: String,
@@ -118,15 +125,37 @@ pub(super) fn elapse_quiet_window(pid: u32) {
         Some(Utc::now() - chrono::Duration::seconds(10));
 }
 
-pub fn observation(
-    tool: CliTool,
+#[cfg(test)]
+pub(crate) fn seed_observation_for_test(
     pid: u32,
     project: &str,
-    pane: Option<&str>,
-) -> Option<Observation> {
-    if !super::codex::is_codex(tool) {
-        return None;
-    }
+    pane: &str,
+    source: &'static str,
+    state: SessionState,
+    scanned: DateTime<Utc>,
+) {
+    SEATS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(HashMap::new)
+        .insert(
+            pid,
+            Seat {
+                identity: "test-seat".into(),
+                project: project.into(),
+                pane: pane.into(),
+                quiet: Quiet::default(),
+                observation: Some(Observation {
+                    state,
+                    source,
+                    last_observed_at: scanned,
+                }),
+                scanned,
+            },
+        );
+}
+
+pub fn observation(pid: u32, project: &str, pane: Option<&str>) -> Option<Observation> {
     let guard = SEATS.lock().unwrap_or_else(|e| e.into_inner());
     let seat = guard.as_ref()?.get(&pid)?;
     let age = Utc::now().signed_duration_since(seat.scanned);
@@ -161,7 +190,7 @@ pub(super) fn refresh(
     // Capture only the explicitly attributed runtime socket, never a default server.
     let socket_text = socket.to_string_lossy();
     let args = ["-S", &socket_text, "capture-pane", "-p", "-t", pane];
-    let prompt =
+    let (no_rollout, prompt) = prompt_before_first_turn(result.jsonl_path.as_deref(), || {
         super::super::process::run_with_timeout_within("tmux", &args, Duration::from_millis(200))
             .is_some_and(|text| {
                 text.trim_end()
@@ -169,11 +198,11 @@ pub(super) fn refresh(
                     .rev()
                     .take(8)
                     .any(|line| line.trim_start().starts_with("› ") || line.trim() == "›")
-            });
-    let notify = crate::daemon::codex_notify::latest_record_for_session_after(
+            })
+    });
+    let notify = crate::daemon::codex_notify::latest_activity_record_for_session_after(
         notify_path,
         id,
-        "",
         launch.into(),
     )
     .filter(|record| {
@@ -207,7 +236,7 @@ pub(super) fn refresh(
         &mut seat.quiet,
         rchar,
         prompt,
-        no_turn_yet(result.jsonl_path.as_deref()),
+        no_rollout,
         notify.as_ref(),
         launch,
         now,
@@ -221,9 +250,52 @@ pub(super) fn refresh(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::daemon::codex_notify::{append_event_at, latest_record_for_session_after};
+    use crate::daemon::codex_notify::{append_event_at, latest_activity_record_for_session_after};
 
-    // Regression: 32bfd698 attributed a pre-rollout seat but left its activity
+    // Regression: b9e4a855 spawned capture-pane even after a rollout contained a turn.
+    #[test]
+    fn codex_review_existing_turn_skips_prompt_probe() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rollout = tmp.path().join("rollout.jsonl");
+        fs::write(&rollout, "{\"type\":\"response_item\"}\n").unwrap();
+        assert_eq!(
+            prompt_before_first_turn(rollout.to_str(), || panic!(
+                "must not capture a pane after a turn"
+            )),
+            (false, false)
+        );
+        assert_eq!(prompt_before_first_turn(None, || true), (true, true));
+    }
+
+    // Regression: b9e4a855 treated every unknown notification as authoritative working.
+    #[test]
+    fn codex_review_unknown_notify_is_not_working() {
+        let launch = Utc::now() - chrono::Duration::seconds(20);
+        for event in ["unknown", "", "future-event"] {
+            let mut quiet = Quiet::default();
+            sample(&mut quiet, Some(1), true, true, None, launch, launch);
+            let record = crate::daemon::codex_notify::CodexNotifyRecord {
+                ts: launch,
+                session_id: Some("seat".into()),
+                event: event.into(),
+                turn_id: None,
+            };
+            let result = sample(
+                &mut quiet,
+                Some(1),
+                true,
+                true,
+                Some(&record),
+                launch,
+                Utc::now(),
+            )
+            .unwrap();
+            assert_eq!(result.source, "launch_ready");
+            assert_eq!(result.state, SessionState::Idle);
+        }
+    }
+
+    // Regression: 664feab6 attributed a pre-rollout seat but left its activity
     // uncertain, so team-owned delivery could never send its first card.
     #[test]
     fn codex_launch_ready_quiet_prompt_and_notify_handoff() {
@@ -251,12 +323,12 @@ mod tests {
             let raw = serde_json::json!({"type": event, "thread-id": "seat"}).to_string();
             append_event_at(&notify, &raw, now).unwrap();
             let record =
-                latest_record_for_session_after(&notify, "seat", "", launch.into()).unwrap();
+                latest_activity_record_for_session_after(&notify, "seat", launch.into()).unwrap();
             let observed = poll(11, Some(&record), now + chrono::Duration::seconds(11)).unwrap();
             assert_eq!(observed.state, expected);
             assert_eq!(observed.source, "notify");
         }
-        // Regression: c5941e20 timestamped an IO delta at the end of its
+        // Regression: b9e4a855 timestamped an IO delta at the end of its
         // interval, hiding a completion that landed between those two polls.
         let later = now + chrono::Duration::seconds(20);
         assert_eq!(poll(12, None, later).unwrap().state, SessionState::Active);
@@ -272,7 +344,7 @@ mod tests {
         );
     }
 
-    // Regression: 32bfd698 must not turn unresolved or non-prompt quiet into readiness.
+    // Regression: 664feab6 must not turn unresolved or non-prompt quiet into readiness.
     #[test]
     fn codex_launch_ready_requires_readable_io_prompt_and_no_turn() {
         let launch = Utc::now();

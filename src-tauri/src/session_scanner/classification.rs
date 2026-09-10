@@ -150,11 +150,22 @@ where
             // The tool reported this state itself (Claude sessions registry or
             // Codex notify): it replaces the file signal rather than
             // supplementing it.
-            let authoritative_state = tool_spec.activity_source().authoritative_state(
-                &proc.project_path,
+            let seat_observation = tool_spec.activity_source().observation(
                 proc.pid,
-                &idle_result,
+                &proc.project_path,
+                tmux_pane.map(|pane| pane.pane_id.as_str()),
             );
+            let authoritative_state = tool_spec
+                .activity_source()
+                .authoritative_state(&proc.project_path, proc.pid, &idle_result)
+                .or_else(|| {
+                    seat_observation
+                        .as_ref()
+                        .map(|observed| idle::AuthoritativeState {
+                            state: observed.state,
+                            source: observed.source,
+                        })
+                });
             let authoritative = authoritative_state.is_some();
             let observed_state = authoritative_state
                 .map(|reported| reported.state)
@@ -195,20 +206,9 @@ where
                 deterministic_file_owner,
             );
 
-            let seat_observation = idle::codex_readiness::observation(
-                proc.cli_tool,
-                proc.pid,
-                &proc.project_path,
-                tmux_pane.map(|pane| pane.pane_id.as_str()),
-            );
             // Hysteresis smooths a noisy heuristic; an authoritative status has
             // no noise to smooth, so it lands on the poll that observed it.
-            let (state, previous_state) = if let Some(observed) = &seat_observation {
-                (
-                    observed.state,
-                    record_authoritative_state(proc.pid, observed.state),
-                )
-            } else if authoritative {
+            let (state, previous_state) = if authoritative {
                 (
                     observed_state,
                     record_authoritative_state(proc.pid, observed_state),
@@ -234,10 +234,7 @@ where
                     previous_state,
                     state,
                     activity_source(
-                        seat_observation
-                            .as_ref()
-                            .map(|o| o.source)
-                            .or_else(|| authoritative_state.map(|reported| reported.source)),
+                        authoritative_state.map(|reported| reported.source),
                         process_active,
                         file_active,
                     ),
@@ -442,6 +439,86 @@ mod tests {
             &move |_: &process::ProcessInfo| result.clone(),
         );
         sessions.into_iter().next().expect("one session")
+    }
+
+    // Regression: b9e4a855 bypassed the activity registry for launch readiness.
+    #[test]
+    fn codex_review_readiness_uses_activity_slice_and_classification() {
+        let _lock = SCANNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                set_runtime_idle_detector_override(None);
+            }
+        }
+        let _reset = Reset;
+        set_runtime_idle_detector_override(Some(|_| idle_result(SessionState::Idle, false)));
+        let pid = 941_030;
+        let tool = CliTool::Codex;
+        let project = "/scratch/review";
+        let pane = "%review";
+        let activity = crate::session_scanner::cli_tool::spec(tool).activity_source();
+        for (source, state, confidence) in [
+            (
+                "launch_ready",
+                SessionState::Idle,
+                ActivityConfidence::Medium,
+            ),
+            ("notify", SessionState::Idle, ActivityConfidence::High),
+            ("notify", SessionState::Active, ActivityConfidence::High),
+        ] {
+            idle::codex_readiness::seed_observation_for_test(
+                pid,
+                project,
+                pane,
+                source,
+                state,
+                chrono::Utc::now(),
+            );
+            let observation = activity
+                .observation(pid, project, Some(pane))
+                .expect("registry must own readiness");
+            assert_eq!(observation.source, source);
+            let proc = process::ProcessInfo {
+                pid,
+                project_path: project.into(),
+                tty: "test-tty".into(),
+                args: "codex".into(),
+                cli_tool: tool,
+            };
+            let panes = HashMap::from([(
+                "test-tty".into(),
+                tmux::TmuxPane {
+                    pane_id: pane.into(),
+                    tty: "test-tty".into(),
+                    window_index: "0".into(),
+                    window_name: "test".into(),
+                    session_name: "test".into(),
+                },
+            )]);
+            let (sessions, _, _, _) =
+                classify_display_runtime_sessions_with(vec![proc], panes, &HashMap::new(), &|_| {
+                    idle_result(SessionState::Idle, false)
+                });
+            let session = &sessions[0];
+            assert_eq!(session.state, state);
+            assert_eq!(session.activity_confidence, confidence);
+            assert_eq!(
+                session.activity_attribution,
+                ActivityAttribution::Attributed
+            );
+            assert!(!session.project_unattributed_active);
+        }
+        idle::codex_readiness::seed_observation_for_test(
+            pid,
+            project,
+            pane,
+            "launch_ready",
+            SessionState::Idle,
+            chrono::Utc::now() - chrono::Duration::seconds(3),
+        );
+        assert!(activity.observation(pid, project, Some(pane)).is_none());
+        cache::remove_state_tracker(pid);
     }
 
     // Regression: PR 2 commit 06b432d added `activity.state.changed` and gated

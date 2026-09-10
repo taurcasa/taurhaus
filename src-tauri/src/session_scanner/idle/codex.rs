@@ -40,6 +40,15 @@ impl SessionSource for CodexSessionSource {
 pub struct CodexNotifyActivitySource;
 
 impl ActivitySource for CodexNotifyActivitySource {
+    fn observation(
+        &self,
+        pid: u32,
+        project: &str,
+        pane: Option<&str>,
+    ) -> Option<ActivityObservation> {
+        super::codex_readiness::observation(pid, project, pane)
+    }
+
     fn authoritative_state(
         &self,
         _project_path: &str,
@@ -69,11 +78,26 @@ impl CodexResolver {
         pid: u32,
         pane_id: Option<&str>,
     ) -> IdleResult {
-        let Ok(records) = crate::coordination::stores::TeamRootRegistry::read_runtime_records(
-            PlatformPaths::teams_dir(),
-        ) else {
-            return unresolved_identity(pid, "codex_runtime_scope_unavailable");
-        };
+        self.detect_idle_for_pid_at(project_path, pid, pane_id, &PlatformPaths::teams_dir())
+    }
+
+    fn detect_idle_for_pid_at(
+        &self,
+        project_path: &str,
+        pid: u32,
+        pane_id: Option<&str>,
+        teams_dir: &Path,
+    ) -> IdleResult {
+        let records = crate::coordination::stores::TeamRootRegistry::read_runtime_records(teams_dir.to_path_buf())
+            .unwrap_or_else(|error| {
+                static LAST_WARNING: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+                let mut last = LAST_WARNING.lock().unwrap_or_else(|e| e.into_inner());
+                if last.is_none_or(|at| at.elapsed() >= Duration::from_secs(60)) {
+                    tracing::warn!(%error, source = "codex_runtime_scope_unavailable", "Codex runtime scope unavailable; retaining rollout identity without team readiness");
+                    *last = Some(std::time::Instant::now());
+                }
+                Vec::new()
+            });
         self.detect_idle_for_pid_in(project_path, pid, pane_id, &records)
     }
 
@@ -87,7 +111,7 @@ impl CodexResolver {
         super::codex_readiness::invalidate(pid);
         let Some((seat_root, excluded)) = codex_identity_scope(project_path, pid, pane_id, records)
         else {
-            return unresolved_identity(pid, "codex_runtime_scope_unavailable");
+            return unresolved_identity(pid, "codex_identity_ambiguous_account");
         };
         let base = seat_root
             .or_else(|| {
@@ -104,11 +128,26 @@ impl CodexResolver {
         let Some(base) = base else {
             return IdleResult::idle();
         };
-        let result =
-            codex_detect_idle_scoped(project_path, pid, pane_id, &base, &excluded, &|path| {
-                path.to_str()
-                    .is_some_and(|p| crate::platform::process_has_open_path(pid, p))
-            });
+        let open_paths = codex_open_paths(pid);
+        let result = codex_detect_idle_scoped_with_paths(
+            project_path,
+            pid,
+            pane_id,
+            &base,
+            &excluded,
+            open_paths.as_ref(),
+            &|path| {
+                open_paths.as_ref().map_or_else(
+                    || {
+                        path.to_str()
+                            .is_some_and(|p| crate::platform::process_has_open_path(pid, p))
+                    },
+                    |paths| {
+                        paths.contains(&path.canonicalize().unwrap_or_else(|_| path.to_path_buf()))
+                    },
+                )
+            },
+        );
         let mut result = apply_notify_edge(result, &self.notify_path);
         super::codex_readiness::refresh(&mut result, project_path, pid, records, &self.notify_path);
         result
@@ -490,6 +529,28 @@ fn unresolved_identity(pid: u32, source: &'static str) -> IdleResult {
     IdleResult::idle()
 }
 
+/// One descriptor inventory per Linux PID, shared by rollout and lock checks.
+fn codex_open_paths(pid: u32) -> Option<std::collections::HashSet<PathBuf>> {
+    #[cfg(target_os = "linux")]
+    {
+        let entries = fs::read_dir(format!("/proc/{pid}/fd")).ok()?;
+        Some(
+            entries
+                .filter_map(Result::ok)
+                .filter_map(|entry| fs::read_link(entry.path()).ok())
+                .filter(|path| path.is_absolute())
+                .map(|path| path.canonicalize().unwrap_or(path))
+                .collect(),
+        )
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
+#[cfg(test)]
 fn codex_detect_idle_scoped(
     project_path: &str,
     pid: u32,
@@ -498,14 +559,54 @@ fn codex_detect_idle_scoped(
     excluded: &std::collections::HashSet<String>,
     file_open_by_pid: &dyn Fn(&Path) -> bool,
 ) -> IdleResult {
-    let candidates: Vec<_> = codex_find_sessions_for_project(project_path, sessions_dir)
-        .into_iter()
-        .filter(|path| {
-            codex_result_from_file(path)
-                .session_id
-                .is_some_and(|id| !excluded.contains(&id))
+    codex_detect_idle_scoped_with_paths(
+        project_path,
+        pid,
+        pane_id,
+        sessions_dir,
+        excluded,
+        None,
+        file_open_by_pid,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn codex_detect_idle_scoped_with_paths(
+    project_path: &str,
+    pid: u32,
+    pane_id: Option<&str>,
+    sessions_dir: &Path,
+    excluded: &std::collections::HashSet<String>,
+    open_paths: Option<&std::collections::HashSet<PathBuf>>,
+    file_open_by_pid: &dyn Fn(&Path) -> bool,
+) -> IdleResult {
+    let sessions_dir = sessions_dir
+        .canonicalize()
+        .unwrap_or_else(|_| sessions_dir.to_path_buf());
+    let eligible = |path: &PathBuf| {
+        codex_result_from_file(path)
+            .session_id
+            .is_some_and(|id| !excluded.contains(&id))
+    };
+    let scan_candidates = || {
+        codex_find_sessions_for_project(project_path, &sessions_dir)
+            .into_iter()
+            .filter(eligible)
+            .collect::<Vec<_>>()
+    };
+    let mut candidates: Vec<_> = open_paths
+        .map(|paths| {
+            paths
+                .iter()
+                .filter(|path| {
+                    path.starts_with(&sessions_dir)
+                        && path.extension().is_some_and(|ext| ext == "jsonl")
+                })
+                .filter(|path| eligible(path) && codex_session_matches_project(path, project_path))
+                .cloned()
+                .collect()
         })
-        .collect();
+        .unwrap_or_else(scan_candidates);
     // 0.153.4 creates this per-thread file before the first rollout. An open
     // descriptor belongs to this process; a filename or mtime alone proves nothing.
     let locks: Vec<_> = sessions_dir
@@ -515,35 +616,40 @@ fn codex_detect_idle_scoped(
         .flatten()
         .filter_map(Result::ok)
         .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "lock"))
-        .filter(|entry| file_open_by_pid(&entry.path()))
         .filter_map(|entry| {
-            entry
-                .path()
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(str::to_owned)
+            let path = entry.path();
+            let id = path.file_stem()?.to_str()?.to_owned();
+            (uuid::Uuid::parse_str(&id).is_ok() && !excluded.contains(&id)).then_some((path, id))
         })
-        .filter(|id| uuid::Uuid::parse_str(id).is_ok() && !excluded.contains(id))
+        .filter(|(path, _)| file_open_by_pid(path))
+        .map(|(_, id)| id)
         .collect();
     if locks.len() > 1 {
         invalidate_binding(project_path, pid, pane_id);
         return unresolved_identity(pid, "codex_identity_ambiguous_writer_locks");
     }
-    let owned: Vec<_> = candidates.iter().filter(|p| file_open_by_pid(p)).collect();
+    let owned: Vec<_> = candidates
+        .iter()
+        .filter(|p| file_open_by_pid(p))
+        .cloned()
+        .collect();
     if locks.is_empty() && owned.len() > 1 {
         invalidate_binding(project_path, pid, pane_id);
         return unresolved_identity(pid, "codex_identity_ambiguous");
     }
     let allowed = |path: &Path| {
-        path.starts_with(sessions_dir)
+        path.starts_with(&sessions_dir)
             && codex_result_from_file(path).session_id.is_some_and(|id| {
                 !excluded.contains(&id) && locks.first().is_none_or(|lock| *lock == id)
             })
     };
     if let Some(result) = binding_result(project_path, pid, pane_id, &|path| {
-        allowed(path) && file_open_by_pid(path)
+        allowed(path) && (!locks.is_empty() || file_open_by_pid(path))
     }) {
         return result;
+    }
+    if candidates.is_empty() && open_paths.is_some() {
+        candidates = scan_candidates();
     }
     if let Some(id) = locks.first() {
         let result = candidates
@@ -554,6 +660,7 @@ fn codex_detect_idle_scoped(
                 session_id: Some(id.clone()),
                 ..IdleResult::idle()
             });
+        persist_binding(project_path, pid, pane_id, &result);
         return result;
     }
     let path = match owned.as_slice() {
@@ -658,7 +765,12 @@ fn codex_find_session_for_project(project_path: &str, sessions_dir: &Path) -> Op
         .next()
 }
 
+#[cfg(test)]
+thread_local! { static ROLLOUT_SCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+
 fn codex_find_sessions_for_project(project_path: &str, sessions_dir: &Path) -> Vec<PathBuf> {
+    #[cfg(test)]
+    ROLLOUT_SCANS.with(|count| count.set(count.get() + 1));
     use chrono::Local;
 
     let today = Local::now().date_naive();
@@ -756,6 +868,104 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
 
+    // Regression: 41ef6b21 made unrelated corrupt team bookkeeping erase TUI identity.
+    #[test]
+    fn codex_review_registry_failure_preserves_rollout_identity() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let sessions = tmp.path().join("sessions");
+        create_codex_session(
+            &sessions.join(chrono::Local::now().format("%Y/%m/%d").to_string()),
+            "rollout-2026-09-10T08-30-00-seat-thread.jsonl",
+            "/scratch/project",
+        );
+        let teams = tmp.path().join("teams");
+        fs::create_dir_all(&teams).unwrap();
+        let registry_dir = tmp.path().join(".taurhaus");
+        fs::create_dir_all(&registry_dir).unwrap();
+        fs::write(registry_dir.join("team-roots.json"), "{broken").unwrap();
+        assert!(
+            crate::coordination::stores::TeamRootRegistry::read_runtime_records(teams.clone())
+                .is_err()
+        );
+        let resolver = CodexResolver {
+            base_dir: Some(sessions),
+            notify_path: tmp.path().join("notify.jsonl"),
+        };
+        let result = resolver.detect_idle_for_pid_at("/scratch/project", u32::MAX, None, &teams);
+        assert_eq!(result.session_id.as_deref(), Some("seat-thread"));
+        assert!(result.jsonl_path.is_some());
+    }
+
+    // Regression: b9e4a855 probed every lock before rejecting invalid or hosted IDs.
+    #[test]
+    fn codex_review_irrelevant_writer_locks_never_probe_process() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let locks = tmp.path().join("thread-writer-locks");
+        fs::create_dir(&locks).unwrap();
+        let hosted = "01a08a70-8595-7ea0-a004-4ae0385d4e2f";
+        for id in ["invalid", hosted] {
+            fs::write(locks.join(format!("{id}.lock")), "").unwrap();
+        }
+        let result = codex_detect_idle_scoped(
+            "/scratch/project",
+            u32::MAX,
+            None,
+            &tmp.path().join("sessions"),
+            &std::collections::HashSet::from([hosted.into()]),
+            &|_| panic!("irrelevant lock must not inspect process descriptors"),
+        );
+        assert!(result.session_id.is_none());
+    }
+
+    // Regression: a1fc452b restored ambiguity refusal by rescanning every rollout
+    // even when a persisted descriptor-owned binding could have returned immediately.
+    #[test]
+    fn codex_review_bound_descriptor_skips_rollout_rescan() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let sessions = tmp.path().join("sessions");
+        let date = sessions.join(chrono::Local::now().format("%Y/%m/%d").to_string());
+        create_codex_session(
+            &date,
+            "rollout-2026-09-10T08-30-00-seat-thread.jsonl",
+            "/scratch/project",
+        );
+        let path = date.join("rollout-2026-09-10T08-30-00-seat-thread.jsonl");
+        let result = codex_detect_idle_scoped_with_paths(
+            "/scratch/project",
+            u32::MAX,
+            None,
+            &sessions,
+            &Default::default(),
+            Some(&std::collections::HashSet::from([path.clone()])),
+            &|p| p == path,
+        );
+        assert_eq!(result.session_id.as_deref(), Some("seat-thread"));
+        ROLLOUT_SCANS.with(|count| count.set(0));
+        let result = codex_detect_idle_scoped_with_paths(
+            "/scratch/project",
+            u32::MAX,
+            None,
+            &sessions,
+            &Default::default(),
+            Some(&std::collections::HashSet::from([path.clone()])),
+            &|p| p == path,
+        );
+        assert_eq!(result.session_id.as_deref(), Some("seat-thread"));
+        ROLLOUT_SCANS.with(|count| {
+            assert_eq!(
+                count.get(),
+                0,
+                "cached ownership must avoid date directory enumeration"
+            )
+        });
+    }
+
     // Regression: 5188e732 bound per-PID resolution to the daemon account, losing a seat
     // launched with its own CODEX_HOME (the trial's non-default root layout).
     #[test]
@@ -794,7 +1004,7 @@ mod tests {
     }
 
     // Regression: 80290f36 added hosted seats while c9669ef8's lone-rollout
-    // fallback still admitted their threads as TUI candidates (seen at 6f61f611).
+    // fallback still admitted their threads as TUI candidates (seen at 06031992).
     // The trial retained cwd/id/version in thread/read, but no session_meta bytes;
     // use those observed fields without inventing a PID field in session_meta.
     #[test]
@@ -847,7 +1057,7 @@ mod tests {
         assert_ne!(result.session_id.as_deref(), Some("tui"));
     }
 
-    // Regression: 329f6384 checked cached ownership before detecting multiple
+    // Regression: 41ef6b21 checked cached ownership before detecting multiple
     // open rollouts, allowing yesterday's binding to hide today's ambiguity.
     #[test]
     fn codex_identity_cache_cannot_override_ambiguous_ownership() {
@@ -1037,11 +1247,10 @@ mod tests {
         );
         assert_eq!(result.session_id.as_deref(), Some("seat-thread"));
         assert_eq!(result.state, SessionState::Idle);
-        // Regression: 32bfd698 resolved this fake seat but could not admit onboarding.
+        // Regression: 664feab6 resolved this fake seat but could not admit onboarding.
         super::super::codex_readiness::elapse_quiet_window(pid);
         resolver.detect_idle_for_pid_in(project.to_str().unwrap(), pid, Some(parts[1]), &records);
         let observed = super::super::codex_readiness::observation(
-            crate::session_scanner::CliTool::Codex,
             pid,
             project.to_str().unwrap(),
             Some(parts[1]),
@@ -1055,7 +1264,7 @@ mod tests {
                 .num_seconds()
                 < 2
         );
-        // Regression: c5941e20 let an old completion override a newer turn's rollout.
+        // Regression: b9e4a855 let an old completion override a newer turn's rollout.
         let event = r#"{"type":"agent-turn-complete","thread-id":"seat-thread"}"#;
         crate::daemon::codex_notify::append_event_at(
             &resolver.notify_path,

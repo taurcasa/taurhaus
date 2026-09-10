@@ -26,8 +26,15 @@ mod agy;
 mod claude;
 mod claude_registry;
 mod codex;
-#[doc(hidden)]
-pub mod codex_readiness;
+pub(super) mod codex_readiness;
+
+/// Per-process evidence supplied by a harness activity slice.
+#[derive(Clone, Debug)]
+pub struct ActivityObservation {
+    pub state: SessionState,
+    pub source: &'static str,
+    pub last_observed_at: chrono::DateTime<chrono::Utc>,
+}
 mod grok;
 
 pub(crate) use agy::presence_lock_is_held;

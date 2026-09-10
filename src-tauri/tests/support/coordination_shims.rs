@@ -43,7 +43,7 @@ pub mod tmux_layout {
 }
 
 pub mod session_scanner {
-    pub use taurhaus_lib::session_scanner::idle; // Regression: c5941e20 exporter needs this facade.
+    pub use taurhaus_lib::session_scanner::idle; // Regression: b9e4a855 exporter needs this facade.
     pub use taurhaus_lib::session_scanner::{
         scan_sessions_for_display, scan_sessions_for_runtime, ActivityAttribution,
         ActivityConfidence, DisplaySession, RuntimeSession, SessionGroupKind, SessionState,

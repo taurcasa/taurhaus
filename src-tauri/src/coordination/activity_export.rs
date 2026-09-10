@@ -481,12 +481,14 @@ fn build_member_activity_snapshot(
     observed_at: DateTime<Utc>,
 ) -> MemberActivitySnapshot {
     let observation = session.and_then(|s| {
-        crate::session_scanner::idle::codex_readiness::observation(
-            s.cli_tool,
-            s.pid,
-            &s.project_path,
-            s.tmux_pane.as_deref(),
-        )
+        crate::session_scanner::cli_tool::spec(s.cli_tool)
+            .activity_source()
+            .observation(s.pid, &s.project_path, s.tmux_pane.as_deref())
+            .filter(|o| {
+                o.state == s.state
+                    && s.activity_attribution == ActivityAttribution::Attributed
+                    && o.last_observed_at <= observed_at
+            })
     });
     snapshot_with_evidence(session, pane_probe, observed_at, observation.as_ref())
 }
@@ -495,7 +497,7 @@ fn snapshot_with_evidence(
     session: Option<&DisplaySession>,
     pane_probe: &PaneActivityProbe,
     observed_at: DateTime<Utc>,
-    observation: Option<&crate::session_scanner::idle::codex_readiness::Observation>,
+    observation: Option<&crate::session_scanner::idle::ActivityObservation>,
 ) -> MemberActivitySnapshot {
     if pane_probe.pane_foreign {
         return MemberActivitySnapshot {
@@ -532,7 +534,7 @@ fn snapshot_with_evidence(
             serde_json::json!({
                 "source": o.source,
                 "state": if o.state == SessionState::Idle { "idle" } else { "working" },
-                "confidence": if o.source == "launch_ready" { "medium" } else { "high" },
+                "confidence": session.map(|s| s.activity_confidence).unwrap_or_default(),
                 "last_observed_at": o.last_observed_at.to_rfc3339(),
             })
             .as_object()
@@ -570,6 +572,16 @@ fn classify_activity_confidence(
 
     if session.is_some_and(|session| session.recent_io) {
         return SnapshotActivityConfidence::Active;
+    }
+
+    // Classification already resolved this idle state. A cache expiry or a
+    // concurrent scan must not reinterpret its positive attribution as work.
+    if session.is_some_and(|session| {
+        session.state == SessionState::Idle
+            && session.activity_confidence != ActivityConfidence::Low
+            && session.activity_attribution == ActivityAttribution::Attributed
+    }) {
+        return SnapshotActivityConfidence::Idle;
     }
 
     if pane_probe.active_non_shell_process
@@ -980,10 +992,28 @@ mod tests {
         assert!(activity_snapshot_path(&work_root, "work-team", "work-member").exists());
     }
 
-    // Regression: 32bfd698 exported an attributed pre-turn prompt as uncertain.
+    // Regression: b9e4a855 exported a classified idle seat as working on a cache miss.
+    #[test]
+    fn codex_review_idle_cache_miss_never_becomes_likely_working() {
+        let mut session = sample_session("/scratch/review", "%review", SessionState::Idle);
+        session.pid = u32::MAX - 4;
+        session.activity_confidence = ActivityConfidence::Medium;
+        let probe = PaneActivityProbe {
+            pane_alive: true,
+            active_non_shell_process: true,
+            ..Default::default()
+        };
+        let snapshot = build_member_activity_snapshot(Some(&session), &probe, Utc::now());
+        assert_eq!(
+            snapshot.activity_confidence,
+            SnapshotActivityConfidence::Idle
+        );
+    }
+
+    // Regression: 664feab6 exported an attributed pre-turn prompt as uncertain.
     #[test]
     fn codex_launch_ready_written_snapshot_matches_mesh_reader() {
-        use crate::session_scanner::idle::codex_readiness::Observation;
+        use crate::session_scanner::idle::ActivityObservation as Observation;
         // Exact Activity shape and Record::idle predicate from mesh-push
         // src/delivery/runtime.rs:27-29,170-186 (replicated; no Mesh binary).
         #[derive(serde::Deserialize)]
@@ -1000,7 +1030,8 @@ mod tests {
         };
         let tmp = TempDir::new().unwrap();
         let now = Utc::now();
-        let session = sample_session(tmp.path().to_str().unwrap(), "%1", SessionState::Idle);
+        let mut session = sample_session(tmp.path().to_str().unwrap(), "%1", SessionState::Idle);
+        session.activity_confidence = ActivityConfidence::Medium;
         let probe = PaneActivityProbe {
             pane_alive: true,
             active_non_shell_process: true,

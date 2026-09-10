@@ -245,6 +245,19 @@ fn compact_sink_if_needed(file: &mut File, path: &Path) -> Result<bool, String> 
     Ok(true)
 }
 
+/// Only modeled turn lifecycle events participate in activity authority.
+/// Unknown (including empty) event names remain ordinary per-event records.
+pub(crate) fn latest_activity_record_for_session_after(
+    path: &Path,
+    session_id: &str,
+    not_before: SystemTime,
+) -> Option<CodexNotifyRecord> {
+    ["agent-turn-started", "agent-turn-complete"]
+        .into_iter()
+        .filter_map(|event| latest_record_for_session_after(path, session_id, event, not_before))
+        .max_by_key(|record| record.ts)
+}
+
 pub(crate) fn latest_record_for_session_after(
     path: &Path,
     session_id: &str,
@@ -273,13 +286,6 @@ pub(crate) fn latest_record_for_session_after(
         let Some(record_session_id) = record.session_id.as_ref() else {
             continue;
         };
-        let latest_key = (record_session_id.clone(), String::new());
-        if records
-            .get(&latest_key)
-            .is_none_or(|previous: &CodexNotifyRecord| previous.ts <= record.ts)
-        {
-            records.insert(latest_key, record.clone());
-        }
         records.insert((record_session_id.clone(), record.event.clone()), record);
     }
     let result = records.get(&key).cloned();

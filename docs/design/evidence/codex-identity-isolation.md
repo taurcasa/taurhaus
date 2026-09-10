@@ -1,7 +1,7 @@
 # Codex identity isolation — partial delivery, hosted journal contract blocked
 
-Base: `6f61f611`, branch `feat/codex-identity`, protocol 27 unchanged.
-Implementation: `329f6384`, with the read-only boundary repair in `6c48eefa`. No real model CLI, live daemon, standing team or
+Base: `06031992`, branch `feat/codex-identity`, protocol 27 unchanged.
+Implementation: `41ef6b21`, with the read-only boundary repair in `690640f3`. No real model CLI, live daemon, standing team or
 operator tmux was used. All spawned fixtures use temporary roots and private
 sockets; the fake TUI is a symlink to `/bin/sleep`.
 
@@ -114,7 +114,7 @@ rerun; production code is unchanged from the four required green gates.
 
 ## Continuation: cached ownership ambiguity
 
-`81b413c1` closes a further identity ambiguity: an earlier cached binding must
+`a1fc452b` closes a further identity ambiguity: an earlier cached binding must
 not select a transcript when the same process now holds two candidate rollouts
 and no unique writer lock resolves them. The regression first failed on that
 assertion (exit 101), then all 24 Codex resolver tests passed (exit 0). It also
@@ -125,7 +125,7 @@ The specified Mesh binary was re-probed under temporary roots: it still reports
 requires a reserved bridge offer. No new external-producer outcome contract was
 found. Hosted journal delivery and initial-prompt readiness remain incomplete.
 
-All four required gates were rerun after `81b413c1`, each with exit 0:
+All four required gates were rerun after `a1fc452b`, each with exit 0:
 `just check-quick` (2,495 frontend tests), `just lint`, `just test-contracts`
 (68 contracts), and `just test-rust-unit` (2,681 library + 4 binary tests;
 10 ignored and 100 recipe-filtered library tests). Cargo queue polls, private
