@@ -2686,3 +2686,11 @@ Evidence: `attempt12/run/initialize-result.json`, `step1-runtime.json`,
 `step1-identities.json`, `step1-final-pane-2.txt`, `host-events.jsonl`, and the full
 `taurhaus.log.jsonl`. One metered startup turn: $0.00097004 API-equivalent,
 $0.01296120 conservative. Both checkout-local builds exited 0.
+
+### Step 2 — PASS (S-runtime)
+
+Idle `mesh send` produced one native turn, marker in attached pane and model reply.
+`step2-receipts.json` retains `native_enqueued` IDs; `step2-journal-before-read.json`
+and `step2-journal-after-read.json` prove `consumed_by_read` appeared only after
+`step2-explicit-read.txt`. Second turn $0.00057968; cumulative two turns
+$0.00154972 API-equivalent / $0.02716800 conservative.
