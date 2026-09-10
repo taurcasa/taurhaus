@@ -1,0 +1,38 @@
+FFF
+======================================================================
+FAIL: test_delivery_observations_do_not_wait_for_missing_usage (interrupted_test.InterruptedTests.test_delivery_observations_do_not_wait_for_missing_usage)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4e/interrupted_test.py", line 43, in test_delivery_observations_do_not_wait_for_missing_usage
+    trial.settle_delivery('Q2','id')
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4e/controller.py", line 380, in settle_delivery
+    value=self.wait(predicate,why,90,owner=owner)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4e/interrupted_test.py", line 40, in wait
+    self.assertTrue(value,why)
+AssertionError: None is not true : post-reply metering incomplete
+
+======================================================================
+FAIL: test_existing_usage_cap_allows_next_input_with_unknown_turn (interrupted_test.InterruptedTests.test_existing_usage_cap_allows_next_input_with_unknown_turn)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4e/interrupted_test.py", line 29, in test_existing_usage_cap_allows_next_input_with_unknown_turn
+    self.assertEqual(trial.budget(next_input=True)['paid_inputs'],1)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4e/controller.py", line 135, in budget
+    assert value['metering_complete'],'previous turn cost is unverified; no next input permitted'
+           ~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: previous turn cost is unverified; no next input permitted
+
+======================================================================
+FAIL: test_interrupted_turn_is_unknown_and_counts_as_input (interrupted_test.InterruptedTests.test_interrupted_turn_is_unknown_and_counts_as_input)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4e/interrupted_test.py", line 15, in test_interrupted_turn_is_unknown_and_counts_as_input
+    self.assertEqual(value['turns'][0].get('classification'),'interrupted, cost unknown')
+AssertionError: None != 'interrupted, cost unknown'
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
+
+FAILED (failures=3)

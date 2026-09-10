@@ -1,4 +1,4 @@
-# UNAVAILABLE — Run 4d: steps 1–4 PASS; step 5 harness metering stop before resume
+# INCOMPLETE — Run 4e: prepared; runtime verification pending
 
 ## Historical run 2 — FAIL at step 1: idle Codex prompt, onboarding permanently pending
 
@@ -1041,3 +1041,12 @@ The binding stop-on-failure rule remains in effect. No paid runtime was
 restarted and no additional seat spend occurred. Steps 1–4 remain **PASS**,
 step 5 **FAIL — harness**, step 6 **NOT RUN**. Complete metering and independent
 Opus review remain unresolved; the headline verdict remains **UNAVAILABLE**.
+
+#### Run 4e — interrupted-turn ruling and fresh execution
+
+Fresh attempt on unchanged product 1db4f9bf / Mesh ed59187, protocol 27.
+Three synthetic interrupted-turn regressions failed before the harness change;
+all 35 offline tests passed afterwards. Missing usage is recorded, never a
+lifecycle or observation gate. Both pinned builds exited 0. Six ordered runtime
+steps follow with immediate evidence commits and a fresh 10-input/$0.20 cap.
+Sidecars: [run4e](l2-tmux-busy/run4e/). Runtime verdict pending.
