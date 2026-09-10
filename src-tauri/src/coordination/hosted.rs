@@ -10,13 +10,15 @@ use super::stores::runtime::{
     AppServerAttachment, LaunchRoot, MemberRuntimeSnapshot, RuntimeCommitOutcome,
 };
 use super::stores::{MemberRuntimeStore, TeamConfigStore, TeamRootRegistry};
-use crate::daemon::session_activity::{hosted_activity::HostedActivityLease, SessionActivityHub};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use taurhaus_lib::session_scanner::launch::HostedLaunch;
+use taurhaus_lib::daemon::session_activity::{
+    hosted_activity::HostedActivityLease, SessionActivityHub,
+};
+use taurhaus_lib::session_scanner::{launch::HostedLaunch, RuntimeSession, SessionGroupKind};
 
 type SeatKey = (PathBuf, String, String);
 type Seat = Arc<Mutex<Option<OwnedSeat>>>;
@@ -245,10 +247,22 @@ impl HostedMembers {
         let weak = Arc::downgrade(&cell);
         let (refresh_root, refresh_team, refresh_member) =
             (root.clone(), team.to_owned(), member.to_owned());
-        record.member_name = member.into();
         let activity = SessionActivityHub::shared().register_host(
-            &record,
-            team,
+            socket.clone(),
+            launch.account_root.clone(),
+            RuntimeSession {
+                project_path: definition.project_path.to_string_lossy().into_owned(),
+                args: record.app_server.as_ref().unwrap().attach_argv.join(" "),
+                cli_tool: definition.cli_tool,
+                tmux_pane: record.pane_id.clone(),
+                session_id: Some(host.thread_id.clone()),
+                source: Some("host_unavailable".into()),
+                group_kind: SessionGroupKind::MeshTeam,
+                group_id: Some(team.into()),
+                group_label: Some(team.into()),
+                member_name: Some(member.into()),
+                ..Default::default()
+            },
             Arc::new(move || {
                 let Some(cell) = weak.upgrade() else { return };
                 let Ok(mut owned) = cell.try_lock() else {
@@ -876,10 +890,11 @@ pub(crate) mod tests {
     #[test]
     fn hosted_activity_tracks_turns_waits_disconnect_and_teardown() {
         // Regression: 6f61f611 kept owned thread activity private to the host client.
-        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().unwrap();
-        let sink = crate::logging::LogFileState::new(tmp.path().join("events.jsonl")).unwrap();
-        crate::logging::install_global_sink(&sink);
+        let sink =
+            taurhaus_lib::logging::LogFileState::new(tmp.path().join("events.jsonl")).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
         let (registry, hosts) = running(tmp.path());
         let generation = saved(tmp.path()).attachment_generation;
         let hub = SessionActivityHub::shared();
@@ -919,7 +934,7 @@ pub(crate) mod tests {
                 .to_string(),
         )
         .unwrap();
-        let process = crate::session_scanner::process::ProcessInfo {
+        let process = taurhaus_lib::session_scanner::process::ProcessInfo {
             pid: 941_091,
             project_path: tmp.path().to_string_lossy().into_owned(),
             tty: "/dev/pts/fake".into(),

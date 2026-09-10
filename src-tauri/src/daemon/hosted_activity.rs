@@ -1,8 +1,7 @@
 //! Host publication shares the hub lock with scan commits: a scan cannot overwrite a newer edge.
 use super::{HubState, SessionActivityHub};
-use crate::coordination::stores::MemberRuntimeRecord;
 use crate::session_scanner::process::ProcessInfo;
-use crate::session_scanner::{RuntimeSession, SessionGroupKind};
+use crate::session_scanner::RuntimeSession;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -12,7 +11,7 @@ pub(super) struct HostedEntry {
     pub refresh: Arc<dyn Fn() + Send + Sync>,
 }
 
-pub(crate) struct HostedActivityLease {
+pub struct HostedActivityLease {
     hub: Arc<SessionActivityHub>,
     socket: PathBuf,
 }
@@ -79,55 +78,34 @@ pub(crate) fn remote_session(
 }
 
 impl SessionActivityHub {
-    pub(crate) fn register_host(
+    pub fn register_host(
         self: &Arc<Self>,
-        record: &MemberRuntimeRecord,
-        team: &str,
+        socket: PathBuf,
+        account_root: PathBuf,
+        session: RuntimeSession,
         refresh: Arc<dyn Fn() + Send + Sync>,
     ) -> HostedActivityLease {
-        let host = record.app_server.as_ref().expect("owned host attachment");
-        let session = RuntimeSession {
-            project_path: record
-                .project_path
-                .as_ref()
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            args: host.attach_argv.join(" "),
-            cli_tool: record.cli_tool.unwrap_or_default(),
-            tmux_pane: record.pane_id.clone(),
-            session_id: Some(host.thread_id.clone()),
-            source: Some("host_unavailable".into()),
-            group_kind: SessionGroupKind::MeshTeam,
-            group_id: Some(team.into()),
-            group_label: Some(team.into()),
-            member_name: Some(record.member_name.clone()),
-            ..Default::default()
-        };
+        let thread = session.session_id.clone().expect("owned host identity");
         self.state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .hosted
             .insert(
-                host.socket_path.clone(),
+                socket.clone(),
                 HostedEntry {
                     session,
-                    account_root: host.account_root.clone(),
+                    account_root,
                     refresh,
                 },
             );
-        self.publish_host_status(&host.socket_path, &host.thread_id, &serde_json::Value::Null);
+        self.publish_host_status(&socket, &thread, &serde_json::Value::Null);
         HostedActivityLease {
             hub: self.clone(),
-            socket: host.socket_path.clone(),
+            socket,
         }
     }
 
-    pub(crate) fn publish_host_status(
-        &self,
-        socket: &Path,
-        thread: &str,
-        status: &serde_json::Value,
-    ) {
+    pub fn publish_host_status(&self, socket: &Path, thread: &str, status: &serde_json::Value) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let Some(entry) = state
             .hosted
@@ -177,7 +155,7 @@ impl SessionActivityHub {
         Some((entry.session.clone(), entry.account_root.clone()))
     }
 
-    pub(crate) fn attach_host_pane(&self, socket: &Path, pane: &str, pid: Option<u32>) {
+    pub fn attach_host_pane(&self, socket: &Path, pane: &str, pid: Option<u32>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(entry) = state.hosted.get_mut(socket) {
             entry.session.tmux_pane = Some(pane.into());
@@ -185,7 +163,7 @@ impl SessionActivityHub {
         }
     }
 
-    pub(crate) fn refresh_hosts(&self) {
+    pub fn refresh_hosts(&self) {
         let refreshers: Vec<_> = self
             .state
             .lock()

@@ -512,7 +512,7 @@ struct Rpc {
 }
 impl Rpc {
     fn publish_activity(&self, available: bool) {
-        crate::daemon::session_activity::SessionActivityHub::shared().publish_host_status(
+        taurhaus_lib::daemon::session_activity::SessionActivityHub::shared().publish_host_status(
             &self.activity_socket,
             &self.thread_id,
             if available {

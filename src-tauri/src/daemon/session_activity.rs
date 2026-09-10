@@ -1,5 +1,5 @@
 #[path = "hosted_activity.rs"]
-pub(crate) mod hosted_activity;
+pub mod hosted_activity;
 #[cfg(test)]
 use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
@@ -446,7 +446,7 @@ impl SessionActivityHub {
     }
 
     /// Access publication without starting process/tmux discovery.
-    pub(crate) fn shared() -> Arc<Self> {
+    pub fn shared() -> Arc<Self> {
         static HUB: OnceLock<Arc<SessionActivityHub>> = OnceLock::new();
         HUB.get_or_init(|| Arc::new(SessionActivityHub::new()))
             .clone()

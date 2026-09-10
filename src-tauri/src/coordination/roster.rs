@@ -23,7 +23,7 @@ pub enum TeamMemberActivityState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TeamMemberView {
-    pub host_activity: Option<crate::session_scanner::HostActivity>,
+    pub host_activity: Option<taurhaus_lib::session_scanner::HostActivity>,
     hosted_runtime: Option<MemberRuntimeRecord>,
     pub team_name: String,
     pub member_name: String,
@@ -219,7 +219,7 @@ pub fn get_team_roster_with_runtime_sessions(
                             && s.member_name.as_deref() == Some(&view.member_name)
                             && s.session_id == view.session_id
                     })
-                    .and_then(crate::session_scanner::HostActivity::from_session)
+                    .and_then(taurhaus_lib::session_scanner::HostActivity::from_session)
                 {
                     view.host_activity = Some(activity);
                 }
@@ -246,7 +246,7 @@ fn build_team_member_view(
         host_activity: runtime
             .as_ref()
             .filter(|r| r.app_server.is_some())
-            .map(|_| crate::session_scanner::HostActivity::unavailable()),
+            .map(|_| taurhaus_lib::session_scanner::HostActivity::unavailable()),
         hosted_runtime: runtime.as_ref().filter(|r| r.app_server.is_some()).cloned(),
         team_name: team_name.to_string(),
         member_name: member.name,
