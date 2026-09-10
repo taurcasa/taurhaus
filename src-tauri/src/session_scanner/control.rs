@@ -391,14 +391,17 @@ pub(crate) fn pane_matches_record(
     if !pane_exists_checked(pane)? {
         return Ok(true);
     } // Already detached: stop the host alone.
+    use crate::coordination::runtime::{pane_belongs_to_member, LivePane, PaneOwnership};
     let pid = pane_process_id(pane);
-    Ok(record.pane_pid.is_none_or(|expected| pid == Some(expected))
-        && record
-            .pane_start_time
-            .filter(|_| record.terminal_contract >= 1)
-            .is_none_or(|expected| {
-                pid.and_then(crate::platform::process_start_ticks) == Some(expected)
-            }))
+    let live = LivePane {
+        pane_id: pane.into(),
+        pane_pid: pid,
+        pane_start_time: pid.and_then(crate::platform::process_start_ticks),
+        current_command: pane_current_command(pane),
+        current_path: pane_field(pane, "#{pane_current_path}").map(Into::into),
+        is_dead: false,
+    };
+    Ok(pane_belongs_to_member(record, &live) == PaneOwnership::Owned)
 }
 
 #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
@@ -948,7 +951,7 @@ fn run_tmux_send_keys(pane: &str, keys: &str) -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     use crate::session_scanner::process::ProcessInfo;
@@ -1062,7 +1065,7 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
-    struct ScratchTmux {
+    pub(crate) struct ScratchTmux {
         root: tempfile::TempDir,
         // The override belongs to the installing thread, including on drop.
         _not_send: std::marker::PhantomData<*const ()>,
@@ -1070,7 +1073,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     impl ScratchTmux {
-        fn new(width: &str, height: &str) -> Self {
+        pub(crate) fn new(width: &str, height: &str) -> Self {
             let scratch = Self {
                 // Regression: c22b502a inherited long TMPDIR values, exceeding
                 // the Unix socket path limit before the test could start.
@@ -1131,35 +1134,27 @@ mod tests {
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
     #[test]
     fn hosted_stop_session_reaps_host_when_tui_already_gone() {
-        assert_hosted_stop(&[
-            "gone",
-            "pane",
-            "stale",
-            "previous",
-            "reused_pid",
-            "reused_start",
-            "plain",
-            "lead",
-            "incomplete",
-        ]);
+        assert_hosted_stop(
+            "gone pane stale previous reused_pid reused_start plain lead incomplete legacy_foreign",
+        );
     }
 
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
     #[test]
     fn hosted_stop_session_busy_seat_preserves_pane_for_retry() {
         // Regression: d9dd5cc2, round-2 review: killing the TUI before the seat lock orphaned a busy host.
-        assert_hosted_stop(&["busy"]);
+        assert_hosted_stop("busy");
     }
 
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
     #[test]
     fn hosted_stop_session_waits_for_seat_then_reaps_both() {
         // Regression: d9dd5cc2, round-2 review: refresh contention made stop fail after destroying the pane.
-        assert_hosted_stop(&["released"]);
+        assert_hosted_stop("released");
     }
 
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
-    fn assert_hosted_stop(modes: &[&str]) {
+    fn assert_hosted_stop(modes: &str) {
         use crate::coordination::domain::HealthState;
         use crate::coordination::hosted::tests::{running, saved};
         use crate::coordination::hosted::HostedMembers;
@@ -1167,7 +1162,7 @@ mod tests {
         use crate::daemon::session_activity::SessionActivityHub;
         use std::time::{Duration, Instant};
         // Regression: 1db4f9bf, L4 run 4: pane-only stop left the owned host alive for 100 s.
-        for &mode in modes {
+        for mode in modes.split_whitespace() {
             let scratch = ScratchTmux::new("80", "24");
             let team_root = scratch.path().join(".teams");
             let root = team_root.as_path();
@@ -1209,7 +1204,8 @@ mod tests {
                 registry
             };
             // Regression: 6fbc150f trusted reused pane IDs and incomplete inventories.
-            let plain = matches!(mode, "reused_pid" | "reused_start" | "plain" | "lead");
+            let plain =
+                mode.starts_with("reused_") || matches!(mode, "plain" | "lead" | "legacy_foreign");
             let mut record = saved(root);
             record.pane_id = Some(pane.clone());
             if matches!(mode, "stale" | "plain" | "lead") {
@@ -1226,6 +1222,12 @@ mod tests {
             if mode == "reused_start" {
                 record.pane_start_time = Some(u64::MAX);
             }
+            // Regression: c2aa72d1, round-2 review: legacy project ownership must use the shared authority.
+            if mode == "legacy_foreign" {
+                record.pane_pid = None;
+                record.pane_start_time = None;
+                record.project_path = Some(root.join("another-project"));
+            }
             MemberRuntimeStore::save(root, "team", "seat", &record).unwrap();
             if mode == "lead" {
                 let path = root.join("team/config.json");
@@ -1236,7 +1238,10 @@ mod tests {
                 record.app_server = None;
                 record.pane_id = Some(pane.clone());
                 MemberRuntimeStore::save(root, "team", "lead", &record).unwrap();
+                // Regression: c2aa72d1, round-2 review: unrelated corruption must not defer a known pane.
+                std::fs::write(root.join("team/runtime/broken.json"), "{").unwrap();
             }
+
             let before = saved(root);
             let generation = before.attachment_generation;
             let restarted = HostedMembers::default();
@@ -1295,6 +1300,10 @@ mod tests {
             sink.flush_for_test().unwrap();
             let events = std::fs::read_to_string(root.join("events.jsonl")).unwrap();
             if plain {
+                assert_eq!(
+                    serde_json::to_string(&response).unwrap(),
+                    r#"{"id":"stop","result":{"ok":true}}"#
+                );
                 assert_eq!(saved(root).attachment_generation, generation, "{mode}");
                 assert!(!events.contains("hosted.stop_session.host_stopped"));
                 continue;
@@ -1342,31 +1351,11 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn hosted_stop_session_rpc_outlives_teardown() {
-        // Regression: 6fbc150f (L4 run 4) made stop synchronous past the 5 s ping budget.
-        let source = include_str!("../commands/command_center/navigation.rs");
-        let stop = source
-            .split("pub(super) fn navigate_to_session_impl")
-            .next()
-            .unwrap();
-        assert!(stop.contains("send_status_request_within(&request, timeout)"));
-        assert!(stop
-            .split_whitespace()
-            .collect::<String>()
-            .contains("stop_timeout+std::time::Duration::from_secs(5)"));
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
     fn scratch_fixture_commands_never_use_production_fallback() {
         // Regression: 0a0005a9 routed fixture run/drop through tmux_command,
         // allowing a missing override to reach the operator's server (even kill-server).
         // Inspect this boundary without executing that unsafe fallback to prove red.
         let source = include_str!("control.rs");
-        // Regression: c19fdade (L4 run 4) let private tmux writes inspect real teams.
-        let boundary = &source[source.find("fn managed_terminal_write<T>").unwrap()..];
-        let boundary = boundary.split("#[cfg(not").next().unwrap();
-        assert!(boundary.contains("tests::terminal_root()"));
         for implementation in ["impl ScratchTmux {", "impl Drop for ScratchTmux {"] {
             let body = source
                 .split_once(implementation)

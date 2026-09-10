@@ -1,6 +1,6 @@
 //! Additive operator methods; older daemons answer UNKNOWN_METHOD.
 use crate::coordination::hosted::HostedMembers;
-use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore, TeamRootRegistry};
+use crate::coordination::stores::{MemberRuntimeStore, TeamRootRegistry};
 use serde_json::Value;
 
 pub(crate) fn handle(
@@ -49,21 +49,20 @@ pub(super) fn stop_session(
     registry: &TeamRootRegistry,
     params: &super::protocol::StopSessionParams,
 ) -> Result<bool, String> {
+    if let Some((root, team, member)) =
+        crate::coordination::stores::lock::resolve_terminal_member(registry, &params.tmux_pane)?
+    {
+        if MemberRuntimeStore::load(&root, &team, &member)
+            .map_err(|e| e.to_string())?
+            .app_server
+            .is_none()
+        {
+            return Ok(false);
+        }
+    }
     let mut records = Vec::new();
     for (root, team) in registry.team_locations().map_err(|e| e.to_string())? {
-        let members = MemberRuntimeStore::load_all(&root, &team).map_err(|e| e.to_string())?;
-        let config = TeamConfigStore::load(&root, &team).map_err(|e| e.to_string())?;
-        if MemberRuntimeStore::list(&root, &team)
-            .map_err(|e| e.to_string())?
-            .len()
-            != members.len()
-            || config
-                .members
-                .iter()
-                .any(|m| !members.iter().any(|(name, _)| name == &m.name))
-        {
-            return Err("hosted stop deferred: attachment inventory incomplete".into());
-        }
+        let members = MemberRuntimeStore::load_all(&root, &team).unwrap_or_default();
         records.extend(
             members
                 .into_iter()
@@ -101,9 +100,7 @@ pub(super) fn stop_session(
     let Some((team, member, record)) = matched else {
         return Ok(false);
     };
-    let Some(host) = &record.app_server else {
-        return Ok(false);
-    };
+    let host = record.app_server.as_ref().unwrap();
     let exit_status = hosts.stop_with_tui(registry, team, member, || {
         crate::session_scanner::control::stop_hosted_tui(&params.tmux_pane, params.cli_tool)
     })?;
