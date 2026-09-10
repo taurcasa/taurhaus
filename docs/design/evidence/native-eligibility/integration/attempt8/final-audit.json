@@ -1,0 +1,44 @@
+{
+  "verdict": "FAIL step 3 acceptance; product behavior INCONCLUSIVE (premature snapshot assertion)",
+  "controller_exit": 1,
+  "steps": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "FAIL",
+    "4": "NOT RUN",
+    "5": "NOT RUN",
+    "6": "NOT RUN",
+    "7": "NOT RUN"
+  },
+  "cleanup": [
+    {
+      "run": "setup-collector-abort",
+      "private_port": 29926,
+      "root_removed": true,
+      "surviving_owned_processes": [],
+      "port_closed": true
+    },
+    {
+      "run": "run",
+      "private_port": 30008,
+      "root_removed": true,
+      "surviving_owned_processes": [],
+      "port_closed": true
+    }
+  ],
+  "mesh_tree_clean": true,
+  "descriptor_enabled": false,
+  "hosted_rpc_rejected_rows": [],
+  "host_error_object": "NONE EMITTED: no host RPC rejection; controller stopped on missing pending receipt",
+  "mesh_health_reason": "failed to acquire lock: delivery mirror busy",
+  "deferred_marker_exposures": 0,
+  "turns": 4,
+  "api_equivalent_usd": 0.00404988,
+  "conservative_usd": 0.0550068,
+  "gate_exits": {
+    "gate-check-quick": 0,
+    "gate-lint": 0,
+    "gate-test-contracts": 0
+  },
+  "retained_bytes": 378655
+}

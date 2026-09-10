@@ -1,0 +1,2 @@
+{"continue":false,"deliveries":[],"offer_id":null,"protocol":"mesh-hook-drain/1","reason":"IO error: delivery: app_server_switch_requires_5b_recoverable_relaunch_packet","status":"refused","text":""}
+error: unauthorized: adapter change not applied; inspect outcome

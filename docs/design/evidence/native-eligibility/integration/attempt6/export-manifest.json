@@ -1,0 +1,75 @@
+{
+  "filters": {
+    "inotify.telemetry": {
+      "original_count": 255,
+      "retained": 2
+    },
+    "session_scanner.scan.completed": {
+      "original_count": 228,
+      "retained": 2
+    },
+    " INFO taurhaus_lib::daemon::server: client connected addr=<ephemeral-port>": {
+      "original_count": 256,
+      "retained": 2
+    },
+    "no job control in this shell": {
+      "original_count": 3,
+      "retained": 2
+    },
+    " WARN taurhaus_lib::coordination::activity_export: failed to load team roster while enriching session metadata team_name=_active-project-teams error=Not found: team config not found for '_active-project-teams' at /tmp/th-int-3s1yjoo9/claude/teams/_active-project-teams/config.json": {
+      "original_count": 455,
+      "retained": 2
+    },
+    " INFO taurhaus_lib::session_scanner::classification: session activity state changed pid=496 tool=codex from=Some(Active) to=Idle source=\"notify\"": {
+      "original_count": 3,
+      "retained": 2
+    },
+    " WARN taurhaus_lib::coordination::activity_export: failed to load team roster for activity snapshot export team_name=_active-project-teams error=Not found: team config not found for '_active-project-teams' at /tmp/th-int-3s1yjoo9/claude/teams/_active-project-teams/config.json": {
+      "original_count": 13,
+      "retained": 2
+    },
+    " WARN taurhaus_lib::coordination::state: background task-deadline pass failed team=_active-project-teams error=Not found: team config not found for '_active-project-teams' at /tmp/th-int-3s1yjoo9/claude/teams/_active-project-teams/config.json": {
+      "original_count": 9,
+      "retained": 2
+    },
+    " WARN taurhaus_lib::coordination::state: background coordination self-heal failed team=_active-project-teams error=Not found: team config not found for '_active-project-teams' at /tmp/th-int-3s1yjoo9/claude/teams/_active-project-teams/config.json": {
+      "original_count": 9,
+      "retained": 2
+    },
+    " WARN taurhaus_lib::daemon::deadline_scheduler: daemon task-deadline pass completed with errors teams_scanned=2 team_errors=1": {
+      "original_count": 9,
+      "retained": 2
+    },
+    " INFO taurhaus_lib::coordination::orchestrator::teardown: team daemon ensured running team=integration operator=lead pid=1185": {
+      "original_count": 9,
+      "retained": 2
+    },
+    " WARN taurhaus_lib::daemon::background_scheduler: daemon coordination self-heal pass completed with errors teams_scanned=2 team_errors=1": {
+      "original_count": 9,
+      "retained": 2
+    }
+  },
+  "duplicates": {
+    "run/generated-config-0.toml": "step1/generated-config-0.toml",
+    "run/identities.json": "step1/step1-identities.json",
+    "run/initialize-pane-1.txt": "step1/initialize-pane-1.txt",
+    "run/initialize-result.json": "step1/initialize-result.json",
+    "run/policy.json": "step1/policy.json",
+    "run/step-1-pane-0.txt": "run/initialize-pane-0.txt",
+    "run/step-1-pane-1.txt": "step1/initialize-pane-1.txt",
+    "run/step-1-pane-2.txt": "step1/step-1-pane-2.txt",
+    "run/step1-identities.json": "step1/step1-identities.json",
+    "run/step1-runtime.json": "step1/step1-runtime.json",
+    "run/step2-explicit-read.txt": "step2/step2-explicit-read.txt",
+    "run/step2-pane-0.txt": "run/initialize-pane-0.txt",
+    "run/step2-pane-1.txt": "step1/initialize-pane-1.txt",
+    "run/step2-pane-2.txt": "step2/step2-pane-2.txt",
+    "run/step2-send.txt": "step2/step2-send.txt",
+    "run/step2-status-after.txt": "step2/step2-status-after.txt",
+    "run/step2-status-before.txt": "step2/step2-status-before.txt",
+    "run/step3-active-pane-0.txt": "run/initialize-pane-0.txt",
+    "run/step3-active-pane-1.txt": "step1/initialize-pane-1.txt",
+    "run/team/runtime/seat.json": "step1/step1-runtime.json",
+    "run/team/state/delivery/owner.lock": "run/team/state/delivery/handoff.lock"
+  }
+}

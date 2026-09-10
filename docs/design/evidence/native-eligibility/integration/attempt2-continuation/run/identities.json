@@ -1,0 +1,140 @@
+[
+  {
+    "pid": 3959337,
+    "start_ticks": "21676287",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-4mx35359",
+      "/tmp/th-int-4mx35359",
+      "--chdir",
+      "/tmp/th-int-4mx35359/project",
+      "/bin/bash",
+      "/tmp/th-int-4mx35359/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3959338,
+    "start_ticks": "21676287",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-4mx35359",
+      "/tmp/th-int-4mx35359",
+      "--chdir",
+      "/tmp/th-int-4mx35359/project",
+      "/bin/bash",
+      "/tmp/th-int-4mx35359/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3959339,
+    "start_ticks": "21676287",
+    "argv": [
+      "/tmp/th-int-4mx35359/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "30058",
+      "--data-dir",
+      "/tmp/th-int-4mx35359/data",
+      ""
+    ]
+  },
+  {
+    "pid": 3959340,
+    "start_ticks": "21676287",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 3959346,
+    "start_ticks": "21676297",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3959454,
+    "start_ticks": "21676358",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-int-4mx35359/project' && CLAUDE_DIR='/tmp/th-int-4mx35359/claude' CLAUDE_CONFIG_DIR='/tmp/th-int-4mx35359/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'integration' --agent-name 'lead' --agent-id 'lead@integration' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3959457,
+    "start_ticks": "21676358",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "integration",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@integration",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3959773,
+    "start_ticks": "21676400",
+    "argv": [
+      "/tmp/th-int-4mx35359/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "integration",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-int-4mx35359/claude",
+      ""
+    ]
+  }
+]

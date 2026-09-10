@@ -1,0 +1,84 @@
+{
+  "obligation": {
+    "message_id": "c9199479-21ad-4b17-aab2-0d4a13ae0e31",
+    "delivery_id": "d498033d-dfd5-4533-baed-5f3ef9081c53",
+    "recipient": "seat",
+    "source_generation": "2cb3f98d-ff68-422d-b69b-139234690928",
+    "source_position": 4,
+    "body": "ACTION REQUIRED: Reply exactly cobalta6e6c2cd57. Do not execute tools."
+  },
+  "attempts": [
+    {
+      "claim": {
+        "obligation": {
+          "message_id": "c9199479-21ad-4b17-aab2-0d4a13ae0e31",
+          "delivery_id": "d498033d-dfd5-4533-baed-5f3ef9081c53",
+          "recipient": "seat",
+          "source_generation": "2cb3f98d-ff68-422d-b69b-139234690928",
+          "source_position": 4,
+          "body": "ACTION REQUIRED: Reply exactly cobalta6e6c2cd57. Do not execute tools."
+        },
+        "attachment": {
+          "app_server": {
+            "contract": 1,
+            "socketPath": "/tmp/th-int-3s1yjoo9/tmp/th-host-26b2cc283daa4090935a3b4f8fd5ea1b/rpc.sock",
+            "threadId": "01a0898d-222f-7581-8cd8-332d3b3e2fb4",
+            "memberId": "seat@integration",
+            "accountRoot": "/tmp/th-int-3s1yjoo9/codex",
+            "processId": 124,
+            "processStart": "23466017",
+            "hostGeneration": "c05ca82a-6d9a-4e27-9080-d5c4c8b1fda3",
+            "build": "0.153.4",
+            "host": "taurhaus-daemon-owned-thread/1",
+            "configuration": "strict-config/1",
+            "trust": "daemon-owned/1",
+            "transport": "unix-websocket"
+          },
+          "launch_root": {
+            "claudeDir": "/tmp/th-int-3s1yjoo9/claude",
+            "rootAuthorityRevision": 0,
+            "teamsDir": "/tmp/th-int-3s1yjoo9/claude/teams",
+            "teamIncarnationId": "bebf1a0de68b19965530b5e690aa9f2e58d356bdc57bce43044e53ade67b77fc"
+          },
+          "attachment_generation": 1,
+          "root": "/tmp/th-int-3s1yjoo9/claude",
+          "team_incarnation": "bebf1a0de68b19965530b5e690aa9f2e58d356bdc57bce43044e53ade67b77fc",
+          "member": "seat",
+          "session": "01a0898d-222f-7581-8cd8-332d3b3e2fb4",
+          "context_generation": "0",
+          "generation": "1",
+          "socket": "",
+          "pane": "",
+          "pane_pid": 0,
+          "pane_start": "",
+          "tmux_session": "",
+          "harness": "codex"
+        },
+        "epoch": 2,
+        "adapter": "app_server",
+        "attempt_id": "a36b7024-d6e3-4923-84ce-4d518a5e5dd8"
+      },
+      "receipts": [
+        {
+          "stage": "accepted",
+          "origin": "legacy_mapping",
+          "evidence": "source obligation",
+          "observed_at": "2026-09-10T04:23:14.578278695+00:00"
+        },
+        {
+          "stage": "attempt_started",
+          "origin": "adapter",
+          "evidence": "durable claim",
+          "observed_at": "2026-09-10T04:23:14.578286275+00:00"
+        },
+        {
+          "stage": "native_enqueued",
+          "origin": "app_server",
+          "evidence": "{\"class\":\"rpc_accepted_not_comprehension\",\"expected_turn_id\":null,\"method\":\"turn/start\",\"reconciliation_required\":false,\"request_id\":\"69eabd28-632e-4dd4-8f1c-bc9c80810bc7\",\"thread_id\":\"01a0898d-222f-7581-8cd8-332d3b3e2fb4\",\"turn_id\":\"01a0898e-39df-79e2-bf52-02e8ac1ca7bc\"}",
+          "observed_at": "2026-09-10T04:23:14.661962991+00:00"
+        }
+      ],
+      "presentation_started": true
+    }
+  ]
+}

@@ -1,0 +1,171 @@
+{
+  "attachmentGeneration": 1,
+  "eventsTruncated": true,
+  "outcomeUnknown": false,
+  "requests": [],
+  "thread": {
+    "agentNickname": null,
+    "agentRole": null,
+    "canAcceptDirectInput": true,
+    "cliVersion": "0.153.4",
+    "createdAt": 1789017793,
+    "cwd": "/tmp/th-int-u97c8_bn/project",
+    "ephemeral": false,
+    "extra": null,
+    "forkedFromId": null,
+    "gitInfo": {
+      "branch": "master",
+      "originUrl": null,
+      "sha": "d2ffb607c368d37cf477ce6bf41ff559e3fbe848"
+    },
+    "historyMode": "paginated",
+    "id": "01a089c5-2225-7bb3-973a-2a77719269f1",
+    "model": "gpt-5.6-luna",
+    "modelProvider": "openai",
+    "name": "Recover taurhaus card",
+    "parentThreadId": null,
+    "path": "/tmp/th-int-u97c8_bn/codex/sessions/2026/09/10/rollout-2026-09-10T07-23-13-01a089c5-2225-7bb3-973a-2a77719269f1.jsonl",
+    "preview": "[taurhaus] recovery_card\nIdentity: seat on integration; key={\"card_schema\":1,\"recipient\":[\"4715d37f17e9ab7dd6222bd77d5a6885af78d64d62bf5780d5a654b6156741b1\",\"65d518bf-fbe7-4c3d-a694-3209027a79cf\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-int-u97c8_bn/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-int-u97c8_bn/claude\",\"harness_account_root\":\"/tmp/th-int-u97c8_bn/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-int-u97c8_bn/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: c7017c7c11c8e3c6e6b5d54e1d62c189dc12091fe00482b8a9e7fb82a6f7b0a5; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-int-u97c8_bn/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 05:23:13.084628866 UTC\nCurrent task: # \u2014 \nOperational constraints: unavailable\nFocal files: unavailable\nRole: unavailable\nPurpose: Isolated transport trial. Reply briefly. Never execute tools or commands.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+    "projectId": null,
+    "reasoningEffort": "low",
+    "recencyAt": 1789017964,
+    "section": null,
+    "sectionEnteredAt": null,
+    "sessionId": "01a089c5-2225-7bb3-973a-2a77719269f1",
+    "source": "vscode",
+    "status": {
+      "type": "idle"
+    },
+    "threadSource": null,
+    "turns": [
+      {
+        "completedAt": 1789017891,
+        "durationMs": 11754,
+        "error": null,
+        "id": "01a089c6-73c4-7221-ab29-d6206ff53dce",
+        "items": [
+          {
+            "delivery": null,
+            "id": "msg_0a579ab3f6934bde016aa23f15337c87d2b394ba83de8a8e2c",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "1. green valley oak\n2. green valley oak\n3. green valley oak\n4. green valley oak\n5. green valley oak\n6. green valley oak\n7. green valley oak\n8. green valley oak\n9. green valley oak\n10. green valley oak\n11. green valley oak\n12. green valley oak\n13. green valley oak\n14. green valley oak\n15. green valley oak\n16. green valley oak\n17. green valley oak\n18. green valley oak\n19. green valley oak\n20. green valley oak\n21. green valley oak\n22. green valley oak\n23. green valley oak\n24. green valley oak\n25. green valley oak\n26. green valley oak\n27. green valley oak\n28. green valley oak\n29. green valley oak\n30. green valley oak\n31. green valley oak\n32. green valley oak\n33. green valley oak\n34. green valley oak\n35. green valley oak\n36. green valley oak\n37. green valley oak\n38. green valley oak\n39. green valley oak\n40. green valley oak\n41. green valley oak\n42. green valley oak\n43. green valley oak\n44. green valley oak\n45. green valley oak\n46. green valley oak\n47. green valley oak\n48. green valley oak\n49. green valley oak\n50. green valley oak\n51. green valley oak\n52. green valley oak\n53. green valley oak\n54. green valley oak\n55. green valley oak\n56. green valley oak\n57. green valley oak\n58. green valley oak\n59. green valley oak\n60. green valley oak\n61. green valley oak\n62. green valley oak\n63. green valley oak\n64. green valley oak\n65. green valley oak\n66. green valley oak\n67. green valley oak\n68. green valley oak\n69. green valley oak\n70. green valley oak\n71. green valley oak\n72. green valley oak\n73. green valley oak\n74. green valley oak\n75. green valley oak\n76. green valley oak\n77. green valley oak\n78. green valley oak\n79. green valley oak\n80. green valley oak",
+            "type": "agentMessage"
+          },
+          {
+            "clientId": null,
+            "content": [
+              {
+                "text": "Reply exactly maple84cf3a. Do not execute tools.",
+                "text_elements": [],
+                "type": "text"
+              }
+            ],
+            "id": "01a089c6-9c99-77c0-a050-d5f9d39401fe",
+            "type": "userMessage"
+          },
+          {
+            "delivery": null,
+            "id": "msg_0a579ab3f6934bde016aa23f1f03d087d2ad8b2ffe6738d1a8",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "maple84cf3a",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789017879,
+        "status": "completed"
+      },
+      {
+        "completedAt": 1789017892,
+        "durationMs": 1239,
+        "error": null,
+        "id": "01a089c6-a319-7372-9dcb-6d6bec6b32cb",
+        "items": [
+          {
+            "clientId": null,
+            "content": [
+              {
+                "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly cedar430145. Do not execute tools.\",\"delivery_id\":\"eff32c70-9c92-4b66-92f0-a08e3d70f8a9\",\"expectation\":null,\"message_id\":\"579cc457-4686-4c1a-9964-c196a7ee2321\",\"metadata\":{},\"task\":null}\n",
+                "text_elements": [],
+                "type": "text"
+              }
+            ],
+            "id": "01a089c6-a332-73c3-b65c-dbc88cd7e3c8",
+            "type": "userMessage"
+          },
+          {
+            "delivery": null,
+            "id": "msg_0a579ab3f6934bde016aa23f20a88887d2ae0d48974bf54302",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "cedar430145",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789017891,
+        "status": "completed"
+      },
+      {
+        "completedAt": 1789017963,
+        "durationMs": 8885,
+        "error": null,
+        "id": "01a089c7-9994-7261-afcc-082ec2169813",
+        "items": [
+          {
+            "id": "01a089c7-999e-70f1-a754-565f2eb7ec7a",
+            "type": "contextCompaction"
+          }
+        ],
+        "itemsView": "notLoaded",
+        "startedAt": 1789017954,
+        "status": "completed"
+      },
+      {
+        "completedAt": 1789017966,
+        "durationMs": 1803,
+        "error": null,
+        "id": "01a089c7-c0d9-7420-b3dc-f1c8cc3fca51",
+        "items": [
+          {
+            "clientId": null,
+            "content": [
+              {
+                "text": "Reply exactly hazel12976c. Do not execute tools.",
+                "text_elements": [],
+                "type": "text"
+              }
+            ],
+            "id": "01a089c7-c0f5-7470-814a-3c507f0377a8",
+            "type": "userMessage"
+          },
+          {
+            "content": [],
+            "id": "rs_0a579ab3f6934bde016aa23f6a2bbc87d2baeea7cf99da6456",
+            "summary": [],
+            "type": "reasoning"
+          },
+          {
+            "delivery": null,
+            "id": "msg_0a579ab3f6934bde016aa23f6a587087d299e4871e8ace7776",
+            "memoryCitation": null,
+            "phase": "final_answer",
+            "questions": null,
+            "text": "hazel12976c",
+            "type": "agentMessage"
+          }
+        ],
+        "itemsView": "summary",
+        "startedAt": 1789017964,
+        "status": "completed"
+      }
+    ],
+    "updatedAt": 1789017966
+  },
+  "evidenceEvents": "host-events.jsonl"
+}

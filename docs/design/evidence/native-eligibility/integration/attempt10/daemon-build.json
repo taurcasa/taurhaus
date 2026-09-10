@@ -1,0 +1,28 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "taurhaus-daemon"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-trial/src-tauri",
+  "target": "/home/mstie/projects/taurhaus-trial/src-tauri/target",
+  "exit": 0,
+  "cargo_preflight": [
+    {
+      "at": 1789043813.4564316,
+      "exit": 0,
+      "output": "1119133 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789043843.465641,
+      "exit": 0,
+      "output": "1119133 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789043873.4739282,
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

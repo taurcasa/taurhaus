@@ -1,0 +1,81 @@
+{
+  "outcome": {
+    "report": {
+      "failed_step": "launch_host",
+      "message": "Conflict: unsupported app-server handshake",
+      "retryable": true,
+      "steps": [
+        {
+          "message": "configuration validated",
+          "status": "succeeded",
+          "step": "validate_configuration"
+        },
+        {
+          "message": "team created",
+          "status": "succeeded",
+          "step": "create_team"
+        },
+        {
+          "message": "lead added",
+          "status": "succeeded",
+          "step": "add_lead"
+        },
+        {
+          "message": "Conflict: unsupported app-server handshake",
+          "status": "failed",
+          "step": "launch_host"
+        }
+      ],
+      "succeeded_steps": [
+        "validate_configuration",
+        "create_team",
+        "add_lead"
+      ],
+      "team_name": "integration"
+    },
+    "status": "completed"
+  },
+  "run_id": "init_62bda75b0bbe41d783a36fcd9518b23e",
+  "steps": [
+    {
+      "message": null,
+      "status": "running",
+      "step": "validate_configuration"
+    },
+    {
+      "message": "configuration validated",
+      "status": "succeeded",
+      "step": "validate_configuration"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "create_team"
+    },
+    {
+      "message": "team created",
+      "status": "succeeded",
+      "step": "create_team"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "add_lead"
+    },
+    {
+      "message": "lead added",
+      "status": "succeeded",
+      "step": "add_lead"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "create_panes"
+    },
+    {
+      "message": "Conflict: unsupported app-server handshake",
+      "status": "failed",
+      "step": "launch_host"
+    }
+  ]
+}

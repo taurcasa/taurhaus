@@ -1,0 +1,38 @@
+{
+  "command": [
+    "just",
+    "check-quick"
+  ],
+  "exit": 0,
+  "seconds": 20.773461079981644,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "4029681 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted\n"
+    },
+    {
+      "exit": 0,
+      "output": "4033884 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted\n"
+    },
+    {
+      "exit": 0,
+      "output": "4038313 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted\n"
+    },
+    {
+      "exit": 0,
+      "output": "4043364 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted\n"
+    },
+    {
+      "exit": 0,
+      "output": "4048031 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted\n"
+    },
+    {
+      "exit": 0,
+      "output": "4055377 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted\n"
+    },
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

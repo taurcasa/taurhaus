@@ -1,0 +1,13 @@
+diff --git a/src/delivery/app_server/capabilities.rs b/src/delivery/app_server/capabilities.rs
+index e07234f..bbd9aa3 100644
+--- a/src/delivery/app_server/capabilities.rs
++++ b/src/delivery/app_server/capabilities.rs
+@@ -41,7 +41,7 @@ pub fn descriptors() -> Vec<Descriptor> {
+             adapter: "app_server", harness: "codex", build,
+             host: "taurhaus-owned persistent thread; UNVERIFIED",
+             transport: TRANSPORT, configuration: "UNVERIFIED", trust: "UNVERIFIED",
+-            disposition: "disabled", enabled: false, strongest_receipt: "native_enqueued",
++            disposition: if build == "0.153.4" { "trial" } else { "disabled" }, enabled: build == "0.153.4", strongest_receipt: "native_enqueued",
+             evidence_scope: if build == "0.153.4" {
+                 "verified isolated 0.153.4 Unix WebSocket Upgrade/framing and attached-TUI primitive; production Mesh receipts, compaction and daemon restart unverified"
+             } else { "unverified build" },

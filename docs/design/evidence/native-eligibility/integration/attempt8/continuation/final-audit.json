@@ -1,0 +1,63 @@
+{
+  "verdict": "FAIL step 5: no recovery card at compact boundary or first following input",
+  "steps": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "FAIL",
+    "6": "NOT RUN",
+    "7": "NOT RUN"
+  },
+  "controller_exit": 1,
+  "private_port": 26777,
+  "port_closed": true,
+  "surviving_owned_processes": [],
+  "root_removed": true,
+  "mesh_tree_clean": true,
+  "descriptor_enabled": false,
+  "exposure_item_ids": {
+    "saffronaf494b": [
+      "01a089c5-8836-7453-9aac-127b25ddcc9c",
+      "msg_0a579ab3f6934bde016aa23ed8310487d2a7d057f7ed3e75b6"
+    ],
+    "juniper0a5d7a": [
+      "01a089c6-1d9c-7e82-9335-5e4faba3946e",
+      "msg_0a579ab3f6934bde016aa23efe52c087d29dd388f2afb823cd"
+    ],
+    "cedar430145": [
+      "01a089c6-a332-73c3-b65c-dbc88cd7e3c8",
+      "msg_0a579ab3f6934bde016aa23f20a88887d2ae0d48974bf54302"
+    ],
+    "maple84cf3a": [
+      "01a089c6-9c99-77c0-a050-d5f9d39401fe",
+      "msg_0a579ab3f6934bde016aa23f1f03d087d2ad8b2ffe6738d1a8"
+    ]
+  },
+  "hosted_rpc_rejected_rows": [],
+  "compaction_log_rows": [],
+  "host_error_object": "None emitted: compaction and next input succeeded; recovery card was absent.",
+  "mesh_health": {
+    "member": "seat",
+    "root": "/tmp/th-int-u97c8_bn/claude",
+    "incarnation": "4715d37f17e9ab7dd6222bd77d5a6885af78d64d62bf5780d5a654b6156741b1",
+    "epoch": 2,
+    "heartbeat": "2026-09-10T05:26:07.046192098+00:00",
+    "pending_since": null,
+    "error": null,
+    "last_defer_reason": null,
+    "failures": 10,
+    "completed": 3
+  },
+  "context_generation_before": "0",
+  "context_generation_after": "0",
+  "protocol_turns_including_prior": 12,
+  "metered_subtotal_usd": 0.01183236,
+  "compaction_cost_unreported": true,
+  "gate_exits": {
+    "gate-check-quick": 0,
+    "gate-lint": 0,
+    "gate-test-contracts": 0
+  },
+  "retained_bytes": 499233
+}

@@ -1,0 +1,45 @@
+{
+  "checksum": "18b63d089bd5145283e1894dd3b093be45d44cc4384e7e43b525593f61be8baa",
+  "committed_at": "2026-09-10T04:48:56.280976688+00:00",
+  "event_id": "8f7b1a4d-8a3e-4647-b6e8-249cac61d367",
+  "event_type": "receipt",
+  "log_epoch": "508ec372-714d-485d-b5fa-4569063b3fe6",
+  "payload": {
+    "accepted_sequence": 4,
+    "audience_proof": {
+      "kind": "captured-members",
+      "members": [
+        {
+          "member_id": "0ab8a2d3-b90b-4184-8f09-1b123798d41d",
+          "name": "lead"
+        },
+        {
+          "member_id": "seat@integration",
+          "name": "seat"
+        }
+      ],
+      "team_id": "6be64971ac7ff295d2e30075431390218adb8bf9403646739d433a1fa759fd8c"
+    },
+    "body_bytes": 67,
+    "body_hash": "7b0ba9c27efd844881457dd510f2aa3711f977aba97f326c15b76bb439865419",
+    "context": "explicit-mesh-cli",
+    "delivery_id": "40afb4fd-5246-4ff7-8ab3-62ff8b5ac448",
+    "kind": "consumed_by_read",
+    "message_id": "7bc10aed-1448-4372-b95f-41c5e5d30c06",
+    "read_audience": [
+      {
+        "member_id": "0ab8a2d3-b90b-4184-8f09-1b123798d41d",
+        "name": "lead"
+      },
+      {
+        "member_id": "seat@integration",
+        "name": "seat"
+      }
+    ],
+    "reader": "seat@integration",
+    "reader_name": "seat"
+  },
+  "schema_version": 1,
+  "sequence": 7,
+  "team_id": "6be64971ac7ff295d2e30075431390218adb8bf9403646739d433a1fa759fd8c"
+}

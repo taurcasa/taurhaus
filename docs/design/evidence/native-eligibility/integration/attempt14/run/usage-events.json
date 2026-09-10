@@ -1,0 +1,161 @@
+[
+  {
+    "timestamp": "2026-09-10T18:53:19.980Z",
+    "ordinal": 1,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a08caa-d0d2-7a80-b1c3-72dd651e6ec9",
+      "started_at": 1789066399,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T18:53:22.329Z",
+    "ordinal": 13,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 9248,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 35,
+          "reasoning_output_tokens": 16,
+          "total_tokens": 9283
+        },
+        "last_token_usage": {
+          "input_tokens": 9248,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 35,
+          "reasoning_output_tokens": 16,
+          "total_tokens": 9283
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T18:53:22.335Z",
+    "ordinal": 14,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a08caa-d0d2-7a80-b1c3-72dd651e6ec9",
+      "last_agent_message": "I can\u2019t run `mesh` commands in this transport trial.",
+      "started_at": 1789066399,
+      "completed_at": 1789066402,
+      "duration_ms": 2375,
+      "time_to_first_token_ms": 2063
+    }
+  },
+  {
+    "timestamp": "2026-09-10T18:53:24.343Z",
+    "ordinal": 16,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a08caa-e1f2-7770-a661-634feaf67d96",
+      "started_at": 1789066404,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T18:53:25.668Z",
+    "ordinal": 23,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 18584,
+          "cached_input_tokens": 15872,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 52,
+          "reasoning_output_tokens": 16,
+          "total_tokens": 18636
+        },
+        "last_token_usage": {
+          "input_tokens": 9336,
+          "cached_input_tokens": 8960,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 17,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 9353
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T18:53:25.673Z",
+    "ordinal": 24,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a08caa-e1f2-7770-a661-634feaf67d96",
+      "last_agent_message": "I can\u2019t run `mesh` commands in this transport trial.",
+      "started_at": 1789066404,
+      "completed_at": 1789066405,
+      "duration_ms": 1330,
+      "time_to_first_token_ms": 1051
+    }
+  },
+  {
+    "timestamp": "2026-09-10T18:52:37.940Z",
+    "ordinal": 1,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a08caa-2c42-7ba0-985e-6c717cffd6af",
+      "started_at": 1789066357,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T18:52:46.837Z",
+    "ordinal": 11,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 10955,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 39,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 10994
+        },
+        "last_token_usage": {
+          "input_tokens": 10955,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 39,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 10994
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T18:52:47.138Z",
+    "ordinal": 12,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a08caa-2c42-7ba0-985e-6c717cffd6af",
+      "last_agent_message": "Team lead, identity/assignment context is missing (task, objective, deliverable, completion signal, and release state). Please provide the current assignment and GO/release instruction.",
+      "started_at": 1789066357,
+      "completed_at": 1789066367,
+      "duration_ms": 9212,
+      "time_to_first_token_ms": 6608
+    }
+  }
+]

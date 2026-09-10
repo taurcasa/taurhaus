@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "c4464730-989f-4173-a85e-bff4a65775e4",
+      "delivery_id": "afd027be-e01f-40c4-8b49-56d70167aa65",
+      "recipient": "lead",
+      "source_generation": "4864949e-4c90-4efe-ad6b-4e905fa28372",
+      "source_position": 1,
+      "body": "[taurhaus] recovery_card\nIdentity: lead on integration; key={\"card_schema\":1,\"recipient\":[\"f8005b884a038039db4e53198e58e3952cc9860faeb6032b9d40656f744e2b63\",\"9f36f28f-f563-4472-9990-4eb1574e5ba2\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-int-3r8tuw4q/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-int-3r8tuw4q/claude\",\"harness_account_root\":\"/tmp/th-int-3r8tuw4q/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-int-3r8tuw4q/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 714f6b33ee7d86791c34b579623669280016eb3ceeb58750d583559507bcba0d; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-int-3r8tuw4q/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 03:06:42.714959303 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nHOLD: minimal role steering unavailable; owner: team lead.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context."
+    },
+    "since": "2026-09-10T03:06:42.891726400+00:00"
+  }
+]

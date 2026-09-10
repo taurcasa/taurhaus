@@ -1,0 +1,45 @@
+ * /sbin/update-motd
+ * /usr/sbin/update-motd
+/tmp/th-int-3s1yjoo9/home/.hushlogin file.
+2026-09-10T04:22:01.763874Z  INFO taurhaus_daemon: Auth token written path=/tmp/th-int-3s1yjoo9/data/daemon.token
+2026-09-10T04:22:01.763906Z  INFO taurhaus_daemon: taurhaus-daemon starting port=28897 bind=127.0.0.1 idle_timeout=Some(600) data_root=/tmp/th-int-3s1yjoo9/data auth=true
+2026-09-10T04:22:01.778655Z  INFO taurhaus_lib::daemon::server: daemon listening port=28897
+2026-09-10T04:22:02.079700Z  INFO taurhaus_lib::daemon::server: client connected addr=127.0.0.1:47922
+2026-09-10T04:22:02.131022Z  INFO taurhaus_lib::models: Probing CLI version program="codex" argv=["/bin/bash", "-ilc", "codex --version"]
+2026-09-10T04:22:02.206714Z  INFO taurhaus_lib::models: CLI version probe completed program="codex" status=Some(0) raw_output=This message is shown once a day. To disable it please create the
+2026-09-10T04:22:02.206818Z  INFO taurhaus_lib::models: Probing CLI version program="claude" argv=["/bin/bash", "-ilc", "claude --version"]
+2026-09-10T04:22:02.232155Z  INFO taurhaus_lib::models: CLI version probe completed program="claude" status=Some(0) raw_output=2.1.267 (Claude Code)
+2026-09-10T04:22:02.232250Z  INFO taurhaus_lib::models: Probing CLI version program="agy" argv=["/bin/bash", "-ilc", "agy --version"]
+2026-09-10T04:22:02.257699Z  INFO taurhaus_lib::models: CLI version probe completed program="agy" status=Some(77) raw_output=bash: cannot set terminal process group (-1): Inappropriate ioctl for device
+2026-09-10T04:22:02.257787Z  INFO taurhaus_lib::models: CLI versions detected for native harness capability gates codex=Some("0.153.4") claude=Some("2.1.267") agy=None codex_compaction_hooks_supported=true codex_notify_supported=true codex_queue_wake_supported=true agy_hooks_supported=false
+2026-09-10T04:22:03.073407Z  INFO taurhaus_lib::coordination::hosted_process: Host loaded project instructions; strict TUI policy remains enforced event="hosted.instruction_sources.loaded" thread_id=01a0898d-222f-7581-8cd8-332d3b3e2fb4 count=1
+2026-09-10T04:22:03.778321Z  INFO taurhaus_lib::session_scanner::classification: session activity state changed pid=496 tool=codex from=None to=Active source="transcript"
+2026-09-10T04:22:04.854604Z  INFO taurhaus_lib::coordination::orchestrator::teardown: team daemon ensured running after coordination wrapper team=integration operator=lead pid=1185
+2026-09-10T04:22:05.276257Z  WARN taurhaus_lib::coordination::activity_export: failed to load team roster while enriching session metadata team_name=_active-project-teams error=Not found: team config not found for '_active-project-teams' at /tmp/th-int-3s1yjoo9/claude/teams/_active-project-teams/config.json
+2026-09-10T04:22:06.275901Z  INFO taurhaus_lib::session_scanner::classification: session activity state changed pid=496 tool=codex from=Some(Active) to=Idle source="notify"
+2026-09-10T04:22:06.281217Z  WARN taurhaus_lib::coordination::activity_export: failed to load team roster for activity snapshot export team_name=_active-project-teams error=Not found: team config not found for '_active-project-teams' at /tmp/th-int-3s1yjoo9/claude/teams/_active-project-teams/config.json
+2026-09-10T04:22:06.778750Z  WARN taurhaus_lib::coordination::state: background task-deadline pass failed team=_active-project-teams error=Not found: team config not found for '_active-project-teams' at /tmp/th-int-3s1yjoo9/claude/teams/_active-project-teams/config.json
+2026-09-10T04:22:06.778775Z  WARN taurhaus_lib::coordination::state: background coordination self-heal failed team=_active-project-teams error=Not found: team config not found for '_active-project-teams' at /tmp/th-int-3s1yjoo9/claude/teams/_active-project-teams/config.json
+2026-09-10T04:22:06.779142Z  WARN taurhaus_lib::daemon::deadline_scheduler: daemon task-deadline pass completed with errors teams_scanned=2 team_errors=1
+2026-09-10T04:22:06.790332Z  INFO taurhaus_lib::coordination::orchestrator::teardown: team daemon ensured running team=integration operator=lead pid=1185
+2026-09-10T04:22:06.790457Z  WARN taurhaus_lib::daemon::background_scheduler: daemon coordination self-heal pass completed with errors teams_scanned=2 team_errors=1
+2026-09-10T04:26:06.787507Z  WARN taurhaus_lib::coordination::state: background task-deadline pass failed team=_active-project-teams error=Not found: team config not found for '_active-project-teams' at /tmp/th-int-3s1yjoo9/claude/teams/_active-project-teams/config.json
+2026-09-10T04:26:06.788221Z  WARN taurhaus_lib::daemon::deadline_scheduler: daemon task-deadline pass completed with errors teams_scanned=2 team_errors=1
+2026-09-10T04:26:06.893913Z  WARN taurhaus_lib::coordination::state: background coordination self-heal failed team=_active-project-teams error=Not found: team config not found for '_active-project-teams' at /tmp/th-int-3s1yjoo9/claude/teams/_active-project-teams/config.json
+2026-09-10T04:26:06.907484Z  INFO taurhaus_lib::coordination::orchestrator::teardown: team daemon ensured running team=integration operator=lead pid=1185
+2026-09-10T04:26:06.907614Z  WARN taurhaus_lib::daemon::background_scheduler: daemon coordination self-heal pass completed with errors teams_scanned=2 team_errors=1
+2026-09-10T04:26:12.278067Z  INFO taurhaus_lib::session_scanner::classification: session activity state changed pid=496 tool=codex from=Some(Idle) to=Active source="transcript"
+2026-09-10T04:26:23.278029Z  INFO taurhaus_lib::session_scanner::classification: session activity state changed pid=496 tool=codex from=Some(Idle) to=Active source="transcript"
+2026-09-10T04:26:24.275684Z  INFO taurhaus_lib::session_scanner::classification: session activity state changed pid=496 tool=codex from=Some(Active) to=Idle source="notify"
+2026-09-10T04:26:24.280763Z  WARN taurhaus_lib::coordination::activity_export: failed to load team roster for activity snapshot export team_name=_active-project-teams error=Not found: team config not found for '_active-project-teams' at /tmp/th-int-3s1yjoo9/claude/teams/_active-project-teams/config.json
+2026-09-10T04:26:29.276757Z  WARN taurhaus_lib::coordination::activity_export: failed to load team roster while enriching session metadata team_name=_active-project-teams error=Not found: team config not found for '_active-project-teams' at /tmp/th-int-3s1yjoo9/claude/teams/_active-project-teams/config.json
+2026-09-10T04:26:29.310230Z  INFO taurhaus_lib::daemon::server: client connected addr=127.0.0.1:47434
+Command 'update-motd' is available in the following places
+The command could not be located because '/sbin:/usr/sbin' is not included in the PATH environment variable.
+This is most likely caused by the lack of administrative privileges associated with your user account.
+bash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: no job control in this shell
+bash: no job control in this shell
+codex-cli 0.153.4
+update-motd: command not found

@@ -1,0 +1,6 @@
+{
+  "step": 1,
+  "outcome": "FAIL",
+  "reason": "Controller stopped on HOST_OPERATION_FAILED: host member busy during required transcript observation; initialize succeeded.",
+  "eligibility_verdict": "INCONCLUSIVE"
+}

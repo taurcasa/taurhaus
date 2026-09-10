@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt9_test.py", line 3, in <module>
+    from attempt9_support import enforce_budget, retained_log, validate_compaction
+ModuleNotFoundError: No module named 'attempt9_support'

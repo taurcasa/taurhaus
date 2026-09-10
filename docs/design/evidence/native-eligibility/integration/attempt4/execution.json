@@ -1,0 +1,13 @@
+{
+  "daemon_build_exit": 0,
+  "mesh_build_exit": 0,
+  "controller_exit": 1,
+  "taurhaus_tip": "ae9ae356cce35829e8449fca34246ca9a32399f1",
+  "taurhaus_merged_pr159": "6f61f611",
+  "daemon_protocol": 27,
+  "mesh_tip": "dfa22bc103fc84c32de77a7b6cbe054d58cba13b",
+  "descriptor_restore_exit": 0,
+  "run_command": "python3 docs/design/evidence/native-eligibility/integration/attempt4-controller.py attempt4/run",
+  "build_command": "TRIAL_EVIDENCE_LABEL=attempt4 python3 docs/design/evidence/native-eligibility/integration/attempt3-build.py",
+  "gate_command": "TRIAL_EVIDENCE_LABEL=attempt4 python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py"
+}

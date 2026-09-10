@@ -1,0 +1,43 @@
+EE...E......
+======================================================================
+ERROR: test_both_refusals_get_full_window_and_late_success (__main__.ControllerRaces.test_both_refusals_get_full_window_and_late_success) (message='Conflict: host operation deferred: lock busy', succeeds=False)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt12_test.py", line 135, in test_both_refusals_get_full_window_and_late_success
+    with self.assertRaisesRegex(AssertionError, 'deadline'): wait()
+                                                             ^^^^^^
+  File "attempt12-controller.py", line 241, in wait_host_poll
+    if poll_host(force=True): return
+       ^^^^^^^^^^^^^^^^^^^^^
+  File "attempt12-controller.py", line 222, in poll_host
+    raise RuntimeError(str(error))
+RuntimeError: {'code': 'HOST_OPERATION_FAILED', 'message': 'Conflict: host operation deferred: lock busy'}
+
+======================================================================
+ERROR: test_both_refusals_get_full_window_and_late_success (__main__.ControllerRaces.test_both_refusals_get_full_window_and_late_success) (message='Conflict: host operation deferred: lock busy', succeeds=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt12_test.py", line 132, in test_both_refusals_get_full_window_and_late_success
+    wait()
+  File "attempt12-controller.py", line 241, in wait_host_poll
+    if poll_host(force=True): return
+       ^^^^^^^^^^^^^^^^^^^^^
+  File "attempt12-controller.py", line 222, in poll_host
+    raise RuntimeError(str(error))
+RuntimeError: {'code': 'HOST_OPERATION_FAILED', 'message': 'Conflict: host operation deferred: lock busy'}
+
+======================================================================
+ERROR: test_flock_refusal_defers_and_preserves_cursor (__main__.ControllerRaces.test_flock_refusal_defers_and_preserves_cursor)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt12_test.py", line 109, in test_flock_refusal_defers_and_preserves_cursor
+    self.assertFalse(poll(force=True))
+                     ^^^^^^^^^^^^^^^^
+  File "attempt12-controller.py", line 222, in poll_host
+    raise RuntimeError(str(error))
+RuntimeError: {'code': 'HOST_OPERATION_FAILED', 'message': 'Conflict: host operation deferred: lock busy'}
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.098s
+
+FAILED (errors=3)

@@ -1,0 +1,18 @@
+{
+  "source": "attempt6/run/host-events.jsonl",
+  "original_events": 569,
+  "retained_events": 50,
+  "original_bytes": 165547,
+  "retained_bytes": 27152,
+  "model_turns_run": 0,
+  "additional_usd": 0,
+  "preserved_methods": [
+    "thread/tokenUsage/updated",
+    "turn/started",
+    "turn/completed",
+    "item/completed"
+  ],
+  "new_controller_live_run": false,
+  "red": "ModuleNotFoundError: continuation_retention",
+  "green": "3 offline tests passed"
+}

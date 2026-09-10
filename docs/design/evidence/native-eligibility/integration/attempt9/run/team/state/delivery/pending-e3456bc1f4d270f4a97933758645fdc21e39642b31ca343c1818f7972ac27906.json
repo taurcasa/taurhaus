@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "1eaa9392-0f66-40f1-af2e-4273c0736b4e",
+      "delivery_id": "76125453-d020-45c0-9a5c-d231ff03ce6e",
+      "recipient": "lead",
+      "source_generation": "62ba3364-4843-4b3e-a8e9-3872b9dcb7a0",
+      "source_position": 37,
+      "body": "[taurhaus] member_removed: 'seat' was removed from team 'integration' by 'unknown'. Cleanup: complete."
+    },
+    "since": "2026-09-10T09:11:24.196838055+00:00"
+  }
+]

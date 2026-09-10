@@ -1,0 +1,60 @@
+  /review - review any changes and find issues
+
+
+› [taurhaus] recovery_card
+  Identity: seat on integration; key={"card_schema":1,"recipient":
+  ["6be64971ac7ff295d2e30075431390218adb8bf9403646739d433a1fa759fd8c","b380a21d-bb16-45ee-8696-bf6cafa0efa0"],"context":[1,0],"roots":
+  {"root_authority_revision":"0","resolved_teams_root":"/tmp/th-int-9n5s3dud/claude/teams","resolved_mesh_config_root":"/tmp/th-int-
+  9n5s3dud/claude","harness_account_root":"/tmp/th-int-9n5s3dud/codex","launch_namespace":"native","resolved_project_root":"/tmp/th-int-
+  9n5s3dud/project"},"contract":
+  {"role_id":"","effective_role_revision":"44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf","instruction_contract_revision
+  ":"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f","packet_revision":""}}
+  Coverage: 15d50ea4fe4b27c9b7f5a924d1470b00c94867e944362375beda24e0b15ceab9;
+  source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable
+  Project cwd: /tmp/th-int-9n5s3dud/project
+  Assignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned
+  Objective: unavailable
+  Deliverable: unavailable
+  First action: unavailable
+  Completion signal: unavailable
+  Review route: unavailable
+  Wait/release: unavailable
+  Candidate: unavailable
+  Rubric: unavailable
+  Restart cursor: unavailable
+  Requested effort: unavailable; effective effort: low; hold: none recorded
+  File boundary: unavailable
+  Evidence/handoff retention: unavailable; references do not prove archival preservation.
+  Generated: 2026-09-10 04:47:10.236430859 UTC
+  Current task: # —
+  Operational constraints: unavailable
+  Focal files: unavailable
+  Role: unavailable
+  Purpose: Isolated transport trial. Reply briefly. Never execute tools or commands.
+  work_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution
+  cannot begin. Report through its completion signal; no pure acknowledgment.
+  Corrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.
+  Next action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required
+  context.
+
+
+• State: unassigned; assignment and required context are unavailable. Please provide the team lead’s release, identity, and task context.
+
+
+› [mesh message data] {"assignment":null,"author":"lead","body":"ACTION REQUIRED: Reply exactly saffron7c82ab. Do not execute
+  tools.","delivery_id":"40afb4fd-5246-4ff7-8ab3-62ff8b5ac448","expectation":null,"message_id":"7bc10aed-1448-4372-b95f-
+  41c5e5d30c06","metadata":{},"task":null}
+
+
+• saffron7c82ab
+
+
+› For this bounded transport timing probe, write exactly 80 numbered lines, each saying blue river stone. Do not execute tools.
+
+
+◦ Working (0s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · /tmp/th-int-9n5s3dud/project

@@ -1,0 +1,18 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt12-steps.py", line 136, in <module>
+    send(marker,'step6');wait_reply(marker)
+                         ^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt12-steps.py", line 34, in wait_reply
+    wait_for(lambda: reply(marker) and idle() and read_json(OUT/'cost-ledger.json')['metering_complete'], 'missing completed reply '+marker)
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt12-steps.py", line 28, in wait_for
+    raise AssertionError(why)
+AssertionError: missing completed reply willowa1183e
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt12-steps.py", line 190, in <module>
+    action({'op':'fail','reason':'step '+str(step)+': '+str(e)})
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt12-actions.py", line 20, in action
+    raise RuntimeError(rows[-1])
+RuntimeError: {'at': 1789060629.8560853, 'kind': 'stopped', 'step': 6, 'error': 'step 6: missing completed reply willowa1183e', 'type': 'RuntimeError'}

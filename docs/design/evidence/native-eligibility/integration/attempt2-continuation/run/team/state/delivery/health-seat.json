@@ -1,0 +1,1 @@
+{"member":"seat","root":"/tmp/th-int-4mx35359/claude","incarnation":"0fc9c5f74b07105638d05dfcb9ec16293e0befdece287dd84bf38599be26faf8","epoch":2,"heartbeat":"2026-09-09T23:23:46.231046239+00:00","pending_since":null,"error":null,"last_defer_reason":"IO error: delivery: pending: activity not freshly idle","failures":0,"completed":0}

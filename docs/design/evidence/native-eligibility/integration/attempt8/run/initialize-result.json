@@ -1,0 +1,162 @@
+{
+  "outcome": {
+    "report": {
+      "failed_step": null,
+      "message": "team initialized",
+      "retryable": false,
+      "steps": [
+        {
+          "message": "configuration validated",
+          "status": "succeeded",
+          "step": "validate_configuration"
+        },
+        {
+          "message": "team created",
+          "status": "succeeded",
+          "step": "create_team"
+        },
+        {
+          "message": "lead added",
+          "status": "succeeded",
+          "step": "add_lead"
+        },
+        {
+          "message": "panes opened and sessions started",
+          "status": "succeeded",
+          "step": "create_panes"
+        },
+        {
+          "message": "launched sessions verified",
+          "status": "succeeded",
+          "step": "launch_sessions"
+        },
+        {
+          "message": "mesh joined",
+          "status": "succeeded",
+          "step": "join_mesh"
+        },
+        {
+          "message": "mesh daemons started",
+          "status": "succeeded",
+          "step": "start_daemons"
+        },
+        {
+          "message": "team delivery enabled",
+          "status": "succeeded",
+          "step": "opt_in_delivery"
+        },
+        {
+          "message": "onboarding messages sent",
+          "status": "succeeded",
+          "step": "send_onboarding"
+        }
+      ],
+      "succeeded_steps": [
+        "validate_configuration",
+        "create_team",
+        "add_lead",
+        "create_panes",
+        "launch_sessions",
+        "join_mesh",
+        "start_daemons",
+        "opt_in_delivery",
+        "send_onboarding"
+      ],
+      "team_name": "integration"
+    },
+    "status": "completed"
+  },
+  "run_id": "init_f28cbda2d4fd451a8680eb2d6de975e1",
+  "steps": [
+    {
+      "message": null,
+      "status": "running",
+      "step": "validate_configuration"
+    },
+    {
+      "message": "configuration validated",
+      "status": "succeeded",
+      "step": "validate_configuration"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "create_team"
+    },
+    {
+      "message": "team created",
+      "status": "succeeded",
+      "step": "create_team"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "add_lead"
+    },
+    {
+      "message": "lead added",
+      "status": "succeeded",
+      "step": "add_lead"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "create_panes"
+    },
+    {
+      "message": "panes opened and sessions started",
+      "status": "succeeded",
+      "step": "create_panes"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "launch_sessions"
+    },
+    {
+      "message": "launched sessions verified",
+      "status": "succeeded",
+      "step": "launch_sessions"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "join_mesh"
+    },
+    {
+      "message": "mesh joined",
+      "status": "succeeded",
+      "step": "join_mesh"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "start_daemons"
+    },
+    {
+      "message": "mesh daemons started",
+      "status": "succeeded",
+      "step": "start_daemons"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "opt_in_delivery"
+    },
+    {
+      "message": "team delivery enabled",
+      "status": "succeeded",
+      "step": "opt_in_delivery"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "send_onboarding"
+    },
+    {
+      "message": "onboarding messages sent",
+      "status": "succeeded",
+      "step": "send_onboarding"
+    }
+  ]
+}

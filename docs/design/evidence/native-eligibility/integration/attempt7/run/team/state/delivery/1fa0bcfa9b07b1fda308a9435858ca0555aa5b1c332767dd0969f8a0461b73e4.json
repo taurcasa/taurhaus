@@ -1,0 +1,84 @@
+{
+  "obligation": {
+    "message_id": "63dc0eca-8cbd-457b-82c3-79d14807fd01",
+    "delivery_id": "4d26396f-66bb-4929-9f91-efd2533f3f08",
+    "recipient": "seat",
+    "source_generation": "508ec372-714d-485d-b5fa-4569063b3fe6",
+    "source_position": 33,
+    "body": "ACTION REQUIRED: Reply exactly willow4f83ad. Do not execute tools."
+  },
+  "attempts": [
+    {
+      "claim": {
+        "obligation": {
+          "message_id": "63dc0eca-8cbd-457b-82c3-79d14807fd01",
+          "delivery_id": "4d26396f-66bb-4929-9f91-efd2533f3f08",
+          "recipient": "seat",
+          "source_generation": "508ec372-714d-485d-b5fa-4569063b3fe6",
+          "source_position": 33,
+          "body": "ACTION REQUIRED: Reply exactly willow4f83ad. Do not execute tools."
+        },
+        "attachment": {
+          "app_server": {
+            "contract": 1,
+            "socketPath": "/tmp/th-int-9n5s3dud/tmp/th-host-0a27f76d06814a0fb870793873155696/rpc.sock",
+            "threadId": "01a089a4-2183-70a1-b1c6-566c00026910",
+            "memberId": "seat@integration",
+            "accountRoot": "/tmp/th-int-9n5s3dud/codex",
+            "processId": 124,
+            "processStart": "23616732",
+            "hostGeneration": "c90b2359-d422-4f89-8256-bbfeec1192e3",
+            "build": "0.153.4",
+            "host": "taurhaus-daemon-owned-thread/1",
+            "configuration": "strict-config/1",
+            "trust": "daemon-owned/1",
+            "transport": "unix-websocket"
+          },
+          "launch_root": {
+            "claudeDir": "/tmp/th-int-9n5s3dud/claude",
+            "rootAuthorityRevision": 0,
+            "teamsDir": "/tmp/th-int-9n5s3dud/claude/teams",
+            "teamIncarnationId": "6be64971ac7ff295d2e30075431390218adb8bf9403646739d433a1fa759fd8c"
+          },
+          "attachment_generation": 1,
+          "root": "/tmp/th-int-9n5s3dud/claude",
+          "team_incarnation": "6be64971ac7ff295d2e30075431390218adb8bf9403646739d433a1fa759fd8c",
+          "member": "seat",
+          "session": "01a089a4-2183-70a1-b1c6-566c00026910",
+          "context_generation": "0",
+          "generation": "1",
+          "socket": "",
+          "pane": "",
+          "pane_pid": 0,
+          "pane_start": "",
+          "tmux_session": "",
+          "harness": "codex"
+        },
+        "epoch": 2,
+        "adapter": "app_server",
+        "attempt_id": "2303d63a-6d12-43e4-b949-9e72b23c3c89"
+      },
+      "receipts": [
+        {
+          "stage": "accepted",
+          "origin": "legacy_mapping",
+          "evidence": "source obligation",
+          "observed_at": "2026-09-10T04:53:05.174466892+00:00"
+        },
+        {
+          "stage": "attempt_started",
+          "origin": "adapter",
+          "evidence": "durable claim",
+          "observed_at": "2026-09-10T04:53:05.174475633+00:00"
+        },
+        {
+          "stage": "native_enqueued",
+          "origin": "app_server",
+          "evidence": "{\"class\":\"rpc_accepted_not_comprehension\",\"expected_turn_id\":null,\"method\":\"turn/start\",\"reconciliation_required\":false,\"request_id\":\"dd6cd622-add0-420a-b435-1a380fe02993\",\"thread_id\":\"01a089a4-2183-70a1-b1c6-566c00026910\",\"turn_id\":\"01a089a9-946d-7ca3-8b43-17d518b961f1\"}",
+          "observed_at": "2026-09-10T04:53:07.311533458+00:00"
+        }
+      ],
+      "presentation_started": true
+    }
+  ]
+}

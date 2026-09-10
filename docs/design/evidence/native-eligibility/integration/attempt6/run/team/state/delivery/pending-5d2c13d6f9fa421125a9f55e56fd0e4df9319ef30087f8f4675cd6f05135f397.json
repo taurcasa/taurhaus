@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "15b2d258-0b8f-49ef-b114-6927e55eee5a",
+      "delivery_id": "46008da4-087a-4bf8-988a-40c12bc97983",
+      "recipient": "seat",
+      "source_generation": "2cb3f98d-ff68-422d-b69b-139234690928",
+      "source_position": 8,
+      "body": "ACTION REQUIRED: Reply exactly deferred4e17e869. Do not execute tools."
+    },
+    "since": "2026-09-10T04:26:22.303153444+00:00"
+  }
+]

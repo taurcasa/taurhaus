@@ -1,0 +1,4 @@
+bootstrapped new team config
+[mesh] lead joined team integration
+error: IO error: delivery: pending: runtime lead: IO error: No such file or directory (os error 2)
+mstie@whocares:/tmp/th-int-ssxg881f/project$

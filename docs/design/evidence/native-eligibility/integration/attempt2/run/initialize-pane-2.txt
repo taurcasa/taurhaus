@@ -1,0 +1,11 @@
+╭─────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)              │
+│                                         │
+│ model:     loading   /model to change   │
+│ directory: /tmp/th-int-ik66igdt/project │
+╰─────────────────────────────────────────╯
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts

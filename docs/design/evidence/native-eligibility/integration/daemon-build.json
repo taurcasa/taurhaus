@@ -1,0 +1,1 @@
+{"command": "cargo build --bin taurhaus-daemon", "cwd": "src-tauri", "target": "src-tauri/target", "exit": 101}

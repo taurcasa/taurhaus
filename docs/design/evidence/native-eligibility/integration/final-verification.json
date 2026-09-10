@@ -1,0 +1,67 @@
+{
+  "at": 1788983528.8817332,
+  "process_identity_checks": [
+    {
+      "pid": 2720601,
+      "start_ticks": "20353750",
+      "same_process_alive": false
+    },
+    {
+      "pid": 2720602,
+      "start_ticks": "20353750",
+      "same_process_alive": false
+    },
+    {
+      "pid": 2720603,
+      "start_ticks": "20353750",
+      "same_process_alive": false
+    },
+    {
+      "pid": 2725698,
+      "start_ticks": "20360457",
+      "same_process_alive": false
+    },
+    {
+      "pid": 2725699,
+      "start_ticks": "20360457",
+      "same_process_alive": false
+    },
+    {
+      "pid": 2725700,
+      "start_ticks": "20360458",
+      "same_process_alive": false
+    },
+    {
+      "pid": 2725701,
+      "start_ticks": "20360458",
+      "same_process_alive": false
+    },
+    {
+      "pid": 2725707,
+      "start_ticks": "20360469",
+      "same_process_alive": false
+    },
+    {
+      "pid": 2725730,
+      "start_ticks": "20360507",
+      "same_process_alive": false
+    }
+  ],
+  "port_connect_errno": {
+    "30356": 111,
+    "26417": 111
+  },
+  "surviving_trial_or_gate_pids": [],
+  "mesh_status_exit": 0,
+  "mesh_status": "",
+  "descriptor_reverted": true,
+  "evidence_hygiene_issues": [],
+  "python_syntax": "passed",
+  "model_turns": 0,
+  "usd": 0,
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  }
+}

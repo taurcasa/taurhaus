@@ -1,0 +1,6 @@
+[mesh] team-daemon is running for team integration (PID 1036)
+[mesh] delivery owner=team epoch=2 live=true
+[mesh] adapter lead: mode=tmux source=default diagnostic=none
+[mesh] adapter seat: mode=tmux source=default diagnostic=none
+[mesh] delivery lead: root=/tmp/th-int-1vc78b94/claude incarnation=b28aea0be5d1fa87b1cbafa5ab4b57c6b844c4f50d040d040fbb46544e26b420 epoch=2 heartbeat=2026-09-10T09:11:27.405880746+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=3 completed=2 error=none deferred=none stale=false
+[mesh] delivery seat: root=/tmp/th-int-1vc78b94/claude incarnation=b28aea0be5d1fa87b1cbafa5ab4b57c6b844c4f50d040d040fbb46544e26b420 epoch=2 heartbeat=2026-09-10T09:11:27.403221343+00:00 pending_since=none pending_age_secs=unknown stuck=false failures=2 completed=0 error=none deferred=IO error: delivery: pending: activity not freshly idle stale=false

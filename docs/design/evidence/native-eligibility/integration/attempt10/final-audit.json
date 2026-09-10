@@ -1,0 +1,56 @@
+{
+  "verdict": "FAIL step 1: opt_in_delivery lifetime-lock refusal",
+  "controller_exit": 1,
+  "steps": {
+    "1": "FAIL",
+    "2": "NOT RUN",
+    "3": "NOT RUN",
+    "4": "NOT RUN",
+    "5": "NOT RUN",
+    "6": "NOT RUN",
+    "7": "NOT RUN"
+  },
+  "taurhaus_build_revision": "5c4132a9",
+  "identity_merge_ancestor": "6398bfa3",
+  "mesh_revision": "fcb9647",
+  "private_port": 27742,
+  "marker": "cobaltd495131153",
+  "mesh_clean": true,
+  "descriptor_enabled": false,
+  "mesh_trial_binary_removed": true,
+  "cleanup": {
+    "survivors": [],
+    "port_closed": true,
+    "root": "/tmp/th-int-yzuf3uvh",
+    "auth_removed": true,
+    "root_removed": true,
+    "mesh_trial_artifact_removed": true
+  },
+  "verified_pid_start_identities": 12,
+  "daemon_jsonl_rows": 50,
+  "daemon_jsonl_sha256": "093938e910b24a7f4b9e25f571bc90490b18a54117d05b42dae252a905b8812e",
+  "daemon_jsonl_event_families": [
+    "activity.state.changed",
+    "coordination.step.completed",
+    "coordination.step.failed",
+    "coordination.step.started",
+    "deadline.pass.completed",
+    "effort.sweep.awaiting_settings",
+    "hosted.instruction_sources.loaded",
+    "inotify.telemetry",
+    "launch.command.rendered",
+    "onboarding.delivery.observed",
+    "self_heal.pass.completed",
+    "session_scanner.scan.completed"
+  ],
+  "trace_rows": 46,
+  "trace_unique_payloads": 44,
+  "model_turns": 1,
+  "metering_complete": false,
+  "total_usd": null,
+  "gates": {
+    "gate-check-quick": 0,
+    "gate-lint": 0,
+    "gate-test-contracts": 0
+  }
+}

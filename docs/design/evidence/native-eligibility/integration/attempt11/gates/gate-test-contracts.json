@@ -1,0 +1,14 @@
+{
+  "command": [
+    "just",
+    "test-contracts"
+  ],
+  "exit": 0,
+  "seconds": 18.519257864973042,
+  "cargo_preflight": [
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

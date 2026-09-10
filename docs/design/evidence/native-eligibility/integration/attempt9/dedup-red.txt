@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt9_test.py", line 3, in <module>
+    from attempt9_support import enforce_budget, retained_log, validate_compaction, pack_events, unpack_events
+ImportError: cannot import name 'pack_events' from 'attempt9_support' (/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt9_support.py)

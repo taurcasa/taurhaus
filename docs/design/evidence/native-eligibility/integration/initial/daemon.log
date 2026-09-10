@@ -1,0 +1,5 @@
+[2m2026-09-09T19:43:19.715178Z[0m [32m INFO[0m [2mtaurhaus_daemon[0m[2m:[0m Auth token written [3mpath[0m[2m=[0m/tmp/th-int-z4u32ik_/data/daemon.token
+[2m2026-09-09T19:43:19.715217Z[0m [32m INFO[0m [2mtaurhaus_daemon[0m[2m:[0m taurhaus-daemon starting [3mport[0m[2m=[0m30356 [3mbind[0m[2m=[0m127.0.0.1 [3midle_timeout[0m[2m=[0mSome(600) [3mdata_root[0m[2m=[0m/tmp/th-int-z4u32ik_/data [3mauth[0m[2m=[0mtrue
+[2m2026-09-09T19:43:19.729203Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m daemon listening [3mport[0m[2m=[0m30356
+[2m2026-09-09T19:43:20.030289Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:47306
+[2m2026-09-09T19:43:20.080660Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:47312

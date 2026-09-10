@@ -1,0 +1,7 @@
+{
+  "files_scanned": 74,
+  "jwt_like_values": 0,
+  "unapproved_home_paths": 0,
+  "account_rows": "removed by attempt5-audit.py",
+  "note": "Source regex literals are not filesystem paths."
+}

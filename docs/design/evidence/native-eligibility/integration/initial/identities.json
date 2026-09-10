@@ -1,0 +1,80 @@
+[
+  {
+    "pid": 2720601,
+    "start_ticks": "20353750",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-z4u32ik_",
+      "/tmp/th-int-z4u32ik_",
+      "--chdir",
+      "/tmp/th-int-z4u32ik_/project",
+      "/tmp/th-int-z4u32ik_/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "30356",
+      "--data-dir",
+      "/tmp/th-int-z4u32ik_/data",
+      ""
+    ]
+  },
+  {
+    "pid": 2720602,
+    "start_ticks": "20353750",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-z4u32ik_",
+      "/tmp/th-int-z4u32ik_",
+      "--chdir",
+      "/tmp/th-int-z4u32ik_/project",
+      "/tmp/th-int-z4u32ik_/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "30356",
+      "--data-dir",
+      "/tmp/th-int-z4u32ik_/data",
+      ""
+    ]
+  },
+  {
+    "pid": 2720603,
+    "start_ticks": "20353750",
+    "argv": [
+      "/tmp/th-int-z4u32ik_/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "30356",
+      "--data-dir",
+      "/tmp/th-int-z4u32ik_/data",
+      ""
+    ]
+  }
+]

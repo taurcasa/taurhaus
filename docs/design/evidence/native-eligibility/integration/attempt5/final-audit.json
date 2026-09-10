@@ -1,0 +1,135 @@
+{
+  "at": 1789010183.5290196,
+  "checks": [
+    "production initialization completed",
+    "terminal contract and instructed hosted seat",
+    "exact descriptor tuple",
+    "startup card and reply visible",
+    "real scheduler refusal",
+    "adapter selection absent and activity path unset",
+    "production native request survived in config",
+    "host idle with exactly startup turn",
+    "marker absent from model and pane",
+    "exactly one wake-eligible marker accepted",
+    "no marker receipt or explicit read",
+    "no later steps or work submitted",
+    "exact metered cost and one turn",
+    "budget",
+    "no host rejection (failure preceded host RPC)",
+    "descriptor restoration succeeded",
+    "Mesh worktree clean",
+    "compiled descriptor source remains disabled",
+    "all eleven recorded processes absent",
+    "private port closed",
+    "scratch home, credentials and sockets destroyed",
+    "three exact gates passed",
+    "gate scratch destroyed",
+    "sanitized initialize-result.json",
+    "sanitized events.jsonl",
+    "sanitized cost-ledger.json",
+    "sanitized identities.json",
+    "sanitized step2-hosted-transcript.json",
+    "sanitized usage-events.json",
+    "sanitized policy.json",
+    "sanitized hosted-transcript.json",
+    "sanitized step1-runtime.json",
+    "sanitized step2-diagnostic.json",
+    "sanitized cleanup.json",
+    "sanitized codex-notify.jsonl",
+    "sanitized taurhaus.log.jsonl",
+    "sanitized host-events.jsonl",
+    "sanitized team/config.json",
+    "sanitized team/state/workflow_events.jsonl",
+    "sanitized team/runtime/lead.json",
+    "sanitized team/runtime/seat.json",
+    "sanitized team/state/delivery/health-lead.json",
+    "sanitized team/state/delivery/health-seat.json",
+    "sanitized team/state/delivery/epoch.json",
+    "sanitized team/state/delivery/4e880355947df13347745b4b1f9e3f676c439ce3de856e3478658e6d4769c992.json",
+    "sanitized team/state/delivery/pending-e3456bc1f4d270f4a97933758645fdc21e39642b31ca343c1818f7972ac27906.json",
+    "sanitized team/state/telemetry/_unattributed.jsonl",
+    "sanitized team/state/messaging-v2/segments/000001.jsonl"
+  ],
+  "survivors": [],
+  "port": 25925,
+  "outcomes": {
+    "1": "PASS",
+    "2": "FAIL: pending: activity absent",
+    "3": "NOT RUN: stop on step 2",
+    "4": "NOT RUN: stop on step 2",
+    "5": "NOT RUN: stop on step 2",
+    "6": "NOT RUN: stop on step 2",
+    "7": "NOT RUN: stop on step 2"
+  },
+  "cost": {
+    "model": "gpt-5.6-luna",
+    "effort": "low",
+    "turn_ids": [
+      "01a08948-22b4-7a73-afe8-d42785e3b31a"
+    ],
+    "paid_inputs": 1,
+    "generations": [
+      {
+        "thread_id": "01a08948-2281-74c0-8bba-67bb9da54f94",
+        "turn_id": "01a08948-22b4-7a73-afe8-d42785e3b31a",
+        "input": 10787,
+        "cached_input": 6912,
+        "output": 32,
+        "reasoning_output": 0,
+        "api_equivalent_usd": 0.00095164,
+        "conservative_usd": 0.0129828
+      }
+    ],
+    "api_equivalent_usd": 0.00095164,
+    "conservative_usd": 0.0129828,
+    "metering_complete": true,
+    "unmetered_turn_ids": [],
+    "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice."
+  },
+  "gates": [
+    {
+      "command": [
+        "just",
+        "check-quick"
+      ],
+      "exit": 0,
+      "seconds": 17.849732711008983,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ]
+    },
+    {
+      "command": [
+        "just",
+        "lint"
+      ],
+      "exit": 0,
+      "seconds": 5.779778484982671,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ]
+    },
+    {
+      "command": [
+        "just",
+        "test-contracts"
+      ],
+      "exit": 0,
+      "seconds": 4.926719110022532,
+      "cargo_preflight": [
+        {
+          "exit": 1,
+          "output": ""
+        }
+      ]
+    }
+  ],
+  "marker": "cobalt90cc90082c",
+  "message_id": "6446e66f-2b6b-44a3-9614-bae46484550d"
+}

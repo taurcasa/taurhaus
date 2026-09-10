@@ -1,0 +1,40 @@
+{
+  "outcome": {
+    "report": {
+      "member_name": "seat",
+      "message": "member removed",
+      "removed": true,
+      "steps": [
+        {
+          "message": "owned host stopped; named thread retained",
+          "status": "succeeded",
+          "step": "stop_host"
+        },
+        {
+          "message": "attached TUI already closed",
+          "status": "succeeded",
+          "step": "kill_pane"
+        },
+        {
+          "message": "team config updated",
+          "status": "succeeded",
+          "step": "update_config"
+        },
+        {
+          "message": "runtime record deleted",
+          "status": "succeeded",
+          "step": "delete_runtime"
+        },
+        {
+          "message": "sent removal notice to team lead 'lead'",
+          "status": "succeeded",
+          "step": "notify_lead"
+        }
+      ],
+      "team_name": "integration",
+      "warnings": []
+    },
+    "status": "completed"
+  },
+  "run_id": "member-remove_bb2377d23f3a4cf7a63739ae34c9ccfa"
+}

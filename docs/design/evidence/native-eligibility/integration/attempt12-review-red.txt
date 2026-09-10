@@ -1,0 +1,40 @@
+...F........F.FF
+======================================================================
+FAIL: test_disabled_poll_skips_wait_and_final_drain_without_transcript (__main__.ControllerRaces.test_disabled_poll_skips_wait_and_final_drain_without_transcript)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt12_test.py", line 149, in test_disabled_poll_skips_wait_and_final_drain_without_transcript
+    self.assertEqual(poll(force=True), 'disabled')
+AssertionError: None != 'disabled'
+
+======================================================================
+FAIL: test_reply_completion_does_not_depend_on_usage_id_join (__main__.TrialGuards.test_reply_completion_does_not_depend_on_usage_id_join) (replied=True, idle=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt12_test.py", line 33, in test_reply_completion_does_not_depend_on_usage_id_join
+    self.assertEqual(predicate(), replied and idle)
+AssertionError: False != True
+
+======================================================================
+FAIL: test_startup_completion_does_not_depend_on_usage_id_join (__main__.TrialGuards.test_startup_completion_does_not_depend_on_usage_id_join) (idle=True, card=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt12_test.py", line 52, in test_startup_completion_does_not_depend_on_usage_id_join
+    self.assertEqual(wait.call_args.args[0](), idle and card)
+AssertionError: False != True
+
+======================================================================
+FAIL: test_startup_completion_does_not_depend_on_usage_id_join (__main__.TrialGuards.test_startup_completion_does_not_depend_on_usage_id_join) (idle=True, card=False)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt12_test.py", line 54, in test_startup_completion_does_not_depend_on_usage_id_join
+    read.assert_not_called()
+  File "/usr/lib/python3.12/unittest/mock.py", line 905, in assert_not_called
+    raise AssertionError(msg)
+AssertionError: Expected 'mock' to not have been called. Called 1 times.
+Calls: [call(PosixPath('/synthetic/cost-ledger.json'))].
+
+----------------------------------------------------------------------
+Ran 15 tests in 0.110s
+
+FAILED (failures=4)

@@ -1,0 +1,16 @@
+.F..
+======================================================================
+FAIL: test_preserve_scratch_authority_and_remove_account_metadata (__main__.EvidenceChecks.test_preserve_scratch_authority_and_remove_account_metadata)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt5_test.py", line 13, in test_preserve_scratch_authority_and_remove_account_metadata
+    self.assertEqual(result['path'], '/tmp/trial/home/.local/bin/mesh')
+AssertionError: '/tmp/trial<operator-path-redacted>' != '/tmp/trial/home/.local/bin/mesh'
+- /tmp/trial<operator-path-redacted>
++ /tmp/trial/home/.local/bin/mesh
+
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+FAILED (failures=1)

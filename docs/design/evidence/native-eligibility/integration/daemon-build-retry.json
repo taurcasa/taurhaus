@@ -1,0 +1,1 @@
+{"exit": 0, "command": "cargo build --bin taurhaus-daemon", "prerequisite": "just ensure-tauri-resources (exit 0)"}

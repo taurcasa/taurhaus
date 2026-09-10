@@ -1,0 +1,51 @@
+{
+  "outcome": {
+    "report": {
+      "failed_step": null,
+      "member_name": "seat",
+      "message": "member resumed",
+      "pane_id": "%14",
+      "resumed": true,
+      "retryable": false,
+      "reused_pane": false,
+      "steps": [
+        {
+          "message": "request validated",
+          "status": "succeeded",
+          "step": "validate"
+        },
+        {
+          "message": "member and runtime state loaded",
+          "status": "succeeded",
+          "step": "load_member"
+        },
+        {
+          "message": "owned thread resumed",
+          "status": "succeeded",
+          "step": "launch_host"
+        }
+      ],
+      "succeeded_steps": [
+        "validate",
+        "load_member",
+        "launch_host"
+      ],
+      "team_name": "integration",
+      "warnings": []
+    },
+    "status": "completed"
+  },
+  "run_id": "resume_af4dda40f61047528b73b50a7faa8999",
+  "steps": [
+    {
+      "message": null,
+      "status": "running",
+      "step": "prepare_member"
+    },
+    {
+      "message": "member request and runtime state prepared",
+      "status": "succeeded",
+      "step": "prepare_member"
+    }
+  ]
+}

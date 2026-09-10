@@ -1,0 +1,99 @@
+{
+  "verdict": "INCONCLUSIVE: step 1 transcript observation stopped on host member busy",
+  "controller_exit": 1,
+  "steps": {
+    "1": {
+      "step": 1,
+      "outcome": "FAIL",
+      "reason": "Controller stopped on HOST_OPERATION_FAILED: host member busy during required transcript observation; initialize succeeded.",
+      "eligibility_verdict": "INCONCLUSIVE"
+    },
+    "2": {
+      "step": 2,
+      "outcome": "NOT RUN",
+      "reason": "Stopped at step 1; no paid retry."
+    },
+    "3": {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "reason": "Stopped at step 1; no paid retry."
+    },
+    "4": {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "reason": "Stopped at step 1; no paid retry."
+    },
+    "5": {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "reason": "Stopped at step 1; no paid retry."
+    },
+    "6": {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "reason": "Stopped at step 1; no paid retry."
+    },
+    "7": {
+      "step": 7,
+      "outcome": "NOT RUN",
+      "reason": "Stopped at step 1; no paid retry."
+    }
+  },
+  "initialize_run_id": "init_9ba26e2893bb46af83f079b703416cc7",
+  "private_port": 26452,
+  "thread_id": "01a08c27-ffe9-7951-bc69-8b445d0e6163",
+  "mesh_revision": "ed59187",
+  "mesh_clean": true,
+  "descriptor_enabled": false,
+  "descriptor_flip_commit": null,
+  "cleanup": {
+    "survivors": [],
+    "port_closed": true,
+    "root": "/tmp/th-int-br35nrtx",
+    "descriptor_restore_exit": 0,
+    "root_removed": true,
+    "mesh_trial_artifact_removed": true
+  },
+  "verified_pid_start_identities": 12,
+  "daemon_jsonl_rows": 81,
+  "daemon_jsonl_sha256": "00a94ee5e093cd19fb35114504e685147a80048e2ef2019a6363f0876459acd2",
+  "daemon_jsonl_event_families": [
+    "activity.state.changed",
+    "coordination.runtime.record_skipped",
+    "coordination.step.completed",
+    "coordination.step.started",
+    "deadline.pass.completed",
+    "effort.sweep.awaiting_settings",
+    "hosted.instruction_sources.loaded",
+    "inotify.telemetry",
+    "launch.command.rendered",
+    "onboarding.delivery.observed",
+    "self_heal.pass.completed",
+    "self_heal.team.skipped_initializing",
+    "session_scanner.scan.completed"
+  ],
+  "spend": {
+    "model": "gpt-5.6-luna",
+    "effort": "low",
+    "turn_ids": [
+      "01a08c28-0564-7e92-88db-c07dc8336447"
+    ],
+    "paid_inputs": 1,
+    "generations": [],
+    "api_equivalent_usd": null,
+    "conservative_usd": null,
+    "metering_complete": false,
+    "unmetered_turn_ids": [
+      "01a08c28-0564-7e92-88db-c07dc8336447"
+    ],
+    "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice.",
+    "actual_billed_usd": null,
+    "measured_api_equivalent_subtotal_usd": 0,
+    "limitation": "Started turn has no retained tokenUsage event; total spend unknown, not zero."
+  },
+  "gate_exits": {
+    "gate-check-quick": 0,
+    "gate-lint": 0,
+    "gate-test-contracts": 0
+  }
+}

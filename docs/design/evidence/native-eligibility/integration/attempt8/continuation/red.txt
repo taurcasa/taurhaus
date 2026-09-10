@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt8_continuation_test.py", line 3, in <module>
+    from attempt8_continuation_support import wait_receipt, enforce_budget
+ModuleNotFoundError: No module named 'attempt8_continuation_support'

@@ -1,0 +1,3147 @@
+cd src-tauri && cargo fmt
+cd src-tauri && cargo check --tests
+   Compiling unicode-ident v1.0.24
+   Compiling hashbrown v0.16.1
+   Compiling equivalent v1.0.2
+   Compiling heck v0.5.0
+   Compiling cfg-if v1.0.4
+   Compiling siphasher v1.0.2
+    Checking pin-project-lite v0.2.16
+    Checking memchr v2.8.0
+   Compiling stable_deref_trait v1.2.1
+    Checking futures-core v0.3.32
+    Checking once_cell v1.21.3
+    Checking smallvec v1.15.1
+    Checking futures-io v0.3.32
+   Compiling num-conv v0.2.0
+    Checking libc v0.2.182
+    Checking serde_core v1.0.228
+   Compiling zerocopy v0.8.39
+   Compiling winnow v0.7.14
+   Compiling time-core v0.1.8
+   Compiling itoa v1.0.17
+    Checking slab v0.4.12
+   Compiling scopeguard v1.2.0
+   Compiling getrandom v0.2.17
+   Compiling parking_lot_core v0.9.12
+   Compiling litemap v0.8.1
+    Checking futures-sink v0.3.32
+   Compiling getrandom v0.1.16
+   Compiling writeable v0.6.2
+    Checking futures-task v0.3.32
+   Compiling lock_api v0.4.14
+   Compiling icu_properties_data v2.1.2
+   Compiling proc-macro2 v1.0.106
+   Compiling icu_normalizer_data v2.1.1
+    Checking log v0.4.29
+   Compiling byteorder v1.5.0
+    Checking crossbeam-utils v0.8.21
+   Compiling zmij v1.0.21
+   Compiling phf_shared v0.13.1
+   Compiling phf_shared v0.11.3
+    Checking futures-channel v0.3.32
+   Compiling getrandom v0.4.1
+   Compiling serde_spanned v1.0.4
+   Compiling toml_writer v1.0.6+spec-1.1.0
+   Compiling utf8_iter v1.0.4
+   Compiling bitflags v1.3.2
+   Compiling form_urlencoded v1.2.2
+   Compiling unic-char-range v0.9.0
+   Compiling alloc-no-stdlib v2.0.4
+   Compiling regex-syntax v0.8.9
+   Compiling unic-common v0.9.0
+   Compiling rand_core v0.6.4
+   Compiling rand_core v0.5.1
+   Compiling powerfmt v0.2.0
+   Compiling phf v0.11.3
+   Compiling uuid v1.21.0
+   Compiling unic-char-property v0.9.0
+   Compiling alloc-stdlib v0.2.2
+   Compiling parking_lot v0.12.5
+   Compiling unic-ucd-version v0.9.0
+   Compiling servo_arc v0.2.0
+   Compiling phf_generator v0.13.1
+   Compiling fxhash v0.2.1
+   Compiling servo_arc v0.4.3
+   Compiling typeid v1.0.3
+   Compiling fnv v1.0.7
+   Compiling dunce v1.0.5
+   Compiling bytes v1.11.1
+   Compiling base64 v0.22.1
+   Compiling unic-ucd-ident v0.9.0
+   Compiling same-file v1.0.6
+   Compiling brotli-decompressor v5.0.0
+   Compiling ctor v0.8.0
+   Compiling anyhow v1.0.101
+   Compiling deranged v0.5.6
+   Compiling erased-serde v0.4.9
+   Compiling phf_codegen v0.13.1
+   Compiling rand_pcg v0.2.1
+   Compiling glob v0.3.3
+   Compiling serde_json v1.0.149
+   Compiling aho-corasick v1.1.4
+   Compiling quick-xml v0.38.4
+   Compiling walkdir v2.5.0
+   Compiling time-macros v0.2.27
+   Compiling string_cache v0.9.0
+   Compiling selectors v0.36.1
+    Checking percent-encoding v2.3.2
+   Compiling indexmap v2.13.0
+   Compiling cfb v0.7.3
+   Compiling option-ext v0.2.0
+   Compiling quote v1.0.44
+   Compiling dirs-sys v0.5.0
+    Checking memoffset v0.9.1
+    Checking parking v2.2.1
+    Checking field-offset v0.3.6
+    Checking concurrent-queue v2.5.0
+   Compiling typenum v1.19.0
+   Compiling serde-untagged v0.1.9
+    Checking fastrand v2.3.0
+   Compiling syn v2.0.116
+   Compiling syn v1.0.109
+   Compiling string_cache_codegen v0.6.1
+    Checking http v1.4.0
+   Compiling dirs v6.0.0
+   Compiling proc-macro-error-attr v1.0.4
+   Compiling crc32fast v1.5.0
+    Checking raw-window-handle v0.6.2
+    Checking crossbeam-channel v0.5.15
+   Compiling brotli v8.0.2
+   Compiling flate2 v1.1.9
+   Compiling infer v0.19.0
+    Checking linux-raw-sys v0.11.0
+   Compiling web_atoms v0.2.6
+    Checking libdbus-sys v0.2.7
+    Checking event-listener v5.4.1
+    Checking tracing-core v0.1.36
+   Compiling cpufeatures v0.2.17
+    Checking semver v1.0.27
+   Compiling generic-array v0.14.7
+   Compiling png v0.17.16
+    Checking atomic-waker v1.1.2
+    Checking futures-lite v2.6.1
+    Checking unicode-segmentation v1.12.0
+    Checking libm v0.2.16
+    Checking event-listener-strategy v0.5.4
+    Checking mio v1.1.1
+    Checking socket2 v0.6.2
+    Checking x11 v2.21.0
+    Checking x11-dl v2.21.0
+   Compiling toml_parser v1.0.9+spec-1.1.0
+   Compiling time v0.3.47
+    Checking openssl-sys v0.9.117
+    Checking dbus v0.9.12
+    Checking http-body v1.0.1
+    Checking foreign-types-shared v0.1.1
+    Checking getrandom v0.3.4
+    Checking regex-automata v0.4.14
+    Checking tokio v1.49.0
+    Checking foreign-types v0.3.2
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+    Checking errno v0.3.14
+    Checking crunchy v0.2.4
+    Checking zstd-sys v2.0.16+zstd.1.5.7
+    Checking crossbeam-epoch v0.9.18
+    Checking ownedbytes v0.7.0
+   Compiling digest v0.10.7
+    Checking tower-service v0.3.3
+   Compiling endi v1.1.1
+    Checking try-lock v0.2.5
+    Checking async-task v4.7.1
+    Checking mime v0.3.17
+    Checking zstd-safe v7.2.4
+    Checking want v0.3.1
+   Compiling toml v0.9.12+spec-1.1.0
+    Checking bitflags v2.11.0
+    Checking toml_datetime v0.7.5+spec-1.1.0
+   Compiling toml_edit v0.23.10+spec-1.0.0
+   Compiling ico v0.5.0
+   Compiling sha2 v0.10.9
+    Checking crossbeam-deque v0.8.6
+    Checking signal-hook-registry v1.4.8
+    Checking bitpacking v0.9.3
+    Checking httparse v1.10.1
+    Checking async-channel v2.5.0
+    Checking instant v0.1.13
+    Checking openssl-probe v0.2.1
+    Checking either v1.15.0
+    Checking num-traits v0.2.19
+    Checking pin-utils v0.1.0
+    Checking utf8-ranges v1.0.5
+    Checking tantivy-bitpacker v0.6.0
+    Checking zstd v0.13.3
+    Checking async-lock v3.4.2
+    Checking tantivy-fst v0.5.0
+    Checking libz-sys v1.1.23
+    Checking piper v0.2.4
+    Checking rustix v1.1.3
+    Checking is-docker v0.2.0
+    Checking sync_wrapper v1.0.2
+    Checking foldhash v0.1.5
+    Checking allocator-api2 v0.2.21
+    Checking tower-layer v0.3.3
+    Checking linux-raw-sys v0.4.15
+    Checking murmurhash32 v0.3.1
+    Checking minimal-lexical v0.2.1
+    Checking ipnet v2.11.0
+    Checking blocking v1.6.2
+    Checking is-wsl v0.4.0
+   Compiling proc-macro-crate v3.4.0
+    Checking libssh2-sys v0.3.1
+    Checking itertools v0.12.1
+    Checking rayon-core v1.13.0
+    Checking nom v7.1.3
+    Checking async-executor v1.14.0
+   Compiling embed-resource v3.0.6
+    Checking http-body-util v0.1.3
+    Checking async-broadcast v0.7.2
+    Checking hashbrown v0.15.5
+    Checking inotify-sys v0.1.5
+    Checking bstr v1.12.1
+    Checking rustix v0.38.44
+    Checking ordered-stream v0.2.0
+    Checking fastdivide v0.4.2
+   Compiling tauri-winres v0.3.5
+    Checking zeroize v1.9.0
+    Checking iri-string v0.7.10
+    Checking pathdiff v0.2.3
+    Checking hex v0.4.3
+    Checking lazy_static v1.5.0
+    Checking downcast-rs v1.2.1
+    Checking open v5.3.3
+    Checking sharded-slab v0.1.7
+    Checking rayon v1.11.0
+    Checking rustls-pki-types v1.15.1
+    Checking inotify v0.10.2
+    Checking libgit2-sys v0.18.3+1.9.2
+    Checking arc-swap v1.8.2
+    Checking nix v0.30.1
+    Checking libsqlite3-sys v0.30.1
+    Checking measure_time v0.8.3
+    Checking notify-types v1.0.1
+    Checking tracing-log v0.2.0
+    Checking filetime v0.2.27
+    Checking memmap2 v0.9.10
+    Checking num_cpus v1.17.0
+    Checking thread_local v1.1.9
+    Checking fallible-iterator v0.3.0
+    Checking lru v0.12.5
+    Checking unsafe-libyaml-norway v0.2.15
+    Checking oneshot v0.1.13
+    Checking nu-ansi-term v0.50.3
+    Checking levenshtein_automata v0.2.1
+    Checking lz4_flex v0.11.6
+    Checking ryu v1.0.23
+    Checking rustc-hash v1.1.0
+    Checking htmlescape v0.3.1
+    Checking openssl-probe v0.1.6
+    Checking fallible-streaming-iterator v0.1.9
+    Checking census v0.4.2
+    Checking iana-time-zone v0.1.65
+    Checking notify v7.0.0
+    Checking fs2 v0.4.3
+    Checking socket2 v0.5.10
+    Checking diff v0.1.13
+    Checking yansi v1.0.1
+    Checking ctrlc v3.5.1
+   Compiling ppv-lite86 v0.2.21
+    Checking pretty_assertions v1.4.1
+   Compiling rand_chacha v0.3.1
+   Compiling rand_chacha v0.2.2
+   Compiling proc-macro-error v1.0.4
+   Compiling rand v0.7.3
+    Checking tantivy-query-grammar v0.22.0
+    Checking regex v1.12.3
+    Checking matchers v0.2.0
+    Checking globset v0.4.18
+   Compiling rand v0.8.7
+    Checking ahash v0.8.12
+    Checking ignore v0.4.25
+    Checking hashbrown v0.14.5
+   Compiling cssparser v0.29.6
+    Checking fs4 v0.8.4
+    Checking cookie v0.18.1
+   Compiling synstructure v0.13.2
+   Compiling darling_core v0.23.0
+   Compiling serde_derive_internals v0.29.1
+   Compiling phf_generator v0.8.0
+   Compiling phf_generator v0.11.3
+   Compiling phf_generator v0.10.0
+   Compiling phf_codegen v0.8.0
+    Checking hashlink v0.9.1
+   Compiling phf_macros v0.10.0
+   Compiling selectors v0.24.0
+   Compiling string_cache_codegen v0.5.4
+   Compiling phf_codegen v0.11.3
+    Checking rusqlite v0.32.1
+   Compiling serde_derive v1.0.228
+   Compiling zerofrom-derive v0.1.6
+   Compiling yoke-derive v0.8.1
+   Compiling zerovec-derive v0.11.2
+   Compiling displaydoc v0.2.5
+   Compiling thiserror-impl v1.0.69
+   Compiling phf_macros v0.13.1
+   Compiling thiserror-impl v2.0.18
+   Compiling futures-macro v0.3.32
+   Compiling cssparser-macros v0.6.1
+   Compiling derive_more-impl v2.1.1
+   Compiling derive_more v0.99.20
+   Compiling match_token v0.1.0
+   Compiling enumflags2_derive v0.7.12
+   Compiling dlopen2_derive v0.4.3
+   Compiling tracing-attributes v0.1.31
+   Compiling async-trait v0.1.89
+   Compiling serde_repr v0.1.20
+   Compiling markup5ever v0.14.1
+   Compiling serialize-to-javascript-impl v0.1.2
+   Compiling openssl-macros v0.1.1
+    Checking rand_distr v0.4.3
+   Compiling schemars_derive v0.8.22
+    Checking openssl v0.10.81
+   Compiling phf v0.10.1
+    Checking dlopen2 v0.8.2
+   Compiling phf v0.13.1
+    Checking futures-util v0.3.32
+    Checking hyper v1.8.1
+   Compiling cssparser v0.36.0
+   Compiling zerofrom v0.1.6
+   Compiling derive_more v2.1.1
+    Checking polling v3.11.0
+    Checking tempfile v3.25.0
+   Compiling yoke v0.8.1
+    Checking thiserror v1.0.69
+   Compiling thiserror v2.0.18
+    Checking tracing v0.1.44
+    Checking async-io v2.6.0
+    Checking zerovec v0.11.5
+    Checking zerotrie v0.2.3
+    Checking tracing-subscriber v0.3.22
+    Checking async-signal v0.2.13
+   Compiling markup5ever v0.38.0
+    Checking async-process v2.5.0
+   Compiling html5ever v0.38.0
+   Compiling tinystr v0.8.2
+   Compiling potential_utf v0.1.4
+   Compiling darling_macro v0.23.0
+   Compiling icu_collections v2.1.1
+   Compiling icu_locale_core v2.1.1
+   Compiling darling v0.23.0
+   Compiling serde_with_macros v3.22.0
+   Compiling dom_query v0.27.0
+    Checking icu_provider v2.1.1
+   Compiling serde_with v3.22.0
+   Compiling serde v1.0.228
+    Checking icu_properties v2.1.2
+    Checking icu_normalizer v2.1.1
+    Checking dpi v0.1.2
+    Checking jsonptr v0.6.3
+    Checking plist v1.8.0
+    Checking keyboard-types v0.7.0
+    Checking serialize-to-javascript v0.1.2
+    Checking enumflags2 v0.7.12
+    Checking zvariant_utils v3.3.0
+    Checking tantivy-common v0.7.0
+    Checking rust-stemmers v1.2.0
+    Checking tantivy-tokenizer-api v0.3.0
+    Checking sketches-ddsketch v0.2.2
+    Checking serde_norway v0.9.42
+    Checking chrono v0.4.43
+   Compiling toml_datetime v0.6.3
+   Compiling serde_spanned v0.6.9
+   Compiling string_cache v0.8.9
+   Compiling indexmap v1.9.3
+   Compiling cargo-platform v0.1.9
+   Compiling cargo_toml v0.22.3
+    Checking native-tls v0.2.18
+   Compiling toml_edit v0.20.2
+   Compiling toml_edit v0.19.15
+   Compiling cargo_metadata v0.19.2
+    Checking json-patch v3.0.1
+    Checking tokio-native-tls v0.3.1
+    Checking tantivy-stacker v0.3.0
+    Checking tantivy-sstable v0.3.0
+    Checking futures-executor v0.3.32
+    Checking hyper-util v0.1.20
+    Checking tower v0.5.3
+   Compiling zvariant_derive v5.9.2
+    Checking idna_adapter v1.2.1
+    Checking idna v1.1.0
+    Checking tantivy-columnar v0.3.0
+    Checking url v2.5.8
+    Checking tower-http v0.6.8
+   Compiling zvariant v5.9.2
+   Compiling html5ever v0.29.1
+    Checking urlpattern v0.3.0
+    Checking git2 v0.20.4
+    Checking hyper-tls v0.6.0
+    Checking reqwest v0.13.2
+    Checking tantivy v0.22.1
+   Compiling schemars v0.8.22
+    Checking tauri-utils v2.9.3
+   Compiling kuchikiki v0.8.8-speedreader
+   Compiling proc-macro-crate v1.3.1
+   Compiling toml v0.8.2
+   Compiling proc-macro-crate v2.0.2
+   Compiling gtk3-macros v0.18.2
+   Compiling system-deps v6.2.2
+   Compiling glib-macros v0.18.5
+    Checking zbus_names v4.3.1
+   Compiling glib-sys v0.18.1
+   Compiling gobject-sys v0.18.0
+   Compiling gio-sys v0.18.1
+   Compiling gdk-sys v0.18.2
+   Compiling cairo-sys-rs v0.18.2
+   Compiling gdk-pixbuf-sys v0.18.0
+   Compiling atk-sys v0.18.2
+   Compiling pango-sys v0.18.0
+   Compiling gtk-sys v0.18.2
+   Compiling javascriptcore-rs-sys v1.1.1
+   Compiling soup3-sys v0.5.0
+   Compiling webkit2gtk-sys v2.0.2
+   Compiling gdkx11-sys v0.18.2
+   Compiling gtk v0.18.2
+   Compiling rfd v0.16.0
+   Compiling wry v0.55.1
+   Compiling zbus_macros v5.13.2
+    Checking gdkwayland-sys v0.18.2
+    Checking glib v0.18.5
+    Checking zbus v5.13.2
+    Checking gio v0.18.4
+    Checking cairo-rs v0.18.5
+    Checking atk v0.18.2
+    Checking javascriptcore-rs v1.1.2
+   Compiling tauri-plugin v2.5.3
+   Compiling tauri-build v2.6.3
+   Compiling tauri-codegen v2.6.3
+   Compiling tauri v2.11.1
+   Compiling tauri-plugin-fs v2.4.5
+   Compiling tauri-macros v2.6.3
+   Compiling tauri-plugin-opener v2.5.3
+   Compiling tauri-plugin-dialog v2.6.0
+   Compiling tauri-plugin-window-state v2.4.1
+   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-trial/src-tauri)
+    Checking gdk-pixbuf v0.18.5
+    Checking pango v0.18.3
+    Checking soup3 v0.5.0
+    Checking gdk v0.18.2
+    Checking gdkx11 v0.18.2
+    Checking webkit2gtk v2.0.2
+    Checking tao v0.35.3
+    Checking muda v0.19.3
+    Checking tauri-runtime v2.11.3
+    Checking tauri-runtime-wry v2.11.4
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 49.90s
+bun run typecheck
+$ svelte-check
+Loading svelte-check in workspace: /home/mstie/projects/taurhaus-trial
+Getting Svelte diagnostics...
+
+svelte-check found 0 errors and 0 warnings
+bun run test
+$ vitest run
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90m/home/mstie/projects/taurhaus-trial[39m
+
+ [32m✓[39m src/lib/components/meshLayout.test.js [2m([22m[2m30 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m e2e/helpers/meshTaskContract.test.js [2m([22m[2m42 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/lib/accountPresentation.test.js [2m([22m[2m32 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+[90mstderr[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mwithFallback returns fallback when a section request times out
+[22m[39m[project-load] section fallback applied {
+  section: [32m'Session history'[39m,
+  timeout_ms: [33m50[39m,
+  error_message: [32m'Session history request timed out after 50ms'[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m
+}
+[project-selection] section completed with fallback {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [1mnull[22m,
+  section: [32m'Session history'[39m,
+  section_key: [32m'Session history'[39m,
+  provider_route: [32m'provider_route_unknown'[39m,
+  duration_ms: [33m50[39m,
+  timeout_ms: [33m50[39m,
+  ok: [33mfalse[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  error_message: [32m'Session history request timed out after 50ms'[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstderr[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mmarks transient daemon reconnect failures as retryable
+[22m[39m[project-load] section fallback applied {
+  section: [32m'Recent commits'[39m,
+  timeout_ms: [33m5000[39m,
+  error_message: [32m'Daemon transport error: recent commits is unavailable for WSL UNC repositories without a connected daemon'[39m,
+  retryable_on_daemon_reconnect: [33mtrue[39m
+}
+[project-selection] section completed with fallback {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [1mnull[22m,
+  section: [32m'Recent commits'[39m,
+  section_key: [32m'Recent commits'[39m,
+  provider_route: [32m'provider_route_unknown'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mfalse[39m,
+  retryable_on_daemon_reconnect: [33mtrue[39m,
+  error_message: [32m'Daemon transport error: recent commits is unavailable for WSL UNC repositories without a connected daemon'[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstderr[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mdoes not mark unrelated project-load failures as retryable
+[22m[39m[project-load] section fallback applied {
+  section: [32m'README'[39m,
+  timeout_ms: [33m5000[39m,
+  error_message: [32m'README parsing failed'[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m
+}
+[project-selection] section completed with fallback {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [1mnull[22m,
+  section: [32m'README'[39m,
+  section_key: [32m'README'[39m,
+  provider_route: [32m'provider_route_unknown'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mfalse[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  error_message: [32m'README parsing failed'[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstderr[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mcreateProjectSelectionRequests resolves all sections with fallbacks when IPC hangs
+[22m[39m[project-load] section fallback applied {
+  section: [32m'Project details'[39m,
+  timeout_ms: [33m5000[39m,
+  error_message: [32m'Project details request timed out after 5000ms'[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m
+}
+[project-selection] section completed with fallback {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Project details'[39m,
+  section_key: [32m'detail'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m5000[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mfalse[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  error_message: [32m'Project details request timed out after 5000ms'[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstderr[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mcreateProjectSelectionRequests resolves all sections with fallbacks when IPC hangs
+[22m[39m[project-load] section fallback applied {
+  section: [32m'Recent commits'[39m,
+  timeout_ms: [33m5000[39m,
+  error_message: [32m'Recent commits request timed out after 5000ms'[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m
+}
+[project-selection] section completed with fallback {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Recent commits'[39m,
+  section_key: [32m'commits'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m5000[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mfalse[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  error_message: [32m'Recent commits request timed out after 5000ms'[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstderr[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mcreateProjectSelectionRequests resolves all sections with fallbacks when IPC hangs
+[22m[39m[project-load] section fallback applied {
+  section: [32m'Latest session'[39m,
+  timeout_ms: [33m5000[39m,
+  error_message: [32m'Latest session request timed out after 5000ms'[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m
+}
+[project-selection] section completed with fallback {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Latest session'[39m,
+  section_key: [32m'latest'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m5000[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mfalse[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  error_message: [32m'Latest session request timed out after 5000ms'[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstderr[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mcreateProjectSelectionRequests resolves all sections with fallbacks when IPC hangs
+[22m[39m[project-load] section fallback applied {
+  section: [32m'Session history'[39m,
+  timeout_ms: [33m5000[39m,
+  error_message: [32m'Session history request timed out after 5000ms'[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m
+}
+[project-selection] section completed with fallback {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Session history'[39m,
+  section_key: [32m'sessionList'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m5000[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mfalse[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  error_message: [32m'Session history request timed out after 5000ms'[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstderr[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mcreateProjectSelectionRequests resolves all sections with fallbacks when IPC hangs
+[22m[39m[project-load] section fallback applied {
+  section: [32m'README'[39m,
+  timeout_ms: [33m5000[39m,
+  error_message: [32m'README request timed out after 5000ms'[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m
+}
+[project-selection] section completed with fallback {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'README'[39m,
+  section_key: [32m'readme'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m5000[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mfalse[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  error_message: [32m'README request timed out after 5000ms'[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstderr[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mcreateProjectSelectionRequests resolves all sections with fallbacks when IPC hangs
+[22m[39m[project-load] section fallback applied {
+  section: [32m'Relationships'[39m,
+  timeout_ms: [33m5000[39m,
+  error_message: [32m'Relationships request timed out after 5000ms'[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m
+}
+[project-selection] section completed with fallback {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Relationships'[39m,
+  section_key: [32m'rels'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m5000[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mfalse[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  error_message: [32m'Relationships request timed out after 5000ms'[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mcoalesces rapid project switches so only the final IPC batch starts
+[22m[39m[project-selection] batch started {
+  event: [32m'project.selection.batch.started'[39m,
+  project_id: [32m'p3'[39m,
+  section_count: [33m6[39m,
+  project_path: [1mnull[22m,
+  daemon_status: [1mnull[22m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mcoalesces rapid project switches so only the final IPC batch starts
+[22m[39m[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p3'[39m,
+  section: [32m'Project details'[39m,
+  section_key: [32m'detail'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p3'[39m,
+  section: [32m'Recent commits'[39m,
+  section_key: [32m'commits'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p3'[39m,
+  section: [32m'Latest session'[39m,
+  section_key: [32m'latest'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p3'[39m,
+  section: [32m'Session history'[39m,
+  section_key: [32m'sessionList'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p3'[39m,
+  section: [32m'README'[39m,
+  section_key: [32m'readme'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p3'[39m,
+  section: [32m'Relationships'[39m,
+  section_key: [32m'rels'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mcoalesces rapid project switches so only the final IPC batch starts
+[22m[39m[project-selection] batch completed {
+  event: [32m'project.selection.batch.completed'[39m,
+  project_id: [32m'p3'[39m,
+  duration_ms: [33m0[39m,
+  section_count: [33m6[39m,
+  failed_section_count: [33m0[39m,
+  failed_sections: [],
+  retryable_section_count: [33m0[39m,
+  retryable_sections: [],
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mstill starts separate IPC batches for non-rapid project switches
+[22m[39m[project-selection] batch started {
+  event: [32m'project.selection.batch.started'[39m,
+  project_id: [32m'p1'[39m,
+  section_count: [33m6[39m,
+  project_path: [1mnull[22m,
+  daemon_status: [1mnull[22m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mstill starts separate IPC batches for non-rapid project switches
+[22m[39m[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Project details'[39m,
+  section_key: [32m'detail'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Recent commits'[39m,
+  section_key: [32m'commits'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Latest session'[39m,
+  section_key: [32m'latest'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Session history'[39m,
+  section_key: [32m'sessionList'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'README'[39m,
+  section_key: [32m'readme'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Relationships'[39m,
+  section_key: [32m'rels'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mstill starts separate IPC batches for non-rapid project switches
+[22m[39m[project-selection] batch completed {
+  event: [32m'project.selection.batch.completed'[39m,
+  project_id: [32m'p1'[39m,
+  duration_ms: [33m0[39m,
+  section_count: [33m6[39m,
+  failed_section_count: [33m0[39m,
+  failed_sections: [],
+  retryable_section_count: [33m0[39m,
+  retryable_sections: [],
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mstill starts separate IPC batches for non-rapid project switches
+[22m[39m[project-selection] batch started {
+  event: [32m'project.selection.batch.started'[39m,
+  project_id: [32m'p2'[39m,
+  section_count: [33m6[39m,
+  project_path: [1mnull[22m,
+  daemon_status: [1mnull[22m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mstill starts separate IPC batches for non-rapid project switches
+[22m[39m[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Project details'[39m,
+  section_key: [32m'detail'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Recent commits'[39m,
+  section_key: [32m'commits'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Latest session'[39m,
+  section_key: [32m'latest'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Session history'[39m,
+  section_key: [32m'sessionList'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'README'[39m,
+  section_key: [32m'readme'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Relationships'[39m,
+  section_key: [32m'rels'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mstill starts separate IPC batches for non-rapid project switches
+[22m[39m[project-selection] batch completed {
+  event: [32m'project.selection.batch.completed'[39m,
+  project_id: [32m'p2'[39m,
+  duration_ms: [33m0[39m,
+  section_count: [33m6[39m,
+  failed_section_count: [33m0[39m,
+  failed_sections: [],
+  retryable_section_count: [33m0[39m,
+  retryable_sections: [],
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mreuses a same-project in-flight batch instead of starting duplicate IPC calls
+[22m[39m[project-selection] batch started {
+  event: [32m'project.selection.batch.started'[39m,
+  project_id: [32m'p1'[39m,
+  section_count: [33m6[39m,
+  project_path: [1mnull[22m,
+  daemon_status: [1mnull[22m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mreuses a same-project in-flight batch instead of starting duplicate IPC calls
+[22m[39m[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Recent commits'[39m,
+  section_key: [32m'commits'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Latest session'[39m,
+  section_key: [32m'latest'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Session history'[39m,
+  section_key: [32m'sessionList'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'README'[39m,
+  section_key: [32m'readme'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Relationships'[39m,
+  section_key: [32m'rels'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mreuses a same-project in-flight batch instead of starting duplicate IPC calls
+[22m[39m[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Project details'[39m,
+  section_key: [32m'detail'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mreuses a same-project in-flight batch instead of starting duplicate IPC calls
+[22m[39m[project-selection] batch completed {
+  event: [32m'project.selection.batch.completed'[39m,
+  project_id: [32m'p1'[39m,
+  duration_ms: [33m1[39m,
+  section_count: [33m6[39m,
+  failed_section_count: [33m0[39m,
+  failed_sections: [],
+  retryable_section_count: [33m0[39m,
+  retryable_sections: [],
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mprefetches a project batch and reuses it for the subsequent selection
+[22m[39m[project-selection] batch started {
+  event: [32m'project.selection.batch.started'[39m,
+  project_id: [32m'p2'[39m,
+  section_count: [33m6[39m,
+  project_path: [1mnull[22m,
+  daemon_status: [1mnull[22m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mprefetches a project batch and reuses it for the subsequent selection
+[22m[39m[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Recent commits'[39m,
+  section_key: [32m'commits'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0.1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Latest session'[39m,
+  section_key: [32m'latest'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0.1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Session history'[39m,
+  section_key: [32m'sessionList'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0.1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'README'[39m,
+  section_key: [32m'readme'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0.1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Relationships'[39m,
+  section_key: [32m'rels'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0.1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Project details'[39m,
+  section_key: [32m'detail'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0.1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mprefetches a project batch and reuses it for the subsequent selection
+[22m[39m[project-selection] batch completed {
+  event: [32m'project.selection.batch.completed'[39m,
+  project_id: [32m'p2'[39m,
+  duration_ms: [33m0.2[39m,
+  section_count: [33m6[39m,
+  failed_section_count: [33m0[39m,
+  failed_sections: [],
+  retryable_section_count: [33m0[39m,
+  retryable_sections: [],
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mcancels a superseded debounced batch when the next selection reuses a prefetched project
+[22m[39m[project-selection] batch started {
+  event: [32m'project.selection.batch.started'[39m,
+  project_id: [32m'p2'[39m,
+  section_count: [33m6[39m,
+  project_path: [1mnull[22m,
+  daemon_status: [1mnull[22m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mcancels a superseded debounced batch when the next selection reuses a prefetched project
+[22m[39m[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Recent commits'[39m,
+  section_key: [32m'commits'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Latest session'[39m,
+  section_key: [32m'latest'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Session history'[39m,
+  section_key: [32m'sessionList'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'README'[39m,
+  section_key: [32m'readme'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Relationships'[39m,
+  section_key: [32m'rels'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p2'[39m,
+  section: [32m'Project details'[39m,
+  section_key: [32m'detail'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mcancels a superseded debounced batch when the next selection reuses a prefetched project
+[22m[39m[project-selection] batch completed {
+  event: [32m'project.selection.batch.completed'[39m,
+  project_id: [32m'p2'[39m,
+  duration_ms: [33m0[39m,
+  section_count: [33m6[39m,
+  failed_section_count: [33m0[39m,
+  failed_sections: [],
+  retryable_section_count: [33m0[39m,
+  retryable_sections: [],
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mloadDeferredProjectSelectionData reuses the prefetched deferred batch
+[22m[39m[project-selection] batch started {
+  event: [32m'project.selection.batch.started'[39m,
+  project_id: [32m'p4'[39m,
+  section_count: [33m6[39m,
+  project_path: [1mnull[22m,
+  daemon_status: [1mnull[22m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mloadDeferredProjectSelectionData reuses the prefetched deferred batch
+[22m[39m[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p4'[39m,
+  section: [32m'Recent commits'[39m,
+  section_key: [32m'commits'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0.1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p4'[39m,
+  section: [32m'Latest session'[39m,
+  section_key: [32m'latest'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0.1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p4'[39m,
+  section: [32m'Session history'[39m,
+  section_key: [32m'sessionList'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0.2[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p4'[39m,
+  section: [32m'README'[39m,
+  section_key: [32m'readme'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m0.2[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p4'[39m,
+  section: [32m'Relationships'[39m,
+  section_key: [32m'rels'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0.2[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p4'[39m,
+  section: [32m'Project details'[39m,
+  section_key: [32m'detail'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m0.2[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/lib/projectSelection.test.js[2m > [22m[2mprojectSelection timeouts[2m > [22m[2mloadDeferredProjectSelectionData reuses the prefetched deferred batch
+[22m[39m[project-selection] batch completed {
+  event: [32m'project.selection.batch.completed'[39m,
+  project_id: [32m'p4'[39m,
+  duration_ms: [33m0.4[39m,
+  section_count: [33m6[39m,
+  failed_section_count: [33m0[39m,
+  failed_sections: [],
+  retryable_section_count: [33m0[39m,
+  retryable_sections: [],
+  batch_kind: [32m'deferred'[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+ [32m✓[39m src/lib/projectSelection.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m src/lib/workflowRuns.test.js [2m([22m[2m41 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/lib/sessionIndicator.test.js [2m([22m[2m32 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+[90mstdout[2m | src/lib/shell.test.js[2m > [22m[2mselectProject flow[2m > [22m[2mcalls all IPC functions in parallel
+[22m[39m[project-selection] batch started {
+  event: [32m'project.selection.batch.started'[39m,
+  project_id: [32m'p1'[39m,
+  section_count: [33m6[39m,
+  project_path: [1mnull[22m,
+  daemon_status: [1mnull[22m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstderr[2m | src/lib/accounts.test.js[2m > [22m[2mclaudeAccounts store[2m > [22m[2mrestores the shared default when the global-default write fails
+[22m[39mFailed to set the global account default: Error: disk full
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.test.js:182:51
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:20
+
+[90mstdout[2m | src/lib/shell.test.js[2m > [22m[2mselectProject flow[2m > [22m[2mcalls all IPC functions in parallel
+[22m[39m[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Project details'[39m,
+  section_key: [32m'detail'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Recent commits'[39m,
+  section_key: [32m'commits'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Latest session'[39m,
+  section_key: [32m'latest'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Session history'[39m,
+  section_key: [32m'sessionList'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'README'[39m,
+  section_key: [32m'readme'[39m,
+  provider_route: [32m'local_provider'[39m,
+  duration_ms: [33m1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-selection] section completed {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [32m'p1'[39m,
+  section: [32m'Relationships'[39m,
+  section_key: [32m'rels'[39m,
+  provider_route: [32m'db'[39m,
+  duration_ms: [33m1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mtrue[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstdout[2m | src/lib/shell.test.js[2m > [22m[2mselectProject flow[2m > [22m[2mcalls all IPC functions in parallel
+[22m[39m[project-selection] batch completed {
+  event: [32m'project.selection.batch.completed'[39m,
+  project_id: [32m'p1'[39m,
+  duration_ms: [33m1[39m,
+  section_count: [33m6[39m,
+  failed_section_count: [33m0[39m,
+  failed_sections: [],
+  retryable_section_count: [33m0[39m,
+  retryable_sections: [],
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+[90mstderr[2m | src/lib/shell.test.js[2m > [22m[2mselectProject flow[2m > [22m[2mcollects degraded load issues while preserving fallback data
+[22m[39m[project-load] section fallback applied {
+  section: [32m'Project details'[39m,
+  timeout_ms: [33m5000[39m,
+  error_message: [32m'DB error'[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m
+}
+[project-selection] section completed with fallback {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [1mnull[22m,
+  section: [32m'Project details'[39m,
+  section_key: [32m'Project details'[39m,
+  provider_route: [32m'provider_route_unknown'[39m,
+  duration_ms: [33m0.1[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mfalse[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  error_message: [32m'DB error'[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-load] section fallback applied {
+  section: [32m'Recent commits'[39m,
+  timeout_ms: [33m5000[39m,
+  error_message: [32m'Git error'[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m
+}
+[project-selection] section completed with fallback {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [1mnull[22m,
+  section: [32m'Recent commits'[39m,
+  section_key: [32m'Recent commits'[39m,
+  provider_route: [32m'provider_route_unknown'[39m,
+  duration_ms: [33m0.4[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mfalse[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  error_message: [32m'Git error'[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+[project-load] section fallback applied {
+  section: [32m'README'[39m,
+  timeout_ms: [33m5000[39m,
+  error_message: [32m'File error'[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m
+}
+[project-selection] section completed with fallback {
+  event: [32m'project.selection.section.completed'[39m,
+  project_id: [1mnull[22m,
+  section: [32m'README'[39m,
+  section_key: [32m'README'[39m,
+  provider_route: [32m'provider_route_unknown'[39m,
+  duration_ms: [33m0.4[39m,
+  timeout_ms: [33m5000[39m,
+  ok: [33mfalse[39m,
+  retryable_on_daemon_reconnect: [33mfalse[39m,
+  error_message: [32m'File error'[39m,
+  batch_kind: [32m'blocking'[39m,
+  blocking: [33mtrue[39m,
+  deferred: [33mfalse[39m
+}
+
+ [32m✓[39m src/lib/components/meshTabUtils.test.js [2m([22m[2m24 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mstores sessions grouped by project path
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/home/user/proj-a'[39m }
+[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/home/user/proj-b'[39m }
+
+ [32m✓[39m src/lib/shell.test.js [2m([22m[2m82 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+[90mstderr[2m | src/lib/accounts.test.js[2m > [22m[2mclaudeAccounts store[2m > [22m[2ma detection failure never blocks the launch
+[22m[39mFailed to detect accounts: Error: daemon down
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.test.js:363:36
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:145:11
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:26
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1209:10[90m)[39m
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:37
+    at Traces.$ [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/traces.CCmnQaNT.js:142:27[90m)[39m
+    at trace [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/test.B8ej_ZHS.js:239:21[90m)[39m
+    at runTest [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:12[90m)[39m
+
+[90mstderr[2m | src/lib/accounts.test.js[2m > [22m[2mclaudeAccounts store[2m > [22m[2ma failed store drops the remembered choice again
+[22m[39mFailed to store the account for this project: Error: db locked
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.test.js:390:41
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:145:11
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:26
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1209:10[90m)[39m
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:37
+    at Traces.$ [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/traces.CCmnQaNT.js:142:27[90m)[39m
+    at trace [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/test.B8ej_ZHS.js:239:21[90m)[39m
+    at runTest [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:12[90m)[39m
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mgetSessionForProject returns first session by path
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/home/user/proj-a'[39m }
+
+[90mstderr[2m | src/lib/accounts.test.js[2m > [22m[2mclaudeAccounts store[2m > [22m[2mkeeps the accounts it last knew when detection is degraded
+[22m[39mAccount detection is unavailable: The WSL daemon is not reachable
+
+[90mstderr[2m | src/lib/accounts.test.js[2m > [22m[2mclaudeAccounts store[2m > [22m[2mstill asks which subscription to use while detection is degraded
+[22m[39mAccount detection is unavailable: The WSL daemon is not reachable
+
+[90mstderr[2m | src/lib/accounts.test.js[2m > [22m[2mclaudeAccounts store[2m > [22m[2mdetects again after a degraded answer instead of caching it
+[22m[39mAccount detection is unavailable: The WSL daemon is not reachable
+
+[90mstderr[2m | src/lib/accounts.test.js[2m > [22m[2mclaudeAccounts store[2m > [22m[2ma rejected detection keeps the last known accounts too
+[22m[39mFailed to detect accounts: Error: daemon down
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.test.js:800:36
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:20
+
+[90mstderr[2m | src/lib/accounts.test.js[2m > [22m[2mclaudeAccounts store[2m > [22m[2mdetects again after a failure instead of caching the empty list
+[22m[39mFailed to detect accounts: Error: daemon down
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.test.js:811:40
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:145:11
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:26
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1209:10[90m)[39m
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:37
+    at Traces.$ [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/traces.CCmnQaNT.js:142:27[90m)[39m
+    at trace [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/test.B8ej_ZHS.js:239:21[90m)[39m
+    at runTest [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:12[90m)[39m
+
+[90mstderr[2m | src/lib/accounts.test.js[2m > [22m[2mclaudeAccounts store[2m > [22m[2mthe chooser as the way out of a spent subscription[2m > [22m[2mnever blocks a launch on an account nothing was ever known about
+[22m[39mFailed to refresh account usage: Error: daemon down
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.test.js:1068:38
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:20
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mgetSessionsForProject returns all sessions for a project
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/home/user/proj-a'[39m }
+[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/home/user/proj-a'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mclears sessions when empty response received
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-a'[39m }
+
+ [32m✓[39m src/lib/accounts.test.js [2m([22m[2m72 tests[22m[2m)[22m[32m 57[2mms[22m[39m
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mkeeps previous state on IPC error
+[22m[39m[sessionStore] poll failed: Error: daemon offline
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/sessionStore.test.js:187:30
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:145:11
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:26
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1209:10[90m)[39m
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:37
+    at Traces.$ [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/traces.CCmnQaNT.js:142:27[90m)[39m
+    at trace [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/test.B8ej_ZHS.js:239:21[90m)[39m
+    at runTest [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:12[90m)[39m
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mkeeps previous state on IPC error
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-a'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mnormalizes trailing slashes in project paths
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/home/user/proj-a/'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mmatches sessions across wsl.localhost and wsl$ path forms
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'\\\\wsl.localhost\\Ubuntu\\home\\user\\proj'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mmatches sessions across Windows drive letter casing
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'D:\\projects\\foo'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mgroups multiple CLI tools on the same project
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/home/user/proj-a'[39m }
+[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/home/user/proj-a'[39m }
+[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/home/user/proj-a'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mcoexists sessions from different CLI tools on different projects
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/home/user/proj-a'[39m }
+[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/home/user/proj-b'[39m }
+[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/home/user/proj-c'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mcreates tracker on first poll with new PID
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2maccrues no active time while the session stays idle
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2maccrues total time regardless of state
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mupdates lastTransitionTime on state change
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2menriches session objects with computed fields
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2maccumulates wall-clock elapsed time between polls while active
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-wall-clock'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mcounts a five second gap between snapshots as five seconds of activity
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-gap'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mcomputes _activePercent as ratio of active to measured time
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mcleans up tracker after session disappears
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mstopPolling clears all trackers
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mstamps sessions from a degraded snapshot so the indicator reads uncertain
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-degraded-stamp'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mdoes not retire a tracker on a degraded snapshot that omits it
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-degraded-omit'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mapplies daemon session updates without polling
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-daemon'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2maccepts raw session arrays in applyDaemonSessionUpdate
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-array'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mnormalizes camelCase session payloads from IPC polling
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-camel'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mnormalizes camelCase session payloads from daemon updates
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-daemon-camel'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mmarks retained daemon sessions stale across a daemon gap without clearing them
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-stale-gap'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mclears stale retained presence when a fresh snapshot arrives
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-stale-gap'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mkeeps trackers and sessions when a degraded snapshot without a sessions array arrives
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-degraded'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mkeeps measuring suspended while polls are rejected
+[22m[39m[sessionStore] poll failed: Error: daemon gone
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/sessionStore.test.js:895:50
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:20
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mkeeps measuring suspended while polls are rejected
+[22m[39m[sessionStore] poll failed: Error: daemon gone
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/sessionStore.test.js:895:50
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:20
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mkeeps measuring suspended while polls are rejected
+[22m[39m[sessionStore] poll failed: Error: daemon gone
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/sessionStore.test.js:895:50
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:20
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mkeeps measuring suspended while polls are rejected
+[22m[39m[sessionStore] poll failed: Error: daemon gone
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/sessionStore.test.js:895:50
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:20
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mkeeps measuring suspended while polls are rejected
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-poll-rejected'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mretains sessions when a poll has nothing to observe
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-poll-unavailable'[39m }
+
+[90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mapplies polling updates even without daemon bridge events
+[22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'/proj-fallback'[39m }
+
+ [32m✓[39m src/lib/sessionStore.test.js [2m([22m[2m46 tests[22m[2m)[22m[33m 1419[2mms[22m[39m
+     [33m[2m✓[22m[39m polls listClaudeSessions every 500ms after startPolling [33m 681[2mms[22m[39m
+     [33m[2m✓[22m[39m stamps sessions from a degraded snapshot so the indicator reads uncertain [33m 387[2mms[22m[39m
+ [32m✓[39m src/lib/activitySignal.test.js [2m([22m[2m46 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m e2e/helpers/laneCleanup.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m e2e/specList.test.js [2m([22m[2m21 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m src/lib/components/UsageMeter.test.js [2m([22m[2m18 tests[22m[2m)[22m[32m 126[2mms[22m[39m
+[90mstderr[2m | src/lib/MarkdownRenderer.test.js[2m > [22m[2mMarkdownRenderer mermaid rendering[2m > [22m[2mpreserves original code and shows fallback when mermaid render fails
+[22m[39m[markdown] mermaid render failed Error: Parse error
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/MarkdownRenderer.test.js:119:41
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:145:11
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:26
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1209:10[90m)[39m
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:37
+    at Traces.$ [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/traces.CCmnQaNT.js:142:27[90m)[39m
+    at trace [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/test.B8ej_ZHS.js:239:21[90m)[39m
+    at runTest [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:12[90m)[39m
+
+ [32m✓[39m src/lib/MarkdownRenderer.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 107[2mms[22m[39m
+ [32m✓[39m src/lib/contextMenu.test.js [2m([22m[2m27 tests[22m[2m)[22m[32m 286[2mms[22m[39m
+ [32m✓[39m src/lib/SearchOverlay.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 241[2mms[22m[39m
+ [32m✓[39m src/lib/HoverCard.test.js [2m([22m[2m16 tests[22m[2m)[22m[32m 192[2mms[22m[39m
+ [32m✓[39m src/lib/components/WorkflowRunsPanel.test.js [2m([22m[2m20 tests[22m[2m)[22m[32m 254[2mms[22m[39m
+ [32m✓[39m src/lib/sessionHistory.test.js [2m([22m[2m28 tests[22m[2m)[22m[33m 396[2mms[22m[39m
+ [32m✓[39m src/lib/gitTab.test.js [2m([22m[2m38 tests[22m[2m)[22m[33m 628[2mms[22m[39m
+ [32m✓[39m src/lib/ProjectsTakeover.test.js [2m([22m[2m21 tests[22m[2m)[22m[33m 349[2mms[22m[39m
+[90mstderr[2m | src/lib/filesTab.test.js[2m > [22m[2mFilesTab[2m > [22m[2mrenders binary, pdf, and too-large error states for non-text paths
+[22m[39m[file] error loading "src/huge.txt" (project=project-1): file too large for preview
+
+ [32m✓[39m src/lib/taskBoard.test.js [2m([22m[2m55 tests[22m[2m)[22m[33m 529[2mms[22m[39m
+ [32m✓[39m src/lib/filesTab.test.js [2m([22m[2m13 tests[22m[2m)[22m[33m 524[2mms[22m[39m
+ [32m✓[39m src/lib/components/MeshNodeDetail.test.js [2m([22m[2m19 tests[22m[2m)[22m[33m 431[2mms[22m[39m
+[90mstderr[2m | src/lib/Sidebar.component.test.js[2m > [22m[2mSidebar component branches[2m > [22m[2mshows a sidebar notice when session navigation fails
+[22m[39m[sidebar] navigate failed: Error: pane not found
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/Sidebar.component.test.js:476:45
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:145:11
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:26
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1209:10[90m)[39m
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:37
+    at Traces.$ [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/traces.CCmnQaNT.js:142:27[90m)[39m
+    at trace [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/test.B8ej_ZHS.js:239:21[90m)[39m
+    at runTest [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:12[90m)[39m
+
+ [32m✓[39m src/lib/markdown.test.js [2m([22m[2m30 tests[22m[2m)[22m[32m 170[2mms[22m[39m
+ [32m✓[39m src/lib/components/AccountsHome.test.js [2m([22m[2m24 tests[22m[2m)[22m[33m 676[2mms[22m[39m
+ [32m✓[39m src/lib/sidebar.test.js [2m([22m[2m26 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m src/lib/overviewTab.test.js [2m([22m[2m46 tests[22m[2m)[22m[33m 507[2mms[22m[39m
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mlaunches immediately on the account a child names, and pins nothing
+[22m[39m[cmd-center] fresh claude session: project-0 taurhaus
+
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mlaunches immediately on the account a child names, and pins nothing
+[22m[39m[cmd-center] launch OK: { ok: [33mtrue[39m }
+
+[90mstdout[2m | src/lib/Sidebar.component.test.js[2m > [22m[2mSidebar component branches[2m > [22m[2mcontext menu hides terminal navigation until a tmux target exists and still supports restart/stop
+[22m[39m[cmd-center] continue grok session: project-0 Project 0
+
+[90mstdout[2m | src/lib/Sidebar.component.test.js[2m > [22m[2mSidebar component branches[2m > [22m[2mcontext menu hides terminal navigation until a tmux target exists and still supports restart/stop
+[22m[39m[cmd-center] launch OK: { ok: [33mtrue[39m }
+
+ [32m✓[39m src/lib/components/AccountChip.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 227[2mms[22m[39m
+[90mstdout[2m | src/lib/Sidebar.component.test.js[2m > [22m[2mSidebar component branches[2m > [22m[2mcontext menu hides terminal navigation until a tmux target exists and still supports restart/stop
+[22m[39m[cmd-center] Open in Terminal: /projects/project-0 session: { tmux_session: [32m'team'[39m, tmux_window: [32m'2'[39m, tmux_pane: [32m'%9'[39m }
+
+[90mstdout[2m | src/lib/Sidebar.component.test.js[2m > [22m[2mSidebar component branches[2m > [22m[2mcontext menu hides terminal navigation until a tmux target exists and still supports restart/stop
+[22m[39m[cmd-center] navigate OK
+
+ [32m✓[39m src/lib/accountMenu.test.js [2m([22m[2m15 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mloads the initial project once on startup without a delayed duplicate selection batch
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-1'[39m,
+  project_path: [32m'/projects/taurhaus'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mloads the initial project once on startup without a delayed duplicate selection batch
+[22m[39mFailed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mloads the initial project once on startup without a delayed duplicate selection batch
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-1'[39m,
+  elapsed_ms: [33m9.7[39m,
+  daemon_status: [1mnull[22m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/lib/settings.test.js[2m > [22m[2mSettings component[2m > [22m[2mshows inline save error when updateSettings fails
+[22m[39mFailed to save settings: Error: permission denied
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/settings.test.js:801:42
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:145:11
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:26
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1209:10[90m)[39m
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:37
+    at Traces.$ [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/traces.CCmnQaNT.js:142:27[90m)[39m
+    at trace [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/test.B8ej_ZHS.js:239:21[90m)[39m
+    at runTest [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:12[90m)[39m
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mresolves mesh pane focus to tmux coordinates, foreground project, and opens the terminal
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-1'[39m,
+  project_path: [32m'/projects/taurhaus'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mresolves mesh pane focus to tmux coordinates, foreground project, and opens the terminal
+[22m[39mFailed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mresolves mesh pane focus to tmux coordinates, foreground project, and opens the terminal
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-1'[39m,
+  elapsed_ms: [33m10.2[39m,
+  daemon_status: [1mnull[22m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mqueries foreground project on mount and passes it to Sidebar
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [32m'proj-2'[39m }
+[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-1'[39m,
+  project_path: [32m'/projects/taurhaus'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mqueries foreground project on mount and passes it to Sidebar
+[22m[39mFailed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mqueries foreground project on mount and passes it to Sidebar
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-1'[39m,
+  elapsed_ms: [33m2.8[39m,
+  daemon_status: [1mnull[22m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mupdates foreground project immediately when the sidebar reports a session click
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-1'[39m,
+  project_path: [32m'/projects/taurhaus'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mupdates foreground project immediately when the sidebar reports a session click
+[22m[39mFailed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mupdates foreground project immediately when the sidebar reports a session click
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-1'[39m,
+  elapsed_ms: [33m2.4[39m,
+  daemon_status: [1mnull[22m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mprefetches a hovered project without changing the visible selection
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-1'[39m,
+  project_path: [32m'/projects/taurhaus'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mprefetches a hovered project without changing the visible selection
+[22m[39mFailed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mprefetches a hovered project without changing the visible selection
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-1'[39m,
+  elapsed_ms: [33m2.3[39m,
+  daemon_status: [1mnull[22m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+ [32m✓[39m src/lib/components/MeshCanvas.test.js [2m([22m[2m38 tests[22m[2m)[22m[33m 597[2mms[22m[39m
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mupdates foreground project from tmux focus events and clears it on detach
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-1'[39m,
+  project_path: [32m'/projects/taurhaus'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mupdates foreground project from tmux focus events and clears it on detach
+[22m[39mFailed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mupdates foreground project from tmux focus events and clears it on detach
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-1'[39m,
+  elapsed_ms: [33m3.2[39m,
+  daemon_status: [1mnull[22m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/lib/Sidebar.component.test.js[2m > [22m[2mSidebar component branches[2m > [22m[2msurfaces launch and stop failures from the session context menu
+[22m[39m[cmd-center] continue claude session: project-0 Project 0
+
+[90mstderr[2m | src/lib/Sidebar.component.test.js[2m > [22m[2mSidebar component branches[2m > [22m[2msurfaces launch and stop failures from the session context menu
+[22m[39m[cmd-center] launch FAILED: Error: boom
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/Sidebar.component.test.js:962:44
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:145:11
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:26
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1209:10[90m)[39m
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:37
+    at Traces.$ [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/traces.CCmnQaNT.js:142:27[90m)[39m
+    at trace [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/test.B8ej_ZHS.js:239:21[90m)[39m
+    at runTest [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:12[90m)[39m
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mupdates foreground project from tmux focus events and clears it on detach
+[22m[39m[tmux-focus] {
+  stage: [32m'event'[39m,
+  payload: {
+    session: [32m'taurhaus'[39m,
+    window: [32m'2'[39m,
+    pane_id: [32m'%9'[39m,
+    project_id: [32m'proj-2'[39m
+  },
+  projectId: [32m'proj-2'[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mupdates foreground project from tmux focus events and clears it on detach
+[22m[39m[tmux-focus] { stage: [32m'event'[39m, payload: [1mnull[22m, projectId: [1mnull[22m }
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mkeeps shell event listeners mounted once across startup and project selection churn
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-1'[39m,
+  project_path: [32m'/projects/taurhaus'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mkeeps shell event listeners mounted once across startup and project selection churn
+[22m[39mFailed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mkeeps shell event listeners mounted once across startup and project selection churn
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-1'[39m,
+  elapsed_ms: [33m1.9[39m,
+  daemon_status: [1mnull[22m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/lib/Sidebar.component.test.js[2m > [22m[2mSidebar component branches[2m > [22m[2msurfaces launch and stop failures from the session context menu
+[22m[39mFailed to stop session: Error: boom
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/Sidebar.component.test.js:963:45
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:145:11
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:915:26
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1243:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1209:10[90m)[39m
+    at [90mfile:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:37
+    at Traces.$ [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/traces.CCmnQaNT.js:142:27[90m)[39m
+    at trace [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/test.B8ej_ZHS.js:239:21[90m)[39m
+    at runTest [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:1653:12[90m)[39m
+
+ [32m✓[39m src/lib/ipc/templatePayloads.test.js [2m([22m[2m14 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/lib/Sidebar.component.test.js [2m([22m[2m31 tests[22m[2m)[22m[33m 795[2mms[22m[39m
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mkeeps shell event listeners mounted once across startup and project selection churn
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-2'[39m,
+  project_path: [32m'/projects/mesh'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m2[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mkeeps shell event listeners mounted once across startup and project selection churn
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-2'[39m,
+  elapsed_ms: [33m5.8[39m,
+  daemon_status: [1mnull[22m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m2[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+ [32m✓[39m src/lib/components/AccountChooser.test.js [2m([22m[2m21 tests[22m[2m)[22m[32m 261[2mms[22m[39m
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mretries a deferred project load after daemon reconnects during a project switch
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-1'[39m,
+  project_path: [32m'/projects/taurhaus'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mretries a deferred project load after daemon reconnects during a project switch
+[22m[39mFailed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mretries a deferred project load after daemon reconnects during a project switch
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-1'[39m,
+  elapsed_ms: [33m6.5[39m,
+  daemon_status: [32m'disconnected'[39m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mretries a deferred project load after daemon reconnects during a project switch
+[22m[39mFailed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+
+ [32m✓[39m src/lib/components/MeshInitProgress.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 215[2mms[22m[39m
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mretries a deferred project load after daemon reconnects during a project switch
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-2'[39m,
+  project_path: [32m'/projects/mesh'[39m,
+  daemon_status: [32m'disconnected'[39m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m2[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mretries a deferred project load after daemon reconnects during a project switch
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-2'[39m,
+  elapsed_ms: [33m2.4[39m,
+  daemon_status: [32m'disconnected'[39m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mtrue[39m,
+  selection_generation: [33m2[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mretries a deferred project load after daemon reconnects during a project switch
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-2'[39m,
+  project_path: [32m'/projects/mesh'[39m,
+  daemon_status: [32m'connected'[39m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m3[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mretries a deferred project load after daemon reconnects during a project switch
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-2'[39m,
+  elapsed_ms: [33m2.3[39m,
+  daemon_status: [32m'connected'[39m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m3[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mretries a deferred project load after daemon reconnects during a project switch
+[22m[39mFailed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:26 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:26 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:26 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+
+ [32m✓[39m src/lib/components/TemplateHistoryPanel.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 250[2mms[22m[39m
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mremounts the mesh tab with the next project when switching projects
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-1'[39m,
+  project_path: [32m'/projects/taurhaus'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstderr[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mremounts the mesh tab with the next project when switching projects
+[22m[39mFailed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+Failed to resolve launch commands: Error: [vitest] No "resolveLaunchBases" export is defined on the "./lib/ipc.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17[90m)[39m
+    at Object.get [90m(file:///home/mstie/projects/taurhaus-trial/[39mnode_modules/[4mvitest[24m/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16[90m)[39m
+    at [90m/home/mstie/projects/taurhaus-trial/[39msrc/lib/accounts.svelte.js:229:57 {
+  codeFrame: [32m'vi.mock(import("./lib/ipc.js"), async (importOriginal) => {\n'[39m +
+    [32m'  const actual = await importOriginal()\n'[39m +
+    [32m'  return {\n'[39m +
+    [32m'    ...actual,\n'[39m +
+    [32m'    // your mocked methods\n'[39m +
+    [32m'  }\n'[39m +
+    [32m'})'[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mremounts the mesh tab with the next project when switching projects
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-1'[39m,
+  elapsed_ms: [33m2.5[39m,
+  daemon_status: [1mnull[22m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+ [32m✓[39m src/lib/shell/navigation.test.js [2m([22m[2m18 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mremounts the mesh tab with the next project when switching projects
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-2'[39m,
+  project_path: [32m'/projects/mesh'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m2[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mremounts the mesh tab with the next project when switching projects
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-2'[39m,
+  elapsed_ms: [33m2.6[39m,
+  daemon_status: [1mnull[22m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m2[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+ [32m✓[39m src/lib/components/ModelSelect.test.js [2m([22m[2m22 tests[22m[2m)[22m[32m 225[2mms[22m[39m
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mremounts the mesh tab with the next project when switching projects
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-1'[39m,
+  project_path: [32m'/projects/taurhaus'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m3[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mremounts the mesh tab with the next project when switching projects
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-1'[39m,
+  elapsed_ms: [33m10.8[39m,
+  daemon_status: [1mnull[22m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m3[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mremounts the mesh tab with the next project when switching projects
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'proj-2'[39m,
+  project_path: [32m'/projects/mesh'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m4[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.meshFocus.test.js[2m > [22m[2mShell mesh focus integration[2m > [22m[2mremounts the mesh tab with the next project when switching projects
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.applied'[39m,
+  project_id: [32m'proj-2'[39m,
+  elapsed_ms: [33m2.5[39m,
+  daemon_status: [1mnull[22m,
+  issue_count: [33m0[39m,
+  pending_retry: [33mfalse[39m,
+  selection_generation: [33m4[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+ [32m✓[39m src/Shell.meshFocus.test.js [2m([22m[2m9 tests[22m[2m)[22m[33m 409[2mms[22m[39m
+ [32m✓[39m src/lib/components/TeamCustomizerPreset.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 270[2mms[22m[39m
+ [32m✓[39m src/lib/components/RoleEditor.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 292[2mms[22m[39m
+ [32m✓[39m src/lib/settings.test.js [2m([22m[2m66 tests[22m[2m)[22m[33m 1443[2mms[22m[39m
+ [32m✓[39m src/lib/ipc.test.js [2m([22m[2m146 tests[22m[2m)[22m[33m 3259[2mms[22m[39m
+       [33m[2m✓[22m[39m returns true when __TAURI_INTERNALS__ exists [33m 1417[2mms[22m[39m
+ [32m✓[39m e2e/helpers/workerEnv.test.js [2m([22m[2m11 tests[22m[2m)[22m[33m 480[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps explicit runtime fixtures alive and shuts down only the generated children [33m 450[2mms[22m[39m
+ [32m✓[39m src/lib/taskDetailPanel.test.js [2m([22m[2m37 tests[22m[2m)[22m[33m 575[2mms[22m[39m
+ [32m✓[39m scripts/check-workflow-scripts.test.mjs [2m([22m[2m15 tests[22m[2m)[22m[32m 41[2mms[22m[39m
+ [32m✓[39m src/lib/components/templateBrowserUtils.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/lib/workflowRunStore.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m e2e/helpers/stageFixtureProject.test.js [2m([22m[2m15 tests[22m[2m)[22m[33m 1134[2mms[22m[39m
+ [32m✓[39m src/lib/modelCatalog.test.js [2m([22m[2m21 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mclicking the parent row still asks when nothing has been chosen
+[22m[39m[cmd-center] fresh claude session: project-0 taurhaus
+
+ [32m✓[39m scripts/visual-browser.test.mjs [2m([22m[2m10 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/lib/shell/sessionLifecycleController.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/lib/components/MeshFlow.test.js [2m([22m[2m2 tests[22m[2m)[22m[33m 449[2mms[22m[39m
+     [33m[2m✓[22m[39m setup -> initialize progress -> runtime canvas -> hot-add -> disband [33m 404[2mms[22m[39m
+ [32m✓[39m src/lib/logger.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 93[2mms[22m[39m
+ [32m✓[39m src/lib/SidebarBridge.component.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 195[2mms[22m[39m
+ [32m✓[39m src/lib/components/MeshTeamBuilder.test.js [2m([22m[2m39 tests[22m[2m)[22m[33m 1329[2mms[22m[39m
+ [32m✓[39m src/lib/components/TeamCustomizerPanel.test.js [2m([22m[2m9 tests[22m[2m)[22m[33m 317[2mms[22m[39m
+ [32m✓[39m src/lib/ipc/coordinationResponses.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/lib/session.test.js [2m([22m[2m19 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/lib/components/MeshVerticalSlice.test.js [2m([22m[2m2 tests[22m[2m)[22m[33m 339[2mms[22m[39m
+ [32m✓[39m src/lib/components/RoleCatalog.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 158[2mms[22m[39m
+ [32m✓[39m e2e/runSummary.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m e2e/helpers/codexScratchHome.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m src/lib/ipc/templateResponses.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/lib/components/TemplateBrowserPanel.test.js [2m([22m[2m36 tests[22m[2m)[22m[33m 1207[2mms[22m[39m
+ [32m✓[39m src/lib/search.test.js [2m([22m[2m15 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m e2e/helpers/laneTmux.test.js [2m([22m[2m16 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+ [32m✓[39m src/lib/components/MeshCanvasWorkflowRuns.test.js [2m([22m[2m8 tests[22m[2m)[22m[33m 403[2mms[22m[39m
+ [32m✓[39m e2e/helpers/parallelStageEvidence.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/lib/usageWindows.test.js [2m([22m[2m17 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m src/lib/firstrun.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m e2e/helpers/managedStageParallel.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+[90mstdout[2m | src/lib/shell/events.test.js[2m > [22m[2msetupSessionPollingLifecycle[2m > [22m[2mstarts polling and toggles it on document visibility changes
+[22m[39m[shell.visibility] document hidden {
+  event: [32m'shell.visibility.hidden'[39m,
+  session_bridge_live: [33mfalse[39m,
+  recovery_mode: [32m'pause_fallback_polling'[39m
+}
+[shell.visibility] document visible {
+  event: [32m'shell.visibility.visible'[39m,
+  session_bridge_live: [33mfalse[39m,
+  hidden_duration_ms: [33m0.9[39m,
+  recovery_mode: [32m'resume_fallback_polling'[39m
+}
+
+ [32m✓[39m src/lib/shell/events.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/lib/components/MeshAvailabilityGate.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 98[2mms[22m[39m
+ [32m✓[39m src/lib/sidebarBridge.test.js [2m([22m[2m15 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/lib/components/MeshNode.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 102[2mms[22m[39m
+ [32m✓[39m src/lib/components/AgentCard.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 166[2mms[22m[39m
+ [32m✓[39m e2e/helpers/compactionLog.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+[90mstdout[2m | src/Shell.surfaces.test.js[2m > [22m[2mShell utility-surface state machine[2m > [22m[2mtoggles the Projects takeover from the footer key
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+
+ [32m✓[39m src/lib/daemonStatus.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+[90mstdout[2m | src/Shell.surfaces.test.js[2m > [22m[2mShell utility-surface state machine[2m > [22m[2mtoggles the Projects takeover from the footer key
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'p1'[39m,
+  project_path: [32m'/projects/fixture'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.accountsSync.test.js[2m > [22m[2mShell ambient account synchronisation[2m > [22m[2mreads every registry tool, usage included, without a hover
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+
+[90mstdout[2m | src/Shell.accountsSync.test.js[2m > [22m[2mShell ambient account synchronisation[2m > [22m[2mre-reads what the backend poller has observed since, without forcing it
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+
+[90mstdout[2m | src/Shell.accountsSync.test.js[2m > [22m[2mShell ambient account synchronisation[2m > [22m[2mreads what the launch commands select for the tools that can switch
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+
+[90mstdout[2m | src/Shell.accountsSync.test.js[2m > [22m[2mShell ambient account synchronisation[2m > [22m[2mkeeps the relationship index level on the recurring pass
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+
+ [32m✓[39m src/Shell.accountsSync.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 90[2mms[22m[39m
+[90mstdout[2m | src/Shell.surfaces.test.js[2m > [22m[2mShell utility-surface state machine[2m > [22m[2mkeeps open-only semantics on the sidebar empty-state scan action
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+
+ [32m✓[39m e2e/helpers/compactionDefaults.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 57[2mms[22m[39m
+[90mstdout[2m | src/Shell.surfaces.test.js[2m > [22m[2mShell utility-surface state machine[2m > [22m[2mcloses any open utility surface when a project is selected
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+
+ [32m✓[39m src/lib/toolRegistry.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+[90mstdout[2m | src/Shell.surfaces.test.js[2m > [22m[2mShell utility-surface state machine[2m > [22m[2mcloses any open utility surface when a project is selected
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'p1'[39m,
+  project_path: [32m'/projects/fixture'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+ [32m✓[39m src/lib/shell/projectSelectionController.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+[90mstdout[2m | src/Shell.surfaces.test.js[2m > [22m[2mShell utility-surface state machine[2m > [22m[2mcloses any open utility surface when a project is selected
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'p1'[39m,
+  project_path: [32m'/projects/fixture'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m2[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.surfaces.test.js[2m > [22m[2mShell utility-surface state machine[2m > [22m[2mcloses Settings when a project is selected
+[22m[39m[tmux-focus] { stage: [32m'foreground-ipc-read'[39m, projectId: [1mnull[22m }
+
+ [32m✓[39m src/visual-host/query.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+[90mstdout[2m | src/Shell.surfaces.test.js[2m > [22m[2mShell utility-surface state machine[2m > [22m[2mcloses Settings when a project is selected
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'p1'[39m,
+  project_path: [32m'/projects/fixture'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m1[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+[90mstdout[2m | src/Shell.surfaces.test.js[2m > [22m[2mShell utility-surface state machine[2m > [22m[2mcloses Settings when a project is selected
+[22m[39m[shell.project-selection] lifecycle {
+  event: [32m'shell.project_selection.started'[39m,
+  project_id: [32m'p1'[39m,
+  project_path: [32m'/projects/fixture'[39m,
+  daemon_status: [1mnull[22m,
+  session_bridge_live: [33mfalse[39m,
+  visibility_state: [32m'visible'[39m,
+  selection_generation: [33m2[39m,
+  blocking: [33mfalse[39m,
+  deferred: [33mtrue[39m
+}
+
+ [32m✓[39m src/Shell.surfaces.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 279[2mms[22m[39m
+ [32m✓[39m src/lib/mockData.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/lib/ipc/contracts.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/lib/errorCopy.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m e2e/helpers/clickUntil.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/lib/components/AddAccountFlow.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 151[2mms[22m[39m
+ [32m✓[39m src/lib/components/MeshRuntimeBar.test.js [2m([22m[2m9 tests[22m[2m)[22m[32m 147[2mms[22m[39m
+ [32m✓[39m e2e/failure-artifacts.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2msays so when the backend ran the launch on the team default
+[22m[39m[cmd-center] continue claude session: project-0 taurhaus
+
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2msays so when the backend ran the launch on the team default
+[22m[39m[cmd-center] launch OK: {
+  tmux_session: [32m'taurhaus'[39m,
+  tmux_window: [32m'2'[39m,
+  tmux_pane: [32m'%7'[39m,
+  account_applied: [33mfalse[39m,
+  account_note: [32m'team_default'[39m
+}
+
+ [32m✓[39m src/lib/components/WorkflowRunTree.test.js [2m([22m[2m10 tests[22m[2m)[22m[32m 85[2mms[22m[39m
+ [32m✓[39m src/lib/navHistory.test.js [2m([22m[2m14 tests[22m[2m)[22m[33m 398[2mms[22m[39m
+ [32m✓[39m e2e/helpers/meshWorkflow.test.js [2m([22m[2m11 tests[22m[2m)[22m[33m 536[2mms[22m[39m
+     [33m[2m✓[22m[39m fails setup when the prerequisite IPC fails, instead of disabling tier 2 [33m 363[2mms[22m[39m
+ [32m✓[39m src/lib/fileClassifier.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/lib/assetCache.test.js [2m([22m[2m11 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/App.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 129[2mms[22m[39m
+ [32m✓[39m src/lib/components/HostedThread.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 221[2mms[22m[39m
+ [32m✓[39m e2e/helpers/codexRollout.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mnames the wrapper it could not select an account for
+[22m[39m[cmd-center] continue claude session: project-0 taurhaus
+
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mnames the wrapper it could not select an account for
+[22m[39m[cmd-center] launch OK: {
+  tmux_session: [32m'taurhaus'[39m,
+  tmux_window: [32m'2'[39m,
+  tmux_pane: [32m'%7'[39m,
+  account_applied: [33mfalse[39m,
+  account_note: [32m'opaque_base_command'[39m,
+  account_note_detail: [32m'my-claude-wrapper'[39m
+}
+
+ [32m✓[39m src/lib/toolLogos.test.js [2m([22m[2m7 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m e2e/helpers/meshRuntime.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m src/lib/shell/shortcuts.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/lib/pathUtils.test.js [2m([22m[2m13 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/FirstRunWizard.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 131[2mms[22m[39m
+ [32m✓[39m src/lib/components/MeshNodeRoleCard.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 50[2mms[22m[39m
+ [32m✓[39m src/lib/toolRegistryBoundary.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mis reachable from the keyboard: ArrowRight opens the submenu, Enter launches
+[22m[39m[cmd-center] fresh claude session: project-0 taurhaus
+
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mis reachable from the keyboard: ArrowRight opens the submenu, Enter launches
+[22m[39m[cmd-center] launch OK: { ok: [33mtrue[39m }
+
+ [32m✓[39m src/lib/polish.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/lib/fileChange.test.js [2m([22m[2m12 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/lib/ipc/normalize.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/components/SlideOver.test.js [2m([22m[2m10 tests[22m[2m)[22m[33m 324[2mms[22m[39m
+ [32m✓[39m e2e/helpers/templateCrud.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 275[2mms[22m[39m
+ [32m✓[39m e2e/helpers/onboarding.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/lib/meshDefaults.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mreopening the chooser from the menu[2m > [22m[2mopens the chooser on a project whose account is already settled
+[22m[39m[cmd-center] fresh claude session: project-0 taurhaus
+
+ [32m✓[39m src/lib/format.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/components/shell/ShellMainPanel.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 87[2mms[22m[39m
+ [32m✓[39m src/lib/components/MeshConnection.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 42[2mms[22m[39m
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mreopening the chooser from the menu[2m > [22m[2mleaves the plain launch row launching straight away
+[22m[39m[cmd-center] fresh claude session: project-0 taurhaus
+
+[90mstdout[2m | src/lib/SidebarAccounts.test.js[2m > [22m[2mSidebar account submenus[2m > [22m[2mreopening the chooser from the menu[2m > [22m[2mleaves the plain launch row launching straight away
+[22m[39m[cmd-center] launch OK: { ok: [33mtrue[39m }
+
+ [32m✓[39m src/lib/components/AccountPicker.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 114[2mms[22m[39m
+ [32m✓[39m src/lib/themeTokens.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/lib/components/ValidationBar.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 49[2mms[22m[39m
+ [32m✓[39m src/lib/components/shell/ShellTitlebar.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 175[2mms[22m[39m
+ [32m✓[39m src/lib/windowsNsisPayloadHash.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/app.css.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/lib/components/roleVersioning.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m e2e/contractGate.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 43[2mms[22m[39m
+ [32m✓[39m e2e/helpers/confirmDialog.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m src/lib/shell/daemonStatusController.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/lib/components/AccountUsageBoard.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 62[2mms[22m[39m
+ [32m✓[39m src/lib/CodeViewer.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m src/lib/meshCache.test.js [2m([22m[2m5 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m src/lib/projectOptions.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/SidebarAccounts.test.js [2m([22m[2m19 tests[22m[2m)[22m[33m 3353[2mms[22m[39m
+     [33m[2m✓[22m[39m ticks the account a fresh launch uses, and none on the history rows [33m 359[2mms[22m[39m
+     [33m[2m✓[22m[39m pins from the Claude account submenu without launching, and clears it again [33m 370[2mms[22m[39m
+     [33m[2m✓[22m[39m offers no usable account on a resume the team runtime would take over [33m 366[2mms[22m[39m
+ [32m✓[39m src/lib/components/ConfirmDialog.test.js [2m([22m[2m6 tests[22m[2m)[22m[32m 104[2mms[22m[39m
+ [32m✓[39m src/lib/ipc/client.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/components/SurfaceDoorway.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 60[2mms[22m[39m
+ [32m✓[39m src/lib/ipc/system.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/batchRegistrationProgress.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/components/meshTabRuntime.warnings.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/startupFailure.test.js [2m([22m[2m3 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m src/test/visual/ipcMockCoverage.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m e2e/helpers/meshTiming.test.js [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/smoke.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/components/MeshRuntimeView.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 87[2mms[22m[39m
+ [32m✓[39m src/test/scripts/visualShot.test.js [2m([22m[2m11 tests[22m[2m)[22m[33m 3538[2mms[22m[39m
+     [33m[2m✓[22m[39m gives up on a browser that never exits [33m 1039[2mms[22m[39m
+     [33m[2m✓[22m[39m kills a browser that ignores the timeout [33m 2047[2mms[22m[39m
+ [32m✓[39m src/lib/ipc/templates.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/components/meshBuilderUtils.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/visual-host/registry.test.js [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m scripts/workflow-procedures.test.mjs [2m([22m[2m226 tests[22m[2m)[22m[33m 8407[2mms[22m[39m
+     [33m[2m✓[22m[39m kills the whole detached group when its owner stops refreshing the lease [33m 2219[2mms[22m[39m
+     [33m[2m✓[22m[39m leaves a run alone while its owner keeps the lease fresh [33m 6036[2mms[22m[39m
+[90mstderr[2m | src/lib/components/MeshTab.test.js[2m > [22m[2mMeshTab[2m > [22m[2msuppresses skipped team folder discovery warnings from the inline availability banner
+[22m[39m[mesh] suppressed internal discovery warning: skipped team folder 'taureval-1773711699719' because config is missing or invalid
+
+ [32m✓[39m src/lib/components/MeshTab.test.js [2m([22m[2m70 tests[22m[2m)[22m[33m 7174[2mms[22m[39m
+     [33m[2m✓[22m[39m auto-collapses the resume progress tray after completion [33m 5235[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m150 passed[39m[22m[90m (150)[39m
+[2m      Tests [22m [1m[32m2469 passed[39m[22m[90m (2469)[39m
+[2m   Start at [22m 21:48:39
+[2m   Duration [22m 11.84s[2m (transform 48.92s, setup 0ms, import 97.33s, tests 49.28s, environment 54.55s)[22m
+
+Quick check passed.

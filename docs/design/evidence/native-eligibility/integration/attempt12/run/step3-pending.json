@@ -1,0 +1,52 @@
+{
+  "adapter": "app_server",
+  "attachment": {
+    "app_server": {
+      "accountRoot": "/tmp/th-int-v92389k5/codex",
+      "build": "0.153.4",
+      "configuration": "strict-config/1",
+      "contract": 1,
+      "host": "taurhaus-daemon-owned-thread/1",
+      "hostGeneration": "033e3147-1db1-4e0e-9c78-a19b507d86b5",
+      "memberId": "seat@integration",
+      "processId": 126,
+      "processStart": "28086653",
+      "socketPath": "/tmp/th-int-v92389k5/tmp/th-host-f85778b6339c47828854b9272615f41b/rpc.sock",
+      "threadId": "01a08c4e-36ef-7b81-8d5f-152614676d07",
+      "transport": "unix-websocket",
+      "trust": "daemon-owned/1"
+    },
+    "attachment_generation": 1,
+    "context_generation": "0",
+    "generation": "1",
+    "harness": "codex",
+    "launch_root": {
+      "claudeDir": "/tmp/th-int-v92389k5/claude",
+      "rootAuthorityRevision": 0,
+      "teamIncarnationId": "dd3910c9ef9c13a27ce10eb70ea26de0b6b8043baa34819a850465e221f8e36a",
+      "teamsDir": "/tmp/th-int-v92389k5/claude/teams"
+    },
+    "member": "seat",
+    "pane": "",
+    "pane_pid": 0,
+    "pane_start": "",
+    "root": "/tmp/th-int-v92389k5/claude",
+    "session": "01a08c4e-36ef-7b81-8d5f-152614676d07",
+    "socket": "",
+    "team_incarnation": "dd3910c9ef9c13a27ce10eb70ea26de0b6b8043baa34819a850465e221f8e36a",
+    "tmux_session": ""
+  },
+  "attempt_id": "adfca181-a4d4-41df-9274-44feae0585dc",
+  "delivery_id": "28012a5f-cbc6-4239-89d0-3328c115178e",
+  "event_type": "receipt",
+  "evidence": "{\"class\":\"pending: pre_input_failure: IO error: delivery: thread_active\",\"expected_turn_id\":null,\"method\":null,\"reconciliation_required\":false,\"request_id\":null,\"thread_id\":\"01a08c4e-36ef-7b81-8d5f-152614676d07\",\"turn_id\":null}",
+  "message_id": "08d602e2-ba28-4526-9198-93ddad545249",
+  "observed_at": "2026-09-10T17:13:15.423702807+00:00",
+  "origin": "app_server",
+  "owner_epoch": 2,
+  "recipient": "seat",
+  "source_generation": "66cd7193-b11b-4d10-8803-d95dba25926d",
+  "source_position": 8,
+  "stage": "pending",
+  "team_incarnation": "dd3910c9ef9c13a27ce10eb70ea26de0b6b8043baa34819a850465e221f8e36a"
+}

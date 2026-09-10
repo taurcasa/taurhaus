@@ -9,8 +9,13 @@ useDefault = true
 # allowlisted digest is listed individually and reviewed.
 [allowlist]
 description = "SHA-256 file checksums quoted in committed research documents"
+regexTarget = "line"
 regexes = [
   # RFC 6455 sample WebSocket nonce ('the sample nonce'), a public spec constant recorded in native-eligibility evidence
   '''dGhlIHNhbXBsZSBub25jZQ==''',
   '''5e4cdfc3ba40af04ed58d9c062dcb745be5eb0c06ea5734edf39747c8586de3e''',
+  # Mesh delivery idempotency keys: per-attempt UUID request ids in journal and receipt evidence, not credentials
+  '''idempotency_key":\s*"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"''',
+  # RFC 6455 client handshake nonce captured in native-eligibility host-event evidence: single-use, public on the wire
+  '''Sec-WebSocket-Key: [A-Za-z0-9+/]{22}==''',
 ]

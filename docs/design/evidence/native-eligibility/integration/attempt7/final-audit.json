@@ -1,0 +1,45 @@
+{
+  "trial_exit": 1,
+  "verdict": "FAIL step 4 after controlled SIGSTOP/SIGCONT lock interleave",
+  "surviving_owned_processes": [],
+  "private_port": 23640,
+  "port_closed": true,
+  "scratch_root_removed": true,
+  "mesh_tree_clean": true,
+  "descriptor_enabled": false,
+  "hosted_rpc_rejected_rows": [],
+  "absence_reason": "Read/correlation failures are client-side; no JSON-RPC host error object was emitted.",
+  "exposure_item_ids": {
+    "saffron7c82ab": [
+      "01a089a5-21a8-7572-9bd2-e1a9ec19d1eb",
+      "msg_0016b9b1e1891769016aa2368cc27c87d2b00e68d3f10cb308"
+    ],
+    "juniper8e21cd": [
+      "01a089a5-edf0-7f21-bdb9-0a5f380c9e40",
+      "msg_0016b9b1e1891769016aa236c2c82087d2885ee23391abecc3"
+    ],
+    "maple7d91cb": [
+      "01a089a7-578a-7af3-bade-8cbdd609478c",
+      "msg_0016b9b1e1891769016aa2371df26887d28cc57bef1827656c"
+    ],
+    "cedar9a38ef": [
+      "01a089a7-621b-73f1-8342-cdafac0dee78",
+      "msg_0016b9b1e1891769016aa237205b0487d28adcfa68122ba425"
+    ]
+  },
+  "steps": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "FAIL",
+    "5": "NOT RUN",
+    "6": "NOT RUN",
+    "7": "NOT RUN"
+  },
+  "gate_exits": {
+    "gate-check-quick": 0,
+    "gate-lint": 0,
+    "gate-test-contracts": 0
+  },
+  "retained_bytes": 371652
+}

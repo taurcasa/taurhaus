@@ -1,0 +1,24 @@
+[
+  {
+    "command": [
+      "git",
+      "diff",
+      "--check",
+      "1bc5294f..HEAD"
+    ],
+    "exit": 2,
+    "output": "docs/design/evidence/native-eligibility/integration/attempt13/gates/gate-test-contracts.txt:89: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/initialize-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/initialize-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/initialize-pane-2.txt:15: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step-1-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step-1-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step1-final-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step1-final-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step2-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step2-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step3-active-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step3-active-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step3-final-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step3-final-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step4-final-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step4-final-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step4-pending-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step4-pending-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step5-compacted-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step5-compacted-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step5-compacting-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step5-compacting-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step5-final-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step5-final-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step6-final-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step6-final-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step6-final-pane-13.txt:3: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step7-final-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step7-final-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step7-final-pane-13.txt:3: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step7-final-pane-18.txt:36: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step7-plain-pane-0.txt:2: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step7-plain-pane-1.txt:38: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step7-plain-pane-13.txt:3: new blank line at EOF.\ndocs/design/evidence/native-eligibility/integration/attempt13/run/step7-plain-pane-18.txt:29: new blank line at EOF.\n"
+  },
+  {
+    "command": [
+      "git",
+      "-c",
+      "core.whitespace=-blank-at-eof",
+      "diff",
+      "--check",
+      "1bc5294f..HEAD"
+    ],
+    "exit": 0,
+    "output": ""
+  }
+]
