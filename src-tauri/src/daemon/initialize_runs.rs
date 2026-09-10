@@ -57,7 +57,11 @@ impl InitializeTeamService {
     }
 
     pub(crate) fn start(&self, params: CoordinationInitializeParams) -> Result<String, String> {
-        let run_id = self.registry.start(CoordinationRunKind::InitializeTeam);
+        let run_id = self.registry.start_for_team(
+            CoordinationRunKind::InitializeTeam,
+            &params.request.team_name,
+            &self.state,
+        );
         let run_id_for_task = run_id.clone();
         let registry = self.registry.clone();
         let state = self.state.clone();

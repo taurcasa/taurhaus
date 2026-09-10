@@ -9590,20 +9590,37 @@ fn initialize_owner_race_guard_lifecycle_and_interleaved_self_heal() {
         let backend = Arc::new(FakeBackend::default());
         let mut orch = new_orchestrator(&tmp, backend.clone(), runtime.clone());
         let state = crate::coordination::state::CoordinationState::with_components_and_runtime(
-            tmp.path().into(), crate::coordination::backend::BackendSelector::m0(),
+            tmp.path().into(),
+            crate::coordination::backend::BackendSelector::m0(),
             Arc::new(move |_, _| Ok(backend.clone())),
-            Arc::new({ let runtime = runtime.clone(); move || runtime.clone() }),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
         );
         let log_path = tmp.path().join("race.jsonl");
         let sink = LogFileState::new(log_path.clone()).unwrap();
         install_global_sink(&sink);
-        let guard = tmp.path().join("canonical/.taurhaus/initialize-in-progress");
+        let guard = tmp
+            .path()
+            .join("canonical/.taurhaus/initialize-in-progress");
         let mut request = canonical_review_request(&tmp);
-        if !canonical { request.messaging = None; }
-        runtime.set_delivery_opt_in_failure(Some("mesh: runtime pending"));
+        if !canonical {
+            request.messaging = None;
+        }
+        let owner_count = || {
+            runtime
+                .calls()
+                .iter()
+                .filter(|c| matches!(c, RuntimeCall::SpawnTeamDaemonAtRoot { .. }))
+                .count()
+        };
         let mut observe = |step: &str, status: StepStatus, _message: Option<String>| {
             if step == "create_team" && status == StepStatus::Succeeded {
-                assert!(guard.exists(), "guard must precede published create success");
+                assert!(guard.exists());
+            }
+            if canonical && step == "send_onboarding" {
+                assert_eq!(owner_count(), 1);
             }
             if step == "send_onboarding" || step == "opt_in_delivery" {
                 assert!(guard.exists());
@@ -9611,42 +9628,104 @@ fn initialize_owner_race_guard_lifecycle_and_interleaved_self_heal() {
                 let pass = state.run_background_self_heal_core_pass().unwrap();
                 assert_eq!(pass.teams_skipped, 1);
                 assert_eq!(pass.team_daemons_ensured, 0);
-                assert_eq!(runtime.calls().len(), before, "no background daemon probes/spawns");
+                assert_eq!(runtime.calls().len(), before);
             }
         };
-        let first = orch.initialize_team_with_cli_commands_and_layout_and_progress(
-            &request, &CliCommandSettings::default(), "new_window", Some(&mut observe),
-        ).unwrap();
-        assert_eq!(first.failed_step.as_deref(), canonical.then_some("opt_in_delivery"));
-        if canonical {
-            assert!(guard.exists(), "failed initialize retains guard");
-            runtime.set_delivery_opt_in_failure(None);
-            let retry = orch.initialize_team_with_cli_commands_and_layout_and_progress(
-                &request, &CliCommandSettings::default(), "new_window", Some(&mut observe),
-            ).unwrap();
-            assert!(retry.failed_step.is_none(), "{retry:?}");
-            assert!(retry.steps.iter().any(|step| step.message.as_deref() == Some("retained from previous attempt")));
+        for refusal in [Some("mesh: runtime pending"), None] {
+            if !canonical && refusal.is_some() {
+                continue;
+            }
+            runtime.set_delivery_opt_in_failure(refusal);
+            let report = orch
+                .initialize_team_with_cli_commands_and_layout_and_progress(
+                    &request,
+                    &CliCommandSettings::default(),
+                    "new_window",
+                    Some(&mut observe),
+                )
+                .unwrap();
+            assert_eq!(
+                report.failed_step.as_deref(),
+                refusal.map(|_| "opt_in_delivery")
+            );
+            assert_eq!(guard.exists(), refusal.is_some());
         }
-        assert!(!guard.exists(), "finish clears guard after onboarding");
+        if canonical {
+            assert_eq!(owner_count(), 1);
+        }
         sink.flush_for_test().unwrap();
-        assert!(fs::read_to_string(log_path).unwrap().contains("self_heal.team.skipped_initializing"));
+        assert!(fs::read_to_string(log_path)
+            .unwrap()
+            .contains("self_heal.team.skipped_initializing"));
     }
 }
 
-// Regression: 06d1267b (observed at 6398bfa3), attempt 10 / L4 run 3: the owner was only ensured after onboarding.
+// Regression: 06d1267b, attempt 10 / L4 run 3: a live pre-onboarding owner refused opt-in.
 #[test]
-fn initialize_owner_race_ensures_once_before_onboarding() {
-    let tmp = TempDir::new().unwrap();
-    let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let mut orch = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
-    let report = orch.initialize_team_with_cli_commands_and_layout_and_progress(
-        &canonical_review_request(&tmp), &CliCommandSettings::default(), "new_window",
-        Some(&mut |step, status, _message| {
-            if step == "send_onboarding" && status == StepStatus::Running {
-                assert_eq!(runtime.calls().iter().filter(|call| matches!(call, RuntimeCall::SpawnTeamDaemonAtRoot { .. })).count(), 1);
-            }
-        }),
-    ).unwrap();
-    assert!(report.failed_step.is_none());
-    assert_eq!(runtime.calls().iter().filter(|call| matches!(call, RuntimeCall::SpawnTeamDaemonAtRoot { .. })).count(), 1);
+fn initialize_owner_race_resets_only_a_validated_idle_owner() {
+    let _lock = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    for case in [
+        "empty",
+        "pending",
+        "corrupt",
+        "history",
+        "invalid_pid",
+        "other",
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = RecordingCoordinationRuntime::default();
+        let refusal = if case == "other" {
+            "another refusal"
+        } else {
+            "quiescent required before opt-in: team owner already holds lifetime lock"
+        };
+        runtime.set_delivery_opt_in_failure_once(refusal);
+        runtime.set_pid_running(4242, case != "invalid_pid");
+        let pending = match case {
+            "pending" => "[{}]",
+            "corrupt" => "invalid",
+            _ => "[]",
+        };
+        let state_file = if case == "history" {
+            "attempt.json"
+        } else {
+            "pending-test.json"
+        };
+        for (path, bytes) in [
+            ("daemons/team.pid".into(), "4242"),
+            (format!("state/delivery/{state_file}"), pending),
+        ] {
+            let path = tmp.path().join("race").join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, bytes).unwrap();
+        }
+        let log = tmp.path().join("reset.jsonl");
+        let sink = LogFileState::new(log.clone()).unwrap();
+        install_global_sink(&sink);
+        let result = crate::coordination::runtime::team_activation::opt_in_with_owner_reset(
+            &runtime,
+            "race",
+            "lead",
+            tmp.path(),
+        );
+        let recovered = case == "empty";
+        assert_eq!(result.is_ok(), recovered, "{case}: {result:?}");
+        let calls = runtime.calls();
+        let stops = calls
+            .iter()
+            .filter(|c| matches!(c, RuntimeCall::StopTeamDaemon { .. }))
+            .count();
+        let attempts = calls
+            .iter()
+            .filter(|c| matches!(c, RuntimeCall::OptInTeamDelivery { .. }))
+            .count();
+        assert_eq!(stops, usize::from(recovered));
+        assert_eq!(attempts, 1 + usize::from(recovered));
+        sink.flush_for_test().unwrap();
+        let records = fs::read_to_string(log).unwrap();
+        assert_eq!(
+            records.contains("coordination.opt_in.owner_reset"),
+            recovered
+        );
+    }
 }

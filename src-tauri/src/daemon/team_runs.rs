@@ -68,7 +68,11 @@ impl TeamOperationsService {
         &self,
         params: CoordinationResumeTeamParams,
     ) -> Result<String, String> {
-        let run_id = self.registry.start(CoordinationRunKind::ResumeTeam);
+        let run_id = self.registry.start_for_team(
+            CoordinationRunKind::ResumeTeam,
+            &params.request.team_name,
+            &self.state,
+        );
         let run_id_for_task = run_id.clone();
         let registry = self.registry.clone();
         let state = self.state.clone();
@@ -134,7 +138,11 @@ impl TeamOperationsService {
         &self,
         params: CoordinationReonboardParams,
     ) -> Result<String, String> {
-        let run_id = self.registry.start(CoordinationRunKind::Reonboard);
+        let run_id = self.registry.start_for_team(
+            CoordinationRunKind::Reonboard,
+            &params.request.team_name,
+            &self.state,
+        );
         let run_id_for_task = run_id.clone();
         let registry = self.registry.clone();
         let state = self.state.clone();
@@ -191,7 +199,11 @@ impl TeamOperationsService {
         &self,
         params: CoordinationSwitchTeamAccountParams,
     ) -> Result<String, String> {
-        let run_id = self.registry.start(CoordinationRunKind::SwitchTeamAccount);
+        let run_id = self.registry.start_for_team(
+            CoordinationRunKind::SwitchTeamAccount,
+            &params.request.team_name,
+            &self.state,
+        );
         let run_id_for_task = run_id.clone();
         let registry = self.registry.clone();
         let state = self.state.clone();

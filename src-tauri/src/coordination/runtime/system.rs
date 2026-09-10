@@ -336,6 +336,14 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         )
     }
 
+    fn validated_team_daemon_pid_at_root(
+        &self,
+        team: &str,
+        root: &std::path::Path,
+    ) -> Result<Option<u32>, CoordinationError> {
+        validated_team_daemon_pid_file(&resolve_team_daemon_pid_path_at(root, team), team, false)
+    }
+
     fn opt_in_team_delivery(
         &self,
         team_name: &str,

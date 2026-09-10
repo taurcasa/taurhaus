@@ -76,10 +76,24 @@ pub(crate) struct BackgroundDeadlinePassResult {
 #[cfg(test)]
 const DEFAULT_TMUX_LAYOUT: &str = "new_window";
 
+/// Run-registry lease, released on every terminal outcome (including worker panic).
+#[derive(Debug)]
+pub(crate) struct TeamRunGuard(Arc<Mutex<HashMap<String, String>>>, String);
+
+impl Drop for TeamRunGuard {
+    fn drop(&mut self) {
+        self.0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.1);
+    }
+}
+
 /// App-managed coordination state that lazily initializes the orchestrator.
 pub struct CoordinationState {
     #[cfg(target_os = "linux")]
     pub(crate) hosted: Arc<crate::coordination::hosted::HostedMembers>,
+    running_teams: Arc<Mutex<HashMap<String, String>>>,
     teams_dir: PathBuf,
     team_root_registry: TeamRootRegistry,
     app_started_at: DateTime<Utc>,
@@ -169,6 +183,7 @@ impl CoordinationState {
         app_started_at: DateTime<Utc>,
     ) -> Self {
         Self {
+            running_teams: Arc::new(Mutex::new(HashMap::new())),
             team_root_registry: TeamRootRegistry::new(teams_dir.clone()),
             teams_dir,
             app_started_at,
@@ -181,6 +196,14 @@ impl CoordinationState {
             root_orchestrators: Mutex::new(HashMap::new()),
             live_presence_degraded_teams: Mutex::new(std::collections::HashSet::new()),
         }
+    }
+
+    pub(crate) fn register_team_run(&self, id: &str, team: &str) -> TeamRunGuard {
+        self.running_teams
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id.into(), team.into());
+        TeamRunGuard(self.running_teams.clone(), id.into())
     }
 
     /// Latch the live-presence degrade warn for a team; true when this is the
@@ -402,10 +425,15 @@ impl CoordinationState {
             let mut orchestrator = self.build_background_orchestrator_for_root(&teams_dir)?;
             for team_name in teams_by_root.remove(&teams_dir).unwrap_or_default() {
                 summary.teams_scanned += 1;
-                if crate::coordination::initialize_guard::active(&teams_dir, &team_name) {
+                // Hold admission through this team: a new run cannot interleave a spawn.
+                let running = self.running_teams.lock().unwrap_or_else(|e| e.into_inner());
+                if running.values().any(|team| team == &team_name)
+                    || crate::coordination::initialize_guard::active(&teams_dir, &team_name)
+                {
                     summary.teams_skipped += 1;
                     crate::coordination::initialize_guard::event(
-                        "self_heal.team.skipped_initializing", &team_name,
+                        "self_heal.team.skipped_initializing",
+                        &team_name,
                     );
                     continue;
                 }
@@ -450,7 +478,10 @@ impl CoordinationState {
                 let mut root_summary = BackgroundEffortRetryPassResult::default();
                 for team_name in team_names {
                     root_summary.teams_scanned += 1;
-                    if crate::coordination::initialize_guard::active(&root, &team_name) {
+                    let running = self.running_teams.lock().unwrap_or_else(|e| e.into_inner());
+                    if running.values().any(|team| team == &team_name)
+                        || crate::coordination::initialize_guard::active(&root, &team_name)
+                    {
                         continue;
                     }
                     // The task event remains the earliest trigger, while this bounded

@@ -334,7 +334,8 @@ impl CoordinationOrchestrator {
             let opt_in = self
                 .save_pending_canonical_initialize(request)
                 .and_then(|()| {
-                    self.runtime.opt_in_team_delivery(
+                    crate::coordination::runtime::team_activation::opt_in_with_owner_reset(
+                        self.runtime.as_ref(),
                         &request.team_name,
                         &request.lead.name,
                         &self.teams_dir,
@@ -344,7 +345,9 @@ impl CoordinationOrchestrator {
                     if self.ensure_team_daemon_running_best_effort(&request.team_name) {
                         Ok(())
                     } else {
-                        Err(CoordinationError::Backend("team delivery owner could not start".into()))
+                        Err(CoordinationError::Backend(
+                            "team delivery owner could not start".into(),
+                        ))
                     }
                 });
             if let Err(err) = opt_in {
@@ -395,7 +398,8 @@ impl CoordinationOrchestrator {
             self.ensure_team_daemon_after_initialize(request);
         }
         std::fs::remove_file(crate::coordination::initialize_guard::path(
-            &self.teams_dir, &request.team_name,
+            &self.teams_dir,
+            &request.team_name,
         ))?;
         if request.messaging.is_some() {
             if let Err(error) =
