@@ -130,3 +130,28 @@ All four required gates were rerun after `a1fc452b`, each with exit 0:
 (68 contracts), and `just test-rust-unit` (2,681 library + 4 binary tests;
 10 ignored and 100 recipe-filtered library tests). Cargo queue polls, private
 test roots and the checkout-local target directory were retained.
+
+## Round 1: reviewer regression repairs
+
+`f74d2aa1` repairs the confirmed cache-miss idle inversion, activity-slice bypass,
+registry-error identity loss, rollout/descriptor rescan, unnecessary post-turn
+pane capture, and unknown-event activity authority. Seven focused regression
+assertions failed first (exit 101), then passed (exit 0). A follow-up assertion
+caught a closed rollout omitted by the descriptor optimization when a different
+rollout was open; it also failed first (exit 101), then all eight passed (exit 0).
+The classification regression drives the real member snapshot builder with both
+fresh and expired observations, including launch-ready idle, notify idle, and
+notify working. Ancestry traversal is outside the per-record predicates.
+
+The bounded repair retains the session wire shape and the readiness cache. Both
+consumers use the existing ActivitySource slice; export consumes classification's
+confidence and retains a positively attributed idle verdict on cache expiry.
+Expired evidence fields are omitted rather than refreshed from a stale cache.
+This uses the review's minimum safe fallback instead of adding observation fields
+to every DisplaySession/RuntimeSession constructor. The existing ActivitySource
+trait file required a default observation method; no new registry or capability
+system was introduced. The nontrivial once-per-cycle runtime-record plumbing is
+deferred: runtime records are still read per Codex PID. macOS pre-turn readiness
+is explicitly documented as unavailable until process start ticks exist there.
+No real delivery trial, hosted journal feature, protocol bump, or reviewer run
+was added in this round.

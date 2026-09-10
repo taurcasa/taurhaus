@@ -175,9 +175,10 @@ pub(super) fn refresh(
     notify_path: &Path,
 ) {
     let now = Utc::now();
+    let ancestors = super::codex::codex_process_ancestors(pid);
     let bound: Vec<_> = records
         .iter()
-        .filter(|record| super::codex::codex_runtime_matches(record, project, pid, None))
+        .filter(|record| super::codex::codex_runtime_matches(record, project, &ancestors, None))
         .collect();
     let ([record], Some(id)) = (bound.as_slice(), result.session_id.as_deref()) else {
         return;

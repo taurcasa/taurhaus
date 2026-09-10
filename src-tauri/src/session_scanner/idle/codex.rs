@@ -459,12 +459,7 @@ pub(super) fn codex_detect_idle(project_path: &str, sessions_dir: &Path) -> Idle
     }
 }
 
-pub(super) fn codex_runtime_matches(
-    record: &crate::coordination::stores::MemberRuntimeRecord,
-    project: &str,
-    pid: u32,
-    pane: Option<&str>,
-) -> bool {
+pub(super) fn codex_process_ancestors(pid: u32) -> std::collections::HashSet<u32> {
     let mut ancestors = std::collections::HashSet::new();
     let mut parent = pid;
     for _ in 0..64 {
@@ -476,6 +471,15 @@ pub(super) fn codex_runtime_matches(
         };
         parent = next;
     }
+    ancestors
+}
+
+pub(super) fn codex_runtime_matches(
+    record: &crate::coordination::stores::MemberRuntimeRecord,
+    project: &str,
+    ancestors: &std::collections::HashSet<u32>,
+    pane: Option<&str>,
+) -> bool {
     record.app_server.is_none()
         && record.cli_tool.is_some_and(is_codex)
         && record.project_path.as_deref().is_some_and(|p| {
@@ -497,6 +501,7 @@ fn codex_identity_scope(
     pane: Option<&str>,
     records: &[crate::coordination::stores::MemberRuntimeRecord],
 ) -> Option<(Option<PathBuf>, std::collections::HashSet<String>)> {
+    let ancestors = codex_process_ancestors(pid);
     let mut account = None;
     let mut excluded = std::collections::HashSet::new();
     for record in records {
@@ -504,7 +509,7 @@ fn codex_identity_scope(
             excluded.insert(host.thread_id.clone());
             continue;
         }
-        let bound = codex_runtime_matches(record, project, pid, pane);
+        let bound = codex_runtime_matches(record, project, &ancestors, pane);
         if bound {
             if let Some(root) = record
                 .recovery
@@ -648,7 +653,14 @@ fn codex_detect_idle_scoped_with_paths(
     }) {
         return result;
     }
-    if candidates.is_empty() && open_paths.is_some() {
+    if open_paths.is_some()
+        && (candidates.is_empty()
+            || locks.first().is_some_and(|id| {
+                !candidates
+                    .iter()
+                    .any(|path| codex_result_from_file(path).session_id.as_ref() == Some(id))
+            }))
+    {
         candidates = scan_candidates();
     }
     if let Some(id) = locks.first() {
@@ -964,6 +976,59 @@ mod tests {
                 "cached ownership must avoid date directory enumeration"
             )
         });
+    }
+
+    // Regression: f74d2aa1 narrowed candidate discovery to open descriptors,
+    // omitting a closed rollout selected by a unique writer lock if another was open.
+    #[test]
+    fn codex_review_writer_lock_finds_closed_rollout_beside_open_other_thread() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let sessions = tmp.path().join("sessions");
+        let date = sessions.join(chrono::Local::now().format("%Y/%m/%d").to_string());
+        let id = "01a08a70-8595-7ea0-a004-4ae0385d4e2f";
+        let name = format!("rollout-2026-09-10T08-30-00-{id}.jsonl");
+        create_codex_session(&date, &name, "/scratch/project");
+        create_codex_session(
+            &date,
+            "rollout-2026-09-10T08-30-00-other.jsonl",
+            "/scratch/project",
+        );
+        let lock = tmp
+            .path()
+            .join("thread-writer-locks")
+            .join(format!("{id}.lock"));
+        fs::create_dir(lock.parent().unwrap()).unwrap();
+        fs::write(&lock, "").unwrap();
+        let open = std::collections::HashSet::from([
+            lock,
+            date.join("rollout-2026-09-10T08-30-00-other.jsonl"),
+        ]);
+        let result = codex_detect_idle_scoped_with_paths(
+            "/scratch/project",
+            u32::MAX,
+            None,
+            &sessions,
+            &Default::default(),
+            Some(&open),
+            &|p| open.contains(p),
+        );
+        assert_eq!(result.session_id.as_deref(), Some(id));
+        assert_eq!(result.jsonl_path.as_deref(), date.join(name).to_str());
+        ROLLOUT_SCANS.with(|count| count.set(0));
+        let again = codex_detect_idle_scoped_with_paths(
+            "/scratch/project",
+            u32::MAX,
+            None,
+            &sessions,
+            &Default::default(),
+            Some(&open),
+            &|p| open.contains(p),
+        );
+        assert_eq!(again.session_id, result.session_id);
+        assert_eq!(again.jsonl_path, result.jsonl_path);
+        ROLLOUT_SCANS.with(|count| assert_eq!(count.get(), 0));
     }
 
     // Regression: 5188e732 bound per-PID resolution to the daemon account, losing a seat

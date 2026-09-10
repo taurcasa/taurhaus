@@ -31,12 +31,12 @@ struct SessionMembershipMetadata {
 }
 
 #[derive(Debug, Clone, Default)]
-struct PaneActivityProbe {
-    pane_alive: bool,
-    active_non_shell_process: bool,
-    pane_foreign: bool,
-    foreign_reason: Option<String>,
-    foreign_live_pane: Option<LivePane>,
+pub(crate) struct PaneActivityProbe {
+    pub(crate) pane_alive: bool,
+    pub(crate) active_non_shell_process: bool,
+    pub(crate) pane_foreign: bool,
+    pub(crate) foreign_reason: Option<String>,
+    pub(crate) foreign_live_pane: Option<LivePane>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -475,7 +475,7 @@ fn assign_runtime_session_memberships(
     }
 }
 
-fn build_member_activity_snapshot(
+pub(crate) fn build_member_activity_snapshot(
     session: Option<&DisplaySession>,
     pane_probe: &PaneActivityProbe,
     observed_at: DateTime<Utc>,

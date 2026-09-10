@@ -508,6 +508,43 @@ mod tests {
                 ActivityAttribution::Attributed
             );
             assert!(!session.project_unattributed_active);
+            use crate::coordination::activity_export::{
+                build_member_activity_snapshot, PaneActivityProbe,
+            };
+            use crate::coordination::activity_schema::SnapshotActivityConfidence;
+            let display = crate::session_scanner::DisplaySession::from(session.clone());
+            let probe = PaneActivityProbe {
+                pane_alive: true,
+                active_non_shell_process: true,
+                ..Default::default()
+            };
+            let expected = if state == SessionState::Idle {
+                SnapshotActivityConfidence::Idle
+            } else {
+                SnapshotActivityConfidence::Active
+            };
+            let fresh = build_member_activity_snapshot(Some(&display), &probe, chrono::Utc::now());
+            assert_eq!(fresh.activity_confidence, expected);
+            assert_eq!(
+                fresh.evidence.get("source"),
+                Some(&serde_json::json!(source))
+            );
+            assert_eq!(
+                fresh.evidence.get("confidence"),
+                Some(&serde_json::json!(confidence))
+            );
+            // Expiry and concurrent invalidation must preserve the classified verdict.
+            idle::codex_readiness::seed_observation_for_test(
+                pid,
+                project,
+                pane,
+                source,
+                state,
+                chrono::Utc::now() - chrono::Duration::seconds(3),
+            );
+            let stale = build_member_activity_snapshot(Some(&display), &probe, chrono::Utc::now());
+            assert_eq!(stale.activity_confidence, expected);
+            assert!(stale.evidence.is_empty());
         }
         idle::codex_readiness::seed_observation_for_test(
             pid,
