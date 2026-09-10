@@ -1,0 +1,20 @@
+E
+======================================================================
+ERROR: test_support (unittest.loader._FailedTest.test_support)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_support
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/loader.py", line 394, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/loader.py", line 337, in _get_module_from_name
+    __import__(name)
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run3/test_support.py", line 5, in <module>
+    from support import copy_native_runtime, sanitize_log_rows, classify_failure
+ModuleNotFoundError: No module named 'support'
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (errors=1)

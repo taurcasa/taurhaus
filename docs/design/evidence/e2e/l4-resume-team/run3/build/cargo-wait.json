@@ -1,0 +1,17 @@
+[
+  {
+    "at": 1789043733.3845167,
+    "exit": 0,
+    "output": "1083123 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+  },
+  {
+    "at": 1789043745.4388902,
+    "exit": 0,
+    "output": "1116680 <operator-path-redacted> build --bin mesh\n"
+  },
+  {
+    "at": 1789043749.4562628,
+    "exit": 1,
+    "output": ""
+  }
+]
