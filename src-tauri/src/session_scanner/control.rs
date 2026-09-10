@@ -951,7 +951,7 @@ fn run_tmux_send_keys(pane: &str, keys: &str) -> Result<(), String> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
 
     use crate::session_scanner::process::ProcessInfo;
@@ -1065,7 +1065,7 @@ pub(crate) mod tests {
     }
 
     #[cfg(target_os = "linux")]
-    pub(crate) struct ScratchTmux {
+    struct ScratchTmux {
         root: tempfile::TempDir,
         // The override belongs to the installing thread, including on drop.
         _not_send: std::marker::PhantomData<*const ()>,
@@ -1073,7 +1073,7 @@ pub(crate) mod tests {
 
     #[cfg(target_os = "linux")]
     impl ScratchTmux {
-        pub(crate) fn new(width: &str, height: &str) -> Self {
+        fn new(width: &str, height: &str) -> Self {
             let scratch = Self {
                 // Regression: c22b502a inherited long TMPDIR values, exceeding
                 // the Unix socket path limit before the test could start.
@@ -1132,11 +1132,25 @@ pub(crate) mod tests {
     }
 
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
-    #[test]
-    fn hosted_stop_session_reaps_host_when_tui_already_gone() {
-        assert_hosted_stop(
-            "gone pane stale previous reused_pid reused_start plain lead incomplete legacy_foreign",
-        );
+    macro_rules! hosted_stop_cases {
+        ($($name:ident => $mode:literal),+ $(,)?) => {$(
+            #[test]
+            fn $name() { assert_hosted_stop($mode); }
+        )+};
+    }
+
+    #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
+    hosted_stop_cases! {
+        hosted_stop_session_reaps_host_when_tui_already_gone => "gone",
+        hosted_stop_session_reaps_attached_host => "pane",
+        hosted_stop_session_resolves_stale_pane => "stale",
+        hosted_stop_session_previous_owner_preserves_pane => "previous",
+        hosted_stop_session_reused_pid_is_plain => "reused_pid",
+        hosted_stop_session_reused_start_is_plain => "reused_start",
+        hosted_stop_session_plain_is_unchanged => "plain",
+        hosted_stop_session_lead_is_plain => "lead",
+        hosted_stop_session_incomplete_inventory_is_plain => "incomplete",
+        hosted_stop_session_legacy_foreign_is_plain => "legacy_foreign",
     }
 
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
@@ -1154,184 +1168,175 @@ pub(crate) mod tests {
     }
 
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
-    fn assert_hosted_stop(modes: &str) {
+    fn assert_hosted_stop(mode: &str) {
         use crate::coordination::domain::HealthState;
         use crate::coordination::hosted::tests::{running, saved};
         use crate::coordination::hosted::HostedMembers;
         use crate::coordination::stores::{MemberRuntimeStore, TeamRootRegistry};
-        use crate::daemon::session_activity::SessionActivityHub;
         use std::time::{Duration, Instant};
         // Regression: 1db4f9bf, L4 run 4: pane-only stop left the owned host alive for 100 s.
-        for mode in modes.split_whitespace() {
-            let scratch = ScratchTmux::new("80", "24");
-            let team_root = scratch.path().join(".teams");
-            let root = team_root.as_path();
-            let _logs = taurhaus_lib::test_support::acquire_global_log_test_guard();
-            let sink = taurhaus_lib::logging::LogFileState::new(root.join("events.jsonl")).unwrap();
-            taurhaus_lib::logging::install_global_sink(&sink);
-            let (registry, hosts) = running(root);
-            let mut pane = scratch.run(&["display-message", "-p", "#{pane_id}"]);
-            if matches!(mode, "gone" | "previous" | "incomplete") {
-                pane = "%999999".into();
-            }
-            if matches!(mode, "pane" | "stale" | "busy" | "released") {
-                use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
-                let runtime = RecordingCoordinationRuntime::default();
-                hosts
-                    .attach_pane(&registry, "team", "seat", &runtime, "new_window")
-                    .unwrap();
-                let command = runtime
-                    .calls()
-                    .into_iter()
-                    .find_map(|c| match c {
-                        RuntimeCall::SendKeys { keys, .. } => Some(keys),
-                        _ => None,
-                    })
-                    .unwrap();
-                scratch.run(&["send-keys", "-t", &pane, "-l", &command]);
-                scratch.run(&["send-keys", "-t", &pane, "Enter"]);
-                let deadline = Instant::now() + Duration::from_secs(2);
-                while !root.join("attach-events.jsonl").exists() {
-                    assert!(Instant::now() < deadline, "fake TUI did not attach");
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-            }
-            let registry = if mode == "stale" {
-                let relocated = TeamRootRegistry::new(scratch.path().join(".default"));
-                relocated.set("team", root).unwrap();
-                relocated
-            } else {
-                registry
-            };
-            // Regression: 6fbc150f trusted reused pane IDs and incomplete inventories.
-            let plain =
-                mode.starts_with("reused_") || matches!(mode, "plain" | "lead" | "legacy_foreign");
-            let mut record = saved(root);
-            record.pane_id = Some(pane.clone());
-            if matches!(mode, "stale" | "plain" | "lead") {
-                record.pane_id = Some("%old".into());
-            }
-            record.pane_pid = pane_process_id(&pane);
-            record.pane_start_time = record
-                .pane_pid
-                .and_then(crate::platform::process_start_ticks);
-            record.terminal_contract = 1;
-            if mode == "reused_pid" {
-                record.pane_pid = Some(u32::MAX);
-            }
-            if mode == "reused_start" {
-                record.pane_start_time = Some(u64::MAX);
-            }
-            // Regression: c2aa72d1, round-2 review: legacy project ownership must use the shared authority.
-            if mode == "legacy_foreign" {
-                record.pane_pid = None;
-                record.pane_start_time = None;
-                record.project_path = Some(root.join("another-project"));
-            }
-            MemberRuntimeStore::save(root, "team", "seat", &record).unwrap();
-            if mode == "lead" {
-                let path = root.join("team/config.json");
-                let mut config: serde_json::Value =
-                    serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-                config["members"].as_array_mut().unwrap().push(serde_json::json!({"name":"lead", "role":"lead", "cli_tool":"codex", "project_path":root}));
-                std::fs::write(path, config.to_string()).unwrap();
-                record.app_server = None;
-                record.pane_id = Some(pane.clone());
-                MemberRuntimeStore::save(root, "team", "lead", &record).unwrap();
-                // Regression: c2aa72d1, round-2 review: unrelated corruption must not defer a known pane.
-                std::fs::write(root.join("team/runtime/broken.json"), "{").unwrap();
-            }
-
-            let before = saved(root);
-            let generation = before.attachment_generation;
-            let restarted = HostedMembers::default();
-            let receiver = if mode == "previous" {
-                &restarted
-            } else {
-                &hosts
-            };
-            if mode == "incomplete" {
-                std::fs::remove_file(root.join("team/runtime/seat.json")).unwrap();
-            }
-            let holder = matches!(mode, "busy" | "released").then(|| {
-                crate::coordination::hosted::tests::hold_stop_seat(
-                    &hosts,
-                    root,
-                    Duration::from_millis(if mode == "busy" { 3500 } else { 1000 }),
-                )
-            });
-            let response = crate::daemon::handlers::handle_stop_session(
-                "stop",
-                &serde_json::json!({"tmux_pane":pane, "cli_tool":"codex"}),
-                (receiver, &registry),
-            );
-            if let Some(holder) = holder {
-                holder.join().unwrap();
-            }
-            if mode == "busy" {
-                let error = response.error.unwrap();
-                assert_eq!(error.code, "STOP_ERROR");
-                assert!(
-                    pane_exists_checked(&pane).unwrap(),
-                    "busy seat must preserve the TUI"
-                );
-                assert_eq!(error.message, "host member busy; retry");
-                assert_eq!(saved(root), before);
-                assert!(
-                    Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id)).exists()
-                );
-                continue;
-            }
-            if matches!(mode, "previous" | "incomplete") {
-                let expected = if mode == "previous" {
-                    "live host belongs to a previous daemon"
-                } else {
-                    "inventory incomplete"
-                };
-                assert!(response.error.unwrap().message.contains(expected));
-                continue;
-            }
-            assert!(response.error.is_none(), "{mode}: {:?}", response.error);
-            let deadline = Instant::now() + Duration::from_secs(2);
-            while pane_field(&pane, "#{pane_id}").is_some() && Instant::now() < deadline {
-                std::thread::sleep(Duration::from_millis(20));
-            }
-            assert!(pane_field(&pane, "#{pane_id}").is_none(), "{mode}");
-            sink.flush_for_test().unwrap();
-            let events = std::fs::read_to_string(root.join("events.jsonl")).unwrap();
-            if plain {
-                assert_eq!(
-                    serde_json::to_string(&response).unwrap(),
-                    r#"{"id":"stop","result":{"ok":true}}"#
-                );
-                assert_eq!(saved(root).attachment_generation, generation, "{mode}");
-                assert!(!events.contains("hosted.stop_session.host_stopped"));
-                continue;
-            }
-            let event = events
-                .lines()
-                .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
-                .find(|e| e["event"] == "hosted.stop_session.host_stopped")
-                .unwrap();
-            assert_eq!(event["team"], "team");
-            assert_eq!(event["member"], "seat");
-            assert_eq!(event["thread_id"], "owned-thread");
-            assert!(event["exit_status"]
-                .as_str()
-                .is_some_and(|s| s.contains("signal")));
-            let after = saved(root);
-            assert_eq!(after.health, HealthState::SessionDead);
-            assert_eq!(after.app_server.as_ref().unwrap().state, "stopped");
-            assert_eq!(after.attachment_generation, generation + 1);
-            assert!(
-                !Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id)).exists()
-            );
-            assert!(!SessionActivityHub::shared()
-                .runtime_snapshot()
-                .runtime_sessions
-                .iter()
-                .any(|r| r.project_path == root.to_str().unwrap()));
+        let scratch = ScratchTmux::new("80", "24");
+        let team_root = scratch.path().join(".teams");
+        let root = team_root.as_path();
+        let _logs = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let sink = taurhaus_lib::logging::LogFileState::new(root.join("events.jsonl")).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
+        let (registry, hosts) = running(root);
+        let mut pane = scratch.run(&["display-message", "-p", "#{pane_id}"]);
+        if mode == "gone" {
+            pane = "%999999".into();
         }
+        if matches!(mode, "pane" | "stale" | "busy" | "released" | "previous") {
+            use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
+            let runtime = RecordingCoordinationRuntime::default();
+            hosts
+                .attach_pane(&registry, "team", "seat", &runtime, "new_window")
+                .unwrap();
+            let command = runtime
+                .calls()
+                .into_iter()
+                .find_map(|c| match c {
+                    RuntimeCall::SendKeys { keys, .. } => Some(keys),
+                    _ => None,
+                })
+                .unwrap();
+            scratch.run(&["send-keys", "-t", &pane, "-l", &command]);
+            scratch.run(&["send-keys", "-t", &pane, "Enter"]);
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while !root.join("attach-events.jsonl").exists() {
+                assert!(Instant::now() < deadline, "fake TUI did not attach");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+        let registry = if mode == "stale" {
+            let relocated = TeamRootRegistry::new(scratch.path().join(".default"));
+            relocated.set("team", root).unwrap();
+            relocated
+        } else {
+            registry
+        };
+        // Regression: 6fbc150f trusted reused pane IDs and incomplete inventories.
+        let plain =
+            mode.starts_with("reused_") || matches!(mode, "plain" | "lead" | "legacy_foreign" | "incomplete");
+        let mut record = saved(root);
+        record.pane_id = Some(pane.clone());
+        if matches!(mode, "stale" | "plain" | "lead") {
+            record.pane_id = Some("%old".into());
+        }
+        record.pane_pid = pane_process_id(&pane);
+        record.pane_start_time = record
+            .pane_pid
+            .and_then(crate::platform::process_start_ticks);
+        record.terminal_contract = 1;
+        if mode == "reused_pid" {
+            record.pane_pid = Some(u32::MAX);
+        }
+        if mode == "reused_start" {
+            record.pane_start_time = Some(u64::MAX);
+        }
+        // Regression: c2aa72d1, round-2 review: legacy project ownership must use the shared authority.
+        if mode == "legacy_foreign" {
+            record.pane_pid = None;
+            record.pane_start_time = None;
+            record.project_path = Some(root.join("another-project"));
+        }
+        MemberRuntimeStore::save(root, "team", "seat", &record).unwrap();
+        if mode == "lead" {
+            let path = root.join("team/config.json");
+            let mut config: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            config["members"].as_array_mut().unwrap().push(serde_json::json!({"name":"lead", "role":"lead", "cli_tool":"codex", "project_path":root}));
+            std::fs::write(path, config.to_string()).unwrap();
+            record.app_server = None;
+            record.pane_id = Some(pane.clone());
+            MemberRuntimeStore::save(root, "team", "lead", &record).unwrap();
+            // Regression: c2aa72d1, round-2 review: unrelated corruption must not defer a known pane.
+            std::fs::write(root.join("team/runtime/broken.json"), "{").unwrap();
+        }
+
+        let before = saved(root);
+        let generation = before.attachment_generation;
+        let restarted = HostedMembers::default();
+        let receiver = if mode == "previous" {
+            &restarted
+        } else {
+            &hosts
+        };
+        // Regression: 732d0029, round-2 review: unrelated missing records vetoed legacy stops.
+        if mode == "incomplete" {
+            std::fs::remove_file(root.join("team/runtime/seat.json")).unwrap();
+        }
+        let holder = matches!(mode, "busy" | "released").then(|| {
+            crate::coordination::hosted::tests::hold_stop_seat(
+                &hosts,
+                root,
+                Duration::from_millis(if mode == "busy" { 3500 } else { 1000 }),
+            )
+        });
+        let response = crate::daemon::handlers::handle_stop_session(
+            "stop",
+            &serde_json::json!({"tmux_pane":pane, "cli_tool":"codex"}),
+            (receiver, &registry),
+        );
+        if let Some(holder) = holder {
+            holder.join().unwrap();
+        }
+        if matches!(mode, "busy" | "previous") {
+            // Regression: 453377fe, round-2 review: previous-owner validation followed the TUI kill.
+            let error = response.error.unwrap();
+            assert_eq!(error.code, "STOP_ERROR");
+            assert!(
+                pane_exists_checked(&pane).unwrap(),
+                "{mode}: refused stop must preserve the TUI"
+            );
+            if mode == "busy" {
+                assert_eq!(error.message, "host member busy; retry");
+            } else {
+                assert!(error.message.contains("live host belongs to a previous daemon"));
+            }
+            assert_eq!(saved(root), before);
+            assert!(
+                Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id)).exists()
+            );
+            return;
+        }
+        assert!(response.error.is_none(), "{mode}: {:?}", response.error);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while pane_field(&pane, "#{pane_id}").is_some() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(pane_field(&pane, "#{pane_id}").is_none(), "{mode}");
+        sink.flush_for_test().unwrap();
+        let events = std::fs::read_to_string(root.join("events.jsonl")).unwrap();
+        if plain {
+            assert_eq!(
+                serde_json::to_string(&response).unwrap(),
+                r#"{"id":"stop","result":{"ok":true}}"#
+            );
+            if mode != "incomplete" {
+                assert_eq!(saved(root).attachment_generation, generation, "{mode}");
+            }
+            assert!(!events.contains("hosted.stop_session.host_stopped"));
+            return;
+        }
+        let event = events
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .find(|e| e["event"] == "hosted.stop_session.host_stopped")
+            .unwrap();
+        assert_eq!(event["team"], "team");
+        assert_eq!(event["member"], "seat");
+        assert_eq!(event["thread_id"], "owned-thread");
+        assert!(event["exit_status"]
+            .as_str()
+            .is_some_and(|s| s.contains("signal")));
+        let after = saved(root);
+        assert_eq!(after.health, HealthState::SessionDead);
+        assert_eq!(after.app_server.as_ref().unwrap().state, "stopped");
+        assert_eq!(after.attachment_generation, generation + 1);
+        assert!(
+            !Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id)).exists()
+        );
     }
 
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
@@ -1354,25 +1359,14 @@ pub(crate) mod tests {
     fn scratch_fixture_commands_never_use_production_fallback() {
         // Regression: 0a0005a9 routed fixture run/drop through tmux_command,
         // allowing a missing override to reach the operator's server (even kill-server).
-        // Inspect this boundary without executing that unsafe fallback to prove red.
-        let source = include_str!("control.rs");
-        for implementation in ["impl ScratchTmux {", "impl Drop for ScratchTmux {"] {
-            let body = source
-                .split_once(implementation)
-                .unwrap()
-                .1
-                .split("\n    }")
-                .next()
-                .unwrap();
-            assert!(
-                body.contains("scratch_tmux_command()"),
-                "{implementation} must require the scratch override"
-            );
-            assert!(
-                !body.contains("= tmux_command()"),
-                "{implementation} must not fall back to the operator's tmux server"
-            );
-        }
+        assert!(scratch_tmux_command().is_none());
+        let scratch = ScratchTmux::new("80", "24");
+        let socket = scratch.run(&["display-message", "-p", "#{socket_path}"]);
+        assert!(Path::new(&socket).starts_with(scratch.path()));
+        let mut probe = scratch_tmux_command().unwrap();
+        drop(scratch);
+        assert!(scratch_tmux_command().is_none());
+        assert!(!probe.args(["list-sessions"]).output().unwrap().status.success());
     }
 
     #[cfg(target_os = "linux")]

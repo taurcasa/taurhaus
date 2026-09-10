@@ -109,10 +109,6 @@ fn test_coordination_state(
 }
 
 fn start_stub_daemon(response: serde_json::Value) -> StubDaemon {
-    start_delayed_stub_daemon(response, Duration::ZERO)
-}
-
-fn start_delayed_stub_daemon(response: serde_json::Value, delay: Duration) -> StubDaemon {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub daemon");
     let addr = listener.local_addr().expect("stub daemon addr");
     let addr_string = format!("127.0.0.1:{}", addr.port());
@@ -136,7 +132,6 @@ fn start_delayed_stub_daemon(response: serde_json::Value, delay: Duration) -> St
             map.insert("id".to_string(), serde_json::Value::String(request.id));
         }
 
-        thread::sleep(delay);
         let mut writer = stream;
         let payload = serde_json::to_string(&resp).expect("serialize daemon response");
         writer
@@ -2048,21 +2043,18 @@ fn launch_cli_session_surfaces_daemon_error_message() {
 }
 
 #[test]
-fn stop_cli_session_waits_for_teardown_and_surfaces_daemon_error() {
-    #[cfg(target_os = "linux")]
-    let _scratch = crate::session_scanner::control::tests::ScratchTmux::new("80", "24");
-    let delay = Duration::from_secs(if cfg!(target_os = "linux") { 11 } else { 0 });
-    // Regression: d9dd5cc2, round-2 review: the old 10 s RPC budget cannot cover seat wait plus teardown.
-    let daemon = start_delayed_stub_daemon(
-        serde_json::json!({
-            "result": null,
-            "error": {
-                "code": "STOP_ERROR",
-                "message": "host member busy; retry"
-            }
-        }),
-        delay,
-    );
+fn stop_cli_session_budget_covers_teardown_and_surfaces_daemon_error() {
+    // Regression: d9dd5cc2, round-2 review: the old 5 s PING_TIMEOUT omitted teardown waits.
+    // Validation and reap now each take a host lock: stop_timeout + 12 s = 17 s / 27 s.
+    assert_eq!(navigation::stop_session_timeout(CliTool::Codex), Duration::from_secs(17));
+    assert_eq!(navigation::stop_session_timeout(CliTool::Grok), Duration::from_secs(27));
+    let daemon = start_stub_daemon(serde_json::json!({
+        "result": null,
+        "error": {
+            "code": "STOP_ERROR",
+            "message": "host member busy; retry"
+        }
+    }));
     let provider = ProviderState {
         local: crate::provider::local::LocalProvider,
         daemon: Some(

@@ -1002,8 +1002,6 @@ impl HostedMembers {
                 Err(_) => return Err("host member busy; retry".into()),
             }
         };
-        // Keep the seat through both teardowns, but never overlap terminal and host file locks.
-        stop_tui()?;
         let guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
             .map_err(|e| e.to_string())?;
         let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
@@ -1022,6 +1020,11 @@ impl HostedMembers {
         } else {
             return Err("member is not hosted".into());
         }
+        // Validate before touching the TUI; keep the seat, but never overlap file locks.
+        drop(guard);
+        stop_tui()?;
+        let guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
+            .map_err(|e| e.to_string())?;
         // A failed record update leaves the owned, reaped Child available for a
         // retry; after daemon restart host_alive=false also permits repair.
         let exit_status = match owned.as_mut() {

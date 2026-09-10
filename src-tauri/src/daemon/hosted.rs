@@ -49,8 +49,9 @@ pub(super) fn stop_session(
     registry: &TeamRootRegistry,
     params: &super::protocol::StopSessionParams,
 ) -> Result<bool, String> {
-    if let Some((root, team, member)) =
-        crate::coordination::stores::lock::resolve_terminal_member(registry, &params.tmux_pane)?
+    // Unrelated inventory uncertainty must not veto a legacy pane stop.
+    if let Ok(Some((root, team, member))) =
+        crate::coordination::stores::lock::resolve_terminal_member(registry, &params.tmux_pane)
     {
         if MemberRuntimeStore::load(&root, &team, &member)
             .map_err(|e| e.to_string())?
@@ -61,7 +62,7 @@ pub(super) fn stop_session(
         }
     }
     let mut records = Vec::new();
-    for (root, team) in registry.team_locations().map_err(|e| e.to_string())? {
+    for (root, team) in registry.team_locations().unwrap_or_default() {
         let members = MemberRuntimeStore::load_all(&root, &team).unwrap_or_default();
         records.extend(
             members

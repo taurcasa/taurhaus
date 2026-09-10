@@ -273,7 +273,10 @@ pub(crate) fn terminal_write_for_pane_at_root<T>(
     if let Some((root, team, member)) = resolve_terminal_member(&registry, pane)? {
         // Windows app fallback must not create lock/holder state on the UNC volume.
         #[cfg(target_os = "windows")]
-        return Err("terminal write deferred: managed stop requires the native daemon".into());
+        {
+            let _ = (&root, &team, &member, op);
+            return Err("terminal write deferred: managed stop requires the native daemon".into());
+        }
         #[cfg(not(target_os = "windows"))]
         return terminal_write(&root, &team, &member, op, || {
             write().map_err(CoordinationError::Backend)

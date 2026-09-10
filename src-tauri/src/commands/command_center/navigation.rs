@@ -4,6 +4,11 @@ use serde_json::{Map, Value};
 
 use super::*;
 
+pub(super) fn stop_session_timeout(tool: CliTool) -> std::time::Duration {
+    // TUI timeout + 3 s seat + 4 s terminal locks + 4 s host locks + 1 s reap.
+    crate::session_scanner::cli_tool::spec(tool).stop_timeout + std::time::Duration::from_secs(12)
+}
+
 pub(super) fn stop_cli_session_impl(
     log_file: &LogFileState,
     provider: &ProviderState,
@@ -46,10 +51,7 @@ pub(super) fn stop_cli_session_impl(
                 Some("Submitting stop request to daemon".to_string()),
                 request_fields,
             );
-            // Codex: 15 s total = 5 s TUI + 3 s seat + 4 s terminal locks + 2 s host lock + 1 s reap.
-            let timeout = crate::session_scanner::cli_tool::spec(tool).stop_timeout
-                + std::time::Duration::from_secs(10);
-            match daemon.send_status_request_within(&request, timeout) {
+            match daemon.send_status_request_within(&request, stop_session_timeout(tool)) {
                 Ok(response) if response.is_ok() => {
                     let mut success_fields = Map::new();
                     success_fields.insert(
