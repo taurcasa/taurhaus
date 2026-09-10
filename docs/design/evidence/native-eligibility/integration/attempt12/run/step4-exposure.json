@@ -1,0 +1,48 @@
+{
+  "socket": [
+    {
+      "clientId": null,
+      "content": [
+        {
+          "text": "[mesh message data] {\"assignment\":null,\"author\":\"lead\",\"body\":\"ACTION REQUIRED: Reply exactly cedarc5bd05. Do not execute tools.\",\"delivery_id\":\"604a119e-c564-4cc2-94f9-5a7392438bdb\",\"expectation\":null,\"message_id\":\"310e580d-77f7-47f1-a025-85620bde04ab\",\"metadata\":{},\"task\":null}\n",
+          "text_elements": [],
+          "type": "text"
+        }
+      ],
+      "id": "01a08c4f-dab1-7ff2-a785-5a14a2089d58",
+      "type": "userMessage"
+    },
+    {
+      "delivery": null,
+      "id": "msg_0cac0bef8ce6d6dc016aa2e554a12887d2bb9104c55ab93e96",
+      "memoryCitation": null,
+      "phase": "final_answer",
+      "questions": null,
+      "text": "cedarc5bd05",
+      "type": "agentMessage"
+    }
+  ],
+  "typed": [
+    {
+      "clientId": null,
+      "content": [
+        {
+          "text": "Reply exactly maple9880e9. Do not execute tools.",
+          "text_elements": [],
+          "type": "text"
+        }
+      ],
+      "id": "01a08c4f-cd65-7502-91c1-73b494d20f8b",
+      "type": "userMessage"
+    },
+    {
+      "delivery": null,
+      "id": "msg_0cac0bef8ce6d6dc016aa2e54fec5887d29e5d93c18a9b5efe",
+      "memoryCitation": null,
+      "phase": "final_answer",
+      "questions": null,
+      "text": "maple9880e9",
+      "type": "agentMessage"
+    }
+  ]
+}

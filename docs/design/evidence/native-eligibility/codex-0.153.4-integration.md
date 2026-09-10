@@ -2702,3 +2702,11 @@ A send during the bounded active turn recorded `pending: thread_active`, then
 `step3-exposure.json` prove one user exposure and one reply.
 Timing turn $0.00099976; deferred delivery $0.00052736; cumulative four turns
 $0.00307684 API-equivalent / $0.05700600 conservative.
+
+### Step 4 — PASS (S-runtime)
+
+Typed input reached the existing active thread before the pending socket delivery;
+both markers have one user exposure and one reply (`step4-exposure.json`).
+Passive `/proc/locks` and `fdinfo` samples in `step4-locks.jsonl` retain actual
+host-operation holders without process interventions. See `step4-pending.json`,
+`step4-receipts.json`, and `step4-final-pane-2.txt`. Cumulative 6 protocol turns / 7 metered generations: $0.00585796 API-equivalent / $0.1040628 conservative; individual usage retained in `cost-ledger.json`.
