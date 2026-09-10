@@ -1,0 +1,176 @@
+"""Lane 5 ordered assertions. Stop on first failure; commit each green item."""
+import datetime, json, secrets, sys, time
+from pathlib import Path
+from actions import action
+from support import clean, complete_rows, delivered, pending, reply_seen, identity_preserved
+B=Path(__file__).resolve().parent;OUT=B/'run';TEAM='l5-restarts'
+
+def save(name,value): (OUT/name).write_text(json.dumps(clean(value),indent=2)+'\n')
+def read(name):
+ for _ in range(100):
+  try:return json.loads((OUT/name).read_text())
+  except json.JSONDecodeError:time.sleep(.01)
+ raise AssertionError('incomplete JSON '+name)
+def root():return next(r['root'] for r in complete_rows((OUT/'events.jsonl').read_text()) if r['kind']=='isolation')
+def mesh(argv,name,seat='lead'):
+ argv=argv+['--claude-dir',root()+'/claude','--team',TEAM,'--name',seat]
+ action({'op':'mesh','argv':argv,'save':name})
+ assert read(name+'.exit.json')['exit']==0, 'Mesh command failed: '+name
+ return (OUT/name).read_text()
+def parse(text):
+ for n,line in enumerate(text.splitlines()):
+  if line.startswith('{'):
+   try:return json.loads('\n'.join(text.splitlines()[n:]))
+   except ValueError:pass
+ raise AssertionError('no command JSON')
+def rpc(method,params,name):
+ action({'op':'rpc','method':method,'params':params,'save':name});return read(name)
+def rows():return [r for p in (OUT/'team/state/messaging-v2/segments').glob('*.jsonl') for r in complete_rows(p.read_text())]
+def receipts(mid):return [r['payload'] for r in rows() if r.get('payload',{}).get('message_id')==mid and r['event_type']!='message_accepted']
+def rec(seat):return read('team/runtime/'+seat+'.json')
+def logical(r):return r.get('appServer',{}).get('threadId') or r.get('session_id')
+def wait(test,why,timeout=120):
+ begin=time.time();end=time.monotonic()+timeout
+ while time.monotonic()<end:
+  if any(r.get('kind')=='stopped' for r in complete_rows((OUT/'events.jsonl').read_text())):raise RuntimeError('controller stopped; '+why)
+  if test():return
+  time.sleep(.5)
+ raise AssertionError(why+f'; polled {time.time()-begin:.1f}s')
+def snap():action({'op':'snapshot'})
+def activity(seat):
+ snap();r=rec(seat)
+ view=rpc('get_runtime_session_snapshot',{},'latest-session-snapshot.json')
+ a=read('team/state/activity/'+seat+'.json') if (OUT/'team/state/activity'/f'{seat}.json').exists() else {}
+ stamp=a.get('last_observed_at',a.get('observed_at'))
+ age=time.time()-datetime.datetime.fromisoformat(stamp).timestamp() if stamp else 999
+ matches=[s for s in view['runtime_sessions'] if s.get('session_id')==logical(r) and s.get('tmux_pane')==r.get('paneId')]
+ s=matches[0] if len(matches)==1 and matches[0].get('activity_attribution')=='attributed' and not view.get('degraded') else {}
+ return {'state':a.get('state'),'age':age,'session_id':s.get('session_id'),'runtime':s,'snapshot':a}
+def idle(seat):
+ a=activity(seat);return a['state']=='idle' and a['age']<=120 and a['session_id']==logical(rec(seat))
+def agent_rows(seat):
+ r=rec(seat);thread=logical(r)
+ allrows=read('rollout-items.json') if (OUT/'rollout-items.json').exists() else []
+ return [x for x in allrows if x.get('thread_id')==thread and (x.get('payload',{}).get('role')=='assistant' or x.get('payload',{}).get('type')=='agent_message')]
+def replied(seat,marker):
+ j=[r for r in rows() if r['event_type']=='message_accepted' and r.get('payload',{}).get('sender')==seat]
+ host=[]
+ if seat=='beta' and (OUT/'host-events.jsonl').exists():
+  host=[e for e in complete_rows((OUT/'host-events.jsonl').read_text()) if e.get('method')=='item/completed' and e.get('params',{}).get('item',{}).get('type')=='agentMessage']
+ return reply_seen(j,agent_rows(seat)+host,marker)
+def send(seat,label):
+ marker='L5_'+label+'_'+seat+'_'+secrets.token_hex(3)
+ text='ACTION REQUIRED: Reply exactly '+marker+'. Do not execute tools or modify files.'
+ result=parse(mesh(['send',seat,text,'--summary',label],label+'-'+seat+'-send.txt'))
+ save(label+'-'+seat+'-message.json',dict(result,marker=marker,seat=seat))
+ return result['message_id']
+def explicit_read(seat,label):
+ # Keep unread/mark-read filters unchanged through every returned cursor.
+ cursor=None;page=0
+ while True:
+  args=['read','--unread','--mark-read','--json']
+  if cursor:args+=['--since',cursor]
+  value=parse(mesh(args,f'{label}-{seat}-read-{page}.txt',seat))
+  if value.get('done',True):break
+  cursor=value['cursor'];page+=1
+ # Independently page the canonical journal reader, even on empty pages.
+ cursor=None;page=0
+ while True:
+  args=['journal','read']
+  if cursor:args+=['--since',cursor]
+  value=parse(mesh(args,f'{label}-{seat}-journal-{page}.txt',seat))
+  if value.get('done',False):break
+  assert value.get('cursor') and value['cursor']!=cursor,'journal cursor failed to advance'
+  cursor=value['cursor'];page+=1
+ snap()
+def settle(label,seat):
+ item=read(label+'-'+seat+'-message.json');mid=item['message_id']
+ wait(lambda: replied(seat,item['marker']) and idle(seat),'reply and attributed idle missing '+label+' '+seat,180)
+ explicit_read(seat,label)
+ wait(lambda: delivered(receipts(mid),activity(seat),logical(rec(seat))), 'delivery receipt/read missing '+label+' '+seat)
+ save(label+'-'+seat+'-delivery.json',{'message':item,'receipts':receipts(mid),'activity':activity(seat)})
+def checkpoint(n):
+ action({'op':'capture','name':f'step{n}'})
+ mesh(['team-daemon','status'],f'step{n}-owner.txt')
+ save(f'step{n}-identity.json',{'alpha':rec('alpha'),'beta':rec('beta'),'config':read('team/config.json'),'epoch':read('team/state/delivery/epoch.json'),'processes':read('identities.json')})
+ save(f'step{n}-cost.json',read('cost-ledger.json'))
+ save(f'step{n}-journal.json',rows())
+ rpc('get_runtime_session_snapshot',{},f'step{n}-session-snapshot.json')
+ # Passive /proc lock census; never acquire or seize locks.
+ save(f'step{n}-locks.json',{'at':time.time(),'locks':Path('/proc/locks').read_text()})
+def start_busy(seat,label):
+ text='For this bounded timing probe, write exactly 80 numbered lines, each saying green valley oak. Do not execute tools. Finish after line 80.'
+ r=rec(seat)
+ if seat=='beta':
+  rpc('coordination.hosted_input',{'team_name':TEAM,'member_name':seat,'generation':r['attachmentGeneration'],'text':text},label+'-input-beta.json')
+ else:
+  action({'op':'tmux','argv':['send-keys','-t',r['paneId'],'-l',text]})
+  action({'op':'tmux','argv':['send-keys','-t',r['paneId'],'Enter']})
+ def working():
+  a=activity(seat);return a['state'] in ['working','active'] and a['age']<=120 and a['session_id']==logical(rec(seat))
+ wait(working,'submitted input did not yield attributed working '+seat)
+ save(label+'-'+seat+'-working.json',activity(seat))
+def backlog(label):
+ for seat in ['alpha','beta']:
+  start_busy(seat,label);mid=send(seat,label)
+  def is_pending():
+   snap();return pending(receipts(mid))
+  wait(is_pending,'backlog unproved: no pending receipt '+seat)
+  save(label+'-'+seat+'-pending.json',{'message_id':mid,'receipts':receipts(mid),'activity':activity(seat)})
+ # Both must remain pending at the boundary, not merely at unrelated earlier times.
+ snap()
+ for seat in ['alpha','beta']:
+  assert pending(receipts(read(label+'-'+seat+'-message.json')['message_id'])), 'backlog unproved: '+seat+' settled before boundary'
+def unchanged(n):
+ before=read('step1-identity.json')
+ for seat in ['alpha','beta']:
+  assert identity_preserved(before[seat],rec(seat)), 'logical identity changed or generation regressed '+seat
+  item=read('baseline-'+seat+'-message.json')
+  stages=[r for r in receipts(item['message_id']) if r.get('stage') in ['submitted','native_enqueued']]
+  assert len(stages)==1, 'baseline missing/duplicate exposure '+seat
+ assert before['config'].get('teamIncarnationId')==read('team/config.json').get('teamIncarnationId'),'team incarnation changed'
+
+if __name__=='__main__':
+ n=int(sys.argv[1]);action({'op':'step','step':n})
+ try:
+  if n==1:
+   for seat in ['alpha','beta']:wait(lambda:idle(seat),'startup lacks attributed fresh idle '+seat,180)
+   for seat in ['alpha','beta']:send(seat,'baseline');settle('baseline',seat)
+   checkpoint(1)
+  elif n==2:
+   backlog('taurhaus-backlog');checkpoint(2)
+  elif n==3:
+   # Recheck immediately before sanctioned restart.
+   for seat in ['alpha','beta']:assert pending(receipts(read('taurhaus-backlog-'+seat+'-message.json')['message_id'])),'backlog unproved at restart'
+   action({'op':'restart_daemon','save':'step3-resume-result.json'})
+   checkpoint(3)
+   old=read('step2-identity.json')['processes'];new=read('step3-identity.json')['processes']
+   old=[p for p in old if p['argv'][0].endswith('/taurhaus-daemon')];new=[p for p in new if p['argv'][0].endswith('/taurhaus-daemon')]
+   assert len(old)==len(new)==1 and (old[0]['pid'],old[0]['start_ticks'])!=(new[0]['pid'],new[0]['start_ticks'])
+   rpc('ping',{},'step3-ping.json')
+  elif n==4:
+   for seat in ['alpha','beta']:settle('taurhaus-backlog',seat)
+   unchanged(4);checkpoint(4)
+  elif n==5:
+   backlog('mesh-backlog');checkpoint('5-before')
+   mesh(['team-daemon','restart-self'],'step5-restart.txt')
+   def changed_owner():
+    snap();return read('team/state/delivery/epoch.json')!=read('step5-before-identity.json')['epoch']
+   wait(changed_owner,'delivery owner epoch did not change')
+   for seat in ['alpha','beta']:settle('mesh-backlog',seat)
+   unchanged(5);checkpoint(5)
+  elif n==6:
+   for seat in ['alpha','beta']:
+    explicit_read(seat,'final')
+    for label in ['baseline','taurhaus-backlog','mesh-backlog']:
+     rs=receipts(read(label+'-'+seat+'-message.json')['message_id'])
+     assert len([r for r in rs if r.get('stage') in ['submitted','native_enqueued']])==1,'lost or duplicate receipt'
+     assert any(r.get('kind')=='consumed_by_read' for r in rs),'unread obligation'
+   checkpoint(6)
+  else:raise ValueError(n)
+  save(f'step{n}-outcome.json',{'step':n,'outcome':'PASS','classification':'runtime','at':time.time()})
+ except BaseException as e:
+  save(f'step{n}-outcome.json',{'step':n,'outcome':'FAIL','classification':'unclassified pending evidence review','reason':str(e),'at':time.time()})
+  try:action({'op':'fail','reason':f'step {n}: {e}'})
+  except Exception:pass
+  raise
