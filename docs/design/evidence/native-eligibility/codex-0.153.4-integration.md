@@ -2694,3 +2694,11 @@ Idle `mesh send` produced one native turn, marker in attached pane and model rep
 and `step2-journal-after-read.json` prove `consumed_by_read` appeared only after
 `step2-explicit-read.txt`. Second turn $0.00057968; cumulative two turns
 $0.00154972 API-equivalent / $0.02716800 conservative.
+
+### Step 3 — PASS (S-runtime)
+
+A send during the bounded active turn recorded `pending: thread_active`, then
+`turn/start` after idle. `step3-pending.json`, `step3-receipts.json`, and
+`step3-exposure.json` prove one user exposure and one reply.
+Timing turn $0.00099976; deferred delivery $0.00052736; cumulative four turns
+$0.00307684 API-equivalent / $0.05700600 conservative.
