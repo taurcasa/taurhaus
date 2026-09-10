@@ -52,12 +52,16 @@ fn idle_prompt(text: &str) -> Option<bool> {
                     || lower.contains("esc to interrupt")))
                 || line.starts_with(|ch| ('\u{2800}'..='\u{28ff}').contains(&ch))
         });
-    if busy
-        || !tail
-            .iter()
-            .any(|line| line.starts_with("› ") || *line == "›")
-    {
+    if busy {
         return Some(false);
+    }
+    // No busy chrome and no composer in the tail (a dialog, a picker, a scrolled
+    // screen): unknown, never an authoritative "working" that nothing times out.
+    if !tail
+        .iter()
+        .any(|line| line.starts_with("› ") || *line == "›")
+    {
+        return None;
     }
     tail[0]
         .split_once(" · ")
@@ -351,7 +355,13 @@ mod tests {
             assert_eq!(observed.source, "pane_working");
         }
         assert_eq!(idle_prompt("› Ask Codex\n  ? for shortcuts"), None);
-        assert_eq!(idle_prompt("gpt-5.6-luna low · /tmp"), Some(false));
+        // Regression: review of 36c5da85 — a tail without the composer and without busy
+        // chrome was asserted as authoritative working with nothing to time it out.
+        assert_eq!(idle_prompt("gpt-5.6-luna low · /tmp"), None);
+        assert_eq!(
+            idle_prompt("• Working (esc to interrupt)\n› \n  gpt-5.6-luna low · /tmp"),
+            Some(false)
+        );
     }
 
     // Regression: b9e4a855's attachment floor hid a completion that the bound

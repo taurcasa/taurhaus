@@ -12,9 +12,11 @@
 //! **Codex** — per-PID IO hysteresis + project file mtime fallback.
 //! Codex maintains HTTP keep-alive connections to :443 indefinitely after
 //! finishing work, making TCP socket presence useless as an idle indicator.
-//! We therefore use `/proc/PID/io` hysteresis per process to distinguish
-//! which Codex session is actively doing work. Project-level session file
-//! mtime (from `idle.rs`) remains a fallback for single-session projects.
+//! `/proc/PID/io` hysteresis per process detects sustained turn IO; which
+//! session a process IS comes from identity resolution (`idle/codex.rs`), not
+//! from IO, because an idle 0.153.4 prompt already reads in bursts (below).
+//! Project-level session file mtime (from `idle.rs`) remains a fallback for
+//! single-session projects.
 //!
 //! Empirically confirmed (Feb 2026):
 //! - Claude idle: 0-240 bytes/500ms keepalive in rchar
