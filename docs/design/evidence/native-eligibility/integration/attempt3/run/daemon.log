@@ -1,0 +1,29 @@
+[2m2026-09-10T01:04:08.004384Z[0m [32m INFO[0m [2mtaurhaus_daemon[0m[2m:[0m Auth token written [3mpath[0m[2m=[0m/tmp/th-int-h0o7f0s_/data/daemon.token
+[2m2026-09-10T01:04:08.004416Z[0m [32m INFO[0m [2mtaurhaus_daemon[0m[2m:[0m taurhaus-daemon starting [3mport[0m[2m=[0m28528 [3mbind[0m[2m=[0m127.0.0.1 [3midle_timeout[0m[2m=[0mSome(600) [3mdata_root[0m[2m=[0m/tmp/th-int-h0o7f0s_/data [3mauth[0m[2m=[0mtrue
+[2m2026-09-10T01:04:08.018831Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m daemon listening [3mport[0m[2m=[0m28528
+[2m2026-09-10T01:04:08.319877Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:48658
+[2m2026-09-10T01:04:08.370229Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:48672
+[2m2026-09-10T01:04:08.371335Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m Probing CLI version [3mprogram[0m[2m=[0m"codex" [3margv[0m[2m=[0m["/bin/bash", "-ilc", "codex --version"]
+[2m2026-09-10T01:04:08.420524Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:48676
+[2m2026-09-10T01:04:08.446995Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI version probe completed [3mprogram[0m[2m=[0m"codex" [3mstatus[0m[2m=[0mSome(0) [3mraw_output[0m[2m=[0mThis message is shown once a day. To disable it please create the
+/tmp/th-int-h0o7f0s_/home/.hushlogin file.
+codex-cli 0.153.4
+bash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: no job control in this shell
+Command 'update-motd' is available in the following places
+ * /sbin/update-motd
+ * /usr/sbin/update-motd
+The command could not be located because '/usr/sbin:/sbin' is not included in the PATH environment variable.
+This is most likely caused by the lack of administrative privileges associated with your user account.
+update-motd: command not found
+[2m2026-09-10T01:04:08.447086Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m Probing CLI version [3mprogram[0m[2m=[0m"claude" [3margv[0m[2m=[0m["/bin/bash", "-ilc", "claude --version"]
+[2m2026-09-10T01:04:08.472430Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI version probe completed [3mprogram[0m[2m=[0m"claude" [3mstatus[0m[2m=[0mSome(0) [3mraw_output[0m[2m=[0m2.1.267 (Claude Code)
+bash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: no job control in this shell
+[2m2026-09-10T01:04:08.472522Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m Probing CLI version [3mprogram[0m[2m=[0m"agy" [3margv[0m[2m=[0m["/bin/bash", "-ilc", "agy --version"]
+[2m2026-09-10T01:04:08.497910Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI version probe completed [3mprogram[0m[2m=[0m"agy" [3mstatus[0m[2m=[0mSome(77) [3mraw_output[0m[2m=[0mbash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: no job control in this shell
+[2m2026-09-10T01:04:08.497987Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI versions detected for native harness capability gates [3mcodex[0m[2m=[0mSome("0.153.4") [3mclaude[0m[2m=[0mSome("2.1.267") [3magy[0m[2m=[0mNone [3mcodex_compaction_hooks_supported[0m[2m=[0mtrue [3mcodex_notify_supported[0m[2m=[0mtrue [3mcodex_queue_wake_supported[0m[2m=[0mtrue [3magy_hooks_supported[0m[2m=[0mfalse
+[2m2026-09-10T01:04:09.422982Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:48692
+[2m2026-09-10T01:04:09.971655Z[0m [32m INFO[0m [2mtaurhaus_lib::coordination::hosted_process[0m[2m:[0m Host loaded project instructions; strict TUI policy remains enforced [3mevent[0m[2m=[0m"hosted.instruction_sources.loaded" [3mthread_id[0m[2m=[0m01a088d7-f6e4-74c3-b4d2-8ab1b821510f [3mcount[0m[2m=[0m1
+[2m2026-09-10T01:04:10.475574Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:48708

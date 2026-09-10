@@ -1,0 +1,81 @@
+{
+  "outcome": {
+    "report": {
+      "failed_step": "launch_host",
+      "message": "Conflict: host rejected request; reconcile before retrying",
+      "retryable": true,
+      "steps": [
+        {
+          "message": "configuration validated",
+          "status": "succeeded",
+          "step": "validate_configuration"
+        },
+        {
+          "message": "team created",
+          "status": "succeeded",
+          "step": "create_team"
+        },
+        {
+          "message": "lead added",
+          "status": "succeeded",
+          "step": "add_lead"
+        },
+        {
+          "message": "Conflict: host rejected request; reconcile before retrying",
+          "status": "failed",
+          "step": "launch_host"
+        }
+      ],
+      "succeeded_steps": [
+        "validate_configuration",
+        "create_team",
+        "add_lead"
+      ],
+      "team_name": "integration"
+    },
+    "status": "completed"
+  },
+  "run_id": "init_fd5d137eb6fe4dd5a223b3aee53acd3c",
+  "steps": [
+    {
+      "message": null,
+      "status": "running",
+      "step": "validate_configuration"
+    },
+    {
+      "message": "configuration validated",
+      "status": "succeeded",
+      "step": "validate_configuration"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "create_team"
+    },
+    {
+      "message": "team created",
+      "status": "succeeded",
+      "step": "create_team"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "add_lead"
+    },
+    {
+      "message": "lead added",
+      "status": "succeeded",
+      "step": "add_lead"
+    },
+    {
+      "message": null,
+      "status": "running",
+      "step": "create_panes"
+    },
+    {
+      "message": "Conflict: host rejected request; reconcile before retrying",
+      "status": "failed",
+      "step": "launch_host"
+    }
+  ]
+}

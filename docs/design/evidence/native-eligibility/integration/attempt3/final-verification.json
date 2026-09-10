@@ -1,0 +1,21 @@
+{
+  "step_1": "FAIL: launch_host rejected startup recovery",
+  "steps_2_through_7": "NOT RUN",
+  "observed_turns": 0,
+  "observed_usd": 0,
+  "recorded_identities_absent": 5,
+  "survivors": [],
+  "port_closed": 28528,
+  "private_tmux_socket_absent": true,
+  "scratch_root_and_auth_removed": true,
+  "descriptor_restored": true,
+  "mesh_worktree_clean": true,
+  "gates": {
+    "check-quick": 0,
+    "lint": 0,
+    "test-contracts": 0
+  },
+  "product_diff": [],
+  "artifact_hygiene": "passed",
+  "review": "local read-only audit; no Opus lens"
+}

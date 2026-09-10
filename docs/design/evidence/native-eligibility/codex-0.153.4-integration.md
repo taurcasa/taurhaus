@@ -557,3 +557,217 @@ deliverable is an evidence commit with the requested co-author trailer. The
 independent Opus lens remains unavailable. Original canonical journal rows and
 native wire receipts remain unproved; no model spend or uptake is inferred from
 startup inbox acceptance. No plan ledger, deployment or install changes.
+
+## Attempt 3 — fresh hosted seat; startup recovery rejected (2026-09-10)
+
+**Step 1 FAIL.** The production `coordination.initialize_team` request carried
+`delivery: "app_server"` on the fresh Codex seat. The daemon reached the real
+host, created thread **`01a088d7-f6e4-74c3-b4d2-8ab1b821510f`**, and logged one
+loaded instruction source. Startup recovery then failed with the exact public
+refusal **`Conflict: host rejected request; reconcile before retrying`**.
+No retry or later numbered step ran. Mesh eligibility remains disabled; no
+product code changed in either repository.
+
+S = observed runtime/artifact; I = source-based inference; U = unverified.
+
+| Step | Outcome | S-runtime evidence / missing proof |
+| --- | --- | --- |
+| 1. Daemon host + strict attached TUI | **FAIL: `launch_host` rejected** | [Initialize report](integration/attempt3/run/initialize-result.json), [structured log](integration/attempt3/run/taurhaus.log.jsonl): real thread and instruction-source count, then failed startup card. No attached member pane, published attachment snapshot, or terminalContract 1 proof survived. |
+| 2. Idle `mesh send`, native receipt, explicit read | **NOT RUN** | No send/read, marker reply, native enqueue or consumption. |
+| 3. Active `turn/steer` | **NOT RUN** | No model turn or expectedTurnId. |
+| 4. Operator input + host-lock interleave | **NOT RUN** | No operator input or retained holder file; no mutual exclusion claim. |
+| 5. Compaction | **NOT RUN** | Failed startup recovery is not a compaction trial. |
+| 6. Daemon restart | **NOT RUN** | No restart or recovery claim. |
+| 7. Operational rollback + tmux send | **NOT RUN** | No rollback RPC, refusal probe, remove/add or tmux delivery. Final teardown passed separately. |
+
+### Executed pair, isolation and commands
+
+Taurhaus source **`de71587e`**, product base **`80290f36`** (#158), branch
+`feat/integration-trial`; Mesh **`4388d6a`**, branch `feat/native-push`.
+The daemon's real `ping` returned protocol **27**, version **0.9.7**.
+Both checkout-local builds exited **0**, each after
+`pgrep -af '(^|/)cargo( |$)'` returned **1** (no competing Cargo):
+
+```sh
+# Under /home/mstie/projects/taurhaus-trial/src-tauri, target=./target
+cargo build --bin taurhaus-daemon
+# Under /home/mstie/projects/mesh-push, target=./target
+cargo build --bin mesh
+```
+
+[Build controller](integration/attempt3-build.py),
+[daemon build metadata](integration/attempt3/daemon-build.json),
+[Mesh build metadata](integration/attempt3/mesh-build.json),
+[exact temporary descriptor diff](integration/attempt3/mesh-trial-descriptor.diff).
+Only the 0.153.4 descriptor was temporarily admitted, with `disposition: "trial"`,
+`enabled: true`, transport `unix-websocket`, and the three strings verified
+against this checkout's `coordination/hosted.rs`:
+`taurhaus-daemon-owned-thread/1`, `strict-config/1`, `daemon-owned/1`.
+The wildcard and other harness descriptors remained disabled.
+
+[Executed runtime controller](integration/attempt3-controller.py) copied those
+binaries only into scratch `$HOME/.local/bin`. SHA-256 identities are the first
+four rows of [events.jsonl](integration/attempt3/run/events.jsonl). The isolated
+version probe returned **codex-cli 0.153.4**; the unused Claude lead was **2.1.267**.
+Scratch root **`/tmp/th-int-h0o7f0s_`** was mode 0700; all writable homes/data roots
+were beneath it. CODEX_HOME began with only the authorized auth.json copy, mode
+0600, then received generated config: Luna, low effort, read-only sandbox, never
+approvals, disabled web search, 32768 context window and scratch-project trust.
+No operator config, hooks, history or sessions were imported. Auth/token contents
+were never logged or exported.
+
+Bubblewrap hid `/home`, `/tmp`, `/run`, re-exposed only the writable scratch root,
+and supplied a private PID namespace. A credential-free Claude lead and one
+Codex seat used a new committed scratch git project with this entire AGENTS.md:
+
+```text
+This is an isolated transport trial. Reply briefly. Never execute tools or commands.
+```
+
+The private tmux server used `TMUX_TMPDIR=/tmp/th-int-h0o7f0s_/tmux`, inherited
+TMUX absent, `tmux -D -f /dev/null`; all capture commands used that environment.
+The private daemon bound the successfully probed **28528** port, with explicit
+`--port 28528 --data-dir /tmp/th-int-h0o7f0s_/data`. Its token was used only on
+that private RPC connection. No installed daemon or operator tmux was contacted.
+
+Initialization request **`e3ae3202b2a588cc`**, run
+**`init_fd5d137eb6fe4dd5a223b3aee53acd3c`**, is retained in `events.jsonl:18`.
+Its messaging policy was parsed directly from the builder's unchanged
+`DEFAULT_CANONICAL_POLICY`; [policy.json](integration/attempt3/run/policy.json)
+retains it. [Team config](integration/attempt3/run/team/config.json) proves
+`messaging_format: 2`, `delivery_owner: "team"`, `minimum_writer: "mesh-journal/2"`
+and the freshly created seat's `adapter_mode: "app_server"`. There was no
+post-launch config switch or resume attempt.
+
+### Failure, receipt and journal excerpts
+
+Final status request **`a418df344fbcd848`** returned:
+
+```json
+{"failed_step":"launch_host","message":"Conflict: host rejected request; reconcile before retrying","retryable":true,"succeeded_steps":["validate_configuration","create_team","add_lead"]}
+```
+
+S: `taurhaus.log.jsonl:17` records `hosted.instruction_sources.loaded`, count **1**,
+thread **`01a088d7-f6e4-74c3-b4d2-8ab1b821510f`**.
+At line 20, `onboarding.delivery.observed` records:
+
+```json
+{"delivery_id":"9b0be71718566219a263ac974d6742889cd84736530f245314a4f0cd34d7aebd","kind":"baseline","path":"app_server","stage":"failed","generated_bytes":2172,"accepted_bytes":0,"offered_bytes":0,"returned_by_read_bytes":0}
+```
+
+Card context is `[1,0]`, member incarnation
+`e469b72e-2b23-424a-940b-cb3b3e2396f6`, team incarnation
+`86317ec32ff7c286e992383466edb027da8c1508ca9afbb373df2d0181e921df`.
+The original [canonical segment](integration/attempt3/run/team/state/messaging-v2/segments/000001.jsonl)
+was retained and is **empty (0 bytes)**; there is no invented journal row.
+No `native_enqueued` or `consumed_by_read` receipt exists in this attempt.
+
+I: the loaded-source event proves `thread/start` passed the daemon's real
+initialize/transport checks. In `hosted_process.rs`, `input()` first calls
+`transcript()`; errors after submitting turn/start carry `outcome_unknown:`.
+The unprefixed rejection plus failed recovery observation locate this failure
+in pre-input recovery processing, consistent with the empty usage export.
+The daemon intentionally replaces arbitrary host error text with this generic
+refusal (`RpcError::Rejected`). **U:** the underlying host error object, exact
+rejected wire request, Unix socket pathname, child PID/start ticks, and actual
+instruction-source string were not exported. No more specific root cause is
+claimed and no tracing/product patch or second run was made to obtain them.
+
+The final [seat record](integration/attempt3/run/team/runtime/seat.json) has null
+session/pane/launchRoot, no appServer, terminalContract **0**, attachment generation
+**0**, and health `session_dead`. This is the post-failure snapshot; it does not
+prove an attachment was never transiently published. The only remaining capture,
+[bootstrap pane %0](integration/attempt3/run/initialize-pane-0.txt), is an empty
+shell. Production failure cleanup had already removed member panes. The
+instruction-source warning fix was reached; the required runtime record proof
+and strict attached-TUI proof were not obtained.
+
+### Spend, cleanup and gates
+
+Reserved random marker **`a6796ec88e60e144`** was never submitted.
+[Cost ledger](integration/attempt3/run/cost-ledger.json) and
+[usage export](integration/attempt3/run/usage-events.json) show:
+
+| Spend item | Observed model turns / generations / compactions | Observed USD |
+| --- | --- | --- |
+| Claude lead startup, no work | 0 / 0 / 0 | $0.00 |
+| Codex host/thread creation; failed startup recovery | 0 / 0 / 0 | $0.00 |
+| Mesh messages, operator input, compaction | 0 / 0 / 0 | $0.00 |
+| Attempt 3 total versus hard caps | **0 / 8 turns** | **$0.00 / $3.00** |
+
+No accepted paid submission or token usage was observed. Actual subscription
+billing was not queried; zero is the observed no-generation result, not an
+invoice measurement. The controller included startup turns in its rollout
+watchdog, with a one-turn/$0.60 reserve and conservative packet-rate accounting;
+that watchdog's nonzero-spend path was not exercised.
+
+Controller exit **1** was observed. Its finally block waited its own children,
+ended the descendant PID namespace, and removed the scratch root/auth copy.
+[Cleanup](integration/attempt3/run/cleanup.json): no survivors, port closed, root
+removed. Five remaining host PID/start-tick identities are retained in
+[identities.json](integration/attempt3/run/identities.json); the short-lived
+app-server was already gone before that inventory. Descriptor restoration ran
+exactly as requested, exit **0**:
+
+```sh
+git -C /home/mstie/projects/mesh-push checkout -- src/delivery/app_server/capabilities.rs
+```
+
+The final read-only audit additionally checks PID/start-tick absence, private
+socket/port/root removal, restored descriptor, evidence hygiene and zero product
+diff. The built Mesh target artifact remains unused; its scratch executable copy
+was deleted. No process started by another worker was killed.
+
+Exact reproduction from `/home/mstie/projects/taurhaus-trial` (new authorized run
+only; this controller reproduces the failed setup, not seven passing steps):
+
+```sh
+python3 docs/design/evidence/native-eligibility/integration/attempt3-build.py
+python3 docs/design/evidence/native-eligibility/integration/attempt3-controller.py attempt3/NEW_RUN
+TRIAL_EVIDENCE_LABEL=attempt3 python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+```
+
+The gate helper is reused unchanged. It runs each exact recipe from this checkout
+root with a credential-free HOME, all harness roots isolated, rejecting
+CLI/tmux/Mesh shims, a private PID namespace, and checkout-local Cargo target.
+
+| Required gate | Exit | Observed result |
+| --- | --- | --- |
+| `just check-quick` | **0** | Rust test compilation, frontend typecheck, 150 frontend files / 2,492 tests passed. |
+| `just lint` | **0** | Rust/frontend/workflow/recipe gates passed. |
+| `just test-contracts` | **0** | All contract test binaries passed; see retained log. |
+| `just test-rust-unit` | N/A | No `src-tauri/` diff. |
+| Mesh `just check-quick`, `just lint`, `just test` | N/A | Conditional on seven-step PASS; no descriptor flip or fix. |
+
+[Gate logs and exit metadata](integration/attempt3/gates),
+[final audit](integration/attempt3/final-verification.json),
+[audit controller](integration/attempt3-audit.py).
+Each Cargo preflight returned 1, with no competing Cargo; gate cleanup passed.
+**Descriptor flip: none. Mesh commit: none. Taurhaus registry entry: not needed**
+(`HostedDescriptor::codex()` already pins 0.153.4 and unix-websocket).
+Non-evidence product insertions **0 / 200**, dependencies **0**, tests added **0**.
+The live acceptance assertion observed red at step 1; there was no product repair
+and no claimed regression red/green cycle. The conditional Mesh missing-record
+refusal test/fix was not undertaken after this failure.
+
+Deviations / evidence limits:
+
+- The fresh-seat request follows the sanctioned production path. In this source,
+  `members.rs` executes hosted shared activation during the `CreatePanes` pass
+  and skips it in `LaunchSessions`. The refusal therefore occurred before the
+  later launch/opt-in steps; the controller did not reorder those stages.
+  The lead's command was rendered and its version probed, but its model CLI
+  launch and login-screen observation were not established before cleanup.
+- The brief's full wire, holder, attachment and pane evidence is incomplete at
+  this stopped boundary. The public rejection deliberately omits its raw error;
+  no exact underlying host cause, instruction-source string, or turn is inferred.
+  The controller's unexecuted action loop is not a seven-step implementation or
+  proof; it was never reached. No paid rerun was performed.
+- No numbered step passed, so there is one failed-trial evidence commit rather
+  than seven green-step commits. All prior attempt evidence remains intact.
+- An Opus evidence lens is unavailable in the exposed agent/model/tool surface;
+  no independent cross-family review is claimed. The read-only audit is local
+  verification, not a replacement for that lens.
+- Text captures and gate logs trim trailing blank lines; the actual captured
+  pane output remains in events.jsonl. No plan ledger, product code, release,
+  deployment, operator installation or other Taurhaus checkout was changed.
