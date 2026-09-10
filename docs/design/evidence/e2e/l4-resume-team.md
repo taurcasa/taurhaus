@@ -1,4 +1,4 @@
-# IN PROGRESS — latest run 6, L4 steps 1–2 passed
+# IN PROGRESS — latest run 6, L4 steps 1–3 passed
 
 Run 6 uses taurhaus `a7e6db7e` and the unmodified Mesh `310144d` candidate.
 See [Run 6](#run-6) for the latest checkpoints.
@@ -678,3 +678,10 @@ Step 2 **PASS** (runtime): supported stops ended every recorded seat pane and
 all Codex/native-sibling processes. Beta attachment advanced to 2; no extra
 turn or spend. [Stop census](l4-resume-team/run6/step2-stop-poll.json),
 [retained state](l4-resume-team/run6/step2-state.json).
+
+Step 3 **PASS** (runtime): accepted + projection pending + no presentation receipt
+for each stopped seat, with health refusals `pending: runtime session dead`
+(alpha) and `pending: native_host_not_live` (beta). The 100-second polling window
+satisfied the predicate without a pending receipt. No new turns or spend.
+[Alpha backlog](l4-resume-team/run6/step3-alpha-backlog.json),
+[beta backlog](l4-resume-team/run6/step3-beta-backlog.json).
