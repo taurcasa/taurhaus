@@ -3995,6 +3995,53 @@ fn load_resume_member_state_preserves_role_template_context() {
 }
 
 #[test]
+fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
+    // Regression: 4994b243 limited recorded-session resume to effort switches;
+    // e2e lane 4 run 7 observed an operator resume lose the tmux conversation.
+    for tool in [CliTool::Codex, CliTool::Claude, CliTool::Grok, CliTool::Agy] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator =
+            new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+        orchestrator.create_team("resume-recorded", None).unwrap();
+        orchestrator
+            .add_member(
+                "resume-recorded",
+                member("seat", MemberRole::Lead, tool, tmp.path().to_str().unwrap()),
+            )
+            .unwrap();
+        let mut record = MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat").unwrap();
+        record.session_id = Some("  recorded-session  ".into());
+        record.health = HealthState::SessionDead;
+        MemberRuntimeStore::save(tmp.path(), "resume-recorded", "seat", &record).unwrap();
+
+        let report = orchestrator
+            .resume_member("resume-recorded", "seat")
+            .unwrap();
+        assert!(report.resumed, "{report:?}");
+        let calls = runtime.calls();
+        let launch = calls
+            .iter()
+            .find_map(|call| match call {
+                RuntimeCall::SendKeys { keys, .. } => Some(keys),
+                _ => None,
+            })
+            .unwrap();
+        let expected = match tool {
+            CliTool::Codex => "codex resume 'recorded-session' --yolo",
+            CliTool::Claude => "claude --dangerously-skip-permissions --resume 'recorded-session'",
+            CliTool::Grok => "grok --always-approve --resume 'recorded-session'",
+            CliTool::Agy => "agy --dangerously-skip-permissions --model",
+            _ => unreachable!(),
+        };
+        assert!(launch.contains(expected), "{tool}: {launch}");
+        if tool == CliTool::Agy {
+            assert!(!launch.contains("recorded-session"), "{launch}");
+        }
+    }
+}
+
+#[test]
 fn resume_accepts_a_minimal_runtime_record_written_by_mesh() {
     // Regression: 50fc736 made a mesh-owned applied-effort record fatal to
     // activation because taurhaus required its own health field to be present.

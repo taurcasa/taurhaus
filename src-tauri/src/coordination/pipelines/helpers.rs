@@ -532,6 +532,13 @@ pub(super) fn build_member_activation_launch_command(
     context: &MemberActivationContext,
     cli_commands: &CliCommandSettings,
 ) -> Result<TeamLaunchResult, CoordinationError> {
+    // Antigravity has a conversation resume base but no runtime session capture;
+    // its managed seats keep launching new rather than trusting an uncaptured ID.
+    let resume_session_id = context.resume_session_id.as_deref().filter(|_| {
+        spec(context.member.cli_tool)
+            .capabilities
+            .runtime_session_capture
+    });
     let mut launch = render_team_launch(
         cli_commands,
         context.member.cli_tool,
@@ -541,7 +548,7 @@ pub(super) fn build_member_activation_launch_command(
         &context.member.name,
         context.member.role,
         cli_commands.codex_bypass_hook_trust,
-        context.resume_session_id.as_deref(),
+        resume_session_id,
         context.member.account_id.as_deref(),
     )?;
     // Mesh 0.2.29 reads CLAUDE_DIR, independently of every harness's account

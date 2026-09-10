@@ -620,6 +620,14 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             self.orchestrator.load_resume_member_state(request)?;
         let mut activation_context =
             MemberActivationContext::for_resume_member(&request.team_name, &lead_name, &member);
+        // Every resume preserves the recorded conversation, including an
+        // operator resume without an effort override. Empty records launch new.
+        activation_context.resume_session_id = runtime_record
+            .session_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|session_id| !session_id.is_empty())
+            .map(ToString::to_string);
         match request
             .reasoning_effort_override
             .as_deref()
@@ -628,16 +636,6 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         {
             Some(level) => {
                 activation_context.member.reasoning_effort = Some(level.to_ascii_lowercase());
-                // An effort switch is taurhaus's own relaunch of a session the
-                // member was already working in. Starting fresh would drop the
-                // context the assignment builds on, so the relaunch resumes the
-                // conversation the runtime record names.
-                activation_context.resume_session_id = runtime_record
-                    .session_id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|session_id| !session_id.is_empty())
-                    .map(ToString::to_string);
             }
             // An operator's own resume carries no level, so the member would
             // come back at whatever its config says and the assignment it is
@@ -649,9 +647,6 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                     .open_assignment_effort(&request.team_name, &member)
                     .or(activation_context.member.reasoning_effort);
             }
-        }
-        if runtime_record.app_server.is_some() || runtime_record.host_rollback.is_some() {
-            activation_context.resume_session_id = runtime_record.session_id.clone();
         }
         Ok(PreparedMemberActivation {
             member,
