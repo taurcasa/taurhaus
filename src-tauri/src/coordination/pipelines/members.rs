@@ -806,6 +806,8 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         let pane_id = self.acquire_pane(prepared)?;
         self.launch_session(prepared, &pane_id)?;
         self.capture_session_identity(prepared, &pane_id)?;
+        // Exact thread equality fences hosted rollback only. Ordinary tmux
+        // resumes persist the scanner's identity, including a rebound Codex ID.
         if prepared
             .previous_runtime
             .as_ref()

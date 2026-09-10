@@ -4848,7 +4848,9 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
 }
 
 #[test]
-fn resume_pipeline_non_claude_reuses_pane_but_starts_fresh_session_and_updates_runtime() {
+fn resume_pipeline_codex_accepts_scanner_rebound_identity() {
+    // Regression: 4994b243 omitted the operator's recorded session (e2e lane 4
+    // run 7). A named Codex resume may rebind to a new rollout, as in PR #172.
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -4890,6 +4892,7 @@ fn resume_pipeline_non_claude_reuses_pane_but_starts_fresh_session_and_updates_r
         MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder").expect("runtime");
     member_runtime.pane_id = Some("%11".to_string());
     member_runtime.daemon_pid = Some(55);
+    member_runtime.session_id = Some("recorded-session".into());
     member_runtime.health = HealthState::SessionDead;
     MemberRuntimeStore::save(tmp.path(), "architecture-final", "builder", &member_runtime)
         .expect("save runtime");
@@ -4911,7 +4914,7 @@ fn resume_pipeline_non_claude_reuses_pane_but_starts_fresh_session_and_updates_r
     assert_eq!(
         launch,
         format!(
-            "CLAUDE_DIR={} codex --yolo -m 'gpt-5.6-sol'",
+            "CLAUDE_DIR={} codex resume 'recorded-session' --yolo -m 'gpt-5.6-sol'",
             crate::session_scanner::launch::shell_escape(
                 &tmp.path().parent().unwrap().to_string_lossy()
             )
