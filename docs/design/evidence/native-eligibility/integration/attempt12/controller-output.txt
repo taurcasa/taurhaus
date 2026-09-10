@@ -207,3 +207,45 @@
 {"kind": "action"}
 {"kind": "action_done"}
 {"kind": "host_poll_deferred", "error": {"code": "HOST_OPERATION_FAILED", "message": "host member busy"}}
+{"kind": "action"}
+{"kind": "action_done"}
+{"kind": "action"}
+{"kind": "action_done"}
+{"kind": "action"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "action_done"}
+{"kind": "action"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "action_done"}
+{"kind": "action"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "action_done"}
+{"kind": "host_poll_deferred", "error": {"code": "HOST_OPERATION_FAILED", "message": "host member busy"}}
+{"kind": "action"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "action_done"}
+{"kind": "action"}
+{"kind": "action_done"}
+{"kind": "action"}
+{"kind": "action_done"}
+{"kind": "action"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "command"}
+{"kind": "command_result"}
+{"kind": "action_done"}
+{"kind": "host_poll_deferred", "error": {"code": "HOST_OPERATION_FAILED", "message": "host member busy"}}

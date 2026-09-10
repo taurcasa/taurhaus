@@ -2710,3 +2710,16 @@ both markers have one user exposure and one reply (`step4-exposure.json`).
 Passive `/proc/locks` and `fdinfo` samples in `step4-locks.jsonl` retain actual
 host-operation holders without process interventions. See `step4-pending.json`,
 `step4-receipts.json`, and `step4-final-pane-2.txt`. Cumulative 6 protocol turns / 7 metered generations: $0.00585796 API-equivalent / $0.1040628 conservative; individual usage retained in `cost-ledger.json`.
+
+### Step 5 — PASS (S-runtime; compaction cost unreported)
+
+`/compact` completed; `contextGeneration` advanced, thread identity stayed fixed,
+and the daemon delivered its recovery card, visible in the attached TUI.
+See `step5-boundary-events.json`, `step5-runtime-before.json`,
+`step5-runtime-after.json`, `step5-final-pane-2.txt` and complete daemon JSONL.
+Eight protocol turns (including one compact boundary), nine usage rows including
+the typed continuation. Recovery generation $0.00132684; measured ordinary
+subtotal $0.00718480 / conservative $0.11915280. The compaction tokenUsage
+reset has zero input/output classes: this is **unreported compaction spend, not
+a free compaction**. Final joined ledger will distinguish it from measured rows.
+All three Taurhaus gates exited 0; their complete `.txt` logs are sidecars.

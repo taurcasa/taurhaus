@@ -1,0 +1,60 @@
+
+› Reply exactly maple9880e9. Do not execute tools.
+
+
+• maple9880e9
+
+
+› [mesh message data] {"assignment":null,"author":"lead","body":"ACTION REQUIRED: Reply exactly cedarc5bd05. Do not execute
+  tools.","delivery_id":"604a119e-c564-4cc2-94f9-5a7392438bdb","expectation":null,"message_id":"310e580d-77f7-47f1-a025-
+  85620bde04ab","metadata":{},"task":null}
+
+
+• cedarc5bd05
+
+• Context compacted
+
+
+› [taurhaus] recovery_card
+  Identity: seat on integration; key={"card_schema":1,"recipient":
+  ["dd3910c9ef9c13a27ce10eb70ea26de0b6b8043baa34819a850465e221f8e36a","1a8cb6cb-741f-478a-844e-e00407be482a"],"context":[1,1],"roots":
+  {"root_authority_revision":"0","resolved_teams_root":"/tmp/th-int-v92389k5/claude/teams","resolved_mesh_config_root":"/tmp/th-int-
+  v92389k5/claude","harness_account_root":"/tmp/th-int-v92389k5/codex","launch_namespace":"native","resolved_project_root":"/tmp/th-int-
+  v92389k5/project"},"contract":
+  {"role_id":"","effective_role_revision":"44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf","instruction_contract_revision
+  ":"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f","packet_revision":""}}
+  Coverage: c7abf2620745ea4f2c85d8ce593327c786a14d462fea5f281f25852305871481;
+  source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable
+  Project cwd: /tmp/th-int-v92389k5/project
+  Assignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned
+  Objective: unavailable
+  Deliverable: unavailable
+  First action: unavailable
+  Completion signal: unavailable
+  Review route: unavailable
+  Wait/release: unavailable
+  Candidate: unavailable
+  Rubric: unavailable
+  Restart cursor: unavailable
+  Requested effort: unavailable; effective effort: low; hold: none recorded
+  File boundary: unavailable
+  Evidence/handoff retention: unavailable; references do not prove archival preservation.
+  Generated: 2026-09-10 17:14:49.401738476 UTC
+  Current task: # —
+  Execution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none
+  Focal files: unavailable
+  Role: unavailable
+  Purpose: Isolated transport trial. Reply briefly. Never execute tools or commands.
+  work_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution
+  cannot begin. Report through its completion signal; no pure acknowledgment.
+  Corrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.
+  Next action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required
+  context.
+
+
+• Unassigned; awaiting missing identity, release, and task context from the team lead.
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · /tmp/th-int-v92389k5/project
