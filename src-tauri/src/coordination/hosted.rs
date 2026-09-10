@@ -982,15 +982,11 @@ pub(crate) mod tests {
             .iter()
             .any(|s| s.project_path == tmp.path().to_str().unwrap()));
         sink.flush_for_test().unwrap();
-        let events: Vec<Value> = std::fs::read_to_string(tmp.path().join("events.jsonl"))
+        let edges: Vec<Value> = std::fs::read_to_string(tmp.path().join("events.jsonl"))
             .unwrap()
             .lines()
-            .map(|line| serde_json::from_str(line).unwrap())
-            .filter(|row: &Value| row["event"] == "activity.state.changed")
-            .collect();
-        let edges: Vec<Value> = events
-            .into_iter()
-            .filter(|row| row["pid"] == process.pid)
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .filter(|row| row["event"] == "activity.state.changed" && row["pid"] == process.pid)
             .map(|row| json!([row["from"], row["to"], row["source"]]))
             .collect();
         assert_eq!(

@@ -225,7 +225,9 @@ function readPollSnapshot(result) {
     return { list: result, freshness: 'fresh' }
   }
   return {
-    list: Array.isArray(result?.sessions) ? result.sessions : null,
+    list: Array.isArray(result?.sessions) ? result.sessions.map(session =>
+      result.freshness === 'cached' && session.source === 'host' ? { ...session, source: 'host_unavailable' } : session
+    ) : null,
     freshness: result?.freshness ?? 'fresh',
   }
 }
