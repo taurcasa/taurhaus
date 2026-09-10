@@ -699,17 +699,37 @@ impl HostedMembers {
     ) -> Result<Value, String> {
         let root = registry.resolve(team).map_err(|e| e.to_string())?;
         let cell = self.seat(&root, team, member)?;
-        let mut owned = cell.try_lock().map_err(|_| "host member busy")?;
+        // Reads share one acquisition budget; operator mutations are never queued on the cell.
+        let read_deadline = matches!(operation, "transcript" | "recover")
+            .then(|| std::time::Instant::now() + Duration::from_millis(1500));
+        let mut owned = loop {
+            match cell.try_lock() {
+                Ok(owned) => break owned,
+                Err(std::sync::TryLockError::WouldBlock) if read_deadline.is_some() => {
+                    let remaining = read_deadline.unwrap().saturating_duration_since(std::time::Instant::now());
+                    if remaining.is_zero() {
+                        return Err("host member busy".into());
+                    }
+                    std::thread::sleep(remaining.min(Duration::from_millis(50)));
+                }
+                Err(_) => return Err("host member busy".into()),
+            }
+        };
         let seat = owned
             .as_mut()
             .ok_or("failed: host is unavailable in this daemon; controlled resume required")?;
-        let wait = if operation == "recover" {
-            Duration::ZERO
-        } else {
-            Duration::from_secs(2)
-        };
-        let guard =
-            HostOperationLock::acquire(&root, team, member, wait).map_err(|e| e.to_string())?;
+        let wait = read_deadline.map_or(Duration::from_secs(2), |deadline| {
+            deadline.saturating_duration_since(std::time::Instant::now())
+        });
+        let guard = HostOperationLock::acquire(&root, team, member, wait).map_err(|error| {
+            if read_deadline.is_some()
+                && matches!(&error, CoordinationError::Conflict(message) if message == "host operation deferred: lock busy")
+            {
+                "host member busy".into()
+            } else {
+                error.to_string()
+            }
+        })?;
         let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
         let attachment = record.app_server.as_ref().ok_or("member is not hosted")?;
         if generation != seat.generation
@@ -1112,6 +1132,35 @@ pub(crate) mod tests {
     }
     pub(crate) fn saved(root: &Path) -> MemberRuntimeRecord {
         MemberRuntimeStore::load(root, "team", "seat").unwrap()
+    }
+
+    #[test]
+    fn hosted_read_busy_waits_for_background_activity() {
+        // Regression: 3000bc3e (#161) background refresh exposed operation()'s immediate busy refusal.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let (registry, hosts) = running(root);
+        let generation = saved(root).attachment_generation;
+        transcript(&hosts, &registry, generation);
+        for operation in ["transcript", "recover"] {
+            let cell = hosts.seat(root, "team", "seat").unwrap();
+            let (held, ready) = std::sync::mpsc::channel();
+            std::thread::scope(|scope| {
+                scope.spawn(|| {
+                    let mut owned = cell.lock().unwrap();
+                    let guard = HostOperationLock::acquire_for_activity(root, "team", "seat").unwrap();
+                    held.send(()).unwrap();
+                    std::thread::sleep(Duration::from_millis(100));
+                    owned.as_mut().unwrap().host.refresh_activity(&guard).unwrap();
+                });
+                ready.recv_timeout(Duration::from_secs(1)).unwrap();
+                let started = std::time::Instant::now();
+                let result = hosts.operation(&registry, "team", "seat", generation, operation, Value::Null);
+                assert!(result.is_ok(), "{operation}: {result:?}");
+                assert!(started.elapsed() < Duration::from_millis(1500));
+            });
+        }
+        hosts.stop(&registry, "team", "seat").unwrap();
     }
 
     #[test]
