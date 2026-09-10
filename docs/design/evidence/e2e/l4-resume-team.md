@@ -1,7 +1,9 @@
-# INCOMPLETE — latest run 5, steps 1–2 PASS; steps 3–6 pending
+# INCOMPLETE — latest run 5, harness failure at L4 step 3
 
-Run 5 reuses run 4 on the PR #171 base and the shipped Mesh descriptor.
-See [Run 5](#run-5) for current evidence; earlier runs are historical.
+Run 5 passed both initial exchanges and stopped every seat, including the hosted
+app-server. The inherited pending-receipt assertion failed before beta backlog or
+`resume_team`; whole-team resume remains unverified.
+See [Run 5](#run-5) for evidence, spend, gates and classification.
 
 
 ## Historical run 2 — hosted process exited before transport readiness
@@ -512,47 +514,136 @@ Step 1 was committed before step 2; no passing step-2 commit is claimed.
 
 ## Run 5
 
-Run 5 is prepared on Taurhaus base `e4de06f9` (PR #171), branch
-`feat/e2e-l4-resume-team`, with Mesh detached at `310144d` in the designated
-worktree. No product or descriptor edit. The run-4 controller is reused with
-100-second retry handling only for explicit `host member busy` / `lock busy`
-refusals. Accepted operations and model inputs are never automatically retried.
+**INCOMPLETE: steps 1–2 PASS; step 3 FAIL (harness); steps 4–6 NOT RUN.**
+Runtime controller exited **1** after `alpha pending receipt missing while stopped`.
+No product change or paid retry followed. This is not a successful whole-team
+resume and does not reuse the suite's historical cold-resume skip as evidence.
 
-Offline guards: four new tests observed red (exit 1), then all 13 passed (exit 0).
-[Red](l4-resume-team/run5/red.txt), [green](l4-resume-team/run5/green.txt).
-They use in-memory data and generated tempdirs, with no CLI or auth access.
+| Step | Outcome / classification | Observed evidence |
+|---|---|---|
+| 1. Initialize, exchange/read | **PASS / runtime** | All nine initialize stages completed. Alpha attributed and idle; one unique reply per seat, alpha `submitted`, beta `native_enqueued`, then separate external `consumed_by_read` receipts. |
+| 2. Stop all seats | **PASS / runtime** | Three supported `stop_session` calls returned `ok: true`; every seat pane and Codex/Claude process stopped, including beta's daemon-owned host. Config/runtime/journal retained. |
+| 3. Backlog while stopped | **FAIL / harness** | Alpha message accepted; no presentation; health reported `pending: runtime session dead`. The inherited controller waited 100 seconds for a journal `stage: pending` receipt which this stopped path does not create. Beta send not reached. |
+| 4. `resume_team` | **NOT RUN / not evaluated** | Stop after step 3; zero resume RPCs. |
+| 5. Recovery/identity/delivery | **NOT RUN / not evaluated** | No resumed generation or recovery card claim. |
+| 6. Read/no replay/executors | **NOT RUN / not evaluated** | No post-resume claim. |
 
-Builds and six ordered runtime steps are pending. Fresh cap: 16 Codex inputs,
-USD 0.25, 15 minutes runtime. The login-only Claude lead takes no model turn.
-The authorized auth file alone is copied at 0600 into scratch and deleted during
-teardown; both native Codex siblings are copied from the resolved installation.
+[Step 1](l4-resume-team/run5/step1-outcome.json),
+[step 2](l4-resume-team/run5/step2-outcome.json),
+[step 3 raw outcome](l4-resume-team/run5/step3-outcome.json),
+[steps 4](l4-resume-team/run5/step4-outcome.json),
+[5](l4-resume-team/run5/step5-outcome.json),
+[6](l4-resume-team/run5/step6-outcome.json),
+[commands/RPCs/exits](l4-resume-team/run5/events.jsonl).
 
-The referenced attempt-9 worktree was unavailable (git exited 128: worktree does
-not exist); run 4 already carries its private namespace/tmux/root layout and
-production initialize/poll structure. No Opus tool is callable in this implementer
-lane; the independent Opus evidence lens remains with the invoking orchestrator.
+The raw generic controller classified step 3 as `taurhaus`. Evidence review
+corrects that to **harness** without rewriting the raw result. At Mesh `310144d`,
+`src/delivery/runtime.rs:171` returns the stopped-session pending refusal;
+`runtime.rs:346` checks idle during resolution. The canonical scheduler resolves
+at `src/delivery/scheduler.rs:443`, before constructing delivery receipts, and
+`scheduler.rs:268` records pending refusals in health. The reused step-3 assertion
+requires a journal receipt instead of that health evidence. This over-specific
+assertion is not proof of a product defect. Recovery of the accepted obligation
+is unverified because the binding stop-on-failure rule ended the run.
+[Classification review](l4-resume-team/run5/classification.json),
+[accepted alpha command](l4-resume-team/run5/pending-alpha-send.json),
+[retained state/health/journal](l4-resume-team/run5/final-state.json).
 
+S-runtime identities and observations:
 
-Run 5 step 1 **PASS (runtime)**: canonical initialization completed all nine
-production stages. Alpha was attributed and idle. Each seat replied to its unique
-marker once, with transport completion (`submitted` for alpha, `native_enqueued`
-for beta) and distinct external `consumed_by_read` receipts. Native reply evidence
-does not claim the model itself executed an explicit inbox read.
-[Outcome](l4-resume-team/run5/step1-outcome.json),
-[identities](l4-resume-team/run5/original-identities.json),
-[state and journal](l4-resume-team/run5/step1-state.json),
-[activity](l4-resume-team/run5/step1-activity.json).
-Four observed turns; USD 0.005638760 API-equivalent / USD 0.079902000 conservative
-all-token bound; no unmetered turn. Two startup reservations make six inputs under
-the additional conservative count. Both builds exited 0; protocol 27 and the
-shipped enabled 0.153.4 descriptor were verified before initialize.
+- Taurhaus merged base **e4de06f9**, protocol **27**, build from this branch;
+  executed controller/support commit **36b43bdd**. Mesh **310144d** detached in the
+  designated separate worktree, with **no descriptor/source edit**.
+- Both native Codex siblings were copied from the resolved installation; actual
+  version **0.153.4**, model **gpt-5.6-luna**, effort **low**. The shipped
+  `app_server` pin was observed `enabled: true` before initialize, with
+  `taurhaus-daemon-owned-thread/1`, `strict-config/1`, `daemon-owned/1`.
+  [Provenance](l4-resume-team/run5/provenance.json),
+  [binary digests](l4-resume-team/run5/build/binaries.json),
+  [capabilities](l4-resume-team/run5/delivery-capabilities.json).
+- Team incarnation `b95fdaab78e4fcf91bef53f9ced75874b4edb6df185290eea3f48364ad4a64c5`;
+  initialize run `init_5638ea736b614ef3b7bcb55824652fa0`;
+  format **2**, delivery owner **team**, exact builder canonical policy.
+- Alpha: tmux session **$0**, pane **%3**, native session
+  `01a08d3a-f775-7763-992d-5da92c7bb7ca`, attachment **1**, context **0**.
+  Beta: hosted, attached pane **%4**, session/thread
+  `01a08d3a-fc2e-7130-935c-8c71c9a96224`, attachment **1**, context **0**.
+  Lead: login-only pane **%2**, no native session ID or model turn.
+  [Original identities](l4-resume-team/run5/original-identities.json),
+  [step-1 activity](l4-resume-team/run5/step1-activity.json).
+- Initial alpha message `b87b30de-a14b-4619-8ff1-8401cdd8fbf2`; initial beta
+  `4157eba5-af58-4593-86b6-71f0c85ccc19`. Native replies and external explicit reads
+  are separate claims; the controller did not ask the models to execute reads.
+  [Markers](l4-resume-team/run5/markers.json),
+  [step-1 journal/receipts](l4-resume-team/run5/step1-state.json).
+- Step 2 retained only infrastructure pane **%0**, with no seat processes or
+  runtime activity. Beta's stop advanced its retained attachment to **2**;
+  `hosted.stop_session.host_stopped` names the original thread and
+  `exit_status: signal: 9 (SIGKILL)` from the **supported product stop**.
+  No crash/fault injection was performed. [Stop poll](l4-resume-team/run5/step2-stop-poll.json).
+- Stopped alpha obligation `7fd086e9-98ed-4801-99e7-68e2344e9736`, delivery
+  `6ec16d63-d15d-427c-904d-3056c6dc80b0`, journal sequence **16**.
+  `accepted` / `projection: pending` do not prove a delivery receipt or presentation.
+  No native reply, submission or native-enqueued record exists for it.
+- Passive lock samples and pane captures (at most 60 lines each) accompany each
+  snapshot. The **complete 344-row sanitized daemon JSONL** is retained, with only
+  prohibited account-usage rows/fields removed; repeated diagnostic rows remain.
+  [Daemon JSONL](l4-resume-team/run5/taurhaus.log.jsonl),
+  [native rollouts](l4-resume-team/run5/rollouts.json),
+  [host events](l4-resume-team/run5/host-events.json).
 
+Every observed spend (USD; rates inherited from the trial packet, not an invoice):
 
-Run 5 step 2 **PASS (runtime)**: supported `stop_session` returned `ok: true`
-for alpha, beta and lead. All recorded seat panes and Codex/Claude processes,
-including beta's daemon-owned app-server, stopped. Only the private infrastructure
-pane `%0` remained; runtime activity was empty. Team config, runtime identities,
-and the journal remained. PR #171's hosted stop behavior is observed green.
-No new turn or spend. [Outcome](l4-resume-team/run5/step2-outcome.json),
-[stop poll](l4-resume-team/run5/step2-stop-poll.json),
-[state](l4-resume-team/run5/step2-state.json).
+| Native turn | Seat/input | API-equivalent | Conservative all tokens at $1.20/M |
+|---|---|---:|---:|
+| `01a08d3b-0271-7683-8d16-4e3776a9fbb1` | beta onboarding | 0.001029840 | 0.013110000 |
+| `01a08d3b-0e58-7c10-a2dc-e0f4f4dbf18e` | alpha onboarding | 0.002276320 | 0.024534000 |
+| `01a08d3b-369b-7740-9f51-d7804f5609ff` | alpha old marker | 0.001166160 | 0.027878400 |
+| `01a08d3b-4d30-7ea2-b62c-cb3c75b09639` | beta old marker | 0.001166440 | 0.014379600 |
+| **Total** | **4 turns** | **0.005638760** | **0.079902000** |
+
+Zero unmetered turns. The controller additionally reserves both seat starts,
+counting **6 ≤ 16**; the stopped alpha message caused **no paid input**. Step 2,
+step 3 and teardown added zero observed spend. The fresh **USD 0.25** cap remained
+verified by the retained conservative bound; earlier runs' spend is historical.
+Runtime **201.199 seconds ≤ 900**. [Ledger](l4-resume-team/run5/cost-ledger.json),
+[reconciliation](l4-resume-team/run5/spend-reconciliation.json).
+
+Offline harness TDD: four added busy-refusal guards failed first (exit **1**;
+missing retry helper / unhandled `lock busy`), then all **13** passed (exit **0**).
+The reused six preflight accounting/selection tests also passed (exit **0**).
+Only in-memory data and generated tempdirs are used by these tests, with no real
+CLI/auth access. [Red](l4-resume-team/run5/red.txt),
+[green](l4-resume-team/run5/green.txt).
+
+Exact runtime/build/gate entry points from the assigned checkout root:
+
+```sh
+python3 -B docs/design/evidence/e2e/l4-resume-team/run5/build.py
+python3 -B -m unittest discover -s docs/design/evidence/e2e/l4-resume-team/run5 -p test_support.py
+python3 -B docs/design/evidence/e2e/l4-resume-team/run5/controller.py
+python3 -B docs/design/evidence/e2e/l4-resume-team/run5/audit.py
+python3 -B docs/design/evidence/e2e/l4-resume-team/run5/gates.py
+```
+
+Both `cargo build --bin mesh` (designated Mesh worktree) and `just build-daemon`
+exited **0**. Builds/gates use checkout-local target directories and one Cargo
+build job, with the exact machine-wide `pgrep` probe before each command. Waits
+apply only at three or more existing Cargo processes, at 30-second intervals,
+up to 30 minutes. Tauri resource placeholders were prepared using the recipe.
+Required gates are running; final exits will be recorded below.
+
+Cleanup completed (exit **0**): seven owned PID/start-tick identities rechecked,
+**zero survivors**, private port closed, scratch root/auth removed, Mesh source
+unchanged. The shipped Mesh binary is retained in its build target; no trial
+patch exists to restore. [Cleanup](l4-resume-team/run5/cleanup.json),
+[independent process/privacy audit](l4-resume-team/run5/final-audit.json).
+
+Deviations/limits: the referenced attempt-9 worktree did not exist (git exit 128),
+so the existing run-4 sandbox/poll controller was reused. Its overly specific
+step-3 assertion stopped this run; no corrective paid retry or product edit was
+made. The raw classification is preserved and the evidence-based correction is
+explicit above. The independent Opus evidence lens remains for the invoking
+orchestrator; no Opus tool is callable here. Steps 4–6 and beta's stopped backlog
+remain unverified. No installation/release, plan-ledger edit, descriptor mutation,
+account/root move, unrelated CLI, stress test, or operator-process kill occurred.

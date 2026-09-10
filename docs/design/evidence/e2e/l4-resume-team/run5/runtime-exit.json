@@ -1,0 +1,9 @@
+{
+  "command": [
+    "python3",
+    "-B",
+    "docs/design/evidence/e2e/l4-resume-team/run5/controller.py"
+  ],
+  "exit_code": 1,
+  "reason": "alpha pending receipt missing while stopped"
+}
