@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — attempt 6 INCONCLUSIVE (stopped at step 3)
+# Codex 0.153.4 integration — IN PROGRESS (attempt 7)
 
 2026-09-09. **Eligibility remains disabled.** The prescribed canonical setup
 stopped before member launch: the real Mesh command `team delivery --owner team`
@@ -1438,3 +1438,17 @@ No `src-tauri/` change, product code, registry entry, descriptor edit, or Mesh
 commit. **Additional spend: zero turns / $0.00.** The next live run awaits the
 user's answer whether its budget is fresh or shared with the four spent turns;
 no missing capture or unrun step has been promoted to PASS.
+
+## Attempt 7 — fresh authorized budget, 2026-09-10
+
+Controller: [attempt7-controller.py](integration/attempt7-controller.py), derived from attempt 6, with the ebca1917 retention helpers. No evidence-size or overall-time abort remains. Hard limits: 16 turns / $3; account billing is not exposed, so dollar values are tokenUsage-based API-equivalent calculations at the packet rates. No observer socket is opened.
+
+Build reproduction: `TRIAL_EVIDENCE_LABEL=attempt7 python3 docs/design/evidence/native-eligibility/integration/attempt3-build.py` (daemon and Mesh exits 0; both Cargo probes exit 1). Run: `python3 docs/design/evidence/native-eligibility/integration/attempt7-controller.py attempt7/run`. Actions are serialized by `attempt7-actions.py`; exact actions and RPC IDs are retained in `attempt7/run/events.jsonl`.
+
+| Step | Outcome | Evidence |
+|---|---|---|
+| 1 | **PASS** | `attempt7/run/step1-runtime.json`, `step1-identities.json`, `generated-config-0.toml`, `step-1-pane-2.txt`: Unix host + strict-config attached TUI; AGENTS.md source, terminalContract 1, thread `01a089a4-2183-70a1-b1c6-566c00026910`; startup recovery card and reply. |
+
+Step 1 spend: turn `01a089a4-21b1-7660-9d59-c37505975bd3`, input/cached/output 10773/6912/30, **$0.00094644** API-equivalent, $0.0129636 conservative. Claude lead is at login, zero Claude turns.
+
+Offline TDD: `attempt7_test.py` first failed on the 1.1 MB evidence sample and on the missed seventeenth host-only turn. After the controller correction: three tests pass; three existing `continuation_retention_test.py` tests pass. No product files changed.
