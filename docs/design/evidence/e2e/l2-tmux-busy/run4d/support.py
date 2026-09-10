@@ -155,7 +155,7 @@ def pending_observation(rows,message_id,health,*,activity=None,now=None):
         from datetime import datetime
         accepted_at=datetime.fromisoformat(accepted['committed_at'].replace('Z','+00:00')).timestamp()
         observed_at=datetime.fromisoformat(activity['observed_at'].replace('Z','+00:00')).timestamp()
-        receipts=[r for r in rows if r.get('event_type')=='delivery_receipt' and r.get('payload',{}).get('message_id')==message_id]
+        receipts=[r for r in rows if r.get('event_type') in ('receipt','delivery_receipt') and r.get('payload',{}).get('message_id')==message_id]
         if now is not None and now>=accepted_at and 0<=now-observed_at<=120 and not receipts:
             return {'source':'message accepted without receipt while working','message_id':message_id,'accepted':accepted,'receipt_count':0,'health_corroboration':health}
     if accepted and health.get('last_defer_reason') and health['heartbeat']>=accepted['committed_at']:

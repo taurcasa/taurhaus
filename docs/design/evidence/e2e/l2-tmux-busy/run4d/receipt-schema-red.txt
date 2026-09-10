@@ -1,0 +1,13 @@
+..F.
+======================================================================
+FAIL: test_pending_uses_message_scope_without_health (reply_test.ReplyTests.test_pending_uses_message_scope_without_health)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run4d/reply_test.py", line 45, in test_pending_uses_message_scope_without_health
+    self.assertIsNone(support.pending_observation([accepted,receipt],'q',{},activity=activity,now=1788998403))
+AssertionError: {'source': 'message accepted without receipt while working', 'message_id': 'q', 'accepted': {'event_type': 'message_accepted', 'committed_at': '2026-09-10T00:00:02Z', 'payload': {'message_id': 'q'}}, 'receipt_count': 0, 'health_corroboration': {}} is not None
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+FAILED (failures=1)

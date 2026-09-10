@@ -34,12 +34,15 @@ class ReplyTests(unittest.TestCase):
         self.assertEqual([c.args[1] for c in trial.wait.call_args_list],['marker reply evidence missing','post-reply fresh idle missing','post-reply metering incomplete'])
         self.assertEqual(len(trial.save.call_args_list),3)
 
+    # // Regression: f6880113 used delivery_receipt instead of canonical receipt rows.
     def test_pending_uses_message_scope_without_health(self):
         accepted={'event_type':'message_accepted','committed_at':'2026-09-10T00:00:02Z','payload':{'message_id':'q'}}
         activity={'activity_confidence':'likely_working','observed_at':'2026-09-10T00:00:02Z'}
         result=support.pending_observation([accepted],'q',{},activity=activity,now=1788998403)
         self.assertEqual(result['source'],'message accepted without receipt while working')
         receipt={'event_type':'delivery_receipt','payload':{'message_id':'q','stage':'submitted'}}
+        self.assertIsNone(support.pending_observation([accepted,receipt],'q',{},activity=activity,now=1788998403))
+        receipt={'event_type':'receipt','payload':{'message_id':'q','stage':'claimed'}}
         self.assertIsNone(support.pending_observation([accepted,receipt],'q',{},activity=activity,now=1788998403))
 
 if __name__=='__main__':unittest.main()
