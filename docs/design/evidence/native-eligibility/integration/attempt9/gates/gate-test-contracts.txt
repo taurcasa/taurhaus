@@ -18,7 +18,7 @@ test render_onboarding_cli_uses_the_agy_variant ... ok
 test render_onboarding_cli_uses_the_grok_variant ... ok
 test renderer_cli_rejects_unknown_fields_and_multiline_commands ... ok
 test team_launch_commands_match_tool_goldens ... ok
-[middle omitted; complete daemon events are in run/taurhaus.log.jsonl]
+[middle omitted from gates/gate-test-contracts.log; 29 lines, sha256 in excerpt-manifest.json]
 
      Running tests/module_boundary_assertions.rs (target/debug/deps/module_boundary_assertions-71def84926a29342)
 

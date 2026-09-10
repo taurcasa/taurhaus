@@ -18,7 +18,7 @@
 {"kind": "daemon_request"}
 {"kind": "daemon_response"}
 {"kind": "daemon_request"}
-[middle omitted; complete daemon events are in run/taurhaus.log.jsonl]
+[middle omitted from controller-output.txt; 2014 lines, sha256 in excerpt-manifest.json]
 {"kind": "action"}
 {"kind": "command"}
 {"kind": "command_result"}

@@ -18,7 +18,7 @@ $ vitest run
  [32m✓[39m e2e/helpers/stageFixtureProject.test.js [2m([22m[2m15 tests[22m[2m)[22m[33m 615[2mms[22m[39m
 [90mstderr[2m | src/lib/sessionStore.test.js[2m > [22m[2msessionStore[2m > [22m[2mstores sessions grouped by project path
 [22m[39m[sessionStore] skipping session activity persistence: unknown project id { projectPath: [32m'<operator-path-redacted>'[39m }
-[middle omitted; complete daemon events are in run/taurhaus.log.jsonl]
+[middle omitted from gates/gate-check-quick.log; 2658 lines, sha256 in excerpt-manifest.json]
  [32m✓[39m src/lib/SidebarAccounts.test.js [2m([22m[2m19 tests[22m[2m)[22m[33m 3345[2mms[22m[39m
      [33m[2m✓[22m[39m ticks the account a fresh launch uses, and none on the history rows [33m 360[2mms[22m[39m
      [33m[2m✓[22m[39m pins from the Claude account submenu without launching, and clears it again [33m 380[2mms[22m[39m

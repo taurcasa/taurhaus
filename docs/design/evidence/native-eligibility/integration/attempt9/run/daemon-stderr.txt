@@ -18,7 +18,7 @@ This is most likely caused by the lack of administrative privileges associated w
 update-motd: command not found
 [2m2026-09-10T09:06:37.459956Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m Probing CLI version [3mprogram[0m[2m=[0m"claude" [3margv[0m[2m=[0m["/bin/bash", "-ilc", "claude --version"]
 [2m2026-09-10T09:06:37.485289Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI version probe completed [3mprogram[0m[2m=[0m"claude" [3mstatus[0m[2m=[0mSome(0) [3mraw_output[0m[2m=[0m2.1.267 (Claude Code)
-[middle omitted; complete daemon events are in run/taurhaus.log.jsonl]
+[middle omitted from run/daemon-stderr.txt; 867 lines, sha256 in excerpt-manifest.json; complete daemon events are in run/taurhaus.log.jsonl]
 [2m2026-09-10T09:10:20.030070Z[0m [33m WARN[0m [2mtaurhaus_lib::coordination::activity_export[0m[2m:[0m failed to load team roster while enriching session metadata [3mteam_name[0m[2m=[0m_active-project-teams [3merror[0m[2m=[0mNot found: team config not found for '_active-project-teams' at /tmp/th-int-1vc78b94/claude/teams/_active-project-teams/config.json
 [2m2026-09-10T09:10:21.047036Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46554
 [2m2026-09-10T09:10:21.531269Z[0m [33m WARN[0m [2mtaurhaus_lib::coordination::activity_export[0m[2m:[0m failed to load team roster while enriching session metadata [3mteam_name[0m[2m=[0m_active-project-teams [3merror[0m[2m=[0mNot found: team config not found for '_active-project-teams' at /tmp/th-int-1vc78b94/claude/teams/_active-project-teams/config.json

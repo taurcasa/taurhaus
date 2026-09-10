@@ -26,6 +26,16 @@ from attempt6_support import clean, ledger, new_events
 from continuation_retention import retained_view, retain_host_event
 from attempt9_support import retained_log
 
+def remove_trial_files(root, mesh):
+    # Source restoration alone leaves the compiled trial descriptor enabled.
+    binary = mesh / "target/debug/mesh"
+    binary.unlink(missing_ok=True)
+    shutil.rmtree(root)
+    return {"auth_removed": not (root / "codex/auth.json").exists(),
+            "root_removed": not root.exists(),
+            "mesh_trial_artifact_removed": not binary.exists()}
+
+
 CHECKOUT = Path.cwd()
 OUT = Path(__file__).resolve().parent / sys.argv[1]
 OUT.mkdir(parents=True)
@@ -452,9 +462,8 @@ finally:
     with socket.socket() as probe:
         probe.settimeout(.2)
         port_closed = probe.connect_ex(("127.0.0.1", PORT)) != 0 if "PORT" in globals() else True
-    cleanup = {"survivors": survivors, "port_closed": port_closed, "auth_removed": True, "root": str(ROOT)}
-    shutil.rmtree(ROOT)
-    cleanup["root_removed"] = not ROOT.exists()
+    cleanup = {"survivors": survivors, "port_closed": port_closed, "root": str(ROOT)}
+    cleanup.update(remove_trial_files(ROOT, Path("/home/mstie/projects/mesh-trial")))
     (OUT / "cleanup.json").write_text(json.dumps(cleanup, indent=2))
     (OUT / "cost-ledger.json").write_text(json.dumps(ledger(host_events, [t["turn_id"] for t in turns]), indent=2))
     log("cleanup", **cleanup)

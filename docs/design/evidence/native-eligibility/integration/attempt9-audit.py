@@ -9,6 +9,23 @@ import sys
 from attempt9_support import pack_events, unpack_events, compaction_metering_gaps
 from attempt5_support import clean
 
+def verify_mesh_artifact_removed(mesh):
+    assert 'disposition: "disabled", enabled: false' in (mesh/'src/delivery/app_server/capabilities.rs').read_text()
+    binary = mesh / 'target/debug/mesh'
+    assert not binary.exists(), f'trial Mesh binary still present: {binary}'
+    return True
+
+
+def excerpt_text(original, source):
+    lines = original.splitlines()
+    if len(lines) <= 60:
+        return original
+    marker = f'[middle omitted from {source}; {len(lines)-60} lines, sha256 in excerpt-manifest.json'
+    if Path(source).name in ['daemon-stderr.txt', 'daemon-restart-stderr.txt']:
+        marker += '; complete daemon events are in run/taurhaus.log.jsonl'
+    return '\n'.join(lines[:20] + [marker + ']'] + lines[-40:]) + '\n'
+
+
 B=Path(__file__).resolve().parent
 OUT=B/'attempt9'; RUN=OUT/'run'
 def read(name):return json.loads((RUN/name).read_text())
@@ -20,18 +37,25 @@ if '--expand' in sys.argv:
 cleanup=read('cleanup.json')
 assert not cleanup['survivors'] and cleanup['root_removed'] and cleanup['port_closed']
 assert not Path(cleanup['root']).exists()
+cleanup['auth_removed'] = not (Path(cleanup['root'])/'codex/auth.json').exists()
+assert cleanup['auth_removed']
 for identity in read('identities.json'):
     try:ticks=Path(f"/proc/{identity['pid']}/stat").read_text().rsplit(')',1)[1].split()[19]
     except FileNotFoundError:continue
     assert ticks!=identity['start_ticks'],identity['pid']
 events=rows('events.jsonl')
+if (RUN/'event-payloads.json').exists():
+    events=unpack_events(events,read('event-payloads.json'))
 isolation=next(r for r in events if r['kind']=='isolation')
 port=int(isolation['environment']['TAURHAUS_DAEMON_PORT'])
 with socket.socket() as probe:
     probe.settimeout(.2);assert probe.connect_ex(('127.0.0.1',port))!=0
 mesh=Path('/home/mstie/projects/mesh-trial')
 assert not subprocess.check_output(['git','-C',str(mesh),'status','--porcelain'],text=True)
-assert 'disposition: "disabled", enabled: false' in (mesh/'src/delivery/app_server/capabilities.rs').read_text()
+cleanup['mesh_trial_artifact_removed'] = verify_mesh_artifact_removed(mesh)
+if '--verify-cleanup' in sys.argv:
+    print(json.dumps(cleanup, indent=2))
+    raise SystemExit(0)
 assert read('step7-mesh-activity.json')['activity_confidence']=='uncertain'
 assert 'pending: activity not freshly idle' in (RUN/'step7-final-status.txt').read_text()
 marker=read('step7-marker.json');assert marker not in (RUN/'step7-final-pane-18.txt').read_text()
@@ -66,7 +90,7 @@ excerpts={}
 for path in [*OUT.glob('*.log'),*OUT.glob('*-output.txt'),*RUN.glob('*-stderr.txt'),* (OUT/'gates').glob('*.log')]:
     original=clean(path.read_text()); lines=original.splitlines()
     excerpts[str(path.relative_to(OUT))]={'lines':len(lines),'sha256_sanitized':hashlib.sha256(original.encode()).hexdigest()}
-    content='\n'.join(lines[:20]+['[middle omitted; complete daemon events are in run/taurhaus.log.jsonl]']+lines[-40:])+'\n' if len(lines)>60 else original
+    content=excerpt_text(original, str(path.relative_to(OUT)))
     target=path.with_suffix('.txt');target.write_text(content)
     if target!=path:path.unlink()
 save(OUT/'excerpt-manifest.json',excerpts)
@@ -79,7 +103,7 @@ for path in OUT.rglob('*'):
     path.write_text(text)
     if 'pane-' in path.name:assert len(text.splitlines())<=60
     assert not re.search(r'eyJ[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{20,}',text),path
-    assert not re.search(r'(?<![\w/-])/home/[^/\s]+/(?!projects/(?:taurhaus-trial|mesh-trial|mesh-push)(?:/|\b))',text),path
+    assert not re.search(r'(?<![\w/-])/home/[^/\s]+/(?!projects/(?:taurhaus-trial|mesh-trial|mesh-push)(?:/|(?![\w.-])))',text),path
 aliases={};seen={}
 for path in sorted([p for p in OUT.rglob('*') if p.is_file()],key=lambda p:(not p.name.startswith('step'),str(p))):
     digest=hashlib.sha256(path.read_bytes()).hexdigest()

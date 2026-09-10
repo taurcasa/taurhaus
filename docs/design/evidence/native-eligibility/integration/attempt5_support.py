@@ -15,7 +15,7 @@ def clean(value):
     if isinstance(value, list):
         return [v for item in value if (v := clean(item)) is not None]
     if isinstance(value, str):
-        return re.sub(r'(?<![\w/-])/home/[^/\s"\']+/(?!projects/(?:taurhaus-trial|mesh-push)(?:/|\b))[^\s"\']*',
+        return re.sub(r'(?<![\w/-])/home/[^/\s"\']+/(?!projects/(?:taurhaus-trial|mesh-trial|mesh-push)(?:/|(?![\w.-])))[^\s"\']*',
                       '<operator-path-redacted>', value)
     return value
 

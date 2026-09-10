@@ -23,7 +23,8 @@
     "port_closed": true,
     "auth_removed": true,
     "root": "/tmp/th-int-1vc78b94",
-    "root_removed": true
+    "root_removed": true,
+    "mesh_trial_artifact_removed": true
   },
   "mesh_tree_clean": true,
   "descriptor_enabled": false,
@@ -64,5 +65,13 @@
     "gate-lint": 0,
     "gate-test-contracts": 0
   },
-  "retained_bytes": 1725284
+  "retained_bytes": 1725284,
+  "review_cleanup": {
+    "verified_at": "2026-09-10T09:41:12.177716+00:00",
+    "command": "python3 docs/design/evidence/native-eligibility/integration/attempt9-audit.py --verify-cleanup",
+    "exit": 0,
+    "removed_artifact": "/home/mstie/projects/mesh-trial/target/debug/mesh",
+    "removed_artifact_sha256": "56228853cb7d7ad7de1d8bc4f60ad8567cbfed272e5963f596aeceda78c0c845",
+    "note": "Original teardown restored tracked source only; review removed the hash-matched trial binary and rechecked PID identities, port, root/auth absence, clean source and artifact absence."
+  }
 }

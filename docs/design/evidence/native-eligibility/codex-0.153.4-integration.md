@@ -1,5 +1,7 @@
 # Codex 0.153.4 integration — FAIL step 7: known defect (codex identity lane), attempt 9
 
+## Attempt 1 — INCONCLUSIVE: setup FAIL (2026-09-09)
+
 2026-09-09. **Eligibility remains disabled.** The prescribed canonical setup
 stopped before member launch: the real Mesh command `team delivery --owner team`
 refused the newly created team's active external lead because it had no runtime
@@ -1931,7 +1933,8 @@ tmux seat, but its delivery stays `pending: activity not freshly idle` and the
 published Mesh activity snapshot reports `activity_confidence: "uncertain"`.
 The 120-second delivery deadline expired. **No descriptor flip, no Mesh fix
 commit, no Taurhaus product change.** Mesh's scratch descriptor edit was restored;
-the detached `a6ee296` tree is clean. All required Taurhaus gates passed.
+the detached `a6ee296` tracked tree was clean, but its trial-enabled build artifact
+remained until the review correction below. All required Taurhaus gates passed.
 
 #### Pair, isolation and ordered outcomes
 
@@ -1944,7 +1947,10 @@ true and exactly `taurhaus-daemon-owned-thread/1`, `strict-config/1`,
 `daemon-owned/1`, transport `unix-websocket`. Binary hashes and launch commands
 are in the controller event trace. The inherited path sanitizer over-redacted
 Mesh build metadata's cwd/target; attempt9-build.py pins their exact worktree
-and checkout-local target, and mesh-build.json retains command/exit/preflight.
+and checkout-local target. Review adds an explicit `mesh_worktree` field to
+mesh-build.json, reconstructed from that pin and the matching binary hash;
+original over-redacted cwd/target fields remain historical. The sanitizer now
+preserves mesh-trial alongside the other worktree paths.
 
 Scratch `/tmp/th-int-1vc78b94`, private port **31269**, private HOME, tmux server
 and PID namespace, scratch Codex and credential-free Claude homes. Only the
@@ -1964,11 +1970,27 @@ stored only once. Each green runtime step has its own commit.
 |---|---|---|
 | 1. Hosted startup | **PASS** | initialize-result.json; step1-runtime.json; step1-identities.json; generated-config-0.toml; step-1-pane-2.txt. Socket child and strict-config attached TUI launched, instructionSources names scratch AGENTS.md, startup card displayed and answered. |
 | 2. Idle delivery/read | **PASS** | step2-after-status.txt selects app_server source=config; marker in pane and model reply; native_enqueued turn/start with thread/turn ids. step2-journal-before-read.json contains no consumed_by_read; step2-explicit-read.txt alone creates it in step2-journal-after-read.json. |
-| 3. Active deferral | **PASS** | step3-pending.json records pending/thread_active; step3-receipts.json records eventual native_enqueued turn/start; step3-exposure.json proves one user item and one reply; step3-final-pane-2.txt. |
-| 4. Typed input/passive locks | **PASS** | step4-pending.json; step4-exposure.json shows one input/reply per marker, operator reply before socket reply; step4-final-pane-2.txt. step4-locks.jsonl has daemon and Mesh flock/fdinfo holders on one stable inode. |
+| 3. Active deferral | **PASS** | The active turn is opened with `coordination.hosted_input`, followed by `mesh send`; deferral/exposure assertions are unaffected by that opener. step3-pending.json records pending/thread_active; step3-receipts.json records eventual native_enqueued turn/start; step3-exposure.json proves one user item and one reply; step3-final-pane-2.txt. |
+| 4. Typed input/passive locks | **PASS** | The active turn is opened with `coordination.hosted_input`; deferral/exposure assertions are unaffected by that opener. step4-pending.json; step4-exposure.json shows one input/reply per marker, operator reply before socket reply; step4-final-pane-2.txt. step4-locks.jsonl has daemon and Mesh flock/fdinfo holders on one stable inode. |
 | 5. Compaction recovery | **PASS** | step5-runtime-before/after.json: contextGeneration 0→1, same thread; complete taurhaus.log.jsonl contains compaction.codex_host.received/delivered; step5-boundary-events.json shows recovery-card user item; step5-compacted-pane-2.txt shows it after Context compacted. |
 | 6. Daemon restart | **PASS** | Event trace records normal SIGINT stop/start; step6-resume-result.json reports owned thread resumed in pane %14; step6-runtime-before/after.json preserves thread; post-restart mesh send/reply/native_enqueued receipt (step6-receipts.json, step6-final-pane-14.txt). |
 | 7. Operational rollback | **FAIL — known defect (codex identity lane)** | In-place refusal in step7-inplace-refusal.txt; stop/remove/add RPCs succeed (step7-stop/remove/add.json), delivery tmux at re-add. step7-runtime-after.json: terminalContract 1, no appServer/member daemon; plain pane %18. step7-final-status.txt defers on activity not freshly idle; step7-mesh-activity.json says uncertain; step7-final-pane-18.txt lacks the marker after 120 seconds. |
+
+Managed-launch hook reconciliation also emitted two WARN rows in the complete
+run log (rows 593 and 722), during steps 6 and 7 respectively:
+
+```text
+2026-09-10T09:10:35.586Z compaction.codex_hook.degraded: Managed launch continued without compact-hook trust
+2026-09-10T09:11:25.027Z compaction.codex_hook.degraded: Managed launch continued without compact-hook trust
+error.message (both): Not found: team config not found for '_active-project-teams' at /tmp/th-int-1vc78b94/claude/teams/_active-project-teams/config.json
+```
+
+Emit site: `src-tauri/src/commands/terminal_settings.rs:863`,
+`log_managed_account_hook_degraded`. `_active-project-teams` is the lock name
+in `src-tauri/src/coordination/stores/active_project.rs:14`, enumerated as a team
+by hook reconciliation. This does not change step 6's PASS: the hosted path owns
+compaction. The re-added step-7 tmux seat launched **without compact-hook trust**;
+this additional defect is recorded, with no product fix in this lane.
 
 Hosted thread throughout steps 1–6:
 `01a08a91-af30-78f1-8cda-ee5e52d604e0`. Compaction turn
@@ -2099,7 +2121,17 @@ python3 docs/design/evidence/native-eligibility/integration/attempt9-audit.py --
 
 [Final audit](integration/attempt9/final-audit.json) verifies all owned PID/start
 identities absent, private port **31269** closed, scratch root/auth removed and
-Mesh tree clean. Controller and step-7 driver exit 1 for the observed delivery
+Mesh tracked tree clean. The original audit checked source only and missed
+`/home/mstie/projects/mesh-trial/target/debug/mesh`, whose SHA-256
+`56228853cb7d7ad7de1d8bc4f60ad8567cbfed272e5963f596aeceda78c0c845`
+matched the trial binary event. Review removed that exact artifact (hash check,
+then `Path.unlink()`), and `attempt9-audit.py --verify-cleanup` now exits 0 only
+when it is absent too. `mesh_tree_clean` now covers both tracked cleanliness and
+absence of this trial build output; `review_cleanup` records the later correction.
+Controller teardown removes the artifact alongside source restoration and measures
+`auth_removed` after deleting scratch; the original cleanup row's literal is
+historical, while the review audit independently checks root/auth absence.
+Controller and step-7 driver exit 1 for the observed delivery
 failure; gates, build and supplemental collector children were waited to exit.
 
 The **complete daemon JSONL contains 935 deduplicated rows**, all 17 event
@@ -2110,7 +2142,9 @@ payloads (events.jsonl + event-payloads.json); the offline round-trip assertion
 verifies lossless expansion. Duplicate file aliases preserve every snapshot;
 pane captures are ≤60 lines, with trailing blank padding removed (the lossless
 command trace keeps the original output). Stderr/build/gate excerpts are bounded, with source
-line counts and sanitized digests. No secrets, account usage rows or installation
+line counts and sanitized digests in excerpt-manifest.json. Omission markers
+now name their source and omitted line count; omitted build/gate text is not
+recoverable from the daemon JSONL. Only daemon excerpts link to that JSONL. No secrets, account usage rows or installation
 ids are retained. Evidence is about **1.73 MB**, exceeding the approximate 1 MB
 guidance to preserve complete JSONL and lossless command/RPC evidence; size never
 aborted a step.
@@ -2118,6 +2152,50 @@ aborted a step.
 No Taurhaus product/registry patch, new dependency, install, release, plan-ledger
 edit, branch switch, foreign checkout mutation or unowned process intervention.
 Non-evidence insertions **0/200**. No descriptor flip or conditional missing-runtime
-refusal fix was made because step 7 failed. The Opus evidence lens is unavailable
-in this session. Remaining limitations are the known rollback identity defect,
-unreported compaction billing, and that missing cross-model review.
+refusal fix was made because step 7 failed. The original session lacked an Opus
+evidence lens; the subsequent operator-supplied Opus review is addressed below.
+Remaining limitations are the known rollback identity defect, managed-launch
+compact-hook degradation, and unreported compaction billing.
+
+#### Attempt 9 review correction — 2026-09-10
+
+All seven supplied findings were verified and fixed locally in the evidence,
+controller/audit, and sanitizer. No trial rerun, descriptor flip, product change,
+new dependency, or additional paid input: **0 turns / USD 0 additional spend**.
+The original 10 protocol turns / 11 generations and ordinary API-equivalent
+subtotal **USD 0.00839556** remain unchanged; compaction billing remains unreported.
+
+Red-first command: `python3 docs/design/evidence/native-eligibility/integration/attempt9_test.py`.
+After extracting the existing behavior into testable helpers, exit **1** showed
+four regressions: teardown retained the fake trial binary, the audit accepted it
+despite disabled source, build excerpts lacked their source, and mesh-trial paths
+were redacted. After correction, exit **0**, **8 tests**, including measured
+credential absence with a simulated incomplete scratch deletion. The real
+`attempt9-audit.py --verify-cleanup` also failed on the leftover binary before
+its hash-checked removal and passed afterwards. All fixtures are temporary,
+use fake data, and execute no harness CLI.
+
+Unpaid gate reproduction from the checkout root (the reused wrapper runs the
+exact recipes with empty harness homes, inert CLIs and a private PID namespace):
+
+```sh
+TRIAL_EVIDENCE_LABEL=/tmp/taurhaus-attempt9-review-gates python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+python3 -m unittest discover -s docs/design/evidence/native-eligibility/integration -p '*_test.py'
+python3 docs/design/evidence/native-eligibility/integration/attempt9-audit.py --verify-cleanup
+```
+
+| Review verification | Exit / outcome |
+|---|---|
+| `just check-quick` | **0**, 19.46 s |
+| `just lint` | **0**, 6.33 s |
+| `just test-contracts` | **0**, 5.88 s |
+| All offline evidence tests | **0**, 26 tests |
+| Read-only cleanup audit | **0** |
+| Gate cleanup | Children waited; isolated root removed |
+
+Every Cargo preflight exited 1 (no concurrent Cargo). Raw review gate logs and
+exit metadata are at `/tmp/taurhaus-attempt9-review-gates/gates/`; original run
+gate metadata remains historical. Rust unit execution is not required because
+there is no `src-tauri/` diff. The audit's read-only cleanup mode unpacks the
+retained event trace so this verification does not rerun the one-time finalizer
+or rewrite daemon evidence. The original daemon JSONL hash is unchanged.
