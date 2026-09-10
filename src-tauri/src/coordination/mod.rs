@@ -41,3 +41,5 @@ pub(crate) mod mesh_contract_fixture;
 pub(crate) mod hosted;
 #[cfg(target_os = "linux")]
 pub(crate) mod hosted_process;
+
+pub(crate) mod initialize_guard;

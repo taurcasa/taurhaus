@@ -9578,3 +9578,75 @@ fn seat_delivery_seed_preserves_created_incarnation() {
         before.team_incarnation_id
     );
 }
+
+// Regression: 06d1267b (observed at 6398bfa3), integration attempt 10 and L4 run 3: self-heal acquired
+// the canonical owner during initialize; retained Retry seats remained exposed.
+#[test]
+fn initialize_owner_race_guard_lifecycle_and_interleaved_self_heal() {
+    let _lock = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    for canonical in [true, false] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let backend = Arc::new(FakeBackend::default());
+        let mut orch = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+        let state = crate::coordination::state::CoordinationState::with_components_and_runtime(
+            tmp.path().into(), crate::coordination::backend::BackendSelector::m0(),
+            Arc::new(move |_, _| Ok(backend.clone())),
+            Arc::new({ let runtime = runtime.clone(); move || runtime.clone() }),
+        );
+        let log_path = tmp.path().join("race.jsonl");
+        let sink = LogFileState::new(log_path.clone()).unwrap();
+        install_global_sink(&sink);
+        let guard = tmp.path().join("canonical/.taurhaus/initialize-in-progress");
+        let mut request = canonical_review_request(&tmp);
+        if !canonical { request.messaging = None; }
+        runtime.set_delivery_opt_in_failure(Some("mesh: runtime pending"));
+        let mut observe = |step: &str, status: StepStatus, _message: Option<String>| {
+            if step == "create_team" && status == StepStatus::Succeeded {
+                assert!(guard.exists(), "guard must precede published create success");
+            }
+            if step == "send_onboarding" || step == "opt_in_delivery" {
+                assert!(guard.exists());
+                let before = runtime.calls().len();
+                let pass = state.run_background_self_heal_core_pass().unwrap();
+                assert_eq!(pass.teams_skipped, 1);
+                assert_eq!(pass.team_daemons_ensured, 0);
+                assert_eq!(runtime.calls().len(), before, "no background daemon probes/spawns");
+            }
+        };
+        let first = orch.initialize_team_with_cli_commands_and_layout_and_progress(
+            &request, &CliCommandSettings::default(), "new_window", Some(&mut observe),
+        ).unwrap();
+        assert_eq!(first.failed_step.as_deref(), canonical.then_some("opt_in_delivery"));
+        if canonical {
+            assert!(guard.exists(), "failed initialize retains guard");
+            runtime.set_delivery_opt_in_failure(None);
+            let retry = orch.initialize_team_with_cli_commands_and_layout_and_progress(
+                &request, &CliCommandSettings::default(), "new_window", Some(&mut observe),
+            ).unwrap();
+            assert!(retry.failed_step.is_none(), "{retry:?}");
+            assert!(retry.steps.iter().any(|step| step.message.as_deref() == Some("retained from previous attempt")));
+        }
+        assert!(!guard.exists(), "finish clears guard after onboarding");
+        sink.flush_for_test().unwrap();
+        assert!(fs::read_to_string(log_path).unwrap().contains("self_heal.team.skipped_initializing"));
+    }
+}
+
+// Regression: 06d1267b (observed at 6398bfa3), attempt 10 / L4 run 3: the owner was only ensured after onboarding.
+#[test]
+fn initialize_owner_race_ensures_once_before_onboarding() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orch = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+    let report = orch.initialize_team_with_cli_commands_and_layout_and_progress(
+        &canonical_review_request(&tmp), &CliCommandSettings::default(), "new_window",
+        Some(&mut |step, status, _message| {
+            if step == "send_onboarding" && status == StepStatus::Running {
+                assert_eq!(runtime.calls().iter().filter(|call| matches!(call, RuntimeCall::SpawnTeamDaemonAtRoot { .. })).count(), 1);
+            }
+        }),
+    ).unwrap();
+    assert!(report.failed_step.is_none());
+    assert_eq!(runtime.calls().iter().filter(|call| matches!(call, RuntimeCall::SpawnTeamDaemonAtRoot { .. })).count(), 1);
+}

@@ -88,6 +88,7 @@ impl CoordinationOrchestrator {
         );
 
         if self.pending_canonical_initialize_matches(request) {
+            crate::coordination::initialize_guard::begin(&self.teams_dir, &request.team_name)?;
             if let Err(err) = self.validate_retained_canonical_seats(request) {
                 return Ok(failed_initialize_report_with_progress(
                     &request.team_name,
@@ -125,6 +126,9 @@ impl CoordinationOrchestrator {
             self.create_team(&request.team_name, request.team_description.clone())
                 .map(|_| ())
         };
+        let create_result = create_result.and_then(|()| {
+            crate::coordination::initialize_guard::begin(&self.teams_dir, &request.team_name)
+        });
         if let Err(err) = create_result {
             return Ok(failed_initialize_report_with_progress(
                 &request.team_name,
@@ -335,6 +339,13 @@ impl CoordinationOrchestrator {
                         &request.lead.name,
                         &self.teams_dir,
                     )
+                })
+                .and_then(|()| {
+                    if self.ensure_team_daemon_running_best_effort(&request.team_name) {
+                        Ok(())
+                    } else {
+                        Err(CoordinationError::Backend("team delivery owner could not start".into()))
+                    }
                 });
             if let Err(err) = opt_in {
                 return Ok(failed_initialize_report_with_progress(
@@ -380,7 +391,12 @@ impl CoordinationOrchestrator {
             &mut emit_progress,
         );
 
-        self.ensure_team_daemon_after_initialize(request);
+        if request.messaging.is_none() {
+            self.ensure_team_daemon_after_initialize(request);
+        }
+        std::fs::remove_file(crate::coordination::initialize_guard::path(
+            &self.teams_dir, &request.team_name,
+        ))?;
         if request.messaging.is_some() {
             if let Err(error) =
                 std::fs::remove_file(self.pending_canonical_initialize_path(&request.team_name))

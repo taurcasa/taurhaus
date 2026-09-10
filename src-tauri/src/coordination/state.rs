@@ -402,6 +402,13 @@ impl CoordinationState {
             let mut orchestrator = self.build_background_orchestrator_for_root(&teams_dir)?;
             for team_name in teams_by_root.remove(&teams_dir).unwrap_or_default() {
                 summary.teams_scanned += 1;
+                if crate::coordination::initialize_guard::active(&teams_dir, &team_name) {
+                    summary.teams_skipped += 1;
+                    crate::coordination::initialize_guard::event(
+                        "self_heal.team.skipped_initializing", &team_name,
+                    );
+                    continue;
+                }
                 match orchestrator.trigger_team_self_heal(&team_name) {
                     Ok(result) => apply_self_heal_result(&mut summary, &result),
                     Err(err) => {
@@ -443,6 +450,9 @@ impl CoordinationState {
                 let mut root_summary = BackgroundEffortRetryPassResult::default();
                 for team_name in team_names {
                     root_summary.teams_scanned += 1;
+                    if crate::coordination::initialize_guard::active(&root, &team_name) {
+                        continue;
+                    }
                     // The task event remains the earliest trigger, while this bounded
                     // sweep also starts a switch whose edge the app never observed.
                     let mut resolve_for_root =
