@@ -1140,6 +1140,22 @@ fn record_host_delivery(root: &Path, team: &str, member: &str) -> Result<(), Str
 
 #[cfg(test)]
 pub(crate) mod tests {
+    pub(crate) fn hold_stop_seat(
+        hosts: &super::HostedMembers,
+        root: &std::path::Path,
+        duration: std::time::Duration,
+    ) -> std::thread::JoinHandle<()> {
+        let cell = hosts.seat(root, "team", "seat").unwrap();
+        let (ready, held) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let _seat = cell.lock().unwrap();
+            ready.send(()).unwrap();
+            std::thread::sleep(duration);
+        });
+        held.recv().unwrap();
+        holder
+    }
+
     use super::super::compact_hook::{run_compact_hook_cli, tests::write_snapshot_fixture};
     use super::*;
     use crate::coordination::hosted_process::tests::fixture;

@@ -1131,6 +1131,35 @@ mod tests {
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
     #[test]
     fn hosted_stop_session_reaps_host_when_tui_already_gone() {
+        assert_hosted_stop(&[
+            "gone",
+            "pane",
+            "stale",
+            "previous",
+            "reused_pid",
+            "reused_start",
+            "plain",
+            "lead",
+            "incomplete",
+        ]);
+    }
+
+    #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
+    #[test]
+    fn hosted_stop_session_busy_seat_preserves_pane_for_retry() {
+        // Regression: d9dd5cc2, round-2 review: killing the TUI before the seat lock orphaned a busy host.
+        assert_hosted_stop(&["busy"]);
+    }
+
+    #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
+    #[test]
+    fn hosted_stop_session_waits_for_seat_then_reaps_both() {
+        // Regression: d9dd5cc2, round-2 review: refresh contention made stop fail after destroying the pane.
+        assert_hosted_stop(&["released"]);
+    }
+
+    #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
+    fn assert_hosted_stop(modes: &[&str]) {
         use crate::coordination::domain::HealthState;
         use crate::coordination::hosted::tests::{running, saved};
         use crate::coordination::hosted::HostedMembers;
@@ -1138,9 +1167,7 @@ mod tests {
         use crate::daemon::session_activity::SessionActivityHub;
         use std::time::{Duration, Instant};
         // Regression: 1db4f9bf, L4 run 4: pane-only stop left the owned host alive for 100 s.
-        for mode in "gone pane stale previous reused_pid reused_start plain lead incomplete"
-            .split_whitespace()
-        {
+        for &mode in modes {
             let scratch = ScratchTmux::new("80", "24");
             let team_root = scratch.path().join(".teams");
             let root = team_root.as_path();
@@ -1152,7 +1179,7 @@ mod tests {
             if matches!(mode, "gone" | "previous" | "incomplete") {
                 pane = "%999999".into();
             }
-            if matches!(mode, "pane" | "stale") {
+            if matches!(mode, "pane" | "stale" | "busy" | "released") {
                 use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
                 let runtime = RecordingCoordinationRuntime::default();
                 hosts
@@ -1221,11 +1248,35 @@ mod tests {
             if mode == "incomplete" {
                 std::fs::remove_file(root.join("team/runtime/seat.json")).unwrap();
             }
+            let holder = matches!(mode, "busy" | "released").then(|| {
+                crate::coordination::hosted::tests::hold_stop_seat(
+                    &hosts,
+                    root,
+                    Duration::from_millis(if mode == "busy" { 3500 } else { 1000 }),
+                )
+            });
             let response = crate::daemon::handlers::handle_stop_session(
                 "stop",
                 &serde_json::json!({"tmux_pane":pane, "cli_tool":"codex"}),
                 (receiver, &registry),
             );
+            if let Some(holder) = holder {
+                holder.join().unwrap();
+            }
+            if mode == "busy" {
+                let error = response.error.unwrap();
+                assert_eq!(error.code, "STOP_ERROR");
+                assert!(
+                    pane_exists_checked(&pane).unwrap(),
+                    "busy seat must preserve the TUI"
+                );
+                assert_eq!(error.message, "host member busy; retry");
+                assert_eq!(saved(root), before);
+                assert!(
+                    Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id)).exists()
+                );
+                continue;
+            }
             if matches!(mode, "previous" | "incomplete") {
                 let expected = if mode == "previous" {
                     "live host belongs to a previous daemon"
