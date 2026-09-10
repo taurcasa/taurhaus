@@ -1254,7 +1254,7 @@ mod tests {
                 project.to_str().unwrap(),
             ])
             .arg(format!(
-                "printf '› \n'; exec {} 60 3<{}",
+                "printf '› Ask Codex to do anything\n\n  gpt-5.6-luna low · <scratch>\n'; exec {} 60 3<{}",
                 executable.display(),
                 file.display()
             ))
@@ -1345,9 +1345,8 @@ mod tests {
         );
         assert_eq!(result.session_id.as_deref(), Some("seat-thread"));
         assert_eq!(result.state, SessionState::Idle);
-        // Regression: 664feab6 resolved this fake seat but could not admit onboarding.
-        super::super::codex_readiness::elapse_quiet_window(pid);
-        resolver.detect_idle_for_pid_in(project.to_str().unwrap(), pid, Some(parts[1]), &records);
+        // Regression: 6398bfa3 (#163), L2 run 3: an attributed loaded prompt
+        // must admit onboarding on this first scan, without an IO quiet window.
         let observed = super::super::codex_readiness::observation(
             pid,
             project.to_str().unwrap(),

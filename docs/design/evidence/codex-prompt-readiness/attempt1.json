@@ -1,0 +1,1 @@
+{"auth_removed": true, "codex_exited": true, "socket_removed": false, "scratch_removed": true, "socket_removed_after_scratch_cleanup": true, "exit": 1, "result": "Stopped at directory-trust screen; no idle samples collected", "model_turns": 0, "input_sent": false, "replacement_trial": "awaiting explicit authorization", "version": "codex-cli 0.153.4"}

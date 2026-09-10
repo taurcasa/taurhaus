@@ -6,7 +6,7 @@ use std::sync::{Mutex, OnceLock};
 
 use super::cache::{apply_hysteresis, record_authoritative_state};
 use super::{
-    idle, proc_io, process, tmux, ActivityAttribution, ActivityConfidence, CliTool, RuntimeSession,
+    idle, process, tmux, ActivityAttribution, ActivityConfidence, CliTool, RuntimeSession,
     SessionGroupKind, SessionState,
 };
 
@@ -166,7 +166,9 @@ where
                     &proc.project_path,
                     tmux_pane.map(|pane| pane.pane_id.as_str()),
                 )
-                .filter(|observed| matches!(observed.source, "launch_ready" | "notify"));
+                .filter(|observed| {
+                    matches!(observed.source, "launch_ready" | "pane_working" | "notify")
+                });
             let authoritative_state = tool_spec
                 .activity_source()
                 .authoritative_state(&proc.project_path, proc.pid, &idle_result)
@@ -196,7 +198,7 @@ where
             let (process_active, recent_io) = if authoritative {
                 (authoritative_active, authoritative_active)
             } else {
-                let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
+                let recent_io = (tool_spec.process_active)(proc.pid);
                 (recent_io, recent_io)
             };
             process_signal_ms += process_signal_started.elapsed();
@@ -255,7 +257,7 @@ where
             let (activity_confidence, activity_attribution, project_unattributed_active) =
                 if let Some(observed) = &seat_observation {
                     (
-                        if observed.source == "launch_ready" {
+                        if observed.source != "notify" {
                             ActivityConfidence::Medium
                         } else {
                             ActivityConfidence::High
@@ -570,6 +572,11 @@ mod tests {
             (
                 "launch_ready",
                 SessionState::Idle,
+                ActivityConfidence::Medium,
+            ),
+            (
+                "pane_working",
+                SessionState::Active,
                 ActivityConfidence::Medium,
             ),
             ("notify", SessionState::Idle, ActivityConfidence::High),

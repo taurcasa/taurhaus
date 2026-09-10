@@ -200,6 +200,8 @@ pub enum StopStrategy {
 
 /// One registry record for a supported CLI harness.
 pub struct CliToolSpec {
+    /// Calibrated fallback when the harness supplies no current activity evidence.
+    pub process_active: fn(u32) -> bool,
     pub tool: CliTool,
     pub name: &'static str,
     pub aliases: &'static [&'static str],
@@ -258,6 +260,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
     [
         CliToolSpec {
             tool: CliTool::Claude,
+            process_active: crate::session_scanner::proc_io::is_process_active_hysteresis,
             name: "claude",
             aliases: &["claude", "claude_native"],
             argv_signatures: &["claude", "@anthropic-ai/claude-code"],
@@ -325,6 +328,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
         },
         CliToolSpec {
             tool: CliTool::Codex,
+            process_active: crate::session_scanner::proc_io::is_codex_process_active_hysteresis,
             name: "codex",
             aliases: &["codex", "mesh", "mesh_bridged"],
             argv_signatures: &["codex", "@openai/codex"],
@@ -397,6 +401,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
         },
         CliToolSpec {
             tool: CliTool::Agy,
+            process_active: crate::session_scanner::proc_io::is_process_active_hysteresis,
             name: "agy",
             aliases: &["agy", "antigravity"],
             argv_signatures: &["agy"],
@@ -495,6 +500,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
         },
         CliToolSpec {
             tool: CliTool::Grok,
+            process_active: crate::session_scanner::proc_io::is_process_active_hysteresis,
             name: "grok",
             aliases: &["grok"],
             argv_signatures: &["grok"],
@@ -648,6 +654,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
 
 static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
     tool: CliTool::Unknown,
+    process_active: crate::session_scanner::proc_io::is_process_active_hysteresis,
     name: "unknown",
     aliases: &[],
     argv_signatures: &[],

@@ -1,0 +1,8 @@
+
+  Tip: This is GPT-6, a new generation of intelligence. Astra is state-of-the-art in coding, computer use, science, and professional work.
+  Give it a hard problem, a half-formed idea, or anything you've been meaning to build. See where it takes you.
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · <scratch>/project
