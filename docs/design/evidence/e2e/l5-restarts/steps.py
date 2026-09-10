@@ -128,7 +128,7 @@ def unchanged(n):
   item=read('baseline-'+seat+'-message.json')
   stages=[r for r in receipts(item['message_id']) if r.get('stage') in ['submitted','native_enqueued']]
   assert len(stages)==1, 'baseline missing/duplicate exposure '+seat
- assert before['config'].get('teamIncarnationId')==read('team/config.json').get('teamIncarnationId'),'team incarnation changed'
+ assert before['config']['team_incarnation_id']==read('team/config.json')['team_incarnation_id'],'team incarnation changed'
 
 if __name__=='__main__':
  n=int(sys.argv[1]);action({'op':'step','step':n})
@@ -137,6 +137,9 @@ if __name__=='__main__':
    for seat in ['alpha','beta']:wait(lambda:idle(seat),'startup lacks attributed fresh idle '+seat,180)
    for seat in ['alpha','beta']:send(seat,'baseline');settle('baseline',seat)
    checkpoint(1)
+   assert read('team/config.json')['messaging_format']==2
+   assert read('team/config.json')['delivery_owner']=='team'
+   assert logical(rec('alpha')) and logical(rec('alpha'))!=logical(rec('beta'))
   elif n==2:
    backlog('taurhaus-backlog');checkpoint(2)
   elif n==3:
@@ -159,6 +162,8 @@ if __name__=='__main__':
    wait(changed_owner,'delivery owner epoch did not change')
    for seat in ['alpha','beta']:settle('mesh-backlog',seat)
    unchanged(5);checkpoint(5)
+   observations=complete_rows((OUT/'owner-observations.jsonl').read_text())
+   assert all(len(o.get('owners',[]))<=1 for o in observations), 'overlapping delivery owners observed'
   elif n==6:
    for seat in ['alpha','beta']:
     explicit_read(seat,'final')

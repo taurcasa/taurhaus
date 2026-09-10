@@ -1,0 +1,12 @@
+{
+  "taurhaus_commit": "a7e6db7e",
+  "mesh_commit": "310144de1f7939e7fbb2d80ab42ebd00580ce15d",
+  "protocol": 27,
+  "descriptor": "shipped enabled; no edit",
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "binaries": {
+    "taurhaus-daemon": "4304d1d0350768021c2af8a47ac88e95993cdc1e32c0a1942ee9f73cb1eea906",
+    "mesh": "692d5094f48dfec36d8dac8a93097f096c48946c4594056314f6ca349955d7fc"
+  }
+}

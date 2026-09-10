@@ -1,7 +1,7 @@
 """Isolated integration trial; no operator config or process is adopted.
 
-Run build.py, then: python3 docs/design/evidence/native-eligibility/messaging-e2e/controller.py run
-CODEX_TRIAL_BINARY optionally names the installed native 0.153.4 executable.
+Run build.py, then finish.py --controller; execute steps.py 1 through 6 in order.
+The installed native Codex and its code-mode sibling are copied and version checked.
 Only the explicitly authorized auth.json is copied; never logged.
 """
 import hashlib
@@ -21,6 +21,7 @@ import sys
 import tempfile
 import time
 import traceback
+import threading
 from support import clean, ledger, new_events, complete_rows, rollout_events, enforce_budget
 from retention import retained_view, retain_host_event
 
@@ -51,6 +52,8 @@ host_events = []
 previous_host_events = []
 last_host_poll = 0
 host_poll_enabled = True
+owner_stop = threading.Event()
+owner_thread = None
 marker = "cobalt" + secrets.token_hex(5)
 
 
@@ -144,7 +147,9 @@ def identities():
         if not proc.name.isdigit():
             continue
         try:
-            if (b"TAURHAUS_TRIAL_ID=" + ROOT.name.encode() + b"\0") not in (proc / "environ").read_bytes():
+            tagged = (b"TAURHAUS_TRIAL_ID=" + ROOT.name.encode() + b"\0") in (proc / "environ").read_bytes()
+            owned_binary = str(BIN).encode() in (proc / "cmdline").read_bytes()
+            if not tagged and not owned_binary:
                 continue
             stat = (proc / "stat").read_text().rsplit(")", 1)[1].split()
             found.append({"pid": int(proc.name), "start_ticks": stat[19],
@@ -152,6 +157,23 @@ def identities():
         except (FileNotFoundError, ProcessLookupError, PermissionError):
             pass
     return found
+
+
+def observe_owners():
+    previous=None
+    with (OUT / 'owner-observations.jsonl').open('w',buffering=1) as stream:
+        while not owner_stop.is_set():
+            try:
+                owners=[i for i in identities() if 'team-daemon' in i['argv'] and 'run' in i['argv']]
+                path=ROOT / 'claude/teams' / TEAM / 'state/delivery/epoch.json'
+                epoch=json.loads(path.read_text()) if path.exists() else None
+                value={'owners':owners,'epoch':epoch}
+                if value != previous:
+                    stream.write(json.dumps(clean({'at':time.time(),**value}))+'\n')
+                    previous=value
+            except (OSError,ValueError) as error:
+                stream.write(json.dumps({'at':time.time(),'error':type(error).__name__})+'\n')
+            owner_stop.wait(.5)
 
 
 def snapshot():
@@ -330,6 +352,8 @@ try:
     daemon_log = (ROOT / "daemon.log").open("w")
     daemon = subprocess.Popen(command, env=ENV, stdout=daemon_log, stderr=subprocess.STDOUT, start_new_session=True)
     children.append(daemon)
+    owner_thread=threading.Thread(target=observe_owners,daemon=True)
+    owner_thread.start()
     for _ in range(650):
         if (ROOT / "data/daemon.token").exists():
             time.sleep(.2)
@@ -397,7 +421,10 @@ try:
         log("action", action=action)
         paid = (action["op"] == "mesh" and action.get("argv", [""])[0] == "send") or (action["op"] == "rpc" and action.get("method") == "coordination.hosted_input") or (action["op"] == "tmux" and action.get("argv", [""])[0] == "send-keys")
         if paid:
-            log("input_accounting", ledger=budget_check())
+            accounting = budget_check()
+            log("input_accounting", ledger=accounting)
+            assert accounting['paid_inputs'] < 12, "hard input cap: no further paid submission"
+            assert accounting['api_equivalent_usd'] < .25, "hard metered dollar cap: no further paid submission"
 
         if action["op"] == "fail":
             raise RuntimeError(action["reason"])
@@ -428,6 +455,7 @@ try:
                 if not any(i["pid"] == identity["pid"] and i["start_ticks"] == identity["start_ticks"] for i in identities()): break
                 time.sleep(.1)
             else: raise AssertionError("normal daemon shutdown did not complete")
+            log("post_daemon_stop", identities=identities())
             restart = shlex.join(daemon_argv) + " >>" + shlex.quote(str(ROOT / "daemon-restart.log")) + " 2>&1"
             run(["tmux", "new-window", "-d", "-t", "taurhaus", "/bin/bash -c " + shlex.quote(restart)])
             for _ in range(650):
@@ -435,9 +463,14 @@ try:
                     rpc("ping", {}); break
                 except (ConnectionRefusedError, FileNotFoundError): time.sleep(.1)
             else: raise AssertionError("restarted daemon did not become ready")
-            value = operation("coordination.resume_member", {"request":{"team_name":TEAM,"member_name":MEMBER}, "cli_commands":commands, "tmux_layout":"new_window"})
-            (OUT / action["save"]).write_text(json.dumps(value, indent=2))
-            assert value["outcome"]["status"] == "completed" and not value["outcome"]["report"].get("failed_step"), value
+            log("post_daemon_restart", identities=identities(), ping=rpc("ping", {}))
+            probe = rpc("coordination.hosted_transcript", {"team_name":TEAM,"member_name":MEMBER}, allow_error=True)
+            if "error" in probe:
+                value = operation("coordination.resume_member", {"request":{"team_name":TEAM,"member_name":MEMBER}, "cli_commands":commands, "tmux_layout":"new_window"})
+                assert value["outcome"]["status"] == "completed" and not value["outcome"]["report"].get("failed_step"), value
+            else:
+                value = {"recovery": "host transcript readable without resume", "probe": probe}
+            (OUT / action["save"]).write_text(json.dumps(clean(value), indent=2))
             previous_host_events = []
             poll_host(force=True)
             (OUT / "step3-identities.json").write_text(json.dumps(clean(identities()), indent=2))
@@ -509,6 +542,8 @@ finally:
     deadline=time.monotonic()+60
     while identities() and time.monotonic()<deadline: time.sleep(.2)
     survivors = identities()
+    owner_stop.set()
+    if owner_thread: owner_thread.join(timeout=5)
     snapshot()
     # Final accounting includes both seats before removal.
     try: budget_check()
