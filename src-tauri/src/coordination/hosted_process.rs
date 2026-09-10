@@ -150,21 +150,15 @@ fn sanitize_stderr(bytes: &[u8]) -> String {
         text.replace_range(start..end, "[redacted]");
         cursor = start + "[redacted]".len();
     }
-    text.split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .chars()
-        .rev()
-        .take(512)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect()
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let start = text.char_indices().rev().nth(511).map_or(0, |(i, _)| i);
+    text[start..].into()
 }
 
 pub(crate) struct HostProcess {
     child: Child,
     stderr: Option<StderrTail>,
+    identity: (String, String),
     rpc: Option<Rpc>,
     pub thread_id: String,
     pub attach_config: Value,
@@ -186,6 +180,7 @@ impl HostProcess {
         socket: &Path,
         resume: Option<&str>,
         guard: &HostOperationLock,
+        identity: (&str, &str),
     ) -> Result<Self, String> {
         if !socket.is_absolute()
             || socket.as_os_str().len() > 100
@@ -193,6 +188,7 @@ impl HostProcess {
         {
             return Err("host socket must be a new short absolute private path".into());
         }
+        let timeout_seconds = guard.remaining().map_err(|e| e.to_string())?.as_secs_f64();
         let child = Command::new(&launch.program)
             .args(&launch.arguments)
             .args(["--listen", &format!("unix://{}", socket.display())])
@@ -207,6 +203,7 @@ impl HostProcess {
         let mut host = Self {
             child,
             stderr: None,
+            identity: (identity.0.into(), identity.1.into()),
             rpc: None,
             thread_id: String::new(),
             attach_config: Value::Null,
@@ -226,13 +223,25 @@ impl HostProcess {
             .ok_or("host process identity unavailable")?
             .to_string();
         loop {
-            let remaining = guard.remaining().map_err(|e| e.to_string())?;
             if let Some(status) = host.child.try_wait().map_err(|e| e.to_string())? {
                 let (status, tail) = host.exit_details(status);
+                host.diagnostic(
+                    "hosted.launch.failed",
+                    json!({"exit_status":status,
+                    "stderr_tail":tail, "reason":"exited_before_readiness"}),
+                );
                 return Err(format!(
                     "app-server exited before transport readiness (exit {status}): {tail}"
                 ));
             }
+            let remaining = guard.remaining().map_err(|e| {
+                host.diagnostic(
+                    "hosted.launch.timed_out",
+                    json!({"timeout_seconds":timeout_seconds,
+                    "stderr_tail":host.stderr.as_ref().unwrap().sanitized()}),
+                );
+                e.to_string()
+            })?;
             let connection =
                 socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::STREAM, None)
                     .map_err(|e| e.to_string())?;
@@ -363,6 +372,19 @@ impl HostProcess {
     #[cfg(test)]
     pub fn disconnect_for_test(&mut self) {
         self.rpc.as_mut().unwrap().socket = None;
+    }
+
+    fn diagnostic(&self, event: &str, mut fields: Value) {
+        fields["team"] = json!(self.identity.0);
+        fields["member"] = json!(self.identity.1);
+        tracing::warn!(event, fields = %fields, "Hosted child unavailable");
+        taurhaus_lib::logging::emit_global(
+            "warn",
+            "coordination",
+            event,
+            Some("Hosted child unavailable".into()),
+            fields.as_object().unwrap().clone(),
+        );
     }
 
     fn exit_details(&mut self, status: std::process::ExitStatus) -> (String, String) {
@@ -1123,7 +1145,11 @@ pub(crate) mod tests {
     #[test]
     fn launch_error_has_sanitized_stderr_and_status() {
         // Regression: cadd533e returned a bare readiness error and discarded stderr.
+        let _logs = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().unwrap();
+        let sink =
+            taurhaus_lib::logging::LogFileState::new(tmp.path().join("events.jsonl")).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
         let launch = fixture(tmp.path());
         std::fs::write(&launch.program, r#"#!/bin/sh
 printf '\033[31mfailed\033[0m sk-fake-secret Bearer fake-bearer "access_token": "fake-access"\nfinal reason\001' >&2
@@ -1133,15 +1159,40 @@ exit 23
         let error = spawn(&launch, tmp.path(), None, &guard).err().unwrap();
         assert!(error.contains("(exit 23):"), "{error}");
         assert!(error.contains("failed") && error.ends_with("final reason"));
-        for forbidden in [
-            "fake-secret",
-            "fake-bearer",
-            "fake-access",
-            "\u{1b}",
-            "\n",
-            "\u{1}",
-        ] {
+        for forbidden in ["fake-", "\u{1b}", "\n", "\u{1}"] {
             assert!(!error.contains(forbidden));
+        }
+        drop(guard);
+        std::fs::write(
+            &launch.program,
+            "#!/bin/sh\nprintf waiting >&2; exec sleep 60",
+        )
+        .unwrap();
+        let guard = HostOperationLock::acquire_for_activity(tmp.path(), "team", "seat").unwrap();
+        assert!(spawn(&launch, tmp.path(), None, &guard).is_err());
+        sink.flush_for_test().unwrap();
+        let events: Vec<Value> = std::fs::read_to_string(tmp.path().join("events.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|s| serde_json::from_str(s).unwrap())
+            .collect();
+        for (name, tail) in [
+            ("hosted.launch.failed", error.split_once(": ").unwrap().1),
+            ("hosted.launch.timed_out", "waiting"),
+        ] {
+            let rows: Vec<_> = events.iter().filter(|e| e["event"] == name).collect();
+            assert_eq!(rows.len(), 1, "{name}");
+            assert_eq!(rows[0]["level"], "WARN");
+            let fields = rows[0];
+            assert_eq!(fields["team"], "team");
+            assert_eq!(fields["member"], "seat");
+            assert_eq!(fields["stderr_tail"], tail);
+            if name.ends_with("failed") {
+                assert_eq!(fields["exit_status"], "23");
+                assert_eq!(fields["reason"], "exited_before_readiness");
+            } else {
+                assert!(fields["timeout_seconds"].as_f64().unwrap() > 0.0);
+            }
         }
     }
 
@@ -1419,7 +1470,7 @@ with socket.socket(socket.AF_UNIX) as listener:
         guard: &HostOperationLock,
     ) -> Result<HostProcess, String> {
         let socket = root.join(format!("{}.sock", uuid::Uuid::new_v4().simple()));
-        HostProcess::launch(launch, root, &socket, resume, guard)
+        HostProcess::launch(launch, root, &socket, resume, guard, ("team", "seat"))
     }
 
     #[test]
