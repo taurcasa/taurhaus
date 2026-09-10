@@ -15,7 +15,8 @@
     "01a08c8e-784e-7a53-aa58-1b7caae5e7ea",
     "01a08c8e-8d1d-7732-8b35-5807b577e7d6"
   ],
-  "paid_inputs": 12,
+  "paid_turns": 12,
+  "generation_slots_including_steer_and_compaction": 13,
   "generations": [
     {
       "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
@@ -25,7 +26,8 @@
       "output": 27,
       "reasoning_output": 0,
       "api_equivalent_usd": 0.00101104,
-      "conservative_usd": 0.0133692
+      "conservative_usd": 0.0133692,
+      "source": "host tokenUsage.last"
     },
     {
       "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
@@ -35,7 +37,8 @@
       "output": 10,
       "reasoning_output": 0,
       "api_equivalent_usd": 0.00046308,
-      "conservative_usd": 0.0135012
+      "conservative_usd": 0.0135012,
+      "source": "host tokenUsage.last"
     },
     {
       "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
@@ -45,7 +48,8 @@
       "output": 516,
       "reasoning_output": 31,
       "api_equivalent_usd": 0.00163144,
-      "conservative_usd": 0.0141576
+      "conservative_usd": 0.0141576,
+      "source": "host tokenUsage.last"
     },
     {
       "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
@@ -55,7 +59,8 @@
       "output": 19,
       "reasoning_output": 7,
       "api_equivalent_usd": 0.00042236,
-      "conservative_usd": 0.0143088
+      "conservative_usd": 0.0143088,
+      "source": "host tokenUsage.last"
     },
     {
       "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
@@ -65,7 +70,8 @@
       "output": 497,
       "reasoning_output": 12,
       "api_equivalent_usd": 0.00100596,
-      "conservative_usd": 0.0149424
+      "conservative_usd": 0.0149424,
+      "source": "host tokenUsage.last"
     },
     {
       "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
@@ -75,7 +81,8 @@
       "output": 10,
       "reasoning_output": 0,
       "api_equivalent_usd": 0.00052476,
-      "conservative_usd": 0.0149772
+      "conservative_usd": 0.0149772,
+      "source": "host tokenUsage.last"
     },
     {
       "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
@@ -85,7 +92,8 @@
       "output": 11,
       "reasoning_output": 0,
       "api_equivalent_usd": 0.00036444,
-      "conservative_usd": 0.0151152
+      "conservative_usd": 0.0151152,
+      "source": "host tokenUsage.last"
     },
     {
       "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
@@ -94,8 +102,10 @@
       "cached_input": 0,
       "output": 0,
       "reasoning_output": 0,
-      "api_equivalent_usd": 0.0,
-      "conservative_usd": 0.0
+      "api_equivalent_usd": null,
+      "conservative_usd": null,
+      "source": "host tokenUsage.last",
+      "limitation": "Compaction reports totalTokens=6262 but zero billable token classes; not zero cost."
     },
     {
       "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
@@ -105,7 +115,8 @@
       "output": 46,
       "reasoning_output": 21,
       "api_equivalent_usd": 0.00131844,
-      "conservative_usd": 0.0150996
+      "conservative_usd": 0.0150996,
+      "source": "host tokenUsage.last"
     },
     {
       "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
@@ -115,7 +126,8 @@
       "output": 23,
       "reasoning_output": 0,
       "api_equivalent_usd": 0.00050864,
-      "conservative_usd": 0.0159084
+      "conservative_usd": 0.0159084,
+      "source": "host tokenUsage.last"
     },
     {
       "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
@@ -125,15 +137,41 @@
       "output": 19,
       "reasoning_output": 8,
       "api_equivalent_usd": 0.00034572,
-      "conservative_usd": 0.0160608
+      "conservative_usd": 0.0160608,
+      "source": "host tokenUsage.last"
+    },
+    {
+      "thread_id": "01a08c8e-72a8-75b0-b8cb-2c9cf88f8167",
+      "turn_id": "01a08c8e-784e-7a53-aa58-1b7caae5e7ea",
+      "input": 9253,
+      "cached_input": 6912,
+      "output": 49,
+      "reasoning_output": 33,
+      "api_equivalent_usd": 0.00066524,
+      "conservative_usd": 0.0111624,
+      "source": "usage-events.json[32] (tmux rollout, preceding task_started)"
+    },
+    {
+      "thread_id": "01a08c8e-72a8-75b0-b8cb-2c9cf88f8167",
+      "turn_id": "01a08c8e-8d1d-7732-8b35-5807b577e7d6",
+      "input": 9355,
+      "cached_input": 8960,
+      "output": 14,
+      "reasoning_output": 0,
+      "api_equivalent_usd": 0.000275,
+      "conservative_usd": 0.0112428,
+      "source": "usage-events.json[35] (tmux rollout, preceding task_started)"
     }
   ],
-  "api_equivalent_usd": 0.00759588,
-  "conservative_usd": 0.1474404,
+  "measured_api_equivalent_subtotal_usd": 0.00853612,
+  "measured_conservative_subtotal_usd": 0.1698456,
+  "api_equivalent_usd": null,
+  "actual_billed_usd": null,
   "metering_complete": false,
-  "unmetered_turn_ids": [
-    "01a08c8e-784e-7a53-aa58-1b7caae5e7ea",
-    "01a08c8e-8d1d-7732-8b35-5807b577e7d6"
+  "compaction_metering_gaps": [
+    "01a08c8d-01a3-7083-a23f-7b7ee19ee125"
   ],
-  "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice."
+  "unjoined_turn_ids": [],
+  "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice. Plain tmux usage is supplemented from the isolated rollout.",
+  "limitation": "Compaction billable classes and actual subscription debit unreported. Full billed USD/cap unverified; no invented zero or metering-based step failure."
 }

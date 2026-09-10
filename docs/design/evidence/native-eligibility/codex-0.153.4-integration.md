@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — attempt 13 IN PROGRESS
+# Codex 0.153.4 integration — INCONCLUSIVE: step 7 controller FAIL, attempt 13
 
 ## Attempt 1 — INCONCLUSIVE: setup FAIL (2026-09-09)
 
@@ -2998,4 +2998,135 @@ Thread identity remained `01a08c8a-29ea-7cc2-8a4e-b000b9317bbd`. Post-restart ma
 Evidence: `integration/attempt13/run/step6-runtime-{before,after}.json`,
 `step6-resume-result.json`, `step6-identities.json`, `step6-receipts.json`,
 `step6-final-pane-*.txt`, `host-events.jsonl`, and exact lifecycle commands in `events.jsonl`.
+
+### Step 7 — controller FAIL; operational delivery observed (S-runtime)
+
+The unchanged controller stopped at **`plain tmux delivery stalled`** after its
+120-second observation window. Controller and step runner both exited **1**.
+No retry or further paid action followed. **No descriptor flip**, no Mesh commit,
+and no conditional named-refusal fix: those require a full seven-step PASS.
+
+The actual rollback path succeeded: `stop_session` returned `{"ok":true}`;
+`coordination.remove_member` completed and reported the owned host stopped and
+runtime deleted; `coordination.add_agent` with the same name and `delivery: "tmux"`
+completed with no failed step. The new runtime has `terminalContract:1`, pane `%18`,
+no `appServer`, and `daemon_pid:null`. The session snapshot reports Codex PID 6133
+(in the private PID namespace), session `01a08c8e-72a8-75b0-b8cb-2c9cf88f8167`,
+`state:idle`, `activity_attribution:attributed`, confidence `high`; the separate
+Mesh activity file reports `source:notify`, `state:idle`.
+
+In-place rollback's exact refusal was:
+
+```text
+IO error: delivery: app_server_switch_requires_5b_recoverable_relaunch_packet
+error: unauthorized: adapter change not applied; inspect outcome
+```
+
+The tmux send was accepted as message `375dc86e-d519-4f38-ad2b-695995ec3d99`,
+delivery `d6e0a22c-1491-4947-a9ba-36ee3ea077d0`, then journal sequence **41**
+recorded **`submitted`**, adapter **`tmux/1`**, origin **`tmux_send_keys`**:
+
+```text
+literal paste and harness submit exited 0; model uptake unobserved
+```
+
+The pane shows the matching notice:
+
+```text
+[mesh] You are "seat" on team "integration". Inbox update from lead. Summary: step7.
+Check inbox and act if the message requests it: mesh read --unread --mark-read --team integration --name seat
+```
+
+The model replied, “I can’t execute commands in this transport trial.” The marker
+`aspendbecb2` is in the canonical message body, but not in the summary/notice.
+The controller's `delivered()` requires both a `submitted` receipt **and the
+full-body marker in the pane**. This predicate was inherited from attempt 12
+(`383c148c3`, line 180), then copied unchanged in `4e8e5306`. The Mesh renderer
+(`src/daemon.rs::format_notification`, candidate `ed59187`) deliberately sends
+identity, sender, summary and a read command. Combined with the trial's instruction
+never to execute tools, this is a **harness criterion mismatch**, not a stalled
+transport or attribution failure. It does not establish full-body model uptake.
+The recorded FAIL is retained; it is not promoted to PASS or used to enable a pin.
+
+Evidence: `integration/attempt13/run/step7-{stop,remove,add}.json`,
+`step7-runtime-{before,after}.json`, `step7-activity-before.json`,
+`step7-mesh-activity.json`, `step7-inplace-refusal.txt`, `step7-send.txt`,
+`step7-receipts.json`, `step7-final-pane-18.txt`, `step7-outcome.json`,
+`events.jsonl`, and `step7-output.txt` in the attempt directory.
+
+### Attempt 13 RESULT — INCONCLUSIVE; controller stopped at step 7
+
+| Step | Recorded outcome | Runtime evidence |
+|---|---|---|
+| 1. Hosted launch | PASS | Strict config, app-server socket, attached pane, startup card |
+| 2. Idle native delivery | PASS | Marker/reply/pane, native_enqueued; explicit-read-only consumption |
+| 3. Active deferral | PASS | thread_active pending, idle turn/start, one exposure |
+| 4. Operator interleave | PASS | Typed input before socket reply, no loss/duplication, passive locks |
+| 5. Compaction | PASS | Same thread, generation 0 → 1, recovery card in pane |
+| 6. Daemon restart | PASS | Same thread; post-restart native_enqueued and completed reply |
+| 7. Operational rollback | Controller FAIL | Stop/remove/re-add succeeded, attributed idle notify source, tmux/1 submitted and visible notice; full-body marker predicate unmet |
+
+#### Every spend — attempt 13 only
+
+12 distinct Codex turns; 13 generation slots including one operator steer and one
+compaction. All use `gpt-5.6-luna`, effort low. Claude lead: **0 turns / USD 0**.
+Hosted generations use real `thread/tokenUsage/updated` notifications. The final
+two plain-TUI rows use the retained isolated rollout's `token_count`, joined to
+its preceding `task_started`; there is no app-server stream after rollback.
+The original host-only ledger remains unchanged beside the supplemented final
+ledger (`integration/attempt13/run/cost-{ledger,final}.json` and `usage-events.json`).
+
+| Generation / action | Turn ID | Input / cached / output (reasoning) | API-equivalent USD | Conservative USD |
+|---|---|---|---|---|
+| Step 1 startup card | `01a08c8a-2f67-7b32-a217-3d490219e47f` | 11114 / 6912 / 27 (0) | 0.00101104 | 0.01336920 |
+| Step 2 idle send | `01a08c8b-0443-72d2-8119-c1f95642d21f` | 11241 / 9984 / 10 (0) | 0.00046308 | 0.01350120 |
+| Step 3 active timing input | `01a08c8b-5bad-7853-ab10-b5e414b99e03` | 11282 / 6912 / 516 (31) | 0.00163144 | 0.01415760 |
+| Step 3 deferred send | `01a08c8b-8ca9-7fd2-b54b-b28d3a16f997` | 11905 / 11008 / 19 (7) | 0.00042236 | 0.01430880 |
+| Step 4 active timing input | `01a08c8c-2558-70f1-a01d-b428d5c1e3cb` | 11955 / 11008 / 497 (12) | 0.00100596 | 0.01494240 |
+| Step 4 typed input (same turn) | `01a08c8c-2558-70f1-a01d-b428d5c1e3cb` | 12471 / 11008 / 10 (0) | 0.00052476 | 0.01497720 |
+| Step 4 deferred send | `01a08c8c-5f39-7951-b860-20f4b0a4766c` | 12585 / 12032 / 11 (0) | 0.00036444 | 0.01511520 |
+| Step 5 compaction | `01a08c8d-01a3-7083-a23f-7b7ee19ee125` | classes unreported; totalTokens 6262 | unknown | unknown |
+| Step 5 recovery card | `01a08c8d-2834-7713-bc9f-10ac77a01c98` | 12537 / 6912 / 46 (21) | 0.00131844 | 0.01509960 |
+| Step 6 restart recovery | `01a08c8d-eecf-7323-97eb-f6ea033c783c` | 13234 / 12032 / 23 (0) | 0.00050864 | 0.01590840 |
+| Step 6 post-restart send | `01a08c8e-06e8-70f0-af52-26feae71257f` | 13365 / 13056 / 19 (8) | 0.00034572 | 0.01606080 |
+| Step 7 tmux onboarding notice | `01a08c8e-784e-7a53-aa58-1b7caae5e7ea` | 9253 / 6912 / 49 (33) | 0.00066524 | 0.01116240 |
+| Step 7 tmux send notice | `01a08c8e-8d1d-7732-8b35-5807b577e7d6` | 9355 / 8960 / 14 (0) | 0.00027500 | 0.01124280 |
+
+Measured API-equivalent subtotal **USD 0.00853612**;
+measured conservative subtotal **USD 0.16984560**.
+Packet rates: uncached input $0.20/M, cached input $0.02/M, output $1.20/M;
+conservative calculation charges all reported input/output at $1.20/M. These
+are estimates from real token counts, not a subscription invoice. Compaction
+reported 6262 totalTokens with zero billable classes: its cost is **unknown**,
+not zero. Exact total billed USD and the billed-dollar cap remain unverified.
+No budget, metering or authorization question stopped the trial. The observed
+turn count is below the hard 16-turn cap; the stop was the step-7 assertion.
+
+#### Exact reproduction
+
+Run from `/home/mstie/projects/taurhaus-trial`; no branch switch there.
+The commands below describe this completed paid run, not a gate executable.
+
+```sh
+git -C /home/mstie/projects/mesh-trial checkout --detach ed59187
+git -C /home/mstie/projects/mesh-trial rev-parse --short HEAD
+python3 docs/design/evidence/native-eligibility/integration/attempt13_test.py
+python3 docs/design/evidence/native-eligibility/integration/attempt13-build.py
+python3 docs/design/evidence/native-eligibility/integration/attempt13-controller.py attempt13/run
+# A second shell, after inspection_ready; run one step, inspect and commit before next:
+python3 docs/design/evidence/native-eligibility/integration/attempt13-steps.py 1
+python3 docs/design/evidence/native-eligibility/integration/attempt13-steps.py 2
+python3 docs/design/evidence/native-eligibility/integration/attempt13-steps.py 3
+python3 docs/design/evidence/native-eligibility/integration/attempt13-steps.py 4
+python3 docs/design/evidence/native-eligibility/integration/attempt13-steps.py 5
+python3 docs/design/evidence/native-eligibility/integration/attempt13-steps.py 6
+python3 docs/design/evidence/native-eligibility/integration/attempt13-steps.py 7
+# Credential-free gates and offline evidence audit:
+python3 docs/design/evidence/native-eligibility/integration/attempt13-gates.py
+python3 docs/design/evidence/native-eligibility/integration/attempt13-audit.py
+```
+
+The preserved controllers contain the exact daemon requests, private tmux
+commands and Mesh sends. `run/events.jsonl` records their ordering, timestamps,
+arguments and results; each numbered outcome and pane capture stays beside it.
 

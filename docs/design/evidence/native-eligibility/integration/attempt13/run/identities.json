@@ -157,49 +157,34 @@
     ]
   },
   {
-    "pid": 292372,
-    "start_ticks": "28504125",
-    "argv": [
-      "codex",
-      "-c",
-      "sandbox_mode=\"read-only\"",
-      "-c",
-      "approval_policy=\"never\"",
-      "-c",
-      "model=\"gpt-5.6-luna\"",
-      "-c",
-      "model_reasoning_effort=\"low\"",
-      "app-server",
-      "--listen",
-      "unix:///tmp/th-int-4fvqnzt5/tmp/th-host-4a0ac1fb9d9e4c1193dd523ee71b6d84/rpc.sock",
-      ""
-    ]
-  },
-  {
-    "pid": 294344,
-    "start_ticks": "28504529",
+    "pid": 304759,
+    "start_ticks": "28507788",
     "argv": [
       "-bash",
       ""
     ]
   },
   {
-    "pid": 294553,
-    "start_ticks": "28504567",
+    "pid": 305056,
+    "start_ticks": "28507825",
     "argv": [
       "codex",
-      "--remote",
-      "unix:///tmp/th-int-4fvqnzt5/tmp/th-host-4a0ac1fb9d9e4c1193dd523ee71b6d84/rpc.sock",
-      "resume",
-      "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
-      "--no-alt-screen",
-      "--strict-config",
+      "--sandbox",
+      "read-only",
+      "--ask-for-approval",
+      "never",
+      "-c",
+      "notify=[\"/tmp/th-int-4fvqnzt5/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
       ""
     ]
   },
   {
-    "pid": 296084,
-    "start_ticks": "28504786",
+    "pid": 332009,
+    "start_ticks": "28520407",
     "argv": [
       "sleep",
       "1",
