@@ -515,6 +515,11 @@ fn codex_detect_idle_scoped(
         invalidate_binding(project_path, pid, pane_id);
         return unresolved_identity(pid, "codex_identity_ambiguous_writer_locks");
     }
+    let owned: Vec<_> = candidates.iter().filter(|p| file_open_by_pid(p)).collect();
+    if locks.is_empty() && owned.len() > 1 {
+        invalidate_binding(project_path, pid, pane_id);
+        return unresolved_identity(pid, "codex_identity_ambiguous");
+    }
     let allowed = |path: &Path| {
         path.starts_with(sessions_dir)
             && codex_result_from_file(path).session_id.is_some_and(|id| {
@@ -537,7 +542,6 @@ fn codex_detect_idle_scoped(
             });
         return result;
     }
-    let owned: Vec<_> = candidates.iter().filter(|p| file_open_by_pid(p)).collect();
     let path = match owned.as_slice() {
         [only] => Some(only.as_path()),
         [] if candidates.len() == 1 => Some(candidates[0].as_path()),
@@ -827,6 +831,46 @@ mod tests {
             &|p| p == tui,
         );
         assert_ne!(result.session_id.as_deref(), Some("tui"));
+    }
+
+    // Regression: 329f6384 checked cached ownership before detecting multiple
+    // open rollouts, allowing yesterday's binding to hide today's ambiguity.
+    #[test]
+    fn codex_identity_cache_cannot_override_ambiguous_ownership() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let sessions = tmp.path().join("sessions");
+        let dir = sessions.join(chrono::Local::now().format("%Y/%m/%d").to_string());
+        let first = create_codex_session(
+            &dir,
+            "rollout-2026-09-10T09-42-26-first.jsonl",
+            "/scratch/project",
+        );
+        let resolve = |open: &dyn Fn(&Path) -> bool| {
+            codex_detect_idle_scoped(
+                "/scratch/project",
+                42,
+                Some("%2"),
+                &sessions,
+                &Default::default(),
+                open,
+            )
+        };
+        assert_eq!(
+            resolve(&|p| p == first).session_id.as_deref(),
+            Some("first")
+        );
+        let second = create_codex_session(
+            &dir,
+            "rollout-2026-09-10T09-42-27-second.jsonl",
+            "/scratch/project",
+        );
+        assert!(resolve(&|p| p == first || p == second).session_id.is_none());
+        assert_eq!(
+            resolve(&|p| p == second).session_id.as_deref(),
+            Some("second")
+        );
     }
 
     #[test]
