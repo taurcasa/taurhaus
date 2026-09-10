@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — attempt 11 IN PROGRESS; eligibility disabled
+# Codex 0.153.4 integration — INCONCLUSIVE: step 1 transcript observation busy, attempt 11
 
 ## Attempt 1 — INCONCLUSIVE: setup FAIL (2026-09-09)
 
@@ -2474,3 +2474,84 @@ PID/tool/session/idle record with the Mesh activity snapshot's `launch_ready` or
 See [red](integration/attempt11/red.txt), [green](integration/attempt11/green.txt).
 Builds are waiting on the required Cargo preflight. Paid turns so far: 0 / USD 0.
 Numbered outcomes, spends, cleanup and gate exits will be appended as observed.
+
+### Attempt 11 runtime result — stopped at step 1
+
+**Eligibility INCONCLUSIVE. Step 1 evidence collection FAIL; production initialize
+succeeded.** The reused controller's first `coordination.hosted_transcript` read
+returned `{"code":"HOST_OPERATION_FAILED","message":"host member busy"}`.
+`poll_host(force=True)` propagated it as fatal before `inspection_ready`; the
+read-only final drain received the same refusal, then `finally` tore down the
+namespace. This is a controller-confounded result, not proof of a broken launch
+or permanent host failure. No paid retry or product patch was made.
+
+| Step | Outcome | S-runtime evidence |
+|---|---|---|
+| 1. Hosted launch + attached TUI | **FAIL to complete observation; launch succeeded** | [Initialize result](integration/attempt11/run/initialize-result.json): all nine stages succeeded, including `opt_in_delivery`; [runtime](integration/attempt11/run/step1-runtime.json), [strict config](integration/attempt11/run/generated-config-0.toml), [attached pane](integration/attempt11/run/step-1-pane-2.txt), [controller failure](integration/attempt11/controller-output.txt). |
+| 2. Idle native send/read | **NOT RUN** | [Outcome](integration/attempt11/run/step2-outcome.json); no marker message submitted. |
+| 3. Active-turn deferral | **NOT RUN** | [Outcome](integration/attempt11/run/step3-outcome.json). |
+| 4. Typed/socket interleave + passive locks | **NOT RUN** | [Outcome](integration/attempt11/run/step4-outcome.json). |
+| 5. Compaction recovery | **NOT RUN** | [Outcome](integration/attempt11/run/step5-outcome.json). |
+| 6. Daemon restart | **NOT RUN** | [Outcome](integration/attempt11/run/step6-outcome.json). |
+| 7. Operational tmux rollback | **NOT RUN** | [Outcome](integration/attempt11/run/step7-outcome.json). |
+
+Initialize run `init_9ba26e2893bb46af83f079b703416cc7`; private port **26452**.
+Thread/session **`01a08c27-ffe9-7951-bc69-8b445d0e6163`**, member pane `%2`,
+app-server namespace PID `160`, start ticks `27835987`; attached pane PID `663`,
+start ticks `27836620`. The runtime publishes terminal contract 1, build 0.153.4,
+Unix WebSocket transport, the three required class identities, and the scratch
+AGENTS.md instruction source. The attached pane shows `gpt-5.6-luna low` and
+`Working`; a completed reply/recovery-card display was not observed.
+
+The daemon log records `hosted.instruction_sources.loaded` and
+`onboarding.delivery.observed` with app-server stage `submitted`, offered bytes
+2172 and delivery id
+`c62fa30aa67f92270822953d5e017061fc7e1758dba3e047fbfa2e391b6ba148`.
+The complete [daemon JSONL](integration/attempt11/run/taurhaus.log.jsonl) is
+retained without event-family filtering; no `hosted.rpc.*` event was emitted.
+The refusal is the daemon host API's busy result, not a Codex wire error.
+Retained rows: **81**; SHA-256
+`00a94ee5e093cd19fb35114504e685147a80048e2ef2019a6363f0876459acd2`.
+
+**Every spend:** one automatic startup turn
+`01a08c28-0564-7e92-88db-c07dc8336447`, model `gpt-5.6-luna`, effort low.
+[Rollout usage evidence](integration/attempt11/run/usage-events.json) contains
+`task_started` only; no `token_count` or host `tokenUsage` was retained before
+teardown. Input/cached/output tokens and USD spend are **unknown**, not zero.
+[Cost ledger](integration/attempt11/run/cost-ledger.json) explicitly uses null
+totals and `metering_complete: false`. The observed turn count is **1/16**; the
+USD 3 ceiling cannot be verified from this run. There were no manually submitted
+model turns, Claude lead turns, compactions, paid retries or review turns.
+
+**Cleanup / pin:** [Controller cleanup](integration/attempt11/run/cleanup.json)
+reports no survivors, port closed, scratch root removed, descriptor restoration
+exit 0 and trial-enabled Mesh binary removed. [Independent audit](integration/attempt11/runtime-audit.json)
+rechecks all 12 recorded host PID/start identities, private port and root absence.
+Mesh is clean and detached at `ed59187`; its descriptor remains disabled.
+**Descriptor flip commit: none.** The conditional named-refusal fix and Mesh
+`just check-quick` / `just lint` / `just test` gates were not run because full PASS
+is their prerequisite. No Taurhaus registry entry is needed: the launch path
+already created the owned host. No product, dependency, lock manifest or ledger
+row was changed.
+
+**Reproduction:** from this checkout root, pin Mesh with
+`git -C /home/mstie/projects/mesh-trial checkout --detach ed59187`, then run
+`python3 docs/design/evidence/native-eligibility/integration/attempt11-build.py`
+and `python3 docs/design/evidence/native-eligibility/integration/attempt11-controller.py attempt11/run`
+in fresh output directories. [Build records](integration/attempt11/daemon-build.json)
+show 41 Cargo probes (40 busy intervals, approximately 1200 seconds), followed by
+daemon build exit 0; [Mesh build](integration/attempt11/mesh-build.json) exit 0.
+[Scratch descriptor diff](integration/attempt11/mesh-trial-descriptor.diff) records
+the exact trial-only tuple. The controller contains the exact initialize payload,
+credential isolation, native sibling copying, strict configuration and cleanup;
+[events](integration/attempt11/run/events.jsonl) retain commands and RPC ids.
+The numbered `attempt11-steps.py N` action runner never ran because the controller
+stopped before its action loop. Rerunning would require a newly commissioned paid
+attempt; this report performs no such retry.
+
+**Deviations / limits:** the inherited controller treats the potentially transient
+`host member busy` read as fatal rather than retrying the observation, preventing
+the ordered seven-step trial from completing. Missing usage prevents numeric
+spend and dollar-cap verification. The required Opus evidence lens was unavailable
+in this session (no Opus model tool; no additional credential scope authorized).
+No product defect was patched. The unpaid gate results follow below.

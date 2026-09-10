@@ -1,0 +1,218 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "taurhaus-daemon"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-trial/src-tauri",
+  "target": "/home/mstie/projects/taurhaus-trial/src-tauri/target",
+  "exit": 0,
+  "cargo_preflight": [
+    {
+      "at": 1789056519.162772,
+      "exit": 0,
+      "output": "3064021 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056549.1718585,
+      "exit": 0,
+      "output": "3064021 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056579.1802578,
+      "exit": 0,
+      "output": "3095206 <operator-path-redacted> build --bin mesh\n"
+    },
+    {
+      "at": 1789056609.19003,
+      "exit": 0,
+      "output": "3096498 <operator-path-redacted> check --tests\n3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056639.1990192,
+      "exit": 0,
+      "output": "3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056669.208364,
+      "exit": 0,
+      "output": "3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056699.217308,
+      "exit": 0,
+      "output": "3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056729.226792,
+      "exit": 0,
+      "output": "3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056759.2358,
+      "exit": 0,
+      "output": "3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056789.24467,
+      "exit": 0,
+      "output": "3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056819.2533796,
+      "exit": 0,
+      "output": "3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056849.2629893,
+      "exit": 0,
+      "output": "3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056879.2725194,
+      "exit": 0,
+      "output": "3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056909.2821207,
+      "exit": 0,
+      "output": "3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056939.2913299,
+      "exit": 0,
+      "output": "3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056969.300932,
+      "exit": 0,
+      "output": "3097092 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789056999.3116312,
+      "exit": 0,
+      "output": "3160649 <operator-path-redacted> check --all-targets\n"
+    },
+    {
+      "at": 1789057029.374952,
+      "exit": 0,
+      "output": "3171348 <operator-path-redacted> build --release --bin taurhaus-daemon\n3174685 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789057059.4478724,
+      "exit": 0,
+      "output": "3171348 <operator-path-redacted> build --release --bin taurhaus-daemon\n3174685 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789057089.4583898,
+      "exit": 0,
+      "output": "3171348 <operator-path-redacted> build --release --bin taurhaus-daemon\n3174685 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789057119.481609,
+      "exit": 0,
+      "output": "3171348 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789057149.4912877,
+      "exit": 0,
+      "output": "3226660 <operator-path-redacted> build --bin mesh\n"
+    },
+    {
+      "at": 1789057179.501162,
+      "exit": 0,
+      "output": "3227871 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "at": 1789057209.5177932,
+      "exit": 0,
+      "output": "3230934 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789057239.5264354,
+      "exit": 0,
+      "output": "3230934 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789057269.53533,
+      "exit": 0,
+      "output": "3230934 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789057299.5445182,
+      "exit": 0,
+      "output": "3230934 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789057329.5529726,
+      "exit": 0,
+      "output": "3230934 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789057359.563683,
+      "exit": 0,
+      "output": "3230934 <operator-path-redacted> check --tests\n3266475 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789057389.581153,
+      "exit": 0,
+      "output": "3266475 <operator-path-redacted> check --tests\n"
+    },
+    {
+      "at": 1789057419.6018283,
+      "exit": 0,
+      "output": "3292175 <operator-path-redacted> check --all-targets\n"
+    },
+    {
+      "at": 1789057449.6117704,
+      "exit": 0,
+      "output": "3296808 <operator-path-redacted> check --all-targets\n3300259 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "at": 1789057479.621911,
+      "exit": 0,
+      "output": "3300259 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n3304903 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "at": 1789057509.631344,
+      "exit": 0,
+      "output": "3300259 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n3304903 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "at": 1789057539.641217,
+      "exit": 0,
+      "output": "3300259 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n3304903 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "at": 1789057569.6505218,
+      "exit": 0,
+      "output": "3300259 <operator-path-redacted> test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "at": 1789057599.6595094,
+      "exit": 0,
+      "output": "3330165 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789057629.6690128,
+      "exit": 0,
+      "output": "3330165 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789057659.6785564,
+      "exit": 0,
+      "output": "3330165 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789057689.6878166,
+      "exit": 0,
+      "output": "3330165 <operator-path-redacted> build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "at": 1789057719.6964288,
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

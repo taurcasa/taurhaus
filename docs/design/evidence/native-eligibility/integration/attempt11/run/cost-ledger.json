@@ -1,0 +1,19 @@
+{
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "turn_ids": [
+    "01a08c28-0564-7e92-88db-c07dc8336447"
+  ],
+  "paid_inputs": 1,
+  "generations": [],
+  "api_equivalent_usd": null,
+  "conservative_usd": null,
+  "metering_complete": false,
+  "unmetered_turn_ids": [
+    "01a08c28-0564-7e92-88db-c07dc8336447"
+  ],
+  "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice.",
+  "actual_billed_usd": null,
+  "measured_api_equivalent_subtotal_usd": 0,
+  "limitation": "Started turn has no retained tokenUsage event; total spend unknown, not zero."
+}
