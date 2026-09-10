@@ -1,35 +1,34 @@
-"""Offline lane guards: tempdirs only, no credentials, CLI, network or processes."""
+"""Offline guards; generated tempdirs only, never real credentials or CLIs."""
 import tempfile
 import unittest
 from pathlib import Path
+from preflight import auth_source, meter, require_headroom
 
-from preflight import PrerequisiteError, validate_auth_source
-
-
-class AuthSourceTests(unittest.TestCase):
-    def test_missing_explicit_source_never_falls_back(self):
-        with self.assertRaisesRegex(PrerequisiteError, "explicit disposable"):
-            validate_auth_source(None, Path("/unread-operator-home"))
-
-    def test_rejects_real_harness_roots_before_access(self):
+class LaneTests(unittest.TestCase):
+    def test_authorized_default_auth_source_without_opening_it(self):
+        # // Regression: 0267819e invented an auth environment prerequisite.
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
-            for name in [".codex", ".claude", ".claude-work", ".gemini", ".grok"]:
-                with self.subTest(name=name):
-                    with self.assertRaisesRegex(PrerequisiteError, "real harness"):
-                        validate_auth_source(str(home / name / "auth.json"), home)
+            self.assertEqual(auth_source({}, home), home / '.codex/auth.json')
 
-    def test_only_regular_disposable_file_is_accepted_without_reading(self):
+    def test_explicit_codex_home_is_the_only_override(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = root / "auth.json"
-            source.touch(mode=0o600)
-            self.assertEqual(validate_auth_source(str(source), root / "operator"), source)
-            alias = root / "alias.json"
-            alias.symlink_to(source)
-            with self.assertRaisesRegex(PrerequisiteError, "symlink"):
-                validate_auth_source(str(alias), root / "operator")
+            self.assertEqual(auth_source({'CODEX_HOME':str(root/'account')}, root), root/'account/auth.json')
 
+    def test_meter_deduplicates_a_turn_across_two_observers(self):
+        result = meter(['t'], [{'turn_id':'t','input':100,'cached_input':20,'output':10}] * 2)
+        self.assertEqual(result['paid_inputs'], 1)
+        self.assertAlmostEqual(result['conservative_usd'], .000132)
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_missing_usage_blocks_the_next_paid_input(self):
+        with self.assertRaisesRegex(AssertionError, 'unmetered'):
+            require_headroom(meter(['t'], []), 1)
+
+    def test_caps_include_automatic_startup_and_recovery(self):
+        with self.assertRaisesRegex(AssertionError, 'input cap'):
+            require_headroom(meter([str(n) for n in range(16)], [{'turn_id':str(n),'input':0,'output':0} for n in range(16)]), 1)
+        with self.assertRaisesRegex(AssertionError, 'cost headroom'):
+            require_headroom(meter(['t'], [{'turn_id':'t','input':190000,'output':0}]), 1)
+
+if __name__ == '__main__': unittest.main()

@@ -1,0 +1,17 @@
+[
+  {
+    "at": 1789029187.54983,
+    "exit": 0,
+    "output": "3313496 <operator-path-redacted> test --lib coordination::\n"
+  },
+  {
+    "at": 1789029189.562132,
+    "exit": 0,
+    "output": "3318623 <operator-path-redacted> test --lib coordination::\n"
+  },
+  {
+    "at": 1789029203.6239266,
+    "exit": 1,
+    "output": ""
+  }
+]
