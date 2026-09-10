@@ -1,4 +1,4 @@
-# L6 rollback — run2 IN PROGRESS (step 1 PASS)
+# L6 rollback — run2 IN PROGRESS (step 2 PASS)
 
 Run2 follows the **2026-09-11 amendment** in `docs/design/e2e-coverage-audit.md`,
 section 6, read from the orchestrator’s main checkout: format first, ownership
@@ -277,3 +277,5 @@ so `just test-rust-unit` was not required. This fix round adds no live rollback
 coverage and leaves the original unknown spend explicitly unresolved.
 
 Run2 step 1: PASS (S-runtime); see run2/run/step1-outcome.json.
+
+Run2 step 2: PASS (S-runtime); see run2/run/step2-outcome.json.
