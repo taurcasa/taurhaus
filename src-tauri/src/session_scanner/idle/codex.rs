@@ -69,10 +69,43 @@ impl CodexResolver {
         pid: u32,
         pane_id: Option<&str>,
     ) -> IdleResult {
-        let Some(base) = self.base_dir.as_ref() else {
+        let registry =
+            crate::coordination::stores::TeamRootRegistry::new(PlatformPaths::teams_dir());
+        self.detect_idle_for_pid_in(project_path, pid, pane_id, &registry)
+    }
+
+    fn detect_idle_for_pid_in(
+        &self,
+        project_path: &str,
+        pid: u32,
+        pane_id: Option<&str>,
+        registry: &crate::coordination::stores::TeamRootRegistry,
+    ) -> IdleResult {
+        let Some((seat_root, excluded)) =
+            codex_identity_scope(project_path, pid, pane_id, registry)
+        else {
+            return unresolved_identity(pid, "codex_runtime_scope_unavailable");
+        };
+        let base = seat_root
+            .or_else(|| {
+                crate::platform::process_env_var(pid, "CODEX_HOME")
+                    .filter(|s| !s.is_empty())
+                    .map(PathBuf::from)
+            })
+            .or_else(|| {
+                crate::platform::process_env_var(pid, "HOME")
+                    .map(|home| PathBuf::from(home).join(".codex"))
+            })
+            .map(|root| root.join("sessions"))
+            .or_else(|| self.base_dir.clone());
+        let Some(base) = base else {
             return IdleResult::idle();
         };
-        let result = codex_detect_idle_for_pid(project_path, pid, pane_id, base);
+        let result =
+            codex_detect_idle_scoped(project_path, pid, pane_id, &base, &excluded, &|path| {
+                path.to_str()
+                    .is_some_and(|p| crate::platform::process_has_open_path(pid, p))
+            });
         apply_notify_edge(result, &self.notify_path)
     }
 }
@@ -378,18 +411,159 @@ pub(super) fn codex_detect_idle(project_path: &str, sessions_dir: &Path) -> Idle
     }
 }
 
-pub(super) fn codex_detect_idle_for_pid(
+/// Scope a TUI by the recorded launch, never by the newest project transcript.
+/// PID ancestry plus start ticks also disambiguates equal pane IDs on private servers.
+fn codex_identity_scope(
+    project: &str,
+    pid: u32,
+    pane: Option<&str>,
+    registry: &crate::coordination::stores::TeamRootRegistry,
+) -> Option<(Option<PathBuf>, std::collections::HashSet<String>)> {
+    use crate::coordination::stores::MemberRuntimeStore;
+    let mut ancestors = std::collections::HashSet::new();
+    let mut parent = pid;
+    for _ in 0..64 {
+        if parent == 0 || !ancestors.insert(parent) {
+            break;
+        }
+        let Some((next, _)) = crate::platform::process_parent_and_tty(parent) else {
+            break;
+        };
+        parent = next;
+    }
+    let mut account = None;
+    let mut excluded = std::collections::HashSet::new();
+    for (root, team) in registry.team_locations().ok()? {
+        for (_, record) in MemberRuntimeStore::load_all(&root, &team).ok()? {
+            if let Some(host) = record.app_server {
+                excluded.insert(host.thread_id);
+                continue;
+            }
+            let bound = record.cli_tool == Some(crate::session_scanner::cli_tool::CliTool::Codex)
+                && record.project_path.as_deref().is_some_and(|p| {
+                    normalize_project_path(&p.to_string_lossy()) == normalize_project_path(project)
+                })
+                && pane.is_none_or(|p| record.pane_id.as_deref() == Some(p))
+                && record.pane_pid.is_some_and(|p| {
+                    ancestors.contains(&p)
+                        && record.pane_start_time.is_some()
+                        && crate::platform::process_start_ticks(p) == record.pane_start_time
+                });
+            if bound {
+                if let Some(root) = record
+                    .recovery
+                    .harness_account_root
+                    .filter(|r| !r.is_empty())
+                    .map(PathBuf::from)
+                {
+                    if account.as_ref().is_some_and(|previous| previous != &root) {
+                        return None;
+                    }
+                    account = Some(root);
+                }
+            }
+        }
+    }
+    Some((account, excluded))
+}
+
+fn unresolved_identity(pid: u32, source: &'static str) -> IdleResult {
+    tracing::debug!(pid, source, "Codex identity uncertain");
+    IdleResult::idle()
+}
+
+fn codex_detect_idle_scoped(
     project_path: &str,
     pid: u32,
     pane_id: Option<&str>,
     sessions_dir: &Path,
+    excluded: &std::collections::HashSet<String>,
+    file_open_by_pid: &dyn Fn(&Path) -> bool,
 ) -> IdleResult {
-    codex_detect_idle_for_pid_with(project_path, pid, pane_id, sessions_dir, &|path| {
-        path.to_str()
-            .is_some_and(|path_str| crate::platform::process_has_open_path(pid, path_str))
-    })
+    let candidates: Vec<_> = codex_find_sessions_for_project(project_path, sessions_dir)
+        .into_iter()
+        .filter(|path| {
+            codex_result_from_file(path)
+                .session_id
+                .is_some_and(|id| !excluded.contains(&id))
+        })
+        .collect();
+    // 0.153.4 creates this per-thread file before the first rollout. An open
+    // descriptor belongs to this process; a filename or mtime alone proves nothing.
+    let locks: Vec<_> = sessions_dir
+        .parent()
+        .into_iter()
+        .flat_map(|root| fs::read_dir(root.join("thread-writer-locks")).ok())
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "lock"))
+        .filter(|entry| file_open_by_pid(&entry.path()))
+        .filter_map(|entry| {
+            entry
+                .path()
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(str::to_owned)
+        })
+        .filter(|id| uuid::Uuid::parse_str(id).is_ok() && !excluded.contains(id))
+        .collect();
+    if locks.len() > 1 {
+        invalidate_binding(project_path, pid, pane_id);
+        return unresolved_identity(pid, "codex_identity_ambiguous_writer_locks");
+    }
+    let allowed = |path: &Path| {
+        path.starts_with(sessions_dir)
+            && codex_result_from_file(path).session_id.is_some_and(|id| {
+                !excluded.contains(&id) && locks.first().is_none_or(|lock| *lock == id)
+            })
+    };
+    if let Some(result) = binding_result(project_path, pid, pane_id, &|path| {
+        allowed(path) && file_open_by_pid(path)
+    }) {
+        return result;
+    }
+    if let Some(id) = locks.first() {
+        let result = candidates
+            .iter()
+            .find(|path| codex_result_from_file(path).session_id.as_ref() == Some(id))
+            .map(|path| codex_result_from_file(path))
+            .unwrap_or_else(|| IdleResult {
+                session_id: Some(id.clone()),
+                ..IdleResult::idle()
+            });
+        return result;
+    }
+    let owned: Vec<_> = candidates.iter().filter(|p| file_open_by_pid(p)).collect();
+    let path = match owned.as_slice() {
+        [only] => Some(only.as_path()),
+        [] if candidates.len() == 1 => Some(candidates[0].as_path()),
+        _ => None,
+    };
+    match path {
+        Some(path) => {
+            let result = codex_result_from_file(path);
+            if file_open_by_pid(path) {
+                persist_binding(project_path, pid, pane_id, &result);
+            } else {
+                invalidate_binding(project_path, pid, pane_id);
+            }
+            result
+        }
+        None => {
+            invalidate_binding(project_path, pid, pane_id);
+            unresolved_identity(
+                pid,
+                if candidates.is_empty() {
+                    "codex_identity_missing"
+                } else {
+                    "codex_identity_ambiguous"
+                },
+            )
+        }
+    }
 }
 
+#[cfg(test)]
 fn codex_detect_idle_for_pid_with<F>(
     project_path: &str,
     pid: u32,
@@ -400,38 +574,14 @@ fn codex_detect_idle_for_pid_with<F>(
 where
     F: Fn(&Path) -> bool,
 {
-    if let Some(result) = binding_result(project_path, pid, pane_id, file_open_by_pid) {
-        return result;
-    }
-
-    let candidates = codex_find_sessions_for_project(project_path, sessions_dir);
-    // `fd_proven` is the difference between "this PID has the transcript open"
-    // and "this project has exactly one transcript". Only the former is durable
-    // enough to persist: a second pane in the same project would otherwise
-    // inherit the guess from the store.
-    let (resolved, fd_proven) = match candidates.as_slice() {
-        [] => (None, false),
-        [only] => (Some(codex_result_from_file(only)), file_open_by_pid(only)),
-        _ => match candidates.iter().find(|path| file_open_by_pid(path)) {
-            Some(path) => (Some(codex_result_from_file(path)), true),
-            None => (None, false),
-        },
-    };
-
-    match resolved {
-        Some(result) => {
-            if fd_proven {
-                persist_binding(project_path, pid, pane_id, &result);
-            } else {
-                invalidate_binding(project_path, pid, pane_id);
-            }
-            result
-        }
-        None => {
-            invalidate_binding(project_path, pid, pane_id);
-            IdleResult::idle()
-        }
-    }
+    codex_detect_idle_scoped(
+        project_path,
+        pid,
+        pane_id,
+        sessions_dir,
+        &Default::default(),
+        file_open_by_pid,
+    )
 }
 
 /// Build an IdleResult from a Codex session file.
@@ -583,11 +733,275 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::Write;
+
+    // Regression: 6f61f611 searched only the daemon account, losing a seat
+    // launched with its own CODEX_HOME (the trial's non-default root layout).
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn codex_identity_uses_process_account_before_daemon_default() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let home = tmp.path().join("seat-account");
+        let date = chrono::Local::now().format("%Y/%m/%d").to_string();
+        create_codex_session(
+            &home.join("sessions").join(date),
+            "rollout-2026-09-10T08-30-00-seat-thread.jsonl",
+            "/scratch/project",
+        );
+        let mut child = std::process::Command::new("/bin/sleep")
+            .env_clear()
+            .env("CODEX_HOME", &home)
+            .arg("60")
+            .spawn()
+            .unwrap();
+        let resolver = CodexResolver {
+            base_dir: Some(tmp.path().join("daemon-account/sessions")),
+            notify_path: tmp.path().join("notify.jsonl"),
+        };
+        let registry = crate::coordination::stores::TeamRootRegistry::new(tmp.path().join("teams"));
+        let result =
+            resolver.detect_idle_for_pid_in("/scratch/project", child.id(), None, &registry);
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert_eq!(result.session_id.as_deref(), Some("seat-thread"));
+    }
     use tempfile::TempDir;
 
     fn filetime_set_mtime(path: &Path, time: SystemTime) {
         let file = File::options().write(true).open(path).unwrap();
         file.set_modified(time).unwrap();
+    }
+
+    // Regression: 6f61f611 admitted a hosted rollout as the lone TUI candidate.
+    // The trial retained cwd/id/version in thread/read, but no session_meta bytes;
+    // use those observed fields without inventing a PID field in session_meta.
+    #[test]
+    fn codex_identity_excludes_hosted_and_refuses_ambiguous_rollouts() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let date = chrono::Local::now().format("%Y/%m/%d").to_string();
+        let dir = tmp.path().join("sessions").join(date);
+        let tui = create_codex_session(
+            &dir,
+            "rollout-2026-09-10T09-42-26-tui.jsonl",
+            "/scratch/project",
+        );
+        let hosted = create_codex_session(
+            &dir,
+            "rollout-2026-09-10T09-42-27-hosted.jsonl",
+            "/scratch/project",
+        );
+        let excluded = std::collections::HashSet::from(["hosted".to_string()]);
+        let resolve = |open: &dyn Fn(&Path) -> bool| {
+            codex_detect_idle_scoped(
+                "/scratch/project",
+                42,
+                Some("%2"),
+                &tmp.path().join("sessions"),
+                &excluded,
+                open,
+            )
+        };
+        assert_eq!(resolve(&|_| false).session_id.as_deref(), Some("tui"));
+        assert_eq!(resolve(&|p| p == hosted).session_id.as_deref(), Some("tui"));
+        create_codex_session(
+            &dir,
+            "rollout-2026-09-10T09-42-28-peer.jsonl",
+            "/scratch/project",
+        );
+        assert!(resolve(&|_| false).session_id.is_none());
+        assert_eq!(resolve(&|p| p == tui).session_id.as_deref(), Some("tui"));
+        // A formerly persisted fd binding cannot override a new hosted exclusion.
+        let excluded = std::collections::HashSet::from(["hosted".into(), "tui".into()]);
+        let result = codex_detect_idle_scoped(
+            "/scratch/project",
+            42,
+            Some("%2"),
+            &tmp.path().join("sessions"),
+            &excluded,
+            &|p| p == tui,
+        );
+        assert_ne!(result.session_id.as_deref(), Some("tui"));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn codex_identity_private_tmux_runtime_account_and_symlink() {
+        // Regression: 6f61f611 used daemon CODEX_HOME, not the pane launch root.
+        use crate::coordination::stores::{MemberRuntimeStore, TeamRootRegistry};
+        use std::process::Command;
+        struct Server(PathBuf);
+        impl Drop for Server {
+            fn drop(&mut self) {
+                let _ = Command::new("tmux")
+                    .args(["-S", self.0.to_str().unwrap(), "kill-server"])
+                    .env_remove("TMUX")
+                    .output();
+            }
+        }
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let project = tmp.path().join("project");
+        fs::create_dir(&project).unwrap();
+        let home = tmp.path().join("seat-account");
+        let date = chrono::Local::now().format("%Y/%m/%d").to_string();
+        let file = create_codex_session(
+            &home.join("sessions").join(date),
+            "rollout-2026-09-10T08-30-00-seat-thread.jsonl",
+            project.to_str().unwrap(),
+        );
+        filetime_set_mtime(&file, SystemTime::now() - Duration::from_secs(120));
+        let executable = tmp.path().join("codex");
+        std::os::unix::fs::symlink("/bin/sleep", &executable).unwrap();
+        let socket = tmp.path().join("private.sock");
+        let server = Server(socket.clone());
+        let output = Command::new("tmux")
+            .env_clear()
+            .env("HOME", tmp.path())
+            .env("PATH", "/usr/bin:/bin")
+            .env("CODEX_HOME", tmp.path().join("wrong-process-account"))
+            .args([
+                "-S",
+                socket.to_str().unwrap(),
+                "-f",
+                "/dev/null",
+                "new-session",
+                "-d",
+                "-P",
+                "-F",
+                "#{pane_pid} #{pane_id} #{pane_tty}",
+                "-c",
+                project.to_str().unwrap(),
+            ])
+            .arg(format!(
+                "exec {} 60 3<{}",
+                executable.display(),
+                file.display()
+            ))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let line = String::from_utf8(output.stdout).unwrap();
+        let parts: Vec<_> = line.split_whitespace().collect();
+        let pid: u32 = parts[0].parse().unwrap();
+        let teams = tmp.path().join("teams");
+        fs::create_dir_all(teams.join("trial")).unwrap();
+        fs::write(
+            teams.join("trial/config.json"),
+            r#"{"name":"trial","members":[]}"#,
+        )
+        .unwrap();
+        let record = serde_json::from_value(serde_json::json!({
+            "paneId":parts[1],"panePid":pid,"paneStartTime":crate::platform::process_start_ticks(pid).unwrap().to_string(),
+            "tmuxSocket":socket,"cli_tool":"codex","project_path":project,
+            "recovery":{"harness_account_root":home}
+        })).unwrap();
+        MemberRuntimeStore::save(&teams, "trial", "seat", &record).unwrap();
+        let hosted = serde_json::from_value(serde_json::json!({"appServer":{
+            "contract":1,"socketPath":tmp.path().join("host.sock"),"threadId":"hosted",
+            "memberId":"beta@trial","accountRoot":home,"processId":999999,
+            "processStart":"1","hostGeneration":"generation","build":"0.153.4",
+            "host":"taurhaus-daemon-owned-thread/1","configuration":"strict-config/1",
+            "trust":"daemon-owned/1","transport":"unix-websocket"
+        }}))
+        .unwrap();
+        MemberRuntimeStore::save(&teams, "trial", "beta", &hosted).unwrap();
+        create_codex_session(
+            file.parent().unwrap(),
+            "rollout-2026-09-10T09-42-27-hosted.jsonl",
+            project.to_str().unwrap(),
+        );
+        let resolver = CodexResolver {
+            base_dir: Some(tmp.path().join("daemon-account/sessions")),
+            notify_path: tmp.path().join("notify.jsonl"),
+        };
+        let registry = TeamRootRegistry::new(teams);
+        assert!(
+            codex_identity_scope(project.to_str().unwrap(), pid, Some(parts[1]), &registry)
+                .unwrap()
+                .1
+                .contains("hosted")
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        let process = loop {
+            let argv = crate::platform::list_processes()
+                .unwrap()
+                .into_iter()
+                .find(|(p, _)| *p == pid)
+                .unwrap()
+                .1;
+            if crate::session_scanner::process::detect_cli_tool_argv(&argv)
+                == Some(crate::session_scanner::CliTool::Codex)
+            {
+                break argv;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        assert!(process[0].ends_with("/codex"));
+        let inventory = crate::session_scanner::process::scan_processes();
+        let detected = inventory.processes.iter().find(|p| p.pid == pid).unwrap();
+        assert_eq!(detected.cli_tool, crate::session_scanner::CliTool::Codex);
+        assert_eq!(detected.project_path, project.to_str().unwrap());
+        assert_eq!(
+            crate::session_scanner::process::detect_cli_tool_argv(&[
+                "/usr/bin/node".into(),
+                executable.to_string_lossy().into_owned(),
+                "--yolo".into()
+            ]),
+            Some(crate::session_scanner::CliTool::Codex)
+        );
+        assert_eq!(crate::platform::process_tty(pid).as_deref(), Some(parts[2]));
+        let result = resolver.detect_idle_for_pid_in(
+            project.to_str().unwrap(),
+            pid,
+            Some(parts[1]),
+            &registry,
+        );
+        assert_eq!(result.session_id.as_deref(), Some("seat-thread"));
+        assert_eq!(result.state, SessionState::Idle);
+        drop(server);
+    }
+
+    #[test]
+    fn codex_identity_writer_lock_binds_before_first_rollout() {
+        // Regression: 6f61f611 required a rollout that 0.153.4's empty prompt
+        // has not created; the l2 trial retained this exact lock-name shape.
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let id = "01a08a70-8595-7ea0-a004-4ae0385d4e2f";
+        let locks = tmp.path().join("thread-writer-locks");
+        fs::create_dir(&locks).unwrap();
+        let lock = locks.join(format!("{id}.lock"));
+        fs::write(&lock, "").unwrap();
+        let result = codex_detect_idle_scoped(
+            "/scratch/project",
+            42,
+            Some("%2"),
+            &tmp.path().join("sessions"),
+            &Default::default(),
+            &|p| p == lock,
+        );
+        assert_eq!(result.session_id.as_deref(), Some(id));
+        assert!(result.jsonl_path.is_none());
+        assert_eq!(result.state, SessionState::Idle);
+        let foreign = codex_detect_idle_scoped(
+            "/scratch/project",
+            43,
+            Some("%3"),
+            &tmp.path().join("sessions"),
+            &Default::default(),
+            &|_| false,
+        );
+        assert!(foreign.session_id.is_none());
     }
 
     fn setup_binding_store(tmp: &TempDir) {
