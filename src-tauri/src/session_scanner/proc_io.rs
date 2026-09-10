@@ -20,6 +20,14 @@
 //! - Claude idle: 0-240 bytes/500ms keepalive in rchar
 //! - Claude thinking: 900+ bytes/500ms sustained in rchar
 
+//! Codex 0.153.4 (2026-09-10, isolated zero-turn pane, 500 ms samples):
+//! loaded-prompt background startup peaked at 779,043 B; after 11 s, median
+//! 416 B, isolated peak 123,392 B and a 46,848/22,784 B adjacent pair.
+//! Use 32 KiB/s for THREE consecutive polls for Codex only. This rejects the
+//! settled noise at both scanner cadences; pane readiness also overrides startup
+//! IO. No real turn was captured: 64 KiB/s sustained is a synthetic margin check,
+//! not a measured turn floor. Smaller turns retain the transcript/notify signals.
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -139,17 +147,134 @@ pub fn is_process_active_hysteresis(pid: u32) -> bool {
     }
 }
 
+/// Codex's timer/file polling has a different noise floor from Claude's.
+const CODEX_ACTIVE_IO_RATE: u64 = 32 * 1024;
+#[derive(Default)]
+struct CodexIoState {
+    previous: Option<(u64, Instant)>,
+    active_polls: u8,
+}
+impl CodexIoState {
+    fn sample(&mut self, current: Option<u64>, now: Instant) -> bool {
+        let Some(current) = current else {
+            *self = Self::default();
+            return false;
+        };
+        if let Some((previous, at)) = self.previous {
+            let elapsed = now.saturating_duration_since(at);
+            if elapsed < MIN_SAMPLE_INTERVAL {
+                return self.active_polls >= 3;
+            }
+            let ms = u64::try_from(elapsed.as_millis())
+                .unwrap_or(u64::MAX)
+                .max(1);
+            let active =
+                current.saturating_sub(previous).saturating_mul(1000) / ms >= CODEX_ACTIVE_IO_RATE;
+            self.active_polls = if active {
+                self.active_polls.saturating_add(1).min(3)
+            } else {
+                0
+            };
+        }
+        self.previous = Some((current, now));
+        self.active_polls >= 3
+    }
+}
+static CODEX_IO_STATE: Mutex<Option<HashMap<u32, CodexIoState>>> = Mutex::new(None);
+#[cfg(test)]
+thread_local! {
+    pub(super) static CODEX_TEST_SAMPLE: std::cell::Cell<Option<(u32, u64, Instant)>> = const { std::cell::Cell::new(None) };
+}
+pub fn is_codex_process_active_hysteresis(pid: u32) -> bool {
+    #[cfg(test)]
+    let reading = CODEX_TEST_SAMPLE
+        .get()
+        .filter(|(sample_pid, _, _)| *sample_pid == pid)
+        .map(|(_, value, at)| (Some(value), at));
+    #[cfg(not(test))]
+    let reading: Option<(Option<u64>, Instant)> = None;
+    let (current, now) = reading.unwrap_or_else(|| (read_rchar(pid), Instant::now()));
+    CODEX_IO_STATE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(HashMap::new)
+        .entry(pid)
+        .or_default()
+        .sample(current, now)
+}
+
 /// Remove stale PIDs from the IO tracker that are no longer in the active set.
 pub fn retain_pids(active_pids: &[u32]) {
     let mut guard = IO_STATE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(map) = guard.as_mut() {
         map.retain(|pid, _| active_pids.contains(pid));
     }
+    if let Some(map) = CODEX_IO_STATE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_mut()
+    {
+        map.retain(|pid, _| active_pids.contains(pid));
+    }
 }
+
+// Measured 2026-09-10, Codex 0.153.4: samples.json in the readiness evidence packet.
+#[cfg(test)]
+pub(super) const CODEX_IDLE_RCHAR_DELTAS: [u64; 120] = [
+    345950, 403395, 174959, 173327, 232116, 172943, 288249, 115306, 173391, 288633, 230740, 779043,
+    152330, 173615, 596258, 60805, 115562, 57989, 57701, 57925, 482264, 4288, 256, 1280, 128, 384,
+    1824, 27328, 800, 256, 192, 224, 123392, 256, 64, 960, 256, 128, 576, 256, 224, 640, 256, 896,
+    64, 768, 64, 1088, 9216, 46848, 22784, 896, 1856, 576, 128, 64, 416, 224, 544, 608, 224, 288,
+    320, 448, 256, 128, 128, 1024, 992, 448, 64, 5824, 320, 448, 1152, 320, 128, 320, 64, 64, 288,
+    64, 704, 416, 64, 128, 1216, 576, 576, 256, 9984, 18880, 1120, 1664, 1664, 64, 416, 224, 1088,
+    480, 224, 1280, 64, 448, 128, 960, 384, 64, 64, 10496, 7520, 224, 4741, 10784, 1344, 2144, 256,
+    64, 512, 2592,
+];
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regression: 6398bfa3 (#163), L2 run 3: Claude's IO calibration made
+    // Codex's idle composer flap. Replay the measured settled-prompt tail for 90 s.
+    #[test]
+    fn codex_idle_prompt_measurement_filters_bursts_and_confirms_work() {
+        for stride in [1, 3] {
+            let start = Instant::now();
+            let mut state = CodexIoState::default();
+            let mut rchar = 1000;
+            assert!(!state.sample(Some(rchar), start));
+            let deltas: Vec<_> = CODEX_IDLE_RCHAR_DELTAS[22..]
+                .iter()
+                .cycle()
+                .take(180)
+                .collect();
+            for (tick, chunk) in deltas.chunks(stride).enumerate() {
+                rchar += chunk.iter().copied().sum::<u64>();
+                assert!(
+                    !state.sample(
+                        Some(rchar),
+                        start + Duration::from_millis(((tick + 1) * stride * 500) as u64)
+                    ),
+                    "idle burst at tick {tick}, stride {stride}"
+                );
+            }
+            for tick in 1..=3 {
+                rchar += 32768 * stride as u64; // Synthetic 64 KiB/s, not a model turn.
+                assert_eq!(
+                    state.sample(
+                        Some(rchar),
+                        start + Duration::from_millis(90000 + tick * stride as u64 * 500)
+                    ),
+                    tick == 3
+                );
+            }
+            let end = start + Duration::from_millis(90000 + 3 * stride as u64 * 500);
+            assert!(state.sample(Some(rchar + 256), end + Duration::from_millis(5)));
+            assert!(!state.sample(None, end + Duration::from_millis(10)));
+            assert!(!state.sample(Some(1), end + Duration::from_millis(500)));
+        }
+    }
 
     // -- rchar tests --
 

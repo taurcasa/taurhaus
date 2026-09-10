@@ -6,7 +6,7 @@ use std::sync::{Mutex, OnceLock};
 
 use super::cache::{apply_hysteresis, record_authoritative_state};
 use super::{
-    idle, proc_io, process, tmux, ActivityAttribution, ActivityConfidence, CliTool, RuntimeSession,
+    idle, process, tmux, ActivityAttribution, ActivityConfidence, CliTool, RuntimeSession,
     SessionGroupKind, SessionState,
 };
 
@@ -198,7 +198,7 @@ where
             let (process_active, recent_io) = if authoritative {
                 (authoritative_active, authoritative_active)
             } else {
-                let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
+                let recent_io = tool_spec.process_active(proc.pid);
                 (recent_io, recent_io)
             };
             process_signal_ms += process_signal_started.elapsed();

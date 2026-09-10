@@ -49,15 +49,19 @@ fn idle_prompt(text: &str) -> bool {
         && tail
             .iter()
             .any(|line| line.starts_with("› ") || *line == "›")
-        && !tail.iter().any(|line| {
-            let lower = line.to_lowercase();
-            lower.contains("esc to interrupt")
-                || lower.contains("working")
-                || lower.contains("thinking")
-                || line
-                    .chars()
-                    .any(|ch| ('\u{2800}'..='\u{28ff}').contains(&ch))
-        })
+        && !tail
+            .iter()
+            .skip(1)
+            .filter(|line| !line.starts_with('›'))
+            .any(|line| {
+                let lower = line.to_lowercase();
+                lower.contains("esc to interrupt")
+                    || lower.contains("working")
+                    || lower.contains("thinking")
+                    || line
+                        .chars()
+                        .any(|ch| ('\u{2800}'..='\u{28ff}').contains(&ch))
+            })
 }
 
 #[cfg(test)]
@@ -229,11 +233,112 @@ mod tests {
     use super::*;
     use crate::daemon::codex_notify::{append_event_at, latest_activity_record_for_session_after};
 
+    // Regression: 6398bfa3 (#163), L2 run 3: IO flapping blocked onboarding.
+    // Replay all 60 measured seconds + 30 repeated seconds with a captured pane;
+    // then replay settled noise without pane authority to exercise the IO fallback.
+    #[test]
+    fn codex_prompt_replay_is_idle_fresh_and_event_silent_for_90_seconds() {
+        use crate::coordination::activity_export::{
+            build_member_activity_snapshot, PaneActivityProbe,
+        };
+        use crate::session_scanner::{
+            cache, classification, proc_io, process::ProcessInfo, tmux::TmuxPane, CliTool,
+            StateChangeCapture, SCANNER_TEST_LOCK,
+        };
+        let _lock = SCANNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let capture = StateChangeCapture::install();
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                classification::set_runtime_idle_detector_override(None);
+                proc_io::CODEX_TEST_SAMPLE.set(None);
+                cache::remove_state_tracker(941_035);
+            }
+        }
+        let _reset = Reset;
+        classification::set_runtime_idle_detector_override(Some(|_| IdleResult::idle()));
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().to_str().unwrap();
+        let pane_file = tmp.path().join("pane.txt");
+        fs::write(&pane_file, IDLE_PANE).unwrap();
+        let text = fs::read_to_string(&pane_file).unwrap();
+        let proc = ProcessInfo {
+            pid: 941_035,
+            project_path: project.into(),
+            tty: "replay".into(),
+            args: "codex".into(),
+            cli_tool: CliTool::Codex,
+        };
+        let panes = HashMap::from([(
+            "replay".into(),
+            TmuxPane {
+                pane_id: "%replay".into(),
+                tty: "replay".into(),
+                window_index: "0".into(),
+                window_name: "test".into(),
+                session_name: "test".into(),
+            },
+        )]);
+        let probe = PaneActivityProbe {
+            pane_alive: true,
+            active_non_shell_process: true,
+            ..Default::default()
+        };
+        let start = std::time::Instant::now();
+        let launch = Utc::now();
+        for pane_ready in [true, false] {
+            let deltas = &proc_io::CODEX_IDLE_RCHAR_DELTAS[if pane_ready { 0 } else { 22 }..];
+            let mut rchar = 1000;
+            for (tick, delta) in deltas.iter().cycle().take(180).enumerate() {
+                rchar += delta;
+                proc_io::CODEX_TEST_SAMPLE.set(Some((
+                    proc.pid,
+                    rchar,
+                    start + Duration::from_millis((tick as u64 + 1) * 500),
+                )));
+                let now = Utc::now();
+                if pane_ready {
+                    let o = sample(idle_prompt(&text), true, None, launch, now).unwrap();
+                    assert_eq!(o.last_observed_at, now);
+                    seed_observation_for_test(proc.pid, project, "%replay", o.source, o.state, now);
+                } else {
+                    invalidate(proc.pid);
+                }
+                let (sessions, _, _, _) = classification::classify_display_runtime_sessions_with(
+                    vec![proc.clone()],
+                    panes.clone(),
+                    &HashMap::new(),
+                    &|_| IdleResult::idle(),
+                );
+                assert_eq!(
+                    sessions[0].state,
+                    SessionState::Idle,
+                    "tick {tick}, pane {pane_ready}"
+                );
+                assert!(!sessions[0].recent_io);
+                if pane_ready {
+                    let display = sessions[0].clone().into();
+                    let snapshot = build_member_activity_snapshot(Some(&display), &probe, now);
+                    let value = serde_json::to_value(snapshot).unwrap();
+                    assert_eq!(value["activity_confidence"], "idle");
+                    assert_eq!(value["observed_at"], now.to_rfc3339());
+                    assert_eq!(value["source"], "launch_ready");
+                }
+            }
+        }
+        assert!(capture.transitions_for(proc.pid).is_empty());
+        invalidate(proc.pid);
+    }
+
     // Regression: 6398bfa3 (#163), L2 run 3: a composer alone also appears
     // during startup/working; readiness requires the loaded footer and no spinner.
     #[test]
     fn codex_prompt_rejects_busy_and_incomplete_composer() {
         assert!(idle_prompt(IDLE_PANE));
+        // Regression: 36c5da85 searched status words inside the directory footer.
+        assert!(idle_prompt(
+            &IDLE_PANE.replace("<scratch>/project", "/tmp/thinking-working")
+        ));
         for status in [
             "• Working (1s • esc to interrupt)",
             "⠋ Thinking",

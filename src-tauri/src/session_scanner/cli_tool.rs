@@ -1149,6 +1149,15 @@ impl CliToolSpec {
         }
     }
 
+    pub fn process_active(&self, pid: u32) -> bool {
+        match self.tool {
+            CliTool::Codex => {
+                crate::session_scanner::proc_io::is_codex_process_active_hysteresis(pid)
+            }
+            _ => crate::session_scanner::proc_io::is_process_active_hysteresis(pid),
+        }
+    }
+
     pub fn activity_source(&self) -> &'static dyn crate::session_scanner::idle::ActivitySource {
         static CLAUDE: crate::session_scanner::idle::ClaudeRegistryActivitySource =
             crate::session_scanner::idle::ClaudeRegistryActivitySource;
