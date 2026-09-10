@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/controller_test.py", line 3, in <module>
+    from support import complete_rows, meter, pending_receipt, clean
+ModuleNotFoundError: No module named 'support'

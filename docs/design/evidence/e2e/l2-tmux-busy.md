@@ -1,3 +1,11 @@
+# IN PROGRESS — Lane 2 authorized isolated runtime continuation
+
+The operator explicitly authorized copying exactly the named auth.json source into an otherwise empty scratch CODEX_HOME at mode 0600. The new controller uses that standing authorization, with no fallback. Both current lane-local builds passed. Eleven offline tests pass after observed red; runtime steps have not yet been claimed.
+
+Exact controller: [controller.py](l2-tmux-busy/controller.py). Current build results: [live-build.json](l2-tmux-busy/live-build.json).
+
+<details><summary>Historical preflight evidence (superseded by explicit authorization)</summary>
+
 # UNAVAILABLE — Lane 2 stopped at the credential preflight
 
 No runtime claim is established. The executed [preflight](l2-tmux-busy/preflight.py)
@@ -136,3 +144,5 @@ green numbered runtime step.
 - One build-setup correction: ran the repository resource-placeholder recipe
   after initial `just build-daemon` exit 101, then observed the retry pass.
 - No independent Opus evidence result is present in this packet.
+
+</details>

@@ -8,6 +8,14 @@ from preflight import credential_source, PreflightUnavailable
 
 
 class CredentialPreflightTests(unittest.TestCase):
+    def test_standing_authorization_permits_only_the_exact_source(self):
+        # // Regression: 70d3a95d unconditionally rejected an explicitly authorized source.
+        source = "/home/example/.codex/auth.json"
+        with patch.object(Path, "is_symlink", return_value=False), patch.object(Path, "is_file", return_value=True), patch.object(Path, "read_bytes", side_effect=AssertionError("credential read")):
+            self.assertEqual(credential_source(source, authorized_source=source), Path(source))
+            with self.assertRaises(PreflightUnavailable):
+                credential_source("/home/example/.claude/auth.json", authorized_source=source)
+
     def test_missing_source_has_no_home_fallback_or_filesystem_read(self):
         with patch.object(Path, "resolve", side_effect=AssertionError("filesystem access")):
             with self.assertRaisesRegex(PreflightUnavailable, "explicit disposable"):

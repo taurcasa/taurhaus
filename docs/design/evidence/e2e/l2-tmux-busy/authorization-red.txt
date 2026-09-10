@@ -1,0 +1,14 @@
+....E.
+======================================================================
+ERROR: test_standing_authorization_permits_only_the_exact_source (__main__.CredentialPreflightTests.test_standing_authorization_permits_only_the_exact_source)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/preflight_test.py", line 15, in test_standing_authorization_permits_only_the_exact_source
+    self.assertEqual(credential_source(source, authorized_source=source), Path(source))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: credential_source() got an unexpected keyword argument 'authorized_source'
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.002s
+
+FAILED (errors=1)

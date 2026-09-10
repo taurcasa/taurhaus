@@ -14,7 +14,7 @@ class PreflightUnavailable(ValueError):
     """A required isolation input is absent or unsafe."""
 
 
-def credential_source(value):
+def credential_source(value, *, authorized_source=None):
     if not value:
         raise PreflightUnavailable("Missing explicit disposable auth.json source; no fallback permitted")
     source = Path(value)
@@ -25,7 +25,7 @@ def credential_source(value):
     for i, part in enumerate(parts):
         if part in ("home", "root"):
             index = i + (2 if part == "home" else 1)
-            if index < len(parts) and parts[index].startswith((".claude", ".codex", ".gemini", ".grok")):
+            if index < len(parts) and parts[index].startswith((".claude", ".codex", ".gemini", ".grok")) and value != authorized_source:
                 raise PreflightUnavailable("Credential source is inside a real harness home")
     # Do not follow a parent symlink into a forbidden home either.
     for entry in reversed((source, *source.parents)):
