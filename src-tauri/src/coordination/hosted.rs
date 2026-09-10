@@ -300,7 +300,7 @@ impl HostedMembers {
                     )
                 };
                 let Ok(guard) = guard else { return };
-                let disconnected = !seat.attachment.socket_path.exists() || !seat.host.alive();
+                let disconnected = !seat.host.alive() || !seat.attachment.socket_path.exists();
                 let closed = !disconnected
                     && seat
                         .host

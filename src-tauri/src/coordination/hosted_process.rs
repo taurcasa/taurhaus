@@ -159,6 +159,7 @@ pub(crate) struct HostProcess {
     child: Child,
     stderr: Option<StderrTail>,
     identity: (String, String),
+    exit_logged: bool,
     rpc: Option<Rpc>,
     pub thread_id: String,
     pub attach_config: Value,
@@ -204,6 +205,7 @@ impl HostProcess {
             child,
             stderr: None,
             identity: (identity.0.into(), identity.1.into()),
+            exit_logged: false,
             rpc: None,
             thread_id: String::new(),
             attach_config: Value::Null,
@@ -406,11 +408,21 @@ impl HostProcess {
         self.child.id()
     }
     pub fn alive(&mut self) -> bool {
-        self.child.try_wait().ok().flatten().is_none()
-            && taurhaus_lib::platform::process_start_ticks(self.child.id())
-                .map(|v| v.to_string())
-                .as_deref()
-                == Some(&self.process_start)
+        if let Ok(Some(status)) = self.child.try_wait() {
+            if !self.exit_logged {
+                let (status, tail) = self.exit_details(status);
+                self.diagnostic(
+                    "hosted.process.exited",
+                    json!({"exit_status":status, "stderr_tail":tail}),
+                );
+                self.exit_logged = true;
+            }
+            return false;
+        }
+        taurhaus_lib::platform::process_start_ticks(self.child.id())
+            .map(|v| v.to_string())
+            .as_deref()
+            == Some(&self.process_start)
     }
 
     pub fn needs_reconnect(&self) -> bool {
@@ -1170,6 +1182,20 @@ exit 23
         .unwrap();
         let guard = HostOperationLock::acquire_for_activity(tmp.path(), "team", "seat").unwrap();
         assert!(spawn(&launch, tmp.path(), None, &guard).is_err());
+        drop(guard);
+        let launch = fixture(tmp.path());
+        let script = std::fs::read_to_string(&launch.program).unwrap().replace(
+            "root = os.environ",
+            "sys.stderr.write('mid-run reason\\n'); sys.stderr.flush()\nroot = os.environ",
+        );
+        std::fs::write(&launch.program, script).unwrap();
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        host.child.kill().unwrap();
+        host.child.wait().unwrap();
+        assert!(!host.alive());
+        assert!(!host.alive());
+        drop(host);
         sink.flush_for_test().unwrap();
         let events: Vec<Value> = std::fs::read_to_string(tmp.path().join("events.jsonl"))
             .unwrap()
@@ -1179,6 +1205,7 @@ exit 23
         for (name, tail) in [
             ("hosted.launch.failed", error.split_once(": ").unwrap().1),
             ("hosted.launch.timed_out", "waiting"),
+            ("hosted.process.exited", "mid-run reason"),
         ] {
             let rows: Vec<_> = events.iter().filter(|e| e["event"] == name).collect();
             assert_eq!(rows.len(), 1, "{name}");
@@ -1190,6 +1217,8 @@ exit 23
             if name.ends_with("failed") {
                 assert_eq!(fields["exit_status"], "23");
                 assert_eq!(fields["reason"], "exited_before_readiness");
+            } else if name.ends_with("exited") {
+                assert!(fields["exit_status"].as_str().unwrap().contains("signal"));
             } else {
                 assert!(fields["timeout_seconds"].as_f64().unwrap() > 0.0);
             }
