@@ -1456,3 +1456,7 @@ Offline TDD: `attempt7_test.py` first failed on the 1.1 MB evidence sample and o
 | 2 | **PASS** | `step2-status-after.txt`: seat mode=app_server source=config; `step2-pane-2.txt`: saffron7c82ab input and reply; message 7bc10aed-1448-4372-b95f-41c5e5d30c06, native_enqueued turn/start 01a089a5-2174-76c1-a7d4-3ee845098b65. Journal sequences 1–6 have no consumed_by_read; `step2-read-receipt.json` records it at sequence 7 after the explicit read. |
 
 Step 2 spend: {"thread_id": "01a089a4-2183-70a1-b1c6-566c00026910", "turn_id": "01a089a5-2174-76c1-a7d4-3ee845098b65", "input": 11838, "cached_input": 9984, "output": 11, "reasoning_output": 0, "api_equivalent_usd": 0.00058368, "conservative_usd": 0.0142188}
+
+| 3 | **PASS** | `step3-receipts.json`: message 052292df-27e8-4cc9-b5c0-18ac2b05b4bc deferred as `pending: pre_input_failure: IO error: delivery: thread_active`, then one `native_enqueued` turn/start. `step3-exposure.json`: exactly one completed user item and one reply for juniper8e21cd. `step3-final-pane-2.txt` captures the reply. |
+
+Step 3: active turn 01a089a5-c1e8-7c13-880d-2662be2ba50e ($0.00101496), deferred turn 01a089a5-edd8-7021-ba5d-cd7452e0ba50 ($0.00054236). Cumulative four turns / **$0.00308744** API-equivalent; all metered.
