@@ -1077,7 +1077,7 @@ pub(crate) mod tests {
         .unwrap();
         op("interrupt", Value::Null).unwrap();
         assert!(input(&hosts, &registry, generation, "disconnect").is_err());
-        hub.refresh_hosts();
+        // Disconnect invalidates immediately; the next probe may reconnect (covered above).
         assert_eq!(snapshot()["source"], "host_unavailable");
         assert_eq!(snapshot()["activity_confidence"], "low");
         hosts.stop(&registry, "team", "seat").unwrap();
