@@ -633,7 +633,8 @@ impl HostedMembers {
         {
             return Err("host team/member authority changed".into());
         }
-        let (mut state, recovery_turn) = if matches!(operation, "transcript" | "recover" | "input") {
+        let (mut state, recovery_turn) = if matches!(operation, "transcript" | "recover" | "input")
+        {
             let host = &mut seat.host;
             poll_compaction(host, &root, team, member, &guard, operation == "recover")?
         } else {
@@ -732,12 +733,23 @@ impl HostedMembers {
             if operation == "recovery_input" {
                 match &result {
                     Ok(_) => state = seat.host.transcript(&guard).unwrap_or(state),
-                    Err(_) => tracing::debug!(team, member, "host recovery deferred; preserving transcript"),
+                    Err(_) => tracing::debug!(
+                        team,
+                        member,
+                        "host recovery deferred; preserving transcript"
+                    ),
                 }
             }
-            state["outcomeUnknown"] = serde_json::json!(seat.host.outcome_unknown()
-                || record.host_input_unknown || record.recovery.claim.as_ref().is_some_and(|c|
-                    c.card_key.context == record.context() && c.stage == ReceiptStage::OutcomeUnknown));
+            state["outcomeUnknown"] = serde_json::json!(
+                seat.host.outcome_unknown()
+                    || record.host_input_unknown
+                    || record
+                        .recovery
+                        .claim
+                        .as_ref()
+                        .is_some_and(|c| c.card_key.context == record.context()
+                            && c.stage == ReceiptStage::OutcomeUnknown)
+            );
             return Ok(state);
         }
         result
@@ -912,7 +924,8 @@ fn poll_compaction(
         .as_ref()
         .is_ok_and(|s| s["thread"]["status"]["type"] == "idle");
     if let Some(pending) = &pending {
-        if !idle {
+        if !idle && host.deferred_compaction != Some(pending.last_compaction_timestamp) {
+            host.deferred_compaction = Some(pending.last_compaction_timestamp);
             emit(
                 &pending.host_boundary.clone().unwrap_or_default(),
                 "compaction.codex_host.deferred",
@@ -1439,27 +1452,58 @@ pub(crate) mod tests {
             std::fs::write(root.join("compact.json"), r#"{"busy":true}"#).unwrap();
             hosts.reconcile(&registry, "team", "seat").unwrap();
             if failure == "input_unknown" {
-                MemberRuntimeStore::update(root, "team", "seat", |r| r.host_input_unknown = true).unwrap();
+                MemberRuntimeStore::update(root, "team", "seat", |r| r.host_input_unknown = true)
+                    .unwrap();
             } else {
                 for _ in 0..2 {
-                    let card = recovery_delivery::prepare(&registry, root, "team", "seat", "app_server").unwrap().unwrap();
-                    if failure == "claim_unknown" { break; }
-                    recovery_delivery::observe(&registry, root, "team", "seat", &card.receipt, ReceiptStage::Failed).unwrap();
+                    let card =
+                        recovery_delivery::prepare(&registry, root, "team", "seat", "app_server")
+                            .unwrap()
+                            .unwrap();
+                    if failure == "claim_unknown" {
+                        break;
+                    }
+                    recovery_delivery::observe(
+                        &registry,
+                        root,
+                        "team",
+                        "seat",
+                        &card.receipt,
+                        ReceiptStage::Failed,
+                    )
+                    .unwrap();
                 }
             }
             std::fs::write(root.join("compact.json"), "{}").unwrap();
             let before = std::fs::read_to_string(root.join("requests.jsonl")).unwrap();
             for operation in ["transcript", "recover", "transcript"] {
-                let result = hosts.operation(&registry, "team", "seat", generation, operation, Value::Null);
+                let result = hosts.operation(
+                    &registry,
+                    "team",
+                    "seat",
+                    generation,
+                    operation,
+                    Value::Null,
+                );
                 let view = match result {
                     Ok(view) => view,
-                    Err(error) => { failures.push(format!("{failure}/{operation}: {error}")); continue; }
+                    Err(error) => {
+                        failures.push(format!("{failure}/{operation}: {error}"));
+                        continue;
+                    }
                 };
                 assert_eq!(view["outcomeUnknown"], failure.ends_with("unknown"));
-                assert!(view["thread"]["turns"].as_array().unwrap().iter().any(|t| t["items"][0]["type"] == "contextCompaction"));
+                assert!(view["thread"]["turns"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|t| t["items"][0]["type"] == "contextCompaction"));
             }
             let after = std::fs::read_to_string(root.join("requests.jsonl")).unwrap();
-            assert_eq!(before.matches("turn/start").count(), after.matches("turn/start").count());
+            assert_eq!(
+                before.matches("turn/start").count(),
+                after.matches("turn/start").count()
+            );
             assert!(compaction(root).pending);
             hosts.stop(&registry, "team", "seat").unwrap();
         }
@@ -1508,19 +1552,33 @@ pub(crate) mod tests {
         write_snapshot_fixture(root, "team", "seat");
         let generation = saved(root).attachment_generation;
         input(&hosts, &registry, generation, "startup marker").unwrap();
-        std::fs::write(root.join("compact.json"), r#"{"busy":true}"#).unwrap();
+        std::fs::write(
+            root.join("compact.json"),
+            r#"{"busy":true,"turnId":"deferred-test"}"#,
+        )
+        .unwrap();
         // Regression: 8fab0c8d held host exclusion for five seconds after a busy boundary.
         let started = std::time::Instant::now();
         hosts.reconcile(&registry, "team", "seat").unwrap();
         assert!(started.elapsed() < Duration::from_secs(1));
         let requests = std::fs::read_to_string(root.join("requests.jsonl")).unwrap();
         assert!(requests.matches("thread/read").count() < 10);
+        // Regression: 8fab0c8d logged the attempt-8 busy boundary on every panel poll.
+        for _ in 0..3 {
+            hosts.reconcile(&registry, "team", "seat").unwrap();
+        }
         sink.flush_for_test().unwrap();
-        assert!(std::fs::read_to_string(root.join("events.jsonl"))
-            .unwrap()
-            .contains("compaction.codex_host.deferred"));
+        let events = std::fs::read_to_string(root.join("events.jsonl")).unwrap();
+        let deferred = events
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .filter(|e| {
+                e["event"] == "compaction.codex_host.deferred" && e["turn_id"] == "deferred-test"
+            })
+            .count();
+        assert_eq!(deferred, 1);
         assert!(compaction(root).pending);
-        std::fs::write(root.join("compact.json"), "{}").unwrap();
+        std::fs::write(root.join("compact.json"), r#"{"turnId":"deferred-test"}"#).unwrap();
         input(&hosts, &registry, generation, "after compact").unwrap();
         let transcript = transcript(&hosts, &registry, generation);
         let message = |index: usize| {
@@ -1593,7 +1651,7 @@ pub(crate) mod tests {
         assert!(!String::from_utf8(output).unwrap().contains("recovery_card"));
         assert_eq!(saved(root).context_generation, 1);
         let view = transcript(&hosts, &registry, generation);
-        // Regression: 8fab0c8d failed a full queue and admitted every drained generation.
+        // The backlog evicts transcript events as well as old compaction notifications.
         assert_eq!(view["eventsTruncated"], true);
         assert!(view["thread"]["turns"]
             .as_array()
@@ -1612,12 +1670,10 @@ pub(crate) mod tests {
         assert_eq!(starts, 2);
         // Regression: 8fab0c8d re-counted a stale compaction for later attachment cards.
         record_host_delivery(root, "team", "seat").unwrap();
+        // Regression: 8fab0c8d counted other parallel tests in the process-global sink.
+        assert_eq!(compaction(root), state);
         sink.flush_for_test().unwrap();
         let events = std::fs::read_to_string(root.join("events.jsonl")).unwrap();
-        assert_eq!(
-            events.matches("\"event\":\"compaction.injected\"").count(),
-            1
-        );
         assert!(!events.contains("\"reason\":\"\""));
         for event in [
             "compaction.codex_host.received",

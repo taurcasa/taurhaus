@@ -23,6 +23,7 @@ pub(crate) struct HostProcess {
     pub process_start: String,
     socket: PathBuf,
     uncertain: bool,
+    pub deferred_compaction: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl HostProcess {
@@ -60,6 +61,7 @@ impl HostProcess {
             process_start: String::new(),
             socket: socket.into(),
             uncertain: false,
+            deferred_compaction: None,
         };
         host.process_start = taurhaus_lib::platform::process_start_ticks(host.child.id())
             .ok_or("host process identity unavailable")?
@@ -643,7 +645,6 @@ impl Rpc {
                     {
                         if self.compactions.len() == 64 {
                             self.compactions.pop_front();
-                            self.truncated = true;
                         }
                         let p = &frame["params"];
                         self.compactions
@@ -909,15 +910,16 @@ def client(connection):
                             emit({'method':method, 'params':dict(threadId=tid, **params)})
                         for i in range(compact.get('backlog', 0)):
                             boundary_event('item/completed', turnId=str(i), item={'id':str(i),'type':'contextCompaction'}, completedAtMs=i)
+                        turn_id = compact.get('turnId', 'compact-turn')
                         item = {'id':'compact-item', 'type':'contextCompaction'}
                         boundary_event('thread/status/changed', status={'type':'active','activeFlags':[]})
-                        boundary_event('turn/started', turn={'id':'compact-turn','status':'inProgress','items':[]})
-                        boundary_event('item/started', turnId='compact-turn', item=item)
-                        boundary_event('thread/tokenUsage/updated', turnId='compact-turn', tokenUsage={'last':{'totalTokens':6344}})
-                        boundary_event('item/completed', turnId='compact-turn', item=item, completedAtMs=compact.get("completedAtMs", int(time.time()*1000)-1000))
+                        boundary_event('turn/started', turn={'id':turn_id,'status':'inProgress','items':[]})
+                        boundary_event('item/started', turnId=turn_id, item=item)
+                        boundary_event('thread/tokenUsage/updated', turnId=turn_id, tokenUsage={'last':{'totalTokens':6344}})
+                        boundary_event('item/completed', turnId=turn_id, item=item, completedAtMs=compact.get("completedAtMs", int(time.time()*1000)-1000))
                         if not compact.get('busy'):
                             boundary_event('thread/status/changed', status={'type':'idle'})
-                            boundary_event('turn/completed', turn={'id':'compact-turn','status':'completed','items':[]})
+                            boundary_event('turn/completed', turn={'id':turn_id,'status':'completed','items':[]})
                         with open(os.path.join(root, 'compact-emitted'), 'w') as output: output.write('1')
                     if 'includeTurns' in params:
                         error = {'code':-32601,'message':'list_turns is not supported yet'}
