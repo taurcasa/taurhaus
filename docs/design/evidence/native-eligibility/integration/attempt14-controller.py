@@ -1,6 +1,6 @@
 """Isolated integration trial; no operator config or process is adopted.
 
-Run after attempt14-build.py with TRIAL_EVIDENCE_LABEL=attempt14: python3 docs/design/evidence/native-eligibility/integration/attempt14-controller.py LABEL
+Run after attempt13-build.py with TRIAL_EVIDENCE_LABEL=attempt14: python3 docs/design/evidence/native-eligibility/integration/attempt14-controller.py LABEL
 CODEX_TRIAL_BINARY optionally names the installed native 0.153.4 executable.
 Only the explicitly authorized auth.json is copied; never logged.
 """
@@ -204,7 +204,7 @@ def budget_check():
     accounted = ledger(host_events, starts)
     (OUT / "cost-ledger.json").write_text(json.dumps(accounted, indent=2))
     enforce_budget(accounted["paid_inputs"], accounted["conservative_usd"])
-    assert total * 1.2 / 1000000 <= 3, "cost budget reached"
+    enforce_budget(accounted["paid_inputs"], max(accounted["conservative_usd"], total * 1.2 / 1000000))
 
 
 def poll_host(force=False):
@@ -374,7 +374,7 @@ try:
         log("action", action=action)
         paid = (action["op"] == "mesh" and action.get("argv", [""])[0] == "send") or (action["op"] == "rpc" and action.get("method") == "coordination.hosted_input") or (action["op"] == "tmux" and action.get("argv", [""])[0] == "send-keys")
         if paid:
-            assert ledger(host_events)["paid_inputs"] + PRIOR_TURNS < 16, "turn budget reached before submission"
+            assert json.loads((OUT / "cost-ledger.json").read_text())["paid_inputs"] + PRIOR_TURNS < 16, "turn budget reached before submission"
 
         if action["op"] == "fail":
             raise RuntimeError(action["reason"])

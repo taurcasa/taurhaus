@@ -79,10 +79,17 @@ class TrialGuards(unittest.TestCase):
                 read.assert_not_called()
 
     def test_hard_budget_caps_remain_enforced(self):
-        enforce = helper('attempt14_support.py', 'enforce_budget')
+        enforce = helper('attempt14_support.py', 'enforce_budget', dict(PRIOR_TURNS=0, PRIOR_CONSERVATIVE_USD=0))
         enforce(16, 3)
         for turns, usd, reason in [(17, 0, 'turn budget'), (1, 3.01, 'cost budget')]:
             with self.assertRaisesRegex(AssertionError, reason): enforce(turns, usd)
+
+    def test_continuation_budget_includes_attempt13_spend(self):
+        enforce = helper('attempt14_support.py', 'enforce_budget',
+                         dict(PRIOR_TURNS=12, PRIOR_CONSERVATIVE_USD=.1698456))
+        enforce(4, .1)
+        with self.assertRaisesRegex(AssertionError, 'turn budget'): enforce(5, .1)
+        with self.assertRaisesRegex(AssertionError, 'cost budget'): enforce(4, 2.9)
 
     def test_complete_native_runtime(self):
         # // Regression: 5c4132a9 inherited a codex-only copy, omitting code-mode-host.

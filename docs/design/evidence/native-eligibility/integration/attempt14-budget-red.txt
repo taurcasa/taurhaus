@@ -1,0 +1,13 @@
+..........F......
+======================================================================
+FAIL: test_continuation_budget_includes_attempt13_spend (__main__.TrialGuards.test_continuation_budget_includes_attempt13_spend)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt14_test.py", line 91, in test_continuation_budget_includes_attempt13_spend
+    with self.assertRaisesRegex(AssertionError, 'turn budget'): enforce(5, .1)
+AssertionError: AssertionError not raised
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.222s
+
+FAILED (failures=1)

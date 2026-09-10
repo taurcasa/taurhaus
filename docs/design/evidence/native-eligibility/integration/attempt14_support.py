@@ -1,14 +1,14 @@
-"""Attempt-14 evidence policy with a fresh budget; reuses attempt-8 helpers."""
+"""Attempt-14 step-7 continuation within attempt 13's remaining budget; reuses attempt-8 helpers."""
 import json
 from attempt8_continuation_support import wait_receipt, compaction_metering_gaps
 from attempt5_support import clean, ledger
 
-PRIOR_TURNS = 0
-PRIOR_CONSERVATIVE_USD = 0
+PRIOR_TURNS = 12
+PRIOR_CONSERVATIVE_USD = .1698456
 
 def enforce_budget(turns, conservative_usd):
-    assert turns <= 16, 'turn budget reached'
-    assert conservative_usd <= 3, 'cost budget reached'
+    assert turns + PRIOR_TURNS <= 16, 'turn budget reached'
+    assert conservative_usd + PRIOR_CONSERVATIVE_USD <= 3, 'cost budget reached'
 
 def retained_log(rows):
     unique={json.dumps(row,sort_keys=True):row for row in rows}
