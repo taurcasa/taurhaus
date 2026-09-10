@@ -1,0 +1,12 @@
+{
+  "command": [
+    "python3",
+    "-B",
+    "docs/design/evidence/e2e/l4-resume-team/run4/controller.py"
+  ],
+  "exit_code": 1,
+  "last_log_lines": [
+    "{\"at\": 1789057180.9205458, \"step\": 2, \"kind\": \"failure\", \"reason\": \"supported stop_session left a recorded pane or Codex/app-server process alive\", \"classification\": \"taurhaus\"}",
+    "{\"at\": 1789057183.4330542, \"step\": 2, \"kind\": \"cleanup\", \"mesh_trial_binary_removed\": true, \"survivors\": [], \"port_closed\": true, \"root_removed\": true, \"auth_removed\": true, \"mesh_descriptor_restore_exit\": 0, \"scratch_resource_removed\": true}"
+  ]
+}

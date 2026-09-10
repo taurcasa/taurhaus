@@ -1,7 +1,8 @@
-# INCOMPLETE — latest run 4, L4 step 1 PASS; continuation in progress
+# FAIL — latest run 4, L4 step 2: hosted process survives supported stop
 
-Run 4 initialized and exchanged/read both markers. This checkpoint is not a whole-lane PASS.
-See [Run 4](#run-4) for the current evidence; runs 2 and 3 below are historical.
+Run 4 passed initialization and both initial exchanges, then failed to stop beta's app-server.
+Steps 3–6 were NOT RUN. All four turns were metered; cleanup found zero survivors.
+See [Run 4](#run-4) for evidence, spend, gates and limitations; earlier runs are historical.
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -344,15 +345,157 @@ is claimed. Preparation and the checked failure packet are separate commits.
 
 ## Run 4
 
-Step 1 **PASS**: production initialize, both initial replies, completed transport
-and explicit read receipts. alpha is attributed and idle. Four model inputs plus
-two conservative start reservations (6/16); all four turns metered, API-equivalent
-$0.005385760, conservative all-token upper estimate $0.079182000.
+**Verdict: FAIL at step 2; workflow incomplete. Classification: Taurhaus.**
+Initialization and both marker exchanges passed, including the former run-3
+`opt_in_delivery` boundary. All three supported `stop_session` RPCs then returned
+`{"ok": true}` and their panes disappeared, but beta's daemon-owned app-server
+remained alive throughout the **100-second** stop deadline. Exact assertion:
 
-[Step 1 outcome](l4-resume-team/run4/step1-outcome.json),
-[identities](l4-resume-team/run4/original-identities.json),
-[activity](l4-resume-team/run4/alpha-activity.json),
-[journal/state](l4-resume-team/run4/step1-state.json),
-[ledger](l4-resume-team/run4/cost-ledger.json).
+```text
+supported stop_session left a recorded pane or Codex/app-server process alive
+```
 
-Steps 2–6 pending at this checkpoint. No resume call yet.
+The survivor is the original hosted child: host PID **3161947**, namespace PID
+**179**, start ticks **27753422**, matching beta's `appServer.processId/processStart`.
+Only infrastructure pane `%0` remained; alpha's native process, beta's attached
+TUI and the login-only lead had stopped. This is a supported-stop product boundary,
+not a Mesh delivery refusal or a harness launch failure. Source inspection agrees:
+`src-tauri/src/daemon/handlers.rs:1145` dispatches to
+`src-tauri/src/session_scanner/control.rs:385`, which sends the CLI exit key and
+tears down the pane, without stopping the separately owned host. No product fix
+or alternative stop/remove/disband operation was attempted.
+
+| Ordered audit step | Outcome | Classification and evidence |
+|---|---|---|
+| 1. Initialize, exchange/read one marker per seat, preserve identities/receipts | **PASS** | Runtime evidence: both replies once, alpha attributed idle, `submitted` / `native_enqueued` followed separately by `consumed_by_read`. |
+| 2. Supported stop of every seat; inspect retained state | **FAIL** | **Taurhaus**: beta's original app-server survived 100 seconds. Team config, runtime and all 15 journal rows remained; task inventory empty. |
+| 3. Accept a pending obligation per stopped seat | **NOT RUN** | Not evaluated: stop-on-failure. No pending markers created. |
+| 4. One `resume_team`, poll its own status | **NOT RUN** | Not evaluated: zero resume calls; no historical skip substituted. |
+| 5. Preserve identities/adapters, advance generations, recover pending work | **NOT RUN** | Not evaluated: no resumed generation. |
+| 6. Explicit read, no replay/member executor, export/teardown | **NOT RUN** | Workflow assertions not reached; failure export/cleanup completed separately. |
+
+Machine-readable [step 1](l4-resume-team/run4/step1-outcome.json),
+[step 2](l4-resume-team/run4/step2-outcome.json),
+[step 3](l4-resume-team/run4/step3-outcome.json),
+[step 4](l4-resume-team/run4/step4-outcome.json),
+[step 5](l4-resume-team/run4/step5-outcome.json),
+[step 6](l4-resume-team/run4/step6-outcome.json).
+The runtime controller exited **1**. Runtime including cleanup: **187.926 seconds**.
+
+### Runtime identity and receipts
+
+Taurhaus product base **`1db4f9bf`**, required fixes #161–#168, source protocol
+**27**; runtime ping confirmed protocol **27**, daemon **0.9.7**. Mesh was built
+only in `/home/mstie/projects/mesh-l4` at **`ed59187`**, with the scratch-only
+0.153.4 descriptor `trial`/enabled and the verified daemon identities
+`taurhaus-daemon-owned-thread/1`, `strict-config/1`, `daemon-owned/1`.
+The wildcard remained disabled; no eligibility or release claim is made.
+Both native Codex siblings were copied from the resolved installation; actual
+version **0.153.4**, both seats **gpt-5.6-luna / low**.
+
+Initialize run: `init_2b09dd05f2ae40ee877988612e40ad40`.
+Team `l4-resume`, canonical format **2**, delivery owner **team**, incarnation
+`be8866c5f8d3df1610162489660a6d564b77d4accbd5c43bebaa64a859254517`.
+Exact builder retention policy retained in [policy.json](l4-resume-team/run4/policy.json).
+
+| Seat | Adapter | Native session/thread | Pane | Attachment / context generation |
+|---|---|---|---|---|
+| alpha | tmux | `01a08c1b-57dc-7262-9bdf-781c0333c902` | `%2` | 1 / `"0"` |
+| beta | app_server | `01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51` | `%3` | 1 / `"0"` |
+| lead | Claude login-only | absent (no native model session) | `%1` | 1 / `"0"` |
+
+All share retained private tmux session `$0`. beta's host generation was
+`00dd369b-621d-4b0d-b993-337ed33c792b`. No lead model turn or credential was used.
+
+| Seat | Marker | Message ID | Delivery ID | Transport / explicit read |
+|---|---|---|---|---|
+| alpha | `L4_old_alpha_974dd4` | `3f72b7a2-e879-4b70-b0a4-bd203202d84e` | `36685d19-b04d-43f6-b8ce-5a9e8400b035` | `submitted` / `consumed_by_read` |
+| beta | `L4_old_beta_42e146` | `0104540f-79fb-4ede-9d1d-c8d624ba35c1` | `5df3ca04-e361-4f57-a050-e132244a6806` | `native_enqueued` / `consumed_by_read` |
+
+Replies are independently present in the native transcripts; transport acceptance
+alone was not treated as model action. Explicit reads ran as the named member
+through the private Mesh CLI, each returned `done: true` on its first page.
+No assignment IDs exist: this lane used message obligations, not tasks.
+
+[Commands/RPCs and exits](l4-resume-team/run4/events.jsonl),
+[every initialize status transition](l4-resume-team/run4/step1-operation.json),
+[original identities](l4-resume-team/run4/original-identities.json),
+[alpha attributed-idle snapshot](l4-resume-team/run4/alpha-activity.json),
+[step-1 journal/state](l4-resume-team/run4/step1-state.json),
+[stop-deadline process/pane observation](l4-resume-team/run4/step2-stop-poll.json),
+[retained final state](l4-resume-team/run4/final-state.json),
+[passive locks](l4-resume-team/run4/final-locks.json),
+[complete sanitized daemon JSONL: 355 rows](l4-resume-team/run4/taurhaus.log.jsonl),
+[daemon stderr](l4-resume-team/run4/daemon-stderr.json).
+The `step1-pane*.json` and `final-pane0.json` captures are each at most 60 lines.
+No observer connected to the hosted socket; host evidence came through the daemon.
+
+### Every input and spend
+
+| Seat / input | Turn ID | Input / cached input / output tokens | API-equivalent | Conservative |
+|---|---|---:|---:|---:|
+| alpha: onboarding | `01a08c1b-728c-7f53-b104-c73267729c74` | 20128 / 11776 / 202 | $0.002148320 | $0.024396000 |
+| alpha: initial marker | `01a08c1b-9acc-7263-852d-b7af72589335` | 22901 / 19968 / 114 | $0.001122760 | $0.027618000 |
+| beta: onboarding | `01a08c1b-66b5-7621-9309-69066ef18368` | 11203 / 6912 / 52 | $0.001058840 | $0.013506000 |
+| beta: initial marker | `01a08c1b-b572-7c10-b7f1-c1c4dba776cd` | 11362 / 6912 / 23 | $0.001055840 | $0.013662000 |
+| **Total: 4 completed inputs** | All metered | — | **$0.005385760** | **$0.079182000** |
+
+Two Codex seat starts are additionally reserved: **6/16** conservative
+starts-plus-inputs. There were no retries, recovery inputs, compaction, new backlog
+turns or Claude model turns. Stops, read-only observations and cleanup added zero
+inputs. The retained trial pricing basis is $0.20/$0.02/$1.20 per million
+input/cached/output tokens; the conservative bound prices every token at $1.20/M.
+These are token-based estimates, not an invoice or account-usage query. Both are
+below **$0.25**. No missing/reset counter was called free usage.
+[Ledger](l4-resume-team/run4/cost-ledger.json),
+[spend reconciliation](l4-resume-team/run4/spend-reconciliation.json),
+[native rows](l4-resume-team/run4/rollouts.json),
+[deduplicated host events](l4-resume-team/run4/host-events.json).
+Implementer/reviewer spend is separate orchestrator accounting.
+
+### Controller, validation and cleanup
+
+Executed controller/support commit **`2cb49f29`** reuses run 3 and attempt 9's
+sandbox layout. Offline guards first failed with import errors (exit **1**) for
+busy-read handling and cumulative turn metering, then **9 tests passed (0)**.
+Regression comments name `e13eb5ff` (original run-3 commit `f62bb158`). These tests
+use only generated tempdirs/in-memory records, never real credentials or CLIs.
+[Offline red/green evidence](l4-resume-team/run4/offline-tests.json).
+
+Exact commands from the assigned checkout root:
+
+```sh
+python3 -B docs/design/evidence/e2e/l4-resume-team/run4/build.py
+python3 -B -m unittest discover -s docs/design/evidence/e2e/l4-resume-team/run4 -p test_support.py
+python3 -B docs/design/evidence/e2e/l4-resume-team/run4/controller.py
+python3 -B docs/design/evidence/e2e/l4-resume-team/run4/audit.py
+python3 -B docs/design/evidence/e2e/l4-resume-team/run4/gates.py
+```
+
+Builds: `cargo build --bin mesh` in the designated Mesh worktree **0**;
+`just build-daemon` **0**. The exact prebuild cargo probe observed no competing
+Cargo process within the 30-minute bound. Checkout-local targets and temporary
+Tauri resources were used. [Build commands/exits/digests](l4-resume-team/run4/build/),
+[provenance](l4-resume-team/run4/provenance.json).
+
+Required gates are running; final exit codes will be appended before handoff.
+No `src-tauri/` diff exists, so `just test-rust-unit` is not required.
+
+Cleanup stopped/waited only owned processes/private namespace, verified PID/start
+ticks, closed the private listener and removed the scratch root/auth copy.
+Independent census: **8 owned identities rechecked, zero survivors**, no privacy
+violations. Mesh descriptor restoration exited **0**; the trial binary and its
+matching Cargo executable hardlink were removed. All runtime roots were scratch,
+`TMUX` absent, operator homes hidden by bubblewrap. Exactly the authorized auth
+file was copied at mode 0600; no operator config/history/instructions were copied.
+[Cleanup](l4-resume-team/run4/cleanup.json),
+[independent audit](l4-resume-team/run4/final-audit.json).
+
+Deviations/limits: step 2's product failure requires steps 3–6 to remain NOT RUN;
+whole-team resume and post-resume replay/recovery remain unverified. The bounded
+controller fixes preserve busy-read polling and cumulative spend; they do not
+alter product behavior. All sanitized daemon rows are retained except the
+explicitly prohibited account-usage rows. The Opus evidence lens remains for the
+orchestrator (no Opus tool callable here). No product change, fault injection,
+install/release, descriptor commit, plan-ledger edit or paid retry occurred.
+Step 1 was committed before step 2; no passing step-2 commit is claimed.

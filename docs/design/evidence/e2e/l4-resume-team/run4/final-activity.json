@@ -1,0 +1,57 @@
+{
+  "degraded": false,
+  "degraded_revision": 0,
+  "display_sessions": [
+    {
+      "activity_attribution": "attributed",
+      "activity_confidence": "high",
+      "args": "",
+      "cli_tool": "codex",
+      "group_id": "l4-resume",
+      "group_kind": "mesh_team",
+      "group_label": "l4-resume",
+      "last_output_age_secs": null,
+      "member_name": "beta",
+      "pid": 0,
+      "project_path": "/tmp/th-l4-run4-haq4onp6/project",
+      "project_unattributed_active": false,
+      "recent_io": false,
+      "source": "host",
+      "state": "idle",
+      "tmux_pane": null,
+      "tmux_session": null,
+      "tmux_window": null,
+      "tmux_window_name": null,
+      "tty": ""
+    }
+  ],
+  "focus": null,
+  "foreground_project_path": null,
+  "runtime_sessions": [
+    {
+      "activity_attribution": "attributed",
+      "activity_confidence": "high",
+      "args": "",
+      "cli_tool": "codex",
+      "group_id": "l4-resume",
+      "group_kind": "mesh_team",
+      "group_label": "l4-resume",
+      "jsonl_path": "/tmp/th-l4-run4-haq4onp6/codex/sessions/2026/09/10/rollout-2026-09-10T18-16-39-01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51.jsonl",
+      "last_output_age_secs": null,
+      "member_name": "beta",
+      "pid": 0,
+      "project_path": "/tmp/th-l4-run4-haq4onp6/project",
+      "project_unattributed_active": false,
+      "recent_io": false,
+      "session_id": "01a08c1b-5e7c-7aa2-a6fa-7c4ce4902e51",
+      "source": "host",
+      "state": "idle",
+      "tmux_pane": null,
+      "tmux_session": null,
+      "tmux_window": null,
+      "tmux_window_name": null,
+      "tty": ""
+    }
+  ],
+  "version": 26
+}

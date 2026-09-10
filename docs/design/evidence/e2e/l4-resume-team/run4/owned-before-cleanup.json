@@ -1,0 +1,168 @@
+[
+  {
+    "pid": 3161599,
+    "start_ticks": "27753362",
+    "namespace_pids": [
+      "3161599"
+    ],
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l4-run4-haq4onp6",
+      "/tmp/th-l4-run4-haq4onp6",
+      "--chdir",
+      "/tmp/th-l4-run4-haq4onp6/project",
+      "/bin/bash",
+      "/tmp/th-l4-run4-haq4onp6/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3161600,
+    "start_ticks": "27753362",
+    "namespace_pids": [
+      "3161600",
+      "1"
+    ],
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l4-run4-haq4onp6",
+      "/tmp/th-l4-run4-haq4onp6",
+      "--chdir",
+      "/tmp/th-l4-run4-haq4onp6/project",
+      "/bin/bash",
+      "/tmp/th-l4-run4-haq4onp6/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3161601,
+    "start_ticks": "27753362",
+    "namespace_pids": [
+      "3161601",
+      "2"
+    ],
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l4-run4-haq4onp6/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3161602,
+    "start_ticks": "27753362",
+    "namespace_pids": [
+      "3161602",
+      "3"
+    ],
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 3161608,
+    "start_ticks": "27753373",
+    "namespace_pids": [
+      "3161608",
+      "9"
+    ],
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3161610,
+    "start_ticks": "27753373",
+    "namespace_pids": [
+      "3161610",
+      "11"
+    ],
+    "argv": [
+      "/tmp/th-l4-run4-haq4onp6/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "44951",
+      "--data-dir",
+      "/tmp/th-l4-run4-haq4onp6/data",
+      ""
+    ]
+  },
+  {
+    "pid": 3161947,
+    "start_ticks": "27753422",
+    "namespace_pids": [
+      "3161947",
+      "179"
+    ],
+    "argv": [
+      "codex",
+      "-c",
+      "sandbox_mode=\"danger-full-access\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "model=\"gpt-5.6-luna\"",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      "app-server",
+      "--listen",
+      "unix:///tmp/th-l4-run4-haq4onp6/tmp/th-host-5c2ffb7792d341dc962314d9a866cf47/rpc.sock",
+      ""
+    ]
+  },
+  {
+    "pid": 3164816,
+    "start_ticks": "27754073",
+    "namespace_pids": [
+      "3164816",
+      "2441"
+    ],
+    "argv": [
+      "/tmp/th-l4-run4-haq4onp6/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l4-resume",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l4-run4-haq4onp6/claude",
+      ""
+    ]
+  }
+]
