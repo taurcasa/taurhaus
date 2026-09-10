@@ -1,4 +1,4 @@
-# FAIL — Run 4e: step 1 Taurhaus attribution/onboarding failure; steps 2–6 NOT RUN
+# INCOMPLETE — Run 4f prepared; fresh runtime trial pending
 
 ## Historical run 2 — FAIL at step 1: idle Codex prompt, onboarding permanently pending
 
@@ -1145,3 +1145,28 @@ paths were **not exercised live**, because step 1 failed first.
   The required independent Opus evidence lens is unavailable in this session
   (no callable Opus reviewer/Workflow API); it remains on the orchestrator's
   review route. No full-lane PASS or review approval is claimed.
+
+#### Run 4f — startup preflight preparation
+
+The sixth-attempt ruling supersedes run 4e's product classification: its blank
+pane and missing rollout establish `codex_startup_stall` (environment/harness),
+not a Taurhaus attribution defect. Historical run-4e artifacts above are retained.
+
+Run 4f reuses the run-4e controller and all preceding submission, onboarding,
+reply and interrupted-turn rulings. Before the 90-second onboarding window it
+allows up to 120 seconds for the actual alpha composer and Luna/low footer,
+retaining captures at 0/30/60/90/120 seconds. Missing composer stops step 1 as
+environment unavailable. Every failure exports sanitized scratch Codex `log/`
+before credential removal and scratch teardown. No product change.
+
+Four synthetic startup tests failed first (exit 1); all 39 offline controller
+tests then passed (exit 0). Tests use generated tempdirs and mocked process
+calls, never operator harness homes or real CLIs.
+[Red](l2-tmux-busy/run4f/startup-red.txt),
+[green](l2-tmux-busy/run4f/green.txt),
+[TDD commands/exits](l2-tmux-busy/run4f/tdd-result.json).
+
+The independent Opus lens remains unavailable in this session: no callable
+Workflow/Opus tool or Opus model override. No substitute approval is claimed;
+the runtime trial proceeds under the explicit run-4f work order, and the
+orchestrator retains that review route.

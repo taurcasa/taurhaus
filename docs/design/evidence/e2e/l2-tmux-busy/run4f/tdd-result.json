@@ -1,0 +1,14 @@
+{
+  "red": {
+    "command": "python3 -B -m unittest discover -s docs/design/evidence/e2e/l2-tmux-busy/run4f -p startup_test.py",
+    "exit": 1,
+    "tests": 4,
+    "errors": 4,
+    "reason": "Missing startup_preflight, startup_composer and retain_codex_logs"
+  },
+  "green": {
+    "command": "python3 -B -m unittest discover -s docs/design/evidence/e2e/l2-tmux-busy/run4f -p '*_test.py'",
+    "exit": 0,
+    "tests": 39
+  }
+}
