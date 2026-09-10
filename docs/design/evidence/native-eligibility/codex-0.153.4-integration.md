@@ -2555,3 +2555,32 @@ the ordered seven-step trial from completing. Missing usage prevents numeric
 spend and dollar-cap verification. The required Opus evidence lens was unavailable
 in this session (no Opus model tool; no additional credential scope authorized).
 No product defect was patched. The unpaid gate results follow below.
+
+### Attempt 11 final gates and audit
+
+All exact gates ran from `/home/mstie/projects/taurhaus-trial`, through the reused
+`attempt2-gates.py` wrapper with
+`TRIAL_EVIDENCE_LABEL=/tmp/attempt11-gate-evidence`. The separate credential-free
+Bubblewrap namespace hides operator homes and uses inert harness/tmux/Mesh shims.
+No real CLI or credential source was used by the gates.
+
+| Command | Exit | Observed result |
+|---|---|---|
+| `just check-quick` | **0** | 73.98s; typecheck, Rust test compilation, 150 frontend files / 2,518 tests passed. |
+| `just lint` | **0** | 34.91s; all lint lanes passed. |
+| `just test-contracts` | **0** | 18.52s; 15 + 20 + 33 = 68 tests passed. |
+| `python3 docs/design/evidence/native-eligibility/integration/attempt11_test.py` | **0** | Three offline guards passed again. |
+| `python3 docs/design/evidence/native-eligibility/integration/attempt11-audit.py` | **0** | Runtime, pin, redaction, complete log, gate cleanup and PID/start checks passed. |
+
+Exact commands, Cargo preflights and exit records: [check-quick](integration/attempt11/gates/gate-check-quick.json),
+[lint](integration/attempt11/gates/gate-lint.json), [contracts](integration/attempt11/gates/gate-test-contracts.json).
+Their `.txt` siblings preserve complete output.
+[Gate isolation](integration/attempt11/gates/gate-isolation.json) and
+[cleanup](integration/attempt11/gates/gate-cleanup.json) record the disposable
+namespace and waited children. The final audit independently found no process
+bearing its run token; the gate root and temporary evidence-export directory
+were removed. [Final audit](integration/attempt11/final-audit.json) verifies the
+unchanged 81-row daemon log and all 12 runtime process identities absent.
+No `src-tauri/` diff, so `just test-rust-unit` is not required.
+Non-evidence inserted lines: **0/200**. Gate/review spend: **0 turns / USD 0**;
+the one unmetered startup turn remains the attempt's only expenditure.
