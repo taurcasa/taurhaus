@@ -1943,7 +1943,7 @@ No observer socket connection and no fault injection.
 | 2. Idle delivery/read | PASS | step2-after-status.txt selects app_server from config; pane/input/reply carry the marker; native_enqueued turn/start receipt; step2-journal-before-read.json has no consumed_by_read, explicit read alone creates it in step2-journal-after-read.json. |
 | 3. Active deferral | PASS | step3-pending.json records pending/thread_active; step3-receipts.json records eventual native_enqueued turn/start; step3-exposure.json proves one user item and one reply; step3-final-pane-2.txt. |
 | 4. Typed input/passive locks | PASS | step4-pending.json; step4-exposure.json shows one user and reply per marker, typed reply before socket reply; step4-final-pane-2.txt; step4-locks.jsonl has real daemon and Mesh flock/fdinfo holders on one inode. |
-| 5. Compaction recovery | NOT RUN | Pending ordered execution. |
+| 5. Compaction recovery | PASS | step5-runtime-before/after.json: contextGeneration 0→1, same thread; taurhaus.log.jsonl: compaction.codex_host.received/delivered; step5-boundary-events.json: recovery card user item; step5-final-pane-2.txt shows card immediately after Context compacted. |
 | 6. Daemon restart | NOT RUN | Pending ordered execution. |
 | 7. Operational rollback | NOT RUN | Pending ordered execution. |
 
@@ -1979,3 +1979,13 @@ Step 3 cumulative: four protocol turns; **$0.00383412** API-equivalent,
 
 Step 4 cumulative: six protocol turns / seven response generations (typed steer
 shares a turn); **$0.00589996** API-equivalent, **$0.1042908** conservative.
+
+Step 5 compaction turn `01a08a94-9ddf-79e1-aa32-d95aec010449`, item
+`01a08a94-9deb-7e52-94e1-acbfac1bc31e`. The daemon received the completed
+boundary at 09:09:57.549Z and logged delivery at 09:09:57.634Z. Recovery card
+turn `01a08a94-b8cf-7322-97da-75bad48b64e4` completed and was answered.
+Cumulative: eight protocol turns / nine paid inputs including typed steer;
+ordinary metered subtotal **$0.00721920**, conservative **$0.1193172**.
+Compaction token classes are zero with a nonzero totalTokens reset. Its billed
+cost is **unreported, not zero**; final accounting will identify that gap rather
+than treating the inherited live ledger's zero calculation as a billing claim.

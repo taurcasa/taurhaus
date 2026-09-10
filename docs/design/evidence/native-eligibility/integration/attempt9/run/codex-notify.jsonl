@@ -5,3 +5,4 @@
 {"event": "agent-turn-complete", "session_id": "01a08a91-af30-78f1-8cda-ee5e52d604e0", "ts": "2026-09-10T09:08:41.416443042Z", "turn_id": "01a08a93-7d42-7f30-9fd8-f3dd3671e78b"}
 {"event": "agent-turn-complete", "session_id": "01a08a91-af30-78f1-8cda-ee5e52d604e0", "ts": "2026-09-10T09:09:12.110903833Z", "turn_id": "01a08a93-d85e-76e3-93ea-15c58892454b"}
 {"event": "agent-turn-complete", "session_id": "01a08a91-af30-78f1-8cda-ee5e52d604e0", "ts": "2026-09-10T09:09:15.911696107Z", "turn_id": "01a08a94-0f9c-7260-8672-1887b859d85d"}
+{"event": "agent-turn-complete", "session_id": "01a08a91-af30-78f1-8cda-ee5e52d604e0", "ts": "2026-09-10T09:10:00.368992606Z", "turn_id": "01a08a94-b8cf-7322-97da-75bad48b64e4"}

@@ -33,7 +33,7 @@
   "attached_at": "2026-09-10T09:06:40.002565438Z",
   "attachmentGeneration": 1,
   "cli_tool": "codex",
-  "contextGeneration": "1",
+  "contextGeneration": "0",
   "daemon_pid": null,
   "delivery_lease": null,
   "harness": "codex",
@@ -56,7 +56,7 @@
   "project_path": "/tmp/th-int-1vc78b94/project",
   "recovery": {
     "activation_intent": "1f40854a-2e01-436a-9dfa-f5aec90b6a34",
-    "admitted_boundary": "01a08a91-af30-78f1-8cda-ee5e52d604e0:2026-09-10 09:09:57.417 UTC",
+    "admitted_boundary": null,
     "baseline_binding": [
       [
         "b28aea0be5d1fa87b1cbafa5ab4b57c6b844c4f50d040d040fbb46544e26b420",
@@ -64,7 +64,7 @@
       ],
       [
         1,
-        1
+        0
       ]
     ],
     "claim": {
@@ -74,7 +74,7 @@
         "card_schema": 1,
         "context": [
           1,
-          1
+          0
         ],
         "contract": {
           "effective_role_revision": "44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf",
@@ -95,9 +95,9 @@
           "root_authority_revision": "0"
         }
       },
-      "content_revision": "e4b2b622c7434935640f946947e74c814ad5a8dd129b4ac9242318b11373bfe1",
-      "delivery_id": "74079420e8e102d91401cb697ae24261c3e2c58d5c08024ba684b81556f846e7",
-      "generated_bytes": 2273,
+      "content_revision": "f4b536c2df1b0cc5ba522beaf01610aa37205150c3f9be162e48a8cc19dc1115",
+      "delivery_id": "1f9a668b32c38b22aee5f18f57902756ccc909f481444aa9e6aa845fc1b4fa13",
+      "generated_bytes": 2172,
       "kind": "baseline",
       "obligation_key": [
         [
@@ -106,17 +106,17 @@
         ],
         [
           1,
-          1
+          0
         ]
       ],
       "observations": [
         [
           "submitted",
-          "2026-09-10T09:09:57.595629870Z",
+          "2026-09-10T09:06:38.565898442Z",
           "app_server"
         ]
       ],
-      "offered_bytes": 2273,
+      "offered_bytes": 2172,
       "path": "app_server",
       "returned_by_read_bytes": 0,
       "satisfied_obligations": [
@@ -127,7 +127,7 @@
           ],
           [
             1,
-            1
+            0
           ]
         ]
       ],
@@ -142,7 +142,7 @@
         "card_schema": 1,
         "context": [
           1,
-          1
+          0
         ],
         "contract": {
           "effective_role_revision": "44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf",
@@ -163,9 +163,9 @@
           "root_authority_revision": "0"
         }
       },
-      "content_revision": "e4b2b622c7434935640f946947e74c814ad5a8dd129b4ac9242318b11373bfe1",
-      "delivery_id": "74079420e8e102d91401cb697ae24261c3e2c58d5c08024ba684b81556f846e7",
-      "generated_bytes": 2273,
+      "content_revision": "f4b536c2df1b0cc5ba522beaf01610aa37205150c3f9be162e48a8cc19dc1115",
+      "delivery_id": "1f9a668b32c38b22aee5f18f57902756ccc909f481444aa9e6aa845fc1b4fa13",
+      "generated_bytes": 2172,
       "kind": "baseline",
       "obligation_key": [
         [
@@ -174,17 +174,17 @@
         ],
         [
           1,
-          1
+          0
         ]
       ],
       "observations": [
         [
           "submitted",
-          "2026-09-10T09:09:57.595629870Z",
+          "2026-09-10T09:06:38.565898442Z",
           "app_server"
         ]
       ],
-      "offered_bytes": 2273,
+      "offered_bytes": 2172,
       "path": "app_server",
       "returned_by_read_bytes": 0,
       "satisfied_obligations": [
@@ -195,7 +195,7 @@
           ],
           [
             1,
-            1
+            0
           ]
         ]
       ],
