@@ -1381,3 +1381,60 @@ view and user items in turn/completed; observed red corrected it to authoritativ
 item/completed events in the complete append-only archive. No paid retry was used.
 Non-evidence product diff **0 lines**, no dependencies, installation, release,
 branch switch or plan-ledger edit.
+
+
+### Continuation preparation — offline green, no additional model turns
+
+On the user's continuation request, the checkout was clean: Step 1 was already
+committed as `45abdcf7`, Step 2 as `e1d004a9`, and the stopped Step 3 result,
+gates and teardown as `c4735af5`. No completed green runtime step was left
+uncommitted. The original scratch root/thread was deleted; a live continuation
+requires a new production initialization. The original hard cap has **four
+model turns remaining**. No budget reset was inferred from “continue.”
+
+The prepared [next controller](integration/attempt6-next-controller.py) reuses
+attempt 6's production initialization, private namespace, auth-only scratch
+home, exact pinned tuple, token ledger and teardown. It requires an explicit
+new-turn allowance argument (1–8); the operator must supply the authorized
+remaining allowance. The executed attempt-6 controller and earlier continuation
+controller are preserved as historical evidence. This prepared controller has
+**not been run against a live daemon or model** and proves no new runtime step.
+
+The premature evidence-reserve defect is corrected in collection: raw stderr
+stays beneath scratch, only its last 16 KB is retained at teardown; periodic
+structured telemetry retains first/last samples and counts; final transcript
+snapshots reference the single appended event archive; streaming text deltas
+are omitted while completed items, thread/turn boundaries, receipts and token
+usage remain intact. The 850 KB retained-output reserve still applies.
+
+[Three offline regression tests](integration/continuation_retention_test.py)
+name `c4735af5`; red was missing `continuation_retention`, followed by three
+green assertions suites with the helper and controller integration.
+[Replay of real retained events](integration/attempt6/continuation-preflight/retention-replay.json)
+reduced 569 events / 165,547 bytes to 50 events / 27,152 bytes while preserving
+every tokenUsage, turn start/completion and completed item. This replay opened
+no runtime socket and read no credentials.
+
+Fresh gates ran from the checkout root with the existing credential-free
+private-namespace gate controller:
+
+```sh
+python3 docs/design/evidence/native-eligibility/integration/continuation_retention_test.py
+TRIAL_EVIDENCE_LABEL=attempt6/continuation-preflight python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+```
+
+| Exact gate | Exit |
+|---|---|
+| `just check-quick` | **0** |
+| `just lint` | **0** |
+| `just test-contracts` | **0** |
+| New offline collector regression | **0**, 3 tests |
+
+[Gate records](integration/attempt6/continuation-preflight/gates/gate-check-quick.json),
+[lint](integration/attempt6/continuation-preflight/gates/gate-lint.json),
+[contracts](integration/attempt6/continuation-preflight/gates/gate-test-contracts.json).
+Each Cargo preflight found no competing Cargo. Gate scratch cleanup completed.
+No `src-tauri/` change, product code, registry entry, descriptor edit, or Mesh
+commit. **Additional spend: zero turns / $0.00.** The next live run awaits the
+user's answer whether its budget is fresh or shared with the four spent turns;
+no missing capture or unrun step has been promoted to PASS.
