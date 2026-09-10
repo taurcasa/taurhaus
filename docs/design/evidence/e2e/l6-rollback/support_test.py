@@ -6,6 +6,63 @@ from pathlib import Path
 from support import native_runtime, retained_daemon_rows, attributed_idle, evidence_jsonl, pending_observation, ready_session
 
 class SharedHarnessTests(unittest.TestCase):
+    def test_working_pending_requires_scheduler_opportunity_after_acceptance(self):
+        # // Regression: 82e2655b accepted receipt absence before an owner cycle as busy deferral.
+        accepted={'event_type':'message_accepted','committed_at':'2026-09-10T00:00:02+00:00','payload':{'message_id':'B'}}
+        activity={'activity_confidence':'likely_working','observed_at':'2026-09-10T00:00:02+00:00'}
+        for heartbeat in (None, '2026-09-10T00:00:01+00:00', accepted['committed_at'], '2026-09-10T00:00:03+00:00'):
+            with self.subTest(heartbeat=heartbeat):
+                health={'heartbeat':heartbeat, 'last_defer_reason':None} if heartbeat else {}
+                result=pending_observation([accepted],'B',health,activity=activity,now=1788998403)
+                if heartbeat and heartbeat>=accepted['committed_at']:
+                    self.assertEqual(result['source'],'message accepted without receipt while working')
+                    submitted={'event_type':'receipt','payload':{'message_id':'B','stage':'submitted'}}
+                    self.assertIsNone(pending_observation([accepted,submitted],'B',health,activity=activity,now=1788998403))
+                else:
+                    self.assertIsNone(result)
+
+    def test_preflight_cli_uses_standing_authorization_without_reading_credentials(self):
+        # // Regression: 82e2655b omitted the authorized pin from the standalone CLI.
+        import preflight
+        from controller import AUTHORIZED_AUTH_SOURCE
+        for source, expected in ((AUTHORIZED_AUTH_SOURCE, 0), ('/home/example/.codex/auth.json', 78)):
+            with self.subTest(source=source), patch('sys.argv', ['preflight.py','--auth-source',source]), \
+                 patch.object(Path,'is_symlink',return_value=False), patch.object(Path,'is_file',return_value=True), \
+                 patch.object(Path,'read_bytes',side_effect=AssertionError('credential read')), \
+                 patch.object(Path,'read_text',side_effect=AssertionError('credential read')), patch('builtins.print'):
+                self.assertEqual(preflight.main(),expected)
+
+    def test_controller_cli_selects_new_output_or_historical_default(self):
+        # // Regression: 82e2655b hardcoded the already-committed run directory.
+        import controller
+        with tempfile.TemporaryDirectory() as root:
+            output=Path(root)/'rerun'
+            for options, expected in (([],controller.BASE/'run'), (['--out',str(output)],output)):
+                trial=Mock(step=1,started=0,code=1)
+                with self.subTest(options=options), patch('sys.argv',['controller.py','--auth-source','/tmp/auth.json',*options]), \
+                     patch('controller.Trial',return_value=trial) as factory, \
+                     patch('controller.signal.signal'), patch('controller.os.umask'):
+                    self.assertEqual(controller.main(),0)
+                    factory.assert_called_once_with(expected)
+                    trial.teardown.assert_called_once_with()
+
+    def test_controller_output_guard_preserves_existing_evidence(self):
+        # // Regression: 82e2655b offered no selectable fresh evidence directory.
+        from controller import Trial
+        with tempfile.TemporaryDirectory() as root:
+            output=Path(root)/'rerun'
+            with patch('controller.tempfile.mkdtemp',return_value=root):
+                trial=Trial(output)
+                try:
+                    trial.save('sentinel.json',{'retained':True})
+                    original=(output/'sentinel.json').read_bytes()
+                    with patch('controller.tempfile.mkdtemp',side_effect=AssertionError('scratch allocated before guard')):
+                        with self.assertRaises(FileExistsError):Trial(output)
+                    self.assertEqual((output/'sentinel.json').read_bytes(),original)
+                    self.assertEqual(trial.out,output)
+                finally:
+                    trial.events.close()
+
     def test_transcript_account_quota_is_removed_but_turn_tokens_remain(self):
         # // Regression: b320480f retained token_count.rate_limits account usage.
         from support import clean

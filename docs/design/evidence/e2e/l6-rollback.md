@@ -2,13 +2,13 @@
 
 The mandated ownership-first rollback is refused by Mesh `310144d` while the
 team remains canonical: **`delivery: canonical_downgrade_required`**, exit **1**.
-Step 1 passed; steps 3–6 were not run. This is a failed operational rollback
+Step 1's busy-deferral corner is **UNPROVED**; steps 3–6 were not run. This is a failed operational rollback
 under the audit, despite safe preservation of B. No product change, reordered
 rollback, forced flag edit, descriptor edit, Mesh commit, install, or release.
 
 | Ordered audit step | Outcome | Classification and observed evidence |
 | --- | --- | --- |
-| 1. Initialize; deliver/read A; observe B pending during ordinary work | **PASS** | **S-runtime verified.** Canonical initialization completed; alpha attributed and freshly idle; A submitted once and explicitly read. One confirmed ordinary input produced a fresh working observation; B accepted with no attempt/submission/read receipt. Committed as `82e2655b`. |
+| 1. Initialize; deliver/read A; observe B pending during ordinary work | **UNPROVED** | **Harness evidence gap.** Initialization and A's delivery/read are S-runtime verified. B was accepted while working, but the recorded heartbeat predates acceptance and no retained pending obligation names B. Scheduler opportunity and busy deferral are unproved; the PASS recorded in `82e2655b` is superseded. |
 | 2. Lead requests `team delivery --owner members` | **FAIL** | **Mesh product contract.** Exit 1, `canonical_downgrade_required`; permanent prerequisite refusal, not a named temporary quiescence refusal. No handoff request, rollback compatibility file, epoch change, or ownership boundary. B intact. |
 | 3. Settle/retry once; verify one committed ownership boundary | **NOT RUN** | Stopped at permanent step-2 failure as required; no retry or ownership-transfer claim. |
 | 4. `team format --legacy --quiescent`; reconcile B | **NOT RUN** | No downgrade command or reconciliation report. Resulting format remains **2**, owner **team**. |
@@ -52,13 +52,21 @@ steps, so no alternate rollback was attempted.
 | B marker / original logical ID | `B-cd1489b7` / `cbb72528-371a-4bc0-90b6-1a150c0b318d` |
 | B delivery ID | `244196ad-289f-46be-940e-0b984a60e1bd` |
 | B legacy mapping allocated at acceptance | `62ded8e8-480d-4880-823c-332c9f514cfe`; this is not evidence of legacy projection or delivery |
-| B final disposition | **Accepted, pending, unread; no attempt_started, submitted, or read receipt.** No begun ambiguous submission was observed. |
+| B final disposition | **Accepted, unread; no attempt_started, submitted, or read receipt.** Busy deferral is unproved because scheduler opportunity was not demonstrated. |
 | C | Not created |
 
-B's pending observation at `2026-09-10T23:03:31.537Z` used production activity
+B's purported pending observation at `2026-09-10T23:03:31.537Z` used production activity
 `likely_working`, observed at `23:03:31.085Z`. It was **acceptance without a
-receipt while working**, not a fabricated pending receipt. Its logical and
-delivery identities remain in the retained canonical journal after refusal.
+receipt while working**, only 204 ms after acceptance at `23:03:31.3336Z`.
+The owner's heartbeat was `23:03:30.8987Z`, before acceptance, with no
+`pending_since` or `last_defer_reason`; neither retained pending obligation
+names B. This does not prove that the owner had an opportunity to defer B.
+The busy-deferral corner is therefore unproved, and step 1 cannot be called
+PASS. B's logical and delivery identities remain in the journal after refusal.
+The corrected controller requires a heartbeat at or after this acceptance and
+keeps polling within the existing 90-second deadline. The original runtime
+sidecars, including the unsupported step-1 PASS, remain historical evidence;
+this report supersedes that classification without rewriting observations.
 The step-2 boundary snapshot was byte-identical to the step-1 snapshot and was
 deduplicated with an explicit alias.
 [Pending observation](l6-rollback/run/pending/cbb72528-371a-4bc0-90b6-1a150c0b318d.json),
@@ -189,23 +197,31 @@ remaining run budget:
 python3 -B -m unittest discover -s docs/design/evidence/e2e/l6-rollback -p '*_test.py'
 just ensure-tauri-resources
 python3 -B docs/design/evidence/e2e/l6-rollback/checks.py build
-python3 -B docs/design/evidence/e2e/l6-rollback/controller.py --auth-source "$AUTHORIZED_SOURCE"
+python3 -B docs/design/evidence/e2e/l6-rollback/controller.py --auth-source "$AUTHORIZED_SOURCE" \
+  --out docs/design/evidence/e2e/l6-rollback/run-review
 # Only after teardown:
 python3 -B docs/design/evidence/e2e/l6-rollback/checks.py gates
-python3 -B docs/design/evidence/e2e/l6-rollback/pack.py
-python3 -B docs/design/evidence/e2e/l6-rollback/audit.py
 ```
 
-`AUTHORIZED_SOURCE` is the exact standing-authorized single file pinned in the
-[executed controller](l6-rollback/controller.py); there is no home fallback.
+`run-review` must not exist; choose another fresh directory for a later trial.
+The default remains `run`, with the same must-not-exist guard. The historical
+`pack.py` and `audit.py` target the original `run` packet, not the new output.
+`AUTHORIZED_SOURCE` is the exact standing-authorized single file pinned in
+[preflight.py](l6-rollback/preflight.py), shared by the standalone preflight and
+[controller](l6-rollback/controller.py); there is no home fallback. Reproduction
+starts at step 1 and stops at any failed step; it cannot skip ahead to steps 3–6.
 
 - The prescribed L2 worktree was absent (Git exit 128). Its run-3 controller was
   recovered read-only from local commit `2690352e`; the same commit's run-5
   corrections supplied the mandated shared startup/submission/delivery rules.
   No other Taurhaus checkout was changed.
-- Mesh's full stage-2b brief is absent; its addendum,
-  `docs/analysis/journal-stage3-storage.md`, `USAGE.md`, and rollback source
-  contracts were read. No alternate rollback order was inferred as permission.
+- Mesh's `docs/design/delivery-stage2b-brief.md` identifies itself as a membership
+  addendum and says the full brief is absent. The separate
+  `docs/analysis/delivery-stage2-s2b.md` exists and was read during this fix round;
+  it is an implementation/isolated acceptance packet, not the full brief. The
+  original lane read the addendum, `docs/analysis/journal-stage3-storage.md`,
+  `USAGE.md`, and rollback source contracts. No alternate rollback order was
+  inferred as permission.
 - Build-resource preparation/retry was necessary; no tracked product change.
 - The first quick gate failed in existing SessionHistory tests; focused diagnosis
   and one unchanged full retry passed. Lint and contracts each passed once.
@@ -214,3 +230,23 @@ python3 -B docs/design/evidence/e2e/l6-rollback/audit.py
 - Independent Opus evidence review belongs to the enclosing small-change
   workflow and did not execute inside this implementer lane. No review approval
   or complete workflow PASS is claimed.
+
+## Review fix round
+
+All five supplied findings were confirmed and addressed in the named harness
+and report files; no product or original runtime sidecar changed. Four new
+offline regression tests name introducing commit `82e2655b`. Before the fixes,
+the 26-test suite exited **1** with four failing subtests and two errors:
+working activity admitted missing/stale owner heartbeats, standalone preflight
+rejected the authorized pin (78), and output selection was unavailable.
+After the fixes the same suite exited **0**, with **26 tests passing**, including
+equal/newer heartbeat acceptance, submission exclusion, shared pin enforcement,
+CLI output selection/default, and existing-evidence preservation. Credentials
+were mocked; no real harness or credential access occurred in these tests.
+
+No paid rerun occurred: **0 new Codex/Claude inputs, $0 new seat spend**, and no
+daemon, member executor, tmux server or model seat was started. Historical spend
+remains $0.00320184 + $0.00222672 + one unknown ordinary turn; its total cap
+remains unverified. Step 1 is unproved (harness); step 2 remains FAIL (Mesh);
+steps 3–6 remain NOT RUN. The dead boundary bindings and unused controller state
+were removed. Gate rerun results follow after verification.

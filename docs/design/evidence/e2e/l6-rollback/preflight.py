@@ -9,6 +9,9 @@ import argparse
 import json
 from pathlib import Path
 
+# Standing operator authorization: exactly this file, independent of CLI input.
+AUTHORIZED_AUTH_SOURCE='/home/mstie/.codex/auth.json'
+
 
 class PreflightUnavailable(ValueError):
     """A required isolation input is absent or unsafe."""
@@ -41,7 +44,7 @@ def main():
     parser.add_argument("--auth-source")
     args = parser.parse_args()
     try:
-        credential_source(args.auth_source)
+        credential_source(args.auth_source, authorized_source=AUTHORIZED_AUTH_SOURCE)
     except PreflightUnavailable as error:
         print(json.dumps({
             "status": "unavailable", "classification": "harness",

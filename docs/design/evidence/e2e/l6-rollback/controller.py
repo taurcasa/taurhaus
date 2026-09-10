@@ -1,7 +1,7 @@
 """Lane 6 isolated live controller. Explicit authorized auth source is required.
 
 Only this controller copies that single file; children cannot see operator homes.
-Run from this checkout: python3 -B <this-file> --auth-source AUTHORIZED_FILE
+Run from this checkout: python3 -B <this-file> --auth-source AUTHORIZED_FILE --out NEW_DIRECTORY
 The output directory must be new; a restart never retries a paid mutation.
 """
 import argparse
@@ -20,7 +20,7 @@ import tempfile
 import threading
 import time
 from datetime import datetime
-from preflight import credential_source
+from preflight import credential_source, AUTHORIZED_AUTH_SOURCE
 from rollback import retry_transient, ownership_boundary, preserved_message
 from support import validate_candidate, onboarding_delivered, confirm_submission, reply_evidence, startup_composer
 from support import clean, complete_rows, meter, native_runtime, retained_daemon_rows, evidence_jsonl, attributed_idle, pending_observation, ready_session
@@ -29,8 +29,6 @@ BASE=Path(__file__).resolve().parent
 CHECKOUT=BASE.parents[4]
 TEAM='l6-rollback'
 MEMBER='alpha'
-# Standing operator authorization: exactly this file, independent of CLI input.
-AUTHORIZED_AUTH_SOURCE='/home/mstie/.codex/auth.json'
 
 def mesh_json(output):
     """Decode canonical objects or legacy arrays after Mesh's diagnostic banner."""
@@ -42,12 +40,12 @@ def mesh_json(output):
     raise ValueError('Mesh command did not return a complete JSON object or array')
 
 class Trial:
-    def __init__(self):
-        self.out=BASE/'run';self.out.mkdir()
+    def __init__(self,out=BASE/'run'):
+        self.out=Path(out);self.out.mkdir()
         self.root=Path(tempfile.mkdtemp(prefix='th-l6-'))
         self.children=[];self.step=1;self.started=time.monotonic();self.port=None
         self.stop=threading.Event();self.observer=None;self.seen={};self.reservations=[]
-        self.classification='harness';self.code=1;self.state={};self.identities_seen={}
+        self.classification='harness';self.code=1;self.identities_seen={}
         self.env={};self.receipts_seen=set();self.first_submissions={};self.first_pending={}
         self.events=(self.out/'events.jsonl').open('w',buffering=1)
 
@@ -518,7 +516,7 @@ class Trial:
         code,output=self.mesh_raw(['team','delivery','--owner','members'])
         self.refused=code!=0
         self.save('step2-command.json',{'exit':code,'output':output})
-        boundary=self.boundary_snapshot('step2-handoff')
+        self.boundary_snapshot('step2-handoff')
         if self.refused:
             assert any(x in output.lower() for x in ('quiescent','quiescence','handoff draining')),'permanent ownership refusal: '+output
             assert any(r.get('event_type')=='message_accepted' for r in self.delivery_rows(self.bid)),'B acceptance lost during refusal'
@@ -530,7 +528,7 @@ class Trial:
             code,output=self.mesh_raw(['team','delivery','--owner','members'])
             self.save('step3-retry.json',{'exit':code,'output':output})
             assert code==0,'permanent operational rollback refusal after drain: '+output
-        boundary=self.boundary_snapshot('step3-ownership')
+        self.boundary_snapshot('step3-ownership')
         raw=(self.team/'state/delivery/rollback.json').read_bytes()
         verified=hashlib.sha256(raw).hexdigest()==self.config().get('delivery_rollback_sha256')
         change=ownership_boundary(self.workflow(),self.config(),verified)
@@ -631,10 +629,11 @@ class Trial:
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--auth-source',required=True);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--auth-source',required=True)
+    parser.add_argument('--out',type=Path,default=BASE/'run');args=parser.parse_args()
     assert Path.cwd()==CHECKOUT, 'wrong checkout'
     os.umask(0o077)
-    trial=Trial()
+    trial=Trial(args.out)
     def interrupted(sig,frame):raise RuntimeError(f'controller interrupted {sig}')
     signal.signal(signal.SIGINT,interrupted);signal.signal(signal.SIGTERM,interrupted)
     try:
