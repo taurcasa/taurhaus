@@ -1117,6 +1117,8 @@ pub(crate) mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let registry = seat(root);
+        let before: Value =
+            serde_json::from_str(&fixture_text(root, "team/runtime/seat.json")).unwrap();
         let hosts = HostedMembers::default();
         let launch = fixture(root);
         let sink = LogFileState::new(root.join("events.jsonl")).unwrap();
@@ -1129,7 +1131,7 @@ mode = open(os.path.join(root, 'mode')).read()
 starts = os.path.join(root, 'starts.jsonl')
 previous = [json.loads(line) for line in open(starts)] if os.path.exists(starts) else []
 address = sys.argv[sys.argv.index('--listen')+1].removeprefix('unix://')
-with open(starts, 'a') as out: out.write(json.dumps({'pid':os.getpid(), 'socket':address, 'time':time.monotonic(), 'argv':sys.argv})+'\n')
+with open(starts, 'a') as out: out.write(json.dumps({'pid':os.getpid(), 'socket':address, 'time':time.monotonic(), 'argv':sys.argv, 'runtime':json.load(open(os.path.join(root, 'team/runtime/seat.json')))})+'\n')
 if previous:
     assert not os.path.exists('/proc/'+str(previous[0]['pid'])), 'first child must be reaped'
     assert previous[0]['socket'] != address and not os.path.exists(previous[0]['socket'])
@@ -1165,8 +1167,24 @@ if mode == 'twice' or not previous:
                 "{error}"
             );
         }
+        let record = saved(root);
+        assert_eq!(record.attachment_generation, u64::from(mode == "once"));
+        assert_eq!(record.recovery.claim.is_some(), mode == "once");
+        assert_eq!(
+            MemberRuntimeStore::list(root, "team").unwrap(),
+            vec!["seat"]
+        );
+        let requests = std::fs::read_to_string(root.join("requests.jsonl")).unwrap_or_default();
+        assert_eq!(
+            requests.matches("\"method\": \"thread/start\"").count(),
+            usize::from(mode == "once")
+        );
         drop(hosts);
         for start in &starts {
+            assert_eq!(
+                start["runtime"], before,
+                "failed attempt must not publish runtime or receipt"
+            );
             assert!(taurhaus_lib::platform::process_start_ticks(
                 start["pid"].as_u64().unwrap() as u32
             )
@@ -1179,11 +1197,11 @@ if mode == 'twice' or not previous:
             .lines()
             .map(|s| serde_json::from_str(s).unwrap())
             .collect();
-        let retries: Vec<_> = events
-            .iter()
-            .filter(|e| e["event"] == "hosted.launch.retried")
-            .collect();
-        assert_eq!(retries.len(), usize::from(mode != "timeout"));
+        let count = |name| events.iter().filter(|e| e["event"] == name).count();
+        assert_eq!(
+            count("hosted.launch.retried"),
+            usize::from(mode != "timeout")
+        );
         for event in events
             .iter()
             .filter(|e| e["event"].as_str().unwrap().starts_with("hosted.launch."))
@@ -1200,18 +1218,9 @@ if mode == 'twice' or not previous:
                 );
             }
         }
+        assert_eq!(count("hosted.launch.failed"), usize::from(mode == "twice"));
         assert_eq!(
-            events
-                .iter()
-                .filter(|e| e["event"] == "hosted.launch.failed")
-                .count(),
-            usize::from(mode == "twice")
-        );
-        assert_eq!(
-            events
-                .iter()
-                .filter(|e| e["event"] == "hosted.launch.timed_out")
-                .count(),
+            count("hosted.launch.timed_out"),
             usize::from(mode == "timeout")
         );
     }
