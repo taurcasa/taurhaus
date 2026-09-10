@@ -1,4 +1,4 @@
-# INCOMPLETE — latest run 5, step 1 PASS; steps 2–6 pending
+# INCOMPLETE — latest run 5, steps 1–2 PASS; steps 3–6 pending
 
 Run 5 reuses run 4 on the PR #171 base and the shipped Mesh descriptor.
 See [Run 5](#run-5) for current evidence; earlier runs are historical.
@@ -546,3 +546,13 @@ Four observed turns; USD 0.005638760 API-equivalent / USD 0.079902000 conservati
 all-token bound; no unmetered turn. Two startup reservations make six inputs under
 the additional conservative count. Both builds exited 0; protocol 27 and the
 shipped enabled 0.153.4 descriptor were verified before initialize.
+
+
+Run 5 step 2 **PASS (runtime)**: supported `stop_session` returned `ok: true`
+for alpha, beta and lead. All recorded seat panes and Codex/Claude processes,
+including beta's daemon-owned app-server, stopped. Only the private infrastructure
+pane `%0` remained; runtime activity was empty. Team config, runtime identities,
+and the journal remained. PR #171's hosted stop behavior is observed green.
+No new turn or spend. [Outcome](l4-resume-team/run5/step2-outcome.json),
+[stop poll](l4-resume-team/run5/step2-stop-poll.json),
+[state](l4-resume-team/run5/step2-state.json).

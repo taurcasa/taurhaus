@@ -1,0 +1,286 @@
+[
+  {
+    "pid": 1762451,
+    "start_ticks": "29638318",
+    "namespace_pids": [
+      "1762451"
+    ],
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l4-run5-r27_5fdf",
+      "/tmp/th-l4-run5-r27_5fdf",
+      "--chdir",
+      "/tmp/th-l4-run5-r27_5fdf/project",
+      "/bin/bash",
+      "/tmp/th-l4-run5-r27_5fdf/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1762452,
+    "start_ticks": "29638318",
+    "namespace_pids": [
+      "1762452",
+      "1"
+    ],
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l4-run5-r27_5fdf",
+      "/tmp/th-l4-run5-r27_5fdf",
+      "--chdir",
+      "/tmp/th-l4-run5-r27_5fdf/project",
+      "/bin/bash",
+      "/tmp/th-l4-run5-r27_5fdf/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1762453,
+    "start_ticks": "29638319",
+    "namespace_pids": [
+      "1762453",
+      "2"
+    ],
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l4-run5-r27_5fdf/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 1762454,
+    "start_ticks": "29638319",
+    "namespace_pids": [
+      "1762454",
+      "3"
+    ],
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 1762461,
+    "start_ticks": "29638329",
+    "namespace_pids": [
+      "1762461",
+      "9"
+    ],
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 1762463,
+    "start_ticks": "29638330",
+    "namespace_pids": [
+      "1762463",
+      "11"
+    ],
+    "argv": [
+      "/tmp/th-l4-run5-r27_5fdf/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "48139",
+      "--data-dir",
+      "/tmp/th-l4-run5-r27_5fdf/data",
+      ""
+    ]
+  },
+  {
+    "pid": 1762754,
+    "start_ticks": "29638385",
+    "namespace_pids": [
+      "1762754",
+      "121"
+    ],
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l4-run5-r27_5fdf/project' && CLAUDE_DIR='/tmp/th-l4-run5-r27_5fdf/claude' CLAUDE_CONFIG_DIR='/tmp/th-l4-run5-r27_5fdf/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l4-resume' --agent-name 'lead' --agent-id 'lead@l4-resume' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 1762757,
+    "start_ticks": "29638385",
+    "namespace_pids": [
+      "1762757",
+      "124"
+    ],
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "l4-resume",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@l4-resume",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 1762774,
+    "start_ticks": "29638391",
+    "namespace_pids": [
+      "1762774",
+      "140"
+    ],
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l4-run5-r27_5fdf/project' && CLAUDE_DIR='/tmp/th-l4-run5-r27_5fdf/claude' CODEX_HOME='/tmp/th-l4-run5-r27_5fdf/codex' codex --sandbox danger-full-access --ask-for-approval never --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l4-run5-r27_5fdf/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 1762777,
+    "start_ticks": "29638391",
+    "namespace_pids": [
+      "1762777",
+      "143"
+    ],
+    "argv": [
+      "codex",
+      "--sandbox",
+      "danger-full-access",
+      "--ask-for-approval",
+      "never",
+      "--dangerously-bypass-hook-trust",
+      "-c",
+      "notify=[\"/tmp/th-l4-run5-r27_5fdf/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 1763949,
+    "start_ticks": "29638573",
+    "namespace_pids": [
+      "1763949",
+      "894"
+    ],
+    "argv": [
+      "codex",
+      "-c",
+      "sandbox_mode=\"danger-full-access\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "model=\"gpt-5.6-luna\"",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      "app-server",
+      "--listen",
+      "unix:///tmp/th-l4-run5-r27_5fdf/tmp/th-host-067a7fa592564338bb4b72a670427420/retry.sock",
+      ""
+    ]
+  },
+  {
+    "pid": 1765050,
+    "start_ticks": "29638795",
+    "namespace_pids": [
+      "1765050",
+      "1821"
+    ],
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 1765221,
+    "start_ticks": "29638832",
+    "namespace_pids": [
+      "1765221",
+      "1972"
+    ],
+    "argv": [
+      "codex",
+      "--remote",
+      "unix:///tmp/th-l4-run5-r27_5fdf/tmp/th-host-067a7fa592564338bb4b72a670427420/retry.sock",
+      "resume",
+      "01a08d3a-fc2e-7130-935c-8c71c9a96224",
+      "--no-alt-screen",
+      "--strict-config",
+      ""
+    ]
+  },
+  {
+    "pid": 1765931,
+    "start_ticks": "29638942",
+    "namespace_pids": [
+      "1765931",
+      "2496"
+    ],
+    "argv": [
+      "/tmp/th-l4-run5-r27_5fdf/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l4-resume",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l4-run5-r27_5fdf/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 1767441,
+    "start_ticks": "29639435",
+    "namespace_pids": [
+      "1767441",
+      "3716"
+    ],
+    "argv": [
+      "/tmp/th-l4-run5-r27_5fdf/home/.local/bin/codex-code-mode-host",
+      ""
+    ]
+  }
+]
