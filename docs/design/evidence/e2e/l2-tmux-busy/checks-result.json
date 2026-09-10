@@ -1,0 +1,14 @@
+{
+  "commands": [
+    {
+      "command": "just ensure-tauri-resources",
+      "cwd": "/home/mstie/projects/taurhaus-l2-tmux-busy",
+      "target": "/home/mstie/projects/taurhaus-l2-tmux-busy/src-tauri/target",
+      "exit": 0,
+      "elapsed_s": 0.031,
+      "last_lines": []
+    }
+  ],
+  "cargo_waits": [],
+  "binaries": []
+}

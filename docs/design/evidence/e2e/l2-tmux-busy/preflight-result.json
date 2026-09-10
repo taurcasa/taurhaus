@@ -1,0 +1,13 @@
+{
+  "status": "unavailable",
+  "classification": "harness",
+  "boundary": "before step 1 initialization",
+  "exit_code": 78,
+  "reason": "Missing explicit disposable auth.json source; no fallback permitted",
+  "runtime_started": false,
+  "codex_inputs": 0,
+  "claude_inputs": 0,
+  "seat_spend_usd": 0,
+  "owned_processes": [],
+  "auth_copied": false
+}

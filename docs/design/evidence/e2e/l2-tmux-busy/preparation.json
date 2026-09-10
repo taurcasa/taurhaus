@@ -1,0 +1,51 @@
+{
+  "initial_cargo_wait": {
+    "command": "pgrep -af '(^|/)cargo( |$)'",
+    "polls": 10,
+    "elapsed_s": 90.08801174163818,
+    "changes": [
+      {
+        "at": 1789026987.9818745,
+        "exit": 0,
+        "output": "2776021 <operator-path-redacted> test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip daemon::watch::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything --skip fs::watcher::tests::shared_tree_reconcile_stays_live_during_continued_callback_events\n"
+      },
+      {
+        "at": 1789027078.0698862,
+        "exit": 1,
+        "output": ""
+      }
+    ]
+  },
+  "initial_daemon_build": {
+    "argv": [
+      "just",
+      "build-daemon"
+    ],
+    "cwd": "/home/mstie/projects/taurhaus-l2-tmux-busy",
+    "target": "/home/mstie/projects/taurhaus-l2-tmux-busy/src-tauri/target",
+    "exit": 101,
+    "elapsed_s": 39.75505352020264,
+    "last_lines": [
+      "  cargo:rerun-if-changed=resources/templates/presets/taurhaus-core.yaml",
+      "  cargo:rerun-if-changed=resources/templates/presets/grok-pair.yaml",
+      "  cargo:rerun-if-changed=resources/templates/presets/design-ui.yaml",
+      "  cargo:rerun-if-changed=resources/templates/presets/pair.yaml",
+      "  cargo:rerun-if-changed=resources/templates/presets/full-team.yaml",
+      "  cargo:rerun-if-changed=resources/templates/presets/research-team.yaml",
+      "  cargo:rerun-if-changed=resources/mesh.version",
+      "  resource path `resources/mesh` doesn't exist",
+      "warning: build failed, waiting for other jobs to finish...",
+      "error: Recipe `build-daemon` failed with exit code 101"
+    ]
+  },
+  "bun_install": {
+    "command": "bun install --frozen-lockfile",
+    "exit": 0,
+    "last_lines": [
+      "+ mermaid@11.12.3",
+      "+ shiki@3.22.0",
+      "",
+      "769 packages installed [1484.00ms]"
+    ]
+  }
+}
