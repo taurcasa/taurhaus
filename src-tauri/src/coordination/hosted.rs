@@ -195,8 +195,15 @@ impl HostedMembers {
                 attempt,
             ) {
                 Ok(host) => break host,
-                Err(error @ LaunchError::ExitedBeforeReadiness { .. }) if attempt == 1 => {
+                Err(error @ LaunchError::ExitedBeforeReadiness { .. })
+                    if attempt == 1
+                        && guard
+                            .remaining()
+                            .is_ok_and(|left| left > Duration::from_secs(3)) =>
+                {
                     // Readiness never arrived: no thread or runtime publication to replay.
+                    // A retry needs budget beyond its own back-off; otherwise the exit is
+                    // reported as the #162 failure below instead of a bare deadline error.
                     error.log_exit((team, member), 2, true);
                     std::thread::sleep(Duration::from_millis(1500));
                     socket = directory.0.join("retry.sock");
@@ -1156,7 +1163,14 @@ if mode == 'twice' or not previous:
     sys.exit(1)"#,
         );
         std::fs::write(&launch.program, script).unwrap();
+        // A live child is judged by the launch deadline; shorten it so the timeout case
+        // takes seconds, not the production 30 s budget (the child itself sleeps 60 s).
+        if mode == "timeout" {
+            crate::coordination::stores::lock::LAUNCH_DEADLINE_OVERRIDE
+                .with(|d| d.set(Some(Duration::from_millis(2500))));
+        }
         let result = hosts.launch(&registry, "team", "seat", &launch);
+        crate::coordination::stores::lock::LAUNCH_DEADLINE_OVERRIDE.with(|d| d.set(None));
         let starts: Vec<Value> = std::fs::read_to_string(root.join("starts.jsonl"))
             .unwrap()
             .lines()
