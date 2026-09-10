@@ -1,4 +1,4 @@
-# UNAVAILABLE — Run 4f: steps 1–4 PASS; step 5 post-reply idle timeout; step 6 NOT RUN
+# IN PROGRESS — Run 5: candidate preparation green; runtime pending
 
 ## Historical run 2 — FAIL at step 1: idle Codex prompt, onboarding permanently pending
 
@@ -1283,3 +1283,22 @@ failure. The required independent Opus evidence lens is unavailable in this
 session and remains on the orchestrator's review route. No full lane PASS or
 review approval is claimed. Preparation and each passing numbered step were
 committed separately; no plan-ledger rows were edited.
+
+
+## Run 5 — candidate preparation (superseded below by the final run verdict)
+
+Run4f controller reused with the run5 evidence directory and required commit
+trailer. Candidate pins necessarily updated to Taurhaus `a7e6db7e` and Mesh
+`310144d`; no trial-sequence or predicate edits. The copied build/gate wrappers
+now wait only at three or more Cargo processes, polling every 30 seconds for
+at most 30 minutes. These are required run5 metadata/scheduling adaptations to
+the instruction to reuse the controller unchanged.
+
+Offline red: the new candidate test rejected the inherited old pins (exit 1).
+After updating the pins, all 39 inherited/adapted synthetic tests pass (exit 0);
+no real CLI, harness home or credential is accessed by those tests. See
+[red](l2-tmux-busy/run5/red.txt), [green](l2-tmux-busy/run5/green.txt), and
+[TDD result](l2-tmux-busy/run5/tdd-result.json).
+
+The independent Opus evidence lens is on the orchestrator's review route;
+this implementer has no callable Opus reviewer and cannot claim review approval.

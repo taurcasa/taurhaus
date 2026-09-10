@@ -1,0 +1,15 @@
+.......E...............................
+======================================================================
+ERROR: test_run5_rejects_wrong_product_mesh_or_protocol_before_launch (controller_test.Run4Tests.test_run5_rejects_wrong_product_mesh_or_protocol_before_launch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run5/controller_test.py", line 21, in test_run5_rejects_wrong_product_mesh_or_protocol_before_launch
+    validate_candidate(**good)
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run5/support.py", line 195, in validate_candidate
+    raise ValueError('run 4 requires unchanged Taurhaus product at 1db4f9bf')
+ValueError: run 4 requires unchanged Taurhaus product at 1db4f9bf
+
+----------------------------------------------------------------------
+Ran 39 tests in 0.022s
+
+FAILED (errors=1)
