@@ -1,0 +1,19 @@
+CLAUDE_DIR='/tmp/th-int-1vc78b94/claude' CODEX_HOME='/tmp/th-int-1vc78b94/codex' codex --sandbox read-only --ask-for-approval never -c 'noti
+fy=["/tmp/th-int-1vc78b94/home/.local/bin/taurhaus-daemon","codex-notify"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort="low"'mstie@whocare
+s:/tmp/th-int-1vc78b94/project$ CLAUDE_DIR='/tmp/th-int-1vc78b94/claude' CODEX_HOME='/tmp/th-int-1vc78b94/codex' codex --sandbox read-only -
+-ask-for-approval never -c 'notify=["/tmp/th-int-1vc78b94/home/.local/bin/taurhaus-daemon","codex-notify"]' -m 'gpt-5.6-luna' -c 'model_reas
+oning_effort="low"'
+╭────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)                     │
+│                                                │
+│ model:     gpt-5.6-luna low   /model to change │
+│ directory: /tmp/th-int-1vc78b94/project        │
+╰────────────────────────────────────────────────╯
+
+  Tip: This is GPT-6, a new generation of intelligence. Astra is state-of-the-art in coding, computer use, science, and professional work.
+  Give it a hard problem, a half-formed idea, or anything you've been meaning to build. See where it takes you.
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · /tmp/th-int-1vc78b94/project

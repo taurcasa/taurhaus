@@ -1,0 +1,68 @@
+{
+  "verdict": "FAIL \u2014 known defect (codex identity lane)",
+  "steps": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "FAIL \u2014 known defect (codex identity lane)"
+  },
+  "controller_exit": 1,
+  "step7_controller_error": "plain tmux delivery stalled",
+  "step7_classification_evidence": [
+    "run/step7-mesh-activity.json",
+    "run/step7-final-status.txt",
+    "run/step7-runtime-after.json",
+    "run/step7-final-pane-18.txt"
+  ],
+  "private_port": 31269,
+  "cleanup": {
+    "survivors": [],
+    "port_closed": true,
+    "auth_removed": true,
+    "root": "/tmp/th-int-1vc78b94",
+    "root_removed": true
+  },
+  "mesh_tree_clean": true,
+  "descriptor_enabled": false,
+  "daemon_jsonl_rows": 935,
+  "daemon_jsonl_sha256": "6354d13541995c8e228f145ae5045abdcc255f336ca5af5977f2482ec85e5fc9",
+  "daemon_jsonl_event_families": [
+    "activity.state.changed",
+    "codex.notify.appended",
+    "compaction.codex_hook.degraded",
+    "compaction.codex_host.delivered",
+    "compaction.codex_host.received",
+    "compaction.injected",
+    "compaction.skipped",
+    "coordination.step.completed",
+    "coordination.step.started",
+    "deadline.pass.completed",
+    "effort.sweep.awaiting_settings",
+    "hosted.instruction_sources.loaded",
+    "inotify.telemetry",
+    "launch.command.rendered",
+    "onboarding.delivery.observed",
+    "self_heal.pass.completed",
+    "session_scanner.scan.completed"
+  ],
+  "hosted_rpc_rejected": [],
+  "host_error_object": "none emitted; step 7 is a pre-input activity deferral",
+  "event_rows_losslessly_packed": 2070,
+  "event_payloads": 508,
+  "protocol_turns": 10,
+  "paid_inputs": 11,
+  "ordinary_api_equivalent_usd": 0.00839556,
+  "ordinary_conservative_usd": 0.1533144,
+  "compaction_metering_gaps": [
+    "01a08a94-9ddf-79e1-aa32-d95aec010449"
+  ],
+  "gate_exits": {
+    "gate-check-quick": 0,
+    "gate-lint": 0,
+    "gate-test-contracts": 0
+  },
+  "retained_bytes": 1725284
+}

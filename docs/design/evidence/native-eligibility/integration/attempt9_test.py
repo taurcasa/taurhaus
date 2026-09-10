@@ -1,8 +1,15 @@
 """Offline evidence guards; no CLI, credentials or model calls."""
 import unittest
-from attempt9_support import enforce_budget, retained_log, validate_compaction
+from attempt9_support import enforce_budget, retained_log, validate_compaction, pack_events, unpack_events
 
 class Evidence(unittest.TestCase):
+    def test_lossless_event_dedup(self):
+        rows=[{'at':1,'kind':'command_result','output':'pane'}, {'at':2,'kind':'command_result','output':'pane'}, {'at':3,'kind':'daemon_response','response':{'id':'r','result':[]}}]
+        packed,payloads=pack_events(rows)
+        self.assertEqual(unpack_events(packed,payloads),rows)
+        self.assertEqual(packed[0]['payload_ref'],packed[1]['payload_ref'])
+        self.assertEqual(len(payloads),2)
+
     def test_fresh_budget(self):
         enforce_budget(16, 3)
         with self.assertRaises(AssertionError): enforce_budget(17, 0)

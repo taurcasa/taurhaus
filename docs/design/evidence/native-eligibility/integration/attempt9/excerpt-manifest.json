@@ -1,0 +1,38 @@
+{
+  "mesh-build.log": {
+    "lines": 71,
+    "sha256_sanitized": "357021797b2b9900db1d49f29afa83cc32721e1e7a9e0a23e7993084530b21cb"
+  },
+  "daemon-build.log": {
+    "lines": 2,
+    "sha256_sanitized": "520cc370d8bf5eb977991399e1dffd8c6ee6aa59dd5f6c7a869d32ec727983e5"
+  },
+  "controller-output.txt": {
+    "lines": 2074,
+    "sha256_sanitized": "a564cc0fa0853b28b325381c3de61d8c48186e0c0507a712cead041759158883"
+  },
+  "gates-output.txt": {
+    "lines": 3,
+    "sha256_sanitized": "2c863e808a934758d39708ec02acf2985b28cb86623c679739ed886ae07bd99d"
+  },
+  "run/daemon-stderr.txt": {
+    "lines": 927,
+    "sha256_sanitized": "101615d579bc0b78eeee749d1dcd9388ce2821e61532b56c4bb6b15938151e9d"
+  },
+  "run/daemon-restart-stderr.txt": {
+    "lines": 565,
+    "sha256_sanitized": "393f3429dd53553a3ce9479f1c2b71a368e3ba09c7584981f616d41cf89561d3"
+  },
+  "gates/gate-lint.log": {
+    "lines": 18,
+    "sha256_sanitized": "4bf356b8c698f75dc9105f4a2764a0cc2dc9bbedf94cb51c292ed4f660297bd8"
+  },
+  "gates/gate-test-contracts.log": {
+    "lines": 89,
+    "sha256_sanitized": "ba06f85b6107a181b726f7cdf119c8010563f2046e1e46511541fa7a07ab2583"
+  },
+  "gates/gate-check-quick.log": {
+    "lines": 2718,
+    "sha256_sanitized": "6bd1d91db052b4b3b3b12a842c7d03199f9acdd61fdcae99da4fc1f5a7f90f4d"
+  }
+}

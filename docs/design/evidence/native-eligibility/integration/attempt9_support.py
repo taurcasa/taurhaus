@@ -21,3 +21,18 @@ def validate_compaction(before, after, rows, events, pane):
         assert any(r.get('event')=='compaction.codex_host.'+suffix for r in rows), 'missing host compaction '+suffix
     assert any(e.get('params',{}).get('item',{}).get('type')=='userMessage' and '[taurhaus] recovery_card' in json.dumps(e) for e in events), 'no recovery card user item'
     assert '[taurhaus] recovery_card' in pane, 'attached pane did not show recovery card'
+
+def pack_events(rows):
+    """Intern repeated command/capture payloads without losing timestamps or order."""
+    import hashlib
+    payloads={}; packed=[]
+    for row in rows:
+        body={k:v for k,v in row.items() if k!='at'}
+        key=hashlib.sha256(json.dumps(body,sort_keys=True).encode()).hexdigest()[:16]
+        assert key not in payloads or payloads[key]==body
+        payloads[key]=body
+        packed.append({'at':row['at'],'payload_ref':key})
+    return packed,payloads
+
+def unpack_events(rows,payloads):
+    return [{'at':row['at'],**payloads[row['payload_ref']]} for row in rows]

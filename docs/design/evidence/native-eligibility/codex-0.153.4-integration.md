@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — IN PROGRESS (attempt 9)
+# Codex 0.153.4 integration — FAIL step 7: known defect (codex identity lane), attempt 9
 
 2026-09-09. **Eligibility remains disabled.** The prescribed canonical setup
 stopped before member launch: the real Mesh command `team delivery --owner team`
@@ -1922,74 +1922,202 @@ are the step-5 recovery failure, unrun lifecycle steps, and unreported compact
 billing; the earlier step-3 harness limitation has been resolved by this run.
 
 
-### Attempt 9 — isolated production integration, 2026-09-10
+### Attempt 9 — FAIL step 7: known defect (codex identity lane), 2026-09-10
 
-Pair: Taurhaus `ddb7aef1` (contains hosted-compaction PR #160 / `06031992`,
-protocol **27**); Mesh detached RC `a6ee296`. Both checkout-local builds exit 0.
-The temporary compiled descriptor admits only 0.153.4 with
-`taurhaus-daemon-owned-thread/1`, `strict-config/1`, `daemon-owned/1`,
-transport `unix-websocket`. No Taurhaus product changes.
+**Steps 1–6 PASS. Step 7 FAIL — known defect (codex identity lane).** The
+hosted-compaction fix works on the real paired host. Normal daemon restart also
+preserves the thread and delivery. Operational remove/re-add launches a plain
+tmux seat, but its delivery stays `pending: activity not freshly idle` and the
+published Mesh activity snapshot reports `activity_confidence: "uncertain"`.
+The 120-second delivery deadline expired. **No descriptor flip, no Mesh fix
+commit, no Taurhaus product change.** Mesh's scratch descriptor edit was restored;
+the detached `a6ee296` tree is clean. All required Taurhaus gates passed.
 
-Evidence paths below are relative to [attempt9/run](integration/attempt9/run/).
-Fresh authorization: at most 16 Codex turns and USD 3; Luna/low only, no Claude
-model turn. Only the explicitly authorized auth file was copied into scratch.
-Private root `/tmp/th-int-1vc78b94`, private tmux/PID namespace, scratch project
-AGENTS.md, production canonical initialize with the UI default retention policy.
-No observer socket connection and no fault injection.
+#### Pair, isolation and ordered outcomes
+
+Taurhaus start `ddb7aef1`, containing PR #160 / `06031992`, protocol **27**;
+Mesh detached RC **`a6ee296`** in `/home/mstie/projects/mesh-trial` only. Both
+checkout-local builds exit **0**, with the requested no-Cargo polling before
+builds (daemon waited 270 seconds). `just ensure-tauri-resources` exited 0.
+The temporary compiled 0.153.4 descriptor used `disposition: "trial"`, enabled
+true and exactly `taurhaus-daemon-owned-thread/1`, `strict-config/1`,
+`daemon-owned/1`, transport `unix-websocket`. Binary hashes and launch commands
+are in the controller event trace. The inherited path sanitizer over-redacted
+Mesh build metadata's cwd/target; attempt9-build.py pins their exact worktree
+and checkout-local target, and mesh-build.json retains command/exit/preflight.
+
+Scratch `/tmp/th-int-1vc78b94`, private port **31269**, private HOME, tmux server
+and PID namespace, scratch Codex and credential-free Claude homes. Only the
+explicitly authorized auth.json was copied, mode 0600; the model's scratch git
+project contains a short AGENTS.md. Production `coordination.initialize_team`
+created a login-only Claude lead plus one Luna/low member, with delivery
+app_server **at creation**, canonical messaging and the MeshTeamBuilder default
+retention policy. No observer connected to the app-server socket. No process was
+paused or frozen. Only the normal step-6 daemon stop/start, production step-7
+operations and final owned-process teardown intervened in process lifecycles.
+
+Paths below are relative to [attempt9/run](integration/attempt9/run/).
+[Duplicate aliases](integration/attempt9/duplicate-aliases.json) resolve snapshots
+stored only once. Each green runtime step has its own commit.
 
 | Step | Outcome | S-runtime evidence |
 |---|---|---|
-| 1. Hosted startup | PASS | initialize-result.json; step1-runtime.json; step1-identities.json; generated-config-0.toml; step1-final-pane-2.txt; step1-status.txt. Startup card displayed and answered; config selects app_server; instructionSources names scratch AGENTS.md. |
-| 2. Idle delivery/read | PASS | step2-after-status.txt selects app_server from config; pane/input/reply carry the marker; native_enqueued turn/start receipt; step2-journal-before-read.json has no consumed_by_read, explicit read alone creates it in step2-journal-after-read.json. |
-| 3. Active deferral | PASS | step3-pending.json records pending/thread_active; step3-receipts.json records eventual native_enqueued turn/start; step3-exposure.json proves one user item and one reply; step3-final-pane-2.txt. |
-| 4. Typed input/passive locks | PASS | step4-pending.json; step4-exposure.json shows one user and reply per marker, typed reply before socket reply; step4-final-pane-2.txt; step4-locks.jsonl has real daemon and Mesh flock/fdinfo holders on one inode. |
-| 5. Compaction recovery | PASS | step5-runtime-before/after.json: contextGeneration 0→1, same thread; taurhaus.log.jsonl: compaction.codex_host.received/delivered; step5-boundary-events.json: recovery card user item; step5-final-pane-2.txt shows card immediately after Context compacted. |
-| 6. Daemon restart | PASS | events.jsonl records normal SIGINT stop/start; step6-resume-result.json reports owned thread resumed in pane %14; step6-runtime-before/after.json preserves thread; post-restart mesh send/reply and native_enqueued receipt land (step6-receipts.json, step6-final-pane-14.txt). |
-| 7. Operational rollback | NOT RUN | Pending ordered execution. |
+| 1. Hosted startup | **PASS** | initialize-result.json; step1-runtime.json; step1-identities.json; generated-config-0.toml; step-1-pane-2.txt. Socket child and strict-config attached TUI launched, instructionSources names scratch AGENTS.md, startup card displayed and answered. |
+| 2. Idle delivery/read | **PASS** | step2-after-status.txt selects app_server source=config; marker in pane and model reply; native_enqueued turn/start with thread/turn ids. step2-journal-before-read.json contains no consumed_by_read; step2-explicit-read.txt alone creates it in step2-journal-after-read.json. |
+| 3. Active deferral | **PASS** | step3-pending.json records pending/thread_active; step3-receipts.json records eventual native_enqueued turn/start; step3-exposure.json proves one user item and one reply; step3-final-pane-2.txt. |
+| 4. Typed input/passive locks | **PASS** | step4-pending.json; step4-exposure.json shows one input/reply per marker, operator reply before socket reply; step4-final-pane-2.txt. step4-locks.jsonl has daemon and Mesh flock/fdinfo holders on one stable inode. |
+| 5. Compaction recovery | **PASS** | step5-runtime-before/after.json: contextGeneration 0→1, same thread; complete taurhaus.log.jsonl contains compaction.codex_host.received/delivered; step5-boundary-events.json shows recovery-card user item; step5-compacted-pane-2.txt shows it after Context compacted. |
+| 6. Daemon restart | **PASS** | Event trace records normal SIGINT stop/start; step6-resume-result.json reports owned thread resumed in pane %14; step6-runtime-before/after.json preserves thread; post-restart mesh send/reply/native_enqueued receipt (step6-receipts.json, step6-final-pane-14.txt). |
+| 7. Operational rollback | **FAIL — known defect (codex identity lane)** | In-place refusal in step7-inplace-refusal.txt; stop/remove/add RPCs succeed (step7-stop/remove/add.json), delivery tmux at re-add. step7-runtime-after.json: terminalContract 1, no appServer/member daemon; plain pane %18. step7-final-status.txt defers on activity not freshly idle; step7-mesh-activity.json says uncertain; step7-final-pane-18.txt lacks the marker after 120 seconds. |
 
-Thread: `01a08a91-af30-78f1-8cda-ee5e52d604e0`.
-Step 1: one generation, 10,772 input / 6,912 cached / 32 output tokens;
-API-equivalent **$0.00094864**, conservative **$0.0129648**. Actual billing is
-not exposed by the host. The cumulative host-event ledger is cost-ledger.json.
+Hosted thread throughout steps 1–6:
+`01a08a91-af30-78f1-8cda-ee5e52d604e0`. Compaction turn
+`01a08a94-9ddf-79e1-aa32-d95aec010449`, item
+`01a08a94-9deb-7e52-94e1-acbfac1bc31e`: daemon received at
+**09:09:57.549Z**, delivered at **09:09:57.634Z**. Recovery card turn
+`01a08a94-b8cf-7322-97da-75bad48b64e4` completed and was answered:
 
-Exact reproduction (each numbered step is inspected and committed before next):
+```text
+• Context compacted
+› [taurhaus] recovery_card
+  ... "context":[1,1] ...
+• Awaiting a valid assignment and required context from the team lead.
+```
+
+#### Exact rollback refusal and failure
+
+The real in-place Mesh command was:
+
+```sh
+mesh team adapter --member seat --mode tmux --team integration --name lead
+```
+
+Its exact response reason and CLI error (exit 1):
+
+```text
+IO error: delivery: app_server_switch_requires_5b_recoverable_relaunch_packet
+error: unauthorized: adapter change not applied; inspect outcome
+```
+
+Then the scratch daemon accepted `stop_session` for `%14`,
+`coordination.remove_member` and `coordination.add_agent` for the same seat name,
+with `delivery: "tmux"`, Luna/low and the scratch project. Exact payloads and
+run ids are in the event trace. The new plain pane `%18` displays the input
+prompt without a message. Mesh selects `mode=tmux source=default`, but reports:
+
+```text
+deferred=IO error: delivery: pending: activity not freshly idle
+```
+
+Its published activity file has `pane_alive: true`, `pane_foreign: false`,
+`active_non_shell_process: true`, `recent_io: false`, and
+`activity_confidence: "uncertain"`. The daemon's separate UI-facing session
+snapshot labels the process idle with low confidence/no attribution and maps it
+to the old hosted rollout. This is the commissioned known identity defect;
+there is no claimed tmux exposure or successful named-session rollback.
+The raw controller failure is `plain tmux delivery stalled`. The final audit
+classifies it from the authoritative Mesh activity file; the inherited driver
+looked for uncertain in the separate UI snapshot, so it did not itself attach
+the known-defect label. A read-only supplemental collector retained the actual
+published activity file before cleanup.
+
+`hosted.rpc.rejected` rows: **none in the complete run log**. Host error object:
+**none emitted**. This is a pre-input activity deferral; receipts and health
+reasons are retained, not replaced by an invented app-server error.
+
+#### Every generation and cost
+
+Fresh budget: **≤16 Codex inputs/turns, ≤USD 3**. Observed: **10 protocol turns,
+11 paid inputs/generations including typed steer and compaction**, **zero Claude
+turns**, and **no additional model turn in step 7**. Source:
+[host events](integration/attempt9/run/host-events.jsonl),
+[final ledger](integration/attempt9/run/cost-ledger.json) and retained rollout
+usage-events.json. Packet rates: $0.20/$0.02/$1.20 per million
+input/cached/output tokens; these are API-equivalent estimates, not invoices.
+
+| Generation | Turn ID | Input / cached / output | API-equivalent USD |
+|---|---|---|---|
+| Startup | `01a08a91-af5b-7bc2-b4a6-260c5ec08a35` | 10772 / 6912 / 32 | $0.00094864 |
+| Idle delivery | `01a08a92-cfb6-7792-9765-b8466cd9c00c` | 11838 / 6912 / 11 | $0.00113664 |
+| Active timing input | `01a08a93-422f-7fa1-8990-7f36f67d11a7` | 11880 / 11008 / 519 | $0.00101736 |
+| Deferred delivery | `01a08a93-7d42-7f30-9fd8-f3dd3671e78b` | 12505 / 9984 / 23 | $0.00073148 |
+| Ordering timing input | `01a08a93-d85e-76e3-93ea-15c58892454b` | 12559 / 12032 / 495 | $0.00094004 |
+| Typed steer (same turn) | `01a08a93-d85e-76e3-93ea-15c58892454b` | 13073 / 11008 / 9 | $0.00064396 |
+| Pending socket delivery | `01a08a94-0f9c-7260-8672-1887b859d85d` | 13184 / 12032 / 9 | $0.00048184 |
+| Compaction | `01a08a94-9ddf-79e1-aa32-d95aec010449` | 0 / 0 / 0 | **Unreported; counter reset** |
+| Daemon recovery card | `01a08a94-b8cf-7322-97da-75bad48b64e4` | 12463 / 6912 / 59 | $0.00131924 |
+| Restart recovery card | `01a08a95-4f2c-7980-ac5f-5ddb56fed7b1` | 13733 / 12032 / 17 | $0.00060124 |
+| Post-restart delivery | `01a08a95-625f-7033-8265-4c561fbd139b` | 14572 / 13056 / 9 | $0.00057512 |
+
+Ordinary-generation subtotal **$0.00839556**; charging every ordinary token at
+$1.20/M gives **$0.1533144**. Compaction reported nonzero totalTokens with all
+billable classes zero, a counter-reset shape. Its cost is **unreported, not
+zero**. The final ledger marks that generation's costs null and metering
+incomplete. Actual billed USD and the full-run USD cap cannot be independently
+verified from this interface; ordinary measured spend is far below $3. No
+further paid attempt or budget reset occurred.
+
+#### Reproduction, gates, retention and teardown
+
+The retained attempt9-controller.py/actions.py/steps.py adapt the attempt-8
+continuation, preserving receipt polling through scheduler retries and passive
+lock observation. Run from this checkout only:
 
 ```sh
 just ensure-tauri-resources
 TRIAL_EVIDENCE_LABEL=attempt9 python3 docs/design/evidence/native-eligibility/integration/attempt9-build.py
 python3 docs/design/evidence/native-eligibility/integration/attempt9_test.py
 python3 docs/design/evidence/native-eligibility/integration/attempt9-controller.py attempt9/run
-# Separate shell, after inspection_ready:
+# Separate shell after inspection_ready; inspect and commit after each:
 python3 docs/design/evidence/native-eligibility/integration/attempt9-steps.py 1
-# Then steps 2 through 7, in order while passing.
+python3 docs/design/evidence/native-eligibility/integration/attempt9-steps.py 2
+python3 docs/design/evidence/native-eligibility/integration/attempt9-steps.py 3
+python3 docs/design/evidence/native-eligibility/integration/attempt9-steps.py 4
+python3 docs/design/evidence/native-eligibility/integration/attempt9-steps.py 5
+python3 docs/design/evidence/native-eligibility/integration/attempt9-steps.py 6
+python3 docs/design/evidence/native-eligibility/integration/attempt9-steps.py 7
+# While step 7 waits, after step7-runtime-after.json exists, another shell:
+python3 docs/design/evidence/native-eligibility/integration/attempt9-activity.py
+# Gates use separate credential-free homes, private namespace and inert CLIs:
 TRIAL_EVIDENCE_LABEL=attempt9 python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+# Once the failed controller has torn down (audit is a one-time finalizer):
+python3 docs/design/evidence/native-eligibility/integration/attempt9-audit.py
+# Losslessly expand the retained command/RPC trace:
+python3 docs/design/evidence/native-eligibility/integration/attempt9-audit.py --expand
 ```
 
-The controller/actions/steps reuse attempt-8 continuation modules; new offline
-red/green tests verify the fresh budget, complete unfiltered/deduplicated daemon
-JSONL, and generation/log/card compaction evidence. Initial red: missing
-attempt9_support; green: three tests. Reused tests: ten pass. Every asynchronous
-step wait has at least a 100-second deadline. No evidence-size abort.
+| Gate / verification | Exit |
+|---|---|
+| `just check-quick` | **0** |
+| `just lint` | **0** |
+| `just test-contracts` | **0** |
+| attempt9 offline evidence tests | **0**, four tests; initial missing-module red, then missing pack_events red before lossless-dedup implementation |
+| Reused continuation/passive/retention tests | **0**, ten tests |
+| Final evidence/cleanup audit | **0** |
+| `just test-rust-unit` | Not required: no src-tauri diff |
+| Mesh `just check-quick`, `just lint`, `just test` | Not run: passing flip/fix condition not met |
 
-Step 2 incremental spend: **$0.00113664** API-equivalent; cumulative two
-turns **$0.00208528**, conservative **$0.0271836**.
+[Final audit](integration/attempt9/final-audit.json) verifies all owned PID/start
+identities absent, private port **31269** closed, scratch root/auth removed and
+Mesh tree clean. Controller and step-7 driver exit 1 for the observed delivery
+failure; gates, build and supplemental collector children were waited to exit.
 
-Step 3 cumulative: four protocol turns; **$0.00383412** API-equivalent,
-**$0.057096** conservative.
+The **complete daemon JSONL contains 935 deduplicated rows**, all 17 event
+families retained, including every periodic telemetry row. Its SHA-256 is
+`6354d13541995c8e228f145ae5045abdcc255f336ca5af5977f2482ec85e5fc9`.
+The 2,070 controller event rows retain timestamps/order through 508 interned
+payloads (events.jsonl + event-payloads.json); the offline round-trip assertion
+verifies lossless expansion. Duplicate file aliases preserve every snapshot;
+pane captures are ≤60 lines, with trailing blank padding removed (the lossless
+command trace keeps the original output). Stderr/build/gate excerpts are bounded, with source
+line counts and sanitized digests. No secrets, account usage rows or installation
+ids are retained. Evidence is about **1.73 MB**, exceeding the approximate 1 MB
+guidance to preserve complete JSONL and lossless command/RPC evidence; size never
+aborted a step.
 
-Step 4 cumulative: six protocol turns / seven response generations (typed steer
-shares a turn); **$0.00589996** API-equivalent, **$0.1042908** conservative.
-
-Step 5 compaction turn `01a08a94-9ddf-79e1-aa32-d95aec010449`, item
-`01a08a94-9deb-7e52-94e1-acbfac1bc31e`. The daemon received the completed
-boundary at 09:09:57.549Z and logged delivery at 09:09:57.634Z. Recovery card
-turn `01a08a94-b8cf-7322-97da-75bad48b64e4` completed and was answered.
-Cumulative: eight protocol turns / nine paid inputs including typed steer;
-ordinary metered subtotal **$0.00721920**, conservative **$0.1193172**.
-Compaction token classes are zero with a nonzero totalTokens reset. Its billed
-cost is **unreported, not zero**; final accounting will identify that gap rather
-than treating the inherited live ledger's zero calculation as a billing claim.
-
-Step 6 cumulative: 10 protocol turns; ordinary metered subtotal
-**$0.00839556**, conservative **$0.1533144**, plus
-the already-disclosed unreported compaction cost. All three required gates exit 0.
+No Taurhaus product/registry patch, new dependency, install, release, plan-ledger
+edit, branch switch, foreign checkout mutation or unowned process intervention.
+Non-evidence insertions **0/200**. No descriptor flip or conditional missing-runtime
+refusal fix was made because step 7 failed. The Opus evidence lens is unavailable
+in this session. Remaining limitations are the known rollback identity defect,
+unreported compaction billing, and that missing cross-model review.
