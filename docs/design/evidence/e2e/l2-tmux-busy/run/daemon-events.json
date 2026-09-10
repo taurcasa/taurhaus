@@ -1,0 +1,671 @@
+[
+  {
+    "ts": "2026-09-10T08:30:23.599Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.started",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "running",
+    "step": "validate_configuration",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.599Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.completed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "succeeded",
+    "step": "validate_configuration",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.599Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.started",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "running",
+    "step": "create_team",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.750Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.completed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "succeeded",
+    "step": "create_team",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.750Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.started",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "running",
+    "step": "add_lead",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.769Z",
+    "level": "WARN",
+    "component": "coordination",
+    "event": "coordination.runtime.record_skipped",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Member runtime record was skipped",
+    "member": "alpha",
+    "reason": "Store error: failed to parse runtime/alpha.json for team 'l2-busy': EOF while parsing a value at line 1 column 0",
+    "team": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.771Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.completed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "succeeded",
+    "step": "add_lead",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.771Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.started",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "running",
+    "step": "create_panes",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.894Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.completed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "succeeded",
+    "step": "create_panes",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.894Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.started",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "running",
+    "step": "launch_sessions",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.904Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.completed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "succeeded",
+    "step": "launch_sessions",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.904Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.started",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "running",
+    "step": "join_mesh",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.958Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.completed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "succeeded",
+    "step": "join_mesh",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.958Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.started",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "running",
+    "step": "start_daemons",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.958Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.completed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "succeeded",
+    "step": "start_daemons",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:23.958Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.started",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "running",
+    "step": "opt_in_delivery",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:24.047Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.completed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "succeeded",
+    "step": "opt_in_delivery",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:24.047Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.started",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "running",
+    "step": "send_onboarding",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:24.358Z",
+    "level": "INFO",
+    "component": "coordination",
+    "event": "onboarding.delivery.observed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "accepted_bytes": 2249,
+    "attempt": 1,
+    "card_key": {
+      "card_schema": 1,
+      "context": [
+        1,
+        0
+      ],
+      "contract": {
+        "effective_role_revision": "37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b",
+        "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+        "packet_revision": "",
+        "role_id": ""
+      },
+      "recipient": [
+        "22cb580d00c7c335b10eb8d224da01c9d79c2a1708c8c67bec751348df72bd74",
+        "0cbcd466-6000-4578-8698-9e5d811eb667"
+      ],
+      "roots": {
+        "harness_account_root": "/tmp/th-l2-enwdjc07/claude",
+        "launch_namespace": "native",
+        "resolved_mesh_config_root": "/tmp/th-l2-enwdjc07/claude",
+        "resolved_project_root": "/tmp/th-l2-enwdjc07/project",
+        "resolved_teams_root": "/tmp/th-l2-enwdjc07/claude/teams",
+        "root_authority_revision": "0"
+      }
+    },
+    "content_revision": "291c00a719d90df956cc475e24cbdf8b954d43dea87cf1f20780aedfea86b486",
+    "delivery_id": "3d28e7366c0dd523dd78eef1cc65d1d61ef31adf6f687ad2c3e21f7375ca0bed",
+    "generated_bytes": 2249,
+    "journal": {
+      "delivery_id": "36b5e9a7-f406-4478-957c-a8e5923cc112",
+      "message_id": "f35a6286-4d94-47e9-8876-31333310c3d0",
+      "projection": "pending",
+      "sequence": 1
+    },
+    "kind": "baseline",
+    "obligation_key": [
+      [
+        "22cb580d00c7c335b10eb8d224da01c9d79c2a1708c8c67bec751348df72bd74",
+        "0cbcd466-6000-4578-8698-9e5d811eb667"
+      ],
+      [
+        1,
+        0
+      ]
+    ],
+    "observations": [
+      [
+        "accepted",
+        "2026-09-10T08:30:24.358577883Z",
+        "inbox"
+      ]
+    ],
+    "offered_bytes": 0,
+    "path": "inbox",
+    "returned_by_read_bytes": 0,
+    "satisfied_obligations": [
+      [
+        [
+          "22cb580d00c7c335b10eb8d224da01c9d79c2a1708c8c67bec751348df72bd74",
+          "0cbcd466-6000-4578-8698-9e5d811eb667"
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    ],
+    "stage": "accepted",
+    "supersedes_revision": null
+  },
+  {
+    "ts": "2026-09-10T08:30:24.685Z",
+    "level": "INFO",
+    "component": "coordination",
+    "event": "onboarding.delivery.observed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "accepted_bytes": 2634,
+    "attempt": 1,
+    "card_key": {
+      "card_schema": 1,
+      "context": [
+        1,
+        0
+      ],
+      "contract": {
+        "effective_role_revision": "669ad673e1778e0fc6f6bfa622a91fb147be2951e117844664f448bb1eb6a31d",
+        "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+        "packet_revision": "",
+        "role_id": ""
+      },
+      "recipient": [
+        "22cb580d00c7c335b10eb8d224da01c9d79c2a1708c8c67bec751348df72bd74",
+        "09606920-2698-440f-8781-060901caf11a"
+      ],
+      "roots": {
+        "harness_account_root": "/tmp/th-l2-enwdjc07/codex",
+        "launch_namespace": "native",
+        "resolved_mesh_config_root": "/tmp/th-l2-enwdjc07/claude",
+        "resolved_project_root": "/tmp/th-l2-enwdjc07/project",
+        "resolved_teams_root": "/tmp/th-l2-enwdjc07/claude/teams",
+        "root_authority_revision": "0"
+      }
+    },
+    "content_revision": "bf78b773effc32d38231c8041b1e7a424668d56ac5cd355649ffa186ab7f2793",
+    "delivery_id": "1b1648ab42eb4970ba7fa556571a3b128d26ea86322ee1c533235ba88b4ccce2",
+    "generated_bytes": 2634,
+    "journal": {
+      "delivery_id": "024e6ca4-9cde-4860-90e2-cbfb24e705fc",
+      "message_id": "8ed9b206-5ebd-4310-aa88-bfe1ce709f5c",
+      "projection": "pending",
+      "sequence": 2
+    },
+    "kind": "baseline",
+    "obligation_key": [
+      [
+        "22cb580d00c7c335b10eb8d224da01c9d79c2a1708c8c67bec751348df72bd74",
+        "09606920-2698-440f-8781-060901caf11a"
+      ],
+      [
+        1,
+        0
+      ]
+    ],
+    "observations": [
+      [
+        "accepted",
+        "2026-09-10T08:30:24.685319866Z",
+        "inbox"
+      ]
+    ],
+    "offered_bytes": 0,
+    "path": "inbox",
+    "returned_by_read_bytes": 0,
+    "satisfied_obligations": [
+      [
+        [
+          "22cb580d00c7c335b10eb8d224da01c9d79c2a1708c8c67bec751348df72bd74",
+          "09606920-2698-440f-8781-060901caf11a"
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    ],
+    "stage": "accepted",
+    "supersedes_revision": null
+  },
+  {
+    "ts": "2026-09-10T08:30:24.693Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "coordination.step.completed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Coordination step lifecycle event",
+    "operation": "initialize_team",
+    "status": "succeeded",
+    "step": "send_onboarding",
+    "team_name": "l2-busy"
+  },
+  {
+    "ts": "2026-09-10T08:30:25.769Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "idle",
+    "pid": 139,
+    "source": "process_io",
+    "to": "active",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:30:37.269Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "active",
+    "pid": 139,
+    "source": "none",
+    "to": "idle",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:30:40.269Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "idle",
+    "pid": 139,
+    "source": "process_io",
+    "to": "active",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:30:42.271Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "active",
+    "pid": 139,
+    "source": "none",
+    "to": "idle",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:30:43.269Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "idle",
+    "pid": 139,
+    "source": "process_io",
+    "to": "active",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:30:44.269Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "active",
+    "pid": 139,
+    "source": "none",
+    "to": "idle",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:30:48.269Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "idle",
+    "pid": 139,
+    "source": "process_io",
+    "to": "active",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:03.269Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "active",
+    "pid": 139,
+    "source": "none",
+    "to": "idle",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:07.271Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "idle",
+    "pid": 139,
+    "source": "process_io",
+    "to": "active",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:09.771Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "active",
+    "pid": 139,
+    "source": "none",
+    "to": "idle",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:13.769Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "idle",
+    "pid": 139,
+    "source": "process_io",
+    "to": "active",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:14.771Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "active",
+    "pid": 139,
+    "source": "none",
+    "to": "idle",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:18.269Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "idle",
+    "pid": 139,
+    "source": "process_io",
+    "to": "active",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:23.771Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "active",
+    "pid": 139,
+    "source": "none",
+    "to": "idle",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:32.771Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "idle",
+    "pid": 139,
+    "source": "process_io",
+    "to": "active",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:33.769Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "active",
+    "pid": 139,
+    "source": "none",
+    "to": "idle",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:36.269Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "idle",
+    "pid": 139,
+    "source": "process_io",
+    "to": "active",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:37.271Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "active",
+    "pid": 139,
+    "source": "none",
+    "to": "idle",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:38.269Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "idle",
+    "pid": 139,
+    "source": "process_io",
+    "to": "active",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:40.269Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "active",
+    "pid": 139,
+    "source": "none",
+    "to": "idle",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:46.271Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "idle",
+    "pid": 139,
+    "source": "process_io",
+    "to": "active",
+    "tool": "codex"
+  },
+  {
+    "ts": "2026-09-10T08:31:47.269Z",
+    "level": "INFO",
+    "component": "backend",
+    "event": "activity.state.changed",
+    "run_id": "run_61b1a741aa744378844fee984c20bbfc",
+    "message": "Session activity state changed",
+    "from": "active",
+    "pid": 139,
+    "source": "none",
+    "to": "idle",
+    "tool": "codex"
+  }
+]

@@ -1,0 +1,549 @@
+[
+  {
+    "pid": 3275023,
+    "start_ticks": "24956093",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l2-enwdjc07",
+      "/tmp/th-l2-enwdjc07",
+      "--chdir",
+      "/tmp/th-l2-enwdjc07/project",
+      "/bin/bash",
+      "/tmp/th-l2-enwdjc07/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3275026,
+    "start_ticks": "24956093",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l2-enwdjc07",
+      "/tmp/th-l2-enwdjc07",
+      "--chdir",
+      "/tmp/th-l2-enwdjc07/project",
+      "/bin/bash",
+      "/tmp/th-l2-enwdjc07/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3275027,
+    "start_ticks": "24956093",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l2-enwdjc07/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3275028,
+    "start_ticks": "24956093",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 3275041,
+    "start_ticks": "24956104",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3275043,
+    "start_ticks": "24956104",
+    "argv": [
+      "/tmp/th-l2-enwdjc07<operator-path-redacted>",
+      "--port",
+      "45371",
+      "--data-dir",
+      "/tmp/th-l2-enwdjc07/data",
+      ""
+    ]
+  },
+  {
+    "pid": 3275083,
+    "start_ticks": "24956122",
+    "argv": [
+      "/bin/bash",
+      "-ilc",
+      "codex --version",
+      ""
+    ]
+  },
+  {
+    "pid": 3275194,
+    "start_ticks": "24956139",
+    "argv": [
+      "/tmp/th-l2-enwdjc07<operator-path-redacted>",
+      "team",
+      "create",
+      "--messaging-canonical",
+      "--isolated",
+      "--retention-policy",
+      "/tmp/th-l2-enwdjc07/claude/teams/.canonical-policy-502cd78c-4991-4913-a84f-6938eac7dbe6.json",
+      "--claude-dir",
+      "/tmp/th-l2-enwdjc07/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3275286,
+    "start_ticks": "24956160",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l2-enwdjc07/project' && CLAUDE_DIR='/tmp/th-l2-enwdjc07/claude' CLAUDE_CONFIG_DIR='/tmp/th-l2-enwdjc07/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l2-busy' --agent-name 'lead' --agent-id 'lead@l2-busy' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3275293,
+    "start_ticks": "24956161",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "l2-busy",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@l2-busy",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3275308,
+    "start_ticks": "24956163",
+    "argv": [
+      "/init",
+      "/mnt/c/Windows/System32/reg.exe",
+      "/mnt/c/Windows/System32/reg.exe",
+      "query",
+      "HKCU\\SOFTWARE\\Policies\\ClaudeCode",
+      "/v",
+      "Settings",
+      ""
+    ]
+  },
+  {
+    "pid": 3275309,
+    "start_ticks": "24956163",
+    "argv": [
+      "/tmp/th-l2-enwdjc07<operator-path-redacted>",
+      "--terminal-child",
+      "1789029033790",
+      "tmux",
+      "-S",
+      "/tmp/th-l2-enwdjc07/tmux/tmux-1000/default",
+      "has-session",
+      "-t",
+      "taurhaus",
+      ""
+    ]
+  },
+  {
+    "pid": 3275339,
+    "start_ticks": "24956166",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l2-enwdjc07/project' && CLAUDE_DIR='/tmp/th-l2-enwdjc07/claude' CODEX_HOME='/tmp/th-l2-enwdjc07/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l2-enwdjc07<operator-path-redacted>\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3275343,
+    "start_ticks": "24956167",
+    "argv": [
+      "codex",
+      "--yolo",
+      "--dangerously-bypass-hook-trust",
+      "-c",
+      "notify=[\"/tmp/th-l2-enwdjc07<operator-path-redacted>\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3275419,
+    "start_ticks": "24956169",
+    "argv": [
+      "/tmp/th-l2-enwdjc07<operator-path-redacted>",
+      "join",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      "--type",
+      "lead",
+      "--model",
+      "claude-haiku-4-5",
+      "--claude-dir",
+      "/tmp/th-l2-enwdjc07/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 3275429,
+    "start_ticks": "24956172",
+    "argv": [
+      "/tmp/th-l2-enwdjc07<operator-path-redacted>",
+      "join",
+      "--team",
+      "l2-busy",
+      "--name",
+      "alpha",
+      "--type",
+      "general-purpose",
+      "--model",
+      "gpt-5.6-luna",
+      "--claude-dir",
+      "/tmp/th-l2-enwdjc07/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 3275461,
+    "start_ticks": "24956175",
+    "argv": [
+      "/tmp/th-l2-enwdjc07<operator-path-redacted>",
+      "team",
+      "delivery",
+      "--owner",
+      "team",
+      "--claude-dir",
+      "/tmp/th-l2-enwdjc07/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3275525,
+    "start_ticks": "24956196",
+    "argv": [
+      "/tmp/th-l2-enwdjc07<operator-path-redacted>",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "lead",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: lead on l2-busy; key={\"card_schema\":1,\"recipient\":[\"22cb580d00c7c335b10eb8d224da01c9d79c2a1708c8c67bec751348df72bd74\",\"0cbcd466-6000-4578-8698-9e5d811eb667\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l2-enwdjc07/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l2-enwdjc07/claude\",\"harness_account_root\":\"/tmp/th-l2-enwdjc07/claude\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l2-enwdjc07/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 291c00a719d90df956cc475e24cbdf8b954d43dea87cf1f20780aedfea86b486; source=a8d97ad61031cbcac3988f3b68c520a8a5a4cb0a780f3e3a2fe21bf4bef83bf2; audience=unavailable\nProject cwd: /tmp/th-l2-enwdjc07/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: unavailable; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 08:30:24.105154835 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nHOLD: minimal role steering unavailable; owner: team lead.\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:3d28e7366c0dd523dd78eef1cc65d1d61ef31adf6f687ad2c3e21f7375ca0bed",
+      "--claude-dir",
+      "/tmp/th-l2-enwdjc07/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3275723,
+    "start_ticks": "24956224",
+    "argv": [
+      "/tmp/th-l2-enwdjc07<operator-path-redacted>",
+      "journal",
+      "accept",
+      "--producer",
+      "taurhaus-daemon",
+      "--recipient",
+      "alpha",
+      "--text",
+      "[taurhaus] recovery_card\nIdentity: alpha on l2-busy; key={\"card_schema\":1,\"recipient\":[\"22cb580d00c7c335b10eb8d224da01c9d79c2a1708c8c67bec751348df72bd74\",\"09606920-2698-440f-8781-060901caf11a\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l2-enwdjc07/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l2-enwdjc07/claude\",\"harness_account_root\":\"/tmp/th-l2-enwdjc07/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l2-enwdjc07/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"669ad673e1778e0fc6f6bfa622a91fb147be2951e117844664f448bb1eb6a31d\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: bf78b773effc32d38231c8041b1e7a424668d56ac5cd355649ffa186ab7f2793; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l2-enwdjc07/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 08:30:24.412634569 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l2-busy --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context.",
+      "--idempotency-key",
+      "taurhaus-daemon:1b1648ab42eb4970ba7fa556571a3b128d26ea86322ee1c533235ba88b4ccce2",
+      "--claude-dir",
+      "/tmp/th-l2-enwdjc07/claude",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3275899,
+    "start_ticks": "24956249",
+    "argv": [
+      "/tmp/th-l2-enwdjc07<operator-path-redacted>",
+      "team-daemon",
+      "start",
+      "--team",
+      "l2-busy",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l2-enwdjc07/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 3276170,
+    "start_ticks": "24956261",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3276310,
+    "start_ticks": "24956298",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3276406,
+    "start_ticks": "24956326",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3276422,
+    "start_ticks": "24956328",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3276502,
+    "start_ticks": "24956335",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3276728,
+    "start_ticks": "24956371",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3276851,
+    "start_ticks": "24956435",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3276943,
+    "start_ticks": "24956461",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3277311,
+    "start_ticks": "24956526",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3277637,
+    "start_ticks": "24956559",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3277919,
+    "start_ticks": "24956625",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3278003,
+    "start_ticks": "24956687",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3278093,
+    "start_ticks": "24956752",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3278206,
+    "start_ticks": "24956808",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3278563,
+    "start_ticks": "24957001",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3278649,
+    "start_ticks": "24957066",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3278775,
+    "start_ticks": "24957115",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3278808,
+    "start_ticks": "24957137",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3278824,
+    "start_ticks": "24957140",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3278894,
+    "start_ticks": "24957191",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  },
+  {
+    "pid": 3279060,
+    "start_ticks": "24957230",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  }
+]

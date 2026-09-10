@@ -3,6 +3,12 @@ import unittest
 from support import complete_rows, meter, pending_receipt, clean
 
 class ControllerTests(unittest.TestCase):
+    def test_scratch_home_executable_paths_remain_exact(self):
+        # // Regression: 5a010958 scrubbed the /home component inside a scratch path.
+        path='/tmp/th-l2-synthetic/home/.local/bin/codex'
+        self.assertEqual(clean(path),path)
+        self.assertEqual(clean('HOME=/home/example/.codex'), 'HOME=<operator-path-redacted>')
+
     def test_partial_rows_not_evidence(self):
         self.assertEqual(complete_rows('{"a":1}\n{"a":2}'), [{'a':1}])
     def test_cost_is_sum_across_sessions_not_max(self):

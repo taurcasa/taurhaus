@@ -8,7 +8,7 @@ def clean(value):
         return {k:clean(v) for k,v in value.items() if not any(word in k.lower().replace('_','') for word in ('installationid','accountusage','accesstoken','refreshtoken','authorization')) and k not in ('auth','token')}
     if isinstance(value,list):return [clean(v) for v in value]
     if isinstance(value,str):
-        return re.sub(r'(?<![\w/.-])/home/[^/\s]+/(?!projects/(?:taurhaus-l2-tmux-busy|mesh-l2)(?:/|\b))[^\s"\']*','<operator-path-redacted>',value)
+        return re.sub(r'/home/[^/\s]+/(?!projects/(?:taurhaus-l2-tmux-busy|mesh-l2)(?:/|\b))[^\s"\']*','<operator-path-redacted>',value)
     return value
 
 

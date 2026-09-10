@@ -1,0 +1,33 @@
+{
+  "paid_inputs": 0,
+  "turns": [],
+  "metering_complete": true,
+  "api_equivalent_usd": 0,
+  "conservative_usd": 0,
+  "rates_usd_per_million": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+  "input_reservations": [
+    {
+      "reason": "production initialization/onboarding",
+      "step": 1,
+      "at": 1789029023.3766994,
+      "generation": null
+    }
+  ],
+  "codex_seat_starts": 1,
+  "observed_model_turns": 0,
+  "cap_units_reserved": 1,
+  "codex_input_cap": 10,
+  "usd_cap": 0.2,
+  "claude_model_turns": 0,
+  "claude_spend_usd": 0,
+  "explicit_operator_inputs": 0,
+  "automatic_onboarding_accepted": 1,
+  "automatic_onboarding_submitted": 0,
+  "billing_scope": "No model turn, native rollout or notify event observed. API-equivalent model spend 0; billing/account-usage records not queried.",
+  "implementer_reviewer_spend": "Separately owned by orchestrator; unavailable to lane."
+}
