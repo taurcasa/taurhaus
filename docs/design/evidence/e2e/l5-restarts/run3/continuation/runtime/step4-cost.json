@@ -1,0 +1,157 @@
+{
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "turn_ids": [
+    "01a08dbb-4242-72c0-80f0-a9e2458df810",
+    "01a08dbb-4ee8-71d2-8879-f23b71640de3",
+    "01a08dbb-50be-7712-92a3-7be76fd35c7d",
+    "01a08dbb-6b61-70e1-9cfc-a2be754aea88",
+    "01a08dbb-860b-7192-ac52-75df81ea4ee3",
+    "01a08dbb-a381-7473-a868-71d190c54d8b",
+    "01a08dbb-a48f-7020-b929-ae5b831461d7",
+    "01a08dbb-bb32-7800-a439-148df3c7aadc",
+    "01a08dbb-c321-7880-bfb4-f7097dea9334",
+    "01a08dbb-e5c4-7662-9d90-d7363cef470f"
+  ],
+  "paid_inputs": 10,
+  "generations": [
+    {
+      "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "turn_id": "01a08dbb-4242-72c0-80f0-a9e2458df810",
+      "input": 10983,
+      "cached_input": 6912,
+      "output": 79,
+      "reasoning_output": 59,
+      "api_equivalent_usd": 0.00104724,
+      "conservative_usd": 0.0132744
+    },
+    {
+      "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "turn_id": "01a08dbb-860b-7192-ac52-75df81ea4ee3",
+      "input": 11890,
+      "cached_input": 9984,
+      "output": 15,
+      "reasoning_output": 0,
+      "api_equivalent_usd": 0.00059888,
+      "conservative_usd": 0.014286
+    },
+    {
+      "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "turn_id": "01a08dbb-bb32-7800-a439-148df3c7aadc",
+      "input": 12635,
+      "cached_input": 11008,
+      "output": 191,
+      "reasoning_output": 77,
+      "api_equivalent_usd": 0.00077476,
+      "conservative_usd": 0.0153912
+    },
+    {
+      "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "turn_id": "01a08dbb-bb32-7800-a439-148df3c7aadc",
+      "input": 12892,
+      "cached_input": 12032,
+      "output": 90,
+      "reasoning_output": 73,
+      "api_equivalent_usd": 0.00052064,
+      "conservative_usd": 0.0155784
+    },
+    {
+      "thread_id": "01a08dbb-3cc7-7c81-b822-125de6d52f00",
+      "turn_id": "01a08dbb-e5c4-7662-9d90-d7363cef470f",
+      "input": 13091,
+      "cached_input": 12032,
+      "output": 27,
+      "reasoning_output": 8,
+      "api_equivalent_usd": 0.00048484,
+      "conservative_usd": 0.0157416
+    },
+    {
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "turn_id": "01a08dbb-4ee8-71d2-8879-f23b71640de3",
+      "input": 9272,
+      "cached_input": 0,
+      "output": 94,
+      "reasoning_output": 22,
+      "api_equivalent_usd": 0.0019672,
+      "conservative_usd": 0.0112392
+    },
+    {
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "turn_id": "01a08dbb-4ee8-71d2-8879-f23b71640de3",
+      "input": 10776,
+      "cached_input": 8960,
+      "output": 40,
+      "reasoning_output": 28,
+      "api_equivalent_usd": 0.0005904,
+      "conservative_usd": 0.0129792
+    },
+    {
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "turn_id": "01a08dbb-6b61-70e1-9cfc-a2be754aea88",
+      "input": 10874,
+      "cached_input": 9984,
+      "output": 82,
+      "reasoning_output": 10,
+      "api_equivalent_usd": 0.00047608,
+      "conservative_usd": 0.0131472
+    },
+    {
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "turn_id": "01a08dbb-6b61-70e1-9cfc-a2be754aea88",
+      "input": 11753,
+      "cached_input": 9984,
+      "output": 50,
+      "reasoning_output": 34,
+      "api_equivalent_usd": 0.00061348,
+      "conservative_usd": 0.0141636
+    },
+    {
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "turn_id": "01a08dbb-a381-7473-a868-71d190c54d8b",
+      "input": 11885,
+      "cached_input": 0,
+      "output": 224,
+      "reasoning_output": 110,
+      "api_equivalent_usd": 0.0026458,
+      "conservative_usd": 0.0145308
+    },
+    {
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "turn_id": "01a08dbb-a381-7473-a868-71d190c54d8b",
+      "input": 12175,
+      "cached_input": 11008,
+      "output": 114,
+      "reasoning_output": 97,
+      "api_equivalent_usd": 0.00059036,
+      "conservative_usd": 0.0147468
+    },
+    {
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "turn_id": "01a08dbb-c321-7880-bfb4-f7097dea9334",
+      "input": 12350,
+      "cached_input": 11008,
+      "output": 82,
+      "reasoning_output": 10,
+      "api_equivalent_usd": 0.00058696,
+      "conservative_usd": 0.0149184
+    },
+    {
+      "thread_id": "01a08dbb-35e1-7e53-a54d-e74c5d569e50",
+      "turn_id": "01a08dbb-c321-7880-bfb4-f7097dea9334",
+      "input": 13229,
+      "cached_input": 12032,
+      "output": 17,
+      "reasoning_output": 0,
+      "api_equivalent_usd": 0.00050044,
+      "conservative_usd": 0.0158952
+    }
+  ],
+  "api_equivalent_usd": 0.01139708,
+  "conservative_usd": 0.185892,
+  "metering_complete": false,
+  "unmetered_turn_ids": [
+    "01a08dbb-50be-7712-92a3-7be76fd35c7d",
+    "01a08dbb-a48f-7020-b929-ae5b831461d7"
+  ],
+  "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice."
+}
