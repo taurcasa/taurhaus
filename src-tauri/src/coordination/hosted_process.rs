@@ -174,6 +174,45 @@ fn sanitize_stderr(bytes: &[u8]) -> String {
     text[start..].into()
 }
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum LaunchError {
+    #[error("app-server exited before transport readiness (exit {status}): {tail}")]
+    ExitedBeforeReadiness { status: String, tail: String },
+    #[error("{0}")]
+    Other(String),
+}
+impl From<String> for LaunchError {
+    fn from(error: String) -> Self {
+        Self::Other(error)
+    }
+}
+impl From<&str> for LaunchError {
+    fn from(error: &str) -> Self {
+        Self::Other(error.into())
+    }
+}
+impl LaunchError {
+    pub fn log_exit(&self, identity: (&str, &str), attempt: u8, retry: bool) {
+        if let Self::ExitedBeforeReadiness { status, tail } = self {
+            let event = if retry {
+                "hosted.launch.retried"
+            } else {
+                "hosted.launch.failed"
+            };
+            let fields = json!({"team":identity.0, "member":identity.1, "attempt":attempt,
+                "exit_status":status, "stderr_tail":tail, "reason":"exited_before_readiness"});
+            tracing::warn!(event, fields = %fields, "Hosted child diagnostics");
+            taurhaus_lib::logging::emit_global(
+                "warn",
+                "coordination",
+                event,
+                Some("Hosted child diagnostics".into()),
+                fields.as_object().unwrap().clone(),
+            );
+        }
+    }
+}
+
 pub(crate) struct HostProcess {
     child: Child,
     stderr: Option<StderrTail>,
@@ -201,7 +240,8 @@ impl HostProcess {
         resume: Option<&str>,
         guard: &HostOperationLock,
         identity: (&str, &str),
-    ) -> Result<Self, String> {
+        attempt: u8,
+    ) -> Result<Self, LaunchError> {
         if !socket.is_absolute()
             || socket.as_os_str().len() > 100
             || std::fs::symlink_metadata(socket).is_ok()
@@ -246,19 +286,12 @@ impl HostProcess {
         loop {
             if let Some(status) = host.child.try_wait().map_err(|e| e.to_string())? {
                 let (status, tail) = host.exit_details(status);
-                host.diagnostic(
-                    "hosted.launch.failed",
-                    json!({"exit_status":status,
-                    "stderr_tail":tail, "reason":"exited_before_readiness"}),
-                );
-                return Err(format!(
-                    "app-server exited before transport readiness (exit {status}): {tail}"
-                ));
+                return Err(LaunchError::ExitedBeforeReadiness { status, tail });
             }
             let remaining = guard.remaining().map_err(|e| {
                 host.diagnostic(
                     "hosted.launch.timed_out",
-                    json!({"timeout_seconds":timeout_seconds,
+                    json!({"attempt":attempt, "timeout_seconds":timeout_seconds,
                     "stderr_tail":host.stderr.as_ref().unwrap().sanitized()}),
                 );
                 e.to_string()
@@ -292,7 +325,7 @@ impl HostProcess {
             std::thread::sleep(remaining.min(Duration::from_millis(10)));
         }
         let rpc = host.rpc.as_mut().unwrap();
-        let handshake = rpc.call("initialize", json!({"clientInfo":{"name":"taurhaus_host","version":"1"},"capabilities":{"experimentalApi":true}}), guard)?;
+        let handshake = rpc.call("initialize", json!({"clientInfo":{"name":"taurhaus_host","version":"1"},"capabilities":{"experimentalApi":true}}), guard).map_err(String::from)?;
         if handshake["codexHome"].as_str().map(Path::new) != Some(launch.account_root.as_path()) {
             return Err("app-server account root mismatch".into());
         }
@@ -312,7 +345,7 @@ impl HostProcess {
             Some(_) => return Err("empty resume identity".into()),
             None => ("thread/start", json!({"cwd":cwd, "ephemeral":false})),
         };
-        let result = rpc.call(method, params, guard)?;
+        let result = rpc.call(method, params, guard).map_err(String::from)?;
         host.thread_id = result["thread"]["id"]
             .as_str()
             .filter(|s| !s.is_empty())
@@ -1543,7 +1576,12 @@ with socket.socket(socket.AF_UNIX) as listener:
         guard: &HostOperationLock,
     ) -> Result<HostProcess, String> {
         let socket = root.join(format!("{}.sock", uuid::Uuid::new_v4().simple()));
-        HostProcess::launch(launch, root, &socket, resume, guard, ("team", "seat"))
+        HostProcess::launch(launch, root, &socket, resume, guard, ("team", "seat"), 1).map_err(
+            |error| {
+                error.log_exit(("team", "seat"), 1, false);
+                error.to_string()
+            },
+        )
     }
 
     #[test]
