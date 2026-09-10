@@ -2908,3 +2908,21 @@ This review adds **0 paid turns / USD 0**. The historical step outcomes, every
 spend row and raw failure artifacts above remain the record of the stopped run;
 the offline fixes do not establish step 7 or authorize a descriptor flip.
 No additional runtime trial, Mesh edit or Taurhaus product change was made.
+
+Review gates were rerun from the checkout root with the unchanged isolated
+`attempt12-gates.py` wrapper and `TRIAL_EVIDENCE_LABEL=attempt12-review`:
+
+| Gate | Exit | Execution time |
+|---|---|---|
+| `just check-quick` | 0; 150 frontend files / 2,518 tests | 20.77 s |
+| `just lint` | 0 | 8.54 s |
+| `just test-contracts` | 0 | 5.33 s |
+
+Complete output, exact commands, exit codes, Cargo preflight waits and isolation
+metadata are committed under `integration/attempt12-review/gates/` as
+`gate-{check-quick,lint,test-contracts}.{txt,json}`, `gate-isolation.json` and
+`gate-cleanup.json`. Each gate waited for other lanes' Cargo activity to clear.
+The wrapper exited 0; independent checks confirmed its scratch root was removed,
+all children were waited, no process retained its ownership token, and retained
+logs contained no credential-shaped JWT or disallowed operator-home path.
+`just test-rust-unit` was not required: this review touches no `src-tauri/` file.

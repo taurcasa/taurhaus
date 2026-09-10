@@ -1,0 +1,66 @@
+{
+  "command": [
+    "just",
+    "lint"
+  ],
+  "exit": 0,
+  "seconds": 8.535600847972091,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "4064532 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted -- --skip hosted_read_busy\n"
+    },
+    {
+      "exit": 0,
+      "output": "4070502 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted -- --skip hosted_read_busy\n"
+    },
+    {
+      "exit": 0,
+      "output": "4074573 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted -- --skip hosted_read_busy\n"
+    },
+    {
+      "exit": 0,
+      "output": "4077347 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted -- --skip hosted_read_busy\n"
+    },
+    {
+      "exit": 0,
+      "output": "4081764 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted -- --skip hosted_read_busy\n"
+    },
+    {
+      "exit": 0,
+      "output": "4084876 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo check --all-targets\n4088678 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted::tests::hosted_read_busy\n"
+    },
+    {
+      "exit": 0,
+      "output": "4094941 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted::tests::hosted_read_busy\n"
+    },
+    {
+      "exit": 0,
+      "output": "4098131 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib coordination::hosted::tests::hosted_read_busy\n"
+    },
+    {
+      "exit": 0,
+      "output": "4101753 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib three_native_outcomes_reconcile_without_read\n"
+    },
+    {
+      "exit": 0,
+      "output": "4104017 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo build --release --bin taurhaus-daemon\n"
+    },
+    {
+      "exit": 0,
+      "output": "4109027 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --lib three_native_outcomes_reconcile_without_read\n"
+    },
+    {
+      "exit": 0,
+      "output": "4112425 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "exit": 0,
+      "output": "4112425 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --test cli_renderers --test module_boundary_assertions --test harness_conformance -- --test-threads=1\n"
+    },
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}
