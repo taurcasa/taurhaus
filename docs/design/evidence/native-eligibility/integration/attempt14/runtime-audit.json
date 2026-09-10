@@ -26,6 +26,29 @@
       "equal": true
     }
   },
+  "gate_exits": {
+    "gates": {
+      "check-quick": 0,
+      "lint": 0,
+      "test-contracts": 0
+    },
+    "mesh-gates-final-2": {
+      "check-quick": 0,
+      "lint": 0
+    },
+    "mesh-gates-final-3": {
+      "test": 0
+    }
+  },
+  "gate_roots_removed": [
+    "/tmp/th-int-gates-n8h6w4tz",
+    "/tmp/th-int-gates-ta6rndl8",
+    "/tmp/th-int-gates-v2ltiims",
+    "/tmp/th-int-gates-73vvm3yr",
+    "/tmp/th-int-gates-qzlquml7",
+    "/tmp/th-int-gates-pxmtznq4",
+    "/tmp/th-int-gates-xa3_zpsc"
+  ],
   "controller_exit": 0,
   "private_port": 29774,
   "cleanup": {

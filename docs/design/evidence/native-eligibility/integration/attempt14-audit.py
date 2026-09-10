@@ -105,10 +105,28 @@ for path in (BASE/'attempt14').rglob('*'):
     assert not re.search(r'(?<![\w/-])/home/[^/\s]+/(?!projects/(?:taurhaus-trial|mesh-trial)(?:/|(?![\w.-])))',content),path
     assert path.name != 'auth.json',path
     if 'pane-' in path.name: assert len(content.splitlines()) <= 60,path
+gate_exits = {}
+for folder, names in {'gates':['check-quick','lint','test-contracts'],
+                      'mesh-gates-final-2':['check-quick','lint'], 'mesh-gates-final-3':['test']}.items():
+    gate_exits[folder] = {}
+    for name in names:
+        result = json.loads((BASE/'attempt14'/folder/f'gate-{name}.json').read_text())
+        assert result['command'] == ['just',name] and result['exit'] == 0
+        gate_exits[folder][name] = result['exit']
+gate_roots = []
+for folder in ['gates','mesh-red','mesh-gates','mesh-gates-tmux','mesh-gates-final','mesh-gates-final-2','mesh-gates-final-3']:
+    result = json.loads((BASE/'attempt14'/folder/'gate-cleanup.json').read_text())
+    assert result['children_waited'] and result['root_removed'] and not Path(result['root']).exists()
+    gate_roots.append(result['root'])
+for proc in Path('/proc').iterdir():
+    if not proc.name.isdigit(): continue
+    try: env = (proc/'environ').read_bytes()
+    except (FileNotFoundError,PermissionError,ProcessLookupError): continue
+    assert not any(b'TAURHAUS_TRIAL_ID='+Path(root).name.encode()+b'\0' in env for root in gate_roots)
 log = rows('taurhaus.log.jsonl')
 assert len(log) == len({json.dumps(r,sort_keys=True) for r in log})
 print(json.dumps(dict(verdict='PASS: attempt 13 steps 1-6 plus corrected live step 7',
-    repeated_steps=[1,7], binaries=binaries, controller_exit=0, private_port=port, cleanup=cleanup,
+    repeated_steps=[1,7], binaries=binaries, gate_exits=gate_exits, gate_roots_removed=gate_roots, controller_exit=0, private_port=port, cleanup=cleanup,
     verified_pid_start_identities=len(identities), tmux_session=seat['session_id'], tmux_receipt=receipts[0],
     daemon_jsonl_rows=len(log), daemon_jsonl_sha256=hashlib.sha256((RUN/'taurhaus.log.jsonl').read_bytes()).hexdigest(),
     warnings=[r for r in log if r.get('level') == 'WARN'], spend=cost),indent=2))

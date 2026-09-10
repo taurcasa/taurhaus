@@ -1,0 +1,6 @@
+{
+  "stage": "lint bootstrap",
+  "error": "stale socket from preceding private server; cleanup waiting on owned tmux PID",
+  "controller_signal": "SIGINT",
+  "pid": 743443
+}

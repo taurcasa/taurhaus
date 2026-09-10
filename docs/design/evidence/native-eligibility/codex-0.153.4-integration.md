@@ -3300,3 +3300,68 @@ Binary continuity is recorded in runtime-audit.json: daemon, codex and
 codex-code-mode-host SHA-256 values match attempt 13 exactly. Mesh’s scratch
 descriptor diff is byte-identical on the same ed59187 source; the rebuilt binary
 hash differs (build.rs embeds the current UTC build time).
+
+
+#### Conditional Mesh change and gate history
+
+The runtime PASS unlocked `feat/descriptor-flip`, cut from detached ed59187 in
+`/home/mstie/projects/mesh-trial`. Only the exact 0.153.4 descriptor is enabled,
+with the daemon’s host/configuration/trust classes and an evidence_scope naming
+this combined trial. Other descriptors remain disabled. `compatible_team` now
+returns `runtime_record_missing:<member>` when both runtime locations are absent;
+name validation, displaced records and other errors keep their prior behavior.
+The Mesh diff is 83 inserted lines including tests, below the 200-line limit;
+there are no new dependencies. Existing descriptor/admission expectations were
+updated in their own tests because the verified pin and named refusal are
+intentional behavior changes. No additional product behavior changed.
+
+Mesh behavioral red evidence in `attempt14/mesh-red/`: the missing-record test
+failed with wrapped ENOENT instead of `runtime_record_missing:seat` (exit 101),
+and the descriptor test failed with enabled=false instead of true (exit 101).
+The subsequent full suite executed the two runtime tests successfully. Its
+first run (`mesh-gates/`) stopped at two existing tests requiring scratch tmux
+(exit 101; 533 unit tests passed). The initial private-tmux wrapper then exposed
+a stale socket between gate invocations (`mesh-gates-tmux/`); only that owned
+wrapper was interrupted, and its cleanup removed the entire namespace/root.
+The corrected wrapper uses a fresh socket directory and a keeper /bin/cat session
+per gate, while every model CLI remains an inert shim. The next run
+(`mesh-gates-final/`) passed 535 unit tests but found one handoff assertion still
+expecting the former `pending: runtime lead` text (exit 101); it was updated to
+`runtime_record_missing:lead`. Every earlier result is retained, including the
+bootstrap failure metadata. These are gate-fixture/expectation corrections,
+not runtime trial retries or additional paid turns.
+
+Taurhaus gates were run as the exact requested commands at the checkout root,
+inside credential-free homes and PID namespaces: `just check-quick` exit **0**
+(150 frontend files / 2,519 tests; zero typecheck errors or warnings), `just lint`
+exit **0**, and `just test-contracts` exit **0** (68 tests). `just test-rust-unit`
+is not required: no `src-tauri/` file was changed. Gate output and exit metadata
+are retained in `attempt14/gates/`; cached diagnostic paths were redacted to
+keep other operator-home paths out of evidence. An intermediate audit rejected
+one such path before producing JSON; the retained runtime audit was regenerated
+after redaction, with no change to runtime evidence or outcomes.
+
+
+**Descriptor flip committed:** Mesh `99c97256e33900c3ee0cb89ad579678a12244255` on `feat/descriptor-flip`.
+Final Mesh `just check-quick` **0** and `just lint` **0** are retained under
+`attempt14/mesh-gates-final-2/`. Its `just test` run hit the existing 500 ms
+`sd6_sd10_busy_mirror_retries_with_new_attempt` assertion (exit 101), which had
+passed in the preceding run. One unchanged `just test` rerun passed **0**
+(1077 tests passed, 3 existing ignored) under `attempt14/mesh-gates-final-3/`.
+No timeout, concurrency setting or product behavior was changed for that rerun.
+Reproduce that last gate with `MESH_TEST_ONLY=1 python3
+ docs/design/evidence/native-eligibility/integration/attempt14-mesh-gates.py`.
+The final offline suites passed **16 + 17 tests**, exit **0** each; the final
+runtime/gate audit passed **0**, verified all seven gate scratch roots removed
+and no process retaining any of their ownership tokens. The Mesh working tree
+is clean; no Taurhaus product diff exists, and attempt13-steps.py is unchanged.
+`attempt14/final-checks.json` retains these checks and the Mesh commit identity.
+
+Final outcome: **steps 1–6 PASS (retained attempt-13 runtime); step 7 PASS
+(corrected live continuation)**. Every spend remains recorded above; no additional
+paid work followed. All four review findings are addressed. The corrected tmux
+criterion proves notification delivery, not full-body model uptake. The only
+trial-sequence deviation is recreated hosted setup followed by step 7 alone,
+as requested by the review; gate fixture corrections and the unchanged flaky
+suite rerun are retained explicitly. No planned feature, unrelated product
+work, installation, release, or ledger-row update was added.

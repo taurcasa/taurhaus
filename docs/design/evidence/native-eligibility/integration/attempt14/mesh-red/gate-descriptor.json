@@ -1,0 +1,17 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--test",
+    "native_push",
+    "sd11_sd12_sd13"
+  ],
+  "exit": 101,
+  "seconds": 2.521429285989143,
+  "cargo_preflight": [
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

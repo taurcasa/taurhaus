@@ -1,0 +1,904 @@
+cargo test
+   Compiling mesh v0.2.29 (/home/mstie/projects/mesh-trial)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.83s
+     Running unittests src/lib.rs (target/debug/deps/mesh-d62c3861735638d1)
+
+running 536 tests
+test cli::tests::usage_includes_every_lease_invocation ... ok
+test correlation::tests::ambiguous_multi_task_match_emits_blocker ... ok
+test correlation::tests::enforce_mode_requires_explicit_task_id_for_actionable ... ok
+test correlation::tests::explicit_task_id_overrides_window_correlation ... ok
+test correlation::tests::mutation_actor_mismatch_does_not_correlate ... ok
+test correlation::tests::no_matching_mutation_is_general_message_path ... ok
+test correlation::tests::outside_90s_window_does_not_correlate ... ok
+test correlation::tests::owner_status_actor_and_window_correlate_assignment ... ok
+test daemon::tests::action_required_survives_leading_whitespace ... ok
+test daemon::tests::action_required_survives_a_multiline_effort_reason ... ok
+test daemon::tests::action_required_survives_the_leading_effort_line ... ok
+tmux 3.4
+tmux 3.4
+tmux 3.4
+tmux 3.4
+test config::tests::get_lead_name_finds_lead ... ok
+test daemon::tests::cli_runtime_effort_commands_match_supported_clis ... ok
+test config::tests::get_lead_name_rejects_invalid_handle ... ok
+test daemon::tests::cli_submission_table_matches_supported_clis ... ok
+test config::tests::get_lead_name_returns_none_when_lead_not_in_members ... ok
+test config::tests::historical_alias_warning_does_not_wait_for_writer_lock ... ok
+test config::tests::update_member_activity_errors_for_missing_member ... ok
+test daemon::tests::cron_interval_none_when_not_set ... ok
+tmux 3.4
+test daemon::tests::cron_interval_stored_in_config ... ok
+tmux 3.4
+test config::tests::read_nonexistent_returns_team_not_found ... tmux 3.4
+ok
+test config::tests::bootstrap_team_is_noop_when_config_already_exists ... ok
+test daemon::tests::effort_gate_delivers_immediately_when_the_member_already_runs_at_the_level ... ok
+test daemon::tests::effort_gate_holds_a_codex_notice_until_the_applied_level_matches ... ok
+tmux 3.4
+test daemon::tests::effort_gate_measures_the_bound_from_the_assignment_not_from_first_sight ... ok
+test daemon::tests::effort_gate_never_holds_a_cli_that_switches_effort_at_runtime ... ok
+test daemon::tests::effort_gate_releases_a_codex_notice_when_the_bound_expires ... ok
+tmux 3.4
+test daemon::tests::effort_wait_bound_defaults_to_three_minutes ... ok
+test daemon::tests::applied_effort_refuses_to_overwrite_a_record_it_cannot_parse ... ok
+test daemon::tests::effort_wait_expiry_names_the_member_and_both_levels ... ok
+tmux 3.4
+test daemon::tests::expectation_cron_gate_conforms_without_terminal_io ... tmux 3.4
+ok
+test daemon::tests::fire_cron_reminder_missing_config ... ok
+test daemon::tests::fire_cron_reminder_no_lead_in_config ... ok
+test config::tests::duplicate_name_errors ... ok
+test daemon::tests::foreign_empty_inbox_preserves_previous_snapshot_in_sidecar ... ok
+tmux 3.4
+test actor_auth::tests::authenticate_member_without_token_hash_fails_closed ... ok
+test actor_auth::tests::authenticate_member_without_credential_fails_cleanly ... ok
+test daemon::tests::inbox_wipe_trap_rearms_after_recording_empty_snapshot ... ok
+test daemon::tests::applied_effort_round_trips_through_the_member_runtime_record ... ok
+test config::tests::reactivate_member_sets_active_without_replacing_identity ... ok
+test config::tests::reactivate_member_preserves_unknown_extension_fields ... ok
+test config::tests::add_member_increases_count ... ok
+test daemon::tests::applied_effort_creates_the_record_when_none_exists_yet ... ok
+test config::tests::update_member_activity_sets_timestamp_and_reason ... ok
+test config::tests::bootstrap_team_creates_minimal_config_with_lead_member ... ok
+test daemon::tests::known_agent_cli_accepts_only_supported_basenames ... ok
+test daemon::tests::known_agent_cli_rejects_removed_unknown_and_alias_basenames ... ok
+test daemon::tests::notification_multiple_messages_same_sender ... ok
+test daemon::tests::notification_multiple_senders ... ok
+test daemon::tests::notification_single_message ... ok
+test daemon::tests::notification_includes_summary_hint_when_available ... ok
+test daemon::tests::pane_delivery_decision_allows_unknown_foreground_command ... ok
+test daemon::tests::pane_delivery_decision_skips_dead_pane ... ok
+test daemon::tests::pane_delivery_decision_skips_known_foreign_agent_cli ... ok
+test daemon::tests::fire_cron_reminder_custom_message ... ok
+test daemon::tests::fire_cron_reminder_writes_to_lead_inbox ... ok
+test daemon::tests::pane_snapshot_parser_accepts_empty_current_command ... ok
+test daemon::tests::pane_delivery_decision_allows_matching_agent_cli ... ok
+test daemon::tests::pane_delivery_decision_skips_missing_pane ... ok
+tmux 3.4
+test daemon::tests::pid_file_empty_returns_none ... ok
+test daemon::tests::pid_file_garbage_returns_none ... ok
+test daemon::tests::pid_file_missing_returns_none ... ok
+tmux 3.4
+test config::tests::remove_member_sets_inactive ... ok
+test config::tests::set_member_status_and_clear_member_status_round_trip ... ok
+test daemon::tests::inbox_wipe_trap_ignores_mark_read_empty_and_read_only_transitions ... ok
+test daemon::tests::regression_d1efb4a_skip_tracker_reopens_after_deliverable_state ... ok
+test actor_auth::tests::inactive_member_cannot_authenticate_for_active_control ... ok
+test daemon::tests::regression_empty_cron_is_rejected_before_daemon_side_effects ... ok
+test daemon::tests::regression_skip_tracking_is_source_scoped ... ok
+test daemon::tests::runtime_effort_is_decided_for_a_pane_running_the_cli_wrapper ... ok
+test daemon::tests::runtime_effort_is_submitted_only_when_the_level_differs ... ok
+test daemon::tests::pid_file_write_and_read ... ok
+test daemon::tests::pid_file_stale_lock_takeover_succeeds ... ok
+test daemon::tests::pid_file_stale_detection ... ok
+test daemon::tests::pid_file_blocks_duplicate ... ok
+test daemon::tests::regression_d1efb4a_foreign_cli_skip_remains_retryable ... ok
+test actor_auth::tests::issue_then_authenticate_active_member_succeeds ... ok
+test daemon::tests::shell_detection_matches_supported_shells ... ok
+test actor_auth::tests::authenticate_member_with_stale_token_fails ... ok
+test daemon::tests::handle_delivery_journals_skip_for_foreign_agent_cli ... ok
+test daemon::tests::shell_single_quote_escape_handles_single_quotes ... ok
+test daemon::tests::submission_cli_tool_resolves_wrappers_and_windows_paths ... ok
+test daemon::tests::task_notification_empty_subject ... ok
+test daemon::tests::task_notification_leads_with_the_effort_line_on_one_line ... ok
+test daemon::tests::task_notification_long_subject_truncated ... ok
+test daemon::tests::pid_file_concurrent_writers_allow_only_one_holder ... ok
+test daemon::tests::task_notification_with_blocked_by ... ok
+test daemon::tests::tmux_escape_preserves_unicode ... ok
+test daemon::tests::tmux_escape_strips_control_chars ... ok
+test daemon::tests::tmux_escape_strips_newlines ... ok
+tmux 3.4
+test daemon::tests::tmux_submission_commands_are_golden_per_cli ... ok
+tmux 3.4
+tmux 3.4
+tmux 3.4
+test daemon::tests::task_notification_basic ... ok
+tmux 3.4
+test daemon::tests::sd9_info_cron_retains_trusted_policy_after_legacy_reload ... ok
+test actor_auth::tests::read_member_control_token_rejects_identity_mismatch ... ok
+test daemon::tests::regression_low_assignment_retains_routing_reason_in_both_receipts ... ok
+test daemon::tests::regression_c4df8c4_missing_pane_reaches_failure_limit ... ok
+test daemon::tests::regression_c4df8c4_repeated_skip_is_journaled_once ... ok
+test daemon::tests::collect_inbox_delivery_batch_fails_open_when_projection_state_is_missing ... ok
+test daemon::tests::expectation_mixed_batch_keeps_info_out_of_notification ... ok
+test cli::tests::every_usage_mesh_command_parses_with_clap ... ok
+test daemon::tests::sd2_member_terminal_child_retains_admission_after_parent_drop ... ok
+test daemon::tests::check_inbox_does_not_redeliver_backlog_with_existing_tmux_delivery_record ... ok
+test daemon::tests::regression_anonymous_suppression_is_bounded_and_retains_aggregate ... ok
+test daemon::tests::sd9_cron_suppression_telemetry_matches_shared_decision ... ok
+test daemon::tests::check_tasks_does_not_rearm_an_effort_wait_that_already_expired ... ok
+test daemon::tests::integrated_cron_journal_records_the_dispatched_wake_decision ... ok
+test daemon::tests::workflow_assignment_detection_prefers_task_state_and_assignment_delivery_link ... ok
+test daemon::tests::tmux_failure_keeps_the_assignment_pending_until_tmux_takes_it ... ok
+test daemon::tests::regression_c4df8c4_dead_tmux_pane_is_not_deliverable ... ok
+test daemon::tests::applied_effort_update_waits_for_the_record_lock ... ok
+test daemon::tests::configured_grok_uses_enter_when_pane_runs_shell ... ok
+test daemon::tests::grok_interject_key_reaches_tmux_pty ... ok
+test daemon::tests::node_style_tmux_delivery_is_terminal_visible ... ok
+test daemon::tests::shell_style_tmux_delivery_is_terminal_visible ... ok
+test delivery::app_server::tests::paired_status_skips_removed_and_invalid_names ... ok
+test daemon::tests::stale_pane_guard_allows_cat_for_codex_member ... ok
+test delivery::app_server::tests::paired_runtime_uses_native_validation_without_activity ... ok
+test delivery::app_server::tests::paired_stopped_host_defers_but_identity_mismatches_refuse ... ok
+test daemon::tests::daemon_reconciles_persisted_inbox_message_on_startup ... ok
+test delivery::app_server::tests::paired_unrecognized_config_mode_reports_diagnostic ... ok
+test daemon::tests::check_tasks_holds_a_codex_assignment_until_the_runtime_record_catches_up ... ok
+test daemon::tests::check_tasks_delivers_a_codex_notice_once_the_effort_wait_expires ... ok
+test delivery::app_server::tests::sd10_fenced_native_switch_and_rollback_stay_closed ... ok
+test delivery::app_server::tests::canonical_missing_proof_is_diagnostic_not_legacy_supersession ... ok
+test daemon::tests::sd9_cron_direct_route_is_the_only_wake_including_backlog ... ok
+test daemon::tests::sd5_cron_append_failure_never_types ... ok
+test delivery::app_server::tests::sd11_eligibility_matches_the_complete_compiled_tuple ... ok
+test delivery::app_server::tests::sd1_sd10_sd11_modes_and_configuration_cannot_enable_or_fallback ... ok
+test delivery::app_server::tests::host_error_text_cannot_classify_a_permanent_rejection_as_pending ... ok
+test delivery::app_server::tests::sd2_handshake_checks_attachment_build_without_a_second_pin ... ok
+test delivery::app_server::tests::rpc_error_diagnostics_are_bounded_and_exclude_data ... ok
+test daemon::tests::daemon_delivers_inbox_append_without_waiting_for_unrelated_read_rewrite ... ok
+test delivery::app_server::tests::canonical_trial_tmux_delivery ... ok
+test delivery::app_server::tests::sd1_sd3_dead_host_does_not_block_local_receipt_reconciliation ... ok
+test delivery::app_server::tests::sd2_wrong_returned_turn_permission_wait_and_unverified_state_refuse ... ok
+test delivery::hook::rpc::tests::sd10_portable_endpoint_binds_without_proc ... ok
+test delivery::app_server::tests::sd4_sd14_malformed_native_extension_preserves_runtime_record ... ok
+test delivery::hook::rpc::tests::sd2_sd10_long_authoritative_root_keeps_owner_rpc_available ... ok
+test delivery::hook::rpc::tests::sd2_sd10_rpc_canonicalizes_alias_root ... ok
+test daemon::tests::assignment_effort_reaches_a_node_pane_before_the_notice ... ok
+test delivery::app_server::tests::sd9_native_batch_keeps_attribution_metadata_and_no_wake ... ok
+test delivery::app_server::tests::sd1_sd3_sd4_blocked_host_presend_failure_and_stale_identity ... ok
+test delivery::app_server::tests::sd3_crash_without_result_is_durably_unknown_and_cannot_replay ... ok
+test delivery::app_server::tests::active_thread_always_defers_even_after_adapter_started_it ... ok
+test daemon::tests::assignment_effort_skips_a_pane_the_ownership_guard_refuses ... ok
+test delivery::app_server::tests::sd3_receipt_persistence_failure_and_missing_intent_remain_unknown ... ok
+test delivery::app_server::tests::sd3_receipt_only_reconciliation_and_restart_keep_delivery_identity ... ok
+test delivery::app_server::tests::websocket_replaces_eof_on_ndjson ... ok
+test delivery::app_server::tests::long_thread_state_deferrals_surface_as_stuck ... ok
+test delivery::hook::tests::paired_config_refuses_terminal_and_hook_switches ... ok
+test delivery::hook::tests::paired_config_selects_native_over_default_and_stale_selection ... ok
+test delivery::app_server::tests::websocket_build_pin_accepts_daemon_first_client ... ok
+test delivery::hook::tests::paired_selection_reports_conflict_and_preserves_hook ... ok
+test delivery::hook::tests::sd1_legacy_shadow_and_unsupported_formats_never_fall_back_to_arrays ... ok
+test delivery::hook::tests::paired_config_blocks_drain_with_stale_hook_selection ... ok
+test delivery::app_server::tests::websocket_peer_close_is_echoed ... ok
+test delivery::app_server::tests::sd3_explicit_read_races_native_receipt_without_erasing_transport ... ok
+test delivery::app_server::tests::sd2_missing_native_input_state_defers ... ok
+test delivery::hook::tests::sd1_sd5_sd11_all_production_entries_refuse_activation_and_native_is_preserved ... ok
+test delivery::app_server::tests::sd2_idle_fragmented_acceptance_is_not_comprehension ... ok
+test delivery::app_server::tests::canonical_trial_native_delivery_and_obsolete_generation ... ok
+test delivery::app_server::tests::sd9_oversized_single_item_does_not_block_later_work ... ok
+test delivery::app_server::tests::websocket_accept_mismatch_and_oversize_refuse_before_input ... ok
+test delivery::app_server::tests::sd6_sd9_native_scheduler_retains_effort_and_assignment_authority ... ok
+test delivery::hook::tests::sd2_concurrent_drains_share_one_owner_claim_and_executor ... ok
+test delivery::app_server::tests::sd1_sd2_sd4_sd14_missing_peer_handshake_and_thread_refuse_input ... ok
+test delivery::hook::tests::sd2_sd8_identity_matrix_and_crashed_bridge_quarantine ... ok
+test delivery::hook::tests::sd3_sd5_sd6_sd7_unknown_disabled_overflow_and_card_budget ... ok
+test delivery::ownership::tests::handoff_crash_helper ... ignored, invoked only by the isolated handoff crash matrix
+test delivery::app_server::tests::sd9_committed_scheduler_suppresses_info_preserves_distinct_repeats_and_overflow ... ok
+test delivery::hook::tests::sd8_delayed_terminal_executor_blocks_adapter_boundary ... ok
+test delivery::hook::tests::sd4_explicit_read_exposes_offer_without_marking_consumed ... ok
+test delivery::ownership::tests::sd1_handoff_rechecks_lead_after_controller_admission ... ok
+test delivery::hook::tests::sd8_owner_and_mirror_descriptors_already_have_cloexec ... ok
+test delivery::runtime::tests::compatible_team_names_missing_runtime_record ... ok
+test delivery::runtime::tests::compatible_team_preserves_displaced_and_other_refusals ... ok
+test delivery::scheduler::membership_tests::membership_follows_format_and_explicit_removal ... ok
+test delivery::app_server::tests::sd3_pre_input_disconnect_is_retryable_without_unresolved_work ... ok
+test expectation::tests::committed_expectation_vectors_conform ... ok
+test expectation::tests::regression_untyped_action_required_is_not_policy ... ok
+test external_workflow::claude_code::tests::capabilities_expose_supported_and_unsupported_surfaces ... ok
+test external_workflow::claude_code::tests::deleted_change_returns_explicit_delete_observation_without_invented_state ... ok
+test external_workflow::claude_code::tests::directory_snapshot_ingests_only_json_task_files ... ok
+test external_workflow::claude_code::tests::external_edit_is_accepted_and_normalized ... ok
+test external_workflow::claude_code::tests::external_edit_preserves_metadata_on_ingest ... ok
+test external_workflow::claude_code::tests::malformed_json_is_rejected_without_hidden_fallback ... ok
+test external_workflow::claude_code::tests::operation_support_marks_ack_and_assignment_start_unsupported ... ok
+test external_workflow::claude_code::tests::project_task_snapshot_to_directory_writes_expected_file ... ok
+Terminated
+test delivery::tmux::tests::sd2_sd3_terminal_supervisor_enforces_deadline_without_owner_polling ... ok
+test external_workflow::claude_code::tests::project_then_ingest_is_ignored_by_replay_guard ... ok
+test external_workflow::claude_code::tests::projection_reports_semantic_loss_for_richer_mesh_fields ... ok
+test external_workflow::link_mailbox::tests::file_backed_ingest_reads_last_appended_record ... ok
+test delivery::app_server::tests::sd2_rejection_classes_reconcile_without_automatic_retarget ... ok
+test external_workflow::link_mailbox::tests::ingest_record_respects_replay_guard ... ok
+test external_workflow::link_mailbox::tests::ingest_record_translates_to_canonical_observation ... ok
+test external_workflow::link_mailbox::tests::project_record_degrades_when_explicit_task_mapping_is_missing ... ok
+test external_workflow::link_mailbox::tests::project_record_rejects_invalid_recipient_cardinality ... ok
+test external_workflow::link_mailbox::tests::project_record_rejects_unmapped_reply_parent ... ok
+test external_workflow::link_mailbox::tests::project_record_translates_to_link_mailbox_record_and_outcome ... ok
+test external_workflow::link_mailbox::tests::record_line_round_trips_with_optional_fields ... ok
+test external_workflow::link_mailbox::tests::scope_parses_and_mailbox_path_is_directional ... ok
+test external_workflow::tests::communication_observation_round_trips_with_envelope_and_receipts ... ok
+test external_workflow::tests::communication_projection_outcome_round_trips ... ok
+test external_workflow::tests::external_message_mapping_registry_round_trips_and_rejects_remap ... ok
+test external_workflow::link_mailbox::tests::file_backed_projection_writes_record_and_persists_mapping ... ok
+test external_workflow::tests::ingest_deleted_observation_records_event_without_mutating_task ... ok
+test external_workflow::tests::ingest_deleted_observation_without_mapping_records_external_fact_only ... ok
+test delivery::hook::tests::sd4_receipt_storage_failure_preserves_rendered_uncertainty ... ok
+test delivery::ownership::tests::sd2_handoff_rechecks_owner_after_concurrent_controller_finishes ... ok
+test external_workflow::tests::message_mapping_registry_refuses_remap_to_different_message ... ok
+test external_workflow::tests::mapping_registry_upsert_and_lookup ... ok
+test external_workflow::tests::ingest_created_observation_creates_canonical_task_and_mapping ... ok
+test external_workflow::tests::projection_input_converts_to_external_task_snapshot ... ok
+test delivery::app_server::tests::sd3_finalized_native_evidence_is_removed_after_durable_receipt ... ok
+test external_workflow::tests::message_mapping_registry_upsert_and_lookup ... ok
+test fs_util::tests::atomic_write_no_leftover_temp_files ... ok
+test external_workflow::tests::provenance_registry_round_trip_and_ignore ... ok
+test idle_monitor::tests::assignment_message_format_leads_with_task_identity ... ok
+test idle_monitor::tests::assignment_message_places_effort_after_identity_header ... ok
+test idle_monitor::tests::assignment_message_states_wait_when_awaiting_go_active ... ok
+test idle_monitor::tests::auto_nudge_message_format_contains_required_sections ... ok
+test idle_monitor::tests::cooldown_skips_nudge_and_does_not_write_message ... ok
+test idle_monitor::tests::effort_line_stays_one_line_for_a_multiline_reason ... ok
+test idle_monitor::tests::evaluate_idle_decision_defaults_to_nudge ... ok
+test idle_monitor::tests::evaluate_idle_decision_escalates_for_idle_dead_pane_snapshot ... ok
+test idle_monitor::tests::evaluate_idle_decision_escalates_for_unhealthy_runtime ... ok
+test idle_monitor::tests::evaluate_idle_decision_skips_repeat_nudge_for_fresh_marker ... ok
+test idle_monitor::tests::evaluate_idle_decision_suppresses_for_active_confidence_even_with_stale_heartbeat ... ok
+test idle_monitor::tests::evaluate_idle_decision_suppresses_for_likely_working_confidence ... ok
+test idle_monitor::tests::evaluate_idle_decision_suppresses_for_live_status ... ok
+test idle_monitor::tests::idle_marker_only_clears_on_strong_recovery ... ok
+test fs_util::tests::atomic_write_preserves_permissions ... ok
+test delivery::hook::tests::sd2_sd4_sd8_stale_owner_closure_is_unknown_and_never_replay_permission ... ok
+test delivery::hook::tests::sd6_oversized_first_body_is_retained_with_zero_exposure ... ok
+test fs_util::tests::atomic_write_round_trip ... ok
+test fs_util::tests::atomic_write_overwrites_existing ... ok
+test idle_monitor::tests::malformed_snapshot_stays_deferred_without_sending_messages ... ok
+test idle_monitor::tests::monitor_cycle_escalates_to_lead_with_mock_runtime_data ... ok
+test idle_monitor::tests::monitor_cycle_nudges_and_writes_idle_marker_with_mock_data ... ok
+test idle_monitor::tests::projection_scoped_heartbeat_ignores_task_accepted_for_in_progress_selection ... ok
+test delivery::hook::tests::sd5_sd7_compaction_composition_requires_its_own_source_pin ... ok
+test external_workflow::tests::ingest_updated_observation_replaces_existing_canonical_shape ... ok
+test delivery::hook::tests::sd4_sd8_sd10_reserved_refusals_return_closable_offer_id ... ok
+test delivery::hook::tests::sd6_character_clip_counts_encoded_text ... ok
+test delivery::hook::tests::sd4_sd8_sd10_reserved_read_race_returns_closable_offer_id ... ok
+test delivery::hook::tests::sd3_sd6_current_diagnostics_after_unknown_and_overflow ... ok
+test idle_monitor::tests::run_cycle_executes_without_daemon_identity_guard ... ok
+test idle_monitor::tests::stale_snapshot_is_treated_as_uncertain_not_immediate_nudge ... ok
+test idle_monitor::tests::strong_process_and_recent_io_suppresses_regardless_of_heartbeat_age ... ok
+test idle_monitor::tests::task_gating_skips_members_without_owned_active_tasks ... ok
+test delivery::hook::tests::sd6_encoded_envelope_budget_includes_wrappers ... ok
+test idle_monitor::tests::live_run_cycle_suppresses_completed_canonical_task_and_clears_idle_markers ... ok
+test idle_monitor::tests::live_run_cycle_suppresses_review_requested_task_and_clears_idle_markers ... ok
+test inbox::tests::ack_message_missing_id_returns_false ... ok
+test idle_monitor::tests::uncertain_snapshot_defers_once_then_nudges ... ok
+test inbox::tests::append_to_corrupt_inbox_quarantines_and_fails ... ok
+test inbox::tests::ack_message_sets_ack_fields ... ok
+test idle_monitor::tests::live_run_cycle_rebuilds_corrupt_lead_projection ... ok
+test inbox::tests::corrupt_json_returns_error ... ok
+test inbox::tests::empty_file_returns_empty_vec ... ok
+test idle_monitor::tests::live_run_cycle_uses_projection_backed_lead_view ... ok
+test idle_monitor::tests::waiting_on_a_held_lease_still_escalates_to_the_lead ... ok
+test idle_monitor::tests::round5_blocked_task_with_reason_remains_quiet ... ok
+test inbox::tests::explicit_mark_read_does_not_trigger_truncation_tripwire ... ok
+test delivery::hook::tests::sd4_sd8_buffered_bridge_blocks_switch_even_after_explicit_read ... ok
+test inbox::tests::mark_all_read_corrupt_quarantines_and_fails ... ok
+test inbox::tests::generated_notice_preserves_read_history_instead_of_superseding_it ... ok
+test inbox::tests::lease_disputes_supersede_per_actor_without_dropping_other_contenders ... ok
+test inbox::tests::generated_notice_supersedes_matching_unread_without_touching_authored_message ... ok
+test inbox::tests::nonexistent_file_returns_empty_vec ... ok
+test inbox::tests::mark_all_read_works ... ok
+test delivery::ownership::tests::sd1_handoff_revalidates_active_lead_before_publication ... ok
+test idle_monitor::tests::round5_blocked_member_with_reason_waits_beyond_status_ttl ... ok
+test inbox::tests::regression_lock_failure_degrades_to_empty ... ok
+test inbox::tests::repeated_truncation_warnings_preserve_each_snapshot ... ok
+test inbox::tests::unicode_round_trip ... ok
+test delivery::app_server::tests::paired_scheduler_enqueues_with_absent_or_stale_selection ... ok
+test inbox::tests::mark_messages_read_marks_only_selected_entries ... ok
+test inbox::tests::mark_read_since_selective ... ok
+test inbox::tests::raw_write_shrinking_unread_count_quarantines_prior_content ... ok
+test idle_monitor::tests::round5_awaiting_go_suppresses_t9_until_marker_cleared ... ok
+test leases::tests::canonical_idle_lease_holder_is_not_removed ... ok
+test inbox::tests::round_trip_three_messages ... ok
+test inbox::tests::regression_mark_messages_read_does_not_consume_later_arrival ... ok
+test inbox::tests::concurrent_appends ... ok
+test leases::tests::lease_record_is_camel_case_and_preserves_flattened_extra ... ok
+mesh: WARNING: inbox /tmp/th-int-gates-qzlquml7/tmp/.tmpzTIFce/mutation-surface.json unread count would shrink from 1 to 0; prior content quarantined at /tmp/th-int-gates-qzlquml7/tmp/.tmpzTIFce/mutation-surface.json.quarantine.1789067634.json
+test idle_monitor::tests::waiting_on_a_held_lease_suppresses_task_nudges ... ok
+test idle_monitor::tests::round5_nudges_have_structured_source_records ... ok
+test inbox::tests::legitimate_inbox_mutations_retain_existing_entries ... ok
+test leases::tests::handback_payload_persists_and_reacquire_clears_previous_holder ... ok
+test leases::tests::reacquire_clears_the_previous_release_note ... ok
+test leases::tests::reacquire_without_optional_flags_preserves_seam_metadata_and_task_tie ... ok
+test leases::tests::release_never_auto_grants_a_waiter ... ok
+test delivery::app_server::tests::websocket_fragmentation_large_lengths_and_ping_pong ... ok
+test leases::tests::unknown_lease_mutations_error_without_creating_records ... ok
+test leases::tests::simultaneous_acquires_choose_one_holder_and_one_waiter ... ok
+test leases::tests::initially_unowned_task_arms_tie_on_first_observed_assignment ... ok
+test ledger::tests::byte_rows_keep_positions_crlf_and_unterminated_tail ... ok
+test ledger::tests::markdown_escapes_source_markup_and_preserves_line_breaks ... ok
+test ledger::tests::natural_order_handles_large_ids_and_leading_zeros ... ok
+test ledger_writer::audience::tests::derived_audience_is_intersection_even_through_revision_history ... ok
+test ledger_writer::audience::tests::unknown_policy_and_own_lock_never_release_peer_evidence ... ok
+test ledger_writer::render::tests::narrative_keeps_each_task_day_contiguous_across_scopes ... ok
+test lint::tests::ack_only_hardened_blocks_in_enforce_mode ... ok
+test lint::tests::ack_only_pattern_detection_examples ... ok
+test lint::tests::ack_only_to_active_assignee_rule ... ok
+test lint::tests::actionable_missing_first_step_rule ... ok
+test lint::tests::actionable_missing_task_id_rule ... ok
+test ledger_writer::tests::workflow_capture_is_reused_within_one_context ... ok
+test lint::tests::assign_missing_completion_signal_rule ... ok
+test lint::tests::completion_without_terminal_task_state_emits_drift ... ok
+test lint::tests::enforce_mode_blocks_error_level_violations ... ok
+test lint::tests::info_requires_no_response_needed_true ... ok
+test lint::tests::metadata_mismatch_rules ... ok
+test lint::tests::task_id_conflict_is_error ... ok
+test lint::tests::valid_record_has_no_findings ... ok
+test lint::tests::warn_mode_never_blocks_warn_level_violations ... ok
+test lock::tests::acquire_existing_file ... ok
+test lock::tests::acquire_nonexistent_fails ... ok
+test lock::tests::acquire_or_create_creates_file ... ok
+test leases::tests::steal_evidence_is_bound_to_the_observed_holder ... ok
+test lock::tests::lock_released_on_drop ... ok
+test lock::tests::inode_retry_on_rename ... ok
+test orchestration_guardrails::tests::create_plan_requires_scaffold_metadata ... ok
+test orchestration_guardrails::tests::lane_limit_blocks_second_active_lane ... ok
+test orchestration_guardrails::tests::lane_limit_ignores_blocked_and_passive_pending_lanes ... ok
+test leases::tests::no_flag_reacquire_rebases_task_tie_for_the_new_owner ... ok
+test orchestration_guardrails::tests::lane_limit_ignores_pending_candidate_even_when_owner_has_active_lane ... ok
+test orchestration_guardrails::tests::summary_detects_multi_lane_and_expired_scaffolds ... ok
+test orchestration_guardrails::tests::summary_ignores_passive_pending_wrapper_for_multi_lane_owner ... ok
+test orchestration_v1::tests::empty_and_whitespace_values_become_none_with_finding ... ok
+test orchestration_v1::tests::field_order_independence ... ok
+test orchestration_v1::tests::idle_reminded_expired_allows_nudge_again ... ok
+test orchestration_guardrails::tests::lease_summary_detects_orphaned_aged_and_long_waiting_records ... ok
+test orchestration_v1::tests::idle_reminded_within_cooldown_skips_repeat_nudge ... ok
+test orchestration_v1::tests::last_seen_at_is_not_a_positive_suppression_signal ... ok
+test orchestration_v1::tests::malformed_delimiters_are_graceful ... ok
+test orchestration_v1::tests::missing_required_fields_emit_findings_by_mode ... ok
+test orchestration_v1::tests::no_block_returns_none ... ok
+test orchestration_v1::tests::non_healthy_runtime_over_threshold_escalates ... ok
+test orchestration_v1::tests::nudge_allowed_when_all_signals_are_stale ... ok
+test orchestration_v1::tests::nudge_suppresses_when_heartbeat_is_fresh ... ok
+test orchestration_v1::tests::nudge_suppresses_when_last_activity_is_recent ... ok
+test orchestration_v1::tests::nudge_suppresses_when_status_is_working_with_live_ttl ... ok
+test orchestration_v1::tests::parse_valid_block_to_typed_record ... ok
+test orchestration_v1::tests::unknown_key_warns_and_known_fields_survive ... ok
+test orchestration_v1::tests::unresponsive_stall_signal_escalates ... ok
+test paths::tests::assignee_inbox_projection_path ... ok
+test paths::tests::attention_projection_path ... ok
+test paths::tests::attention_queue_projection_path ... ok
+test paths::tests::config_path ... ok
+test paths::tests::daemon_pid_path ... ok
+test paths::tests::daemons_dir_path ... ok
+test paths::tests::external_message_mappings_path ... ok
+test paths::tests::external_object_mappings_path ... ok
+test paths::tests::external_provenance_registry_path ... ok
+test paths::tests::idle_status_projection_path ... ok
+test paths::tests::inbox_path ... ok
+test paths::tests::inboxes_dir_path ... ok
+test paths::tests::lead_board_projection_path ... ok
+test paths::tests::lease_path ... ok
+test paths::tests::parse_home_from_dscl_output_finds_nfs_home_directory ... ok
+test paths::tests::parse_home_from_dscl_output_returns_none_when_missing ... ok
+test paths::tests::parse_home_from_passwd_finds_matching_user ... ok
+test paths::tests::parse_home_from_passwd_returns_none_when_user_missing ... ok
+test paths::tests::paths_from_explicit_root ... ok
+test paths::tests::projection_manifest_path ... ok
+test paths::tests::projections_dir_path ... ok
+test paths::tests::from_home_uses_env ... ok
+test paths::tests::protocol_index_journal_path ... ok
+test paths::tests::protocol_telemetry_journal_path ... ok
+test paths::tests::recovery_projection_path ... ok
+test paths::tests::task_lock_path ... ok
+test paths::tests::task_mutation_journal_path ... ok
+test paths::tests::task_path ... ok
+test paths::tests::tasks_dir_separate_from_teams ... ok
+test inbox::tests::concurrent_read_during_write_no_torn_reads ... ok
+test lock::tests::write_contents_produces_valid_file ... ok
+test paths::tests::taurhaus_workflow_projection_path ... ok
+test paths::tests::team_daemon_pid_path ... ok
+test paths::tests::workflow_event_journal_path ... ok
+test protocol_index::tests::message_type_defaults_to_message_when_missing ... ok
+test protocol_index::tests::missing_record_returns_none ... ok
+test leases::tests::completed_task_tie_fires_once_after_no_flag_reacquire ... ok
+test protocol_index::tests::persists_across_reopen ... ok
+test lock::tests::concurrent_threads_serialize ... ok
+test protocol_index::tests::round_trip_full_canonical_record ... ok
+test protocol_index::tests::idempotent_upsert_overwrites_record_id ... ok
+test task_journal::tests::journal_persists_across_reopen ... ok
+test leases::tests::winning_reacquire_clears_losing_waiters ... ok
+test leases::tests::task_tie_only_fires_when_owner_changes_from_recorded_baseline ... ok
+test task_cursor::tests::atomic_update_preserves_unspecified_fields_and_stale_timestamp_is_visible ... ok
+test protocol_index::tests::query_by_record_message_and_task_indexes ... ok
+test task_lifecycle::tests::artifact_append_rejects_an_update_without_metadata_base ... ok
+test task_lifecycle::tests::assignment_update_clears_lifecycle_metadata ... ok
+test task_lifecycle::tests::only_in_progress_stage_counts_as_active_lane ... ok
+test task_lifecycle::tests::stage_precedence_matches_projection_contract ... ok
+test task_lifecycle::tests::workflow_assignment_reset_clears_stale_lifecycle_state ... ok
+test task_lifecycle::tests::workflow_snapshot_clears_blocking_state_when_task_is_unblocked ... ok
+test task_journal::tests::read_items_from_offset_rewinds_if_offset_exceeds_current_length ... ok
+test task_journal::tests::read_items_from_offset_returns_only_newer_entries ... ok
+test task_journal::tests::query_by_task_and_time_window_is_bounded ... ok
+test task_journal::tests::query_by_task_returns_in_append_order ... ok
+test tasks::tests::create_and_get_round_trip ... ok
+test tasks::tests::list_empty_dir ... ok
+test task_lifecycle::tests::racing_rulings_survive_with_distinct_sequences_and_latest_scalar ... ok
+test tasks::tests::auto_increment_ids ... ok
+test tasks::tests::list_tasks_skips_empty_file ... ok
+test tasks::tests::create_with_journal_appends_mutation_entry ... ok
+test tasks::tests::list_tasks_skips_corrupt_file ... ok
+test tasks::tests::list_returns_sorted ... ok
+test tasks::tests::concurrent_creates_no_duplicate_ids ... ok
+test tasks::tests::update_nonexistent_errors ... ok
+test tasks::tests::mutate_with_journal_preserves_racing_metadata_writes ... ok
+test leases::tests::task_completion_and_reassignment_only_move_leases_to_handback_ready ... ok
+test team_daemon::external_relay::tests::build_relay_message_attaches_explicit_external_metadata ... ok
+test team_daemon::external_relay::tests::collect_relay_candidates_only_keeps_safe_messages_for_local_lead ... ok
+test tasks::tests::update_status_and_owner ... ok
+test team_daemon::tests::background_team_daemon_command_includes_operator_name ... ok
+test team_daemon::tests::command_matches_expected_team_daemon_requires_mesh_binary_and_start_args ... ok
+test team_daemon::tests::member_restart_command_is_detached_on_unix ... ok
+test tasks::tests::replace_with_journal_clears_fields_and_replaces_dependencies ... ok
+test team_daemon::external_relay::tests::save_relay_receipt_uses_canonical_safe_path_for_untrusted_external_message_id ... ok
+test team_daemon::tests::restart_all_skips_members_without_panes_or_inactive ... ok
+test team_daemon::tests::sd10_delivery_retry_is_throttled_and_deduplicates_errors ... ok
+test team_daemon::tests::status_is_stopped_when_pid_file_missing ... ok
+test team_daemon::tests::stop_errors_when_pid_missing ... ok
+test tasks::tests::journal_query_by_task_and_time_window_from_task_updates ... ok
+test tasks::tests::update_blocks_and_blocked_by ... ok
+test telemetry::tests::compaction_read_surfaced_records_round_trip ... ok
+test tasks::tests::update_with_journal_appends_mutation_entry ... ok
+test team_daemon::tests::pid_file_concurrent_writers_allow_only_one_holder ... ok
+test team_daemon::tests::pid_file_stale_lock_takeover_succeeds ... ok
+test telemetry::tests::correlation_ambiguity_counter_tracks_uncorrelated_actionable_messages ... ok
+test telemetry::tests::assignment_to_executing_latency_records_on_transition ... ok
+test journal::store::tests::sd3_declared_legacy_array_append_cost ... ok
+test task_journal::tests::concurrent_appends_produce_valid_entries ... ok
+test telemetry::tests::lead_role_drift_incidents_counter_tracks_runtime_signals ... ok
+test telemetry::tests::external_communication_aggregate_reader_matches_query_helper ... ok
+test telemetry::tests::stall_on_ack_counter_increments_from_ack_finding ... ok
+test telemetry::tests::lint_fail_rate_tracks_first_pass_failures ... ok
+test team_daemon::cron::tests::sd5_cron_produces_during_scheduler_outage_and_stops_after_rollback ... ok
+test timer::tests::cancel_timers_empty_dir ... ok
+test timer::tests::command_matches_expected_timer_daemon_requires_mesh_binary_and_team ... ok
+test timer::tests::format_duration_hours ... ok
+test timer::tests::format_duration_minutes ... ok
+test timer::tests::format_duration_mixed ... ok
+test timer::tests::format_duration_seconds ... ok
+test timer::tests::inbox_path_for_format ... ok
+test timer::tests::parse_duration_empty_fails ... ok
+test timer::tests::parse_duration_hours ... ok
+test timer::tests::parse_duration_invalid_fails ... ok
+test timer::tests::parse_duration_minutes ... ok
+test timer::tests::parse_duration_plain_seconds ... ok
+test timer::tests::parse_duration_seconds ... ok
+test timer::tests::cancel_timers_removes_pid_files ... ok
+test telemetry::tests::suppression_hit_rate_tracks_suppressed_potential_nudges ... ok
+test telemetry::tests::external_communication_event_reader_filters_non_external_metrics_and_preserves_order ... ok
+test timer::tests::timer_pid_path_format ... ok
+test transition_drift::tests::backward_transition_rejected_in_enforce_mode ... ok
+test transition_drift::tests::completion_message_without_transition_emits_drift ... ok
+test telemetry::tests::task_message_drift_counter_tracks_drift_events ... ok
+test protocol_index::tests::concurrent_writes_do_not_corrupt ... ok
+test telemetry::tests::wake_delivery_records_round_trip ... ok
+test transition_drift::tests::idempotent_replay_is_accepted ... ok
+test transition_drift::tests::legacy_mapping_bridge_covers_required_states ... ok
+test transition_drift::tests::normal_flow_has_no_drift ... ok
+test transition_drift::tests::task_completed_without_completion_message_emits_orphan_event ... ok
+test transition_drift::tests::valid_forward_transition_is_accepted ... ok
+test types::tests::external_relay_metadata_rejects_missing_required_fields ... ok
+test types::tests::external_relay_metadata_round_trip ... ok
+test types::tests::inbox_array_round_trip ... ok
+test types::tests::inbox_message_from_real_json ... ok
+test types::tests::inbox_message_round_trip ... ok
+test types::tests::member_camel_case_keys ... ok
+test types::tests::member_from_real_json ... ok
+test types::tests::task_camel_case_keys ... ok
+test types::tests::task_preserves_unknown_top_level_fields ... ok
+test types::tests::task_round_trip ... ok
+test types::tests::team_config_camel_case_keys ... ok
+test types::tests::team_config_round_trip ... ok
+test validate::tests::deadline_minutes_must_be_a_positive_integer ... ok
+test validate::tests::effort_reason_must_be_one_line ... ok
+test validate::tests::max_length_accepted ... ok
+test validate::tests::rejects_bad_start_end ... ok
+test validate::tests::rejects_empty_and_too_long ... ok
+test validate::tests::rejects_invalid_chars ... ok
+test validate::tests::rejects_non_numeric_task_ids ... ok
+test validate::tests::rejects_null_bytes ... ok
+test validate::tests::rejects_path_traversal ... ok
+test validate::tests::valid_names ... ok
+test validate::tests::valid_task_ids ... ok
+test version_info::tests::version_info_required_fields_are_non_empty ... ok
+test version_info::tests::version_info_required_keys_remain_stable ... ok
+test transition_drift::tests::drift_events_store_as_protocol_records ... ok
+test timer::tests::timer_daemon_writes_pid_and_delivers ... ok
+test telemetry::tests::telemetry_events_persist_across_reopen ... ok
+test timer::tests::timer_daemon_summary_truncation ... ok
+test telemetry::tests::rolling_window_excludes_out_of_window_events ... ok
+test workflow::tests::blocked_attention_cases_are_filtered_from_owner_queries ... ok
+test workflow::tests::external_message_mapping_registry_round_trips_and_rejects_remap ... ok
+test telemetry::tests::external_communication_metrics_round_trip_and_aggregate ... ok
+test watch::tests::creates_missing_inbox_with_secure_permissions ... ok
+test timer::tests::timer_daemon_repeat ... ok
+test workflow::tests::read_items_from_offset_returns_incremental_workflow_events ... ok
+test workflow::tests::external_message_immutable_drift_is_recorded_without_rewriting_state ... ok
+test workflow::tests::replay_tracks_task_created_payload_completeness ... ok
+test workflow::tests::replay_tracks_latest_external_task_observation ... ok
+test workflow::tests::replay_merges_external_message_lifecycle_and_preserves_delete_history ... ok
+test workflow::tests::replay_tracks_assignment_supersession_linkage ... ok
+test workflow::tests::replay_tracks_assignment_read_ack_and_attention_state ... ok
+test workflow::tests::replay_tracks_assignment_lifecycle_semantics_explicitly ... ok
+test idle_monitor::tests::round6_lead_launch_health_is_ledger_only ... ok
+test delivery::hook::rpc::tests::sd10_trickled_child_has_total_deadline_and_is_reaped ... ok
+test idle_monitor::tests::round5_two_ignored_nudges_escalate_once_and_uptake_resets ... ok
+test delivery::hook::tests::sd9_imminent_boundary_offers_before_safe_fallback ... ok
+test delivery::hook::tests::sd2_sd3_restart_partial_read_cross_boundary_and_unknown_receipts ... ok
+test idle_monitor::tests::round6_new_assignment_rearms_silent_seat ... ok
+test watch::tests::timeout_exits_promptly ... ok
+test delivery::hook::tests::sd2_sd4_sd8_unknown_closure_survives_context_session_and_owner_drift ... ok
+test delivery::app_server::tests::scheduler_retries_transient_state_and_exposes_host_error_in_status ... ok
+test delivery::hook::tests::sd2_sd3_sd4_two_posts_offer_once_new_mail_and_verified_epoch ... ok
+test delivery::hook::tests::sd9_after_final_stop_recorded_policy_defers_or_attempts_once ... ok
+test delivery::ownership::tests::sd2_sd12_sigkill_at_each_opt_in_boundary_recovers_once ... ok
+test delivery::app_server::tests::thread_state_defers_then_delivers_once_idle ... ok
+test journal::store::tests::sd3_indexed_page_reuses_verified_segment_bytes ... ok
+test delivery::ownership::tests::sd2_sd7_sd12_sigkill_at_each_durable_handoff_boundary_recovers_once ... ok
+test delivery::hook::tests::sd3_full_read_prefix_does_not_hide_unoffered_overflow ... ok
+test external_workflow::claude_code::tests::watch_task_directory_emits_ingest_decision_for_new_json_file ... ok
+test watch::tests::detects_new_message ... ok
+test journal::store::tests::sd3_sd4_reopen_after_publication_fault_catches_up_only_the_tail ... ok
+test journal::store::tests::sd3_seeded_20k_reopen_append_reads_bounded_bytes ... ok
+test delivery::app_server::tests::sd2_sd3_transport_and_identity_ambiguity_never_replays ... ok
+test journal::store::tests::sd3_missing_and_corrupt_caches_rebuild_original_retry_positions ... ok
+test delivery::hook::tests::sd3_sd6_item_overflow_and_bounded_replay_preserve_authored_repetitions ... ok
+test delivery::app_server::tests::sd1_sd3_sd8_transient_refusals_survive_retry_budget ... ok
+
+test result: ok. 535 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 23.23s
+
+     Running unittests src/main.rs (target/debug/deps/mesh-ef2c038088da9ddd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/acceptance_matrix.rs (target/debug/deps/acceptance_matrix-ff50d29f2ffdf39c)
+
+running 7 tests
+test acceptance_task_created_payloads_surface_explicit_description_unknown_state ... ok
+test acceptance_task_created_payloads_surface_explicit_description_known_state ... ok
+test acceptance_b3_replay_rebuilds_current_attention_state_from_workflow_history ... ok
+test acceptance_d2_e2_blocked_tasks_are_durable_and_suppress_nudges ... ok
+test acceptance_a3_a4_a5_projections_distinguish_delivery_read_ack_and_accept ... ok
+test acceptance_a5_a6_c1_c2_c3_lifecycle_attention_and_ack_are_queryable ... ok
+test acceptance_b1_b2_d3_projections_preserve_recovery_and_review_completion_separation ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s
+
+     Running tests/assignment_card.rs (target/debug/deps/assignment_card-757c6e30ff857c4e)
+
+running 18 tests
+test delivered_unread_assignment_is_not_reported_undelivered ... ok
+test held_card_is_lossless_and_shared_with_inspection ... ok
+test go_prechecks_inbox_before_committing_release ... ok
+test committed_assignment_delivery_failure_is_explicit ... ok
+test binary_record_alias_projection_has_explicit_precedence ... ok
+test completing_a_typed_block_releases_only_the_block_descriptor ... ok
+test nudge_ignores_a_corrupt_cursor_and_delivers_the_assignment_card ... ok
+test budget_ruling_materializes_only_an_authorized_ceiling_raise ... ok
+test assignment_output_labels_generation_separately_from_message ... ok
+test reissue_clears_generation_context_and_snapshots_each_assignment ... ok
+test legacy_cursor_is_adopted_without_erasing_restart_fields ... ok
+test committed_go_delivery_failure_is_visible_and_retryable ... ok
+test resuming_a_typed_block_releases_its_descriptor ... ok
+test legacy_inspection_and_wait_conflicts_never_invent_execution_state ... ok
+test assign_repairs_and_overrides_a_legacy_objective ... ok
+test go_rejects_stale_generation_and_releases_only_current_wait ... ok
+test frozen_refs_and_review_isolation_survive_go_and_cold_resume ... ok
+test pending_refs_require_freezing_and_dependencies_are_checked ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s
+
+     Running tests/attention_persistence_acceptance.rs (target/debug/deps/attention_persistence_acceptance-67b3f7b080fd5fcb)
+
+running 2 tests
+test acceptance_e3_e4_escalation_cooldown_survives_restart_via_workflow_attention_state ... ok
+test acceptance_e4_nudge_cooldown_survives_restart_via_workflow_attention_state ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
+     Running tests/cli_integration.rs (target/debug/deps/cli_integration-d2dadb78dc19548f)
+
+running 137 tests
+test daemon_requires_name ... ok
+test error_missing_team ... ok
+test error_path_traversal_team ... ok
+test daemon_requires_pane_without_stop ... ok
+test join_bootstraps_fresh_team_config_for_cold_start ... ok
+test anonymous_task_create_is_rejected ... ok
+test ack_status_ignores_quarantined_inbox_snapshots ... ok
+test daemon_stop_refuses_non_mesh_pid ... ok
+test error_path_traversal_name ... ok
+test error_path_traversal_task_id ... ok
+test error_path_traversal_timer_daemon_recipient ... ok
+test error_task_get_nonexistent ... ok
+test heartbeat_command_records_activity_and_who_exposes_it ... ok
+test actionable_lint_rejects_incomplete_action_required_in_enforce_mode ... ok
+test join_writes_team_config_and_inbox_to_canonical_claude_dir_when_home_is_sandboxed ... ok
+test error_path_traversal_recipient ... ok
+test daemon_stop_no_daemon_running ... ok
+test lease_acquire_rejects_an_unknown_task_id ... ok
+test leave_sets_inactive ... ok
+test read_empty_no_footer ... ok
+test joined_member_can_use_cli_without_exporting_control_token ... ok
+test join_and_who ... ok
+test read_unread_json_without_real_messages_returns_empty_array ... ok
+test lease_reacquire_by_holder_warns_when_metadata_is_ignored ... ok
+test read_unread_without_real_messages_stays_empty_across_repeated_reads ... ok
+test join_type_lead_does_not_grant_lead_only_control ... ok
+test actionable_lint_allows_info_only_and_plain_messages ... ok
+test read_json_output ... ok
+test read_json_no_footer ... ok
+test read_hides_universal_footer_by_default ... ok
+test read_guide_flag_shows_universal_footer ... ok
+test send_rejects_non_member_sender ... ok
+test read_unread_filter ... ok
+test send_rejects_registered_member_with_stale_control_credential ... ok
+test completion_sent_through_mesh_send_reaches_task_get_with_provenance ... ok
+test read_mark_read ... ok
+test send_preserves_corrupt_inbox_for_forensics ... ok
+test send_allows_registered_inactive_cross_project_recipient ... ok
+test send_and_read ... ok
+test status_set_and_get_returns_state_reason_and_timestamp ... ok
+test read_unread_json_with_active_tasks_and_no_messages_returns_empty_array ... ok
+test lease_dispute_survives_state_wake_and_remains_in_guardrails ... ok
+test rejoin_reactivates_member_and_allows_send ... ok
+test status_get_expires_after_ttl_and_clears_stale_status ... ok
+test read_unread_with_active_tasks_but_no_messages_stays_empty ... ok
+test lease_steal_rejects_non_contention_without_dispute_and_allows_lead_override ... ok
+test send_all_delivers_to_inactive_members_and_reports_them ... ok
+test send_all_broadcasts_to_other_active_members ... ok
+test send_with_summary ... ok
+test send_returns_message_id_and_ack_status_is_queryable ... ok
+test assignment_read_and_ack_are_replayed_from_workflow_journal ... ok
+test task_create_blocks_unanchored_scaffolding ... ok
+test non_lead_cannot_use_admin_complete_escape_hatch ... ok
+test read_unread_real_messages_take_precedence_over_task_fallback ... ok
+test lease_handback_and_release_wake_all_without_granting ... ok
+test read_unread_mark_read_without_matching_messages_does_not_mark_real_messages ... ok
+test lease_steal_requires_evidence_and_transfer_requires_lead ... ok
+test task_create_by_lead_no_self_notify ... ok
+test task_create_blocks_scaffolding_without_sunset_metadata ... ok
+test task_create_json_returns_created_task_record ... ok
+test task_assign_requires_team_lead ... ok
+test nudge_sends_generated_action_required_message ... ok
+test task_assign_to_corrupt_inbox_fails_before_mutating_task_state ... ok
+test task_assign_rejects_a_multiline_effort_reason ... ok
+test task_assign_accepts_effort_without_why ... ok
+test task_create_and_list ... ok
+test task_create_writes_json_to_canonical_claude_dir_when_home_is_sandboxed ... ok
+test task_create_rejects_bad_effort_before_persisting_anything ... ok
+test task_assign_ignores_inherited_why_when_effort_is_absent ... ok
+test task_create_notifies_lead ... ok
+test task_ingest_claude_honors_persisted_provenance_replay_guard ... ok
+test task_get_survives_unreadable_completion_sources ... ok
+test task_get_is_compact_by_default_and_verbose_restores_full_record ... ok
+test task_create_and_assign_accept_omitted_deadline_effort_and_why ... ok
+test task_deadline_rejects_zero_and_non_numeric_values_with_one_line_errors ... ok
+test task_create_warns_on_blocked_parent_fanout ... ok
+test task_assign_allows_registered_inactive_cross_project_owner ... ok
+test task_notification_rejects_invalid_lead_name ... ok
+test task_get_sanitizes_completion_text_only_in_human_output ... ok
+test task_get_recognizes_tolerated_completion_header_spellings ... ok
+test task_get_recognizes_newest_matching_lead_inbox_completion_without_mutating_it ... ok
+test task_assign_updates_task_and_sends_formatted_message ... ok
+test task_assign_validates_and_persists_supplied_effort_and_why ... ok
+test task_assign_requires_admin_reason_when_superseding_existing_owner ... ok
+test task_create_records_effort_and_why_for_a_later_assignment ... ok
+test task_update ... ok
+test task_ingest_claude_imports_updates_and_rebuilds_projections ... ok
+test task_assign_in_progress_blocks_second_active_lane_by_default ... ok
+test task_get_and_tasks_list_print_effort_and_why ... ok
+test task_without_deadline_keeps_deadline_fields_out_of_every_output ... ok
+test team_daemon_restart_all_requires_team_lead ... ok
+test team_daemon_status_reports_stopped_when_not_running ... ok
+test task_update_notifies_lead ... ok
+test team_daemon_restart_fails_for_member_without_tmux_pane ... ok
+test task_assign_allows_second_pending_lane_without_override ... ok
+test explicit_operator_workflow_commands_drive_task_lifecycle_and_protocol_records ... ok
+test team_daemon_restart_all_skips_no_pane_and_inactive_without_failing ... ok
+[mesh team-daemon] started for team t
+test task_assignment_tokens_reject_stale_accept_and_start_with_current_contract ... ok
+test task_deadline_round_trips_on_create_and_assign_surfaces ... ok
+test blocked_and_passive_pending_tasks_do_not_block_new_active_lane_start ... ok
+test timer_cancel_refuses_forged_non_mesh_pid ... ok
+test task_start_blocks_second_active_lane_by_default ... ok
+test task_surfaces_drop_pending_effort_once_the_wait_bound_expires ... ok
+test version_flag_reports_semver_0213 ... ok
+test version_json_has_required_fields_and_non_empty_values ... ok
+test timer_rejects_spoofed_member_sender_name ... ok
+test task_assign_in_progress_allows_second_lane_with_explicit_override ... ok
+test task_start_allows_second_lane_with_explicit_override ... ok
+test cold_start_team_can_begin_real_workflow_through_cli ... ok
+test tasks_all_shows_everything_for_teammates ... ok
+kill: (8013): No such process
+test timer_cancel_kills_real_timer_daemon ... ok
+test tasks_command_rebuilds_corrupt_projection_files ... ok
+test tasks_lead_sees_all_by_default ... ok
+test tasks_output_surfaces_guardrail_risk_marker ... ok
+test task_rulings_are_attributed_sequenced_journaled_and_survive_reassignment ... ok
+test team_lead_admin_complete_requires_reason ... ok
+test tasks_default_filters_to_owner_for_teammates ... ok
+test task_surfaces_report_a_held_codex_notice_as_pending_effort ... ok
+test team_lead_cannot_admin_accept_assignee_owned_task_yet ... ok
+test user_journey_failure_paths_fail_clearly_without_workarounds ... ok
+test a_member_that_switches_effort_at_runtime_is_never_pending_effort ... ok
+test team_daemon_status_surfaces_guardrail_summary ... ok
+test tasks_command_reads_projection_views_for_lead_and_assignee ... ok
+test task_cursor_and_artifacts_are_durable_without_cursor_journaling ... ok
+test team_lead_can_admin_review_assignee_owned_task_with_reason_and_audit ... ok
+test waiter_added_after_handback_still_sees_the_payload ... ok
+test team_lead_can_admin_complete_assignee_owned_task_with_reason_and_audit ... ok
+test completion_packet_fans_out_and_supersedes_without_blocking_commit ... ok
+test task_review_requires_current_start_and_completion_rejects_duplicates ... ok
+test user_journey_owner_leave_and_rejoin_preserves_identity_and_task_continuity ... ok
+test tasks_default_output_is_compact_and_limited ... ok
+test user_journey_blocked_task_surfaces_state_and_lead_notification ... ok
+[mesh team-daemon] stopped
+test three_epic_synthetic_graph_runs_end_to_end_without_false_lane_conflicts ... ok
+test task_ingest_claude_watch_keeps_replay_guard_for_incremental_events ... ok
+test task_ingest_claude_watch_updates_existing_external_task_incrementally ... ok
+test team_daemon_parallel_start_keeps_singleton ... ok
+test team_daemon_restart_self_replaces_running_daemon_pid ... ok
+
+test result: ok. 137 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.87s
+
+     Running tests/closed_state_archival_support.rs (target/debug/deps/closed_state_archival_support-8f8fe94ef128623e)
+
+running 2 tests
+test closed_state_archival_helpers_preserve_reroute_history_in_archive_refs ... ok
+test closed_state_archival_helpers_write_canonical_archive_outputs ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/closed_state_audit_discrepancy_routing_support.rs (target/debug/deps/closed_state_audit_discrepancy_routing_support-09d434c49e8432f4)
+
+running 2 tests
+test discrepancy_routing_helpers_preserve_owning_lane_reopen_context ... ok
+test discrepancy_routing_helpers_write_canonical_artifact_repair_packet ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/completion_packet_assembly_support.rs (target/debug/deps/completion_packet_assembly_support-b26592d04febaa58)
+
+running 1 test
+test completion_packet_helpers_write_canonical_packet_shape_for_validator ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/daemon_wake_path_acceptance.rs (target/debug/deps/daemon_wake_path_acceptance-06ce70c4abd74f83)
+
+running 1 test
+test first_live_daemon_wake_path_uses_projection_backed_assignment_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.10s
+
+     Running tests/delivery_adapter.rs (target/debug/deps/delivery_adapter-811a2b955a69ecf3)
+
+running 55 tests
+test sd1_team_flag_roundtrips_and_refuses_member_start_and_restart ... ok
+test review_r1_sd2_sd4_tmux_errors_do_not_write_terminal_lock ... ok
+test sd2_member_admission_and_team_owner_share_stable_exclusion ... ok
+test sd10_status_reports_owner_and_stale_stuck_recipient ... ok
+test review_r1_sd4_sd8_effort_readiness_uses_legacy_authority ... ok
+test sd3_copied_old_and_new_root_cannot_admit_a_second_owner ... ok
+test sd3_v11_incarnation_and_locked_displaced_runtime ... ok
+test sd3_effort_dead_generation_is_not_a_new_safe_window ... ok
+test sd2_terminal_child_retains_stable_lock_after_owner_drop ... ok
+test sd2_sd10_empty_roster_retains_owner_until_shutdown ... ok
+test review_r1_sd3_liveness_save_does_not_invalidate_terminal_window ... ok
+test sd3_sd6_root_incarnation_epoch_and_attachment_fence ... ok
+test sd3_sd10_health_requires_current_host_identity_and_recipient ... ok
+test sd3_unavailable_runtime_never_activates_terminal_delivery ... ok
+test sd3_sd10_team_daemon_hosts_disabled_runtime_and_reports_pending ... ok
+test sd3_tmux_attempt_is_capped_at_ten_seconds ... ok
+test sd4_literal_payload_cannot_be_parsed_as_tmux_options ... ok
+test sd4_multiline_control_unicode_bounds_and_claim_binding ... ok
+test sd8_distinct_authored_repetition_keeps_legacy_order ... ok
+test sd5_native_info_and_foreign_read_flag_have_only_enqueue_evidence ... ok
+test sd6_concurrent_adapter_claims_are_exclusive ... ok
+test sd8_sd9_mixed_harness_legacy_inbox_golden ... ok
+test sd9_card_operative_line_drives_grok_submit ... ok
+test sd9_info_empty_and_trusted_cron_policy ... ok
+test review_r1_sd10_busy_member_is_deferred_without_failure_or_stuck_status ... ok
+test sd2_sd6_owner_lock_duplicate_claim_and_crash_recovery ... ok
+test sd4_scratch_tmux_identity_matrix_and_literal_submission ... ok
+test sd4_inherited_wrong_tmux_is_ignored_in_subprocess ... ok
+test sd4_synthetic_typing_defers_without_keys_or_read ... ok
+test sd4_sd10_unresponsive_scratch_socket_times_out_and_releases_child_lock ... ok
+test sd10_delivery_mirror_recovery_budget_preserves_unresolved_claim ... ok
+test sd6_definite_failure_retries_same_delivery_with_new_attempt ... ok
+test sd6_failed_receipt_write_cannot_enable_fresh_attempt ... ok
+test sd3_v11_effort_interrupt_holder_defers_and_retries ... ok
+test sd8_stable_legacy_mapping_survives_position_change_and_repetition ... ok
+test sd6_restart_before_dispatch_retries_without_reusing_attempt ... ok
+test sd10_oversized_read_and_unread_items_do_not_starve_later_work ... ok
+test sd3_sd12_hosted_contract_record_presents_only_at_idle_attachment ... ok
+test sd7_sd10_preindex_unknown_is_recovered_without_its_source_envelope ... ok
+test sd5_sd9_hosted_scheduler_presents_retained_low_priority_cron ... ok
+test review_r1_sd3_config_validation_has_a_named_independent_budget ... ok
+test sd5_sd7_native_mailbox_observes_without_echo_or_false_read ... ok
+test sd6_recovery_index_failure_cannot_publish_a_claim ... ok
+test sd4_sd7_partial_success_is_unknown_and_never_resent ... ok
+test sd7_disappeared_unknown_stays_quarantined_until_explicit_read ... ok
+test sd7_explicit_read_races_submission_and_survives_restart ... ok
+test sd6_attempt_receipt_mirrors_and_restart_with_each_sink ... ok
+test sd6_sd10_busy_mirror_retries_with_new_attempt ... ok
+test sd8_idless_posts_receive_persisted_distinct_identities_before_dispatch ... ok
+test sd2_sd5_sd8_sd10_scheduler_backlog_polling_fairness_and_restart ... ok
+test sd8_sd9_claimed_mixed_batch_presents_the_legacy_golden_once ... ok
+test sd3_contract_root_generation_activity_and_terminal_holder_fence ... ok
+test review_r1_sd3_sd6_pending_deferrals_preserve_attempt_budget ... ok
+test sd10_failed_obligation_does_not_starve_full_batch ... ok
+test sd2_sd10_roster_changes_keep_one_owner_and_independent_workers ... ok
+
+test result: ok. 55 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.51s
+
+     Running tests/delivery_handoff.rs (target/debug/deps/delivery_handoff-cda3d5986576f6a6)
+
+running 22 tests
+test delivery_owner_process_helper ... ignored, invoked only by the isolated owner fault driver
+test sd1_invalid_owner_cannot_be_silently_reconciled ... ok
+test review_r1_sd10_member_owned_status_survives_large_roster ... ok
+test paired_status_shows_config_selection_and_default_sources ... ok
+test sd1_sd2_live_unguarded_member_pid_refuses_both_handoff_directions ... ok
+test sd1_sd2_control_authenticates_lead_and_refuses_member_admission ... FAILED
+test paired_cli_refuses_tmux_with_named_relaunch_reason ... ok
+test review_r1_sd4_terminal_identity_probe_survives_minimal_environment ... ok
+test sd7_missing_rollback_compatibility_refuses_member_admission ... ok
+test sd5_sd8_sd9_assignment_producer_persists_generation_and_causal_cards ... ok
+test sd7_rollback_keeps_begun_unknown_visibly_fenced ... ok
+test sd7_sd10_status_exposes_unresolved_rollback_without_worker_health ... ok
+test sd2_sd7_rollback_retries_after_event_failure_without_enabling_members ... ok
+test sd2_sd7_sd12_paused_killed_owner_retains_fence_until_delayed_child_exits ... ok
+test sd1_sd2_sd12_v11_opt_in_requires_contract_by_name_and_records_both_boundaries ... ok
+test sd7_sd12_sigkill_after_submit_before_receipt_never_replays ... ok
+test sd7_explicit_mesh_read_resolves_unknown_before_rollback_retry ... ok
+test sd2_sd7_read_between_handoff_event_and_config_retry_preserves_both_receipts ... ok
+test sd2_sd5_sd7_sd12_native_backlog_handoff_then_legacy_only_delivers_fresh_work ... ok
+test review_r1_sd8_sd12_legacy_generated_backlog_does_not_block_authored_work ... ok
+test sd3_sd5_sd8_sd9_sd11_sd12_paired_optin_held_card_go_native_restart_rollback ... ok
+test canonical_awaiting_go_and_correction_deliver_once ... ok
+
+failures:
+
+---- sd1_sd2_control_authenticates_lead_and_refuses_member_admission stdout ----
+
+thread 'sd1_sd2_control_authenticates_lead_and_refuses_member_admission' (9018) panicked at /rustc/e408947bfd200af42db322daf0fadfe7e26d3bd1/library/core/src/ops/function.rs:250:5:
+Unexpected stderr, failed var.contains(pending: runtime lead)
+├── var: error: IO error: delivery: runtime_record_missing:lead
+└── var as str: error: IO error: delivery: runtime_record_missing:lead
+
+command=`cd "/tmp/th-int-gates-qzlquml7/tmp/.tmpS3mlH8" && env -i "/home/mstie/projects/mesh-trial/target/debug/mesh" "--claude-dir" "/tmp/th-int-gates-qzlquml7/tmp/.tmpS3mlH8" "--team" "handoff" "--name" "lead" "team" "delivery" "--owner" "team"`
+code=1
+stdout=""
+stderr="error: IO error: delivery: runtime_record_missing:lead\n"
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    sd1_sd2_control_authenticates_lead_and_refuses_member_admission
+
+test result: FAILED. 20 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.94s
+
+error: test failed, to rerun pass `--test delivery_handoff`
+error: Recipe `test` failed on line 17 with exit code 101
