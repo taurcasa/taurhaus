@@ -9245,7 +9245,8 @@ fn seat_delivery_canonical_creation_and_operational_rollback() {
         tmp.path().display(),
         launch.program.display()
     );
-    commands.codex_bypass_hook_trust = false;
+    // Regression: 3d3a0f83 rejected the default managed hook flag before spawning a host.
+    commands.codex_bypass_hook_trust = true;
     commands
         .account_selector_dirs
         .insert("CODEX_HOME".into(), tmp.path().into());
@@ -9413,5 +9414,139 @@ fn seat_delivery_tmux_and_omission_produce_identical_member_config() {
     assert_eq!(
         serde_json::to_vec(&before).unwrap(),
         serde_json::to_vec(&after).unwrap()
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn seat_delivery_failed_add_cleans_unpublished_seat_but_retains_attachment() {
+    // Regression: 3d3a0f83 skipped add rollback, stranding pre-submission refusals.
+    for failure in ["build", "join", "attach"] {
+        let tmp = TempDir::new().unwrap();
+        let launch = crate::coordination::hosted_process::tests::fixture(tmp.path());
+        let script = fs::read_to_string(&launch.program).unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let backend = Arc::new(FakeBackend::default());
+        let mut orchestrator = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+        let request = canonical_review_request(&tmp);
+        assert!(orchestrator
+            .initialize_team(&request)
+            .unwrap()
+            .failed_step
+            .is_none());
+        let mut commands = CliCommandSettings::default();
+        commands.codex.fresh = format!(
+            "CODEX_HOME='{}' '{}' --sandbox read-only --ask-for-approval never",
+            tmp.path().display(),
+            launch.program.display()
+        );
+        commands.codex_bypass_hook_trust = false;
+        commands
+            .account_selector_dirs
+            .insert("CODEX_HOME".into(), tmp.path().into());
+        let mut agent = setup_config("seat", "codex", "gpt-6-astra", tmp.path().to_str().unwrap());
+        agent.delivery = Some("app_server".into());
+        let add = AddAgentRequest {
+            team_name: request.team_name,
+            agent,
+        };
+        match failure {
+            "build" => fs::write(
+                &launch.program,
+                script.replace("'FAKE_BUILD','0.153.4'", "'FAKE_BUILD','wrong-build'"),
+            )
+            .unwrap(),
+            "join" => runtime.set_join_mesh_failure("join refused"),
+            _ => runtime.set_send_keys_failures("test-pane-2", 10, "attach refused"),
+        }
+        let report = orchestrator
+            .add_agent_to_team_with_cli_commands(&add, &commands)
+            .unwrap();
+        assert_eq!(
+            report.failed_step.as_deref(),
+            Some(match failure {
+                "build" => "launch_host",
+                "join" => "join_mesh",
+                _ => "attach_tui",
+            }),
+            "{report:?}"
+        );
+        let config = TeamConfigStore::load(tmp.path(), "canonical").unwrap();
+        assert_eq!(
+            config.members.iter().any(|m| m.name == "seat"),
+            failure == "attach"
+        );
+        if failure == "attach" {
+            assert!(MemberRuntimeStore::load(tmp.path(), "canonical", "seat")
+                .unwrap()
+                .app_server
+                .is_some());
+        } else {
+            assert!(!tmp.path().join("canonical/runtime/seat.json").exists());
+        }
+        if failure == "build" {
+            assert_eq!(backend.call_counts().3, 1, "Mesh join must be rolled back");
+            fs::write(&launch.program, &script).unwrap();
+            let retried = orchestrator
+                .add_agent_to_team_with_cli_commands(&add, &commands)
+                .unwrap();
+            assert!(retried.failed_step.is_none(), "{retried:?}");
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn seat_delivery_attach_existing_lead_never_launches_host() {
+    // Regression: 3d3a0f83 added hosted dispatch; validation must still guard attach-existing.
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator =
+        new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+    let mut request = canonical_review_request(&tmp);
+    request.lead_mode = LeadMode::AttachExisting;
+    request.lead.delivery = Some("app_server".into());
+    let report = orchestrator.initialize_team(&request).unwrap();
+    assert_eq!(
+        report.failed_step.as_deref(),
+        Some("validate_configuration")
+    );
+    assert!(report
+        .message
+        .contains("attach-existing is not supported yet"));
+    assert!(!report
+        .succeeded_steps
+        .iter()
+        .any(|step| step == "launch_host"));
+    assert!(runtime.calls().is_empty());
+}
+
+#[test]
+fn seat_delivery_seed_preserves_created_incarnation() {
+    // Regression: 3d3a0f83 redundantly minted an incarnation; preserve creation authority.
+    let tmp = TempDir::new().unwrap();
+    let mut orchestrator = new_orchestrator(
+        &tmp,
+        Arc::new(FakeBackend::default()),
+        Arc::new(RecordingCoordinationRuntime::default()),
+    );
+    orchestrator.create_team("team", None).unwrap();
+    let before = TeamConfigStore::load(tmp.path(), "team").unwrap();
+    let mut lead = member(
+        "lead",
+        MemberRole::Lead,
+        CliTool::Codex,
+        tmp.path().to_str().unwrap(),
+    );
+    lead.extra
+        .insert("adapter_mode".into(), serde_json::json!("app_server"));
+    orchestrator
+        .seed_initialize_roster("team", None, lead, &[], false)
+        .unwrap();
+    assert_eq!(
+        TeamConfigStore::load(tmp.path(), "team")
+            .unwrap()
+            .team_incarnation_id,
+        before.team_incarnation_id
     );
 }

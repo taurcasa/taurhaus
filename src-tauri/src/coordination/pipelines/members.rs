@@ -692,10 +692,16 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                         prepared.member.clone(),
                     )
                     .map_err(|e| ("update_roster".into(), e))?;
-                // Keep failed hosted attachments as stopped/recoverable seats; never silently erase unknown input.
-                self.join_mesh(prepared)?;
+                self.runtime_state.member_added = true;
+                if let Err(error) = self.join_mesh(prepared) {
+                    self.cleanup_failure();
+                    return Err(error);
+                }
             }
             let launch_host = || -> Result<(), CoordinationError> {
+                // Managed hook trust is a TUI-only flag, not an app-server argument.
+                let mut commands = self.cli_commands.clone();
+                commands.codex_bypass_hook_trust = false;
                 let mut context = prepared.activation_context.clone();
                 context.resume_session_id = prepared
                     .previous_runtime
@@ -704,7 +710,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 let launch = build_member_activation_launch_command(
                     &self.orchestrator.teams_dir,
                     &context,
-                    self.cli_commands,
+                    &commands,
                 )?;
                 let account = launch.harness_account_root.as_deref().ok_or_else(|| {
                     CoordinationError::Validation("host account root missing".into())
@@ -727,7 +733,21 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                     )
                     .map_err(CoordinationError::Conflict)
             };
-            launch_host().map_err(|e| ("launch_host".into(), e))?;
+            if let Err(error) = launch_host() {
+                // Publication precedes recovery input. Only unpublished, readable
+                // records prove this attempt has no submitted input to preserve.
+                if self.runtime_state.member_added
+                    && MemberRuntimeStore::load(
+                        &self.orchestrator.teams_dir,
+                        &prepared.activation_context.team_name,
+                        &prepared.member.name,
+                    )
+                    .is_ok_and(|record| record.app_server.is_none() && !record.host_input_unknown)
+                {
+                    self.cleanup_failure();
+                }
+                return Err(("launch_host".into(), error));
+            }
             self.record_step_success("launch_host", "owned thread resumed");
             let (pane, reused_pane) = self
                 .orchestrator

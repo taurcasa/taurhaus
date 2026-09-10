@@ -628,7 +628,9 @@ impl CoordinationOrchestrator {
                                 .and_then(serde_json::Value::as_str)
                                 == Some("app_server")
                         })
-                        .then(|| uuid::Uuid::new_v4().to_string()),
+                        .then(|| TeamConfigStore::load(&self.teams_dir, team_name))
+                        .transpose()?
+                        .and_then(|config| config.team_incarnation_id),
                     schema_version: 1,
                     name: team_name.to_string(),
                     description: team_description,
