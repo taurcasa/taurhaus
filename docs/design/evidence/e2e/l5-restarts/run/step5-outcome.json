@@ -1,0 +1,8 @@
+{
+  "step": 5,
+  "outcome": "NOT RUN",
+  "classification": "blocked by harness failure in step 2",
+  "paid_inputs": 0,
+  "metered_usd": 0,
+  "restart_issued": false
+}

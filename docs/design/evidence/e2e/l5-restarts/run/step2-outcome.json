@@ -1,0 +1,8 @@
+{
+  "step": 2,
+  "outcome": "FAIL",
+  "classification": "harness",
+  "reason": "submitted input did not yield attributed working alpha; polled 120.7s",
+  "at": 1789080305.1597571,
+  "diagnosis": "Observer rejected contemporaneous attributed active daemon snapshots; mixed activity-sidecar/daemon predicate. No backlog marker submitted; no restart."
+}

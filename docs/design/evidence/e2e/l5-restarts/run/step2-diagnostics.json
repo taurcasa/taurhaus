@@ -1,0 +1,88 @@
+{
+  "active_snapshot_count": 11,
+  "first": {
+    "at": 1789080185.79134,
+    "session": {
+      "activity_attribution": "attributed",
+      "activity_confidence": "high",
+      "args": "codex --yolo --dangerously-bypass-hook-trust -c notify=[\"/tmp/th-l5-jg_gyq7i/home/.local/bin/taurhaus-daemon\",\"codex-notify\"] -m gpt-5.6-luna -c model_reasoning_effort=\"low\"",
+      "cli_tool": "codex",
+      "group_id": "l5-restarts",
+      "group_kind": "mesh_team",
+      "group_label": "l5-restarts",
+      "jsonl_path": "/tmp/th-l5-jg_gyq7i/codex/sessions/2026/09/11/rollout-2026-09-11T00-41-18-01a08d7b-8878-7071-9fb8-caa350aef74f.jsonl",
+      "last_output_age_secs": 1,
+      "member_name": "alpha",
+      "pid": 139,
+      "project_path": "/tmp/th-l5-jg_gyq7i/project",
+      "project_unattributed_active": false,
+      "recent_io": false,
+      "session_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+      "state": "active",
+      "tmux_pane": "%2",
+      "tmux_session": "taurhaus",
+      "tmux_window": "2",
+      "tmux_window_name": "project",
+      "tty": "/dev/pts/2"
+    }
+  },
+  "last": {
+    "at": 1789080194.6122549,
+    "session": {
+      "activity_attribution": "attributed",
+      "activity_confidence": "high",
+      "args": "codex --yolo --dangerously-bypass-hook-trust -c notify=[\"/tmp/th-l5-jg_gyq7i/home/.local/bin/taurhaus-daemon\",\"codex-notify\"] -m gpt-5.6-luna -c model_reasoning_effort=\"low\"",
+      "cli_tool": "codex",
+      "group_id": "l5-restarts",
+      "group_kind": "mesh_team",
+      "group_label": "l5-restarts",
+      "jsonl_path": "/tmp/th-l5-jg_gyq7i/codex/sessions/2026/09/11/rollout-2026-09-11T00-41-18-01a08d7b-8878-7071-9fb8-caa350aef74f.jsonl",
+      "last_output_age_secs": 8,
+      "member_name": "alpha",
+      "pid": 139,
+      "project_path": "/tmp/th-l5-jg_gyq7i/project",
+      "project_unattributed_active": false,
+      "recent_io": false,
+      "session_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+      "state": "active",
+      "tmux_pane": "%2",
+      "tmux_session": "taurhaus",
+      "tmux_window": "2",
+      "tmux_window_name": "project",
+      "tty": "/dev/pts/2"
+    }
+  },
+  "state_changes": [
+    {
+      "component": "backend",
+      "event": "activity.state.changed",
+      "from": "idle",
+      "jsonl_path": "/tmp/th-l5-jg_gyq7i/codex/sessions/2026/09/11/rollout-2026-09-11T00-41-18-01a08d7b-8878-7071-9fb8-caa350aef74f.jsonl",
+      "level": "INFO",
+      "message": "Session activity state changed",
+      "pid": 139,
+      "run_id": "run_f876da65b5ec43b983a8063f56d221b4",
+      "session_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+      "source": "transcript",
+      "to": "active",
+      "tool": "codex",
+      "ts": "2026-09-10T22:43:05.486Z"
+    },
+    {
+      "component": "backend",
+      "event": "activity.state.changed",
+      "from": "active",
+      "jsonl_path": "/tmp/th-l5-jg_gyq7i/codex/sessions/2026/09/11/rollout-2026-09-11T00-41-18-01a08d7b-8878-7071-9fb8-caa350aef74f.jsonl",
+      "level": "INFO",
+      "message": "Session activity state changed",
+      "pid": 139,
+      "run_id": "run_f876da65b5ec43b983a8063f56d221b4",
+      "session_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+      "source": "notify",
+      "to": "idle",
+      "tool": "codex",
+      "ts": "2026-09-10T22:43:14.986Z"
+    }
+  ],
+  "limitation": "Per-poll activity sidecars were overwritten by snapshot(); failed conjunct cannot be reconstructed independently."
+}

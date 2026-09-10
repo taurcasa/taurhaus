@@ -33,3 +33,11 @@ class HostedActivity(unittest.TestCase):
   self.assertEqual(a['session_id'],'beta')
   self.assertEqual(a['age'],2)
   self.assertIsNone(attributed_activity(dict(s,activity_attribution='unattributed'),{},2)['session_id'])
+
+class EvidencePacking(unittest.TestCase):
+ def test_duplicate_artifacts_round_trip_with_exact_newlines(self):
+  from pack import pack, unpack
+  files={'a.json':'{"x": 1}\n','b.json':'{"x": 1}\n','pane.txt':'line 1\n\n'}
+  packet=pack(files)
+  self.assertEqual(len(packet['payloads']),2)
+  self.assertEqual(unpack(packet),files)

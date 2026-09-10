@@ -1,34 +1,182 @@
-# Lane 5 — IN PROGRESS; no runtime verdict yet
+# Lane 5 — UNAVAILABLE: step 2 observer failure; neither restart exercised
 
-Pending mail across the ordinary Taurhaus daemon and Mesh team-owner restarts.
-Candidate: Taurhaus `a7e6db7e`, protocol 27; Mesh `310144d`, shipped 0.153.4
-app-server descriptor enabled and unchanged. Exact controller and offline checks
-are in [l5-restarts/](l5-restarts/). No product change.
+**Step 1 PASS; step 2 FAIL (harness); steps 3–6 NOT RUN.** No product defect or
+restart-survival result is established. The controller stopped at the first failed
+step, retained evidence, and removed all owned runtime processes and credentials.
+Independent Opus review belongs to the invoking small-change orchestrator and is
+not claimed by this implementer.
 
-The lane spec's stricter limits govern: 12 Codex inputs, USD 0.25, 15 minutes.
-Model is `gpt-5.6-luna`, effort `low`; login-only Claude lead takes no paid turns.
-Metering is retained independently and never gates a lifecycle operation.
+## Candidate and scope
 
-| Step | Outcome | Classification |
+Taurhaus `a7e6db7e`, protocol **27**, branch `feat/e2e-l5-restarts`;
+Mesh **310144d**, built only in `/home/mstie/projects/mesh-l5`. Its shipped
+Codex **0.153.4** app-server descriptor stayed **enabled and unchanged**.
+Both native Codex siblings were copied into the private bin; startup checked
+`codex --version`. [Binary digests and pins](l5-restarts/candidate.json).
+
+The lane spec's stricter caps govern: **12 Codex inputs, USD 0.25, 15 minutes**.
+Actual runtime was **229.38 seconds**, 2026-09-10 22:41:16–22:45:05 UTC.
+Both seats used `gpt-5.6-luna`, effort `low`; the unauthenticated Claude lead
+remained in first-run setup and took zero paid turns. Total: **6 turns,
+7 metered generations, $0.00500816 metered estimate, one unknown-cost turn**.
+The metered amount is below the cap; total billed spend cannot be verified from
+these records. Unknown cost never blocked an operation. No restart, recovery,
+extra model trial, descriptor edit, product change, install or release occurred.
+
+## Ordered outcomes
+
+| Step | Outcome / classification | Evidence and spend |
 |---|---|---|
-| 1 Initialize and complete/read baseline | PASS | Runtime; read-only hosted-activity observer corrected before baseline |
-| 2 Observe both pending backlogs | Not run | — |
-| 3 Restart Taurhaus normally | Not run | — |
-| 4 Deliver backlog without baseline replay | Not run | — |
-| 5 Restart Mesh with fresh pending mail | Not run | — |
-| 6 Reconcile/read and teardown | Not run | — |
+| 1. Initialize; complete/read baseline messages | **PASS — runtime**, after a read-only observer correction | Production `coordination.initialize_team` completed with canonical builder policy, lead + alpha tmux + beta app_server. Distinct replies, transport receipts, attributed fresh idle and `consumed_by_read` were proven. 5 turns; $0.00398180 metered plus one unknown-cost startup turn. Committed as `10ba9d72`. |
+| 2. Busy turns; capture pending mail on both seats | **FAIL — harness** | Alpha's one confirmed bounded input produced all 80 requested lines. The mixed sidecar/daemon activity predicate rejected the working interval and timed out after **120.7 s**. No backlog marker was sent, and beta's bounded input was not submitted. +1 turn / $0.00102636; cumulative 6 / $0.00500816 plus the same unknown turn. |
+| 3. Normally restart Taurhaus; record recovery | **NOT RUN — blocked by step 2** | No SIGINT/restart boundary, replacement PID or resume-member operation. +0 inputs / $0. |
+| 4. Deliver backlog; check identity/no replay | **NOT RUN — blocked by step 2** | No backlog IDs exist. Restart identity preservation and baseline replay exclusion are unproved. +0 inputs / $0. |
+| 5. Fresh pending mail; Mesh restart-self | **NOT RUN — blocked by step 2** | `mesh team-daemon restart-self` was never invoked. No owner-epoch transition established. +0 inputs / $0. |
+| 6. Read/reconcile both restart boundaries | **NOT RUN — blocked by step 2** | Cross-boundary obligation accounting is unproved. Mandatory failure cleanup **passed separately**. +0 inputs / $0. |
 
-Provenance: messaging trial run2 controller/actions/support/retention read with
-`git -C /home/mstie/projects/taurhaus-msg show HEAD:<path>`. The named
-`taurhaus-trial` checkout was absent (git exit 128); attempt9 controller/actions/
-steps/support were read from the identical named tracked paths in this checkout.
-No other Taurhaus checkout was changed. Mesh source is read/build-only.
+[Per-step outcomes](l5-restarts/run/step2-outcome.json),
+[exact commands/RPCs and exits](l5-restarts/run/events.jsonl),
+[losslessly packed snapshots](l5-restarts/run/snapshots.json).
+The snapshot packet maps original filenames to SHA-256-keyed text payloads:
+**67 files, 54 unique payloads**. `pack.unpack(packet)` restores exact text.
+It includes original initialization/results, bounded panes, paginated inbox and
+journal reads, runtime/config/epoch records, receipt snapshots, owner status,
+passive `/proc/locks`, observed process identities, and original controller/step
+stdout. Complete daemon JSONL remains a separate direct file.
 
-Offline TDD: acceptance-test discovery exited 1 before support existed; four
-checks then passed, exit 0. Tests use generated data only. Runtime acceptance is
-not inferred from offline tests. The required independent Opus evidence lens is
-left to the invoking small-change orchestrator; this is its Codex implementer.
+### Step 1 identities and delivery evidence
 
-Builds use `build.py`; gates run only after the controller's cleanup record exists.
-Exact gates: `just check-quick`, `just lint`, `just test-contracts`. Rust unit
-execution is conditional on a `src-tauri/` diff; none is planned.
+Team incarnation: `c5e686732f8ad109dfc01d2e4a9357757983347813bd8ee8fa78adef417cb519`.
+Delivery owner: team; epoch **2**, namespace PID **2717**, start ticks **30062136**.
+Both attachment generations were **1**. Host/kernel identities are retained
+separately in the snapshot packet and [owner observations](l5-restarts/run/owner-observations.jsonl).
+
+| Seat | Logical identity | Baseline message / delivery ID | Receipt and reply |
+|---|---|---|---|
+| alpha, tmux `%2` | `01a08d7b-8878-7071-9fb8-caa350aef74f` | `a3ea3a40-befa-4c75-a399-4a91f874b9aa` / `61ace4c0-c7c3-4617-bab1-3fc4d87f7fb8` | `submitted`; `L5_baseline_alpha_802543`; attributed fresh idle; explicit read |
+| beta, app_server `%3` | `01a08d7b-8f23-7310-8a8c-bccfbbe625f7` | `995a7bab-7d0f-4e56-8fed-c1ead45900f0` / `6bc9ee9a-7aff-43d7-b8e4-fa3db4841a1d` | `native_enqueued`; `L5_baseline_beta_d745e9`; attributed fresh host idle; explicit read |
+
+The recorded delivery predicates required receipt **and** attributed fresh idle
+**and** explicit read. Replies were independently found in native assistant rows;
+acceptance alone was not treated as exposure, consumption or model action.
+Journal paging kept filters unchanged and followed the returned cursor until
+`done`; the bounded run's pages completed on their first page.
+
+### Why step 2 is a harness failure
+
+The complete daemon log reports alpha's exact session switching to `active`
+(source `transcript`) at **22:43:05.486Z**, then to `idle` (source `notify`) at
+**22:43:14.986Z**. The observer received **11** `state: active`,
+`activity_attribution: attributed` snapshots in that interval. Its additional
+sidecar predicate did not admit them, so `send()` was never reached.
+The terminal submission was real: the rollout contains the requested 80-line
+answer and a new metered turn. [Diagnostic excerpts](l5-restarts/run/step2-diagnostics.json).
+
+Per-poll sidecars were overwritten by the inherited snapshot collector. Thus the
+exact failing conjunct cannot be independently reconstructed; the evidence proves
+that the daemon reported attributed activity and that the observer missed it.
+This is not evidence of a product failure or an absent busy interval. The original
+120.7-second failure and controller exit **1** are preserved. No paid retry or
+restart followed it, and the retained controller is **not a passing reusable
+restart harness**. The backlog and both restart boundaries remain unproved.
+
+## Every measured spend
+
+Rates are the inherited trial packet's API-equivalent estimates, not an invoice:
+$0.20 / $0.02 / $1.20 per million uncached input / cached input / output tokens.
+Reasoning is included in output, not charged twice. The ordinary-token upper-rate
+comparison is $0.09389640; it does not bound the unreported turn.
+
+| Step / seat | Turn ID / generation | Input / cached / output (reasoning) | USD estimate |
+|---|---|---|---|
+| 1 beta startup | `01a08d7b-94ff-7832-9815-a6c090885bc4` / 1 | 11145 / 6912 / 94 (85) | 0.00109764 |
+| 1 alpha startup | `01a08d7b-a152-7083-b5dc-39ce153ccbce` / 1 | 9282 / 6912 / 96 (22) | 0.00072744 |
+| 1 alpha startup | `01a08d7b-a152-7083-b5dc-39ce153ccbce` / 2 | 10793 / 8960 / 42 (33) | 0.00059620 |
+| 1 ephemeral startup | `01a08d7b-a33f-7ab2-aff4-a220c99a86fd` | Unreported | **Unknown** |
+| 1 alpha baseline | `01a08d7c-a71b-7361-875e-aee6cc62c65d` / 1 | 10893 / 9984 / 82 (8) | 0.00047988 |
+| 1 alpha baseline | `01a08d7c-a71b-7361-875e-aee6cc62c65d` / 2 | 11773 / 9984 / 182 (168) | 0.00077588 |
+| 1 beta baseline | `01a08d7c-ce36-7553-b18c-45f7d2389f4a` / 1 | 11353 / 11008 / 13 (0) | 0.00030476 |
+| 2 alpha bounded response | `01a08d7d-2628-7d90-be18-fce8550131dc` / 1 | 11991 / 11008 / 508 (23) | 0.00102636 |
+
+[Full cost ledger](l5-restarts/run/cost-ledger.json),
+[rollout usage events](l5-restarts/run/usage-events.json),
+[host events](l5-restarts/run/host-events.jsonl),
+[native message/tool excerpts](l5-restarts/run/rollout-items.json).
+Builds, observer correction, export and gates add zero trial turns.
+Implementer/reviewer spend is outside the trial ledger and belongs to the orchestrator.
+
+## Isolation, retention, teardown and deviations
+
+- Reused the messaging run2 controller/actions/support/retention with attempt9's
+  normal restart structure. The requested `taurhaus-trial` checkout was absent
+  (Git exit **128**); its named attempt9 sources were available in this checkout's
+  tracked history and read here. Messaging sources were read via `git show` in
+  `/home/mstie/projects/taurhaus-msg`; that checkout was not modified.
+- Runtime roots were scratch-only under `/tmp/th-l5-jg_gyq7i`; private PID namespace,
+  private tmux server, inherited `TMUX` absent, operator homes hidden, probed private
+  daemon port. Both native Codex siblings were used. Only the explicitly authorized
+  auth file was copied, mode 0600; credentials and installation/account usage data
+  were not retained. No observer connected directly to an app-server socket.
+- Startup correction before any baseline input: the first read-only step-1
+  observer wrongly required beta's sidecar to contain `state`; authoritative host
+  state came from the daemon snapshot. Only that owned observer process was
+  terminated (exit **143**), a synthetic regression test failed first, then passed,
+  and the observer resumed against the same team without replaying paid input.
+  The unmodified paid controller continued throughout. No complete step-1 failure
+  or paid-controller relaunch was hidden.
+- Step 2 then failed as described above. Later steps were stopped, with no product
+  fix and no second paid run. No transient `host member busy` / `lock busy` RPC
+  refusal occurred (zero retry episodes). Nonzero owner-health counters are
+  retained in the owner status; no general delivery-health claim is made.
+- [Cleanup](l5-restarts/run/cleanup.json): no surviving owned process identities,
+  private port closed, scratch auth explicitly removed before root removal, root
+  removed. Private namespace teardown covered daemon, host child, TUI, tmux and
+  Codex descendants. No foreign process was killed. [Waited controller exit](l5-restarts/run/controller-exit.json): **1**.
+- [Complete daemon JSONL](l5-restarts/run/taurhaus.log.jsonl): **550 rows**, no event-family
+  filtering. Sanitized SHA-256:
+  `9b30d2e4f45871ef1de6d2c2a580d01222134e7434135ab7e0f881cf0a438475`.
+  Pane captures are at most 60 lines. Duplicate artifacts are interned losslessly;
+  opaque reasoning ciphertext and internal model metadata were omitted from
+  nonessential rollout excerpts.
+
+## Commands, TDD and gates
+
+Exact source: [controller.py](l5-restarts/controller.py),
+[steps.py](l5-restarts/steps.py), [actions.py](l5-restarts/actions.py).
+Actual sequence (from this checkout root):
+
+```text
+python3 docs/design/evidence/e2e/l5-restarts/build.py
+python3 docs/design/evidence/e2e/l5-restarts/finish.py --controller
+python3 docs/design/evidence/e2e/l5-restarts/steps.py 1
+# Stop only the read-only observer; red-first hosted-state predicate correction.
+python3 docs/design/evidence/e2e/l5-restarts/steps.py 1
+python3 docs/design/evidence/e2e/l5-restarts/steps.py 2
+# Failure invokes controller finally; supervisor waits and records exit 1.
+python3 docs/design/evidence/e2e/l5-restarts/gates.py
+python3 docs/design/evidence/e2e/l5-restarts/pack.py
+```
+
+Offline discovery uses generated data only; no harness CLI or real harness home.
+Initial helpers: missing-module red **1** → four tests green **0**. Hosted-state
+regression: missing-helper red **1** → five tests green **0**, with a
+`// Regression:` comment naming `9fa886ee`. Lossless packing: missing-helper red
+**1** → six tests green **0**. These checks do not certify the failed busy predicate.
+
+| Exact command | Exit / result |
+|---|---|
+| `just ensure-tauri-resources` | **0**, local ignored placeholders |
+| `just build-daemon` | **0**, 753.43 s, checkout-local target |
+| Mesh `cargo build --bin mesh` | **0**, 32.26 s, designated Mesh target |
+| `bun install --frozen-lockfile` | **0**, checkout dependencies |
+| `just check-quick` | Pending |
+| `just lint` | Pending |
+| `just test-contracts` | Pending |
+| `just test-rust-unit` | Not required: no `src-tauri/` diff |
+
+Gates run **after teardown**, from the checkout root, inside a fresh credential-free
+namespace with real harness CLIs blocked. Cargo preflights use the requested
+`pgrep -af '(^|/)cargo( |$)'`; wait only at three or more existing Cargo processes,
+30-second polls bounded by 30 minutes; each launched Cargo uses one build job
+and this checkout's own target. No full `just check` or concurrent paid/gate run.
+[Build results](l5-restarts/build/daemon-build.json), [gate records](l5-restarts/gates/).

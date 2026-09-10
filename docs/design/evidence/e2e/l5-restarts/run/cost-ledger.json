@@ -6,9 +6,10 @@
     "01a08d7b-a152-7083-b5dc-39ce153ccbce",
     "01a08d7b-a33f-7ab2-aff4-a220c99a86fd",
     "01a08d7c-a71b-7361-875e-aee6cc62c65d",
-    "01a08d7c-ce36-7553-b18c-45f7d2389f4a"
+    "01a08d7c-ce36-7553-b18c-45f7d2389f4a",
+    "01a08d7d-2628-7d90-be18-fce8550131dc"
   ],
-  "paid_inputs": 5,
+  "paid_inputs": 6,
   "generations": [
     {
       "thread_id": "01a08d7b-8f23-7310-8a8c-bccfbbe625f7",
@@ -69,10 +70,20 @@
       "reasoning_output": 168,
       "api_equivalent_usd": 0.00077588,
       "conservative_usd": 0.014346
+    },
+    {
+      "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+      "turn_id": "01a08d7d-2628-7d90-be18-fce8550131dc",
+      "input": 11991,
+      "cached_input": 11008,
+      "output": 508,
+      "reasoning_output": 23,
+      "api_equivalent_usd": 0.00102636,
+      "conservative_usd": 0.0149988
     }
   ],
-  "api_equivalent_usd": 0.0039818,
-  "conservative_usd": 0.0788976,
+  "api_equivalent_usd": 0.00500816,
+  "conservative_usd": 0.0938964,
   "metering_complete": false,
   "unmetered_turn_ids": [
     "01a08d7b-a33f-7ab2-aff4-a220c99a86fd"
