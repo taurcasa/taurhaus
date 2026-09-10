@@ -194,7 +194,7 @@ remain historical; this real runtime result supersedes their unavailable verdict
 
 ## Run 3 — FAIL at step 1 (latest result)
 
-**Classification: Taurhaus product defect.** The #163 base resolves alpha's
+**Classification: Taurhaus readiness failure; product cause provisional.** The #163 base resolves alpha's
 session identity to `01a08b57-d623-7511-b516-86d018112f06`, but it does **not**
 establish attributed fresh idle readiness in this real trial. At a ready
 **Codex 0.153.4 / gpt-5.6-luna low** prompt, the production member activity
@@ -217,7 +217,7 @@ product patch, hosted seat or descriptor edit was made.
 
 | Ordered step | Run 3 outcome | Classification / evidence |
 | --- | --- | --- |
-| 1. Initialize; terminal identity; attributed idle and card delivery | **FAIL** | **Taurhaus**. Terminal facts and session ID exist; attributed idle and submitted onboarding do not. |
+| 1. Initialize; terminal identity; attributed idle and card delivery | **FAIL** | **Taurhaus readiness failure (provisional product attribution)**. Terminal facts and session ID exist; attributed idle and submitted onboarding do not. |
 | 2. Bounded response; working snapshot; Q | **NOT RUN** | Blocked by step 1; no ordinary input or Q. |
 | 3. Q pending → fresh idle → one submission/reply | **NOT RUN** | No busy-window or delivery claim. |
 | 4. Bounded response; Q2 pending; managed stop and lock | **NOT RUN** | No Q2, managed stop, or lifecycle-exclusion claim. |
@@ -288,8 +288,14 @@ were not exported. [Inventory](l2-tmux-busy/run3/run/codex-session-inventory.jso
 The **complete daemon JSONL, all 245 rows**, is retained through shutdown,
 without event selection or tail clipping. It records 23 activity state changes,
 with `process_io` transitions to active and `none` transitions to idle, and no
-`launch_ready` observation. The precise cause of the missing readiness is not
-proved by this lane; no product fix is proposed here.
+`launch_ready` observation. The pane also shows
+`Update available! 0.153.4 -> 0.154.0`: Codex performed non-turn background work. `launch_ready` requires a quiet `rchar` window in
+`src-tauri/src/session_scanner/idle/codex_readiness.rs`; background Codex I/O is
+therefore an **unexcluded candidate cause** of the repeated active/idle changes
+and failure to accrue that window. The log does not prove that update checking
+caused those reads. The observed readiness failure is firm; attribution to a
+Taurhaus product defect remains provisional, with this harness confounder
+unresolved. No product fix is proposed here.
 [Complete daemon log](l2-tmux-busy/run3/run/taurhaus.log.jsonl),
 [stderr](l2-tmux-busy/run3/run/daemon-stderr.txt).
 
@@ -303,7 +309,11 @@ All pane captures are at most 60 lines. Identical files were deduplicated with
 [explicit aliases](l2-tmux-busy/run3/export-manifest.json); distinct daemon and
 journal rows remain intact. Offline pane exports remove trailing blank lines
 only, resolving the initial whitespace-check failure; the exact captures remain
-in the command log. No evidence-size cap aborted the step.
+in the command log. The review added [pack.py](l2-tmux-busy/run3/pack.py), which
+replays the manifest against those captures, checks byte identity before pane
+deduplication, and verifies all five retained exports and three aliases.
+Its default mode is read-only; `--write` reproduces the declared exports.
+No evidence-size cap aborted the step.
 
 ### Run 3 spend, cleanup, tests and gates
 
@@ -327,8 +337,14 @@ removed.** It killed no foreign process. Teardown is independently verified by
 [audit exit 0](l2-tmux-busy/run3/final-audit.json) and the
 [cleanup record](l2-tmux-busy/run3/run/cleanup.json).
 
-Six synthetic offline controller checks pass. Red-first records show exit 1 for
-missing support functions, then exit 0 after implementation. Regression comments
+The original six synthetic offline controller checks passed. Their initial red
+records showed missing imports, not failed behavioral assertions. The review fix
+round now runs **17 tests**, including run3-local credential preflight tests.
+A deliberate offline `ready_session` stub returning the first row unconditionally
+also produced an assertion-level red: the mismatched `%3` pane was not rejected.
+This is a retrospective mutation check, not an original pre-implementation run.
+The original readiness implementation is unchanged and passes the same test.
+Regression comments
 name the earlier controller commit `8e8f1287` for the partial runtime, incomplete
 JSONL retention and pre-claim deferral assumptions. New readiness checks reject
 missing session IDs, stale idle, mismatched panes, un-attributed rows and degraded
@@ -348,7 +364,7 @@ not relabeled as lane tests.
 | `just test-contracts` | **0** | Renderer, harness conformance and module-boundary tests pass |
 
 [Exact gate exits, timings and final log lines](l2-tmux-busy/run3/checks-result.json).
-The offline six-test suite and cleanup/export audit also exit **0**.
+The offline 17-test suite, packaging replay and cleanup/export audit also exit **0**.
 No `src-tauri/` diff exists, so the conditional `just test-rust-unit` gate does
 not apply. No full `just check` was run.
 
@@ -356,7 +372,59 @@ Deviations / remaining review: the operator's explicit one-file authentication
 authorization overrides the shared contract's generic source restriction.
 Step 1 failure mandates stopping before steps 2–6, leaving **no green numbered
 runtime commit**. The run-3 controller's remaining-step branches are unexecuted
-and make no coverage claim. The independent **Opus evidence lens remains
-unavailable in this session** and must be supplied by the orchestrator; the
-scratch Claude lead was not used as a reviewer. No workflow PASS or review
-approval is claimed.
+and make no coverage claim. The original execution had no callable Opus reviewer.
+The operator subsequently
+supplied the independent Opus round-1 findings addressed below; no additional
+reviewer was launched, and the scratch Claude lead was not used as one. The
+historical audit's unavailable-review field describes the original execution.
+No workflow PASS or post-fix review approval is claimed.
+
+
+### Run 3 reproduction and review fix round
+
+Run these offline checks from this checkout root. The subshell ensures discovery
+loads **run3's** support and preflight modules, rather than the frozen run-2 copy:
+
+```sh
+(cd docs/design/evidence/e2e/l2-tmux-busy/run3 && python3 -B -m unittest discover -s . -p '*_test.py')
+python3 -B docs/design/evidence/e2e/l2-tmux-busy/run3/pack.py
+python3 -B docs/design/evidence/e2e/l2-tmux-busy/run3/audit.py
+python3 -B docs/design/evidence/e2e/l2-tmux-busy/run3/gates.py
+```
+
+For reference, the live run's build/controller sequence is below. `SOURCE` must
+be supplied privately as the operator's explicitly authorized one-file source;
+never echo it or credential contents. These are live trial commands, **not part
+of the offline review rerun**. The controller deliberately refuses an existing
+`run/`; preserve this packet and use a separately allocated evidence directory
+and budget for any subsequent trial. Build queue polling belongs to `build.py`.
+
+```sh
+python3 -B docs/design/evidence/e2e/l2-tmux-busy/run3/build.py
+python3 -B docs/design/evidence/e2e/l2-tmux-busy/run3/controller.py --auth-source "$SOURCE"
+```
+
+The review confirmed all supplied findings. The live credential call now passes
+a pinned authorization constant independently of the candidate. A red test
+against `57c8ff36` reached the mocked copy for each of four forbidden harness-home
+paths; the corrected call refuses them and still accepts the exact authorized
+file with all credential metadata/copy operations mocked. The local preflight
+suite covers the frozen run3 copy; historical run-2 files remain unchanged.
+
+Step-1 waits now assign Taurhaus ownership only when their specific assertion
+times out; RPC/probe exceptions keep the default harness classification.
+The original `step1-outcome.json` is preserved as recorded, with its product
+classification qualified in this report. The dead gate queue wait and unused
+freshness-age calculation were removed. Send and step-6 read now share a JSON
+parser that accepts a banner followed by compact or multiline JSON. Its regression
+first failed with `JSONDecodeError` against the old send implementation.
+The packaging regression first failed because `pack` was absent, then passed
+with the replay implementation; the real packet replay also exits 0.
+
+All three exact gates were rerun for this fix round and exited **0**;
+`checks-result.json` now records these latest timings and log excerpts.
+This fix round ran only synthetic tests, packet checks and the exact three gates;
+no paid trial was repeated, no real harness was invoked, and no credential was
+read or copied. **Additional seat starts: 0; Codex/Claude inputs: 0/0; additional
+seat spend: $0.00.** Historical run 3 remains step 1 FAIL and steps 2–6 NOT RUN.
+Implementer/reviewer spend is not exposed here and remains outside the seat cap.
