@@ -1,0 +1,18 @@
+{
+  "command": [
+    "just",
+    "check-quick"
+  ],
+  "exit": 0,
+  "seconds": 30.72593502700329,
+  "cargo_preflight": [
+    {
+      "exit": 0,
+      "output": "282904 <tool-cache>/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --manifest-path src-tauri/Cargo.toml --lib hosted_stop_session_ -- --test-threads=1\n"
+    },
+    {
+      "exit": 1,
+      "output": ""
+    }
+  ]
+}

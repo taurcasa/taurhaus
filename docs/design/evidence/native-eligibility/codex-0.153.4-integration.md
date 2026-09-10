@@ -2989,3 +2989,13 @@ Evidence: `integration/attempt13/run/step5-boundary-events.json`,
 daemon JSONL (`compaction.codex_host.received` / `.delivered`). Token-class resets
 are accounted as metering limitations in the final ledger, not step predicates.
 
+### Step 6 — PASS (S-runtime)
+
+Normal SIGINT daemon stop, private daemon restart and production resume completed.
+Thread identity remained `01a08c8a-29ea-7cc2-8a4e-b000b9317bbd`. Post-restart marker
+`willow439bda` has a model reply, idle thread, pane evidence and
+`native_enqueued` receipt. The corrected reply-plus-idle predicate passed.
+Evidence: `integration/attempt13/run/step6-runtime-{before,after}.json`,
+`step6-resume-result.json`, `step6-identities.json`, `step6-receipts.json`,
+`step6-final-pane-*.txt`, `host-events.jsonl`, and exact lifecycle commands in `events.jsonl`.
+
