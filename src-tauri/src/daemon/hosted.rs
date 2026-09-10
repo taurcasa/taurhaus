@@ -49,18 +49,6 @@ pub(super) fn stop_session(
     registry: &TeamRootRegistry,
     params: &super::protocol::StopSessionParams,
 ) -> Result<bool, String> {
-    // Unrelated inventory uncertainty must not veto a legacy pane stop.
-    if let Ok(Some((root, team, member))) =
-        crate::coordination::stores::lock::resolve_terminal_member(registry, &params.tmux_pane)
-    {
-        if MemberRuntimeStore::load(&root, &team, &member)
-            .map_err(|e| e.to_string())?
-            .app_server
-            .is_none()
-        {
-            return Ok(false);
-        }
-    }
     let mut records = Vec::new();
     for (root, team) in registry.team_locations().unwrap_or_default() {
         for (member, record) in MemberRuntimeStore::load_all(&root, &team).unwrap_or_default() {
@@ -77,11 +65,32 @@ pub(super) fn stop_session(
             matches.push(candidate);
         }
     }
+    // A stale non-hosted record can claim a reused pane ID. Let hosted
+    // ownership validation win before the fence suppresses the argv fallback.
+    if !records
+        .iter()
+        .any(|(_, _, record)| record.pane_id.as_deref() == Some(&params.tmux_pane))
+    {
+        if let Ok(Some((root, team, member))) =
+            crate::coordination::stores::lock::resolve_terminal_member(registry, &params.tmux_pane)
+        {
+            if MemberRuntimeStore::load(&root, &team, &member)
+                .map_err(|e| e.to_string())?
+                .app_server
+                .is_none()
+            {
+                return Ok(false);
+            }
+        }
+    }
     // Ordinary panes without any hosted candidates need no process-table scan.
     if matches.is_empty() && !records.is_empty() {
         let argv = crate::session_scanner::control::pane_process_argv(&params.tmux_pane);
         matches.extend(records.iter().filter(|(_, _, r)| {
-            let host = r.app_server.as_ref().unwrap();
+            let host = r
+                .app_server
+                .as_ref()
+                .expect("hosted candidates have an app-server attachment");
             let socket = format!("unix://{}", host.socket_path.display());
             argv.iter().any(|args| {
                 args.windows(4)
@@ -95,7 +104,10 @@ pub(super) fn stop_session(
     let Some((team, member, record)) = matches.first().copied() else {
         return Ok(false);
     };
-    let host = record.app_server.as_ref().unwrap();
+    let host = record
+        .app_server
+        .as_ref()
+        .expect("matched hosted candidate has an app-server attachment");
     let exit_status = hosts.stop_with_tui(registry, team, member, || {
         crate::session_scanner::control::stop_hosted_tui(&params.tmux_pane, params.cli_tool)
     })?;

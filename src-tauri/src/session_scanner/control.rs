@@ -1143,6 +1143,8 @@ mod tests {
     hosted_stop_cases! {
         hosted_stop_session_reaps_host_when_tui_already_gone => "gone",
         hosted_stop_session_reaps_attached_host => "pane",
+        // Regression: 732d0029 let a stale non-hosted record hide a live hosted pane.
+        hosted_stop_session_stale_lead_collision_reaps_both => "collision",
         hosted_stop_session_resolves_stale_pane => "stale",
         hosted_stop_session_previous_owner_preserves_pane => "previous",
         hosted_stop_session_reused_pid_is_plain => "reused_pid",
@@ -1176,7 +1178,10 @@ mod tests {
         if mode == "gone" {
             pane = "%999999".into();
         }
-        if matches!(mode, "pane" | "stale" | "busy" | "released" | "previous") {
+        if matches!(
+            mode,
+            "pane" | "stale" | "busy" | "released" | "previous" | "collision"
+        ) {
             use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
             let runtime = RecordingCoordinationRuntime::default();
             hosts
@@ -1231,7 +1236,7 @@ mod tests {
             record.project_path = Some(root.join("another-project"));
         }
         MemberRuntimeStore::save(root, "team", "seat", &record).unwrap();
-        if mode == "lead" {
+        if matches!(mode, "lead" | "collision") {
             let path = root.join("team/config.json");
             let mut config: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
@@ -1239,9 +1244,21 @@ mod tests {
             std::fs::write(path, config.to_string()).unwrap();
             record.app_server = None;
             record.pane_id = Some(pane.clone());
+            if mode == "collision" {
+                record.pane_pid = Some(u32::MAX);
+                record.pane_start_time = Some(u64::MAX);
+            }
             MemberRuntimeStore::save(root, "team", "lead", &record).unwrap();
             // Regression: c2aa72d1, round-2 review: unrelated corruption must not defer a known pane.
-            std::fs::write(root.join("team/runtime/broken.json"), "{").unwrap();
+            if mode == "lead" {
+                std::fs::write(root.join("team/runtime/broken.json"), "{").unwrap();
+            } else {
+                let (_, _, first) =
+                    crate::coordination::stores::lock::resolve_terminal_member(&registry, &pane)
+                        .unwrap()
+                        .unwrap();
+                assert_eq!(first, "lead", "stale record must be visited first");
+            }
         }
 
         let before = saved(root);
@@ -1261,7 +1278,7 @@ mod tests {
             crate::coordination::hosted::tests::hold_stop_seat(
                 &hosts,
                 root,
-                Duration::from_millis(if mode == "busy" { 3500 } else { 1000 }),
+                Duration::from_millis(if mode == "busy" { 5000 } else { 1000 }),
             )
         });
         let response = crate::daemon::handlers::handle_stop_session(
@@ -1310,6 +1327,10 @@ mod tests {
             assert!(!events.contains("hosted.stop_session.host_stopped"));
             return;
         }
+        assert!(
+            !Path::new(&host_process).exists(),
+            "{mode}: owned host survived TUI stop"
+        );
         let event = events
             .lines()
             .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
