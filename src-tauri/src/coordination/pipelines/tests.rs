@@ -8552,16 +8552,12 @@ fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
     // Regression: fa18910c lost appServer when roster teardown reconstructed runtime.
     let attachment = roster[0].runtime_record().unwrap();
     assert!(attachment.app_server.is_some());
-    let result = orchestrator.teardown_member_resources_best_effort(
-        "team",
-        "seat",
-        Some(tmp.path()),
-        Some(&attachment),
-    );
-    assert!(result
-        .steps
-        .iter()
-        .any(|s| s.step == "stop_host" && s.success));
+    // Regression: 1db4f9bf, L4 run 4: closing the TUI left its host running.
+    orchestrator.hosted.stop(&registry, "team", "seat").unwrap();
+    let stopped = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    assert_eq!(stopped.health, HealthState::SessionDead);
+    assert_eq!(stopped.app_server.as_ref().unwrap().state, "stopped");
+    assert_eq!(stopped.attachment_generation, before.attachment_generation + 1);
     let mut commands = CliCommandSettings::default();
     let command = format!(
         "CODEX_HOME='{}' '{}' --sandbox read-only --ask-for-approval never",
@@ -8608,6 +8604,12 @@ fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
     assert_eq!(report.pane_id.as_deref(), Some("test-pane-1"));
     let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
     assert_eq!(before.session_id, after.session_id);
+    assert!(after.attachment_generation > stopped.attachment_generation);
+    let requests = || fs::read_to_string(tmp.path().join("requests.jsonl")).unwrap()
+        .lines().map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap()).collect::<Vec<_>>();
+    assert!(requests().iter().any(|r| r["method"] == "thread/resume"
+        && r["params"]["threadId"] == "owned-thread"));
+
     assert_eq!(after.applied_effort.as_deref(), Some("high"));
     let wire = serde_json::to_value(&after).unwrap();
     let host = &wire["appServer"];
@@ -8655,6 +8657,8 @@ fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
     assert_eq!(reattached.pane_pid, Some(1002));
     assert!(reattached.pane_start_time.is_some());
     assert!(reattached.tmux_socket.is_some());
+    assert_eq!(requests().iter().filter(|r| r["method"] == "turn/start").count(), 2,
+        "one recovery card for each of the initial and resumed generations");
     let result = orchestrator.teardown_member_resources_best_effort(
         "team",
         "seat",
