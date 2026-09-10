@@ -954,3 +954,31 @@ merged prerequisite, isolation, policy, zero spend, cleanup and artifact hygiene
 
 Attempt-4 text captures and logs trim trailing whitespace/empty lines; events.jsonl
 preserves the original pane capture string. No artifact contains auth contents.
+
+## Attempt 5 — step 1 PASS; remaining steps in progress (2026-09-10)
+
+Pair: Taurhaus `f2a7553b` (includes PR #159 / `6f61f611`, protocol 27),
+Mesh `dfa22bc`, Codex 0.153.4, gpt-5.6-luna / low. Both checkout-local builds
+exited 0 after Cargo preflight found no competing build. Only the Mesh scratch
+working-tree descriptor enables the exact paired class identities.
+
+**Step 1 PASS (S).** Production `coordination.initialize_team` completed all
+nine stages, including `opt_in_delivery`, with the builder's canonical policy,
+credential-free Claude lead and fresh `delivery: app_server` Codex seat.
+The runtime publishes terminalContract 1, Unix WebSocket, all three class
+identities, and `/tmp/th-int-3r8tuw4q/project/AGENTS.md` as an instruction source.
+The daemon-generated strict config and attached pane are retained under
+[integration/attempt5/step1](integration/attempt5/step1).
+Thread `01a08948-2281-74c0-8bba-67bb9da54f94` received the recovery card in
+turn `01a08948-22b4-7a73-afe8-d42785e3b31a`; the attached pane shows the card
+and the model's reply. No observer connection was opened. The daemon transcript
+RPC supplied the actual turn events and usage; structured logs show instruction
+loading and startup delivery. One generation: 10,787 input, 6,912 cached,
+32 output, 0 reasoning output; API-equivalent **$0.00095164**, conservative
+all-tokens-at-$1.20/M **$0.01298280**. These are metered-token calculations at
+the packet's rates, not billing invoices. Claude: zero turns / $0.
+
+Controller: [attempt5-controller.py](integration/attempt5-controller.py), based
+on attempt 3. It never connects to an app-server socket; reads go through the
+daemon after successful initialization. Evidence helpers have three offline
+checks, observed red (missing helper module), then green. No product code changed.
