@@ -19,6 +19,11 @@ import {
 const DERIVATION_TABLE = [
   // Regression: 6f61f611 hosted TUI activity fell through to heuristics.
   [
+    'host authority survives a degraded process inventory',
+    { state: 'active', activity_attribution: 'attributed', source: 'host', degraded: true },
+    { level: 'working', label: 'Working', confidence: 'high', source: 'host' },
+  ],
+  [
     'daemon restart invalidates retained host work',
     { state: 'active', source: 'host', _presenceStale: true },
     { level: 'uncertain', label: 'Uncertain', confidence: 'low', source: 'host_unavailable' },
