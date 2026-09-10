@@ -1,5 +1,5 @@
 {
-  "paid_inputs": 1,
+  "paid_inputs": 2,
   "turns": [
     {
       "turn_id": "01a08d4b-9cb3-7813-b7b6-a07558315b2b",
@@ -11,6 +11,11 @@
         "output_tokens": 509
       },
       "conservative_usd": 0.0541872
+    },
+    {
+      "turn_id": "01a08d4b-e040-7920-8c97-18d3d383691d",
+      "usd": null,
+      "completed": false
     },
     {
       "turn_id": "01a08d4b-a08d-7162-a0e6-ae11e3252ea5",
@@ -62,7 +67,7 @@
       "usd": 0.00050196
     }
   ],
-  "metering_complete": true,
+  "metering_complete": false,
   "api_equivalent_usd": 0.00755876,
   "conservative_usd": 0.0541872,
   "rates_usd_per_million": {
@@ -77,10 +82,23 @@
       "step": 1,
       "at": 1789076935.237916,
       "generation": null
+    },
+    {
+      "reason": "Q-work",
+      "step": 2,
+      "at": 1789076954.9306345,
+      "generation": 1,
+      "confirmed": true
+    },
+    {
+      "reason": "Q",
+      "step": 2,
+      "at": 1789076955.665097,
+      "generation": 1
     }
   ],
-  "rollout_turns": 1,
-  "controller_input_attempts": 0,
-  "controller_issued_inputs": 0,
+  "rollout_turns": 2,
+  "controller_input_attempts": 1,
+  "controller_issued_inputs": 1,
   "mesh_terminal_deliveries": 1
 }
