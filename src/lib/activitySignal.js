@@ -170,9 +170,11 @@ export function activitySignal(record) {
   const base = baseStatus(record)
   if (base === 'offline') return signal('offline', 'none', 'medium')
 
+  if (record?.source === 'host_unavailable' || (record?.source === 'host' && isStalePresence(record))) {
+    return signal('uncertain', 'host_unavailable', 'low')
+  }
   if (record?.degraded === true) return signal('uncertain', 'degraded', 'low')
   if (isStalePresence(record)) return signal('uncertain', 'stale', 'low')
-  if (record?.source === 'host_unavailable') return signal('uncertain', 'host_unavailable', 'low')
   if (record?.source === 'host') {
     const level = base === 'active' && attribution(record) === 'attributed' ? 'working' : base
     return signal(level, 'host', 'high')
