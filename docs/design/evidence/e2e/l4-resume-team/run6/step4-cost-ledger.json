@@ -1,0 +1,76 @@
+{
+  "paid_inputs": 6,
+  "turn_ids": [
+    "01a08d54-e765-7b60-bcd7-1414d2c54648",
+    "01a08d54-f434-79a0-b5c9-5023bc854a36",
+    "01a08d55-1d1b-7c31-bd16-beed89397d08",
+    "01a08d55-33a4-7403-bbc0-598151dd6506",
+    "01a08d56-d1dd-73b2-aa3e-52ced71f7e44",
+    "01a08d56-d5c7-7332-a3ef-765ba8611c34"
+  ],
+  "turns": [
+    {
+      "turn_id": "01a08d54-f434-79a0-b5c9-5023bc854a36",
+      "session_id": "01a08d54-dc9c-79b0-bad6-5a6ea04f55aa",
+      "observer": "rollout-cumulative",
+      "input": 20148,
+      "cached_input": 15872,
+      "output": 254,
+      "api_equivalent_usd": 0.00147744,
+      "conservative_usd": 0.0244824
+    },
+    {
+      "turn_id": "01a08d55-1d1b-7c31-bd16-beed89397d08",
+      "session_id": "01a08d54-dc9c-79b0-bad6-5a6ea04f55aa",
+      "observer": "rollout-cumulative",
+      "input": 23031,
+      "cached_input": 19968,
+      "output": 110,
+      "api_equivalent_usd": 0.00114396,
+      "conservative_usd": 0.0277692
+    },
+    {
+      "turn_id": "01a08d54-e765-7b60-bcd7-1414d2c54648",
+      "thread_id": "01a08d54-e121-7d31-bd6a-d6e72d498dbf",
+      "input": 10846,
+      "cached_input": 6912,
+      "output": 63,
+      "observer": "host",
+      "api_equivalent_usd": 0.00100064,
+      "conservative_usd": 0.0130908
+    },
+    {
+      "turn_id": "01a08d55-33a4-7403-bbc0-598151dd6506",
+      "thread_id": "01a08d54-e121-7d31-bd6a-d6e72d498dbf",
+      "input": 11956,
+      "cached_input": 9984,
+      "output": 12,
+      "observer": "host",
+      "api_equivalent_usd": 0.00060848,
+      "conservative_usd": 0.0143616
+    }
+  ],
+  "unmetered": [
+    "01a08d56-d1dd-73b2-aa3e-52ced71f7e44",
+    "01a08d56-d5c7-7332-a3ef-765ba8611c34"
+  ],
+  "api_equivalent_usd": 0.00423052,
+  "conservative_usd": 0.079704,
+  "basis": "Prior trial packet Luna input/cached/output rates $0.20/$0.02/$1.20 per million; conservative all tokens at $1.20/M, not an invoice.",
+  "seat_start_reservations": 4,
+  "inputs_plus_conservative_starts": 10,
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "max_inputs": 16,
+  "max_usd": 0.25,
+  "completed_turn_ids": [
+    "01a08d54-e765-7b60-bcd7-1414d2c54648",
+    "01a08d54-f434-79a0-b5c9-5023bc854a36",
+    "01a08d55-1d1b-7c31-bd16-beed89397d08",
+    "01a08d55-33a4-7403-bbc0-598151dd6506"
+  ],
+  "attachment_generations": {
+    "alpha": 2,
+    "beta": 3
+  }
+}

@@ -1,4 +1,4 @@
-# IN PROGRESS — latest run 6, L4 steps 1–3 passed
+# IN PROGRESS — latest run 6, L4 steps 1–4 passed
 
 Run 6 uses taurhaus `a7e6db7e` and the unmodified Mesh `310144d` candidate.
 See [Run 6](#run-6) for the latest checkpoints.
@@ -685,3 +685,10 @@ for each stopped seat, with health refusals `pending: runtime session dead`
 satisfied the predicate without a pending receipt. No new turns or spend.
 [Alpha backlog](l4-resume-team/run6/step3-alpha-backlog.json),
 [beta backlog](l4-resume-team/run6/step3-beta-backlog.json).
+
+Step 4 **PASS** (runtime): the one `coordination.resume_team` call completed,
+resumed lead/alpha/beta, with `failed_members: []`, `started_team_daemon: true`,
+and no team-daemon warning. The identity/recovery assertions belong to step 5.
+[All resume status samples](l4-resume-team/run6/step4-operation.json),
+[step-4 state](l4-resume-team/run6/step4-state.json),
+[checkpoint cost ledger](l4-resume-team/run6/step4-cost-ledger.json).
