@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — FAIL step 1: opt-in lifetime-lock refusal, attempt 10
+# Codex 0.153.4 integration — INCONCLUSIVE: setup/activation race; hosted launch observed, attempt 10
 
 ## Attempt 1 — INCONCLUSIVE: setup FAIL (2026-09-09)
 
@@ -2201,24 +2201,31 @@ retained event trace so this verification does not rerun the one-time finalizer
 or rewrite daemon evidence. The original daemon JSONL hash is unchanged.
 
 
-### Attempt 10 — FAIL step 1: production opt-in lifetime-lock refusal, 2026-09-10
+### Attempt 10 — INCONCLUSIVE: setup/activation race; hosted launch observed, 2026-09-10
 
-**Latest verdict: FAIL.** The production `coordination.initialize_team` RPC
-launched both seats, including the hosted Codex member and its attached TUI,
-but failed at `opt_in_delivery`. Stop-on-first-failure was applied; no retry,
-process intervention within a step, product patch, or descriptor flip occurred.
-[Initialize response](integration/attempt10/run/initialize-result.json),
-[final audit](integration/attempt10/final-audit.json).
+**Latest verdict: INCONCLUSIVE.** The production `coordination.initialize_team`
+RPC launched both seats, including the hosted Codex member and its attached TUI,
+but canonical activation hit a retryable `opt_in_delivery` refusal. The original
+controller treated that setup state as a terminal step failure and tore down the
+fixture without retrying. This is not evidence of a hosted-launch failure.
+Round-1 review takes the expressly offered no-rerun correction: no additional
+paid run, product patch or descriptor flip. Steps 2–7 remain unanswered.
+[Initialize response](integration/attempt10/run/initialize-result.json).
+
+The original [final audit](integration/attempt10/final-audit.json) and numbered
+outcome sidecars retain the historical `FAIL` classification; this section
+supersedes that interpretation without rewriting runtime evidence. The corrected
+[read-only audit](integration/attempt10-audit.py) prints the current verdict.
 
 | Brief step | Outcome | S-runtime evidence |
 |---|---|---|
-| 1. Production hosted launch and activation | **FAIL** at `opt_in_delivery`: existing team owner holds lifetime lock. Host/TUI launch was observed, but initialization did not succeed. | [Runtime record](integration/attempt10/run/team/runtime/seat.json), [attached pane](integration/attempt10/run/initialize-pane-2.txt), [initialize report](integration/attempt10/run/initialize-result.json) |
-| 2. Idle Mesh send / explicit read | **NOT RUN**, stopped at step 1 | [Outcome](integration/attempt10/run/step2-outcome.json) |
-| 3. Active-thread deferral | **NOT RUN**, stopped at step 1 | [Outcome](integration/attempt10/run/step3-outcome.json) |
-| 4. Typed input / passive exclusion | **NOT RUN**, stopped at step 1 | [Outcome](integration/attempt10/run/step4-outcome.json) |
-| 5. Compaction recovery | **NOT RUN**, stopped at step 1 | [Outcome](integration/attempt10/run/step5-outcome.json) |
-| 6. Daemon restart | **NOT RUN**, stopped at step 1 | [Outcome](integration/attempt10/run/step6-outcome.json) |
-| 7. Operational tmux rollback | **NOT RUN**, stopped at step 1; #163 attribution fix not exercised | [Outcome](integration/attempt10/run/step7-outcome.json) |
+| 1. Production hosted launch | **INCONCLUSIVE** (setup/activation race; hosted launch observed). The step’s host/TUI/runtime identities were observed; canonical activation remained retryable. | [Runtime record](integration/attempt10/run/team/runtime/seat.json), [attached pane](integration/attempt10/run/initialize-pane-2.txt), [initialize report](integration/attempt10/run/initialize-result.json) |
+| 2. Idle Mesh send / explicit read | **NOT RUN**, setup stopped before delivery checks | [Outcome](integration/attempt10/run/step2-outcome.json) |
+| 3. Active-thread deferral | **NOT RUN**, setup stopped before delivery checks | [Outcome](integration/attempt10/run/step3-outcome.json) |
+| 4. Typed input / passive exclusion | **NOT RUN**, setup stopped before delivery checks | [Outcome](integration/attempt10/run/step4-outcome.json) |
+| 5. Compaction recovery | **NOT RUN**, setup stopped before delivery checks | [Outcome](integration/attempt10/run/step5-outcome.json) |
+| 6. Daemon restart | **NOT RUN**, setup stopped before delivery checks | [Outcome](integration/attempt10/run/step6-outcome.json) |
+| 7. Operational tmux rollback | **NOT RUN**, setup stopped before delivery checks; #163 attribution fix not exercised | [Outcome](integration/attempt10/run/step7-outcome.json) |
 
 #### Pair and isolation
 
@@ -2253,11 +2260,17 @@ The scratch project was a git checkout with a short AGENTS.md. The runtime recor
 and `hosted.instruction_sources.loaded` confirm that instruction source was loaded.
 The random reserved marker was `cobaltd495131153`; no marker send occurred.
 
-#### Exact failure and observed launch
+#### Exact setup refusal and observed launch
 
 The initialize RPC's operation status was `completed`, meaning the operation
 finished; its report explicitly carries `failed_step: opt_in_delivery` and
-`retryable: true`. It is **not a successful initialization**. Exact refusal:
+`retryable: true`. It is **not a successful initialization**. The product retains
+the selected team root for precisely this refusal in
+`src-tauri/src/daemon/initialize_runs.rs`; `finish_initialize` persists the pending
+canonical request after seat launch so Retry does not launch twice
+(`src-tauri/src/coordination/pipelines/initialize.rs`). The retained fixture was
+already removed, so retrying it is no longer possible. A fresh fixture would be
+needed to exercise steps 2–7. Exact refusal:
 
 ```text
 Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock
@@ -2286,8 +2299,8 @@ approval, Luna/low overrides and the Unix socket. The attached TUI was host PID
 The pane visibly displayed **OpenAI Codex v0.153.4**, **gpt-5.6-luna low** and
 `Working (1s)`. The generated config file itself was not retained: initialization
 failed before the controller's post-success config capture. The server argv did
-not include `--strict-config`; the TUI argv did. Neither fact is silently promoted
-to a full step-1 PASS.
+not include `--strict-config`; the TUI argv did. The hosted-launch observations stand; the incomplete setup
+does not establish an end-to-end transport verdict.
 
 The complete [daemon JSONL](integration/attempt10/run/taurhaus.log.jsonl) retains
 **50 rows**, all event families, including scanner, inotify and self-heal rows.
@@ -2304,7 +2317,11 @@ the retained canonical segment is empty.
 
 Fresh authorization: **≤16 Codex turns and ≤USD 3**. One automatic startup turn
 was observed, with **zero manually submitted turns** and **zero Claude turns**.
-No continuation, retry or second paid run occurred.
+No continuation, retry or second paid run occurred. **15 of 16 authorized turn
+slots remain**; the budget was not exhausted. This review correction uses
+**0 additional turns / $0 additional spend**. Essentially the dollar budget may
+remain, but its exact remainder cannot be established without the missing usage;
+we do not claim a verified $3 balance.
 
 | Generation | Thread / turn | Input / cached / output | USD |
 |---|---|---|---|
@@ -2348,7 +2365,9 @@ this run. The retained numbered action script is
 
 [Cleanup](integration/attempt10/run/cleanup.json) and the independent audit verify
 all **12 recorded PID/start identities** absent, no scratch daemon, child, TUI,
-Mesh owner or private tmux server, port 27742 closed, and scratch root/auth removed.
+Mesh owner or private tmux server, port 27742 closed, and scratch root absent.
+The historical `auth_removed` field was computed after root deletion and is not
+an independent credential check; the audit checks root absence directly.
 The controller's `finally` restored `src/delivery/app_server/capabilities.rs` and
 removed `target/debug/mesh`; Mesh remains clean and detached at `fcb9647`.
 No process outside this run was signaled. No `just install-daemon`, live-daemon
@@ -2378,7 +2397,31 @@ children and removed scratch root; the independent audit also found no process
 carrying the gate namespace's run token. The complete daemon JSONL remains
 byte-identical to its pre-audit hash. Non-evidence inserted lines: **0/200**.
 
-**Deviations / limits:** step 1 prevents steps 2–7; missing startup token usage
+**Deviations / limits:** retryable setup was not retried, leaving steps 2–7 unrun; missing startup token usage
 prevents a numeric spend total and USD-cap verification; config-file capture and
-host transcript were unavailable after initialize failed. No Opus evidence lens
-was run: this session exposes no Opus review model. No product defect was patched.
+host transcript were unavailable after initialize failed. The supplied Opus round-1 review is addressed here; no additional review model was run. No product defect was patched.
+
+#### Round-1 correction verification
+
+All seven supplied findings were verified and addressed in the four named files.
+The controller restores the descriptor before scratch deletion, records removal
+errors without skipping sanitization, and fails cleanup if removal/restoration
+is incomplete. It drops the tautological auth flag, resolves the authorized
+source with `Path.home()`, and explicitly refuses an exhausted private-port range.
+The read-only audit derives cleanliness/metering flags from their checks and
+leaves the original runtime artifacts intact. The gate wrapper records its own
+scratch root and derives whether its children were waited. The separately named
+stale `/tmp/th-int-recheck-gptq2_6a` contained only gate output files; it was removed
+and absence verified. That directory was not part of attempt 10’s process audit.
+
+`python3 docs/design/evidence/native-eligibility/integration/attempt10-audit.py --self-test`
+first exited **1**: seven tests exposed eight failed assertions and three errors
+(the cleanup exception, missing gate-root field and fixed auth-path expression).
+After the fixes it exited **0**, all seven tests passing. Tests extract only
+isolated controller statements/functions with synthetic files and mocked process,
+socket and home interfaces; they never import the paid controller or use a CLI.
+The existing `attempt10_test.py` also exited **0**, three tests passing. The
+read-only `attempt10-audit.py` exited **0**, verifying the 12 original process
+identities absent, private port closed, Mesh clean/disabled with no trial binary,
+and the unchanged 50-row daemon JSONL SHA-256
+`093938e910b24a7f4b9e25f571bc90490b18a54117d05b42dae252a905b8812e`.

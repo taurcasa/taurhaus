@@ -36,12 +36,20 @@ def copy_native_runtime(native, destination):
 
 
 def remove_trial_files(root, mesh):
+    restored = subprocess.run(["git", "-C", str(mesh), "checkout", "--",
+        "src/delivery/app_server/capabilities.rs"], capture_output=True, text=True)
+    result = {"descriptor_restore_exit": restored.returncode}
     # Source restoration alone leaves the compiled trial descriptor enabled.
     binary = mesh / "target/debug/mesh"
-    binary.unlink(missing_ok=True)
-    shutil.rmtree(root)
-    return {"auth_removed": not (root / "codex/auth.json").exists(),
-            "root_removed": not root.exists(),
+    try:
+        binary.unlink(missing_ok=True)
+    except OSError as error:
+        result["binary_removal_error"] = str(error)
+    try:
+        shutil.rmtree(root)
+    except OSError as error:
+        result["root_removal_error"] = str(error)
+    return {**result, "root_removed": not root.exists(),
             "mesh_trial_artifact_removed": not binary.exists()}
 
 
@@ -227,7 +235,7 @@ for sig in [signal.SIGTERM, signal.SIGINT]:
 
 exit_code = 1
 try:
-    source = Path("/home") / "mstie" / ".codex" / "auth.json"
+    source = Path.home() / ".codex" / "auth.json"
     assert source.is_file() and not source.is_symlink()
     shutil.copyfile(source, ROOT / "codex/auth.json")
     (ROOT / "codex/auth.json").chmod(0o600)
@@ -260,6 +268,9 @@ try:
                 break
             except OSError:
                 continue
+    else:
+        del PORT
+        raise RuntimeError("no free port in 20000-31999")
     ENV["TAURHAUS_DAEMON_PORT"] = str(PORT)
     log("isolation", root=str(ROOT), environment=ENV, initial_codex_entries=["auth.json"],
         max_model_turns=16, max_usd=3, prior_turns=PRIOR_TURNS, prior_conservative_usd=PRIOR_CONSERVATIVE_USD, marker=marker)
@@ -479,9 +490,7 @@ finally:
     (OUT / "cleanup.json").write_text(json.dumps(cleanup, indent=2))
     (OUT / "cost-ledger.json").write_text(json.dumps(ledger(host_events, [t["turn_id"] for t in turns]), indent=2))
     log("cleanup", **cleanup)
-    restored = subprocess.run(["git", "-C", "/home/mstie/projects/mesh-trial", "checkout", "--",
-        "src/delivery/app_server/capabilities.rs"], capture_output=True, text=True)
-    log("descriptor_restored", exit=restored.returncode)
+    log("descriptor_restored", exit=cleanup["descriptor_restore_exit"])
     EVENTS.close()
     # Sanitize textual logs before retaining them; auth contents were never logged.
     for path in OUT.rglob("*"):
@@ -495,6 +504,7 @@ finally:
                 text = clean(text)
             path.write_text(text)
 
-    if survivors or not port_closed:
+    if (survivors or not port_closed or not cleanup["root_removed"]
+            or not cleanup["mesh_trial_artifact_removed"] or cleanup["descriptor_restore_exit"]):
         exit_code = 2
 sys.exit(exit_code)

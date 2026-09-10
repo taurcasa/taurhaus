@@ -89,4 +89,5 @@ finally:
                 os.killpg(proc.pid, signal.SIGKILL)
                 proc.wait(timeout=5)
     shutil.rmtree(root)
-    (out / "gate-cleanup.json").write_text(json.dumps({"children_waited": True, "root_removed": not root.exists()}))
+    (out / "gate-cleanup.json").write_text(json.dumps({"root": str(root),
+        "children_waited": all(proc.poll() is not None for proc in children), "root_removed": not root.exists()}))
