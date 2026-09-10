@@ -1779,3 +1779,7 @@ re-observed. The sampler still has no process-control or app-server socket calls
 Continuation step 1 **PASS**: fresh hosted thread `01a089c5-2225-7bb3-973a-2a77719269f1`,
 startup card/reply, strict config, app-server child and attached TUI verified.
 One additional metered turn ($0.00094644 API-equivalent); cumulative five turns.
+
+Continuation step 2 **PASS**: saffronaf494b appeared in attached pane and reply;
+native turn/start receipt and explicit-read-only journal consumption verified
+in `continuation/run/step2-*`.
