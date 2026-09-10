@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "155f6a53-0e5a-4030-9535-968a165ff1df",
+      "delivery_id": "65e1ce8e-8ef7-4af4-8cdc-83fcf290e8f8",
+      "recipient": "lead",
+      "source_generation": "dfcc31bc-2520-4e0d-a71a-e07fe689120e",
+      "source_position": 8,
+      "body": "Please provide the missing assignment identity, release, and required context."
+    },
+    "since": "2026-09-10T16:55:31.723151728+00:00"
+  }
+]
