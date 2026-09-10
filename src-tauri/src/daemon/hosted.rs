@@ -63,21 +63,16 @@ pub(super) fn stop_session(
     }
     let mut records = Vec::new();
     for (root, team) in registry.team_locations().unwrap_or_default() {
-        let members = MemberRuntimeStore::load_all(&root, &team).unwrap_or_default();
-        records.extend(
-            members
-                .into_iter()
-                .filter(|(_, r)| r.app_server.is_some())
-                .map(|(member, r)| (team.clone(), member, r)),
-        );
+        for (member, record) in MemberRuntimeStore::load_all(&root, &team).unwrap_or_default() {
+            if record.app_server.is_some() {
+                records.push((team.clone(), member, record));
+            }
+        }
     }
     let mut matches = Vec::new();
-    for candidate in &records {
-        if candidate.2.pane_id.as_deref() == Some(&params.tmux_pane)
-            && crate::session_scanner::control::pane_matches_record(
-                &params.tmux_pane,
-                &candidate.2,
-            )?
+    for candidate @ (_, _, record) in &records {
+        if record.pane_id.as_deref() == Some(&params.tmux_pane)
+            && crate::session_scanner::control::pane_matches_record(&params.tmux_pane, record)?
         {
             matches.push(candidate);
         }
@@ -97,8 +92,7 @@ pub(super) fn stop_session(
     if matches.len() > 1 {
         return Err("hosted stop deferred: ambiguous pane ownership".into());
     }
-    let matched = matches.first().copied();
-    let Some((team, member, record)) = matched else {
+    let Some((team, member, record)) = matches.first().copied() else {
         return Ok(false);
     };
     let host = record.app_server.as_ref().unwrap();

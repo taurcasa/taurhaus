@@ -2046,8 +2046,9 @@ fn launch_cli_session_surfaces_daemon_error_message() {
 fn stop_cli_session_budget_covers_teardown_and_surfaces_daemon_error() {
     // Regression: d9dd5cc2, round-2 review: the old 5 s PING_TIMEOUT omitted teardown waits.
     // Validation and reap now each take a host lock: stop_timeout + 12 s = 17 s / 27 s.
-    assert_eq!(navigation::stop_session_timeout(CliTool::Codex), Duration::from_secs(17));
-    assert_eq!(navigation::stop_session_timeout(CliTool::Grok), Duration::from_secs(27));
+    for (tool, seconds) in [(CliTool::Codex, 17), (CliTool::Grok, 27)] {
+        assert_eq!(navigation::stop_session_timeout(tool).as_secs(), seconds);
+    }
     let daemon = start_stub_daemon(serde_json::json!({
         "result": null,
         "error": {

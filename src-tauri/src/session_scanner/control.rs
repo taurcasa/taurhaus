@@ -1151,20 +1151,10 @@ mod tests {
         hosted_stop_session_lead_is_plain => "lead",
         hosted_stop_session_incomplete_inventory_is_plain => "incomplete",
         hosted_stop_session_legacy_foreign_is_plain => "legacy_foreign",
-    }
-
-    #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
-    #[test]
-    fn hosted_stop_session_busy_seat_preserves_pane_for_retry() {
-        // Regression: d9dd5cc2, round-2 review: killing the TUI before the seat lock orphaned a busy host.
-        assert_hosted_stop("busy");
-    }
-
-    #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
-    #[test]
-    fn hosted_stop_session_waits_for_seat_then_reaps_both() {
-        // Regression: d9dd5cc2, round-2 review: refresh contention made stop fail after destroying the pane.
-        assert_hosted_stop("released");
+        // Regression: d9dd5cc2, round-2 review: killing the TUI before locking orphaned a busy host.
+        hosted_stop_session_busy_seat_preserves_pane_for_retry => "busy",
+        // Regression: d9dd5cc2, round-2 review: refresh contention destroyed the pane before refusal.
+        hosted_stop_session_waits_for_seat_then_reaps_both => "released",
     }
 
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
@@ -1216,8 +1206,8 @@ mod tests {
             registry
         };
         // Regression: 6fbc150f trusted reused pane IDs and incomplete inventories.
-        let plain =
-            mode.starts_with("reused_") || matches!(mode, "plain" | "lead" | "legacy_foreign" | "incomplete");
+        let plain = mode.starts_with("reused_")
+            || matches!(mode, "plain" | "lead" | "legacy_foreign" | "incomplete");
         let mut record = saved(root);
         record.pane_id = Some(pane.clone());
         if matches!(mode, "stale" | "plain" | "lead") {
@@ -1256,6 +1246,7 @@ mod tests {
 
         let before = saved(root);
         let generation = before.attachment_generation;
+        let host_process = format!("/proc/{}", before.app_server.as_ref().unwrap().process_id);
         let restarted = HostedMembers::default();
         let receiver = if mode == "previous" {
             &restarted
@@ -1292,12 +1283,12 @@ mod tests {
             if mode == "busy" {
                 assert_eq!(error.message, "host member busy; retry");
             } else {
-                assert!(error.message.contains("live host belongs to a previous daemon"));
+                assert!(error
+                    .message
+                    .contains("live host belongs to a previous daemon"));
             }
             assert_eq!(saved(root), before);
-            assert!(
-                Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id)).exists()
-            );
+            assert!(Path::new(&host_process).exists());
             return;
         }
         assert!(response.error.is_none(), "{mode}: {:?}", response.error);
@@ -1334,9 +1325,7 @@ mod tests {
         assert_eq!(after.health, HealthState::SessionDead);
         assert_eq!(after.app_server.as_ref().unwrap().state, "stopped");
         assert_eq!(after.attachment_generation, generation + 1);
-        assert!(
-            !Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id)).exists()
-        );
+        assert!(!Path::new(&host_process).exists());
     }
 
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
@@ -1366,7 +1355,8 @@ mod tests {
         let mut probe = scratch_tmux_command().unwrap();
         drop(scratch);
         assert!(scratch_tmux_command().is_none());
-        assert!(!probe.args(["list-sessions"]).output().unwrap().status.success());
+        let status = probe.args(["list-sessions"]).output().unwrap().status;
+        assert!(!status.success());
     }
 
     #[cfg(target_os = "linux")]
