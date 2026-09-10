@@ -119,6 +119,7 @@ fn descriptors(
     Some(pins.into_iter().filter(Descriptor::supported).collect())
 }
 
+/// Mirrors Mesh `TeamConfig::member_is_current` (src/types.rs, pending lock bump); also honors legacy removedAt.
 fn member_present(config: &Value, member: &Value) -> bool {
     member.get("removedAt").is_none()
         && (config["messaging_format"] == 2 || member["isActive"] != false)

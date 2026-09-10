@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Claude Code activity flags no longer decide format-2 membership or lead liveness (L1 run 3). **Release blocked:** land Mesh’s `removedAt` membership lane and bump `src-tauri/resources/mesh.lock.json` first; the current Mesh 0.2.29 / `6789201` lock is incompatible with preserving format-2 flags.
+
 ## [0.9.7] - 2026-09-07
 
 ### Fixed

@@ -541,7 +541,7 @@ impl CoordinationOrchestrator {
                 INACTIVE_LEAD_REASON => {
                     format!("lead runtime session is not live for '{operator_name}'")
                 }
-                _ => format!("lead authentication is unavailable for '{operator_name}'"),
+                _ => format!("lead control identity unavailable for '{operator_name}': {reason}"),
             };
             return Ok((false, Some(format!("team daemon skipped: {detail}"))));
         }
@@ -724,8 +724,8 @@ impl CoordinationOrchestrator {
         // Code's isActive flag describes activity, never control-identity liveness.
         let live = match MemberRuntimeStore::load(&self.teams_dir, team_name, operator_name) {
             Ok(record) => record.health != HealthState::SessionDead,
-            Err(CoordinationError::NotFound(_)) => false,
-            Err(error) => return Err(error),
+            Err(CoordinationError::NotFound(_)) => return Ok(Some("missing_lead_runtime_record")),
+            Err(_) => return Ok(Some("unreadable_lead_runtime_record")),
         };
         if !live {
             return Ok(Some(INACTIVE_LEAD_REASON));

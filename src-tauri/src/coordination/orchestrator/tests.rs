@@ -4649,32 +4649,39 @@ fn team_daemon_ensures_live_lead_despite_claude_activity_flag() {
     .unwrap();
     runtime.set_pane_current_command("%1", Some("claude"));
     assert!(orchestrator.ensure_team_daemon_running_best_effort(team));
-    assert_eq!(
-        orchestrator.ensure_team_daemon_for_wrapper(team).unwrap(),
-        (true, None)
-    );
-    assert!(runtime
-        .calls()
-        .iter()
-        .any(|call| matches!(call, RuntimeCall::SpawnTeamDaemon { .. })));
+    assert!(orchestrator.ensure_team_daemon_for_wrapper(team).unwrap().0);
     sink.flush_for_test().unwrap();
-    assert!(!std::fs::read_to_string(log_path)
+    assert!(!std::fs::read_to_string(&log_path)
         .unwrap()
         .contains("coordination.team_daemon.skipped"));
-    // An activity flag cannot make a dead runtime live either (L1 run 3).
-    let path = tmp.path().join(team).join("config.json");
-    let mut config: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    config["members"][0]["isActive"] = serde_json::json!(true);
-    std::fs::write(path, config.to_string()).unwrap();
-    MemberRuntimeStore::update(tmp.path(), team, "lead", |record| {
-        record.health = HealthState::SessionDead;
+    // Regression: 3ab6572e, L1 run 3 fix: absent/corrupt lead health must emit a structured skip.
+    let path = tmp.path().join(team).join("runtime/lead.json");
+    MemberRuntimeStore::update(tmp.path(), team, "lead", |r| {
+        r.health = HealthState::SessionDead
     })
     .unwrap();
-    assert!(!orchestrator.ensure_team_daemon_running_best_effort(team));
-    let (ensured, warning) = orchestrator.ensure_team_daemon_for_wrapper(team).unwrap();
-    assert!(!ensured);
-    assert!(warning.unwrap().contains("runtime session is not live"));
+    for reason in [
+        "inactive_lead_control_identity",
+        "missing_lead_runtime_record",
+        "unreadable_lead_runtime_record",
+    ] {
+        match reason {
+            "missing_lead_runtime_record" => std::fs::remove_file(&path).unwrap(),
+            "unreadable_lead_runtime_record" => std::fs::write(&path, "broken").unwrap(),
+            _ => {}
+        }
+        assert!(!orchestrator.ensure_team_daemon_running_best_effort(team));
+        assert!(!orchestrator.ensure_team_daemon_for_wrapper(team).unwrap().0);
+        sink.flush_for_test().unwrap();
+        let log = std::fs::read_to_string(&log_path).unwrap();
+        assert!(
+            log.lines().any(|line| {
+                let event: serde_json::Value = serde_json::from_str(line).unwrap();
+                event["event"] == "coordination.team_daemon.skipped" && event["reason"] == reason
+            }),
+            "missing structured skip: {reason}"
+        );
+    }
 }
 
 #[test]

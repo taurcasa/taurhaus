@@ -1,9 +1,10 @@
 //! Team configuration store.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -19,6 +20,8 @@ use crate::coordination::stores::runtime::MemberRuntimeRecord;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::launch::ModelSpec;
 use crate::templates::types::{BehavioralContract, RuntimeCompactSummary};
+
+static ACTIVITY_OBSERVATIONS: OnceLock<Mutex<HashSet<(PathBuf, String, String)>>> = OnceLock::new();
 
 const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_TMP_FILENAME: &str = "config.json.tmp";
@@ -400,7 +403,7 @@ impl TeamConfigStore {
             }
             Err(err) => return Err(err),
         }
-        let mut wire = mesh_compatible_wire(&normalized, &runtime_by_member);
+        let mut wire = mesh_compatible_wire(&target_path, &normalized, &runtime_by_member);
         if original_lead_session.is_some() {
             wire.lead_session_id = original_lead_session;
         }
@@ -900,6 +903,7 @@ fn canonical_member_id(config: &TeamConfig, member: &Member) -> String {
 }
 
 fn mesh_compatible_wire(
+    config_path: &Path,
     config: &TeamConfig,
     runtime_by_member: &HashMap<String, MemberRuntimeRecord>,
 ) -> MeshCompatibleTeamConfigWire {
@@ -944,15 +948,23 @@ fn mesh_compatible_wire(
             if backend_type.is_some() {
                 extra.remove("backendType");
             }
-            if extra.get("isActive") == Some(&Value::Bool(false)) {
+            let observation =
+                serde_json::json!([extra.get("lastActivityReason"), is_active.is_some()]);
+            let path = config_path.to_path_buf();
+            let key = (path, member.name.clone(), observation.to_string());
+            if extra.get("isActive") == Some(&Value::Bool(false))
+                && ACTIVITY_OBSERVATIONS
+                    .get_or_init(|| Mutex::new(HashSet::new()))
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(key)
+            {
                 let mut fields = serde_json::Map::new();
                 fields.insert("member".into(), Value::String(member.name.clone()));
+                fields.insert("repaired".into(), Value::Bool(is_active.is_some()));
                 if let Some(reason) = extra.get("lastActivityReason") {
                     fields.insert("lastActivityReason".into(), reason.clone());
                 }
-                tracing::debug!(member = %member.name,
-                    lastActivityReason = ?extra.get("lastActivityReason"),
-                    "member activity flag observed");
                 emit_global(
                     "debug",
                     "coordination",
@@ -1676,34 +1688,34 @@ mod tests {
 
     #[test]
     fn activity_flag_observation_is_debug_with_optional_reason() {
-        // Regression: 5cebfef8, L1 run 3: normal Claude activity triggered a repair warning.
+        // Regression: 8de267bb, L1 run 3 fix: repeated saves flooded activity logs and hid legacy repairs.
         let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("events.jsonl");
         let sink = taurhaus_lib::logging::LogFileState::new(path.clone()).unwrap();
         taurhaus_lib::logging::install_global_sink(&sink);
-        for (team, reason) in [
-            ("without-reason", None),
-            ("with-reason", Some("message_sent")),
+        for (team, reason, format) in [
+            ("without-reason", None, 2),
+            ("with-reason", Some("message_sent"), 1),
         ] {
             let mut config = sample_config(team);
+            config.members[0].role = MemberRole::Agent;
             config.members[0].project_path = tmp.path().to_path_buf();
             config
                 .extra
-                .insert("messaging_format".into(), serde_json::json!(2));
-            config.members[0]
-                .extra
-                .insert("isActive".into(), serde_json::json!(false));
+                .insert("messaging_format".into(), Value::from(format));
+            let extra = &mut config.members[0].extra;
+            extra.insert("isActive".into(), Value::Bool(false));
             if let Some(reason) = reason {
-                config.members[0]
-                    .extra
-                    .insert("lastActivityReason".into(), serde_json::json!(reason));
+                extra.insert("lastActivityReason".into(), Value::from(reason));
             }
-            TeamConfigStore::save(tmp.path(), team, &config).unwrap();
+            for _ in 0..3 {
+                TeamConfigStore::save(tmp.path(), team, &config).unwrap();
+            }
         }
         sink.flush_for_test().unwrap();
-        let records: Vec<Value> = fs::read_to_string(path)
-            .unwrap()
+        let log = fs::read_to_string(path).unwrap();
+        let records: Vec<Value> = log
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
@@ -1718,6 +1730,8 @@ mod tests {
         }
         assert!(records[0].get("lastActivityReason").is_none());
         assert_eq!(records[1]["lastActivityReason"], "message_sent");
+        assert_eq!(records[0]["repaired"], false);
+        assert_eq!(records[1]["repaired"], true);
     }
 
     #[test]
