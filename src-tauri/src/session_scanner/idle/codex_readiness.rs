@@ -8,8 +8,6 @@ use super::ActivityObservation as Observation;
 struct Quiet {
     previous: Option<u64>,
     since: Option<DateTime<Utc>>,
-    last_growth: Option<DateTime<Utc>>,
-    sampled_at: Option<DateTime<Utc>>,
 }
 
 fn sample(
@@ -29,10 +27,6 @@ fn sample(
     if quiet.previous.is_none() || changed {
         quiet.since = Some(now);
     }
-    if changed {
-        quiet.last_growth = quiet.sampled_at;
-    }
-    quiet.sampled_at = Some(now);
     quiet.previous = Some(rchar);
     let notify = notify.filter(|record| {
         record.ts >= launch
@@ -42,16 +36,16 @@ fn sample(
                 "agent-turn-complete" | "agent-turn-started"
             )
     });
-    let (state, source) = if changed {
-        (SessionState::Active, "process_io")
-    } else if let Some(record) = notify {
-        if record.event == "agent-turn-complete"
-            && quiet.last_growth.is_none_or(|since| since <= record.ts)
-        {
+    // Harness lifecycle evidence outranks incidental reads after a turn.
+    // refresh already rejects completions older than the transcript boundary.
+    let (state, source) = if let Some(record) = notify {
+        if record.event == "agent-turn-complete" {
             (SessionState::Idle, "notify")
         } else {
             (SessionState::Active, "notify")
         }
+    } else if changed {
+        (SessionState::Active, "process_io")
     } else if no_rollout
         && prompt
         && quiet.since.is_some_and(|since| {
@@ -252,6 +246,65 @@ pub(super) fn refresh(
 mod tests {
     use super::*;
     use crate::daemon::codex_notify::{append_event_at, latest_activity_record_for_session_after};
+
+    // Regression: b9e4a855 let any post-completion rchar delta override notify
+    // idle; ef5fb097 retained that growth and pinned later quiet scans to working.
+    #[test]
+    fn codex_review_completion_survives_post_turn_io_and_quiet_scans() {
+        let launch = Utc::now();
+        let completed = launch + chrono::Duration::seconds(1);
+        let mut quiet = Quiet::default();
+        let mut record = crate::daemon::codex_notify::CodexNotifyRecord {
+            ts: completed,
+            session_id: Some("seat".into()),
+            event: "agent-turn-complete".into(),
+            turn_id: None,
+        };
+        sample(&mut quiet, Some(100), false, false, None, launch, launch);
+        // Establish idle after completion before a later keep-alive read.
+        let idle = sample(
+            &mut quiet,
+            Some(100),
+            false,
+            false,
+            Some(&record),
+            launch,
+            completed + chrono::Duration::seconds(1),
+        )
+        .unwrap();
+        assert_eq!(idle.state, SessionState::Idle);
+        for seconds in [2, 3, 30] {
+            let now = completed + chrono::Duration::seconds(seconds);
+            let observed = sample(
+                &mut quiet,
+                Some(101),
+                false,
+                false,
+                Some(&record),
+                launch,
+                now,
+            )
+            .unwrap();
+            assert_eq!(observed.state, SessionState::Idle, "scan at {seconds}s");
+            assert_eq!(observed.source, "notify");
+            assert_eq!(observed.last_observed_at, now);
+        }
+        // A newer turn start still takes authority, even with quiet process IO.
+        record.ts = completed + chrono::Duration::seconds(31);
+        record.event = "agent-turn-started".into();
+        let working = sample(
+            &mut quiet,
+            Some(101),
+            false,
+            false,
+            Some(&record),
+            launch,
+            record.ts,
+        )
+        .unwrap();
+        assert_eq!(working.state, SessionState::Active);
+        assert_eq!(working.source, "notify");
+    }
 
     // Regression: b9e4a855 spawned capture-pane even after a rollout contained a turn.
     #[test]
