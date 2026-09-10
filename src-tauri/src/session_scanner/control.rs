@@ -383,6 +383,24 @@ fn split_pane(target_pane: &str, shell_cmd: &str) -> Result<String, String> {
 /// - Grok: `/quit` text command, confirmed by its registry row disappearing
 /// - Codex: Ctrl+C (key signal, no text)
 pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
+    stop_session_inner(tmux_pane, tool, false)
+}
+
+#[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
+pub(crate) fn pane_process_argv(pane: &str) -> Vec<Vec<String>> {
+    let Some(tty) = pane_tty(pane) else { return Vec::new() };
+    crate::platform::list_processes().unwrap_or_default().into_iter()
+        .filter(|(pid, _)| crate::platform::process_tty(*pid).as_deref() == Some(&tty))
+        .map(|(_, argv)| argv).collect()
+}
+
+#[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
+pub(crate) fn stop_hosted_tui(pane: &str, tool: CliTool) -> Result<(), String> {
+    if pane_field(pane, "#{pane_id}").is_none() { return Ok(()) }
+    stop_session_inner(pane, tool, true)
+}
+
+fn stop_session_inner(tmux_pane: &str, tool: CliTool, wait: bool) -> Result<(), String> {
     let config = cli_tool::spec(tool);
     let presence_lock = stop_presence_lock(tmux_pane, config);
     let registry_release = stop_registry_release(tmux_pane, config);
@@ -402,7 +420,7 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
     // documented ten-second exit budget, so the shared five seconds would kill a
     // shutdown that is going exactly to plan.
     let timeout_ms = config.stop_timeout.as_millis() as u64;
-    std::thread::spawn(move || {
+    let teardown = move || {
         const POLL_MS: u64 = 200;
         let mut elapsed = 0u64;
 
@@ -428,7 +446,7 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
                 None => {
                     tracing::info!(pane = %pane, "stop_session: pane already gone");
                     crate::session_scanner::notify_tmux_changed();
-                    return;
+                    return Ok(());
                 }
                 Some(cmd) => {
                     tracing::debug!(pane = %pane, cmd = %cmd, elapsed_ms = elapsed, "stop_session: still running");
@@ -449,9 +467,15 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
         });
         crate::session_scanner::notify_tmux_changed();
         tracing::info!(pane = %pane, success = ?result.as_ref().map(|o| o.status.success()), "stop_session: kill-pane result");
-    });
-
-    Ok(())
+        if wait && pane_field(&pane, "#{pane_id}").is_some() {
+            return Err("attached TUI pane did not stop".into());
+        }
+        Ok(())
+    };
+    if wait { teardown() } else {
+        std::thread::spawn(teardown);
+        Ok(())
+    }
 }
 
 fn stop_presence_lock(
@@ -1029,6 +1053,30 @@ mod tests {
                 .output();
             TEST_TMUX_ROOT.with(|root| *root.borrow_mut() = None);
         }
+    }
+
+    #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
+    #[test]
+    fn hosted_stop_session_reaps_host_when_tui_already_gone() {
+        // Regression: 1db4f9bf, L4 run 4: pane-only stop left the owned host alive for 100 s.
+        let scratch = ScratchTmux::new("80", "24");
+        let (registry, hosts) = crate::coordination::hosted::tests::running(scratch.path());
+        crate::coordination::stores::MemberRuntimeStore::update(scratch.path(), "team", "seat", |r| {
+            r.pane_id = Some("%999999".into());
+        }).unwrap();
+        let before = crate::coordination::hosted::tests::saved(scratch.path());
+        let response = crate::daemon::handlers::handle_stop_session("stop", &serde_json::json!({
+            "tmux_pane":"%999999", "cli_tool":"codex"
+        }), (&hosts, &registry));
+        assert!(response.error.is_none(), "{:?}", response.error);
+        let after = crate::coordination::hosted::tests::saved(scratch.path());
+        assert_eq!(after.health, crate::coordination::domain::HealthState::SessionDead);
+        assert_eq!(after.app_server.as_ref().unwrap().state, "stopped");
+        assert_eq!(after.attachment_generation, before.attachment_generation + 1);
+        assert!(!Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id)).exists());
+        assert!(!crate::daemon::session_activity::SessionActivityHub::shared().runtime_snapshot()
+            .runtime_sessions.iter().any(|r| r.project_path == scratch.path().to_str().unwrap()));
+        drop((hosts, registry));
     }
 
     #[cfg(target_os = "linux")]

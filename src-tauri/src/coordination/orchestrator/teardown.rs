@@ -110,7 +110,7 @@ impl CoordinationOrchestrator {
                     .hosted
                     .stop(&self.root_registry, team_name, member_name)
                 {
-                    Ok(()) => {
+                    Ok(_) => {
                         step_succeeded("stop_host", "owned host stopped; named thread retained")
                     }
                     Err(error) => step_failed("stop_host", error),

@@ -43,6 +43,40 @@ pub(crate) fn handle(
     Ok(result)
 }
 
+/// Resolve the existing pane-level request through every authoritative team root.
+pub(super) fn stop_session(
+    hosts: &HostedMembers,
+    registry: &TeamRootRegistry,
+    params: &super::protocol::StopSessionParams,
+) -> Result<bool, String> {
+    let mut records = Vec::new();
+    for (root, team) in registry.team_locations().map_err(|e| e.to_string())? {
+        records.extend(MemberRuntimeStore::load_all(&root, &team).map_err(|e| e.to_string())?
+            .into_iter().map(|(member, record)| (team.clone(), member, record)));
+    }
+    let exact = records.iter().find(|(_, _, r)| r.pane_id.as_deref() == Some(&params.tmux_pane));
+    let argv = if exact.is_none() {
+        crate::session_scanner::control::pane_process_argv(&params.tmux_pane)
+    } else { Vec::new() };
+    let matched = exact.or_else(|| records.iter().find(|(_, _, r)| {
+        r.app_server.as_ref().is_some_and(|host| argv.iter().any(|args| {
+            args.windows(4).any(|w| w[0] == "--remote"
+                && w[1] == format!("unix://{}", host.socket_path.display())
+                && w[2] == "resume" && w[3] == host.thread_id)
+        }))
+    }));
+    let Some((team, member, record)) = matched else { return Ok(false) };
+    let Some(host) = &record.app_server else { return Ok(false) };
+    crate::session_scanner::control::stop_hosted_tui(&params.tmux_pane, params.cli_tool)?;
+    let exit_status = hosts.stop(registry, team, member)?;
+    let fields = serde_json::json!({"team":team, "member":member,
+        "thread_id":host.thread_id, "exit_status":exit_status});
+    tracing::info!(event = "hosted.stop_session.host_stopped", fields = %fields, "Hosted session stopped");
+    taurhaus_lib::logging::emit_global("info", "coordination", "hosted.stop_session.host_stopped",
+        Some("Hosted session stopped".into()), fields.as_object().unwrap().clone());
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

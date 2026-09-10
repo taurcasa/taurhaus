@@ -977,7 +977,7 @@ impl HostedMembers {
         registry: &TeamRootRegistry,
         team: &str,
         member: &str,
-    ) -> Result<(), String> {
+    ) -> Result<String, String> {
         let root = registry.resolve(team).map_err(|e| e.to_string())?;
         let cell = self.seat(&root, team, member)?;
         let mut owned = cell.try_lock().map_err(|_| "host member busy")?;
@@ -999,6 +999,10 @@ impl HostedMembers {
         } else {
             return Err("member is not hosted".into());
         }
+        let exit_status = match owned.as_mut() {
+            Some(seat) => seat.host.stop()?,
+            None => "already stopped".into(),
+        };
         MemberRuntimeStore::update(&root, team, member, |record| {
             record.attachment_generation = record.attachment_generation.saturating_add(1);
             record.health = HealthState::SessionDead;
@@ -1010,7 +1014,7 @@ impl HostedMembers {
         // Only a Child held by this daemon can be killed, never a record PID.
         drop(owned.take());
         drop(guard);
-        Ok(())
+        Ok(exit_status)
     }
 }
 

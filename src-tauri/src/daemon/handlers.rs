@@ -80,7 +80,11 @@ pub(crate) fn dispatch(
             handle_wait_session_updates(&request.id, &request.params)
         }
         protocol::method::LAUNCH_SESSION => handle_launch_session(&request.id, &request.params),
-        protocol::method::STOP_SESSION => handle_stop_session(&request.id, &request.params),
+        protocol::method::STOP_SESSION => handle_stop_session(
+            &request.id, &request.params,
+            #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
+            (&coordination_state.hosted, coordination_state.team_root_registry()),
+        ),
         protocol::method::NAVIGATE_TO_SESSION => {
             handle_navigate_to_session(&request.id, &request.params)
         }
@@ -1142,11 +1146,21 @@ pub(crate) fn handle_launch_session(id: &str, params: &serde_json::Value) -> Dae
     }
 }
 
-pub(crate) fn handle_stop_session(id: &str, params: &serde_json::Value) -> DaemonResponse {
+pub(crate) fn handle_stop_session(
+    id: &str, params: &serde_json::Value,
+    #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
+    hosted: (&crate::coordination::hosted::HostedMembers, &crate::coordination::stores::TeamRootRegistry),
+) -> DaemonResponse {
     let params: protocol::StopSessionParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
         Err(e) => return DaemonResponse::err(id, "INVALID_PARAMS", e.to_string()),
     };
+    #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
+    match crate::daemon::hosted::stop_session(hosted.0, hosted.1, &params) {
+        Ok(true) => return DaemonResponse::ok(id, serde_json::json!({"ok": true})),
+        Err(e) => return DaemonResponse::err(id, "STOP_ERROR", e),
+        Ok(false) => {}
+    }
     match crate::session_scanner::control::stop_session(&params.tmux_pane, params.cli_tool) {
         Ok(()) => DaemonResponse::ok(id, serde_json::json!({"ok": true})),
         Err(e) => DaemonResponse::err(id, "STOP_ERROR", e),
