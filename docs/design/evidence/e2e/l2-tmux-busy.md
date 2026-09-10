@@ -579,3 +579,17 @@ was no product change and no runtime retry. No numbered runtime step received a
 green commit because the first composite step failed. The required independent
 **Opus evidence lens and Workflow runner are unavailable** through this session's
 tools; no cross-family approval or full-workflow PASS is claimed.
+
+### Run 4 continuation verification
+
+The requested continuation began at `49201aae` with a clean tree; every completed
+green preparation/export step was already committed. Fresh verification passed:
+`just check-quick` **0**, `just lint` **0**, `just test-contracts` **0**, all **19**
+offline tests **0**, and the independent cleanup/evidence audit **0**.
+[Continuation gate results](l2-tmux-busy/run4/continuation-checks.json) preserve
+these exits separately from the original trial's gates. No product diff exists.
+
+No paid restart or additional input occurred. The original stop-on-first-failure
+rule and incomplete spend accounting still prevent proceeding to steps 2–6;
+the deleted scratch runtime cannot be resumed. This verification does not change
+the run-4 unavailable/incomplete verdict or supply the missing Opus review.
