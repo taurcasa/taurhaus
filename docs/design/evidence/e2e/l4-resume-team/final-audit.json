@@ -1,0 +1,14 @@
+{
+  "build_root_removed": true,
+  "build_owned_survivors": [],
+  "mesh_status_exit_code": 0,
+  "mesh_status_porcelain": "",
+  "descriptor_restore_exit_code": 0,
+  "disallowed_home_paths": [],
+  "runtime_processes_started": 0,
+  "runtime_survivors": [],
+  "auth_copies_created": 0,
+  "auth_copies_remaining": 0,
+  "preparation_controller_exit_code": 0,
+  "audit_method": "Single /proc census of processes retaining the exact private build-root environment; PID/start ticks retained for matches. Runtime preflight had no process/socket/auth-copy operation."
+}

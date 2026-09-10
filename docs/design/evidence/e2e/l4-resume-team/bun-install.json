@@ -1,0 +1,11 @@
+{
+  "command": [
+    "bun",
+    "install",
+    "--frozen-lockfile"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+  "exit_code": 0,
+  "seconds": 0.98,
+  "log_lines": 35
+}

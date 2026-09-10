@@ -91,8 +91,50 @@ python3 -B -m unittest discover -s docs/design/evidence/e2e/l4-resume-team -p 't
 [exit records](l4-resume-team/test-results.json),
 [tests](l4-resume-team/test_preflight.py).
 
-Build preparation and the three exact requested gates are in progress. This
-paragraph will be replaced with observed exit codes before final handoff.
+Build/gate preparation ran separately after the runtime preflight stopped:
+
+```sh
+python3 -B docs/design/evidence/e2e/l4-resume-team/prepare.py
+```
+
+It polled `pgrep -af '(^|/)cargo( |$)'` every 10 seconds and observed idle after
+880.9 seconds, within the 30-minute cap. It did not stop any competing build.
+[Deduplicated wait observations](l4-resume-team/cargo-wait.json).
+
+| Command | Exit | Observed result |
+|---|---:|---|
+| `cargo build --bin mesh` in the separate Mesh worktree | 0 | Built `target/debug/mesh` with the scratch-only 0.153.4 trial descriptor |
+| `just build-daemon` from the checkout root | **101** | Harness/setup failure: `resource path resources/mesh doesn't exist`; no daemon executable/digest claimed |
+| `bun install --frozen-lockfile` | 0 | Installed checkout dependencies |
+| `just check-quick` | **0** | Rust test compilation, typecheck and 2,495 frontend tests passed |
+| `just lint` | **0** | All lint recipes passed |
+| `just test-contracts` | **0** | All three requested contract test binaries passed |
+| `git -C /home/mstie/projects/mesh-l4 checkout -- src/delivery/app_server/capabilities.rs` | 0 | Restored the descriptor; Mesh worktree verified clean |
+
+The daemon build failure is an additional **harness/setup** result, not a product
+runtime failure. The gate recipes subsequently provisioned their normal local
+resource placeholders. No runtime retry or daemon startup followed. Builds used
+checkout-local targets; gates ran from the assigned checkout with scratch harness
+homes. No `src-tauri/` diff exists, so `just test-rust-unit` was not required.
+
+The trial descriptor changed only the 0.153.4 entry to `trial`/enabled, with
+`host=taurhaus-daemon-owned-thread/1`, `configuration=strict-config/1`, and
+`trust=daemon-owned/1`, verified against `hosted.rs`. The wildcard stayed disabled.
+The binary was never installed or executed; runtime scratch installation was not
+reached. Its SHA-256 is
+`52ea8dc17f4aecfef7795b4f3999965570a9a60f9e0c6cb98185ade53ff85613`.
+
+Exact command/exit records and bounded diagnostic tails:
+[Mesh build](l4-resume-team/mesh-build.json),
+[trial diff](l4-resume-team/mesh-trial-descriptor.diff),
+[daemon build](l4-resume-team/daemon-build.json),
+[daemon error](l4-resume-team/daemon-build.txt),
+[binary digest](l4-resume-team/binaries.json),
+[check-quick](l4-resume-team/gate-check-quick.json),
+[lint](l4-resume-team/gate-lint.json),
+[contracts](l4-resume-team/gate-test-contracts.json),
+[restoration](l4-resume-team/descriptor-restore.json).
+Each build/gate `.json` has a same-basename `.txt` tail limited to 60 lines.
 
 ## Cleanup and limitations
 
@@ -100,7 +142,14 @@ No scratch runtime daemon, app-server child, TUI, tmux server, Codex process,
 listener or auth copy exists from this attempt because the preflight controller
 has no launch/socket/copy operation. Build and gate children are independently
 owned by `prepare.py` and terminated/waited in its `finally` block if interrupted.
-Only this lane's Mesh descriptor is eligible for restoration.
+Only this lane's Mesh descriptor was restored. The final single `/proc` census
+found **no process retaining the private build-root environment**; its scratch
+root was removed. The preparation controller exited 0 (individual command exits
+above remain authoritative). No auth copy was ever created. See the
+[build owner identity](l4-resume-team/build-owner.json) and
+[final audit](l4-resume-team/final-audit.json). The audit found no disallowed
+operator-home paths in retained evidence. Unrelated Cargo processes were left
+alone.
 
 No product files or plan ledger rows are changed. No numbered runtime step is
 green, so there are no per-numbered-step success commits. The evidence/guard work

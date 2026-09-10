@@ -1,0 +1,10 @@
+{
+  "command": [
+    "just",
+    "lint"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+  "exit_code": 0,
+  "seconds": 44.21,
+  "log_lines": 18
+}

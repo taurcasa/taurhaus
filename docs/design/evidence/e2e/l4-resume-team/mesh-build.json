@@ -1,0 +1,12 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "mesh"
+  ],
+  "cwd": "/home/mstie/projects/mesh-l4",
+  "exit_code": 0,
+  "seconds": 24.92,
+  "log_lines": 71
+}
