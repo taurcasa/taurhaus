@@ -310,9 +310,7 @@
     if (isActiveLevel(signal.level)) {
       return {
         tone: LEVEL_TONE[signal.level],
-        body: signal.source === 'host' && signal.level === 'active'
-          ? `${badge.toolLabel} is waiting for input or approval${extraSuffix}`
-          : `${badge.toolLabel} is working now${extraSuffix}`,
+        body: `${badge.toolLabel} is working now${extraSuffix}`,
         meta: hostExplanation ?? (session._duration != null ? `active ${formatDuration(session._duration)}` : 'Session is running'),
         icon,
       }

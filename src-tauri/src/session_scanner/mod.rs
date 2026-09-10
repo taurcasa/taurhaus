@@ -93,12 +93,13 @@ impl StateChangeCapture {
             .try_iter()
             .filter(|event| {
                 event["event"] == "activity.state.changed" && event["fields"]["pid"] == pid
+                    && !matches!(event["fields"]["source"].as_str(), Some("host" | "host_unavailable"))
             })
-            .filter_map(|event| {
-                Some((
-                    serde_json::from_value(event["fields"]["from"].clone()).ok()?,
-                    serde_json::from_value(event["fields"]["to"].clone()).ok()?,
-                ))
+            .map(|event| {
+                (
+                    serde_json::from_value(event["fields"]["from"].clone()).expect("from state"),
+                    serde_json::from_value(event["fields"]["to"].clone()).expect("to state"),
+                )
             })
             .collect()
     }
@@ -109,4 +110,41 @@ impl Drop for StateChangeCapture {
     fn drop(&mut self) {
         crate::commands::logging::clear_test_tap();
     }
+}
+
+#[cfg(test)]
+#[test]
+fn state_change_capture_rejects_malformed_scanner_rows() {
+    // Regression: 89baae73 silently discarded malformed scanner states with host levels.
+    let mut capture = StateChangeCapture::install();
+    let (sender, events) = std::sync::mpsc::channel();
+    capture.events = events;
+    for (source, to) in [
+        ("host", "working"),
+        ("host_unavailable", "uncertain"),
+        ("notify", "idle"),
+    ] {
+        sender
+            .send(
+                serde_json::json!({"event":"activity.state.changed", "fields": {
+                    "pid":42, "from":null, "to":to, "source":source
+                }}),
+            )
+            .unwrap();
+    }
+    assert_eq!(
+        capture.transitions_for(42),
+        vec![(None, SessionState::Idle)]
+    );
+    sender
+        .send(
+            serde_json::json!({"event":"activity.state.changed", "fields": {
+                "pid":42, "from":null, "to":"broken", "source":"notify"
+            }}),
+        )
+        .unwrap();
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| capture.transitions_for(42)))
+            .is_err()
+    );
 }
