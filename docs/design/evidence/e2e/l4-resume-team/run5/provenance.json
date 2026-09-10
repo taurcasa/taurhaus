@@ -1,7 +1,7 @@
 {
   "taurhaus_base": "e4de06f9",
   "taurhaus_head": "f9f43e0f62668dd35cdb0368e27dc9c13fbb4784",
-  "controller_commit": "f9f43e0f62668dd35cdb0368e27dc9c13fbb4784",
+  "controller_commit": "36b43bdd2088884670a87ede1042885dccbfc774",
   "branch": "feat/e2e-l4-resume-team",
   "mesh_commit": "310144de1f7939e7fbb2d80ab42ebd00580ce15d",
   "mesh_descriptor": "shipped enabled; unmodified",
@@ -18,5 +18,9 @@
     "exit": 128,
     "reason": "referenced worktree does not exist; run4 sandbox retained"
   },
-  "review": "independent Opus lens reserved for invoking orchestrator"
+  "review": "independent Opus lens reserved for invoking orchestrator",
+  "executed_files_sha256": {
+    "controller.py": "420180d8b7bb84feb367d16b4b29c833a9cbb01c964af48041f878a6432316e6",
+    "support.py": "dafc19844d9e2244c82f6679d3c2861d523c02e27ccd7e9a6a7369977395c26a"
+  }
 }

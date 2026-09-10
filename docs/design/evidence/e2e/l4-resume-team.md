@@ -1,4 +1,4 @@
-# INCOMPLETE — latest run 5 prepared; runtime pending
+# INCOMPLETE — latest run 5, step 1 PASS; steps 2–6 pending
 
 Run 5 reuses run 4 on the PR #171 base and the shipped Mesh descriptor.
 See [Run 5](#run-5) for current evidence; earlier runs are historical.
@@ -531,3 +531,18 @@ The referenced attempt-9 worktree was unavailable (git exited 128: worktree does
 not exist); run 4 already carries its private namespace/tmux/root layout and
 production initialize/poll structure. No Opus tool is callable in this implementer
 lane; the independent Opus evidence lens remains with the invoking orchestrator.
+
+
+Run 5 step 1 **PASS (runtime)**: canonical initialization completed all nine
+production stages. Alpha was attributed and idle. Each seat replied to its unique
+marker once, with transport completion (`submitted` for alpha, `native_enqueued`
+for beta) and distinct external `consumed_by_read` receipts. Native reply evidence
+does not claim the model itself executed an explicit inbox read.
+[Outcome](l4-resume-team/run5/step1-outcome.json),
+[identities](l4-resume-team/run5/original-identities.json),
+[state and journal](l4-resume-team/run5/step1-state.json),
+[activity](l4-resume-team/run5/step1-activity.json).
+Four observed turns; USD 0.005638760 API-equivalent / USD 0.079902000 conservative
+all-token bound; no unmetered turn. Two startup reservations make six inputs under
+the additional conservative count. Both builds exited 0; protocol 27 and the
+shipped enabled 0.153.4 descriptor were verified before initialize.
