@@ -1,4 +1,4 @@
-# INCOMPLETE — Run 4f prepared; fresh runtime trial pending
+# UNAVAILABLE — Run 4f: steps 1–4 PASS; step 5 post-reply idle timeout; step 6 NOT RUN
 
 ## Historical run 2 — FAIL at step 1: idle Codex prompt, onboarding permanently pending
 
@@ -1170,3 +1170,116 @@ The independent Opus lens remains unavailable in this session: no callable
 Workflow/Opus tool or Opus model override. No substitute approval is claimed;
 the runtime trial proceeds under the explicit run-4f work order, and the
 orchestrator retains that review route.
+
+#### Run 4f latest verdict — incomplete after generation-safe Q2 delivery
+
+**UNAVAILABLE / INCOMPLETE**, controller exit **1**, runtime **196.276 seconds**.
+One fresh scratch trial; no paid retry. Startup preflight passed in **1.044 s**,
+so this was **not** a `codex_startup_stall`. The inherited step-5 settling wait
+failed specifically on `post-reply fresh idle missing` after its separate
+90-second window. Its reply predicate had already passed. Classification is
+**harness observation timeout; root cause unestablished**, not a demonstrated
+Mesh delivery failure. No product fix was attempted.
+[Controller outcome](l2-tmux-busy/run4f/run/controller-exit.json),
+[diagnosis](l2-tmux-busy/run4f/diagnosis.json).
+
+| Step | Outcome and classification | Evidence |
+|---|---|---|
+| 1 — initialize, attribute, onboarding | **PASS — S-runtime.** Composer rendered; alpha attributed and freshly idle; onboarding submitted and explicitly read. | [startup](l2-tmux-busy/run4f/run/startup-preflight.json), [ready](l2-tmux-busy/run4f/run/step1-ready.json), [contract/lock](l2-tmux-busy/run4f/run/step1-terminal-lock.json) |
+| 2 — ordinary busy response, Q | **PASS — S-runtime.** Confirmed controller submission; production busy activity current when Q accepted. | [confirmation](l2-tmux-busy/run4f/run/Q-work-confirmation.json), [working](l2-tmux-busy/run4f/run/Q-work-working.json), [Q acceptance](l2-tmux-busy/run4f/run/Q-accepted.json) |
+| 3 — defer Q, then fresh-idle delivery | **PASS — S-runtime.** No message receipt during captured busy pending state; one terminal submission, explicit read, one alpha journal reply. Delay 31.638 s; idle age 0.849 s; matching generation-1 pane. | [pending](l2-tmux-busy/run4f/run/pending/e546fe4e-8924-4cc1-b78e-6815522bc7a4.json), [delivery](l2-tmux-busy/run4f/run/step3-delivery.json) |
+| 4 — second response, Q2 pending, stop | **PASS — S-runtime.** Confirmed second ordinary input, Q2 pending, one normal `stop_session`, stopped record and passive FLOCK held by Taurhaus interrupt. | [confirmation](l2-tmux-busy/run4f/run/Q2-work-confirmation.json), [pending](l2-tmux-busy/run4f/run/pending/c3afc1a0-df35-4d1a-a21b-90c001cb5f9c.json), [stop](l2-tmux-busy/run4f/run/step4-stop-result.json), [stopped](l2-tmux-busy/run4f/run/step4-stopped.json) |
+| 5 — resume once, generation-safe Q2 | **INCOMPLETE — harness observation.** Resume completed once; generation 1→2, pane %2→%5; Q2 submitted once on generation 2, explicitly read, one alpha reply; no Q replay. Separate post-reply fresh-idle wait timed out; raw step outcome is FAIL/harness. | [operation](l2-tmux-busy/run4f/run/step5-operation.json), [pane identity](l2-tmux-busy/run4f/run/step5-pane-identity.json), [reply predicate](l2-tmux-busy/run4f/run/step5-reply-wait.json), [outcome](l2-tmux-busy/run4f/run/step5-outcome.json) |
+| 6 — explicit controller read/mark, reconcile, export | **NOT RUN**, blocked by step 5 under the stop-on-failure rule. No runtime `journal reconcile` was issued. Failure export and owned-process teardown completed separately. Alpha's step-5 read is not relabeled step-6 completion. | [outcome](l2-tmux-busy/run4f/run/step6-outcome.json), [cleanup](l2-tmux-busy/run4f/run/cleanup.json), [offline diagnostic only](l2-tmux-busy/run4f/diagnosis.json) |
+
+Q is `e546fe4e-8924-4cc1-b78e-6815522bc7a4` (`Q-bd19c189`);
+Q2 is `c3afc1a0-df35-4d1a-a21b-90c001cb5f9c` (`Q2-cc0dd185`).
+The retained journal has exactly one `submitted` receipt for each: generation
+1 / `%2` for Q, generation 2 / `%5` for Q2. Q2's accepted-to-submit delay was
+**28.580 s**, and its activity snapshot was **idle, 1.624 s old** at submission.
+All socket/session/pane/PID/start-tick fields match the delivery record. There
+is no old-generation Q2 submission and no second Q submission. Both markers
+have `consumed_by_read` and an actual journal message FROM alpha; acceptance,
+terminal submission, explicit read and reply remain separate facts.
+[Complete journal](l2-tmux-busy/run4f/run/team/state/messaging-v2/segments/000001.jsonl).
+
+The final resumed TUI visibly has an empty composer and Q2's answer. The
+runtime snapshot names the new thread `01a08c80-6beb-7433-8d1c-4b4c15e7f335`
+on `%5`, with `state: idle`, `activity_attribution: none`, confidence `low`.
+The exported activity authority instead ends at `activity_confidence: uncertain`,
+`recent_io: false`, `pane_alive: true`, `pane_foreign: false`, last-output age
+73 seconds. This disagreement explains which conjunct failed; these artifacts
+do not establish its underlying cause.
+[Final pane](l2-tmux-busy/run4f/run/final-pane-5.txt),
+[runtime sessions](l2-tmux-busy/run4f/run/final-runtime-sessions.json),
+[activity](l2-tmux-busy/run4f/run/final-activity.json).
+
+#### Run 4f spend, provenance, gates and cleanup
+
+**6 / 10 inputs:** two confirmed controller submissions plus four Mesh terminal
+deliveries (initial onboarding, Q, Q2, resumed onboarding). Five rollout model
+turn IDs and two notify-only IDs are retained. No Claude model input occurred;
+the lead remained at login. The interrupted Q2-work turn counts as an input
+with unknown cost and did not gate `resume_member` or an observation window.
+**Metered total $0.01866740 / $0.20**, using existing usage rows at the inherited
+Luna rates $0.20/M input, $0.02/M cached input and $1.20/M output. These are
+API-equivalent estimates, not subscription invoices. The obsolete all-tokens-at-
+$1.20 conservative column ($0.2668488) is retained as evidence and is not the
+binding metered-USD criterion under the orchestrator's ruling.
+
+| Turn ID | Spend | Meaning |
+|---|---:|---|
+| `01a08c7e-fcd4-77b2-bd05-44f4406c8a23` | $0.00669228 | Initial onboarding |
+| `01a08c7f-606f-7161-af3a-ba7f2d8933de` | $0.00252464 | First ordinary response |
+| `01a08c7f-dd2a-7d03-a245-ad3bd7e35036` | $0.00220356 | Q read/reply |
+| `01a08c80-05d0-73e2-8bfd-916a1dba189e` | unknown | Interrupted second response; no usage row |
+| `01a08c80-769a-7683-ad44-8243b2ad9945` | $0.00724692 | Resumed Q2 read/reply; two terminal deliveries in this resumed activation |
+| `01a08c7f-03f3-7a21-b2c7-3a820bfd61cc` | unknown | Notify-only, not an extra model input |
+| `01a08c80-79c7-7a41-8b16-9e288337c110` | unknown | Notify-only, not an extra model input |
+
+All **16 token-usage increments**, per-turn totals, reservations and input counts
+are retained in the [cost ledger](l2-tmux-busy/run4f/run/cost-ledger.json).
+No unknown-cost row is treated as a zero-cost answered turn.
+
+- Taurhaus product tree unchanged from **`1db4f9bf`**, protocol **27**;
+  checkout-local `just build-daemon` exit **0**. Mesh separate worktree detached
+  at **`ed59187`**, unchanged descriptor; `cargo build --bin mesh` exit **0**.
+  Cargo contention probes returned **1** (no matching cargo), so no waiting
+  was needed. [Build commands/exits](l2-tmux-busy/run4f/builds.json).
+- Actual Codex **0.153.4**, **gpt-5.6-luna low**; both native `codex` and
+  `codex-code-mode-host` copied. Daemon SHA-256
+  `3b4c6e3937466064687eac9f3685b33ac6acf33f511d16fdf8dd2eb01fc4d8ab`;
+  Mesh SHA-256 `d5296787e60c7e9d6d5844d27c496b949a177e2f97c732756f51aaebff8fe607`.
+  Exact startup commands, all binary digests, roots and RPCs are in
+  [events](l2-tmux-busy/run4f/run/events.jsonl).
+- Required gates from this checkout root: **`just check-quick` exit 0**
+  (2,518 frontend assertions), **`just lint` exit 0**, **`just test-contracts`
+  exit 0** (15 CLI renderer + 20 harness conformance + 33 boundary assertions).
+  No `src-tauri/` diff, so `just test-rust-unit` was not required or run.
+  [Exact gate commands, exits and log tails](l2-tmux-busy/run4f/checks-result.json).
+- Retained **425 complete daemon JSONL rows**, with private structured fields
+  sanitized; no event-family filtering or daemon row deduplication.
+  [Daemon stream](l2-tmux-busy/run4f/run/taurhaus.log.jsonl).
+  The failure exporter visited scratch `CODEX_HOME/log/` after child shutdown
+  but copied no regular non-symlink files: **there is no Codex log content to
+  retain in this attempt**. This diagnostic limitation is explicit, not a claim
+  that a retained log was inspected. Daemon stderr and pane captures remain.
+- Passive sampler caught **12 FLOCK-bearing samples**, including Taurhaus
+  `interrupt`, Taurhaus resumed `launch`, and Mesh `paste+submit`. No forced
+  contention, paused process, injected fault or stress run.
+  [Passive evidence](l2-tmux-busy/run4f/run/terminal-locks.jsonl).
+- Teardown removed the copied auth and entire scratch root; **zero survivors**,
+  private port closed. Post-run audit exit **0**; captures ≤60 lines. Thirteen
+  byte-identical aliases were removed and mapped without losing evidence.
+  [Audit](l2-tmux-busy/run4f/final-audit.json),
+  [export aliases](l2-tmux-busy/run4f/export-manifest.json).
+
+Deviations/limits: step 5's post-reply observation remained unproved and step 6
+was not run; no automatic retry or product change followed. The runtime model
+also issued informational `mesh --help` / `mesh send --help` probes without
+root/team/member flags; consequential read/send operations used the scratch
+root and explicit identities. There were no Codex `log/` files copied on
+failure. The required independent Opus evidence lens is unavailable in this
+session and remains on the orchestrator's review route. No full lane PASS or
+review approval is claimed. Preparation and each passing numbered step were
+committed separately; no plan-ledger rows were edited.

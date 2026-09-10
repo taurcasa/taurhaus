@@ -1,13 +1,13 @@
 [
   {
     "obligation": {
-      "message_id": "d223c14f-3b8a-493e-a15c-793d532dd4cf",
-      "delivery_id": "358743cb-69e1-486f-854e-f3f9955c9f80",
+      "message_id": "94626695-6fbc-4f92-bd25-42aaf1a0ca6b",
+      "delivery_id": "955312ac-2e54-42c9-816e-4e134b7e316a",
       "recipient": "lead",
       "source_generation": "1f31f05a-d80f-4948-ad72-f13a9061160e",
-      "source_position": 15,
-      "body": "Q-bd19c189"
+      "source_position": 26,
+      "body": "Q2-cc0dd185"
     },
-    "since": "2026-09-10T18:06:34.343505190+00:00"
+    "since": "2026-09-10T18:07:22.107250633+00:00"
   }
 ]
