@@ -1,3 +1,14 @@
+> **Thread-state correction (2026-09-10).** The orchestrator's real Codex
+> 0.153.4 probe supersedes the `includeTurns` and read-derived active-turn rules
+> below. Neither client sends `includeTurns`; plain reads return empty turns and
+> may transiently fail with -32603 before the first item persists. Such reads
+> defer as `pending` under the bounded deadline, before any submission. The daemon
+> tracks active IDs on its own notification connection and synthesizes bounded
+> UI turns from events. A second client without an active ID waits for idle.
+> Start-result turn IDs remain receipts; events do not become delivery receipts.
+> See the [binding facts and archived probes](../../app-server-transport-amendment.md#thread-state-on-codex-01534-binding-from-the-orchestrators-real-host-probe-2026-09-10).
+> No eligibility, protocol version, hot-switch or paid-proof scope changes.
+
 > **TRANSPORT SUPERSEDED (2026-09-09).** The `unix_ndjson` framing this
 > document assumes returns EOF on the installed Codex 0.153.4; the Unix
 > endpoint requires an HTTP/1.1 Upgrade to WebSocket, then RFC 6455
