@@ -180,3 +180,50 @@ namespace with real harness CLIs blocked. Cargo preflights use the requested
 30-second polls bounded by 30 minutes; each launched Cargo uses one build job
 and this checkout's own target. No full `just check` or concurrent paid/gate run.
 [Build results](l5-restarts/build/daemon-build.json), [gate records](l5-restarts/gates/).
+
+## Continuation — observer repair, no paid relaunch
+
+The continuation began from clean `b71ea094`; every previously green result,
+including runtime step 1, was already committed. The original runtime packet,
+cost ledger and complete daemon JSONL are unchanged. The controller/support as
+executed in that run remain recoverable at `b71ea094`.
+
+Commit `c4645d2e` repairs the step-2 observer: both tmux and hosted seats now take
+state from the matched, attributed daemon session. The sidecar supplies freshness
+evidence and cannot override an active daemon state with missing or old idle
+state. Attribution and the 120-second freshness check still apply. Two new
+synthetic regression tests (comment naming introducing commit `f95ec193`)
+produced four failing assertions, exit **1**; after the repair, all **8 tests**
+passed, exit **0**. No real CLI or harness home was used by these tests.
+[Red](l5-restarts/continuation/activity-red.json),
+[green](l5-restarts/continuation/activity-green.json).
+
+**Runtime step 2 is repaired offline, not rerun; steps 3–6 remain NOT RUN.**
+The original team's scratch root and all sessions were removed by mandatory
+teardown, so there is no live step-2 continuation to resume. The shared execution
+contract explicitly says a controller restart does not reset the lane cap.
+Six of the spec's twelve inputs were already consumed. A new complete sequence
+needs at least ten more inputs: two seat onboardings, two baseline messages,
+two initial bounded turns, two first-backlog deliveries, and two second-backlog
+deliveries. This lower bound excludes additional startup, recovery and second
+busy-window turns. It already exceeds the remaining six inputs, so no new paid
+runtime was launched and no cumulative counter was reset. This is an input-count
+constraint, not a refusal based on unknown cost. No authorization question was
+asked and no metering check blocked a lifecycle operation.
+
+Continuation adds **0 inputs / $0 metered**; the original six inputs,
+$0.00500816 metered and one unknown-cost startup turn remain the lane totals.
+No new product process or credential copy was created. The normal isolated gates
+were rerun after the existing teardown, with separate output under
+`continuation/gates/` so historical gate evidence remains intact.
+
+| Continuation gate | Exit | Seconds |
+|---|---:|---:|
+| `just check-quick` | 0 | 25.99 |
+| `just lint` | 0 | 24.23 |
+| `just test-contracts` | 0 | 19.31 |
+
+All three gates passed; 2,519 frontend tests and 68 contract tests passed.
+No `src-tauri/` diff, so `just test-rust-unit` remains inapplicable. Gate children
+were waited, the gate root removed, and the original 550-row daemon log hash
+rechecked unchanged. [Continuation result](l5-restarts/continuation/result.json).
