@@ -2552,8 +2552,10 @@ attempt; this report performs no such retry.
 **Deviations / limits:** the inherited controller treats the potentially transient
 `host member busy` read as fatal rather than retrying the observation, preventing
 the ordered seven-step trial from completing. Missing usage prevents numeric
-spend and dollar-cap verification. The required Opus evidence lens was unavailable
-in this session (no Opus model tool; no additional credential scope authorized).
+spend and dollar-cap verification. No independent cross-family evidence review
+ran inside the paid session; review is performed by the surrounding workflow.
+The referenced [integration brief](../../app-server-integration-trial-brief.md#outcome)
+requests “One Opus lens on the evidence.”
 No product defect was patched. The unpaid gate results follow below.
 
 ### Attempt 11 final gates and audit
@@ -2584,3 +2586,50 @@ unchanged 81-row daemon log and all 12 runtime process identities absent.
 No `src-tauri/` diff, so `just test-rust-unit` is not required.
 Non-evidence inserted lines: **0/200**. Gate/review spend: **0 turns / USD 0**;
 the one unmetered startup turn remains the attempt's only expenditure.
+
+
+### Attempt 11 controller review corrections (unpaid; prepares attempt 12)
+
+The paid result above remains **INCONCLUSIVE**: step 1 observation failed;
+steps 2, 3, 4, 5, 6 and 7 were not run. This correction spends **0 additional
+model turns / USD 0**, changes no product code, and does not rerun the paid trial.
+The single historical startup turn remains unmetered (total USD unknown).
+No descriptor flip or Mesh commit was made; eligibility remains disabled.
+
+Confirmed findings and fixes in the retained attempt-11 reproduction scripts:
+
+- `poll_host` now defers only `HOST_OPERATION_FAILED` / `host member busy`, logs
+  `host_poll_deferred`, preserves the event cursor, and retries at the existing
+  one-second poll interval. All other refusals remain fatal. Step 1 waits up to
+  120 seconds with budget checks before failing persistent contention. The final
+  read-only drain also skips an absent/stale transcript when its poll defers.
+- Step 7 refreshes the retained runtime record on each readiness poll. Null paths,
+  absent files and incomplete attribution retry within its existing 120-second
+  bound. The subsequent activity evidence uses the record that passed validation.
+- The cleanup failure verdict is assigned before sanitizing artifacts, and
+  non-UTF-8 files are skipped by the text sanitizer.
+- The claimed absence of an Opus requirement was **not confirmed**: the spec
+  incorporates the brief, whose Outcome section explicitly requests that lens.
+  The attempt-11 paragraph now cites that source and distinguishes the paid
+  session from the surrounding review workflow.
+
+Offline TDD: six added regression tests use AST-extracted controller code,
+synthetic RPCs, a virtual clock and temporary files; no controller imports,
+credentials, real CLI, daemon, Mesh or tmux process. Before implementation, five
+failed: fatal busy RPC, missing bounded-wait helper, absent final-drain transcript,
+null rollback path, and non-UTF-8 sanitize decode. The negative-refusal guard passed.
+After implementation all **9 tests passed (exit 0)**. Regression comments name
+`15633a94`, which introduced these attempt-11 scripts.
+
+[Recaptured red](integration/attempt11/red.txt) now includes the exact current
+`TrialGuards` test with only the native readiness assertion removed (exit 1),
+then the current full suite against both controller scripts from `15633a94`
+(exit 1; one failure and four errors). Both temporary mutations were restored in
+`finally`; the current suite passed again. The original three-test
+`green.txt` remains historical runtime-preparation evidence. Reproduce current
+green with `python3 docs/design/evidence/native-eligibility/integration/attempt11_test.py`.
+
+Only the named controller, steps, tests, red capture and this evidence file change.
+The complete historical daemon JSONL and runtime/cost/cleanup sidecars are untouched.
+This repair prepares a newly commissioned attempt 12; it establishes no new
+S-runtime proof. Requested unpaid gate rerun results follow when complete.

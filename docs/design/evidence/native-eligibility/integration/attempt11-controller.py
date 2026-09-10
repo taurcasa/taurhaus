@@ -213,7 +213,14 @@ def poll_host(force=False):
     if not force and time.monotonic() - last_host_poll < 1:
         return
     last_host_poll = time.monotonic()
-    value = rpc("coordination.hosted_transcript", {"team_name":TEAM, "member_name":MEMBER})
+    response = rpc("coordination.hosted_transcript", {"team_name":TEAM, "member_name":MEMBER}, allow_error=True)
+    if "error" in response:
+        error = response["error"]
+        if error.get("code") == "HOST_OPERATION_FAILED" and error.get("message") == "host member busy":
+            log("host_poll_deferred", error=error)
+            return False
+        raise RuntimeError(str(error))
+    value = response["result"]
     current = value.get("events", [])
     fresh = new_events(previous_host_events, current)
     previous_host_events = current
@@ -224,6 +231,16 @@ def poll_host(force=False):
         for event in fresh:
             stream.write(json.dumps(event) + "\n")
     budget_check()
+    return True
+
+
+def wait_host_poll(timeout=120):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        budget_check()
+        if poll_host(force=True): return
+        time.sleep(1)
+    raise AssertionError("step 1: host member busy persisted past transcript observation deadline")
 
 
 def stop_on_signal(signum, frame):
@@ -340,7 +357,7 @@ try:
     (OUT / "step1-runtime.json").write_text(json.dumps(clean(record), indent=2))
     for path in [Path(app["socketPath"]).parent / "tui/config.toml"]:
         (OUT / ("generated-config-" + str(len(list(OUT.glob('generated-config-*')))) + ".toml")).write_text(path.read_text())
-    poll_host(force=True)
+    wait_host_poll()
     (OUT / "step1-identities.json").write_text(json.dumps(clean(identities()), indent=2))
     log("inspection_ready", record=record)
     # Parent-controlled, bounded actions retain exact input/command evidence.
@@ -450,7 +467,9 @@ finally:
         saved = ROOT / "claude/teams" / TEAM / "runtime" / (MEMBER + ".json")
         if saved.exists() and json.loads(saved.read_text()).get("appServer"):
             for _ in range(30):
-                poll_host(force=True)
+                if not poll_host(force=True):
+                    time.sleep(1)
+                    continue
                 view = json.loads((OUT / "hosted-transcript.json").read_text())
                 if view.get("thread", {}).get("status", {}).get("type") == "idle": break
                 time.sleep(.5)
@@ -492,10 +511,16 @@ finally:
     log("cleanup", **cleanup)
     log("descriptor_restored", exit=cleanup["descriptor_restore_exit"])
     EVENTS.close()
+    if (survivors or not port_closed or not cleanup["root_removed"]
+            or not cleanup["mesh_trial_artifact_removed"] or cleanup["descriptor_restore_exit"]):
+        exit_code = 2
     # Sanitize textual logs before retaining them; auth contents were never logged.
     for path in OUT.rglob("*"):
         if path.is_file():
-            text = path.read_text()
+            try:
+                text = path.read_text()
+            except UnicodeDecodeError:
+                continue
             if path.suffix == ".json":
                 text = json.dumps(clean(json.loads(text)), indent=2) + "\n"
             elif path.suffix == ".jsonl":
@@ -504,7 +529,4 @@ finally:
                 text = clean(text)
             path.write_text(text)
 
-    if (survivors or not port_closed or not cleanup["root_removed"]
-            or not cleanup["mesh_trial_artifact_removed"] or cleanup["descriptor_restore_exit"]):
-        exit_code = 2
 sys.exit(exit_code)

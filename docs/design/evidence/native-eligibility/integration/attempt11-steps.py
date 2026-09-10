@@ -156,9 +156,16 @@ if __name__=='__main__':
             assert after['terminalContract']==1 and not after.get('appServer') and not after.get('daemon_pid'), 'not a plain canonical tmux seat'
             capture('step7-plain');status('step7-before')
             def attributed():
+                global after
+                action({'op':'snapshot'})
                 action({'op':'rpc','method':'get_runtime_session_snapshot','params':{},'save':'step7-activity-before.json'})
-                try: validate_tmux_activity(read_json(OUT/'step7-activity-before.json'),after['paneId'],read_json(Path(after['activitySnapshotPath'])))
-                except AssertionError: return False
+                try:
+                    rec=read_json(OUT/'team/runtime/seat.json')
+                    path=rec.get('activitySnapshotPath')
+                    if not path or not Path(path).is_file(): return False
+                    validate_tmux_activity(read_json(OUT/'step7-activity-before.json'),rec['paneId'],read_json(Path(path)))
+                except (AssertionError, FileNotFoundError, TypeError): return False
+                after=rec
                 return True
             wait_for(attributed, 'rollback activity not attributed and idle', timeout=120)
             source=Path(after['activitySnapshotPath'])
