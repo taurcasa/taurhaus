@@ -233,6 +233,13 @@ export function isRetainedSignal(signal) {
 }
 
 /** Optional explanation of the daemon authority, shared by activity surfaces. */
+/** Cached host readings describe history, not a currently observed thread. */
+export function withActivityFreshness(record, freshness) {
+  if (record?.source !== 'host' || !['cached', 'attachments_only'].includes(freshness)) return record
+  const current = activitySignal({ ...record, _presenceStale: true })
+  return { ...record, state: current.level, source: current.source }
+}
+
 export function hostActivityExplanation(record) {
   const current = activitySignal(record)
   if (current.source === 'host') return `${current.label} via daemon-owned thread`
