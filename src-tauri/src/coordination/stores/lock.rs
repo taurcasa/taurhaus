@@ -42,6 +42,13 @@ pub struct HostOperationLock {
     _not_send: PhantomData<Rc<()>>,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Test seam: a shorter launch deadline so a live-child timeout case takes seconds.
+    pub(crate) static LAUNCH_DEADLINE_OVERRIDE: std::cell::Cell<Option<Duration>> =
+        const { std::cell::Cell::new(None) };
+}
+
 impl HostOperationLock {
     pub fn acquire(
         root: &Path,
@@ -99,7 +106,13 @@ impl HostOperationLock {
         member: &str,
     ) -> Result<Self, CoordinationError> {
         let mut guard = Self::acquire(root, team, member, Duration::from_secs(2))?;
-        guard.deadline = std::time::Instant::now() + Duration::from_secs(30);
+        #[cfg(test)]
+        let budget = LAUNCH_DEADLINE_OVERRIDE
+            .with(|d| d.get())
+            .unwrap_or(Duration::from_secs(30));
+        #[cfg(not(test))]
+        let budget = Duration::from_secs(30);
+        guard.deadline = std::time::Instant::now() + budget;
         Ok(guard)
     }
 

@@ -2,7 +2,7 @@
 
 use super::domain::HealthState;
 use super::errors::CoordinationError;
-use super::hosted_process::HostProcess;
+use super::hosted_process::{HostProcess, LaunchError};
 use super::recovery_card::ReceiptStage;
 use super::recovery_delivery;
 use super::stores::lock::{acquire_team_lock, HostOperationLock};
@@ -182,15 +182,39 @@ impl HostedMembers {
             }
         }
         let directory = SocketDirectory::create()?;
-        let socket = directory.0.join("rpc.sock");
-        let mut host = HostProcess::launch(
-            launch,
-            &definition.project_path,
-            &socket,
-            before.session_id.as_deref(),
-            &guard,
-            (team, member),
-        )?;
+        let mut socket = directory.0.join("rpc.sock");
+        let mut attempt = 1;
+        let mut host = loop {
+            match HostProcess::launch(
+                launch,
+                &definition.project_path,
+                &socket,
+                before.session_id.as_deref(),
+                &guard,
+                (team, member),
+                attempt,
+            ) {
+                Ok(host) => break host,
+                Err(error @ LaunchError::ExitedBeforeReadiness { .. })
+                    if attempt == 1
+                        && guard
+                            .remaining()
+                            .is_ok_and(|left| left > Duration::from_secs(3)) =>
+                {
+                    // Readiness never arrived: no thread or runtime publication to replay.
+                    // A retry needs budget beyond its own back-off; otherwise the exit is
+                    // reported as the #162 failure below instead of a bare deadline error.
+                    error.log_exit((team, member), 2, true);
+                    std::thread::sleep(Duration::from_millis(1500));
+                    socket = directory.0.join("retry.sock");
+                    attempt = 2;
+                }
+                Err(error) => {
+                    error.log_exit((team, member), attempt, false);
+                    return Err(error.to_string());
+                }
+            }
+        };
         if registry.resolve(team).map_err(|e| e.to_string())? != root
             || registry.revision(team).map_err(|e| e.to_string())?
                 != authority.root_authority_revision
@@ -1087,6 +1111,142 @@ pub(crate) mod tests {
     }
     pub(crate) fn saved(root: &Path) -> MemberRuntimeRecord {
         MemberRuntimeStore::load(root, "team", "seat").unwrap()
+    }
+
+    #[test]
+    fn hosted_launch_retry_succeeds_once() {
+        launch_retry_case("once");
+    }
+
+    #[test]
+    fn hosted_launch_retry_stops_after_two_exits() {
+        launch_retry_case("twice");
+    }
+
+    #[test]
+    fn hosted_launch_retry_excludes_readiness_timeout() {
+        launch_retry_case("timeout");
+    }
+
+    fn launch_retry_case(mode: &str) {
+        // Regression: cadd533e failed fresh-account initialization races without a bounded retry.
+        let _logs = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let registry = seat(root);
+        let before: Value =
+            serde_json::from_str(&fixture_text(root, "team/runtime/seat.json")).unwrap();
+        let hosts = HostedMembers::default();
+        let launch = fixture(root);
+        let sink = LogFileState::new(root.join("events.jsonl")).unwrap();
+        install_global_sink(&sink);
+        std::fs::write(root.join("mode"), mode).unwrap();
+        let script = std::fs::read_to_string(&launch.program).unwrap().replace(
+            "root = os.environ['CODEX_HOME']",
+            r#"root = os.environ['CODEX_HOME']
+mode = open(os.path.join(root, 'mode')).read()
+starts = os.path.join(root, 'starts.jsonl')
+previous = [json.loads(line) for line in open(starts)] if os.path.exists(starts) else []
+address = sys.argv[sys.argv.index('--listen')+1].removeprefix('unix://')
+with open(starts, 'a') as out: out.write(json.dumps({'pid':os.getpid(), 'socket':address, 'time':time.monotonic(), 'argv':sys.argv, 'runtime':json.load(open(os.path.join(root, 'team/runtime/seat.json')))})+'\n')
+if previous:
+    assert not os.path.exists('/proc/'+str(previous[0]['pid'])), 'first child must be reaped'
+    assert previous[0]['socket'] != address and not os.path.exists(previous[0]['socket'])
+    assert time.monotonic() - previous[0]['time'] >= 1.5
+    assert previous[0]['argv'][:-1] == sys.argv[:-1], 'strict config must be identical'
+if mode == 'timeout':
+    sys.stderr.write('waiting\n'); sys.stderr.flush()
+    time.sleep(60)
+if mode == 'twice' or not previous:
+    with socket.socket(socket.AF_UNIX) as stale: stale.bind(address)
+    sys.stderr.write('\x1b[31mfailed sqlite initialization\x1b[0m sk-fake-secret\n'); sys.stderr.flush()
+    sys.exit(1)"#,
+        );
+        std::fs::write(&launch.program, script).unwrap();
+        // A live child is judged by the launch deadline; shorten it so the timeout case
+        // takes seconds, not the production 30 s budget (the child itself sleeps 60 s).
+        if mode == "timeout" {
+            crate::coordination::stores::lock::LAUNCH_DEADLINE_OVERRIDE
+                .with(|d| d.set(Some(Duration::from_millis(2500))));
+        }
+        let result = hosts.launch(&registry, "team", "seat", &launch);
+        crate::coordination::stores::lock::LAUNCH_DEADLINE_OVERRIDE.with(|d| d.set(None));
+        let starts: Vec<Value> = std::fs::read_to_string(root.join("starts.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|s| serde_json::from_str(s).unwrap())
+            .collect();
+        assert_eq!(starts.len(), if mode == "timeout" { 1 } else { 2 });
+        if mode == "once" {
+            result.unwrap();
+            assert_eq!(saved(root).session_id.as_deref(), Some("owned-thread"));
+        } else {
+            let error = result.unwrap_err();
+            assert!(
+                error.contains(if mode == "twice" {
+                    "(exit 1): failed sqlite initialization [redacted]"
+                } else {
+                    "deadline expired"
+                }),
+                "{error}"
+            );
+        }
+        let record = saved(root);
+        assert_eq!(record.attachment_generation, u64::from(mode == "once"));
+        assert_eq!(record.recovery.claim.is_some(), mode == "once");
+        assert_eq!(
+            MemberRuntimeStore::list(root, "team").unwrap(),
+            vec!["seat"]
+        );
+        let requests = std::fs::read_to_string(root.join("requests.jsonl")).unwrap_or_default();
+        assert_eq!(
+            requests.matches("\"method\": \"thread/start\"").count(),
+            usize::from(mode == "once")
+        );
+        drop(hosts);
+        for start in &starts {
+            assert_eq!(
+                start["runtime"], before,
+                "failed attempt must not publish runtime or receipt"
+            );
+            assert!(taurhaus_lib::platform::process_start_ticks(
+                start["pid"].as_u64().unwrap() as u32
+            )
+            .is_none());
+        }
+        sink.flush_for_test().unwrap();
+        let logs = std::fs::read_to_string(root.join("events.jsonl")).unwrap();
+        assert!(!logs.contains("sk-fake-secret"));
+        let events: Vec<Value> = logs
+            .lines()
+            .map(|s| serde_json::from_str(s).unwrap())
+            .collect();
+        let count = |name| events.iter().filter(|e| e["event"] == name).count();
+        assert_eq!(
+            count("hosted.launch.retried"),
+            usize::from(mode != "timeout")
+        );
+        for event in events
+            .iter()
+            .filter(|e| e["event"].as_str().unwrap().starts_with("hosted.launch."))
+        {
+            assert_eq!(event["level"], "WARN");
+            assert_eq!(event["team"], "team");
+            assert_eq!(event["member"], "seat");
+            if mode != "timeout" {
+                assert_eq!(event["attempt"], 2);
+                assert_eq!(event["exit_status"], "1");
+                assert_eq!(
+                    event["stderr_tail"],
+                    "failed sqlite initialization [redacted]"
+                );
+            }
+        }
+        assert_eq!(count("hosted.launch.failed"), usize::from(mode == "twice"));
+        assert_eq!(
+            count("hosted.launch.timed_out"),
+            usize::from(mode == "timeout")
+        );
     }
 
     #[test]
