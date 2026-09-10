@@ -693,10 +693,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                     )
                     .map_err(|e| ("update_roster".into(), e))?;
                 self.runtime_state.member_added = true;
-                if let Err(error) = self.join_mesh(prepared) {
-                    self.cleanup_failure();
-                    return Err(error);
-                }
+                self.join_mesh(prepared)?; // Join failures already invoke cleanup.
             }
             let launch_host = || -> Result<(), CoordinationError> {
                 // Managed hook trust is a TUI-only flag, not an app-server argument.

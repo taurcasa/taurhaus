@@ -300,6 +300,7 @@ describe('MeshTab', () => {
   })
 
   afterEach(() => {
+    configureToolRegistry(null)
     cleanup()
     vi.clearAllTimers()
     vi.useRealTimers()
@@ -2553,7 +2554,6 @@ describe('MeshTab', () => {
           }),
         })
       )
-      configureToolRegistry(null)
       expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent(
         "Agent 'backend-dev' added. Notes: onboarding wake failed: member pane is foreign: cli_tool_mismatch: expected=codex found=claude"
       )

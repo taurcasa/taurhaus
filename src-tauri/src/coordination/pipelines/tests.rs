@@ -8709,6 +8709,18 @@ fn hosted_teardown_reports_already_closed_pane() {
 #[cfg(target_os = "linux")]
 #[test]
 fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
+    check_hosted_rollback(false);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn hosted_member_controlled_rollback_skips_reused_foreign_pane() {
+    // Regression: ef8f6ce9 made a stale, reused TUI pane identity wedge rollback forever.
+    check_hosted_rollback(true);
+}
+
+#[cfg(target_os = "linux")]
+fn check_hosted_rollback(foreign_pane: bool) {
     // Regression: fa18910c made hosted-to-pane rollback permanently refuse.
     let tmp = TempDir::new().unwrap();
     let registry = crate::coordination::hosted::tests::seat(tmp.path());
@@ -8727,6 +8739,9 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
         .unwrap();
     let before = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
     runtime.set_pane_shell(before.pane_id.as_deref().unwrap(), false);
+    if foreign_pane {
+        runtime.set_pane_identity(before.pane_id.as_deref().unwrap(), Some(9999), Some(9999));
+    }
     orchestrator.hosted.stop(&registry, "team", "seat").unwrap();
     let mut config = TeamConfigStore::load(tmp.path(), "team").unwrap();
     config.members[0].extra.remove("adapter_mode");
@@ -8760,8 +8775,11 @@ fn hosted_member_controlled_rollback_resumes_the_same_thread_in_a_new_pane() {
     assert_eq!(report.pane_id.as_deref(), Some("test-pane-2"));
     assert_ne!(report.pane_id, before.pane_id);
     // Regression: 9d358935 cleared the retained TUI identity without closing its owned pane.
-    assert!(runtime.calls().iter().any(|c| matches!(c,
-        RuntimeCall::KillPane { pane_id } if Some(pane_id) == before.pane_id.as_ref())));
+    assert_eq!(
+        runtime.calls().iter().any(|c| matches!(c,
+        RuntimeCall::KillPane { pane_id } if Some(pane_id) == before.pane_id.as_ref())),
+        !foreign_pane
+    );
     assert!(runtime.calls().iter().all(|c| !matches!(c,
         RuntimeCall::SendKeys { pane_id, keys, .. } if Some(pane_id) == before.pane_id.as_ref() && !keys.contains("--remote"))));
     let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();

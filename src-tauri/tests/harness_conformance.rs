@@ -204,14 +204,8 @@ fn registry_is_complete_and_drives_the_terminal_contract() {
     // Regression: 9a6b9596 repointed the backend defaults at the canonical
     // roles without updating either frontend mirror of this sealed contract.
     assert_eq!(
-        taurhaus_lib::session_scanner::cli_tool::descriptors()
-            .into_iter()
-            .map(|mut tool| {
-                // Fallback has no daemon-platform evidence; hosting must remain off.
-                tool.hosting_supported = false;
-                tool
-            })
-            .collect::<Vec<_>>(),
+        // Regression: 3d3a0f83 derived platform hosting in otherwise sealed fallback descriptors.
+        taurhaus_lib::session_scanner::cli_tool::descriptors(),
         frontend_fixture,
         "Rust descriptors and the pre-settings frontend fallback must stay identical"
     );

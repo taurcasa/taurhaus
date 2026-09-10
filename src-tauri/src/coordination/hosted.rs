@@ -492,7 +492,20 @@ impl HostedMembers {
             Err(e) => return Err(e.to_string()),
         }
         drop(_guard); // Terminal exclusion must never overlap host or data locks.
-        detach_owned_tui(&root, team, member, &record, runtime).map_err(|e| e.to_string())?;
+        match detach_owned_tui(&root, team, member, &record, runtime) {
+            Err(CoordinationError::Conflict(message))
+                if message == "attached pane identity changed" =>
+            {
+                tracing::warn!(
+                    team,
+                    member,
+                    "Rollback skipped a foreign attached pane; clearing stale identity"
+                );
+            }
+            result => {
+                result.map_err(|e| e.to_string())?;
+            }
+        }
         let _guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
             .map_err(|e| e.to_string())?;
         if registry.resolve(team).map_err(|e| e.to_string())? != root

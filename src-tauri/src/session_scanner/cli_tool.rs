@@ -919,8 +919,8 @@ impl From<&CliToolSpec> for CliToolDescriptor {
             account_login_command: value.account_login_command.map(str::to_string),
             account_dir_name: value.base_dir_name.to_string(),
             capabilities: value.capabilities.into(),
-            hosting_supported: cfg!(any(target_os = "linux", target_os = "windows"))
-                && crate::session_scanner::launch::HostedLaunch::supports(value.tool),
+            // TerminalPlatformContract supplies daemon-platform availability.
+            hosting_supported: false,
             app_server: crate::session_scanner::launch::HostedLaunch::supports(value.tool)
                 .then(crate::session_scanner::launch::HostedDescriptor::codex),
         }

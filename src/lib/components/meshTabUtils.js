@@ -562,7 +562,7 @@ export function buildInitializationRequest(
       presetId: String(config?.presetId ?? '').trim(),
       lead: {
         ...(lead?.delivery ? { delivery: lead.delivery } : {}),
-      name: lead?.name ?? 'team-lead',
+        name: lead?.name ?? 'team-lead',
         cliTool: '',
         model: '',
         projectId: lead?.projectId || projectPath,
