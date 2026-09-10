@@ -1,4 +1,4 @@
-"""Exact build/gate driver; no runtime CLI, credential access or installation.
+"""Exact gate driver; no runtime CLI, credential access or installation.
 
 Run from the Lane 2 checkout root. Full transient logs stay in .check-logs;
 the committed result retains exit codes, elapsed time and bounded safe excerpts.
@@ -23,24 +23,6 @@ def sanitize(text):
         r'/home/[^/\s]+/(?!projects/(?:taurhaus-l2-tmux-busy|mesh-l2)(?:/|\b))[^\s\"\']*',
         '<operator-path-redacted>', text,
     )
-
-
-def wait_cargo():
-    start = time.monotonic()
-    previous = None
-    samples = []
-    while True:
-        result = subprocess.run(['pgrep', '-af', '(^|/)cargo( |$)'], capture_output=True, text=True)
-        current = (result.returncode, sanitize(result.stdout))
-        if current != previous:
-            samples.append({'after_s': round(time.monotonic() - start, 3),
-                            'exit': current[0], 'output': current[1]})
-            previous = current
-        if result.returncode == 1:
-            return samples
-        if result.returncode != 0 or time.monotonic() - start >= 1800:
-            raise RuntimeError('Cargo queue unavailable after bounded wait')
-        time.sleep(10)
 
 
 def command(argv, cwd, label):
@@ -69,7 +51,7 @@ def main():
     if Path.cwd() != ROOT:
         raise SystemExit('Run only from the Lane 2 checkout root')
     LOGS.mkdir(parents=True, exist_ok=True)
-    results = {'commands': [], 'cargo_waits': [], 'binaries': []}
+    results = {'commands': [], 'binaries': []}
     try:
         commands = [
             (['just', 'check-quick'], ROOT, 'check-quick'),
@@ -77,8 +59,6 @@ def main():
             (['just', 'test-contracts'], ROOT, 'test-contracts'),
         ]
         for argv, cwd, label in commands:
-            if False:
-                results['cargo_waits'].append(wait_cargo())
             results['commands'].append(command(argv, cwd, label))
             (OUT / 'checks-result.json').write_text(json.dumps(results, indent=2) + '\n')
         for path in (ROOT / 'src-tauri/target/release/taurhaus-daemon', MESH / 'target/debug/mesh'):

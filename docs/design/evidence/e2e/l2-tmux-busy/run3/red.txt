@@ -18,3 +18,86 @@ ModuleNotFoundError: No module named 'support'
 Ran 1 test in 0.000s
 
 FAILED (errors=1)
+
+Review fix red: run3-local unittest discovery, exit 1
+......EEFFFF......
+======================================================================
+ERROR: test_send_marker_accepts_banner_and_pretty_json (controller_test.Run3Tests.test_send_marker_accepts_banner_and_pretty_json)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run3/controller_test.py", line 35, in test_send_marker_accepts_banner_and_pretty_json
+    _, message_id = trial.send_marker('Q')
+                    ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run3/controller.py", line 308, in send_marker
+    accepted=next(json.loads(line) for line in output.splitlines() if line.startswith('{'))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run3/controller.py", line 308, in <genexpr>
+    accepted=next(json.loads(line) for line in output.splitlines() if line.startswith('{'))
+                  ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+======================================================================
+ERROR: test_wait_classifies_only_its_failed_assertion (controller_test.Run3Tests.test_wait_classifies_only_its_failed_assertion)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run3/controller_test.py", line 18, in test_wait_classifies_only_its_failed_assertion
+    trial.wait(lambda: False, 'readiness missing', 90, owner='taurhaus')
+TypeError: Trial.wait() got an unexpected keyword argument 'owner'
+
+======================================================================
+FAIL: test_controller_refuses_other_harness_home_before_copy (preflight_test.CredentialPreflightTests.test_controller_refuses_other_harness_home_before_copy) (home='.codex')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run3/preflight_test.py", line 23, in test_controller_refuses_other_harness_home_before_copy
+    copy.assert_not_called()
+  File "/usr/lib/python3.12/unittest/mock.py", line 905, in assert_not_called
+    raise AssertionError(msg)
+AssertionError: Expected 'copyfile' to not have been called. Called 1 times.
+Calls: [call(PosixPath('<operator-path-redacted>'), PosixPath('/tmp/tmporvq9f_2/codex/auth.json'))].
+
+======================================================================
+FAIL: test_controller_refuses_other_harness_home_before_copy (preflight_test.CredentialPreflightTests.test_controller_refuses_other_harness_home_before_copy) (home='.claude-work')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run3/preflight_test.py", line 23, in test_controller_refuses_other_harness_home_before_copy
+    copy.assert_not_called()
+  File "/usr/lib/python3.12/unittest/mock.py", line 905, in assert_not_called
+    raise AssertionError(msg)
+AssertionError: Expected 'copyfile' to not have been called. Called 1 times.
+Calls: [call(PosixPath('<operator-path-redacted>'), PosixPath('/tmp/tmp3ps534li/codex/auth.json'))].
+
+======================================================================
+FAIL: test_controller_refuses_other_harness_home_before_copy (preflight_test.CredentialPreflightTests.test_controller_refuses_other_harness_home_before_copy) (home='.gemini')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run3/preflight_test.py", line 23, in test_controller_refuses_other_harness_home_before_copy
+    copy.assert_not_called()
+  File "/usr/lib/python3.12/unittest/mock.py", line 905, in assert_not_called
+    raise AssertionError(msg)
+AssertionError: Expected 'copyfile' to not have been called. Called 1 times.
+Calls: [call(PosixPath('<operator-path-redacted>'), PosixPath('/tmp/tmprnk_asjl/codex/auth.json'))].
+
+======================================================================
+FAIL: test_controller_refuses_other_harness_home_before_copy (preflight_test.CredentialPreflightTests.test_controller_refuses_other_harness_home_before_copy) (home='.grok')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run3/preflight_test.py", line 23, in test_controller_refuses_other_harness_home_before_copy
+    copy.assert_not_called()
+  File "/usr/lib/python3.12/unittest/mock.py", line 905, in assert_not_called
+    raise AssertionError(msg)
+AssertionError: Expected 'copyfile' to not have been called. Called 1 times.
+Calls: [call(PosixPath('<operator-path-redacted>'), PosixPath('/tmp/tmpqdzo9wx9/codex/auth.json'))].
+
+----------------------------------------------------------------------
+Ran 15 tests in 0.012s
+
+FAILED (failures=4, errors=2)

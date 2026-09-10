@@ -19,7 +19,7 @@ import subprocess
 import tempfile
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from preflight import credential_source
 from support import clean, complete_rows, meter, native_runtime, retained_daemon_rows, evidence_jsonl, attributed_idle, pending_observation, ready_session
 
@@ -27,6 +27,14 @@ BASE=Path(__file__).resolve().parent
 CHECKOUT=BASE.parents[5]
 TEAM='l2-busy'
 MEMBER='alpha'
+# Standing operator authorization: exactly this file, independent of CLI input.
+AUTHORIZED_AUTH_SOURCE='/home/mstie/.codex/auth.json'
+
+def mesh_json(output):
+    """Accept compact or pretty JSON after optional stdout banner lines."""
+    lines=output.splitlines()
+    start=next(i for i,line in enumerate(lines) if line.lstrip().startswith('{'))
+    return json.loads('\n'.join(lines[start:]))
 
 class Trial:
     def __init__(self):
@@ -81,7 +89,7 @@ class Trial:
         assert value['outcome']['status']=='completed' and not value['outcome']['report'].get('failed_step'), value
         return value
 
-    def wait(self,predicate,why,timeout=90):
+    def wait(self,predicate,why,timeout=90,*,owner='harness'):
         assert timeout>=60
         end=time.monotonic()+timeout
         while time.monotonic()<end:
@@ -89,6 +97,7 @@ class Trial:
             value=predicate()
             if value:return value
             time.sleep(.2)
+        self.classification=owner
         raise AssertionError(why)
 
     @property
@@ -101,8 +110,6 @@ class Trial:
         except (KeyError,ValueError,FileNotFoundError):return {}
     def fresh_idle(self):
         value=self.activity()
-        try:age=(datetime.now(timezone.utc)-datetime.fromisoformat(value['observed_at'].replace('Z','+00:00'))).total_seconds()
-        except (KeyError,ValueError):return False
         return value if attributed_idle(self.record(),value,time.time()) else False
     def sessions(self):return [complete_rows(p.read_text()) for p in (self.root/'codex/sessions').rglob('rollout-*.jsonl')]
     def notify(self):
@@ -215,7 +222,7 @@ class Trial:
         for directory in ['home/.local/bin','codex','project','tmp','tmux','claude','grok','gemini','agy','data']:(self.root/directory).mkdir(parents=True,exist_ok=True,mode=0o700)
         binpath=self.root/'home/.local/bin'
         self.env={'PATH':f'{binpath}:/usr/bin:/bin','HOME':str(self.root/'home'),'CODEX_HOME':str(self.root/'codex'),'TMPDIR':str(self.root/'tmp'),'TMUX_TMPDIR':str(self.root/'tmux'),'TAURHAUS_DATA_DIR':str(self.root/'data'),'TAURHAUS_CLAUDE_DIR':str(self.root/'claude'),'CLAUDE_CONFIG_DIR':str(self.root/'claude'),'CLAUDE_DIR':str(self.root/'claude'),'GROK_HOME':str(self.root/'grok'),'TAURHAUS_AGY_DIR':str(self.root/'agy'),'GEMINI_CLI_HOME':str(self.root/'gemini'),'LANG':'C.UTF-8','TERM':'xterm-256color','SHELL':'/bin/bash','RUST_LOG':'info','TAURHAUS_TRIAL_ID':self.root.name}
-        source=credential_source(source,authorized_source=source)
+        source=credential_source(source,authorized_source=AUTHORIZED_AUTH_SOURCE)
         assert not list((self.root/'codex').iterdir())
         shutil.copyfile(source,self.root/'codex/auth.json');(self.root/'codex/auth.json').chmod(0o600)
         self.log('auth_copy',copied_files=['auth.json'],mode='0600',initial_codex_entries=['auth.json'])
@@ -251,10 +258,8 @@ class Trial:
         self.commands={'codex':{'fresh':'codex --yolo','continue_cmd':'codex --yolo','resume':'codex --yolo resume'}}
         request={'team_name':TEAM,'team_description':'Isolated lane 2 busy stop resume','lead_mode':'launch_new','lead':{'name':'lead','cli_tool':'claude','model':'claude-haiku-4-5','delivery':'tmux','project_id':str(self.root/'project')},'agents':[{'name':'alpha','cli_tool':'codex','model':'gpt-5.6-luna','reasoning_effort':'low','delivery':'tmux','project_id':str(self.root/'project'),'instructions':instructions}],'messaging':{'mode':'canonical','retentionPolicy':policy}}
         self.reserve('production initialization/onboarding')
-        self.classification='taurhaus'
         self.operation('coordination.initialize_team',{'request':request,'cli_commands':self.commands,'tmux_layout':'new_window'})
-        self.classification='taurhaus'
-        record=self.wait(lambda:self.record() if self.record().get('terminalContract')==1 else None,'terminal contract record absent',90)
+        record=self.wait(lambda:self.record() if self.record().get('terminalContract')==1 else None,'terminal contract record absent',90,owner='taurhaus')
         self.save('step1-runtime.json',record)
         for field in ['attachmentGeneration','tmuxSocket','tmuxSessionId','paneId','panePid','paneStartTime','contextGeneration','harness','launchRoot','activitySnapshotPath']:assert record.get(field) is not None,field
         assert not record.get('appServer'),'unexpected hosted seat'
@@ -264,12 +269,12 @@ class Trial:
         # A launch is not a ready seat. Diagnose this known production failure before any direct input.
         def onboarded():
             return self.fresh_idle() and self.exposure('[taurhaus] recovery_card','user') and any(r.get('payload',{}).get('recipient')=='alpha' and r.get('payload',{}).get('stage')=='submitted' for r in self.journals()) and any(p.get('type')=='task_complete' for rows in self.sessions() for r in rows if r.get('type')=='event_msg' for p in [r.get('payload',{})]) and self.budget()['metering_complete']
-        self.wait(onboarded,'alpha onboarding not delivered/completed with fresh idle activity',90)
+        self.wait(onboarded,'alpha onboarding not delivered/completed with fresh idle activity',90,owner='taurhaus')
         def attributed():
             snapshot=self.rpc('get_runtime_session_snapshot',{})
             row=ready_session(self.record(),snapshot)
             return {'snapshot':snapshot,'alpha':row} if row and self.fresh_idle() else None
-        attribution=self.wait(attributed,'alpha runtime attribution/idle not confirmed',90)
+        attribution=self.wait(attributed,'alpha runtime attribution/idle not confirmed',90,owner='taurhaus')
         self.save('step1-ready.json',{'runtime':self.record(),'activity':self.activity(),'attribution':attribution,'journal':self.journals()})
         self.capture('step1-final');self.pass_step()
 
@@ -305,7 +310,7 @@ class Trial:
         self.reservations.append({'reason':label,'step':self.step,'at':time.time(),'generation':self.record().get('attachmentGeneration')})
         marker=label+'-'+secrets.token_hex(4)
         output=self.mesh(['send','alpha','ACTION REQUIRED: Read this message explicitly, then reply exactly '+marker+'.','--summary',label])
-        accepted=next(json.loads(line) for line in output.splitlines() if line.startswith('{'))
+        accepted=mesh_json(output)
         self.save(label+'-accepted.json',{'marker':marker,**accepted})
         return marker,accepted['message_id']
 
@@ -373,7 +378,7 @@ class Trial:
             # mesh() names lead; explicit alpha read uses the same namespace runner
             # by selecting the member in a narrowly scoped method override.
             output=self.mesh_as_alpha(args)
-            page=json.loads(output);pages.append(page)
+            page=mesh_json(output);pages.append(page)
             if page.get('done'):break
             next_cursor=page.get('next_cursor',page.get('cursor'))
             assert next_cursor and next_cursor!=cursor,'read cursor made no progress'

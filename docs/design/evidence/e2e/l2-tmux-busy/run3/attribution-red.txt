@@ -18,3 +18,18 @@ ImportError: cannot import name 'ready_session' from 'support' (/home/mstie/proj
 Ran 1 test in 0.000s
 
 FAILED (errors=1)
+
+Review mutation check (offline only): patch controller_test.ready_session to return snapshot["runtime_sessions"][0] unconditionally. Existing assertion must reject mismatched pane.
+F
+======================================================================
+FAIL: test_ready_runtime_row_matches_seat_identity_and_attribution (controller_test.Run3Tests.test_ready_runtime_row_matches_seat_identity_and_attribution)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l2-tmux-busy/docs/design/evidence/e2e/l2-tmux-busy/run3/controller_test.py", line 75, in test_ready_runtime_row_matches_seat_identity_and_attribution
+    self.assertIsNone(ready_session(record,snapshot))
+AssertionError: {'session_id': 'thread', 'tmux_pane': '%3', 'state': 'idle', 'activity_attribution': 'attributed'} is not None
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)

@@ -1,10 +1,40 @@
 """Offline synthetic regressions: no CLI launches or real harness home reads."""
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
+from controller import Trial
 from pathlib import Path
 from support import native_runtime, retained_daemon_rows, attributed_idle, evidence_jsonl, pending_observation, ready_session
 
 class Run3Tests(unittest.TestCase):
+    def test_wait_classifies_only_its_failed_assertion(self):
+        # // Regression: 57c8ff36 preset step 1's owner before probes could fail.
+        trial = Trial.__new__(Trial)
+        trial.classification = 'harness'
+        trial.budget = Mock()
+        trial.snapshot = Mock()
+        with patch('controller.time.monotonic', side_effect=[0, 0, 91]), patch('controller.time.sleep'):
+            with self.assertRaisesRegex(AssertionError, 'readiness missing'):
+                trial.wait(lambda: False, 'readiness missing', 90, owner='taurhaus')
+        self.assertEqual(trial.classification, 'taurhaus')
+        trial.classification = 'harness'
+        with patch('controller.time.monotonic', return_value=0):
+            with self.assertRaisesRegex(RuntimeError, 'RPC fault'):
+                trial.wait(Mock(side_effect=RuntimeError('RPC fault')), 'readiness missing', 90, owner='taurhaus')
+        self.assertEqual(trial.classification, 'harness')
+
+    def test_send_marker_accepts_banner_and_pretty_json(self):
+        # // Regression: 57c8ff36 parsed send/read stdout with incompatible parsers.
+        trial = Trial.__new__(Trial)
+        trial.budget = Mock(return_value={'paid_inputs': 0, 'conservative_usd': 0})
+        trial.record = Mock(return_value={'attachmentGeneration': 1})
+        trial.save = Mock()
+        trial.step = 2
+        trial.reservations = []
+        trial.mesh = Mock(return_value='Mesh notice\n{\n  "message_id": "Q-id"\n}\n')
+        _, message_id = trial.send_marker('Q')
+        self.assertEqual(message_id, 'Q-id')
+
     def test_complete_native_runtime_required_before_copy(self):
         # // Regression: 8e8f1287 copied codex alone, omitting code-mode runtime.
         with tempfile.TemporaryDirectory() as d:
