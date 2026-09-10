@@ -142,6 +142,12 @@ impl CodexResolver {
         records: &[crate::coordination::stores::MemberRuntimeRecord],
     ) -> IdleResult {
         super::codex_readiness::invalidate(pid);
+        #[cfg(target_os = "linux")]
+        if matches!(fs::metadata(format!("/proc/{pid}")), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+        {
+            invalidate_binding(project_path, pid, pane_id);
+            return unresolved_identity(pid, "codex_identity_process_gone");
+        }
         let Some((seat_root, excluded)) = codex_identity_scope(project_path, pid, pane_id, records)
         else {
             return unresolved_identity(pid, "codex_identity_ambiguous_account");
@@ -203,17 +209,50 @@ fn apply_notify_edge(mut result: IdleResult, notify_path: &Path) -> IdleResult {
         notify_path,
         session_id,
         "agent-turn-complete",
-        transcript_mtime,
+        SystemTime::UNIX_EPOCH,
     ) else {
         return result;
     };
-    if record.ts < DateTime::<Utc>::from(transcript_mtime) {
+    if record.ts < DateTime::<Utc>::from(transcript_mtime)
+        && !codex_completed_tail(Path::new(transcript_path), &record)
+    {
         return result;
     }
 
     result.state = SessionState::Idle;
     result.authoritative = true;
     result
+}
+
+// Codex may flush task_complete after notify has already timestamped completion.
+// Only the final complete row can bridge that ordering; never skip a newer row.
+fn codex_completed_tail(
+    path: &Path,
+    notify: &crate::daemon::codex_notify::CodexNotifyRecord,
+) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let read = || -> Option<bool> {
+        let turn = notify.turn_id.as_deref().filter(|id| !id.is_empty())?;
+        let mut file = fs::File::open(path).ok()?;
+        let len = file.metadata().ok()?.len();
+        file.seek(SeekFrom::Start(len.saturating_sub(65_536)))
+            .ok()?;
+        let mut tail = Vec::new();
+        file.take(65_537).read_to_end(&mut tail).ok()?;
+        if tail.len() > 65_536 || !tail.ends_with(b"\n") {
+            return None;
+        }
+        let line = tail.rsplit(|b| *b == b'\n').find(|line| !line.is_empty())?;
+        let row: serde_json::Value = serde_json::from_slice(line).ok()?;
+        let at = DateTime::parse_from_rfc3339(row["timestamp"].as_str()?).ok()?;
+        Some(
+            row["type"] == "event_msg"
+                && row["payload"]["type"] == "task_complete"
+                && row["payload"]["turn_id"].as_str() == Some(turn)
+                && at <= notify.ts,
+        )
+    };
+    read().unwrap_or(false)
 }
 
 impl Default for CodexResolver {
@@ -663,6 +702,15 @@ fn codex_detect_idle_scoped_with_paths(
         .map(|(_, id)| id)
         .collect();
     if locks.len() > 1 {
+        // An in-process ephemeral thread must not displace a still-owned seat.
+        if let Some(result) = binding_result(project_path, pid, pane_id, &|path| {
+            path.starts_with(&sessions_dir)
+                && codex_result_from_file(path)
+                    .session_id
+                    .is_some_and(|id| locks.contains(&id))
+        }) {
+            return result;
+        }
         invalidate_binding(project_path, pid, pane_id);
         return unresolved_identity(pid, "codex_identity_ambiguous_writer_locks");
     }
@@ -791,10 +839,8 @@ fn codex_result_from_file(path: &Path) -> IdleResult {
 /// How many days back to scan for Codex session files.
 ///
 /// Codex stores session files in date-organized directories (YYYY/MM/DD/).
-/// When a session is resumed, Codex appends to the *original* file — which
-/// stays in the date directory where it was first created. A session created
-/// on Monday and resumed on Thursday would still live in Monday's directory
-/// but with Thursday's mtime. We scan back far enough to catch these.
+/// Older versions may append on resume; 0.153.4 can create a new rollout.
+/// Retained files are discovery candidates, never stronger than writer ownership.
 const CODEX_LOOKBACK_DAYS: i64 = 7;
 
 /// Scan recent date directories to find the Codex session file for a project.
@@ -909,9 +955,223 @@ fn codex_session_matches_project(jsonl_path: &Path, project_path: &str) -> bool 
 
 #[cfg(test)]
 mod tests {
+    use super::super::codex_readiness::observation;
     use super::*;
+    use crate::daemon::codex_notify::append_event_at;
     use std::fs::File;
     use std::io::Write;
+
+    #[cfg(target_os = "linux")]
+    struct ResumeProcess(std::process::Child);
+
+    #[cfg(target_os = "linux")]
+    impl ResumeProcess {
+        fn start(root: &Path, lock: &Path, coordination: &Path) -> Self {
+            let writer = File::open(lock).unwrap();
+            fs2::FileExt::try_lock_exclusive(&writer).unwrap();
+            let child = std::process::Command::new("/bin/sleep")
+                .arg("60")
+                .env_clear()
+                .envs([("CODEX_HOME", root), ("HOME", root)])
+                .stdin(writer)
+                .stdout(File::open(coordination).unwrap())
+                .spawn()
+                .unwrap();
+            Self(child)
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    impl Drop for ResumeProcess {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    // Regression: 61e9a247's mtime floor, L2 run 4f: resumed notify lost
+    // authority despite the unique writer lock and rebound runtime identity.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn codex_resume_run4f_writer_identity_and_notify() {
+        use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore};
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let cwd = tmp.path().to_str().unwrap();
+        let sessions = tmp.path().join("sessions");
+        let date = sessions.join(chrono::Local::now().format("%Y/%m/%d").to_string());
+        fs::create_dir_all(&date).unwrap();
+        let locks = tmp.path().join("thread-writer-locks");
+        fs::create_dir(&locks).unwrap();
+        let coordination = locks.join(".coordination.lock");
+        fs::write(&coordination, "").unwrap();
+        fs::write(locks.join("not-a-session.lock"), "").unwrap();
+        let ids = [
+            "01a08c7e-f709-7152-92ae-8fdb97f3f3d8",
+            "01a08c80-6beb-7433-8d1c-4b4c15e7f335",
+        ];
+        let mut paths = Vec::new();
+        for (id, time) in ids.iter().zip(["20-05-26", "20-07-01"]) {
+            let path = date.join(format!("rollout-2026-09-10T{time}-{id}.jsonl"));
+            // Run-4f session_meta shape; instruction prose is irrelevant to identity.
+            let meta = serde_json::json!({"timestamp":"2026-09-10T18:07:01.638Z",
+                "ordinal":0,"type":"session_meta","payload":{"session_id":id,"id":id,
+                "timestamp":"2026-09-10T18:07:01.638Z","cwd":cwd,"originator":"codex-tui",
+                "cli_version":"0.153.4","source":"cli","thread_source":"user",
+                "model_provider":"openai","history_mode":"paginated",
+                "base_instructions":{"text":"fixture"},"context_window":{"window_id":"01a08c80-6beb-7433-8d1c-4b500b45a039"},
+                "git":{"commit_hash":"29686d797ccd89b253b8a6ec225dfa4d353496eb","branch":"master"}}});
+            fs::write(&path, format!("{meta}\n")).unwrap();
+            paths.push(path);
+        }
+        let old_lock = locks.join(format!("{}.lock", ids[0]));
+        fs::write(&old_lock, "").unwrap();
+        let old = ResumeProcess::start(tmp.path(), &old_lock, &coordination);
+        let resolver = CodexResolver {
+            base_dir: Some(sessions),
+            notify_path: tmp.path().join("notify.jsonl"),
+        };
+        let before = resolver.detect_idle_for_pid_in(cwd, old.0.id(), Some("%5"), &[]);
+        assert_eq!(before.session_id.as_deref(), Some(ids[0]));
+        let old_pid = old.0.id();
+        drop(old);
+        fs::remove_file(old_lock).unwrap();
+        // Regression: c9669ef8, L2 run 4f: no fallback to a dead process's retained rollout.
+        let new_meta = fs::read(&paths[1]).unwrap();
+        fs::remove_file(&paths[1]).unwrap();
+        let dead = resolver.detect_idle_for_pid_in(cwd, old_pid, Some("%5"), &[]);
+        assert!(dead.session_id.is_none() && dead.jsonl_path.is_none());
+        fs::write(&paths[1], new_meta).unwrap();
+        let new_lock = locks.join(format!("{}.lock", ids[1]));
+        fs::write(&new_lock, "").unwrap();
+        let resumed = ResumeProcess::start(tmp.path(), &new_lock, &coordination);
+        let pid = resumed.0.id();
+        assert_ne!(pid, old_pid);
+        let mut record: MemberRuntimeRecord = serde_json::from_value(serde_json::json!({
+            "paneId":"%5","panePid":pid,"paneStartTime":crate::platform::process_start_ticks(pid).unwrap().to_string(),
+            "cli_tool":"codex","project_path":cwd,"session_id":ids[0],"jsonl_path":paths[0],
+            "attached_at":Utc::now() - chrono::Duration::seconds(30),
+            "recovery":{"harness_account_root":tmp.path()}
+        })).unwrap();
+        for recorded_id in ids {
+            record.session_id = Some(recorded_id.into());
+            let result = resolver.detect_idle_for_pid_in(cwd, pid, Some("%5"), &[record.clone()]);
+            assert_eq!(result.session_id.as_deref(), Some(ids[1]));
+            assert_eq!(result.jsonl_path.as_deref(), paths[1].to_str());
+        }
+        // Same pane/new PID re-resolves; even a stale entry for that PID loses to its lock.
+        persist_binding(cwd, pid, Some("%5"), &before);
+        let rebound = resolver.detect_idle_for_pid_in(cwd, pid, Some("%5"), &[record.clone()]);
+        record.session_id = rebound.session_id.clone();
+        record.jsonl_path = rebound.jsonl_path.as_ref().map(PathBuf::from);
+        let teams = tmp.path().join("teams");
+        MemberRuntimeStore::save(&teams, "trial", "alpha", &record).unwrap();
+        let saved = fs::read(teams.join("trial/runtime/alpha.json")).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        assert_eq!(saved["hookSessionId"], ids[1]);
+        assert_eq!(saved["session_id"], ids[1]);
+        assert_eq!(saved["jsonl_path"].as_str(), rebound.jsonl_path.as_deref());
+        // Exact final run-4f row and notify, with its timestamp rebased for freshness.
+        let completed = Utc::now() - chrono::Duration::seconds(1);
+        let turn = "01a08c80-769a-7683-ad44-8243b2ad9945";
+        let row = serde_json::json!({"timestamp":completed.to_rfc3339(),"ordinal":49,"type":"event_msg",
+            "payload":{"type":"task_complete","turn_id":turn,"last_agent_message":"Q2-cc0dd185",
+            "started_at":1789063624,"completed_at":1789063642,"duration_ms":18075,"time_to_first_token_ms":2760}});
+        let mut rollout = fs::OpenOptions::new().append(true).open(&paths[1]).unwrap();
+        writeln!(rollout, "{row}").unwrap();
+        let event =
+            serde_json::json!({"type":"agent-turn-complete","thread-id":ids[1],"turn-id":turn});
+        append_event_at(&resolver.notify_path, &event.to_string(), completed).unwrap();
+        record.tmux_socket = Some(tmp.path().join("never-probed.sock"));
+        let result = resolver.detect_idle_for_pid_in(cwd, pid, Some("%5"), &[record.clone()]);
+        assert_eq!(result.session_id, rebound.session_id);
+        assert!(result.authoritative, "notify.ts < transcript_mtime");
+        assert_eq!(result.state, SessionState::Idle);
+        assert_eq!(observation(pid, cwd, Some("%5")).unwrap().source, "notify");
+        // Each guard must independently reject a complete, timestamped final row.
+        for (kind, event, turn_id, at) in [
+            ("response_item", "task_complete", turn, completed),
+            ("event_msg", "task_started", turn, completed),
+            ("event_msg", "turn_aborted", turn, completed),
+            ("event_msg", "settings", turn, completed),
+            ("event_msg", "task_complete", "other-turn", completed),
+            ("event_msg", "task_complete", turn, Utc::now()),
+        ] {
+            let later = serde_json::json!({"timestamp":at.to_rfc3339(),"type":kind,
+                "payload":{"type":event,"turn_id":turn_id}});
+            writeln!(rollout, "{later}").unwrap();
+            let busy = resolver.detect_idle_for_pid_in(cwd, pid, Some("%5"), &[record.clone()]);
+            assert!(!busy.authoritative, "accepted {later}");
+        }
+    }
+
+    // Regression: 6398bfa3's multi-lock refusal, L1 run 4d: an ephemeral
+    // thread beside the bound seat must not erase identity or consume its notify.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn codex_run4d_ephemeral_lock_preserves_seat_notify() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let cwd = tmp.path().to_str().unwrap();
+        let pid = std::process::id();
+        let ids = [
+            "01a08c76-8916-7d71-96e5-2331f4ce7dcb",
+            "01a08c76-9142-7c22-991c-59c32c30344a",
+        ];
+        let sessions = tmp.path().join("sessions");
+        let date = sessions.join(chrono::Local::now().format("%Y/%m/%d").to_string());
+        let locks = tmp.path().join("thread-writer-locks");
+        fs::create_dir_all(&date).unwrap();
+        fs::create_dir(&locks).unwrap();
+        let now = Utc::now() - chrono::Duration::seconds(1);
+        let resolver = CodexResolver {
+            base_dir: Some(sessions),
+            notify_path: tmp.path().join("notify.jsonl"),
+        };
+        for id in ids {
+            // Recorded seat metadata shape; the ephemeral metadata was not retained.
+            let meta = serde_json::json!({"timestamp":"2026-09-10T17:56:14.970Z","ordinal":0,"type":"session_meta",
+                "payload":{"id":id,"session_id":id,"cwd":cwd,"originator":"codex-tui","cli_version":"0.153.4","source":"cli","thread_source":"user"}});
+            let row = serde_json::json!({"timestamp":now.to_rfc3339(),"type":"event_msg","payload":{"type":"task_complete","turn_id":id}});
+            let path = date.join(format!("rollout-2026-09-10T19-56-14-{id}.jsonl"));
+            fs::write(path, format!("{meta}\n{row}\n")).unwrap();
+        }
+        let lock = |id| {
+            let file = File::create(locks.join(format!("{id}.lock"))).unwrap();
+            fs2::FileExt::try_lock_exclusive(&file).unwrap();
+            file
+        };
+        let _seat = lock(ids[0]);
+        let mut record = serde_json::from_value::<crate::coordination::stores::MemberRuntimeRecord>(serde_json::json!({
+            "paneId":"%4d","panePid":pid,"paneStartTime":crate::platform::process_start_ticks(pid).unwrap().to_string(),
+            "cli_tool":"codex","project_path":cwd,"attached_at":now - chrono::Duration::seconds(30),
+            "recovery":{"harness_account_root":tmp.path()}
+        })).unwrap();
+        let resolve = |record| resolver.detect_idle_for_pid_in(cwd, pid, Some("%4d"), &[record]);
+        assert_eq!(resolve(record.clone()).session_id.as_deref(), Some(ids[0]));
+        let ephemeral = lock(ids[1]);
+        let notify = |id, at| {
+            let event =
+                serde_json::json!({"type":"agent-turn-complete","thread-id":id,"turn-id":id});
+            append_event_at(&resolver.notify_path, &event.to_string(), at).unwrap();
+        };
+        notify(ids[1], now);
+        let result = resolve(record.clone());
+        assert_eq!(result.session_id.as_deref(), Some(ids[0]));
+        assert!(!result.authoritative, "foreign notify");
+        notify(ids[0], now);
+        record.tmux_socket = Some(tmp.path().join("never-probed.sock"));
+        for held in [Some(ephemeral), None] {
+            let result = resolve(record.clone());
+            assert_eq!(result.session_id.as_deref(), Some(ids[0]));
+            assert!(result.authoritative);
+            assert_eq!(observation(pid, cwd, Some("%4d")).unwrap().source, "notify");
+            drop(held);
+        }
+        super::super::codex_readiness::invalidate(pid);
+    }
 
     // Regression: 41ef6b21 made unrelated corrupt team bookkeeping erase TUI identity.
     #[test]
@@ -920,7 +1180,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         setup_binding_store(&tmp);
         let sessions = tmp.path().join("sessions");
-        create_codex_session(
+        let file = create_codex_session(
             &sessions.join(chrono::Local::now().format("%Y/%m/%d").to_string()),
             "rollout-2026-09-10T08-30-00-seat-thread.jsonl",
             "/scratch/project",
@@ -938,7 +1198,13 @@ mod tests {
             base_dir: Some(sessions),
             notify_path: tmp.path().join("notify.jsonl"),
         };
-        let result = resolver.detect_idle_for_pid_at("/scratch/project", u32::MAX, None, &teams);
+        #[cfg(target_os = "linux")]
+        let process = ResumeProcess::start(tmp.path(), &file, &file);
+        #[cfg(target_os = "linux")]
+        let pid = process.0.id();
+        #[cfg(not(target_os = "linux"))]
+        let pid = u32::MAX;
+        let result = resolver.detect_idle_for_pid_at("/scratch/project", pid, None, &teams);
         assert_eq!(result.session_id.as_deref(), Some("seat-thread"));
         assert!(result.jsonl_path.is_some());
     }
@@ -952,7 +1218,7 @@ mod tests {
         let locks = tmp.path().join("thread-writer-locks");
         fs::create_dir(&locks).unwrap();
         let hosted = "01a08a70-8595-7ea0-a004-4ae0385d4e2f";
-        for id in ["invalid", hosted] {
+        for id in ["invalid", ".coordination", "not-a-session", hosted] {
             fs::write(locks.join(format!("{id}.lock")), "").unwrap();
         }
         let result = codex_detect_idle_scoped(
@@ -1279,7 +1545,7 @@ mod tests {
             "paneId":parts[1],"panePid":pid,"paneStartTime":crate::platform::process_start_ticks(pid).unwrap().to_string(),
             "tmuxSocket":socket,"cli_tool":"codex","project_path":project,
             "attachedAt": Utc::now() - chrono::Duration::seconds(30),
-            "recovery":{"harness_account_root":home}
+            "recovery":{"harness_account_root":home,"reserved_attachment":Utc::now() - chrono::Duration::seconds(10)}
         })).unwrap();
         MemberRuntimeStore::save(&teams, "trial", "seat", &record).unwrap();
         let hosted = serde_json::from_value(serde_json::json!({"appServer":{
@@ -1537,8 +1803,13 @@ mod tests {
             notify_path,
         };
 
-        let result =
-            resolver.detect_idle_for_pid_in("/home/test/project", u32::MAX, Some("%99"), &[]);
+        #[cfg(target_os = "linux")]
+        let process = ResumeProcess::start(tmp.path(), &transcript, &transcript);
+        #[cfg(target_os = "linux")]
+        let pid = process.0.id();
+        #[cfg(not(target_os = "linux"))]
+        let pid = u32::MAX;
+        let result = resolver.detect_idle_for_pid_in("/home/test/project", pid, Some("%99"), &[]);
 
         assert_eq!(result.state, SessionState::Idle);
         assert!(result.authoritative);

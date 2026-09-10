@@ -242,7 +242,7 @@ where
                 None => state != SessionState::Idle,
             };
             if is_transition {
-                emit_activity_state_changed(
+                emit_activity_state_changed_with_identity(
                     proc.pid,
                     proc.cli_tool,
                     previous_state,
@@ -252,6 +252,9 @@ where
                         process_active,
                         file_active,
                     ),
+                    // Pane-bound identity is resolved above with the pane and
+                    // must travel with its transition for runtime correlation.
+                    tool_spec.pane_binding.then_some(&idle_result),
                 );
             }
             let (activity_confidence, activity_attribution, project_unattributed_active) =
@@ -343,6 +346,17 @@ fn emit_activity_state_changed<T: serde::Serialize + std::fmt::Debug>(
     to: T,
     source: &'static str,
 ) {
+    emit_activity_state_changed_with_identity(pid, cli_tool, from, to, source, None);
+}
+
+fn emit_activity_state_changed_with_identity<T: serde::Serialize + std::fmt::Debug>(
+    pid: u32,
+    cli_tool: CliTool,
+    from: Option<T>,
+    to: T,
+    source: &'static str,
+    identity: Option<&idle::IdleResult>,
+) {
     tracing::info!(pid, tool = %cli_tool, ?from, ?to, source, "session activity state changed");
     let mut fields = serde_json::Map::new();
     fields.insert("pid".to_string(), serde_json::Value::from(pid));
@@ -362,6 +376,10 @@ fn emit_activity_state_changed<T: serde::Serialize + std::fmt::Debug>(
         "source".to_string(),
         serde_json::Value::String(source.to_string()),
     );
+    if let Some(identity) = identity {
+        fields.insert("session_id".into(), serde_json::json!(identity.session_id));
+        fields.insert("jsonl_path".into(), serde_json::json!(identity.jsonl_path));
+    }
     crate::commands::logging::emit_global(
         "info",
         "backend",
@@ -551,10 +569,18 @@ mod tests {
         cache::remove_state_tracker(pid);
     }
 
+    // Regression: 53d59fc2 inverted scanner/log guards, deadlocking the Codex readiness replay.
+    #[test]
+    fn codex_capture_lock_order_is_scanner_then_log() {
+        let inverted = "StateChangeCapture::install();\n        let _lock = SCANNER_TEST_LOCK";
+        assert!(!include_str!("classification.rs").contains(inverted));
+    }
+
     // Regression: b9e4a855 bypassed the activity registry for launch readiness.
     #[test]
     fn codex_review_readiness_uses_activity_slice_and_classification() {
         let _lock = SCANNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let capture = StateChangeCapture::install();
         struct Reset;
         impl Drop for Reset {
             fn drop(&mut self) {
@@ -562,11 +588,19 @@ mod tests {
             }
         }
         let _reset = Reset;
-        set_runtime_idle_detector_override(Some(|_| idle_result(SessionState::Idle, false)));
+        // Regression: 06b432d omitted event identity; L2 run 4f's rebound
+        // session must agree through classification, export and telemetry.
+        set_runtime_idle_detector_override(Some(|proc| idle::IdleResult {
+            session_id: Some("01a08c80-6beb-7433-8d1c-4b4c15e7f335".into()),
+            jsonl_path: Some(format!("{}/rebound.jsonl", proc.project_path)),
+            ..idle::IdleResult::idle()
+        }));
         let pid = 941_030;
         let tool = CliTool::Codex;
-        let project = "/scratch/review";
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().to_str().unwrap();
         let pane = "%review";
+        cache::record_authoritative_state(pid, SessionState::Active);
         let activity = crate::session_scanner::cli_tool::spec(tool).activity_source();
         for (source, state, confidence) in [
             (
@@ -623,6 +657,15 @@ mod tests {
                 ActivityAttribution::Attributed
             );
             assert!(!session.project_unattributed_active);
+            let event = capture
+                .events
+                .try_iter()
+                .find(|e| e["event"] == "activity.state.changed")
+                .unwrap();
+            let fields = &event["fields"];
+            assert_eq!(fields["session_id"], session.session_id.as_deref().unwrap());
+            assert_eq!(fields["jsonl_path"], session.jsonl_path.as_deref().unwrap());
+            assert_eq!(fields["source"], source);
             use crate::coordination::activity_export::{
                 build_member_activity_snapshot, PaneActivityProbe,
             };
@@ -716,10 +759,10 @@ mod tests {
     // transition.
     #[test]
     fn first_sight_of_an_idle_process_emits_no_state_change() {
-        let capture = StateChangeCapture::install();
         let _lock = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
+        let capture = StateChangeCapture::install();
         let pid = 941_010;
         cache::remove_state_tracker(pid);
 
@@ -739,10 +782,10 @@ mod tests {
     // arrives already working. First sight of an *active* PID is real news.
     #[test]
     fn first_sight_of_an_active_process_emits_the_arrival() {
-        let capture = StateChangeCapture::install();
         let _lock = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
+        let capture = StateChangeCapture::install();
         let pid = 941_011;
         cache::remove_state_tracker(pid);
 
@@ -762,10 +805,10 @@ mod tests {
     // genuine transitions on a tracked PID untouched, in both directions.
     #[test]
     fn a_tracked_process_still_emits_both_transition_directions() {
-        let capture = StateChangeCapture::install();
         let _lock = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
+        let capture = StateChangeCapture::install();
         let pid = 941_012;
         cache::remove_state_tracker(pid);
 

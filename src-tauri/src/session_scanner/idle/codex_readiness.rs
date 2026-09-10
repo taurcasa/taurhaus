@@ -182,20 +182,26 @@ pub(super) fn refresh(
     else {
         return;
     };
-    // apply_notify_edge already checks the transcript boundary. Reattachment
-    // cannot invalidate that completion; without a transcript there is no way
-    // to tell an old completion from evidence for the current turn.
-    let notify_since = if result.authoritative {
-        DateTime::<Utc>::UNIX_EPOCH
-    } else {
-        launch
-    };
+    // A reserved launch fences a new process. Bookkeeping-only reattachment
+    // preserves validated completion when no launch was reserved. Without a
+    // transcript, an old completion cannot prove readiness for the current turn.
+    let notify_since = record
+        .recovery
+        .reserved_attachment
+        .unwrap_or(if result.authoritative {
+            DateTime::<Utc>::UNIX_EPOCH
+        } else {
+            launch
+        });
     let completion = crate::daemon::codex_notify::latest_activity_record_for_session_after(
         notify_path,
         id,
         notify_since.into(),
     )
-    .filter(|record| record.ts <= now);
+    .filter(|record| record.ts >= notify_since && record.ts <= now);
+    if record.recovery.reserved_attachment.is_some() && completion.is_none() {
+        result.authoritative = false;
+    }
     // Even an unvalidated completion ends the pre-turn probe. A writer lock
     // alone cannot validate the completion or establish readiness for a later turn.
     let (no_rollout, prompt) = if completion.is_none() {
@@ -239,6 +245,47 @@ pub(super) fn refresh(
 mod tests {
     use super::*;
     use crate::daemon::codex_notify::{append_event_at, latest_activity_record_for_session_after};
+
+    // Regression: 6398bfa3 (#163), L2 run 4f: a resume must use its launch
+    // boundary, while retaining launch_ready until the rebound rollout's first turn.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn codex_resume_run4f_launch_floor_and_pre_turn_window() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("rollout.jsonl");
+        let now = Utc::now();
+        let launch = now - chrono::Duration::seconds(5);
+        fs::write(&path, "{\"type\":\"response_item\"}\n").unwrap();
+        let notify = tmp.path().join("notify.jsonl");
+        append_event_at(
+            &notify,
+            r#"{"type":"agent-turn-complete","thread-id":"rebound"}"#,
+            launch - chrono::Duration::seconds(1),
+        )
+        .unwrap();
+        let pid = std::process::id();
+        let project = tmp.path().to_str().unwrap();
+        let record = serde_json::from_value(serde_json::json!({
+            "paneId":"%resume-floor","panePid":pid,
+            "paneStartTime":crate::platform::process_start_ticks(pid).unwrap().to_string(),
+            "tmuxSocket":tmp.path().join("never-probed.sock"),"cli_tool":"codex","project_path":project,
+            "attached_at":now,"recovery":{"reserved_attachment":launch}
+        })).unwrap();
+        let mut result = IdleResult {
+            session_id: Some("rebound".into()),
+            jsonl_path: Some(path.to_string_lossy().into_owned()),
+            authoritative: true,
+            ..IdleResult::idle()
+        };
+        refresh(&mut result, project, pid, &[record], &notify);
+        assert!(!result.authoritative);
+        assert!(observation(pid, project, Some("%resume-floor")).is_none());
+        fs::write(&path, "{\"type\":\"session_meta\"}\n").unwrap();
+        let (no_turn, prompt) = prompt_before_first_turn(path.to_str(), || idle_prompt(IDLE_PANE));
+        let ready = sample(prompt, no_turn, None, launch, now).unwrap();
+        assert_eq!(ready.source, "launch_ready");
+        invalidate(pid);
+    }
 
     // Regression: 36c5da85 collapsed failed/unrecognized captures into pane_working,
     // recreating L2 run 3's onboarding hang and idle→active→idle flap.
