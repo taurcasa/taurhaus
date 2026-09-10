@@ -2963,3 +2963,10 @@ no `consumed_by_read` until the explicit `mesh read --unread --mark-read`.
 Evidence: `integration/attempt13/run/step2-{send,explicit-read}.txt`,
 `step2-receipts.json`, both `step2-journal-*-read.json` files and `step2-pane-2.txt`.
 
+### Step 3 — PASS (S-runtime)
+
+The second send was deferred as `pending: thread_active`, then delivered after idle.
+Exactly one user exposure and one reply for `juniperde8d19`.
+Evidence: `integration/attempt13/run/step3-active-start.json`, `step3-pending.json`,
+`step3-receipts.json`, `step3-exposure.json`, and `step3-final-pane-2.txt`.
+

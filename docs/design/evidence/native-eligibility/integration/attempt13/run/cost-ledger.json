@@ -3,9 +3,11 @@
   "effort": "low",
   "turn_ids": [
     "01a08c8a-2f67-7b32-a217-3d490219e47f",
-    "01a08c8b-0443-72d2-8119-c1f95642d21f"
+    "01a08c8b-0443-72d2-8119-c1f95642d21f",
+    "01a08c8b-5bad-7853-ab10-b5e414b99e03",
+    "01a08c8b-8ca9-7fd2-b54b-b28d3a16f997"
   ],
-  "paid_inputs": 2,
+  "paid_inputs": 4,
   "generations": [
     {
       "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
@@ -26,10 +28,30 @@
       "reasoning_output": 0,
       "api_equivalent_usd": 0.00046308,
       "conservative_usd": 0.0135012
+    },
+    {
+      "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+      "turn_id": "01a08c8b-5bad-7853-ab10-b5e414b99e03",
+      "input": 11282,
+      "cached_input": 6912,
+      "output": 516,
+      "reasoning_output": 31,
+      "api_equivalent_usd": 0.00163144,
+      "conservative_usd": 0.0141576
+    },
+    {
+      "thread_id": "01a08c8a-29ea-7cc2-8a4e-b000b9317bbd",
+      "turn_id": "01a08c8b-8ca9-7fd2-b54b-b28d3a16f997",
+      "input": 11905,
+      "cached_input": 11008,
+      "output": 19,
+      "reasoning_output": 7,
+      "api_equivalent_usd": 0.00042236,
+      "conservative_usd": 0.0143088
     }
   ],
-  "api_equivalent_usd": 0.00147412,
-  "conservative_usd": 0.0268704,
+  "api_equivalent_usd": 0.00352792,
+  "conservative_usd": 0.0553368,
   "metering_complete": true,
   "unmetered_turn_ids": [],
   "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice."
