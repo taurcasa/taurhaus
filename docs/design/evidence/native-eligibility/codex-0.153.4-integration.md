@@ -2425,3 +2425,33 @@ read-only `attempt10-audit.py` exited **0**, verifying the 12 original process
 identities absent, private port closed, Mesh clean/disabled with no trial binary,
 and the unchanged 50-row daemon JSONL SHA-256
 `093938e910b24a7f4b9e25f571bc90490b18a54117d05b42dae252a905b8812e`.
+
+The exact gates were rerun through `attempt2-gates.py`, from this checkout root,
+with inert runtime shims and credential-free homes. Final results:
+
+| Command | Exit | Runtime | Cargo preflight wait |
+|---|---|---|---|
+| `just check-quick` | **0** | 20.95s | 0s |
+| `just lint` | **0** | 6.33s | 150s |
+| `just test-contracts` | **0** | 5.08s | 30s |
+
+`check-quick` passed 150 frontend files / 2,509 tests; all 68 contract tests
+passed. `just test-rust-unit` remains unnecessary: no `src-tauri/` changes.
+The first gate set exited 0 / 0 / **101**: the contract scanner read the newly
+generated `.check-logs/attempt10-review/gates/gate-isolation.json` as repository
+source and flagged its scratch directory name. Moving generated output outside
+the checkout resolved that verification contamination without a product patch.
+Both the failing and passing logs, command arrays, exit records, Cargo preflights
+and gate-root cleanup records are retained locally in
+`.check-logs/attempt10-review-gates.tar.gz` (an archive, outside the source scan).
+For the passing rerun, `TRIAL_EVIDENCE_LABEL` was
+`/tmp/th-int-review-output-quxxon10/rerun`; the controller command was
+`python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py`.
+
+Independent cleanup checked both gate roots absent and found no process bearing
+either run’s environment identity. After archiving, the temporary output root
+`/tmp/th-int-review-output-quxxon10` was removed and absence verified as well.
+Only the four named evidence files changed; historical runtime sidecars and
+plan ledgers are untouched. The final regression comments identify their
+introducing commits via Git blame. This review correction spent **$0 / 0 turns**;
+the original one unmetered startup turn remains the only attempt-10 expenditure.

@@ -33,7 +33,7 @@ def regression_tests():
             self.assertIn('15 of 16', latest)
 
         def test_restore_even_when_scratch_removal_fails(self):
-            # // Regression: 9e367da4 rmtree exception skipped descriptor restoration.
+            # // Regression: b8149dd4 rmtree exception skipped descriptor restoration.
             calls = []
             process = Mock()
             process.run.side_effect = lambda *a, **k: (calls.append('restore') or Mock(returncode=0))
@@ -51,7 +51,7 @@ def regression_tests():
                 self.assertFalse((mesh/'target/debug/mesh').exists())
 
         def test_cleanup_does_not_claim_separate_auth_verification(self):
-            # // Regression: 9e367da4 sampled auth absence only after deleting its root.
+            # // Regression: b8149dd4 sampled auth absence only after deleting its root.
             remove = helper(controller, 'remove_trial_files', subprocess=Mock(), shutil=shutil)
             with tempfile.TemporaryDirectory() as tmp:
                 root, mesh = Path(tmp)/'root', Path(tmp)/'mesh'
