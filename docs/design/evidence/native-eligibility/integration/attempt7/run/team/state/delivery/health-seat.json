@@ -1,0 +1,12 @@
+{
+  "member": "seat",
+  "root": "/tmp/th-int-9n5s3dud/claude",
+  "incarnation": "6be64971ac7ff295d2e30075431390218adb8bf9403646739d433a1fa759fd8c",
+  "epoch": 2,
+  "heartbeat": "2026-09-10T04:53:04.120965985+00:00",
+  "pending_since": null,
+  "error": null,
+  "last_defer_reason": null,
+  "failures": 18,
+  "completed": 3
+}

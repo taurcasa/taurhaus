@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — IN PROGRESS (attempt 7)
+# Codex 0.153.4 integration — FAIL step 4 (attempt 7)
 
 2026-09-09. **Eligibility remains disabled.** The prescribed canonical setup
 stopped before member launch: the real Mesh command `team delivery --owner team`
@@ -1439,24 +1439,180 @@ commit. **Additional spend: zero turns / $0.00.** The next live run awaits the
 user's answer whether its budget is fresh or shared with the four spent turns;
 no missing capture or unrun step has been promoted to PASS.
 
-## Attempt 7 — fresh authorized budget, 2026-09-10
+## Attempt 7 — FAIL at step 4, 2026-09-10
 
-Controller: [attempt7-controller.py](integration/attempt7-controller.py), derived from attempt 6, with the ebca1917 retention helpers. No evidence-size or overall-time abort remains. Hard limits: 16 turns / $3; account billing is not exposed, so dollar values are tokenUsage-based API-equivalent calculations at the packet rates. No observer socket is opened.
+**Latest verdict: FAIL at step 4 under an injected process pause.** Steps 1–3
+passed on the real daemon; the typed-input portion of step 4 also passed.
+The lock interleave used SIGSTOP/SIGCONT on verified trial-owned processes.
+It observed exclusion in both directions, but the daemon's interrupted read
+failed, then subsequent reads returned `uncorrelated host response`. This is
+not evidence of failure under ordinary, unpaused scheduling. No product code
+was patched; steps 5–7 were not run. The compiled Mesh descriptor is restored
+to disabled, the Mesh tree is clean, and there is no Mesh flip/fix commit.
+The existing Taurhaus registry launched the seat successfully; no entry is needed.
 
-Build reproduction: `TRIAL_EVIDENCE_LABEL=attempt7 python3 docs/design/evidence/native-eligibility/integration/attempt3-build.py` (daemon and Mesh exits 0; both Cargo probes exit 1). Run: `python3 docs/design/evidence/native-eligibility/integration/attempt7-controller.py attempt7/run`. Actions are serialized by `attempt7-actions.py`; exact actions and RPC IDs are retained in `attempt7/run/events.jsonl`.
+Pair: Taurhaus worktree `feat/integration-trial`, starting `ebca1917`, including
+hosted thread-state merge `6f61f611`, protocol 27; Mesh `feat/native-push`
+`a6ee296`. The trial-only descriptor matches `taurhaus-daemon-owned-thread/1`,
+`strict-config/1`, `daemon-owned/1`, and `unix-websocket` on exactly 0.153.4.
+Builds used checkout-local targets after the required Cargo probes found no
+competing Cargo. Both build exits were 0.
 
-| Step | Outcome | Evidence |
+### Ordered outcomes (S: observed runtime)
+
+Paths below are beneath [attempt7/run](integration/attempt7/run/); identical
+snapshots have aliases in [duplicate-aliases.json](integration/attempt7/duplicate-aliases.json).
+
+| Step | Outcome | Runtime evidence |
 |---|---|---|
-| 1 | **PASS** | `attempt7/run/step1-runtime.json`, `step1-identities.json`, `generated-config-0.toml`, `step-1-pane-2.txt`: Unix host + strict-config attached TUI; AGENTS.md source, terminalContract 1, thread `01a089a4-2183-70a1-b1c6-566c00026910`; startup recovery card and reply. |
+| 1. Hosted launch/startup | **PASS** | `step1-runtime.json`, `step1-identities.json`, `generated-config-0.toml`, `step-1-pane-2.txt`: child on Unix socket, attached strict-config TUI, terminalContract 1; scratch AGENTS.md instruction source. Startup recovery card and reply. `initialize-result.json` proves production canonical initialization and opt-in completed. |
+| 2. Idle native delivery/read | **PASS** | `step2-status-after.txt`: seat mode=app_server source=config. `step2-pane-2.txt`: saffron7c82ab input/reply. Message `7bc10aed-1448-4372-b95f-41c5e5d30c06`, receipt native_enqueued, turn/start `01a089a5-2174-76c1-a7d4-3ee845098b65`. Journal sequences 1–6 have no consumed_by_read; `step2-read-receipt.json` records it at sequence 7 after explicit `mesh read --unread --mark-read`. |
+| 3. Active-thread deferral | **PASS** | `step3-receipts.json`: message `052292df-27e8-4cc9-b5c0-18ac2b05b4bc` first pending/thread_active, then exactly one native_enqueued turn/start. `step3-exposure.json`: one completed user item and one reply for juniper8e21cd. `step3-final-pane-2.txt` captures the reply. |
+| 4. Typed input + host exclusion | **FAIL after lock interleave** | `step4-final-pane-2.txt` and completed items prove maple7d91cb typed through private tmux while cedar9a38ef was pending; operator reply precedes socket delivery, each once. `step4-locks.json` proves actual kernel lock owners and both deferrals, followed by a failed host read. `events.jsonl` records the terminal uncorrelated-response failure and teardown. |
+| 5. Compaction | **NOT RUN** | Stopped at step 4. |
+| 6. Daemon restart | **NOT RUN** | Stopped at step 4. |
+| 7. Operational rollback | **NOT RUN** | Stopped at step 4; no in-place rollback refusal or operational remove/re-add is claimed. Final process teardown was completed separately. |
 
-Step 1 spend: turn `01a089a4-21b1-7660-9d59-c37505975bd3`, input/cached/output 10773/6912/30, **$0.00094644** API-equivalent, $0.0129636 conservative. Claude lead is at login, zero Claude turns.
+Thread throughout the completed observations:
+`01a089a4-2183-70a1-b1c6-566c00026910`. Root `/tmp/th-int-9n5s3dud`, private
+port **23640**; private tmux socket beneath that root. Namespace host PID 124
+corresponded to OS PID 1744349/start ticks 23616732. All panes, the team owner,
+Claude login lead, host, daemon and scratch credentials were isolated. The
+controller used an allowlisted environment without inherited TMUX, copied only
+auth.json, and hid operator homes and services through Bubblewrap. No observer
+connected to the member socket; host evidence came through the daemon RPC.
+Claude ran no model turn.
 
-Offline TDD: `attempt7_test.py` first failed on the 1.1 MB evidence sample and on the missed seventeenth host-only turn. After the controller correction: three tests pass; three existing `continuation_retention_test.py` tests pass. No product files changed.
+### Exact failure and lock-holder evidence
 
-| 2 | **PASS** | `step2-status-after.txt`: seat mode=app_server source=config; `step2-pane-2.txt`: saffron7c82ab input and reply; message 7bc10aed-1448-4372-b95f-41c5e5d30c06, native_enqueued turn/start 01a089a5-2174-76c1-a7d4-3ee845098b65. Journal sequences 1–6 have no consumed_by_read; `step2-read-receipt.json` records it at sequence 7 after the explicit read. |
+The first single read-only sample missed the brief lock hold (no turn spent;
+`step4-locks-initial-sample.json`). The second bounded sample briefly paused the
+owned app-server to let a real daemon transcript request hold the host-operation
+lock, then paused the owning daemon and resumed the app-server. During the
+1.1-second hold, Mesh recorded this receipt for the lock marker:
 
-Step 2 spend: {"thread_id": "01a089a4-2183-70a1-b1c6-566c00026910", "turn_id": "01a089a5-2174-76c1-a7d4-3ee845098b65", "input": 11838, "cached_input": 9984, "output": 11, "reasoning_output": 0, "api_equivalent_usd": 0.00058368, "conservative_usd": 0.0142188}
+```text
+message_id: 63dc0eca-8cbd-457b-82c3-79d14807fd01
+stage: pending
+class: pending: pre_input_failure: IO error: delivery: host_operation_busy
+```
 
-| 3 | **PASS** | `step3-receipts.json`: message 052292df-27e8-4cc9-b5c0-18ac2b05b4bc deferred as `pending: pre_input_failure: IO error: delivery: thread_active`, then one `native_enqueued` turn/start. `step3-exposure.json`: exactly one completed user item and one reply for juniper8e21cd. `step3-final-pane-2.txt` captures the reply. |
+Kernel holder evidence (same stable inode, preserved in `step4-locks.json`):
 
-Step 3: active turn 01a089a5-c1e8-7c13-880d-2662be2ba50e ($0.00101496), deferred turn 01a089a5-edd8-7021-ba5d-cd7452e0ba50 ($0.00054236). Cumulative four turns / **$0.00308744** API-equivalent; all metered.
+```text
+FLOCK ADVISORY WRITE 1744225 08:30:1155236 0 EOF  # daemon
+FLOCK ADVISORY WRITE 1745865 08:30:1155236 0 EOF  # Mesh
+```
+
+The host-operation implementation does not publish a `.holder.json`; those
+files belong to terminal locks. The sidecar captures actual `/proc/locks` and
+`/proc/<pid>/fdinfo` holder records, not an invented product holder file.
+After resuming the daemon, its outstanding transcript RPC returned:
+
+```json
+{"code":"HOST_OPERATION_FAILED","message":"host read failed; outcome may be unknown"}
+```
+
+The helper then captured Mesh holding the same lock and issued one daemon
+transcript read, which waited about two seconds and returned the expected:
+
+```json
+{"code":"HOST_OPERATION_FAILED","message":"Conflict: host operation deferred: lock busy"}
+```
+
+The helper's local `PASS` means only these two exclusion observations. Once
+all paused processes resumed, the main controller and its final read returned:
+
+```json
+{"code":"HOST_OPERATION_FAILED","message":"uncorrelated host response"}
+```
+
+It exited **1**, stopped at step 4, and tore down immediately. The lock probe
+had continued its read-only reverse-exclusion check after the first read error;
+that continuation and its paused-process condition are deviations, not normal
+host behavior. Source inspection suggests an interrupted socket read followed
+by a late correlated response rejected on the next RPC (inference, not an
+established underlying OS error: the implementation discards that error).
+No `hosted.rpc.rejected` row or app-server JSON-RPC error object was emitted:
+these are host-client transport/correlation errors. `taurhaus.log.jsonl`
+preserves the actual structured instruction/onboarding/coordination rows;
+`final-audit.json` records the absence rather than fabricating a rejection.
+
+### Spend (S token counts; I API-equivalent dollars)
+
+The model was **gpt-5.6-luna, low**, as pinned in the packet. Rates are the
+packet's $0.20/$0.02/$1.20 per million input/cached/output tokens; amounts are
+not billing receipts. Every completed generation has real host tokenUsage
+numbers in `host-events.jsonl`, checked against rollout events in
+`usage-events.json`. Ledger: [cost-ledger.json](integration/attempt7/run/cost-ledger.json).
+
+| Input / generation | Turn ID | Input / cached / output | API-equivalent USD |
+|---|---|---|---|
+| Startup card | `01a089a4-21b1-7660-9d59-c37505975bd3` | 10773 / 6912 / 30 | $0.00094644 |
+| Idle marker | `01a089a5-2174-76c1-a7d4-3ee845098b65` | 11838 / 9984 / 11 | $0.00058368 |
+| Active timing input | `01a089a5-c1e8-7c13-880d-2662be2ba50e` | 11880 / 11008 / 517 | $0.00101496 |
+| Deferred marker | `01a089a5-edd8-7021-ba5d-cd7452e0ba50` | 12505 / 11008 / 19 | $0.00054236 |
+| Typed-order timing input | `01a089a7-310b-7a93-b7ae-7cef13d84fb9` | 12555 / 12032 / 495 | $0.00093924 |
+| Typed operator steer (same turn) | `01a089a7-310b-7a93-b7ae-7cef13d84fb9` | 13069 / 12032 / 10 | $0.00046004 |
+| Pending socket marker | `01a089a7-6204-76e0-aea4-2e38a79c9075` | 13182 / 12032 / 10 | $0.00048264 |
+| Lock marker, interrupted | `01a089a9-946d-7ca3-8b43-17d518b961f1` | **Unreported** | **Unreported** |
+
+**Seven protocol turns started / eight paid inputs including the typed steer.**
+Seven completed generations have a metered subtotal of **$0.00496936**
+(conservative all-tokens-at-$1.20/M subtotal **$0.1042728**). The final lock
+marker started at 04:53:07.311Z as the paused Mesh process resumed; the main
+controller failed at 04:53:07.320Z. Cleanup raced that already-pending delivery.
+It has task_started but no tokenUsage/token_count before namespace termination.
+No zero, null charge, invented token count, or verified full-run USD total is
+claimed. **The required complete cost ledger was not achieved.** Counts stayed
+below 16; the full-run dollar cap cannot be independently verified from the
+missing final usage. No further paid retry was made.
+
+### Reproduction, tests, gates and cleanup
+
+Exact retained controllers (all are evidence, no product changes):
+
+```sh
+TRIAL_EVIDENCE_LABEL=attempt7 python3 docs/design/evidence/native-eligibility/integration/attempt3-build.py
+python3 docs/design/evidence/native-eligibility/integration/attempt7_test.py
+python3 docs/design/evidence/native-eligibility/integration/continuation_retention_test.py
+python3 docs/design/evidence/native-eligibility/integration/attempt7-controller.py attempt7/run
+# While the controller is live: replay the serialized action objects in events.jsonl
+# through attempt7-actions.py, in order; the step-4 lock probe is:
+python3 docs/design/evidence/native-eligibility/integration/attempt7-locks.py
+# After teardown:
+TRIAL_EVIDENCE_LABEL=attempt7 python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+python3 docs/design/evidence/native-eligibility/integration/attempt7-audit.py
+```
+
+Attempt 7 reuses attempt 6's controller and ebca1917 retention helpers. It drops
+stream deltas, deduplicates overlapping event buffers, excludes verbose periodic
+telemetry, caps pane captures at 60 lines, and has no size or overall-time abort.
+The new offline budget test first failed on a 1.1 MB evidence sample and on the
+missed seventeenth host-only turn, then all three passed after correction.
+The three existing retention tests also passed. No test invoked a real CLI or
+read credentials. Three per-step commits retain completed steps 1–3.
+
+| Exact gate (checkout root, isolated credential-free homes and inert harness shims) | Exit |
+|---|---|
+| `just check-quick` | **0** |
+| `just lint` | **0** |
+| `just test-contracts` | **0** |
+| `just test-rust-unit` | Not required: no `src-tauri/` diff |
+| Mesh `just check-quick`, `just lint`, `just test` | Not run: passing descriptor flip/named-refusal fix was conditional on seven passing steps |
+
+Gate records and bounded log tails are under `attempt7/gates/`. No dependencies,
+product changes, releases, installations or plan-ledger edits. Non-evidence
+insertions: **0/200**. No Opus evidence review was run; this session exposes no
+Opus review model. The interrupted-read condition and incomplete final metering
+remain explicit limits for review.
+
+Cleanup: `cleanup.json`, `identities.json`, and `final-audit.json` verify no
+PID/start-tick survivor, port 23640 closed, private tmux/server namespace ended,
+and scratch root including copied auth removed. All paused processes were
+resumed in the lock helper's finally block before controller teardown. No
+foreign process was signalled. Mesh restoration used the exact authorized
+`git -C /home/mstie/projects/mesh-push checkout -- src/delivery/app_server/capabilities.rs`
+and exited 0; its whole working tree is clean. Deduplicated retained evidence
+is about **372 KB**, excluding controller scripts. Latest verdict remains
+**FAIL step 4**, with steps 5–7 unrun and eligibility disabled.
