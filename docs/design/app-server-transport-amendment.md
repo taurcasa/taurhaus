@@ -209,3 +209,31 @@ snapshots. Transient reads retry within the existing host deadline and log one
 `hosted.rpc.pending` per episode; exhausted reads stay pending without submission.
 The byte-identical wire evidence deliberately retains installation UUID and
 rate-limit/account-plan metadata (account-linked, not credentials).
+
+## Compaction boundary on 0.153.4
+
+2026-09-10: attempt-8 continuation passed steps 1–4; step 5 completed `/compact` without a hook.
+Sources in trial HEAD: `docs/design/evidence/native-eligibility/codex-0.153.4-integration.md`
+(continuation) and `integration/attempt8/continuation/run/step5-boundary-events.json` beside it.
+The daemon's own connection received:
+
+```text
+thread/status/changed {threadId, status:{type:"active", activeFlags:[]}}
+item/started {threadId, turnId, item:{id, type:"contextCompaction"}}
+thread/tokenUsage/updated {threadId, turnId, tokenUsage:{...}}
+item/completed {threadId, turnId, item:{id, type:"contextCompaction"}, completedAtMs}
+thread/status/changed {threadId, status:{type:"idle"}}
+turn/completed {threadId, turn:{id, status:"completed", items:[]}}
+```
+
+The owned-thread item admits a generation-keyed obligation (`host_notification`). Dedup uses thread
++ turn/item IDs, or a two-second window between known opposite observers lacking IDs (the hook envelope
+has none). Known conflicts stay distinct; unread backlogs collapse before admission. Idle submits
+the canonical card alone via `turn/start` under exclusion, with a submitted receipt. Busy recovery
+defers before claiming an attempt when input is blocked; later reconciliation or first input services it.
+Recovery errors never abort live-seat liveness; unknown inputs never replay. Hosted hooks log
+`received` plus `compaction.codex_host.*`, restoring the control contract without a task snapshot,
+like startup. Confirmed input stays confirmed if delivery bookkeeping fails; the card cap fits hosted input.
+The transcript distinguishes the boundary from messages and retains the card. Protocol 27 stays unreleased;
+`contextGeneration` stays a string. Neither checkout contains `attached-tui/installed-schema`;
+no separate `thread/compacted` shape is established. Only the evidenced completed item is used.

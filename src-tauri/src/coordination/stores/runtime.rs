@@ -2243,6 +2243,8 @@ mod tests {
             team_name,
             member_name,
             &MemberCompactionState {
+                source: None,
+                host_boundary: None,
                 journal: None,
                 pending: false,
                 pending_obligation: None,

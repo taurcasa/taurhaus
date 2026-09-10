@@ -8,6 +8,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::session_scanner::cli_tool::CliTool;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 const COMPACTION_SCHEMA_VERSION: u32 = 1;
 const RESERVED_COMPACTION_STATE_BASENAMES: &[&str] = &["extractor-state", "signal-watcher-state"];
@@ -24,6 +25,10 @@ pub enum CompactionDeliveryResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct MemberCompactionState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_boundary: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub journal: Option<crate::coordination::journal::JournalReceipt>,
     #[serde(default)]
@@ -169,6 +174,98 @@ impl MemberCompactionStore {
     }
 }
 
+/// Caller holds host exclusion through admission and delivery (also in the native hook).
+pub(crate) fn record_host_boundary(
+    root: &Path,
+    team: &str,
+    member: &str,
+    boundary: &Value,
+    source: &str,
+) -> Result<bool, CoordinationError> {
+    use CompactionDeliveryResult::Skipped;
+    let thread = boundary["threadId"].as_str().unwrap_or_default();
+    let mut timestamp = boundary["completedAtMs"]
+        .as_i64()
+        .and_then(DateTime::from_timestamp_millis)
+        .unwrap_or_else(Utc::now);
+    if let Some(mut previous) = MemberCompactionStore::load(root, team, member)? {
+        let old = previous.host_boundary.clone().unwrap_or_default();
+        let ids: Vec<_> = ["turnId", "itemId"]
+            .iter()
+            .filter_map(|key| {
+                boundary[key]
+                    .as_str()
+                    .filter(|v| !v.is_empty())
+                    .zip(old[key].as_str().filter(|v| !v.is_empty()))
+            })
+            .collect();
+        let same_id = !ids.is_empty() && ids.iter().all(|(a, b)| a == b);
+        // Hooks have no turn/item IDs. Correlate known opposite observers within two seconds,
+        // never merge conflicting known IDs or two distinct notifications by time alone.
+        let close = ids.is_empty()
+            && matches!(
+                (previous.source.as_deref(), source),
+                (Some("hook"), "host_notification") | (Some("host_notification"), "hook")
+            )
+            && (previous.last_compaction_timestamp - timestamp).abs()
+                <= chrono::Duration::seconds(2);
+        if previous.last_session_id == thread
+            && (same_id
+                || close
+                || (ids.is_empty()
+                    && previous.source.as_deref() == Some(source)
+                    && previous.last_compaction_timestamp == timestamp))
+        {
+            if source == "host_notification" {
+                previous.host_boundary = Some(boundary.clone());
+                MemberCompactionStore::save(root, team, member, &previous)?;
+            }
+            return Ok(false);
+        }
+        // Distinct known IDs may share a millisecond; keep the runtime's timestamp key unique.
+        if previous.last_compaction_timestamp == timestamp {
+            timestamp += chrono::Duration::nanoseconds(1);
+        }
+    }
+    let tool = super::MemberRuntimeStore::load(root, team, member)?
+        .cli_tool
+        .ok_or_else(|| CoordinationError::Conflict("host harness identity missing".into()))?;
+    record_delivery_at(root, team, member, tool, thread, timestamp, Skipped)?;
+    let mut state = MemberCompactionStore::load(root, team, member)?
+        .ok_or_else(|| CoordinationError::Conflict("host compaction state missing".into()))?;
+    state.source = Some(source.into());
+    state.host_boundary = Some(boundary.clone());
+    MemberCompactionStore::save(root, team, member, &state)?;
+    Ok(true)
+}
+
+pub(crate) fn emit_host_compaction(
+    team: &str,
+    member: &str,
+    boundary: &Value,
+    event: &str,
+    reason: Option<&str>,
+) {
+    let mut fields = serde_json::Map::new();
+    let id = |key: &str| boundary[key].as_str().unwrap_or_default();
+    for (key, value) in [
+        ("team", team),
+        ("member", member),
+        ("thread_id", id("threadId")),
+        ("turn_id", id("turnId")),
+        ("item_id", id("itemId")),
+    ] {
+        fields.insert(key.into(), Value::String(value.chars().take(256).collect()));
+    }
+    if let Some(reason) = reason {
+        fields.insert(
+            "reason".into(),
+            Value::String(reason.chars().take(256).collect()),
+        );
+    }
+    taurhaus_lib::logging::emit_global("info", "coordination", event, None, fields);
+}
+
 fn delete_state_file(
     teams_dir: &Path,
     team_name: &str,
@@ -222,6 +319,31 @@ pub(crate) fn record_delivery_with_journal_at(
     result: CompactionDeliveryResult,
     journal: Option<crate::coordination::journal::JournalReceipt>,
 ) -> Result<(), CoordinationError> {
+    record_delivery_with_transport_at(
+        teams_dir,
+        team_name,
+        member_name,
+        tool,
+        session_id,
+        compaction_timestamp,
+        result,
+        journal,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn record_delivery_with_transport_at(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+    tool: CliTool,
+    session_id: &str,
+    compaction_timestamp: DateTime<Utc>,
+    result: CompactionDeliveryResult,
+    journal: Option<crate::coordination::journal::JournalReceipt>,
+    delivery: Option<&str>,
+) -> Result<(), CoordinationError> {
     let guard = super::lock::acquire_team_lock(teams_dir, team_name)?;
     let mut pending_obligation = None;
     if result != CompactionDeliveryResult::Failed {
@@ -254,6 +376,14 @@ pub(crate) fn record_delivery_with_journal_at(
     // Only a new skipped boundary replaces the obligation; receipt observation satisfies it.
     let preserve_obligation = same_boundary || result != CompactionDeliveryResult::Skipped;
     let state = MemberCompactionState {
+        source: previous
+            .as_ref()
+            .filter(|_| same_boundary)
+            .and_then(|s| s.source.clone()),
+        host_boundary: previous
+            .as_ref()
+            .filter(|_| same_boundary)
+            .and_then(|s| s.host_boundary.clone()),
         journal: journal.or_else(|| {
             previous
                 .as_ref()
@@ -292,6 +422,7 @@ pub(crate) fn record_delivery_with_journal_at(
         result,
         None,
         None,
+        delivery,
     );
     Ok(())
 }
@@ -331,6 +462,7 @@ pub fn emit_compaction_delivery_event(
     result: CompactionDeliveryResult,
     skip_reason: Option<&str>,
     fail_reason: Option<&str>,
+    delivery: Option<&str>,
 ) {
     let event = match result {
         CompactionDeliveryResult::Injected => "compaction.injected",
@@ -350,6 +482,7 @@ pub fn emit_compaction_delivery_event(
     emit_compaction_delivery(
         event,
         CompactionDeliveryEvent {
+            delivery: delivery.map(ToOwned::to_owned),
             tool,
             team_name: team_name.to_string(),
             member_name: member_name.to_string(),
@@ -392,6 +525,8 @@ mod tests {
 
     fn sample_state() -> MemberCompactionState {
         MemberCompactionState {
+            source: None,
+            host_boundary: None,
             journal: None,
             pending: false,
             pending_obligation: None,
@@ -509,6 +644,7 @@ mod tests {
             CompactionDeliveryResult::Failed,
             Some("intervening_user_message"),
             Some("append_inbox_failed"),
+            None,
         );
 
         let contents = wait_for_log_contains(&log_path, "\"event\":\"compaction.failed\"");

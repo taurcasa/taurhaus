@@ -110,3 +110,15 @@ it('does not report accepted input as deferred when its transcript is pending', 
   expect(screen.queryByText(/draft is saved|Input deferred/)).not.toBeInTheDocument()
   expect(coordinationHosted.mock.calls.filter(call => call[2] === 'input')).toHaveLength(1)
 })
+
+it('shows the compaction boundary and its recovery turn', async () => {
+  // Regression: 6f61f611, attempt-8 continuation: contextCompaction has no text and was dropped.
+  coordinationHosted.mockResolvedValue({ thread: { turns: [
+    { items: [{ type: 'contextCompaction', id: 'compact-item' }] },
+    { items: [{ type: 'userMessage', content: [{ type: 'text', text: '[taurhaus] recovery_card boundary' }] }] },
+  ] } })
+  render(HostedThread, { teamName: 'team', memberName: 'seat' })
+  // Regression: e56953e4 rendered the attempt-8 boundary identically to conversation text.
+  expect(await screen.findByRole('separator', { name: 'Context compacted' })).toBeVisible()
+  expect(screen.getByText('[taurhaus] recovery_card boundary')).toBeVisible()
+})

@@ -10,7 +10,8 @@
   let unavailable = $state(false)
   let pending = $state('')
   const lines = $derived((transcript?.thread?.turns ?? []).flatMap(turn =>
-    (turn.items ?? []).flatMap(item => item.text ? [item.text] : (item.content ?? []).filter(c => c.type === 'text').map(c => c.text))))
+    (turn.items ?? []).flatMap(item => item.type === 'contextCompaction' ? [{ kind: 'compaction' }] :
+      (item.text ? [item.text] : (item.content ?? []).filter(c => c.type === 'text').map(c => c.text)).map(text => ({ kind: 'text', text })))))
   const requests = $derived(transcript?.requests ?? [])
   const inactive = $derived(Boolean(transcript?.stopped || transcript?.orphanProcessId))
   const disabled = $derived(submitting || inactive || Boolean(transcript?.outcomeUnknown) || pending.startsWith('Recovery'))
@@ -92,7 +93,13 @@
         <p role="status">Member is stopped. Resume it before sending input.</p>
       {/if}
       <div class="max-h-64 space-y-2 overflow-auto whitespace-pre-wrap text-sm" aria-label="Hosted transcript">
-        {#each lines as line}<p>{line}</p>{/each}
+        {#each lines as line}
+          {#if line.kind === 'compaction'}
+            <div role="separator" aria-label="Context compacted" class="flex items-center gap-2 text-xs {t.textSecondary}">
+              <span class="flex-1 border-t {t.keyline}"></span>Context compacted<span class="flex-1 border-t {t.keyline}"></span>
+            </div>
+          {:else}<p>{line.text}</p>{/if}
+        {/each}
       </div>
       {#each requests as request}
         <div class="space-x-2 text-sm">

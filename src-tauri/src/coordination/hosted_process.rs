@@ -26,6 +26,7 @@ pub(crate) struct HostProcess {
     uncertain: bool,
     reconnect_failures: u32,
     reconnect_after: Option<Instant>,
+    pub deferred_compaction: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl HostProcess {
@@ -66,6 +67,7 @@ impl HostProcess {
             uncertain: false,
             reconnect_failures: 0,
             reconnect_after: None,
+            deferred_compaction: None,
         };
         host.process_start = taurhaus_lib::platform::process_start_ticks(host.child.id())
             .ok_or("host process identity unavailable")?
@@ -88,6 +90,7 @@ impl HostProcess {
                     socket: Some(WebSocket::connect(stream, guard)?),
                     activity_socket: socket.into(),
                     events: VecDeque::new(),
+                    compactions: VecDeque::new(),
                     thread_id: String::new(),
                     status: Value::Null,
                     active_turn: None,
@@ -241,6 +244,14 @@ impl HostProcess {
     }
 
     pub fn transcript(&mut self, guard: &HostOperationLock) -> Result<Value, String> {
+        self.transcript_with_retry(guard, true)
+    }
+
+    pub fn transcript_with_retry(
+        &mut self,
+        guard: &HostOperationLock,
+        retry: bool,
+    ) -> Result<Value, String> {
         if !self.alive() {
             return Err("owned host stopped".into());
         }
@@ -253,7 +264,7 @@ impl HostProcess {
             }
             match rpc.call("thread/read", json!({"threadId":self.thread_id}), guard) {
                 Ok(result) => break result,
-                Err(RpcError::PendingRead) => {
+                Err(RpcError::PendingRead) if retry => {
                     pending = true;
                     if let Ok(remaining) = guard.remaining() {
                         std::thread::sleep(remaining.min(Duration::from_millis(50)));
@@ -362,24 +373,48 @@ impl HostProcess {
         }
     }
 
+    pub fn take_compactions(&mut self) -> VecDeque<Value> {
+        self.rpc
+            .as_mut()
+            .map(|rpc| std::mem::take(&mut rpc.compactions))
+            .unwrap_or_default()
+    }
+
     pub fn input(&mut self, text: &str, guard: &HostOperationLock) -> Result<Value, String> {
+        let state = self.transcript(guard)?;
+        self.input_checked(text, &state, guard)
+    }
+
+    pub fn accepts_input(state: &Value) -> bool {
+        let thread = &state["thread"];
+        thread["canAcceptDirectInput"] == true
+            && match thread["status"].get("activeFlags") {
+                None => thread["status"]["type"] == "idle",
+                Some(flags) => flags.as_array().is_some_and(Vec::is_empty),
+            }
+            && state["requests"].as_array().is_some_and(Vec::is_empty)
+    }
+
+    /// Reuse the state validated under this same host lock; recovery never steers.
+    pub fn input_checked(
+        &mut self,
+        text: &str,
+        state: &Value,
+        guard: &HostOperationLock,
+    ) -> Result<Value, String> {
         if self.uncertain {
             return Err(
                 "outcome_unknown: reconcile previous input before another submission".into(),
             );
         }
-        if text.trim().is_empty() || text.len() > 16_384 || text.chars().count() > 8000 {
-            return Err("input must contain 1–8000 characters within 16 KiB".into());
-        }
-        let state = self.transcript(guard)?;
-        let thread = &state["thread"];
-        if thread["canAcceptDirectInput"] != true
-            || !match thread["status"].get("activeFlags") {
-                None => thread["status"]["type"] == "idle",
-                Some(flags) => flags.as_array().is_some_and(Vec::is_empty),
-            }
-            || !state["requests"].as_array().is_some_and(Vec::is_empty)
+        if text.trim().is_empty()
+            || text.len() > 16_384
+            || text.chars().count() > crate::coordination::recovery_card::CARD_BYTE_CAP
         {
+            return Err("input must contain 1–8192 characters within 16 KiB".into());
+        }
+        let thread = &state["thread"];
+        if !Self::accepts_input(state) {
             return Err(
                 "pending: thread is waiting for permission/input or has unverified state".into(),
             );
@@ -616,6 +651,7 @@ struct Rpc {
     activity_socket: PathBuf,
     socket: Option<WebSocket>,
     events: VecDeque<Value>,
+    compactions: VecDeque<Value>,
     thread_id: String,
     status: Value,
     active_turn: Option<String>,
@@ -762,6 +798,17 @@ impl Rpc {
                             }
                         }
                     }
+                    if frame["method"] == "item/completed"
+                        && frame["params"]["item"]["type"] == "contextCompaction"
+                    {
+                        if self.compactions.len() == 64 {
+                            self.compactions.pop_front();
+                        }
+                        let p = &frame["params"];
+                        self.compactions
+                            .push_back(json!({"threadId":p["threadId"], "turnId":p["turnId"],
+                            "itemId":p["item"]["id"], "completedAtMs":p["completedAtMs"]}));
+                    }
                     self.observe(&frame);
                     if self.events.len() == 64 {
                         self.events.pop_front();
@@ -872,7 +919,7 @@ pub(crate) mod tests {
     ) -> taurhaus_lib::session_scanner::launch::HostedLaunch {
         let executable = root.join("codex");
         std::fs::write(&executable, r#"#!/usr/bin/python3
-import json, os, socket, sys, threading, fcntl, base64, hashlib, struct
+import json, os, socket, sys, threading, fcntl, base64, hashlib, struct, time
 root = os.environ['CODEX_HOME']
 policy = {'model':'fake-model', 'reasoningEffort':'low', 'approvalPolicy':'never', 'sandbox':{'type':'readOnly','networkAccess':False}, 'instructionSources':[]}
 policy.update(json.loads(os.environ.get('FAKE_POLICY', '{}')))
@@ -965,6 +1012,7 @@ def client(connection):
                 # Like the probe, completion summarizes the agent item only.
                 notify('turn/completed', turn=dict(turn, items=[agent]))
         pending_items = None
+        expect_card = False
         initialized = False
         while True:
             opcode, payload = receive()
@@ -991,6 +1039,10 @@ def client(connection):
                 notify('thread/status/changed', status=thread['status'])
                 continue
             method, params = request.get('method'), request.get('params', {})
+            if expect_card:
+                assert method == 'turn/start', 'recovery must be the next request after idle'
+                assert params['input'][0]['text'].startswith('[taurhaus] recovery_card')
+                expect_card = False
             result, error, approval = {}, None, None
             with open(os.path.join(root, 'requests.jsonl'), 'a') as output:
                 output.write(json.dumps(request)+'\n')
@@ -1010,6 +1062,32 @@ def client(connection):
                     thread = {'id':'owned-thread', 'status':{'type':'idle'}, 'canAcceptDirectInput':True, 'turns':[]}
                     result = dict(policy, thread=dict(thread, turns=[]))
                 elif method in ('thread/resume', 'thread/read'):
+                    refusal = os.path.join(root, 'refuse-input')
+                    reason = open(refusal).read() if os.path.exists(refusal) else ''
+                    if os.path.exists(refusal):
+                        thread['canAcceptDirectInput'] = reason != 'blocked'
+                        if not reason: notify('thread/status/changed', status=thread['status'])
+                    if reason == 'requests' and os.path.exists(os.path.join(root, 'compact.json')): emit({'id':'lingering','method':'item/commandExecution/requestApproval','params':{'threadId':thread['id']}})
+                    boundary = os.path.join(root, 'compact.json')
+                    if os.path.exists(boundary):
+                        compact = json.load(open(boundary)); os.unlink(boundary)
+                        expect_card = compact.get('expectCard', False)
+                        tid = compact.get('threadId', thread['id'])
+                        def boundary_event(method, **params):
+                            emit({'method':method, 'params':dict(threadId=tid, **params)})
+                        for i in range(compact.get('backlog', 0)):
+                            boundary_event('item/completed', turnId=str(i), item={'id':str(i),'type':'contextCompaction'}, completedAtMs=i)
+                        turn_id = compact.get('turnId', 'compact-turn')
+                        item = {'id':'compact-item', 'type':'contextCompaction'}
+                        boundary_event('thread/status/changed', status={'type':'active','activeFlags':[]})
+                        boundary_event('turn/started', turn={'id':turn_id,'status':'inProgress','items':[]})
+                        boundary_event('item/started', turnId=turn_id, item=item)
+                        boundary_event('thread/tokenUsage/updated', turnId=turn_id, tokenUsage={'last':{'totalTokens':6344}})
+                        boundary_event('item/completed', turnId=turn_id, item=item, completedAtMs=compact.get("completedAtMs", int(time.time()*1000)-1000))
+                        if not compact.get('busy'):
+                            boundary_event('thread/status/changed', status={'type':'idle'})
+                            boundary_event('turn/completed', turn={'id':turn_id,'status':'completed','items':[]})
+                        with open(os.path.join(root, 'compact-emitted'), 'w') as output: output.write('1')
                     if 'includeTurns' in params:
                         error = {'code':-32601,'message':'list_turns is not supported yet'}
                     elif method == 'thread/read' and (pending_items or any(os.path.exists(os.path.join(root, name)) for name in ('pending-read', 'pending-read-once'))):
@@ -1031,6 +1109,12 @@ def client(connection):
                             with open(os.path.join(root, 'reassert.json'), 'w') as output: json.dump(params, output)
                 elif method == 'turn/start':
                     assert params['threadId'] == thread['id']
+                    if os.path.exists(os.path.join(root, 'compact-emitted')):
+                        state = json.load(open(os.path.join(root, 'team/state/compaction/seat.json')))
+                        assert state['pending'] and state['pending_obligation'][1][1] == 1
+                        with open(os.path.join(root, 'boundary-submission.json'), 'w') as output:
+                            json.dump({'state':state,'input':params['input'],'turnId':str(len(thread['turns'])+1)}, output)
+                        os.unlink(os.path.join(root, 'compact-emitted'))
                     turn = {'id':str(len(thread['turns'])+1), 'status':'completed', 'items':[{'id':'user-'+str(len(thread['turns'])+1),'type':'userMessage','content':params['input']}]}
                     thread['turns'].append(turn)
                     thread['status'] = {'type':'active','activeFlags':[]}
@@ -1116,8 +1200,16 @@ with socket.socket(socket.AF_UNIX) as listener:
         let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
         // Regression: 04128879 did not retry pre-card reads within the launch deadline.
         std::fs::write(tmp.path().join("pending-read-once"), "").unwrap();
-        let card = "[taurhaus] recovery_card startup";
-        assert_eq!(host.input(card, &guard).unwrap()["turn"]["id"], "1");
+        // Regression: cadd533e's 8000-char limit rejected the 8192-byte recovery cap.
+        let card = format!(
+            "[taurhaus] recovery_card {}",
+            "x".repeat(crate::coordination::recovery_card::CARD_BYTE_CAP - 25)
+        );
+        assert_eq!(
+            card.len(),
+            crate::coordination::recovery_card::CARD_BYTE_CAP
+        );
+        assert_eq!(host.input(&card, &guard).unwrap()["turn"]["id"], "1");
         let state = host.transcript(&guard).unwrap();
         let turn = &state["thread"]["turns"][0];
         assert_eq!(turn["status"], "completed");
