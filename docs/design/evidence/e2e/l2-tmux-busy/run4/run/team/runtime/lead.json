@@ -1,0 +1,197 @@
+{
+  "activitySnapshotPath": "/tmp/th-l2-i_py2myk/claude/teams/l2-busy/state/activity/lead.json",
+  "attached_at": "2026-09-10T16:20:26.920079801Z",
+  "attachmentGeneration": 1,
+  "cli_tool": "claude",
+  "contextGeneration": "0",
+  "daemon_pid": null,
+  "delivery_lease": null,
+  "harness": "claude",
+  "health": "healthy",
+  "hookSessionId": null,
+  "hostInputAbandonedAt": null,
+  "hostInputUnknown": false,
+  "jsonl_path": null,
+  "last_seen_at": "2026-09-10T16:20:27.307078099Z",
+  "launchRoot": {
+    "claudeDir": "/tmp/th-l2-i_py2myk/claude",
+    "rootAuthorityRevision": 0,
+    "teamIncarnationId": "8117c5d23d2222115365595f024839c48e7151664e77f95e13ea96c9e3d25c84",
+    "teamsDir": "/tmp/th-l2-i_py2myk/claude/teams"
+  },
+  "memberName": "lead",
+  "paneId": "%1",
+  "panePid": 115,
+  "paneStartTime": "27776470",
+  "project_path": "/tmp/th-l2-i_py2myk/project",
+  "recovery": {
+    "activation_intent": "999b38b5e70808ecc73dae37227d2351e483798e151a86ac75faac5452765b59",
+    "admitted_boundary": null,
+    "baseline_binding": [
+      [
+        "8117c5d23d2222115365595f024839c48e7151664e77f95e13ea96c9e3d25c84",
+        "a24633bb-5f87-447e-9037-38a84f675550"
+      ],
+      [
+        1,
+        0
+      ]
+    ],
+    "claim": {
+      "accepted_bytes": 2249,
+      "attempt": 1,
+      "card_key": {
+        "card_schema": 1,
+        "context": [
+          1,
+          0
+        ],
+        "contract": {
+          "effective_role_revision": "37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b",
+          "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+          "packet_revision": "",
+          "role_id": ""
+        },
+        "recipient": [
+          "8117c5d23d2222115365595f024839c48e7151664e77f95e13ea96c9e3d25c84",
+          "a24633bb-5f87-447e-9037-38a84f675550"
+        ],
+        "roots": {
+          "harness_account_root": "/tmp/th-l2-i_py2myk/claude",
+          "launch_namespace": "native",
+          "resolved_mesh_config_root": "/tmp/th-l2-i_py2myk/claude",
+          "resolved_project_root": "/tmp/th-l2-i_py2myk/project",
+          "resolved_teams_root": "/tmp/th-l2-i_py2myk/claude/teams",
+          "root_authority_revision": "0"
+        }
+      },
+      "content_revision": "ce42569f17b9c198e7e51b2979a2f520bb8b45cdf759e016d14bb591b7fc56a2",
+      "delivery_id": "5ee7f7f77e973732b35e9af7a7e1b51bd0ed293a8396274437168f6d13209072",
+      "generated_bytes": 2249,
+      "journal": {
+        "delivery_id": "743aa549-add4-4b03-8b99-929f7ce3fc88",
+        "message_id": "67688c7b-4fb2-4ad6-85fb-92eb0493e214",
+        "projection": "pending",
+        "sequence": 1
+      },
+      "kind": "baseline",
+      "obligation_key": [
+        [
+          "8117c5d23d2222115365595f024839c48e7151664e77f95e13ea96c9e3d25c84",
+          "a24633bb-5f87-447e-9037-38a84f675550"
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "observations": [
+        [
+          "accepted",
+          "2026-09-10T16:20:27.301629688Z",
+          "inbox"
+        ]
+      ],
+      "offered_bytes": 0,
+      "path": "inbox",
+      "returned_by_read_bytes": 0,
+      "satisfied_obligations": [
+        [
+          [
+            "8117c5d23d2222115365595f024839c48e7151664e77f95e13ea96c9e3d25c84",
+            "a24633bb-5f87-447e-9037-38a84f675550"
+          ],
+          [
+            1,
+            0
+          ]
+        ]
+      ],
+      "stage": "accepted",
+      "supersedes_revision": null
+    },
+    "harness_account_root": "/tmp/th-l2-i_py2myk/claude",
+    "last_delivered": {
+      "accepted_bytes": 2249,
+      "attempt": 1,
+      "card_key": {
+        "card_schema": 1,
+        "context": [
+          1,
+          0
+        ],
+        "contract": {
+          "effective_role_revision": "37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b",
+          "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+          "packet_revision": "",
+          "role_id": ""
+        },
+        "recipient": [
+          "8117c5d23d2222115365595f024839c48e7151664e77f95e13ea96c9e3d25c84",
+          "a24633bb-5f87-447e-9037-38a84f675550"
+        ],
+        "roots": {
+          "harness_account_root": "/tmp/th-l2-i_py2myk/claude",
+          "launch_namespace": "native",
+          "resolved_mesh_config_root": "/tmp/th-l2-i_py2myk/claude",
+          "resolved_project_root": "/tmp/th-l2-i_py2myk/project",
+          "resolved_teams_root": "/tmp/th-l2-i_py2myk/claude/teams",
+          "root_authority_revision": "0"
+        }
+      },
+      "content_revision": "ce42569f17b9c198e7e51b2979a2f520bb8b45cdf759e016d14bb591b7fc56a2",
+      "delivery_id": "5ee7f7f77e973732b35e9af7a7e1b51bd0ed293a8396274437168f6d13209072",
+      "generated_bytes": 2249,
+      "journal": {
+        "delivery_id": "743aa549-add4-4b03-8b99-929f7ce3fc88",
+        "message_id": "67688c7b-4fb2-4ad6-85fb-92eb0493e214",
+        "projection": "pending",
+        "sequence": 1
+      },
+      "kind": "baseline",
+      "obligation_key": [
+        [
+          "8117c5d23d2222115365595f024839c48e7151664e77f95e13ea96c9e3d25c84",
+          "a24633bb-5f87-447e-9037-38a84f675550"
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "observations": [
+        [
+          "accepted",
+          "2026-09-10T16:20:27.301629688Z",
+          "inbox"
+        ]
+      ],
+      "offered_bytes": 0,
+      "path": "inbox",
+      "returned_by_read_bytes": 0,
+      "satisfied_obligations": [
+        [
+          [
+            "8117c5d23d2222115365595f024839c48e7151664e77f95e13ea96c9e3d25c84",
+            "a24633bb-5f87-447e-9037-38a84f675550"
+          ],
+          [
+            1,
+            0
+          ]
+        ]
+      ],
+      "stage": "accepted",
+      "supersedes_revision": null
+    },
+    "launch_namespace": "native",
+    "member_incarnation_id": "a24633bb-5f87-447e-9037-38a84f675550",
+    "reserved_attachment": "2026-09-10T16:20:26.920079801Z",
+    "reserved_effort": null
+  },
+  "schema_version": 3,
+  "session_id": null,
+  "terminalContract": 1,
+  "tmuxSessionId": "$0",
+  "tmuxSocket": "/tmp/th-l2-i_py2myk/tmux/tmux-1000/default"
+}

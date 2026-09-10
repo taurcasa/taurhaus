@@ -7,6 +7,13 @@ from pathlib import Path
 from support import native_runtime, retained_daemon_rows, attributed_idle, evidence_jsonl, pending_observation, ready_session
 
 class Run4Tests(unittest.TestCase):
+    def test_transcript_account_quota_is_removed_but_turn_tokens_remain(self):
+        # // Regression: b320480f retained token_count.rate_limits account usage.
+        from support import clean
+        value={'payload': {'info': {'total_token_usage': {'input_tokens': 100}},
+                           'rate_limits': {'primary': {'used_percent': 65}, 'plan_type': 'pro'}}}
+        self.assertEqual(clean(value), {'payload': {'info': {'total_token_usage': {'input_tokens': 100}}}})
+
     def test_run4_rejects_wrong_product_mesh_or_protocol_before_launch(self):
         from support import validate_candidate
         good = {'product_commit': '1db4f9bf', 'product_diff': '',

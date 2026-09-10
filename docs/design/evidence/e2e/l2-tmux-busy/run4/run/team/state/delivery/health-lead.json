@@ -1,0 +1,12 @@
+{
+  "member": "lead",
+  "root": "/tmp/th-l2-i_py2myk/claude",
+  "incarnation": "8117c5d23d2222115365595f024839c48e7151664e77f95e13ea96c9e3d25c84",
+  "epoch": 2,
+  "heartbeat": "2026-09-10T16:21:57.058806931+00:00",
+  "pending_since": null,
+  "error": "failed to acquire lock: delivery mirror busy",
+  "last_defer_reason": null,
+  "failures": 25,
+  "completed": 1
+}

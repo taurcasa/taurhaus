@@ -5,7 +5,7 @@ import re
 
 def clean(value):
     if isinstance(value, dict):
-        return {k:clean(v) for k,v in value.items() if not any(word in k.lower().replace('_','') for word in ('installationid','accountusage','accountobservations','idtoken','apikey','accesstoken','refreshtoken','authorization')) and k not in ('auth','token')}
+        return {k:clean(v) for k,v in value.items() if not any(word in k.lower().replace('_','') for word in ('installationid','accountusage','accountobservations','idtoken','apikey','accesstoken','refreshtoken','authorization')) and k not in ('auth','token','rate_limits')}
     if isinstance(value,list):return [clean(v) for v in value]
     if isinstance(value,str):
         return re.sub(r'(?<![\w/.-])/home/[^/\s]+/(?!projects/(?:taurhaus-l2-tmux-busy|mesh-l2)(?:/|\b))[^\s"\']*','<operator-path-redacted>',value)

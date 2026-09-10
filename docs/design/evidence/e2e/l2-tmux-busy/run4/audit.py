@@ -27,7 +27,7 @@ for p in OUT.rglob('*'):
     if not p.is_file():continue
     text=p.read_text()
     assert not re.search(r'(?<![\w/.-])/home/[^/\s]+/(?!projects/(?:taurhaus-l2-tmux-busy|mesh-l2)/)',text),p
-    assert not re.search(r'"(?:access_token|refresh_token|installation_id|account_usage)"\s*:',text),p
+    assert not re.search(r'"(?:access_token|refresh_token|installation_id|account_usage|rate_limits)"\s*:',text),p
 assert not survivors and closed and not root.exists()
 assert max(pane_lines.values())<=60
 result={'exit':0,'survivors':survivors,'port':port,'port_closed':closed,'root_removed':not root.exists(),'auth_removed':not (root/'codex/auth.json').exists(),'pane_lines':pane_lines,'jsonl_complete':True,'forbidden_export_fields':False,'steps':{str(i):json.loads((OUT/f'step{i}-outcome.json').read_text()) for i in range(1,7)},'opus_review':'unavailable: no callable Opus reviewer in session','runtime_trial_count':1,'paid_retry_count':0}

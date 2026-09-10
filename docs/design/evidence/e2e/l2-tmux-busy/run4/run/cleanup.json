@@ -1,0 +1,189 @@
+{
+  "before": [
+    {
+      "pid": 3239631,
+      "start_ticks": "27776415",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l2-i_py2myk",
+        "/tmp/th-l2-i_py2myk",
+        "--chdir",
+        "/tmp/th-l2-i_py2myk/project",
+        "/bin/bash",
+        "/tmp/th-l2-i_py2myk/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3239632,
+      "start_ticks": "27776415",
+      "argv": [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/home",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/run",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        "/tmp/th-l2-i_py2myk",
+        "/tmp/th-l2-i_py2myk",
+        "--chdir",
+        "/tmp/th-l2-i_py2myk/project",
+        "/bin/bash",
+        "/tmp/th-l2-i_py2myk/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3239633,
+      "start_ticks": "27776415",
+      "argv": [
+        "/bin/bash",
+        "/tmp/th-l2-i_py2myk/boot.sh",
+        ""
+      ]
+    },
+    {
+      "pid": 3239634,
+      "start_ticks": "27776415",
+      "argv": [
+        "tmux",
+        "-D",
+        "-f",
+        "/dev/null",
+        ""
+      ]
+    },
+    {
+      "pid": 3239655,
+      "start_ticks": "27776426",
+      "argv": [
+        "/bin/bash",
+        ""
+      ]
+    },
+    {
+      "pid": 3239657,
+      "start_ticks": "27776426",
+      "argv": [
+        "/tmp/th-l2-i_py2myk/home/.local/bin/taurhaus-daemon",
+        "--port",
+        "46483",
+        "--data-dir",
+        "/tmp/th-l2-i_py2myk/data",
+        ""
+      ]
+    },
+    {
+      "pid": 3239791,
+      "start_ticks": "27776470",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l2-i_py2myk/project' && CLAUDE_DIR='/tmp/th-l2-i_py2myk/claude' CLAUDE_CONFIG_DIR='/tmp/th-l2-i_py2myk/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l2-busy' --agent-name 'lead' --agent-id 'lead@l2-busy' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 3239794,
+      "start_ticks": "27776470",
+      "argv": [
+        "claude",
+        "--dangerously-skip-permissions",
+        "--model",
+        "claude-haiku-4-5",
+        "--team-name",
+        "l2-busy",
+        "--agent-name",
+        "lead",
+        "--agent-id",
+        "lead@l2-busy",
+        "--agent-type",
+        "orchestrator",
+        "-n",
+        "lead",
+        ""
+      ]
+    },
+    {
+      "pid": 3239811,
+      "start_ticks": "27776475",
+      "argv": [
+        "/bin/bash",
+        "-ic",
+        "cd '/tmp/th-l2-i_py2myk/project' && CLAUDE_DIR='/tmp/th-l2-i_py2myk/claude' CODEX_HOME='/tmp/th-l2-i_py2myk/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l2-i_py2myk/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+        ""
+      ]
+    },
+    {
+      "pid": 3239814,
+      "start_ticks": "27776476",
+      "argv": [
+        "codex",
+        "--yolo",
+        "--dangerously-bypass-hook-trust",
+        "-c",
+        "notify=[\"/tmp/th-l2-i_py2myk/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+        "-m",
+        "gpt-5.6-luna",
+        "-c",
+        "model_reasoning_effort=\"low\"",
+        ""
+      ]
+    },
+    {
+      "pid": 3239870,
+      "start_ticks": "27776483",
+      "argv": [
+        "/tmp/th-l2-i_py2myk/home/.local/bin/mesh",
+        "team-daemon",
+        "start",
+        "--team",
+        "l2-busy",
+        "--name",
+        "lead",
+        "--claude-dir",
+        "/tmp/th-l2-i_py2myk/claude",
+        ""
+      ]
+    },
+    {
+      "pid": 3242861,
+      "start_ticks": "27777379",
+      "argv": [
+        "/tmp/th-l2-i_py2myk/home/.local/bin/codex-code-mode-host",
+        ""
+      ]
+    }
+  ],
+  "survivors": [],
+  "port_closed": true,
+  "auth_removed": true,
+  "root_removed": true
+}
