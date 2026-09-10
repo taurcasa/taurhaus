@@ -1,4 +1,6 @@
-# INCOMPLETE — Run 5: all six runtime steps PASS; independent Opus review pending
+# PASS — Run 5: all six runtime steps PASS on taurhaus `a7e6db7e` + mesh `310144d`; Opus evidence lens: no major, no minor requiring a rerun
+
+The lens's findings (one minor, three nits) are addressed below: the quality gates ran concurrently with the paid window (conservative bias, no fmt hunk), one benign observer snapshot error at initialize, the inherited `pack.py` marked as the run-3 replay, and the run-2 sections retitled.
 
 ## Historical run 2 — FAIL at step 1: idle Codex prompt, onboarding permanently pending
 
@@ -29,7 +31,7 @@ The controller exited **1** at the first failure. Runtime lasted approximately
 not a wait period**; the 90-second poll is a finite scheduler-opportunity deadline.
 [Controller exit](l2-tmux-busy/run/controller-exit.json).
 
-## Candidate and isolation
+## Run 2 candidate and isolation
 
 - Checkout `/home/mstie/projects/taurhaus-l2-tmux-busy`, branch
   `feat/e2e-l2-tmux-busy`; product source `6f61f6117a75625ce4ec6d325879730f1800c473`.
@@ -67,7 +69,7 @@ not a wait period**; the 90-second poll is a finite scheduler-opportunity deadli
 | Mesh RC debug | `81ed8accaa2197827ce9b7c77a93449b2f18ea0467feed848343b933712921d9` |
 | Codex 0.153.4 | `56ef98ab4032d317ab26e9b5e5a175650717351edb16ed9cde0cb6d1734d62da` |
 
-## Runtime and transport evidence
+## Run 2 runtime and transport evidence
 
 | Fact | Observed value |
 | --- | --- |
@@ -106,7 +108,7 @@ lock use only. It does **not** establish the unrun managed-stop contender.
 No lock was acquired by the observer and no product process was paused/signalled
 until normal shutdown during teardown.
 
-## Cost ledger and cleanup
+## Run 2 cost ledger and cleanup
 
 | Spend category | Count | Observed model spend USD |
 | --- | --- | --- |
@@ -127,7 +129,7 @@ scratch daemon, tmux server or Codex process; port closed; auth removed; scratch
 root removed.** No foreign process was killed. [Cleanup](l2-tmux-busy/run/cleanup.json),
 [independent post-run audit](l2-tmux-busy/final-audit.json).
 
-## Exact controller, tests, gates and limitations
+## Run 2 exact controller, tests, gates and limitations
 
 Run only from this checkout:
 
@@ -1416,3 +1418,21 @@ lens is unavailable to this implementer and remains on the orchestrator's
 review route, so this packet claims **six runtime PASS outcomes, not a fully
 reviewed workflow PASS**. Preparation and each green numbered step were
 committed separately with both required trailers. No plan-ledger rows changed.
+
+### Run 5 — review follow-ups (2026-09-11)
+
+Deviations/limits, added after the Opus evidence lens: the three quality gates
+(`just check-quick`, `just lint`, `just test-contracts`) executed concurrently
+with the 90 s runtime trial rather than after teardown (the gate probes are
+stamped inside the step-3 and step-5 windows). The bias is conservative — a
+concurrent compile can only lengthen the measured latencies, never shorten
+them — and every bound passed with a wide margin (composer 1.0 s of 120 s;
+idle age 0.65 s and 0.03 s of 120 s); `cargo fmt` produced no hunk, so the
+source/binary pair the trial measured is the recorded candidate (`src-tauri`
+diff against `a7e6db7e` empty). Later runs sequence the gates after teardown.
+One benign observer snapshot error was recorded at initialize
+(`events.jsonl`, `observer_error`, t+1.4 s: the activity snapshot path was not
+written yet); observation errors never abort a step and every later snapshot is
+present, so no window was lost. `run5/pack.py` is the run-3 replay retained for
+provenance and does not apply to this run's manifest; the exporter/verifier
+pair for run 5 is `export.py` plus `audit.py` (`final-audit.json`).

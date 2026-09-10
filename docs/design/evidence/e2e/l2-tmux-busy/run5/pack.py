@@ -1,3 +1,6 @@
+# Retained as the run-3 replay only: this script reads run 3's manifest shape
+# (`pane_normalization`, two capture rounds) and does not apply to run 5's
+# exports, which `export.py` produces and `audit.py` verifies.
 """Replay run 3's manifest against complete events; no runtime/credential access.
 
 Default checks committed exports without rewriting evidence. --write recreates
