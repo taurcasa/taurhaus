@@ -5,8 +5,11 @@ use serde_json::{Map, Value};
 use super::*;
 
 pub(super) fn stop_session_timeout(tool: CliTool) -> std::time::Duration {
-    // TUI timeout + 3 s seat + 4 s terminal locks + 4 s host locks + 1 s reap.
-    crate::session_scanner::cli_tool::spec(tool).stop_timeout + std::time::Duration::from_secs(12)
+    // The daemon's own waits sum to 12 s (3 s seat + 4 s terminal locks + 4 s
+    // host locks + 1 s reap) on top of the TUI timeout; 6 s more covers the
+    // probes, process-table walk and IPC the daemon does not count, so a stop
+    // that hits its worst case is still reported as the daemon completed it.
+    crate::session_scanner::cli_tool::spec(tool).stop_timeout + std::time::Duration::from_secs(18)
 }
 
 pub(super) fn stop_cli_session_impl(

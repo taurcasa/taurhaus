@@ -1146,6 +1146,9 @@ mod tests {
         // Regression: 732d0029 let a stale non-hosted record hide a live hosted pane.
         hosted_stop_session_stale_lead_collision_reaps_both => "collision",
         hosted_stop_session_resolves_stale_pane => "stale",
+        // Regression: 8e87d050, round-4 review: a stale hosted pane ID plus a foreign record
+        // on the live pane short-circuited before the argv fallback and orphaned the host.
+        hosted_stop_session_stale_pane_with_foreign_record_reaps_both => "stale_collision",
         hosted_stop_session_previous_owner_preserves_pane => "previous",
         hosted_stop_session_reused_pid_is_plain => "reused_pid",
         hosted_stop_session_reused_start_is_plain => "reused_start",
@@ -1180,7 +1183,7 @@ mod tests {
         }
         if matches!(
             mode,
-            "pane" | "stale" | "busy" | "released" | "previous" | "collision"
+            "pane" | "stale" | "busy" | "released" | "previous" | "collision" | "stale_collision"
         ) {
             use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
             let runtime = RecordingCoordinationRuntime::default();
@@ -1215,7 +1218,7 @@ mod tests {
             || matches!(mode, "plain" | "lead" | "legacy_foreign" | "incomplete");
         let mut record = saved(root);
         record.pane_id = Some(pane.clone());
-        if matches!(mode, "stale" | "plain" | "lead") {
+        if matches!(mode, "stale" | "stale_collision" | "plain" | "lead") {
             record.pane_id = Some("%old".into());
         }
         record.pane_pid = pane_process_id(&pane);
@@ -1236,7 +1239,7 @@ mod tests {
             record.project_path = Some(root.join("another-project"));
         }
         MemberRuntimeStore::save(root, "team", "seat", &record).unwrap();
-        if matches!(mode, "lead" | "collision") {
+        if matches!(mode, "lead" | "collision" | "stale_collision") {
             let path = root.join("team/config.json");
             let mut config: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
@@ -1244,7 +1247,7 @@ mod tests {
             std::fs::write(path, config.to_string()).unwrap();
             record.app_server = None;
             record.pane_id = Some(pane.clone());
-            if mode == "collision" {
+            if matches!(mode, "collision" | "stale_collision") {
                 record.pane_pid = Some(u32::MAX);
                 record.pane_start_time = Some(u64::MAX);
             }

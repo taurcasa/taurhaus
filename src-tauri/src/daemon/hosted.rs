@@ -65,25 +65,11 @@ pub(super) fn stop_session(
             matches.push(candidate);
         }
     }
-    // A stale non-hosted record can claim a reused pane ID. Let hosted
-    // ownership validation win before the fence suppresses the argv fallback.
-    if !records
-        .iter()
-        .any(|(_, _, record)| record.pane_id.as_deref() == Some(&params.tmux_pane))
-    {
-        if let Ok(Some((root, team, member))) =
-            crate::coordination::stores::lock::resolve_terminal_member(registry, &params.tmux_pane)
-        {
-            if MemberRuntimeStore::load(&root, &team, &member)
-                .map_err(|e| e.to_string())?
-                .app_server
-                .is_none()
-            {
-                return Ok(false);
-            }
-        }
-    }
-    // Ordinary panes without any hosted candidates need no process-table scan.
+    // A stale non-hosted record can claim a reused pane ID while the hosted
+    // seat's own recorded pane ID is stale, so no pane-ID-only shortcut may
+    // pre-empt the argv fallback: the attached TUI's socket+thread argv is
+    // stronger ownership evidence than any record's pane ID. Ordinary panes
+    // without hosted candidates still need no process-table scan.
     if matches.is_empty() && !records.is_empty() {
         let argv = crate::session_scanner::control::pane_process_argv(&params.tmux_pane);
         matches.extend(records.iter().filter(|(_, _, r)| {
