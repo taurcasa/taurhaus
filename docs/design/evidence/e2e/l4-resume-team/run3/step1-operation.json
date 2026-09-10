@@ -1,0 +1,203 @@
+{
+  "method": "coordination.initialize_team",
+  "accepted": {
+    "run_id": "init_c75303346ae648bf8aa8ec78ea89c58e"
+  },
+  "status_samples": [
+    {
+      "outcome": {
+        "status": "running"
+      },
+      "run_id": "init_c75303346ae648bf8aa8ec78ea89c58e",
+      "steps": []
+    },
+    {
+      "outcome": {
+        "status": "running"
+      },
+      "run_id": "init_c75303346ae648bf8aa8ec78ea89c58e",
+      "steps": [
+        {
+          "message": null,
+          "status": "running",
+          "step": "validate_configuration"
+        },
+        {
+          "message": "configuration validated",
+          "status": "succeeded",
+          "step": "validate_configuration"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "create_team"
+        },
+        {
+          "message": "team created",
+          "status": "succeeded",
+          "step": "create_team"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "add_lead"
+        },
+        {
+          "message": "lead added",
+          "status": "succeeded",
+          "step": "add_lead"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "create_panes"
+        }
+      ]
+    },
+    {
+      "outcome": {
+        "report": {
+          "failed_step": "opt_in_delivery",
+          "message": "Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock\n",
+          "retryable": true,
+          "steps": [
+            {
+              "message": "configuration validated",
+              "status": "succeeded",
+              "step": "validate_configuration"
+            },
+            {
+              "message": "team created",
+              "status": "succeeded",
+              "step": "create_team"
+            },
+            {
+              "message": "lead added",
+              "status": "succeeded",
+              "step": "add_lead"
+            },
+            {
+              "message": "panes opened and sessions started",
+              "status": "succeeded",
+              "step": "create_panes"
+            },
+            {
+              "message": "launched sessions verified",
+              "status": "succeeded",
+              "step": "launch_sessions"
+            },
+            {
+              "message": "mesh joined",
+              "status": "succeeded",
+              "step": "join_mesh"
+            },
+            {
+              "message": "mesh daemons started",
+              "status": "succeeded",
+              "step": "start_daemons"
+            },
+            {
+              "message": "Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock\n",
+              "status": "failed",
+              "step": "opt_in_delivery"
+            }
+          ],
+          "succeeded_steps": [
+            "validate_configuration",
+            "create_team",
+            "add_lead",
+            "create_panes",
+            "launch_sessions",
+            "join_mesh",
+            "start_daemons"
+          ],
+          "team_name": "l4-resume"
+        },
+        "status": "completed"
+      },
+      "run_id": "init_c75303346ae648bf8aa8ec78ea89c58e",
+      "steps": [
+        {
+          "message": null,
+          "status": "running",
+          "step": "validate_configuration"
+        },
+        {
+          "message": "configuration validated",
+          "status": "succeeded",
+          "step": "validate_configuration"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "create_team"
+        },
+        {
+          "message": "team created",
+          "status": "succeeded",
+          "step": "create_team"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "add_lead"
+        },
+        {
+          "message": "lead added",
+          "status": "succeeded",
+          "step": "add_lead"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "create_panes"
+        },
+        {
+          "message": "panes opened and sessions started",
+          "status": "succeeded",
+          "step": "create_panes"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "launch_sessions"
+        },
+        {
+          "message": "launched sessions verified",
+          "status": "succeeded",
+          "step": "launch_sessions"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "join_mesh"
+        },
+        {
+          "message": "mesh joined",
+          "status": "succeeded",
+          "step": "join_mesh"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "start_daemons"
+        },
+        {
+          "message": "mesh daemons started",
+          "status": "succeeded",
+          "step": "start_daemons"
+        },
+        {
+          "message": null,
+          "status": "running",
+          "step": "opt_in_delivery"
+        },
+        {
+          "message": "Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock\n",
+          "status": "failed",
+          "step": "opt_in_delivery"
+        }
+      ]
+    }
+  ]
+}

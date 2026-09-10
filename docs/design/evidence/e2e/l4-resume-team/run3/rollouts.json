@@ -1,0 +1,16 @@
+{
+  "01a08b53-f825-7fa3-b8fe-5c200f8a2d38": [
+    {
+      "timestamp": "2026-09-10T12:38:53.781Z",
+      "ordinal": 1,
+      "type": "event_msg",
+      "payload": {
+        "type": "task_started",
+        "turn_id": "01a08b54-01ed-7271-a64a-5a85bb7f2b2f",
+        "started_at": 1789043933,
+        "model_context_window": 31129,
+        "collaboration_mode_kind": "default"
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+cd src-tauri && cargo clippy --all-targets -- -D warnings
+   Compiling taurhaus v0.9.7 (/home/mstie/projects/taurhaus-l4-resume-team/src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 35.56s
+bun run lint
+$ bun run lint:structure
+$ bun run lint:knip && bun run lint:deps
+$ knip
+$ bun run check:node && dependency-cruiser --no-config --include-only '^src' --output-type err-long src
+$ node scripts/check-node-version.mjs
+
+✔ no dependency violations found (347 modules, 800 dependencies cruised)
+
+bun scripts/check-workflow-scripts.mjs
+workflow script check passed: 5 script(s) in .claude/workflows
+scripts/check-just-gates.sh
+just check gate guard passed.
+scripts/check-lane-worktree-recipes.sh
+lane worktree recipe guard passed.

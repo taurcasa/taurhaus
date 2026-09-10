@@ -1,4 +1,11 @@
-# FAIL — L4 step 1: hosted process exited before transport readiness
+# FAIL — latest run 3, L4 step 1: canonical delivery opt-in refused
+
+Run 3 failed in production initialization at `opt_in_delivery` with Mesh’s
+`team owner already holds lifetime lock` refusal. Steps 2–6 were NOT RUN.
+The started onboarding turn has **unverified spend**. See [Run 3](#run-3--fail-at-step-1-mesh-ownership-admission)
+for the latest evidence, gates and cleanup; the prior run below is historical.
+
+## Historical run 2 — hosted process exited before transport readiness
 
 The authorized continuation resolved both earlier controller/setup mistakes: the
 read-only `CODEX_HOME/auth.json` copy used the reference controller's fallback,
@@ -177,3 +184,161 @@ Limitations/deviations:
   assertions. These later paths remain runtime-unverified.
 - The independent Opus evidence lens remains for the orchestrator; no Opus tool is
   callable in this implementer session. No product changes or plan ledger edits.
+
+
+## Run 3 — FAIL at step 1: Mesh ownership admission
+
+**Verdict: FAIL; workflow incomplete.** The required private runtime ran once
+from `f62bb158` (product base `6398bfa3` is an ancestor), protocol **27**, with
+Mesh **`fcb9647`**. No product code changed, no paid retry occurred, and no
+`resume_team` call was substituted for the failed initialization.
+
+The exact sanitized production report is:
+
+```text
+failed_step: opt_in_delivery
+Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock
+```
+
+**Classification: mesh (product ownership-admission refusal during Taurhaus
+initialization).** The raw controller event classified the caller boundary as
+`taurhaus`; source/evidence review refined this to the Mesh refusal boundary.
+Taurhaus’s initialize report records successful validation, creation, lead
+addition, pane/session launch, Mesh join and daemon startup before opt-in fails.
+The retained config already has `delivery_owner: team`; passive FLOCK evidence
+shows the private team owner holding `state/delivery/owner.lock`. Mesh’s
+`delivery/ownership.rs` requests the owner lifetime lock before opt-in and
+`delivery/store.rs` emits the refusal. This identifies the observed conflict;
+it does not claim a fully diagnosed root cause or a fix.
+
+| Ordered step | Outcome | Classification / evidence |
+|---|---|---|
+| 1. Initialize, exchange/read each marker, retain identities/receipts | **FAIL** | **mesh**: `opt_in_delivery` refusal; no marker exchange or read occurred. |
+| 2. Supported stop of every seat; retain team/task/journal | **NOT RUN** | Not evaluated; stop-on-failure. Cleanup is not this lifecycle test. |
+| 3. Accept one obligation per stopped seat | **NOT RUN** | Not evaluated; no backlog generated. |
+| 4. One `resume_team` plus its own status polling | **NOT RUN** | Not evaluated; zero calls, no historical skip used as evidence. |
+| 5. Preserved identities, new generations, recovery and pending delivery | **NOT RUN** | Not evaluated; no resumed generation. |
+| 6. Read/mark, no replay/member executor, export/teardown | **NOT RUN** | Workflow assertions not evaluated; failure export/cleanup completed separately. |
+
+All six machine-readable outcomes are under [run3/](l4-resume-team/run3/).
+[Operation status samples](l4-resume-team/run3/step1-operation.json) retain every
+reported transition and refusal, with a 150-second polling deadline. The explicit
+terminal refusal ended the operation, not a shortened timeout. Runtime lasted
+**8.266 seconds**, including failure cleanup.
+
+### S-runtime identities and evidence
+
+- Initialization run: `init_c75303346ae648bf8aa8ec78ea89c58e`.
+- Daemon logging run: `run_6d0cc98434c64a8ab126990d70395a49`.
+- Team: `l4-resume`; incarnation
+  `51284c8270caa852e39e0291520af71c8f9650e0051d327d1ed97478d240b772`;
+  messaging format **2**, owner **team**, exact builder retention policy.
+- alpha: Codex/tmux, session `01a08b53-f140-71f3-ab0a-a56e83366f41`,
+  pane `%2`, attachment generation **1**, context generation **"0"**.
+- beta: Codex/app_server, thread/session
+  `01a08b53-f825-7fa3-b8fe-5c200f8a2d38`, pane `%3`, attachment generation
+  **1**, host generation `f9760754-ca78-491d-a43c-748816b84c37`.
+- lead: scratch unauthenticated Claude login screen, pane `%1`, generation **1**;
+  native session ID absent, **no model turn**.
+
+[Final state](l4-resume-team/run3/final-state.json),
+[activity snapshot](l4-resume-team/run3/final-activity.json),
+[passive locks](l4-resume-team/run3/final-locks.json),
+[owned processes with PID/start ticks](l4-resume-team/run3/owned-before-cleanup.json),
+[commands/RPCs](l4-resume-team/run3/events.jsonl),
+[complete sanitized daemon JSONL, 52 rows](l4-resume-team/run3/taurhaus.log.jsonl),
+[bounded stderr](l4-resume-team/run3/daemon-stderr.json), and the four
+`final-pane*.json` captures (each ≤60 lines) retain the observed boundary.
+The journal is empty and task inventory is empty; no message/delivery/assignment
+IDs for the requested markers exist.
+
+The previous `launch_host` failure did **not** recur. beta’s real host loaded the
+scratch `AGENTS.md`, created its thread and accepted baseline onboarding. Its
+attachment reports the exact verified descriptor identities
+`taurhaus-daemon-owned-thread/1`, `strict-config/1`, `daemon-owned/1`, build
+**0.153.4**, transport `unix-websocket`. The Mesh descriptor was explicitly
+**trial/enabled**, not claimed production-eligible. Both native siblings were
+copied from the installation resolved by `shutil.which('codex')`, with individual
+digests in `events.jsonl`; daemon/Mesh digests are in
+[build/binaries.json](l4-resume-team/run3/build/binaries.json).
+
+**alpha idle subclaim is NOT ESTABLISHED.** The final snapshot attributes alpha
+correctly, at high confidence, to its own session/pane, but reports `active`.
+Initialization failed before the positive attributed-idle assertion was reached.
+No idle state was forged or inferred from beta’s separate hosted idle event.
+
+### Every input and spend
+
+| Seat | Starts | Observed paid inputs / turn | Spend |
+|---|---:|---|---|
+| alpha | 1 | 0 observed; no marker/onboarding turn record retained | $0 observed; no total-cost certification |
+| beta | 1 | 1 baseline onboarding: `01a08b54-01ed-7271-a64a-5a85bb7f2b2f` | **UNKNOWN**; no token/completion receipt retained |
+| lead | 1 login-only launch | 0 model inputs | $0 |
+| Controller-submitted marker/recovery turns | — | 0 | $0 |
+
+Conservative start-plus-input count is **3/16**. **Total spend and the $0.25 cap
+are UNVERIFIED.** The raw meter’s `$0` is an empty metered subtotal, never evidence
+of free onboarding. Cleanup attempted a read-only hosted transcript collection,
+which returned exactly `HOST_OPERATION_FAILED: host member busy`; the executed
+collector then exited observation and terminated its owned namespace. No later
+usage row can be recovered from the deleted scratch home, and no account usage
+endpoint/rows were consulted to invent a per-turn cost. See
+[raw ledger](l4-resume-team/run3/cost-ledger.json),
+[retained native turn event](l4-resume-team/run3/rollouts.json), and
+[explicit reconciliation](l4-resume-team/run3/spend-reconciliation.json).
+Implementer/reviewer spend belongs to the orchestrator’s separate accounting.
+
+### Validation, cleanup and limitations
+
+Exact commands (checkout root):
+
+```sh
+python3 -B docs/design/evidence/e2e/l4-resume-team/run3/build.py
+python3 -B docs/design/evidence/e2e/l4-resume-team/run3/controller.py
+python3 -B docs/design/evidence/e2e/l4-resume-team/run3/gates.py
+python3 -B -m unittest discover -s docs/design/evidence/e2e/l4-resume-team/run3 -p test_support.py
+python3 -B docs/design/evidence/e2e/l4-resume-team/run3/audit.py
+```
+
+Builds used checkout-local targets and the run-2 resource preparation. Cargo was
+polled with `pgrep -af '(^|/)cargo( |$)'` until idle, within the 30-minute deadline.
+Mesh source was restored after building and again at runtime teardown. The main
+trial executable and its matching Cargo executable hardlink were removed.
+
+| Command | Exit |
+|---|---:|
+| `cargo build --bin mesh` (designated Mesh worktree) | 0 |
+| `just build-daemon` | 0 |
+| Runtime controller | **1** |
+| Initial offline tests: red → green | **1 → 0**, four tests |
+| Evidence review guards: red → green | **1 → 0**, six tests |
+| `just check-quick` | 0 |
+| `just lint` | 0 |
+| `just test-contracts` | 0 |
+| Evidence/privacy/process audit | 0 |
+
+[Gate commands/exits/tails](l4-resume-team/run3/gates/) retain validation evidence.
+There is no `src-tauri/` diff, so `just test-rust-unit` is not required. The tests
+use generated tempdirs/in-memory rows, never real credentials, CLIs or network.
+Regression comments name `4f946ee5` (partial runtime/log filtering) and `f62bb158`
+(refusal classification and unmetered subtotal ambiguity). Executed controller
+and support are frozen by commit **`f62bb158`**; the later offline support guard
+changes were **not rerun against a live seat**.
+
+[Cleanup](l4-resume-team/run3/cleanup.json) and
+[independent census/privacy audit](l4-resume-team/run3/final-audit.json) verify
+**zero survivors**, closed private listener, removed scratch root/auth,
+restored descriptor and removed trial binary. Fourteen owned PID/start-tick
+identities were rechecked. The attempt-9 bubblewrap layout hid operator homes,
+used a private PID namespace, tmux server and probed daemon port, removed `$TMUX`,
+and exposed only scratch writable roots to runtime children. Only the explicitly
+authorized auth file was copied at mode 0600; no operator config/history was
+copied. No observer connected to an app-server socket. No fault injection,
+product edits, install, release or plan-ledger edits occurred.
+
+Deviations/limits: step 1’s product refusal requires steps 2–6 to remain NOT RUN;
+alpha idle and marker receipts were not reached; failure cleanup’s busy-read
+handling left one started turn unmetered, so the dollar cap cannot be certified;
+the independent Opus evidence lens is unavailable in this session and remains
+for the orchestrator. No numbered step passed, so no numbered green-step commit
+is claimed. Preparation and the checked failure packet are separate commits.

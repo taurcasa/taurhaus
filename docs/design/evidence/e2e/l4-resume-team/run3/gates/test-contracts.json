@@ -1,0 +1,10 @@
+{
+  "command": [
+    "just",
+    "test-contracts"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+  "exit_code": 0,
+  "seconds": 63.13,
+  "log_lines": 89
+}

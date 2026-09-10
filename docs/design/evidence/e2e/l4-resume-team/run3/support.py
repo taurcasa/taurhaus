@@ -22,4 +22,13 @@ def sanitize_log_rows(records):
 def classify_failure(reason):
     if any(s in reason for s in ['harness command','auth source','unapproved Codex','cap','headroom','metered','bwrap:', 'code-mode-host', 'Operation not permitted', 'Permission denied']):
         return 'harness'
-    return 'mesh' if 'Mesh refusal' in reason or 'team-daemon' in reason else 'taurhaus'
+    return 'mesh' if 'Mesh refusal' in reason or 'mesh team activation failed' in reason or 'team-daemon' in reason else 'taurhaus'
+
+
+def reconciled_spend(ledger):
+    complete=not ledger['unmetered']
+    return {'total_usd':ledger['conservative_usd'] if complete else None,
+            'metered_subtotal_usd':ledger['conservative_usd'],
+            'cap_verified':complete and ledger['conservative_usd']<=.25,
+            'unmetered_turns':ledger['unmetered'],
+            'note':'Unknown total is never zero spend. Raw meter values are metered subtotals only.'}

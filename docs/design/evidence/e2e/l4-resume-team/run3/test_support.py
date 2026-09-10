@@ -2,7 +2,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from support import copy_native_runtime, sanitize_log_rows, classify_failure
+from support import copy_native_runtime, sanitize_log_rows, classify_failure, reconciled_spend
 
 class Guards(unittest.TestCase):
     def test_complete_native_runtime(self):
@@ -29,6 +29,15 @@ class Guards(unittest.TestCase):
         records=[{'event':'startup','message':'ready'}, {'event':'hosted.launch.failed','exit_status':'exit status: 1','stderr_tail':'runtime denied'}]*3
         actual=sanitize_log_rows(records+[{'event':'usage.fetched','account_id':'secret'}])
         self.assertEqual(actual,records)
+    def test_opt_in_refusal_is_mesh(self):
+        # Regression: f62bb158's generic classifier missed Mesh opt-in refusals.
+        self.assertEqual(classify_failure('Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock'), 'mesh')
+    def test_unmetered_turn_never_reports_zero_total(self):
+        # Regression: f62bb158's raw meter subtotal was zero with one unmetered turn.
+        result=reconciled_spend({'conservative_usd':0, 'unmetered':['turn-1']})
+        self.assertIsNone(result['total_usd'])
+        self.assertFalse(result['cap_verified'])
+        self.assertEqual(result['metered_subtotal_usd'],0)
     def test_native_runtime_failure_is_harness(self):
         self.assertEqual(classify_failure('launch_host: app-server exited before transport readiness; stderr: bwrap: Creating new namespace failed: Operation not permitted'),'harness')
         self.assertEqual(classify_failure('launch_host: app-server exited before transport readiness; exit status: 1'),'taurhaus')
