@@ -25,7 +25,8 @@ impl Drop for HostedActivityLease {
                 .runtime_sessions
                 .retain(|s| !same_seat(s, &entry.session));
             state.display_sessions.retain(|s| {
-                !(s.project_path == entry.session.project_path
+                !(normalize_project_path(&s.project_path)
+                    == normalize_project_path(&entry.session.project_path)
                     && s.group_id == entry.session.group_id
                     && s.member_name == entry.session.member_name)
             });
@@ -133,10 +134,15 @@ impl SessionActivityHub {
         if before == session && state.runtime_sessions.contains(&session) {
             return;
         }
+        self.commit_host_session(&mut state, session);
+    }
+
+    fn commit_host_session(&self, state: &mut HubState, session: RuntimeSession) {
         state.runtime_sessions.retain(|s| !same_seat(s, &session));
         state.runtime_sessions.push(session.clone());
         state.display_sessions.retain(|s| {
-            !(s.project_path == session.project_path
+            !(normalize_project_path(&s.project_path)
+                == normalize_project_path(&session.project_path)
                 && s.group_id == session.group_id
                 && s.member_name == session.member_name)
         });
@@ -185,8 +191,15 @@ impl SessionActivityHub {
     pub fn attach_host_pane(&self, socket: &Path, pane: &str, pid: Option<u32>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(entry) = state.hosted.get_mut(socket) {
+            if entry.session.tmux_pane.as_deref() == Some(pane)
+                && entry.session.pid == pid.unwrap_or(0)
+            {
+                return;
+            }
             entry.session.tmux_pane = Some(pane.into());
             entry.session.pid = pid.unwrap_or(0);
+            let session = entry.session.clone();
+            self.commit_host_session(&mut state, session);
         }
     }
 
@@ -208,6 +221,65 @@ impl SessionActivityHub {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn attaching_host_pane_versions_and_updates_both_snapshots() {
+        // Regression: 1b19edd2 changed only the private entry without waking app readers.
+        let hub = Arc::new(SessionActivityHub::new());
+        let tmp = tempfile::tempdir().unwrap();
+        let socket = tmp.path().join("socket");
+        let _lease = hub.register_host(
+            socket.clone(),
+            tmp.path().into(),
+            RuntimeSession {
+                session_id: Some("thread".into()),
+                ..Default::default()
+            },
+            Arc::new(|| {}),
+        );
+        let before = hub.runtime_snapshot().version;
+        hub.attach_host_pane(&socket, "%42", Some(42));
+        let snapshot = hub.runtime_snapshot();
+        assert!(snapshot.version > before);
+        assert_eq!(snapshot.runtime_sessions[0].pid, 42);
+        assert_eq!(
+            snapshot.runtime_sessions[0].tmux_pane.as_deref(),
+            Some("%42")
+        );
+        assert_eq!(snapshot.display_sessions[0].pid, 42);
+        assert_eq!(
+            snapshot.display_sessions[0].tmux_pane.as_deref(),
+            Some("%42")
+        );
+    }
+
+    #[test]
+    fn hosted_display_pruning_normalizes_paths_on_publish_and_teardown() {
+        // Regression: 4ad65497 normalized runtime identity but left display pruning raw.
+        let hub = Arc::new(SessionActivityHub::new());
+        let tmp = tempfile::tempdir().unwrap();
+        let socket = tmp.path().join("socket");
+        let lease = hub.register_host(
+            socket.clone(),
+            tmp.path().into(),
+            RuntimeSession {
+                project_path: format!("{}//", tmp.path().display()),
+                session_id: Some("thread".into()),
+                group_id: Some("team".into()),
+                member_name: Some("seat".into()),
+                ..Default::default()
+            },
+            Arc::new(|| {}),
+        );
+        hub.state.lock().unwrap().display_sessions[0].project_path =
+            tmp.path().to_string_lossy().into_owned();
+        hub.publish_host_status(&socket, "thread", &serde_json::json!({"type":"idle"}));
+        assert_eq!(hub.runtime_snapshot().display_sessions.len(), 1);
+        hub.state.lock().unwrap().display_sessions[0].project_path =
+            tmp.path().to_string_lossy().into_owned();
+        drop(lease);
+        assert!(hub.runtime_snapshot().display_sessions.is_empty());
+    }
+
     #[test]
     fn hosted_activity_regression_normalizes_identity_and_overlay() {
         // Regression: 1b19edd2 compared configured paths with kernel cwd verbatim.
