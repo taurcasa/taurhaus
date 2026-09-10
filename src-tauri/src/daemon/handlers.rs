@@ -81,9 +81,13 @@ pub(crate) fn dispatch(
         }
         protocol::method::LAUNCH_SESSION => handle_launch_session(&request.id, &request.params),
         protocol::method::STOP_SESSION => handle_stop_session(
-            &request.id, &request.params,
+            &request.id,
+            &request.params,
             #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
-            (&coordination_state.hosted, coordination_state.team_root_registry()),
+            (
+                &coordination_state.hosted,
+                coordination_state.team_root_registry(),
+            ),
         ),
         protocol::method::NAVIGATE_TO_SESSION => {
             handle_navigate_to_session(&request.id, &request.params)
@@ -1147,9 +1151,12 @@ pub(crate) fn handle_launch_session(id: &str, params: &serde_json::Value) -> Dae
 }
 
 pub(crate) fn handle_stop_session(
-    id: &str, params: &serde_json::Value,
-    #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
-    hosted: (&crate::coordination::hosted::HostedMembers, &crate::coordination::stores::TeamRootRegistry),
+    id: &str,
+    params: &serde_json::Value,
+    #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))] hosted: (
+        &crate::coordination::hosted::HostedMembers,
+        &crate::coordination::stores::TeamRootRegistry,
+    ),
 ) -> DaemonResponse {
     let params: protocol::StopSessionParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,

@@ -430,9 +430,13 @@ impl HostProcess {
         let deadline = Instant::now() + Duration::from_secs(1);
         loop {
             if let Some(status) = self.child.try_wait().map_err(|e| e.to_string())? {
-                return Ok(status.code().map_or_else(|| status.to_string(), |code| code.to_string()));
+                return Ok(status
+                    .code()
+                    .map_or_else(|| status.to_string(), |code| code.to_string()));
             }
-            if Instant::now() >= deadline { return Err("owned host did not exit".into()) }
+            if Instant::now() >= deadline {
+                return Err("owned host did not exit".into());
+            }
             std::thread::sleep(Duration::from_millis(5));
         }
     }

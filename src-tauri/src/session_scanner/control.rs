@@ -388,16 +388,48 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
 
 #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
 pub(crate) fn pane_process_argv(pane: &str) -> Vec<Vec<String>> {
-    let Some(tty) = pane_tty(pane) else { return Vec::new() };
-    crate::platform::list_processes().unwrap_or_default().into_iter()
+    let Some(tty) = pane_tty(pane) else {
+        return Vec::new();
+    };
+    crate::platform::list_processes()
+        .unwrap_or_default()
+        .into_iter()
         .filter(|(pid, _)| crate::platform::process_tty(*pid).as_deref() == Some(&tty))
-        .map(|(_, argv)| argv).collect()
+        .map(|(_, argv)| argv)
+        .collect()
 }
 
 #[cfg(all(feature = "mesh-bridged-backend", target_os = "linux"))]
 pub(crate) fn stop_hosted_tui(pane: &str, tool: CliTool) -> Result<(), String> {
-    if pane_field(pane, "#{pane_id}").is_none() { return Ok(()) }
-    stop_session_inner(pane, tool, true)
+    if !pane_exists_checked(pane)? {
+        return Ok(());
+    }
+    match stop_session_inner(pane, tool, true) {
+        Err(_) if !pane_exists_checked(pane)? => Ok(()),
+        result => result,
+    }
+}
+
+fn pane_exists_checked(pane: &str) -> Result<bool, String> {
+    let output = tmux_command()
+        .args(["display-message", "-p", "-t", pane, "#{pane_id}"])
+        .terminal_output()
+        .map_err(|e| e.to_string())?;
+    if output.status.success() {
+        return Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty());
+    }
+    let error = String::from_utf8_lossy(&output.stderr);
+    if error.contains("can't find pane:")
+        || error.contains("no server running")
+        || error.contains("No such file or directory")
+        || error.trim() == "no sessions"
+    {
+        return Ok(false);
+    }
+    Err(format!(
+        "Failed to probe attached TUI pane: {}",
+        error.trim()
+    ))
 }
 
 fn stop_session_inner(tmux_pane: &str, tool: CliTool, wait: bool) -> Result<(), String> {
@@ -446,6 +478,9 @@ fn stop_session_inner(tmux_pane: &str, tool: CliTool, wait: bool) -> Result<(), 
                 None => {
                     tracing::info!(pane = %pane, "stop_session: pane already gone");
                     crate::session_scanner::notify_tmux_changed();
+                    if wait {
+                        break;
+                    }
                     return Ok(());
                 }
                 Some(cmd) => {
@@ -467,12 +502,14 @@ fn stop_session_inner(tmux_pane: &str, tool: CliTool, wait: bool) -> Result<(), 
         });
         crate::session_scanner::notify_tmux_changed();
         tracing::info!(pane = %pane, success = ?result.as_ref().map(|o| o.status.success()), "stop_session: kill-pane result");
-        if wait && pane_field(&pane, "#{pane_id}").is_some() {
+        if wait && pane_exists_checked(&pane)? {
             return Err("attached TUI pane did not stop".into());
         }
         Ok(())
     };
-    if wait { teardown() } else {
+    if wait {
+        teardown()
+    } else {
         std::thread::spawn(teardown);
         Ok(())
     }
@@ -1058,25 +1095,148 @@ mod tests {
     #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
     #[test]
     fn hosted_stop_session_reaps_host_when_tui_already_gone() {
+        use crate::coordination::domain::HealthState;
+        use crate::coordination::hosted::tests::{running, saved};
+        use crate::coordination::hosted::HostedMembers;
+        use crate::coordination::stores::{MemberRuntimeStore, TeamRootRegistry};
+        use crate::daemon::session_activity::SessionActivityHub;
+        use std::time::{Duration, Instant};
         // Regression: 1db4f9bf, L4 run 4: pane-only stop left the owned host alive for 100 s.
+        for mode in ["gone", "pane", "stale", "previous"] {
+            let scratch = ScratchTmux::new("80", "24");
+            let root = scratch.path();
+            let _logs = taurhaus_lib::test_support::acquire_global_log_test_guard();
+            let sink = taurhaus_lib::logging::LogFileState::new(root.join("events.jsonl")).unwrap();
+            taurhaus_lib::logging::install_global_sink(&sink);
+            let (registry, hosts) = running(root);
+            let pane = if matches!(mode, "pane" | "stale") {
+                use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
+                let runtime = RecordingCoordinationRuntime::default();
+                hosts
+                    .attach_pane(&registry, "team", "seat", &runtime, "new_window")
+                    .unwrap();
+                let command = runtime
+                    .calls()
+                    .into_iter()
+                    .find_map(|c| match c {
+                        RuntimeCall::SendKeys { keys, .. } => Some(keys),
+                        _ => None,
+                    })
+                    .unwrap();
+                let pane = scratch.run(&["display-message", "-p", "#{pane_id}"]);
+                scratch.run(&["send-keys", "-t", &pane, "-l", &command]);
+                scratch.run(&["send-keys", "-t", &pane, "Enter"]);
+                let deadline = Instant::now() + Duration::from_secs(2);
+                while !root.join("attach-events.jsonl").exists() {
+                    assert!(Instant::now() < deadline, "fake TUI did not attach");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                pane
+            } else {
+                "%999999".into()
+            };
+            let registry = if mode == "stale" {
+                let relocated = TeamRootRegistry::new(root.join("default"));
+                relocated.set("team", root).unwrap();
+                std::fs::write(root.join("broken-root"), "not a directory").unwrap();
+                relocated
+                    .set("unreadable", &root.join("broken-root"))
+                    .unwrap();
+                relocated
+            } else {
+                registry
+            };
+            let recorded_pane = if mode == "stale" {
+                "%old".into()
+            } else {
+                pane.clone()
+            };
+            MemberRuntimeStore::update(root, "team", "seat", |r| r.pane_id = Some(recorded_pane))
+                .unwrap();
+            let before = saved(root);
+            let generation = before.attachment_generation;
+            let restarted = HostedMembers::default();
+            let receiver = if mode == "previous" {
+                &restarted
+            } else {
+                &hosts
+            };
+            let response = crate::daemon::handlers::handle_stop_session(
+                "stop",
+                &serde_json::json!({"tmux_pane":pane, "cli_tool":"codex"}),
+                (receiver, &registry),
+            );
+            if mode == "previous" {
+                assert!(response
+                    .error
+                    .unwrap()
+                    .message
+                    .contains("live host belongs to a previous daemon"));
+                assert_eq!(saved(root).attachment_generation, generation);
+                continue;
+            }
+            assert!(response.error.is_none(), "{mode}: {:?}", response.error);
+            assert!(pane_field(&pane, "#{pane_id}").is_none());
+            sink.flush_for_test().unwrap();
+            let events = std::fs::read_to_string(root.join("events.jsonl")).unwrap();
+            let event = events
+                .lines()
+                .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+                .find(|e| e["event"] == "hosted.stop_session.host_stopped")
+                .unwrap();
+            assert_eq!(event["team"], "team");
+            assert_eq!(event["member"], "seat");
+            assert_eq!(event["thread_id"], "owned-thread");
+            assert!(event["exit_status"]
+                .as_str()
+                .is_some_and(|s| s.contains("signal")));
+            let after = saved(root);
+            assert_eq!(after.health, HealthState::SessionDead);
+            assert_eq!(after.app_server.as_ref().unwrap().state, "stopped");
+            assert_eq!(after.attachment_generation, generation + 1);
+            assert!(
+                !Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id)).exists()
+            );
+            assert!(!SessionActivityHub::shared()
+                .runtime_snapshot()
+                .runtime_sessions
+                .iter()
+                .any(|r| r.project_path == root.to_str().unwrap()));
+        }
+    }
+
+    #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
+    #[test]
+    fn hosted_stop_session_plain_stop_errors() {
+        // Regression: 6fbc150f (L4 run 4 fix) confused probe failure with absence and blocked plain stops on unrelated records.
         let scratch = ScratchTmux::new("80", "24");
-        let (registry, hosts) = crate::coordination::hosted::tests::running(scratch.path());
-        crate::coordination::stores::MemberRuntimeStore::update(scratch.path(), "team", "seat", |r| {
-            r.pane_id = Some("%999999".into());
-        }).unwrap();
-        let before = crate::coordination::hosted::tests::saved(scratch.path());
-        let response = crate::daemon::handlers::handle_stop_session("stop", &serde_json::json!({
-            "tmux_pane":"%999999", "cli_tool":"codex"
-        }), (&hosts, &registry));
-        assert!(response.error.is_none(), "{:?}", response.error);
-        let after = crate::coordination::hosted::tests::saved(scratch.path());
-        assert_eq!(after.health, crate::coordination::domain::HealthState::SessionDead);
-        assert_eq!(after.app_server.as_ref().unwrap().state, "stopped");
-        assert_eq!(after.attachment_generation, before.attachment_generation + 1);
-        assert!(!Path::new(&format!("/proc/{}", before.app_server.unwrap().process_id)).exists());
-        assert!(!crate::daemon::session_activity::SessionActivityHub::shared().runtime_snapshot()
-            .runtime_sessions.iter().any(|r| r.project_path == scratch.path().to_str().unwrap()));
-        drop((hosts, registry));
+        let registry = crate::coordination::stores::TeamRootRegistry::new(scratch.path().into());
+        std::fs::create_dir(scratch.path().join("broken")).unwrap();
+        std::fs::write(scratch.path().join("broken/runtime"), "not a directory").unwrap();
+        for tool in [CliTool::Codex, CliTool::Claude] {
+            let expected = stop_session("%missing", tool).unwrap_err();
+            let response = crate::daemon::handlers::handle_stop_session(
+                "plain",
+                &serde_json::json!({"tmux_pane":"%missing", "cli_tool":tool}),
+                (&Default::default(), &registry),
+            );
+            assert_eq!(response.error.unwrap().message, expected);
+        }
+    }
+
+    #[cfg(all(target_os = "linux", feature = "mesh-bridged-backend"))]
+    #[test]
+    fn hosted_stop_session_probe_failure_is_not_absence() {
+        // Regression: 6fbc150f (L4 run 4 fix) treated failed tmux probes as stopped TUIs.
+        use std::os::unix::fs::PermissionsExt;
+        let scratch = ScratchTmux::new("80", "24");
+        let fake = scratch.path().join("tmux");
+        std::fs::write(&fake, "#!/bin/sh\necho probe-failed >&2\nexit 1\n").unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        TEST_FAKE_ROOT.with(|s| *s.borrow_mut() = Some(scratch.path().into()));
+        let result = stop_hosted_tui("%1", CliTool::Codex);
+        TEST_FAKE_ROOT.with(|s| *s.borrow_mut() = None);
+        assert!(result.is_err(), "probe failure must not claim TUI stopped");
     }
 
     #[cfg(target_os = "linux")]

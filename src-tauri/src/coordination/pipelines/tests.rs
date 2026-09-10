@@ -8557,7 +8557,10 @@ fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
     let stopped = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
     assert_eq!(stopped.health, HealthState::SessionDead);
     assert_eq!(stopped.app_server.as_ref().unwrap().state, "stopped");
-    assert_eq!(stopped.attachment_generation, before.attachment_generation + 1);
+    assert_eq!(
+        stopped.attachment_generation,
+        before.attachment_generation + 1
+    );
     let mut commands = CliCommandSettings::default();
     let command = format!(
         "CODEX_HOME='{}' '{}' --sandbox read-only --ask-for-approval never",
@@ -8605,10 +8608,22 @@ fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
     let after = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
     assert_eq!(before.session_id, after.session_id);
     assert!(after.attachment_generation > stopped.attachment_generation);
-    let requests = || fs::read_to_string(tmp.path().join("requests.jsonl")).unwrap()
-        .lines().map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap()).collect::<Vec<_>>();
-    assert!(requests().iter().any(|r| r["method"] == "thread/resume"
-        && r["params"]["threadId"] == "owned-thread"));
+    let requests = || {
+        fs::read_to_string(tmp.path().join("requests.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .collect::<Vec<_>>()
+    };
+    let recovery_count = || {
+        requests()
+            .iter()
+            .filter(|r| r["method"] == "turn/start")
+            .count()
+    };
+    assert!(requests()
+        .iter()
+        .any(|r| r["method"] == "thread/resume" && r["params"]["threadId"] == "owned-thread"));
 
     assert_eq!(after.applied_effort.as_deref(), Some("high"));
     let wire = serde_json::to_value(&after).unwrap();
@@ -8657,8 +8672,11 @@ fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
     assert_eq!(reattached.pane_pid, Some(1002));
     assert!(reattached.pane_start_time.is_some());
     assert!(reattached.tmux_socket.is_some());
-    assert_eq!(requests().iter().filter(|r| r["method"] == "turn/start").count(), 2,
-        "one recovery card for each of the initial and resumed generations");
+    assert_eq!(
+        recovery_count(),
+        2,
+        "one recovery card for each of the initial and resumed generations"
+    );
     let result = orchestrator.teardown_member_resources_best_effort(
         "team",
         "seat",
@@ -8674,6 +8692,41 @@ fn hosted_member_liveness_effort_and_attached_pane_restart_preserve_thread() {
         .calls()
         .iter()
         .any(|c| matches!(c, RuntimeCall::KillPane { pane_id } if pane_id == "test-pane-2")));
+    // Regression: 1db4f9bf, L4 run 4: a day-close must leave both delivery modes resumable.
+    let mut config = TeamConfigStore::load(tmp.path(), "team").unwrap();
+    config.members.push(member(
+        "plain",
+        MemberRole::Lead,
+        CliTool::Claude,
+        tmp.path().to_str().unwrap(),
+    ));
+    TeamConfigStore::save(tmp.path(), "team", &config).unwrap();
+    let plain = crate::coordination::stores::MemberRuntimeRecord {
+        health: HealthState::SessionDead,
+        session_id: Some("plain-thread".into()),
+        ..Default::default()
+    };
+    MemberRuntimeStore::save(tmp.path(), "team", "plain", &plain).unwrap();
+    let stopped = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    let report = orchestrator
+        .resume_team_with_cli_commands_and_layout(
+            &crate::coordination::requests::ResumeTeamRequest {
+                team_name: "team".into(),
+            },
+            &commands,
+            "new_window",
+        )
+        .unwrap();
+    assert!(report.resumed, "{:?}", report.failed_members);
+    assert_eq!(report.resumed_members.len(), 2);
+    for name in ["seat", "plain"] {
+        let resumed = MemberRuntimeStore::load(tmp.path(), "team", name).unwrap();
+        assert!(resumed.pane_id.is_some());
+    }
+    let resumed = MemberRuntimeStore::load(tmp.path(), "team", "seat").unwrap();
+    assert_eq!(resumed.session_id.as_deref(), Some("owned-thread"));
+    assert!(resumed.attachment_generation > stopped.attachment_generation);
+    assert_eq!(recovery_count(), 3);
 }
 
 #[cfg(target_os = "linux")]
