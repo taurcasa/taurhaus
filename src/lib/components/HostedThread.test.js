@@ -118,6 +118,7 @@ it('shows the compaction boundary and its recovery turn', async () => {
     { items: [{ type: 'userMessage', content: [{ type: 'text', text: '[taurhaus] recovery_card boundary' }] }] },
   ] } })
   render(HostedThread, { teamName: 'team', memberName: 'seat' })
-  expect(await screen.findByText('Context compacted')).toBeVisible()
+  // Regression: 5c95d585 rendered the attempt-8 boundary identically to conversation text.
+  expect(await screen.findByRole('separator', { name: 'Context compacted' })).toBeVisible()
   expect(screen.getByText('[taurhaus] recovery_card boundary')).toBeVisible()
 })
