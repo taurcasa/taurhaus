@@ -3192,3 +3192,11 @@ waited children and deleted gate root. `final-audit.json` records all seven outc
 the tmux receipt, every spend, stopped-process verification and daemon log digest.
 
 Daemon JSONL SHA-256: `f632312a12291e24af08a8f7a47dcc0e19e54ef94fc3a6701444b49479155cf8`.
+
+Final committed-range whitespace check: `git diff --check 1bc5294f..HEAD`
+exited **2**, exclusively for blank lines at EOF in captured terminal panes and
+the complete contract-gate output. These are retained runtime/log whitespace,
+not code errors. With only that check disabled,
+`git -c core.whitespace=-blank-at-eof diff --check 1bc5294f..HEAD` exited **0**.
+Exact diagnostics are retained in `integration/attempt13/whitespace-check.json`;
+raw captures were preserved. The earlier unqualified working-tree check exited 0.
