@@ -1137,6 +1137,8 @@ with socket.socket(socket.AF_UNIX) as listener:
     }
     #[test]
     fn hosted_workspace_write_config_round_trips_optional_fields() {
+        // Serialize with the global-sink logging tests: this spawn emits hosted.instruction_sources.loaded.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: efb1ddb8 copied missing workspace sandbox fields as TOML nulls.
         for sandbox in [
             json!({"type":"workspaceWrite", "networkAccess":false}),
@@ -1178,6 +1180,8 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_approval_policy_normalizes_config_and_repair() {
+        // Serialize with the global-sink logging tests: this spawn emits hosted.instruction_sources.loaded.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: efb1ddb8 wrote unchecked RPC approval enums straight into TOML.
         for (wire, config) in [
             ("never", "never"),
@@ -1210,6 +1214,8 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_approval_policy_refuses_unknown_variant() {
+        // Serialize with the global-sink logging tests: this spawn emits hosted.instruction_sources.loaded.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: efb1ddb8 accepted arbitrary approval strings into strict TUI config.
         let tmp = tempfile::tempdir().unwrap();
         let mut launch = fixture(tmp.path());
@@ -1291,6 +1297,8 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_instruction_sources_survive_settings_repair() {
+        // Serialize with the global-sink logging tests: this spawn emits hosted.instruction_sources.loaded.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: ef8f6ce9 allowed instructions but repair reused the TUI's discovery suppression.
         for changed in [false, true] {
             let tmp = tempfile::tempdir().unwrap();
@@ -1335,6 +1343,8 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_instruction_sources_drop_non_string_entries() {
+        // Serialize with the global-sink logging tests: this spawn emits hosted.instruction_sources.loaded.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: ef8f6ce9 copied untyped host objects into the string-array record contract.
         let tmp = tempfile::tempdir().unwrap();
         let mut launch = fixture(tmp.path());
