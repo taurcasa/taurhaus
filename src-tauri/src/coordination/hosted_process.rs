@@ -56,7 +56,9 @@ impl StderrTail {
                             if stopping.load(Ordering::Relaxed) {
                                 break;
                             }
-                            std::thread::sleep(Duration::from_millis(5));
+                            // Idle pace only: a burst drains without sleeping on the Ok path,
+                            // and the 64 KiB pipe buffer absorbs the wake-up latency.
+                            std::thread::sleep(Duration::from_millis(100));
                         }
                         Err(_) => break,
                     }
@@ -88,11 +90,21 @@ impl Drop for StderrTail {
 fn sanitize_stderr(bytes: &[u8]) -> String {
     // A ring cut can remove a credential's prefix: discard the leading fragment.
     let bytes = if bytes.len() == 4096 {
-        let start = bytes
+        // Drop only the leading fragment; a window without a separator, or whose
+        // remainder is empty or blank, keeps the whole window (redaction still runs).
+        match bytes
             .iter()
             .position(|b| b.is_ascii_whitespace() || b.is_ascii_control())
-            .unwrap_or(bytes.len());
-        &bytes[start..]
+        {
+            Some(start)
+                if bytes[start..]
+                    .iter()
+                    .any(|b| !b.is_ascii_whitespace() && !b.is_ascii_control()) =>
+            {
+                &bytes[start..]
+            }
+            _ => bytes,
+        }
     } else {
         bytes
     };
@@ -123,6 +135,7 @@ fn sanitize_stderr(bytes: &[u8]) -> String {
             "\"access_token\"",
             "\"api_key\"",
             "'access_token'",
+            "'api_key'",
         ]
         .iter()
         .filter_map(|key| lower.find(key).map(|i| (i, *key)))
@@ -385,12 +398,12 @@ impl HostProcess {
     fn diagnostic(&self, event: &str, mut fields: Value) {
         fields["team"] = json!(self.identity.0);
         fields["member"] = json!(self.identity.1);
-        tracing::warn!(event, fields = %fields, "Hosted child unavailable");
+        tracing::warn!(event, fields = %fields, "Hosted child diagnostics");
         taurhaus_lib::logging::emit_global(
             "warn",
             "coordination",
             event,
-            Some("Hosted child unavailable".into()),
+            Some("Hosted child diagnostics".into()),
             fields.as_object().unwrap().clone(),
         );
     }
@@ -1136,6 +1149,18 @@ pub(crate) mod tests {
             sanitize_stderr(b"\x1b]0;hidden\x07visible\x1b[0m"),
             "visible"
         );
+        // Regression: 77a1432e's ring-cut guard emptied a full window that held one
+        // unbroken line (its only separator the trailing newline) or no separator at all.
+        let mut one_line = vec![b'x'; 4095];
+        one_line.push(b'\n');
+        assert_eq!(sanitize_stderr(&one_line).len(), 512);
+        assert_eq!(sanitize_stderr(&[b'y'; 4096]).len(), 512);
+        let mut cut = b"cret-fragment error: ".to_vec();
+        cut.resize(4096, b'z');
+        let cut = sanitize_stderr(&cut);
+        assert_eq!(cut.len(), 512);
+        assert!(!cut.contains("fragment"));
+        assert!(!sanitize_stderr(b"{'api_key': 'fake-secret'}").contains("fake"));
     }
 
     #[test]
