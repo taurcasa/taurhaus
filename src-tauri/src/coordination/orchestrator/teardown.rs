@@ -539,7 +539,7 @@ impl CoordinationOrchestrator {
                     format!("lead controlAuthTokenHash is missing for '{operator_name}'")
                 }
                 INACTIVE_LEAD_REASON => {
-                    format!("lead control identity is inactive for '{operator_name}'")
+                    format!("lead runtime session is not live for '{operator_name}'")
                 }
                 _ => format!("lead authentication is unavailable for '{operator_name}'"),
             };
@@ -720,7 +720,14 @@ impl CoordinationOrchestrator {
         if !has_hash {
             return Ok(Some(MISSING_LEAD_CONFIG_HASH_REASON));
         }
-        if lead.extra.get("isActive").and_then(Value::as_bool) == Some(false) {
+        // Runtime health is maintained by launch/liveness reconciliation. Claude
+        // Code's isActive flag describes activity, never control-identity liveness.
+        let live = match MemberRuntimeStore::load(&self.teams_dir, team_name, operator_name) {
+            Ok(record) => record.health != HealthState::SessionDead,
+            Err(CoordinationError::NotFound(_)) => false,
+            Err(error) => return Err(error),
+        };
+        if !live {
             return Ok(Some(INACTIVE_LEAD_REASON));
         }
         Ok(None)

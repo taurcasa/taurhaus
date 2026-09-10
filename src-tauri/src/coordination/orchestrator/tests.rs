@@ -3127,6 +3127,11 @@ fn liveness_reconcile_quarantines_foreign_member_without_blocking_team_daemon() 
         .add_member(team_name, sample_member(member_name, CliTool::Codex))
         .expect("add should succeed");
     write_lead_credential(tmp.path(), team_name, "team-lead");
+    MemberRuntimeStore::update(tmp.path(), team_name, "team-lead", |record| {
+        record.health = HealthState::Healthy;
+        record.pane_id = Some("%lead".into());
+    })
+    .unwrap();
 
     let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
     record.health = HealthState::Healthy;
@@ -3681,6 +3686,11 @@ fn trigger_team_self_heal_cycles_stale_team_daemon_and_restarts_drifted_member_d
         .add_member(team_name, sample_member(member_name, CliTool::Codex))
         .expect("add should succeed");
     write_lead_credential(tmp.path(), team_name, "team-lead");
+    MemberRuntimeStore::update(tmp.path(), team_name, "team-lead", |record| {
+        record.health = HealthState::Healthy;
+        record.pane_id = Some("%lead".into());
+    })
+    .unwrap();
 
     let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
     record.health = HealthState::Healthy;
@@ -4608,6 +4618,52 @@ fn inbox_delivery_does_not_wake_a_foreign_cli_pane() {
 }
 
 #[test]
+fn team_daemon_ensures_live_lead_despite_claude_activity_flag() {
+    // Regression: e19ffad0, L1 run 3: Claude's activity flag blocked live lead recovery.
+    let _guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().unwrap();
+    let log_path = tmp.path().join("events.jsonl");
+    let sink = taurhaus_lib::logging::LogFileState::new(log_path.clone()).unwrap();
+    taurhaus_lib::logging::install_global_sink(&sink);
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team = "activity-flag";
+    orchestrator.create_team(team, None).unwrap();
+    let mut lead = sample_member("lead", CliTool::Claude);
+    lead.role = MemberRole::Lead;
+    lead.project_path = tmp.path().to_path_buf();
+    orchestrator.add_member(team, lead).unwrap();
+    write_lead_credential(tmp.path(), team, "lead");
+    let path = tmp.path().join(team).join("config.json");
+    let mut config: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    config["messaging_format"] = serde_json::json!(2);
+    config["members"][0]["isActive"] = serde_json::json!(false);
+    config["members"][0]["lastActivityAt"] = serde_json::json!("2026-09-10T12:43:56.975Z");
+    config["members"][0]["lastActivityReason"] = serde_json::json!("message_sent");
+    std::fs::write(path, config.to_string()).unwrap();
+    MemberRuntimeStore::update(tmp.path(), team, "lead", |record| {
+        record.health = HealthState::Healthy;
+        record.session_id = Some("live-lead-session".into());
+        record.pane_id = Some("%1".into());
+    })
+    .unwrap();
+    runtime.set_pane_current_command("%1", Some("claude"));
+    assert!(orchestrator.ensure_team_daemon_running_best_effort(team));
+    assert_eq!(
+        orchestrator.ensure_team_daemon_for_wrapper(team).unwrap(),
+        (true, None)
+    );
+    assert!(runtime
+        .calls()
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnTeamDaemon { .. })));
+    sink.flush_for_test().unwrap();
+    assert!(!std::fs::read_to_string(log_path)
+        .unwrap()
+        .contains("coordination.team_daemon.skipped"));
+}
+
+#[test]
 fn team_daemon_is_skipped_without_the_lead_control_credential() {
     // Regression: commit 76c284e skipped mesh join for Claude leads, while the
     // liveness loop kept attempting an unauthenticated team-daemon start.
@@ -4718,6 +4774,10 @@ fn missing_team_daemon_credential_emits_one_reason_event_per_team() {
         r#"{"name":"team-lead","token":"test-token"}"#,
     )
     .expect("credential file");
+    MemberRuntimeStore::update(tmp.path(), team_name, "team-lead", |record| {
+        record.health = HealthState::Healthy;
+    })
+    .unwrap();
     orchestrator
         .ensure_team_daemon_for_wrapper(team_name)
         .expect("authenticated transition");
@@ -5551,6 +5611,11 @@ fn add_agent_to_team_full_success() {
     let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
     let team_name = "architecture-final-hot-add";
     create_running_team(&mut orchestrator, team_name);
+    MemberRuntimeStore::update(tmp.path(), team_name, "team-lead", |record| {
+        record.health = HealthState::Healthy;
+        record.pane_id = Some("%lead".into());
+    })
+    .unwrap();
     let request = add_agent_request(team_name, "new-agent", "codex");
 
     let report = orchestrator
