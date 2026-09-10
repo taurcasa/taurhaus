@@ -2970,3 +2970,12 @@ Exactly one user exposure and one reply for `juniperde8d19`.
 Evidence: `integration/attempt13/run/step3-active-start.json`, `step3-pending.json`,
 `step3-receipts.json`, `step3-exposure.json`, and `step3-final-pane-2.txt`.
 
+### Step 4 — PASS (S-runtime)
+
+Typed operator input interleaved with the pending socket send. Both reached the
+thread exactly once; the typed reply preceded the socket reply. Passive sampling
+retained 64 lock transitions/samples, including 39 with holders, with PID/start
+identities and `/proc` flock/fdinfo records. No process was paused or signaled.
+Evidence: `integration/attempt13/run/step4-markers.json`, `step4-pending.json`,
+`step4-exposure.json`, `step4-locks.jsonl`, `step4-receipts.json`, and final panes.
+
