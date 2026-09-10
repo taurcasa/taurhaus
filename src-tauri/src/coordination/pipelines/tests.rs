@@ -9603,7 +9603,7 @@ fn initialize_owner_race_guard_lifecycle_and_interleaved_self_heal() {
         install_global_sink(&sink);
         let guard = tmp
             .path()
-            .join("canonical/.taurhaus/initialize-in-progress");
+            .join(".taurhaus-initialize-pending/canonical.guard");
         let mut request = canonical_review_request(&tmp);
         if !canonical {
             request.messaging = None;
@@ -9660,12 +9660,16 @@ fn initialize_owner_race_guard_lifecycle_and_interleaved_self_heal() {
     }
 }
 
-// Regression: 06d1267b, attempt 10 / L4 run 3: a live pre-onboarding owner refused opt-in.
+// Regression: 77616a34 rejected idle owner health records from attempt 10 / L4 run 3.
 #[test]
 fn initialize_owner_race_resets_only_a_validated_idle_owner() {
     let _lock = taurhaus_lib::test_support::acquire_global_log_test_guard();
     for case in [
         "empty",
+        "health_pending",
+        "health_completed",
+        "health_error",
+        "health_corrupt",
         "pending",
         "corrupt",
         "history",
@@ -9699,6 +9703,23 @@ fn initialize_owner_race_resets_only_a_validated_idle_owner() {
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, bytes).unwrap();
         }
+        let mut health = serde_json::json!({
+            "member": "lead", "root": tmp.path(), "incarnation": "attempt-10",
+            "epoch": 1, "heartbeat": "2026-09-10T12:39:02.352Z",
+            "pending_since": null, "completed": 0, "failures": 0, "error": null
+        });
+        match case {
+            "health_pending" => health["pending_since"] = "2026-09-10T12:39:00Z".into(),
+            "health_completed" => health["completed"] = 1.into(),
+            "health_error" => health["error"] = "delivery failed".into(),
+            "health_corrupt" => health = serde_json::json!({}),
+            _ => {}
+        }
+        fs::write(
+            tmp.path().join("race/state/delivery/health-lead.json"),
+            health.to_string(),
+        )
+        .unwrap();
         let log = tmp.path().join("reset.jsonl");
         let sink = LogFileState::new(log.clone()).unwrap();
         install_global_sink(&sink);
@@ -9727,5 +9748,39 @@ fn initialize_owner_race_resets_only_a_validated_idle_owner() {
             records.contains("coordination.opt_in.owner_reset"),
             recovered
         );
+    }
+}
+
+// Regression: c9e18117 made best-effort ensure and guard cleanup fatal after opt-in
+// while fixing attempt 10 / L4 run 3; neither should misreport a successful opt-in.
+#[test]
+fn initialize_owner_race_success_tolerates_guard_cleanup_and_owner_skip() {
+    for case in ["missing_guard", "unremovable_guard", "owner_skip"] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orch = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+        let request = canonical_review_request(&tmp);
+        let guard = crate::coordination::initialize_guard::path(tmp.path(), "canonical");
+        let mut observe = |step: &str, status: StepStatus, _: Option<String>| {
+            if case == "owner_skip" && step == "opt_in_delivery" && status == StepStatus::Running {
+                fs::remove_file(tmp.path().join("canonical/state/control_auth/lead.json")).unwrap();
+            }
+            if case != "owner_skip" && step == "send_onboarding" && status == StepStatus::Succeeded
+            {
+                fs::remove_file(&guard).unwrap();
+                if case == "unremovable_guard" {
+                    fs::create_dir(&guard).unwrap();
+                }
+            }
+        };
+        let report = orch
+            .initialize_team_with_cli_commands_and_layout_and_progress(
+                &request,
+                &CliCommandSettings::default(),
+                "new_window",
+                Some(&mut observe),
+            )
+            .expect("successful onboarding must return a report");
+        assert!(report.failed_step.is_none(), "{case}: {report:?}");
     }
 }

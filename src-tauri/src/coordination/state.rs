@@ -94,6 +94,7 @@ pub struct CoordinationState {
     #[cfg(target_os = "linux")]
     pub(crate) hosted: Arc<crate::coordination::hosted::HostedMembers>,
     running_teams: Arc<Mutex<HashMap<String, String>>>,
+    team_admission: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     teams_dir: PathBuf,
     team_root_registry: TeamRootRegistry,
     app_started_at: DateTime<Utc>,
@@ -184,6 +185,7 @@ impl CoordinationState {
     ) -> Self {
         Self {
             running_teams: Arc::new(Mutex::new(HashMap::new())),
+            team_admission: Mutex::new(HashMap::new()),
             team_root_registry: TeamRootRegistry::new(teams_dir.clone()),
             teams_dir,
             app_started_at,
@@ -198,7 +200,34 @@ impl CoordinationState {
         }
     }
 
+    fn team_admission(&self, team: &str) -> Arc<Mutex<()>> {
+        self.team_admission
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(team.into())
+            .or_default()
+            .clone()
+    }
+
+    fn background_skip_reason(&self, root: &Path, team: &str) -> Option<&'static str> {
+        let registered = self
+            .running_teams
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .any(|name| name == team);
+        if registered {
+            Some("registered_run")
+        } else if crate::coordination::initialize_guard::active(root, team) {
+            Some("initialize_guard")
+        } else {
+            None
+        }
+    }
+
     pub(crate) fn register_team_run(&self, id: &str, team: &str) -> TeamRunGuard {
+        let admission = self.team_admission(team);
+        let _admitted = admission.lock().unwrap_or_else(|e| e.into_inner());
         self.running_teams
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -425,15 +454,18 @@ impl CoordinationState {
             let mut orchestrator = self.build_background_orchestrator_for_root(&teams_dir)?;
             for team_name in teams_by_root.remove(&teams_dir).unwrap_or_default() {
                 summary.teams_scanned += 1;
-                // Hold admission through this team: a new run cannot interleave a spawn.
-                let running = self.running_teams.lock().unwrap_or_else(|e| e.into_inner());
-                if running.values().any(|team| team == &team_name)
-                    || crate::coordination::initialize_guard::active(&teams_dir, &team_name)
-                {
+                // Serialize only this team's admission; never hold the global run map over IO.
+                let admission = self.team_admission(&team_name);
+                let Ok(_admitted) = admission.try_lock() else {
+                    summary.teams_skipped += 1;
+                    continue;
+                };
+                if let Some(reason) = self.background_skip_reason(&teams_dir, &team_name) {
                     summary.teams_skipped += 1;
                     crate::coordination::initialize_guard::event(
                         "self_heal.team.skipped_initializing",
                         &team_name,
+                        reason,
                     );
                     continue;
                 }
@@ -478,10 +510,11 @@ impl CoordinationState {
                 let mut root_summary = BackgroundEffortRetryPassResult::default();
                 for team_name in team_names {
                     root_summary.teams_scanned += 1;
-                    let running = self.running_teams.lock().unwrap_or_else(|e| e.into_inner());
-                    if running.values().any(|team| team == &team_name)
-                        || crate::coordination::initialize_guard::active(&root, &team_name)
-                    {
+                    let admission = self.team_admission(&team_name);
+                    let Ok(_admitted) = admission.try_lock() else {
+                        continue;
+                    };
+                    if self.background_skip_reason(&root, &team_name).is_some() {
                         continue;
                     }
                     // The task event remains the earliest trigger, while this bounded
@@ -1084,6 +1117,7 @@ mod tests {
     struct FlakyTeamDaemonRuntime {
         inner: RecordingCoordinationRuntime,
         fail_spawn_team_daemon_count: AtomicUsize,
+        registration_probe: Mutex<Option<std::sync::Weak<CoordinationState>>>,
     }
 
     impl FlakyTeamDaemonRuntime {
@@ -1091,6 +1125,7 @@ mod tests {
             Self {
                 inner: RecordingCoordinationRuntime::default(),
                 fail_spawn_team_daemon_count: AtomicUsize::new(failures),
+                registration_probe: Mutex::new(None),
             }
         }
 
@@ -1248,6 +1283,20 @@ mod tests {
             &self,
             team_name: &str,
         ) -> Result<bool, CoordinationError> {
+            if let Some(state) = self
+                .registration_probe
+                .lock()
+                .unwrap()
+                .as_ref()
+                .and_then(|s| s.upgrade())
+            {
+                assert!(
+                    state.running_teams.try_lock().is_ok(),
+                    "background runtime work blocks run registration/completion"
+                );
+                let run = state.register_team_run("unrelated", "other-team");
+                drop(run);
+            }
             self.inner.team_daemon_uses_current_binary(team_name)
         }
 
@@ -1263,6 +1312,29 @@ mod tests {
         fn stop_team_daemon(&self, team_name: &str) -> Result<(), CoordinationError> {
             self.inner.stop_team_daemon(team_name)
         }
+    }
+
+    // Regression: 77616a34 fixed attempt 10 / L4 run 3 by holding the global run
+    // map across runtime probes, blocking unrelated RPC admission and completion.
+    #[test]
+    fn initialize_owner_race_background_runtime_does_not_lock_run_registry() {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(FlakyTeamDaemonRuntime::default());
+        let state = Arc::new(CoordinationState::with_components_and_runtime(
+            tmp.path().into(),
+            BackendSelector::m0(),
+            Arc::new(|_, _| Ok(Arc::new(FakeBackend::default()))),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        ));
+        state
+            .with_orchestrator(|orch| orch.create_team("race", None))
+            .unwrap();
+        *runtime.registration_probe.lock().unwrap() = Some(Arc::downgrade(&state));
+        state.run_background_self_heal_core_pass().unwrap();
+        *runtime.registration_probe.lock().unwrap() = None;
     }
 
     #[test]
@@ -2000,7 +2072,14 @@ mod tests {
             .run_background_effort_retry_pass_with_launch_resolution(
                 &mut CliCommandSettings::default(),
                 DEFAULT_TMUX_LAYOUT,
-                &mut |_, _, _| {},
+                &mut |_, _, _| {
+                    // Regression: 77616a34 (attempt 10 / L4 run 3) held admission during effort work.
+                    assert!(
+                        state.running_teams.try_lock().is_ok(),
+                        "effort work blocks run registration"
+                    );
+                    drop(state.register_team_run("unrelated", "other-team"));
+                },
             )
             .expect("background pass succeeds");
 

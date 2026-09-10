@@ -91,28 +91,38 @@ pub(crate) fn opt_in_with_owner_reset(
 fn unused_delivery_store(store: &Path) -> std::io::Result<bool> {
     use std::io::Read;
     for (index, entry) in std::fs::read_dir(store)?.enumerate() {
-        let path = entry?.path();
         if index >= 4096 {
             return Ok(false);
         }
+        let path = entry?.path();
         if path.extension().is_none_or(|ext| ext != "json")
             || path.file_name().is_some_and(|n| n == "epoch.json")
         {
             continue;
         }
-        // Mesh's pending-<recipient hash>.json list is conservative: even resolved
-        // entries refuse reset. Every other JSON (including attempt history) refuses.
-        if !path
-            .file_name()
-            .is_some_and(|n| n.to_string_lossy().starts_with("pending-"))
-        {
+        // Empty pending lists and idle scheduler health are not obligations.
+        // Handoff, rollback, attempt history and unknown JSON remain fail-closed.
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        let health = name.starts_with("health-");
+        if !health && !name.starts_with("pending-") {
             return Ok(false);
         }
         let mut bytes = Vec::new();
         std::fs::File::open(path)?
             .take(256 * 1024 + 1)
             .read_to_end(&mut bytes)?;
-        if serde_json::from_slice::<serde_json::Value>(&bytes).ok() != Some(serde_json::json!([])) {
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            return Ok(false);
+        };
+        let idle = if health {
+            value.get("pending_since") == Some(&serde_json::Value::Null)
+                && value.get("error") == Some(&serde_json::Value::Null)
+                && value.get("completed").and_then(|v| v.as_u64()) == Some(0)
+                && value.get("failures").and_then(|v| v.as_u64()) == Some(0)
+        } else {
+            value == serde_json::json!([])
+        };
+        if !idle {
             return Ok(false);
         }
     }
