@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt8_test.py", line 5, in <module>
+    from attempt8_passive import sample, complete_rows
+ImportError: cannot import name 'complete_rows' from 'attempt8_passive' (/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt8_passive.py)

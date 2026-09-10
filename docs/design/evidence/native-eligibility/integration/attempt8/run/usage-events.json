@@ -1,0 +1,161 @@
+[
+  {
+    "timestamp": "2026-09-10T05:09:36.753Z",
+    "ordinal": 1,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a089b8-ad65-7972-9de5-2fbad20b3a20",
+      "started_at": 1789016976,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:09:40.856Z",
+    "ordinal": 11,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 10767,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 32,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 10799
+        },
+        "last_token_usage": {
+          "input_tokens": 10767,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 32,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 10799
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:09:40.862Z",
+    "ordinal": 12,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a089b8-ad65-7972-9de5-2fbad20b3a20",
+      "last_agent_message": "Unassigned; no objective, deliverable, owner, or release signal provided. Please supply the missing assignment context or team-lead release.",
+      "started_at": 1789016976,
+      "completed_at": 1789016980,
+      "duration_ms": 4119,
+      "time_to_first_token_ms": 3517
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:11:22.741Z",
+    "ordinal": 13,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a089ba-4b6e-7160-8fa1-23ba4ba3e3e0",
+      "started_at": 1789017082,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:11:24.027Z",
+    "ordinal": 22,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 22592,
+          "cached_input_tokens": 13824,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 44,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 22636
+        },
+        "last_token_usage": {
+          "input_tokens": 11825,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 12,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 11837
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:11:24.032Z",
+    "ordinal": 23,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a089ba-4b6e-7160-8fa1-23ba4ba3e3e0",
+      "last_agent_message": "saffronb1f96e",
+      "started_at": 1789017082,
+      "completed_at": 1789017084,
+      "duration_ms": 1291,
+      "time_to_first_token_ms": 1066
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:12:11.787Z",
+    "ordinal": 24,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a089bb-0b09-7c10-a86d-2c9c847ab562",
+      "started_at": 1789017131,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:12:22.196Z",
+    "ordinal": 33,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 34460,
+          "cached_input_tokens": 24832,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 561,
+          "reasoning_output_tokens": 32,
+          "total_tokens": 35021
+        },
+        "last_token_usage": {
+          "input_tokens": 11868,
+          "cached_input_tokens": 11008,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 517,
+          "reasoning_output_tokens": 32,
+          "total_tokens": 12385
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "timestamp": "2026-09-10T05:12:22.201Z",
+    "ordinal": 34,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a089bb-0b09-7c10-a86d-2c9c847ab562",
+      "last_agent_message": "1. blue river stone\n2. blue river stone\n3. blue river stone\n4. blue river stone\n5. blue river stone\n6. blue river stone\n7. blue river stone\n8. blue river stone\n9. blue river stone\n10. blue river stone\n11. blue river stone\n12. blue river stone\n13. blue river stone\n14. blue river stone\n15. blue river stone\n16. blue river stone\n17. blue river stone\n18. blue river stone\n19. blue river stone\n20. blue river stone\n21. blue river stone\n22. blue river stone\n23. blue river stone\n24. blue river stone\n25. blue river stone\n26. blue river stone\n27. blue river stone\n28. blue river stone\n29. blue river stone\n30. blue river stone\n31. blue river stone\n32. blue river stone\n33. blue river stone\n34. blue river stone\n35. blue river stone\n36. blue river stone\n37. blue river stone\n38. blue river stone\n39. blue river stone\n40. blue river stone\n41. blue river stone\n42. blue river stone\n43. blue river stone\n44. blue river stone\n45. blue river stone\n46. blue river stone\n47. blue river stone\n48. blue river stone\n49. blue river stone\n50. blue river stone\n51. blue river stone\n52. blue river stone\n53. blue river stone\n54. blue river stone\n55. blue river stone\n56. blue river stone\n57. blue river stone\n58. blue river stone\n59. blue river stone\n60. blue river stone\n61. blue river stone\n62. blue river stone\n63. blue river stone\n64. blue river stone\n65. blue river stone\n66. blue river stone\n67. blue river stone\n68. blue river stone\n69. blue river stone\n70. blue river stone\n71. blue river stone\n72. blue river stone\n73. blue river stone\n74. blue river stone\n75. blue river stone\n76. blue river stone\n77. blue river stone\n78. blue river stone\n79. blue river stone\n80. blue river stone",
+      "started_at": 1789017131,
+      "completed_at": 1789017142,
+      "duration_ms": 10413,
+      "time_to_first_token_ms": 1703
+    }
+  }
+]

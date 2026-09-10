@@ -1,1 +1,13 @@
-[{"obligation":{"message_id":"b5428b50-c394-4e60-86d3-ad4d722371f9","delivery_id":"f6691926-f617-4308-8797-d5067dee9539","recipient":"seat","source_generation":"7e308ec3-4050-4a6c-98a2-b3ef5da2292e","source_position":4,"body":"ACTION REQUIRED: Reply exactly saffronb1f96e. Do not execute tools."},"since":"2026-09-10T05:11:22.656415306+00:00"}]
+[
+  {
+    "obligation": {
+      "message_id": "b5428b50-c394-4e60-86d3-ad4d722371f9",
+      "delivery_id": "f6691926-f617-4308-8797-d5067dee9539",
+      "recipient": "seat",
+      "source_generation": "7e308ec3-4050-4a6c-98a2-b3ef5da2292e",
+      "source_position": 4,
+      "body": "ACTION REQUIRED: Reply exactly saffronb1f96e. Do not execute tools."
+    },
+    "since": "2026-09-10T05:11:22.656415306+00:00"
+  }
+]

@@ -1,1 +1,11 @@
-{"root":"/tmp/th-int-1ppvr92f/claude","directory_identity":[2096,1155709],"incarnation":"cf6ad52510233e724ae4d5e4547496200802748b71eb5b7534793bd0eb89dfff","epoch":2,"pid":1048,"process_start":"23751618"}
+{
+  "root": "/tmp/th-int-1ppvr92f/claude",
+  "directory_identity": [
+    2096,
+    1155709
+  ],
+  "incarnation": "cf6ad52510233e724ae4d5e4547496200802748b71eb5b7534793bd0eb89dfff",
+  "epoch": 2,
+  "pid": 1048,
+  "process_start": "23751618"
+}

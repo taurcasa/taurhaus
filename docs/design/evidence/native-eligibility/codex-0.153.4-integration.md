@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — IN PROGRESS (attempt 8)
+# Codex 0.153.4 integration — FAIL step 3 (attempt 8; controller artifact)
 
 2026-09-09. **Eligibility remains disabled.** The prescribed canonical setup
 stopped before member launch: the real Mesh command `team delivery --owner team`
@@ -1618,33 +1618,149 @@ is about **372 KB**, excluding controller scripts. Latest verdict remains
 **FAIL step 4**, with steps 5–7 unrun and eligibility disabled.
 
 
-## Attempt 8 — in progress, 2026-09-10
+## Attempt 8 — FAIL step 3 acceptance; product result INCONCLUSIVE, 2026-09-10
 
-Fresh 16-turn / $3 budget, including every setup generation. No product change.
-Pair: Taurhaus `47b7b8c2` (hosted merge `6f61f611`, protocol 27), Mesh
-`a6ee296`; both checkout-local builds passed after Cargo exclusion. The temporary
-0.153.4 descriptor pins the three published class identities and unix-websocket.
+**Latest verdict: FAIL at step 3's premature controller assertion.** Steps 1–2
+passed. The controller checked for `pending: thread_active` only 0.91 seconds
+after sending the active-turn marker, while Mesh reported `delivery mirror busy`,
+and stopped immediately. This does **not** establish a native active-thread
+product defect. No host JSON-RPC rejection occurred. Steps 4–7 were not run;
+there was no process-pause probe or other fault injection. The descriptor remains
+disabled. No Mesh flip/fix commit, no Taurhaus product changes, and no new registry
+entry: the existing registry successfully launched the hosted seat.
 
-| Step | Outcome | Evidence under integration/attempt8/run |
+Pair: Taurhaus `47b7b8c2`, including hosted merge `6f61f611` / protocol 27;
+Mesh `feat/native-push` `a6ee296`. Both checkout-local builds exited **0** after
+`pgrep -af '(^|/)cargo( |$)'` returned 1 (no competing Cargo). Only the scratch
+binary enabled 0.153.4 as `trial`, matching `taurhaus-daemon-owned-thread/1`,
+`strict-config/1`, `daemon-owned/1`, transport `unix-websocket`. The authorized
+Mesh worktree descriptor edit was reverted after both teardowns.
+
+### Ordered outcomes (S: observed runtime)
+
+Paths below are beneath [attempt8/run](integration/attempt8/run/). Byte-identical
+snapshots are mapped by [duplicate-aliases.json](integration/attempt8/duplicate-aliases.json).
+
+| Step | Outcome | Runtime evidence |
 |---|---|---|
-| 1. Hosted launch/startup | PASS | initialize-result.json; step1-runtime.json; step1-identities.json; generated-config-0.toml; step-1-pane-2.txt; host-events.jsonl |
-| 2. Idle delivery/read | PASS | step2-after-status.txt: app_server from config; step2-pane-2.txt: saffronb1f96e input/reply; step2-receipts.json: turn/start native_enqueued; step2-journal-before-read.json and -after-read.json: consumed_by_read only after explicit read |
-| 3. Active deferral | Pending | |
-| 4. Typed input/passive lock sampling | Pending | |
-| 5. Compaction | Pending | |
-| 6. Normal daemon restart | Pending | |
-| 7. Operational rollback | Pending | |
+| 1. Hosted launch/startup | **PASS** | `initialize-result.json`: production canonical initialize, all seats launched, opt-in completed. `step1-runtime.json`, `step1-identities.json`, `generated-config-0.toml`, `step-1-pane-2.txt`: app-server child on Unix socket, attached strict-config TUI, terminalContract 1, scratch AGENTS.md instruction source, startup recovery card/reply. |
+| 2. Idle native delivery/read | **PASS** | `step2-after-status.txt`: seat mode=app_server source=config. `step2-pane-2.txt`: saffronb1f96e input/reply. `step2-receipts.json`: native_enqueued via turn/start with thread/turn IDs. `step2-journal-before-read.json` has no consumed_by_read; `step2-journal-after-read.json` records it after explicit `mesh read --unread --mark-read`. |
+| 3. Active-thread deferral | **FAIL acceptance; product INCONCLUSIVE** | `step3-active-start.json`, `step3-active-pane-2.txt`: timing turn started. `step3-send.txt`: juniper17f73c accepted. `step3-active-status.txt`: delivery mirror busy. `step3-pending.json`: required thread_active receipt absent at the first snapshot. `step3-outcome.json` and `events.jsonl`: immediate assertion/stop. No deferred-marker exposure observed. |
+| 4. Operator input/passive lock evidence | **NOT RUN** | Stopped at step 3. The offline-tested passive sampler was never activated; no live holder claim. |
+| 5. Compaction | **NOT RUN** | Stopped at step 3. |
+| 6. Normal daemon restart | **NOT RUN** | Stopped at step 3. |
+| 7. Operational rollback | **NOT RUN** | No in-place refusal or remove/re-add result claimed. Final teardown is separately verified. |
 
-The first setup launched successfully and showed its startup card/reply, then the
-evidence collector parsed a concurrently appended partial JSONL row and exited.
-`attempt8/setup-collector-abort` retains that complete metered startup generation
-($0.00095444 API-equivalent; $0.0129816 conservative) and verified teardown. This
-was no failed product assertion. The collector now reads complete JSONL rows;
-an offline test observed red then green. Repeated setup is charged to this same
-attempt's budget. The controller reserves that turn and conservative spend.
+Continuing run thread: `01a089b8-ad39-7870-8d03-84bb4e729314`.
+Step-2 message `b5428b50-c394-4e60-86d3-ad4d722371f9`, delivery
+`f6691926-f617-4308-8797-d5067dee9539`; receipt evidence:
 
-The continuing setup passed all step-1 assertions. The production canonical
-initialize RPC launched the Claude login-only lead and one Luna/low hosted seat.
-Scratch AGENTS.md is in instructionSources; generated strict view config and the
-app-server child/attached TUI identities are retained. No observer connection.
-No Taurhaus registry entry is needed.
+```json
+{"class":"rpc_accepted_not_comprehension","expected_turn_id":null,"method":"turn/start","reconciliation_required":false,"request_id":"bd030d8a-5623-4d5d-9831-d778e73e4c0b","thread_id":"01a089b8-ad39-7870-8d03-84bb4e729314","turn_id":"01a089ba-4b6e-7160-8fa1-23ba4ba3e3e0"}
+```
+
+Step-3 message `af125f9f-72ba-4fb7-bc3d-d70ead896adb`, delivery
+`6c719232-3272-4f43-a067-641157debf66`, accepted at journal sequence 8.
+The active timing turn was `01a089bb-0b09-7c10-a86d-2c9c847ab562`.
+Controller action times (Unix seconds): hosted input **1789017131.745834**,
+Mesh send **1789017132.004219**, status **1789017132.318732**, capture
+**1789017132.688976**, fail **1789017132.911521**. Exact diagnostics:
+
+```text
+[mesh] delivery seat: ... failures=22 completed=1
+error=failed to acquire lock: delivery mirror busy deferred=none stale=false
+AssertionError: no active-thread deferral
+{"kind":"stopped","step":3,"error":"step 3: no active-thread deferral","type":"RuntimeError"}
+```
+
+`hosted.rpc.rejected` rows: **none**. Host error object: **none emitted**.
+The absent pending receipt triggered the harness assertion; it was not a rejected
+host call. The 80-line timing turn completed during read-only final metering.
+No marker delivery turn ran. Whether normal scheduler retries would have produced
+thread_active then delivered once idle remains untested in this attempt.
+
+### Isolation, collector deviation, and spend
+
+Both setups used a 0700 `/tmp` root, scratch HOME and all harness roots, only a
+copied auth.json plus generated config, no inherited TMUX, private TMUX_TMPDIR,
+private PID namespace with operator homes hidden, private probed daemon ports,
+and the candidate Mesh binary copied only into scratch `$HOME/.local/bin`.
+Production `coordination.initialize_team` carried the exact
+`DEFAULT_CANONICAL_POLICY`, a Claude login-only lead (zero model turns), and one
+Codex `gpt-5.6-luna` / low seat with `delivery: app_server` at creation. No observer
+connected to the member socket. Reads used the daemon's hosted_transcript RPC.
+
+The first setup, port **29926**, root `/tmp/th-int-6rz5c0xy`, successfully displayed
+its startup card and reply. Its collector parsed an in-flight partial JSONL row
+and exited before recording step 1 as complete. This non-product abort violated
+the requested collector discipline. The collector was corrected to read complete
+JSONL rows after an offline red/green test. Repeated setup used port **30008**,
+root `/tmp/th-int-1ppvr92f`, and charged the first launch to the **same** attempt-8
+budget (not a new budget). That earlier setup's original failure, host events,
+usage and cleanup remain in `attempt8/setup-collector-abort/`.
+
+[Combined ledger](integration/attempt8/cost-ledger.json): every started turn has
+real host tokenUsage.last counts, checked against retained rollout usage events.
+Rates are the packet's $0.20/$0.02/$1.20 per million input/cached/output tokens.
+USD values are API-equivalent estimates, not exposed subscription invoices.
+
+| Turn / generation | Turn ID | Input / cached / output | API-equivalent USD |
+|---|---|---|---|
+| First setup startup | `01a089b7-9f21-7ce3-9e85-5802747ef36b` | 10783 / 6912 / 35 | $0.00095444 |
+| Continuing setup startup | `01a089b8-ad65-7972-9de5-2fbad20b3a20` | 10767 / 6912 / 32 | $0.00094764 |
+| Idle marker | `01a089ba-4b6e-7160-8fa1-23ba4ba3e3e0` | 11825 / 6912 / 12 | $0.00113524 |
+| Active timing input | `01a089bb-0b09-7c10-a86d-2c9c847ab562` | 11868 / 11008 / 517 (32 reasoning) | $0.00101256 |
+
+**4/16 turns; $0.00404988 API-equivalent total; $0.0550068 conservative total**
+(all input/output charged at the highest packet rate). No unmetered started turn,
+no compaction, no typed steer, and no model turn for the undelivered step-3 marker.
+Both caps remain unexhausted. No further paid retry followed the step-3 assertion.
+
+### Exact reproduction and verification
+
+Controllers are retained evidence, not default gate executables:
+
+```sh
+TRIAL_EVIDENCE_LABEL=attempt8 python3 docs/design/evidence/native-eligibility/integration/attempt3-build.py
+python3 docs/design/evidence/native-eligibility/integration/attempt8_test.py
+python3 docs/design/evidence/native-eligibility/integration/attempt8-controller.py attempt8/run
+# After inspection_ready, in a separate shell, one step at a time:
+python3 docs/design/evidence/native-eligibility/integration/attempt8-steps.py 2
+python3 docs/design/evidence/native-eligibility/integration/attempt8-steps.py 3
+# Step 3 preserves the actual premature assertion, not a repaired replay.
+# After teardown:
+TRIAL_EVIDENCE_LABEL=attempt8 python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+python3 docs/design/evidence/native-eligibility/integration/attempt8-audit.py
+```
+
+The current controller preserves the corrected collector used for the continuing
+run. `events.jsonl` records every action and production RPC request/response;
+`attempt8-actions.py` sends those serialized actions. Deltas are dropped, pane
+captures capped at 60 lines, and byte-identical sidecars deduplicated with aliases.
+There is no evidence-size abort. The passive sampler reads only matching kernel
+FLOCK/fdinfo records; its fixture test passed after observed missing-module red.
+The collector's partial-row regression test also observed red then green. These
+are two offline tests; neither invokes a real CLI nor reads harness credentials.
+The retained step-3 driver still has the premature assertion so the failed
+acceptance run is reproducible, not silently rewritten as a passing controller.
+
+| Exact gate, from checkout root in credential-free isolated homes with inert harness/tmux shims | Exit |
+|---|---|
+| `just check-quick` | **0** |
+| `just lint` | **0** |
+| `just test-contracts` | **0** |
+| `just test-rust-unit` | Not required: no src-tauri diff |
+| Mesh `just check-quick`, `just lint`, `just test` | Not run: seven-step PASS/flip/fix condition not met |
+
+Gate metadata and bounded tails are under `attempt8/gates/`; all Cargo preflights
+returned 1 (no competing Cargo). No dependencies, product changes, installations,
+release actions, plan-ledger edits, or non-evidence inserted lines (**0/200**).
+No Opus evidence lens was run: this session exposes no Opus review model.
+
+[Final audit](integration/attempt8/final-audit.json) rechecks both setup runs by
+PID/start ticks: **no surviving daemon, host, TUI, Mesh owner or tmux server**;
+ports 29926/30008 closed; scratch roots and copied auth removed. Gate children
+were waited and their root removed. The exact authorized Mesh descriptor checkout
+exited 0; the Mesh working tree is clean. Retained sidecars are about **379 KB**,
+excluding scripts. The two collector/timing failures are explicit harness
+deviations, not evidence against native eligibility under ordinary scheduling.
