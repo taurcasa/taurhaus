@@ -10,7 +10,7 @@
   let unavailable = $state(false)
   let pending = $state('')
   const lines = $derived((transcript?.thread?.turns ?? []).flatMap(turn =>
-    (turn.items ?? []).flatMap(item => item.text ? [item.text] : (item.content ?? []).filter(c => c.type === 'text').map(c => c.text))))
+    (turn.items ?? []).flatMap(item => item.type === 'contextCompaction' ? ['Context compacted'] : item.text ? [item.text] : (item.content ?? []).filter(c => c.type === 'text').map(c => c.text))))
   const requests = $derived(transcript?.requests ?? [])
   const inactive = $derived(Boolean(transcript?.stopped || transcript?.orphanProcessId))
   const disabled = $derived(submitting || inactive || Boolean(transcript?.outcomeUnknown) || pending.startsWith('Recovery'))
