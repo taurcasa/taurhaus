@@ -173,7 +173,7 @@ cannot accept an incompatible persisted runtime record.
 
 Each change is a small PR with red-first regression tests naming the breaking commit, implemented by one model family and reviewed by the other (Opus ↔ Codex) through two lenses — conformance to the spec, and an operational checklist (upgrade of persisted data, protocol bumps on wire vocabulary, Windows/WSL paths, user-config edit discipline, concurrency, honest tests, hygiene) — with the fix → re-review loop repeated until no majors remain. Implementers commit after every green step and never edit the ledger; the orchestrator writes the spec (reviewed by the other family first when it edits user config or persisted formats), fills the ledger at merge, and merges only on the check's conclusion. Each new CLI starts with two independent research reports (`docs/design/research/`), verified live on a host that has it; the plans' facts tables cite them.
 
-## Owned Codex hosting (stage 5b, disabled pending pairing)
+## Owned Codex hosting (stage 5b, descriptor-gated)
 
 At creation, initialize and add-agent accept optional seat `delivery`: omitted
 or `"tmux"` keeps the existing pane path; `"app_server"` writes
@@ -182,6 +182,10 @@ Only Codex on the Linux/WSL daemon supports hosting. The builder and add-agent
 form show **Delivery** only when the backend tool descriptor reports
 `hostingSupported: true`; fallback descriptors never enable it. Protocol 27
 (unreleased) makes this choice binding alongside canonical team messaging. The existing launch/resume machinery resolves aliases, model, effort and explicit `CODEX_HOME`. The hosted render preserves account/permission/sandbox policy and refuses opaque wrappers, unsupported arguments and unnamed resume. Non-Linux opt-ins fail explicitly. The hosted member render suppresses the runtime-derived managed TUI hook-trust flag; explicit unsupported arguments in an operator base still refuse by name. Strict config continues to enforce model/effort/sandbox/approval.
+
+The builder defaults unchosen Codex seats to **app-server (native; TUI attached in tmux)** when canonical messaging is on, the tool advertises hosting, and the backend's `hostedDeliverySupported` IPC fact is true (normalized as `hosted_delivery_supported`). The initialize and add-agent payloads carry the resolved delivery explicitly. **tmux pane (fallback)** remains available; disabling canonical messaging or losing admissibility returns unchosen seats to tmux. Explicit operator choices are preserved, and the Claude lead is unchanged.
+
+The fact uses the installed Mesh contract, or the bundled contract when no readable install exists, and requires Mesh >= 0.3.0 plus an enabled matching Codex build from that binary's `mesh delivery capabilities` JSON `native_descriptors`. Host, configuration, trust and transport must match the daemon-owned attachment identities; unknown versions, failed queries and disabled descriptors fail closed. `mesh version --json` does not expose these descriptors. The inspected Mesh source still disables 0.153.4 pending pairing; it becomes a default only once the queried descriptor admits it. Mesh's `AppServer::new` remains the final admission authority. This is an additive app-local status field, not a daemon wire change; protocol 27 and initialize semantics are unchanged.
 
 Hosted roster seeding preserves the incarnation minted by team creation. Adding an app-server seat to an older team without an incarnation assigns one to that team: co-resident tmux seats use terminal contract 1 and versioned recovery keys on their next activation. A hosted add that fails before publishing its attachment rolls back the roster and Mesh join, allowing a same-name retry. Once an attachment is published, failures retain the recoverable seat and any uncertain input.
 
