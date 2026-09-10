@@ -7,15 +7,13 @@ def clean(value):
     if isinstance(value, dict):
         if value.get('method', '').startswith('account/'):
             return None
-        return {k: '<redacted>' if ('installation' in k.lower() or k.lower() in
-                ['accountid', 'account_id', 'auth', 'controlauthtokenhash',
-                 'accesstoken', 'refreshtoken', 'idtoken', 'access_token',
-                 'refresh_token', 'id_token']) else clean(v)
-                for k, v in value.items() if k not in ['rate_limits', 'rateLimits']}
+        return {k: '<redacted>' if any(s in k.lower() for s in
+                ['installation', 'accountid', 'auth', 'accesstoken', 'refreshtoken', 'idtoken'])
+                else clean(v) for k, v in value.items()}
     if isinstance(value, list):
         return [v for item in value if (v := clean(item)) is not None]
     if isinstance(value, str):
-        return re.sub(r'(?<![\w/-])/home/[^/\s"\']+/(?!projects/(?:taurhaus-trial|mesh-push)(?:/|\b))[^\s"\']*',
+        return re.sub(r'/home/[^/\s"\']+/(?!projects/(?:taurhaus-trial|mesh-push)(?:/|\b))[^\s"\']*',
                       '<operator-path-redacted>', value)
     return value
 

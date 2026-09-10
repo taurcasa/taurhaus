@@ -955,7 +955,7 @@ merged prerequisite, isolation, policy, zero spend, cleanup and artifact hygiene
 Attempt-4 text captures and logs trim trailing whitespace/empty lines; events.jsonl
 preserves the original pane capture string. No artifact contains auth contents.
 
-## Attempt 5 — step 1 PASS; remaining steps in progress (2026-09-10)
+## Attempt 5 — FAIL at step 2: missing native adapter selection (2026-09-10)
 
 Pair: Taurhaus `f2a7553b` (includes PR #159 / `6f61f611`, protocol 27),
 Mesh `dfa22bc`, Codex 0.153.4, gpt-5.6-luna / low. Both checkout-local builds
@@ -982,3 +982,181 @@ Controller: [attempt5-controller.py](integration/attempt5-controller.py), based
 on attempt 3. It never connects to an app-server socket; reads go through the
 daemon after successful initialization. Evidence helpers have three offline
 checks, observed red (missing helper module), then green. No product code changed.
+
+### Attempt 5 final outcomes
+
+**FAIL, stopped at step 2. Descriptor disabled; no Mesh commit.** Step 1 is a
+real production launch success, not an eligibility PASS. The idle Mesh message
+never reached the thread. No product change was made to Taurhaus or Mesh.
+No Taurhaus registry entry is needed: the existing launch path succeeded.
+The conditional Mesh named-refusal fix and descriptor flip were not performed.
+
+| Brief step | Outcome | S-runtime evidence |
+|---|---|---|
+| 1. Daemon host + strict attached TUI + startup card | **PASS** | [Frozen step-1 evidence](integration/attempt5/step1), runtime, strict config, completed startup transcript and pane. |
+| 2. Idle Mesh send, marker reply, native receipt, explicit-read semantics | **FAIL** | [Send acceptance](integration/attempt5/run/step2-send.txt), [scheduler diagnostic](integration/attempt5/run/step2-diagnostic.json), [idle transcript](integration/attempt5/run/step2-hosted-transcript.json), [pane](integration/attempt5/run/step2-pending-pane-2.txt). Accepted message stayed pending for approximately 84 seconds; no marker input/reply or seat receipt. |
+| 3. Active thread defers, then exactly one idle delivery | **NOT RUN** | Stop-on-failure rule at step 2. Binding behavior would be `pending: thread_active`, then `turn/start`, not steer. |
+| 4. Operator/socket ordering and reciprocal host-lock contention | **NOT RUN** | No operator input or contention experiment; no holder-file proof claimed. |
+| 5. Actual compaction and recovery card | **NOT RUN** | No compaction; identity/recovery at that boundary unverified. |
+| 6. Daemon restart and subsequent delivery | **NOT RUN** | No restart or identity-preservation claim. |
+| 7. In-place refusal and operational remove/re-add rollback | **NOT RUN** | No rollback attempted after step-2 failure. Teardown nevertheless completed and was verified. |
+
+### Exact failure boundary
+
+At `2026-09-10T03:08:20.836203067Z`, this command ran through a new window on
+the private tmux server, inside the daemon's PID namespace, using only the
+scratch `$HOME/.local/bin/mesh` candidate:
+
+```sh
+mesh send seat 'ACTION REQUIRED: Reply exactly cobalt90cc90082c. Do not execute tools.' --team integration --name lead --summary 'idle marker'
+```
+
+It exited **0** and returned:
+
+```json
+{"message_id":"6446e66f-2b6b-44a3-9614-bae46484550d","sequence":4,"status":"accepted","projection":"pending"}
+```
+
+Delivery ID: `3a4769cb-348e-46fd-83bf-ab89ccb3570e`.
+The [canonical journal](integration/attempt5/run/team/state/messaging-v2/segments/000001.jsonl)
+contains exactly one marker `message_accepted`, with
+`dispatch_decision: {expectation: "action", wake_eligible: true}`.
+No marker `delivery_attempt`, receipt or `consumed_by_read` followed. The
+journal's earlier `native_enqueued` row is **the Claude lead's native-mailbox
+startup projection**, not a Codex delivery. No explicit read was performed:
+that part of step 2 remains unverified because native delivery already failed.
+
+The live scheduler's heartbeat advanced through `03:09:44.717969379Z`, with:
+
+```json
+{"last_defer_reason":"IO error: delivery: pending: activity absent","failures":0,"completed":0}
+```
+
+The [runtime](integration/attempt5/run/team/runtime/seat.json) retains
+`appServer.state: "ready"`, the original thread, and
+`activitySnapshotPath: null`. The daemon transcript reports `status.type:
+"idle"` and only the startup turn. The [team config](integration/attempt5/run/team/config.json)
+retains `adapter_mode: "app_server"`; the directory inventory proves
+`state/delivery/adapter-seat.json` is **absent** while the app-server socket
+still exists. No `.native` attempt evidence exists.
+
+**Source explanation (I, supported by S runtime):** Mesh
+`src/delivery/hook/state.rs::selected_mode` loads its own
+`state/delivery/adapter-MEMBER.json`; an absent file returns `Selection::default`
+whose mode is `Tmux`. It does not read the config's `adapter_mode`.
+`src/delivery/runtime.rs::RuntimeFactory::resolve` therefore takes the tmux
+branch and calls `Record::idle`, which refuses the missing activity path before
+constructing the native adapter. Taurhaus's fresh hosted activation publishes
+its config/runtime identity but did not publish Mesh's selection file. This
+is a paired activation-seam failure, not proof that WebSocket delivery failed.
+No selection/runtime files were forged and no post-launch opt-in was attempted.
+
+There is **no `hosted.rpc.rejected` line or host error object for step 2**:
+this refusal occurs before a host input RPC. The exact Mesh refusal above is
+the available error evidence. The [daemon JSONL](integration/attempt5/run/taurhaus.log.jsonl)
+and [daemon transcript responses](integration/attempt5/run/events.jsonl)
+are retained; the final audit verifies the absence of host rejection events.
+
+### Cost and isolation ledger
+
+| Input / boundary | Model turns / generations | Metered usage and spend |
+|---|---|---|
+| Startup card, step 1 | 1 / 1 | Turn `01a08948-22b4-7a73-afe8-d42785e3b31a`; 10,787 input, including 6,912 cached; 32 output, 0 reasoning. **$0.00095164 API-equivalent**; **$0.01298280 conservative**. |
+| Marker, step 2 | 0 / 0 | Never reached host; **$0.00 additional**. |
+| Steps 3–7, including compaction/restart/rollback | 0 / 0 | Not run; **$0.00 additional**. |
+| Claude lead | 0 / 0 | Credential-free setup screen; **$0.00**. |
+| Total vs caps | **1 / 8 turns**, one generation, zero compactions | **$0.00095164 API-equivalent**, conservative **$0.01298280 / $3.00**. Actual billed dollars are not exposed. |
+
+[Cost ledger](integration/attempt5/run/cost-ledger.json) and
+[host tokenUsage events](integration/attempt5/run/host-events.jsonl) agree with
+[rollout usage](integration/attempt5/run/usage-events.json). The controller
+polled the daemon's bounded event buffer; repeated snapshots are retained and
+must not be counted as additional turns/generations. The helper deduplicates
+identical usage events by thread/turn/cumulative usage. No unmetered turn exists.
+No observer client connected, before or after startup. Daemon `hosted_transcript`
+was the only host-state read path, so first-client identity was never contested.
+
+The private root `/tmp/th-int-3r8tuw4q` was mode 0700; HOME, all harness/data roots,
+TMUX_TMPDIR and generated configs were inside it. Only `auth.json` was copied
+into initial CODEX_HOME; its contents were never printed or retained. Private
+port **25925**, never 17233. Bubblewrap hid operator homes, `/tmp` and `/run`,
+with one writable scratch bind and a private PID namespace. The namespace
+held the daemon, real Claude/Codex executables, private tmux server, attached
+TUI, and team delivery owner. No model tool execution occurred.
+
+[Cleanup](integration/attempt5/run/cleanup.json),
+[eleven PID/start-tick identities](integration/attempt5/run/identities.json), and
+[final audit](integration/attempt5/final-audit.json) prove all recorded processes
+absent, port closed, socket/root absent and the scratch credential copy destroyed.
+The controller's finally block terminated/waited only its children/process groups;
+namespace teardown removed their descendants. No operator process was killed.
+`git -C /home/mstie/projects/mesh-push checkout -- src/delivery/app_server/capabilities.rs`
+exited **0**, and the Mesh worktree is clean. Its built scratch candidate is not
+installed into the operator's bin directory; source eligibility remains disabled.
+
+### Reproduction, gates, and deviations
+
+Executed from `/home/mstie/projects/taurhaus-trial`, without a branch switch:
+
+```sh
+TRIAL_EVIDENCE_LABEL=attempt5 python3 docs/design/evidence/native-eligibility/integration/attempt3-build.py
+python3 docs/design/evidence/native-eligibility/integration/attempt5-controller.py attempt5/run
+TRIAL_EVIDENCE_LABEL=attempt5 python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+python3 docs/design/evidence/native-eligibility/integration/attempt5_test.py
+python3 docs/design/evidence/native-eligibility/integration/attempt5-audit.py
+```
+
+[Execution metadata](integration/attempt5/execution.json) records build exits 0,
+runtime exit **1** (the deliberate failed-step stop), gate-controller exit 0,
+and helper/audit exits 0. For a newly authorized reproduction, choose a fresh
+output label. Once `inspection_ready` and idle startup completion are observed,
+submit the [recorded actions](integration/attempt5/actions.json) one at a time
+as `action.json` in that run directory, waiting for `action_done`. These are
+all executed actions, including the final failure stop; they are not a claimed
+implementation of unrun steps 3–7. The short AGENTS.md, request, exact child argv,
+private tmux bootstrap and cleanup are in the executed controller. The step-1
+strict-config capture was a read of the published socket's sibling
+`tui/config.toml`, recorded in `step1/config-capture.json`.
+
+| Gate (checkout root; private credential-free home, inert CLI/tmux shims) | Exit |
+|---|---|
+| `just check-quick` | **0**; 150 frontend files, 2,495 tests; Rust tests compiled |
+| `just lint` | **0** |
+| `just test-contracts` | **0** |
+| `just test-rust-unit` | Not required: no `src-tauri/` diff |
+| Mesh `just check-quick`, `just lint`, `just test` | Not run: conditional passing descriptor flip was not reached |
+
+[Gate logs](integration/attempt5/gates) retain exact commands and Cargo preflight
+exit **1** (no competing Cargo) before each recipe. All gate scratch roots were
+removed. Four offline evidence-helper tests pass; the final audit checks 48
+facts. Initial red was missing helper import; an additional real red caught an
+over-broad evidence sanitizer before its correction. No product regression fix
+or associated product test was commissioned after the runtime failure.
+
+Deviations/limits:
+
+- The marker command emitted a warning about missing formal assignment fields,
+  but accepted it as an actionable, wake-eligible message; this was a bounded
+  echo probe, not a task assignment. The scheduler diagnostic predates the send
+  and identifies the earlier adapter-selection/runtime boundary.
+- The executed sanitizer also redacted `author`, authority revision, and some
+  scratch executable path suffixes because it matched `auth` and `/home` too
+  broadly. These placeholders remain honest gaps; journal checksums describe
+  pre-redaction rows, not byte-identical exports. Sender is still retained in
+  the envelope, root revision in the card text, and full executable construction
+  in the controller. No redacted observation was guessed back into existence.
+  The [executed helper](integration/attempt5/support-executed.py) is archived;
+  the current helper fixes only export filtering. A red regression test naming
+  `d3b95226` preceded that correction. Final export additionally removes rollout
+  account rate-limit metadata; no credentials, installation IDs or account
+  usage rows are retained.
+- No Opus evidence lens was available among the callable models/tools. The
+  independent Opus review remains outstanding; the report claims only the
+  runtime results and offline audit, not cross-family approval.
+- One commit records green step 1; a second records failed step 2, final audit,
+  gates and teardown. Steps 3–7 have no commits because they were not executed.
+  Non-evidence product diff: **0 lines**, no dependencies, release, installation,
+  plan-ledger changes, or Taurhaus registry change.
+
+Attempt-5 text logs and pane exports trim trailing whitespace/empty lines;
+JSONL retains the repeated daemon event snapshots, with documented redactions.

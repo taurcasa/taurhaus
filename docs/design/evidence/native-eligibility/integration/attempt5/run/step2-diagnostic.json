@@ -1,0 +1,29 @@
+{
+  "at": 1789009785.0092907,
+  "adapter_selection_path": "/tmp/th-int-3r8tuw4q/claude/teams/integration/state/delivery/adapter-seat.json",
+  "adapter_selection_exists": false,
+  "delivery_directory_entries": [
+    "4e880355947df13347745b4b1f9e3f676c439ce3de856e3478658e6d4769c992.json",
+    "epoch.json",
+    "handoff.lock",
+    "health-lead.json",
+    "health-seat.json",
+    "hook.sock",
+    "owner.lock",
+    "pending-e3456bc1f4d270f4a97933758645fdc21e39642b31ca343c1818f7972ac27906.json"
+  ],
+  "runtime_activity_snapshot_path": null,
+  "health": {
+    "member": "seat",
+    "root": "/tmp/th-int-3r8tuw4q/claude",
+    "incarnation": "f8005b884a038039db4e53198e58e3952cc9860faeb6032b9d40656f744e2b63",
+    "epoch": 2,
+    "heartbeat": "2026-09-10T03:09:44.717969379+00:00",
+    "pending_since": null,
+    "error": null,
+    "last_defer_reason": "IO error: delivery: pending: activity absent",
+    "failures": 0,
+    "completed": 0
+  },
+  "app_server_socket_exists": true
+}

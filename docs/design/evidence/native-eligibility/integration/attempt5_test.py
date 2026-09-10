@@ -4,6 +4,17 @@ from attempt5_support import clean, ledger
 
 
 class EvidenceChecks(unittest.TestCase):
+    # Regression: d3b95226 over-redacted scratch /home segments and authority
+    # metadata, while retaining rollout account rate-limit rows.
+    def test_preserve_scratch_authority_and_remove_account_metadata(self):
+        result = clean({'path': '/tmp/trial/home/.local/bin/mesh',
+                        'rootAuthorityRevision': '0', 'auth_removed': True,
+                        'rate_limits': {'account': 'private'}})
+        self.assertEqual(result['path'], '/tmp/trial/home/.local/bin/mesh')
+        self.assertEqual(result['rootAuthorityRevision'], '0')
+        self.assertTrue(result['auth_removed'])
+        self.assertNotIn('rate_limits', result)
+
     def test_account_rows_removed_but_token_usage_retained(self):
         rows = [{'method': 'account/rateLimits/updated', 'params': {'secret': 'private'}},
                 {'method': 'thread/tokenUsage/updated', 'params': {'inputTokens': 20}},

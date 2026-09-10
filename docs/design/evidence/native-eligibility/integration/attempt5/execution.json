@@ -1,0 +1,21 @@
+{
+  "build_command": "TRIAL_EVIDENCE_LABEL=attempt5 python3 docs/design/evidence/native-eligibility/integration/attempt3-build.py",
+  "build_exit": 0,
+  "runtime_command": "python3 docs/design/evidence/native-eligibility/integration/attempt5-controller.py attempt5/run",
+  "runtime_exit": 1,
+  "runtime_last_lines": [
+    "{\"kind\": \"stopped\", \"error\": \"Step 2 FAIL: accepted Mesh marker remains pending; scheduler says IO error: delivery: pending: activity absent. Production initialization publishes config adapter_mode=app_server but no state/delivery/adapter-seat.json; Mesh selected_mode defaults to tmux. No native input RPC, native_enqueued receipt, or marker exposure.\"}",
+    "Traceback (most recent call last):",
+    "  File \"/home/mstie/projects/taurhaus-trial/docs/design/evidence/native-eligibility/integration/attempt5-controller.py\", line 307, in <module>",
+    "    raise RuntimeError(action[\"reason\"])",
+    "RuntimeError: Step 2 FAIL: accepted Mesh marker remains pending; scheduler says IO error: delivery: pending: activity absent. Production initialization publishes config adapter_mode=app_server but no state/delivery/adapter-seat.json; Mesh selected_mode defaults to tmux. No native input RPC, native_enqueued receipt, or marker exposure.",
+    "{\"kind\": \"daemon_request\"}",
+    "{\"kind\": \"daemon_response\"}",
+    "{\"kind\": \"cleanup\"}",
+    "{\"kind\": \"descriptor_restored\"}"
+  ],
+  "gate_command": "TRIAL_EVIDENCE_LABEL=attempt5 python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py",
+  "gate_controller_exit": 0,
+  "helper_green_exit": 0,
+  "audit_exit": 0
+}

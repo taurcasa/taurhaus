@@ -1,0 +1,12 @@
+{
+  "member": "seat",
+  "root": "/tmp/th-int-3r8tuw4q/claude",
+  "incarnation": "f8005b884a038039db4e53198e58e3952cc9860faeb6032b9d40656f744e2b63",
+  "epoch": 2,
+  "heartbeat": "2026-09-10T03:09:44.717969379+00:00",
+  "pending_since": null,
+  "error": null,
+  "last_defer_reason": "IO error: delivery: pending: activity absent",
+  "failures": 0,
+  "completed": 0
+}

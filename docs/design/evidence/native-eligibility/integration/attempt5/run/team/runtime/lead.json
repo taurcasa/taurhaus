@@ -1,66 +1,36 @@
 {
-  "activitySnapshotPath": null,
-  "appServer": {
-    "accountRoot": "/tmp/th-int-3r8tuw4q/codex",
-    "attachArgv": [
-      "codex",
-      "--remote",
-      "unix:///tmp/th-int-3r8tuw4q/tmp/th-host-4970fb14df004efd914f0507f54b03ab/rpc.sock",
-      "resume",
-      "01a08948-2281-74c0-8bba-67bb9da54f94",
-      "--no-alt-screen",
-      "--strict-config"
-    ],
-    "build": "0.153.4",
-    "configuration": "strict-config/1",
-    "configurationDigest": "450f0fc5982ee4a0287d97912c45eae0b5756023dd688bfb63601f9ea131b02a",
-    "contract": 1,
-    "host": "taurhaus-daemon-owned-thread/1",
-    "hostGeneration": "7b15515c-133c-4c4f-9f56-9b3571d27714",
-    "instructionSources": [
-      "/tmp/th-int-3r8tuw4q/project/AGENTS.md"
-    ],
-    "memberId": "seat@integration",
-    "processId": 124,
-    "processStart": "23013826",
-    "socketPath": "/tmp/th-int-3r8tuw4q/tmp/th-host-4970fb14df004efd914f0507f54b03ab/rpc.sock",
-    "state": "ready",
-    "threadId": "01a08948-2281-74c0-8bba-67bb9da54f94",
-    "transport": "unix-websocket",
-    "trust": "daemon-owned/1"
-  },
-  "appliedEffort": "low",
-  "attached_at": "2026-09-10T03:06:42.650795726Z",
+  "activitySnapshotPath": "/tmp/th-int-3r8tuw4q/claude/teams/integration/state/activity/lead.json",
+  "attached_at": "2026-09-10T03:06:40.467631318Z",
   "attachmentGeneration": 1,
-  "cli_tool": "codex",
+  "cli_tool": "claude",
   "contextGeneration": "0",
   "daemon_pid": null,
   "delivery_lease": null,
-  "harness": "codex",
-  "health": "active",
-  "hookSessionId": "01a08948-2281-74c0-8bba-67bb9da54f94",
+  "harness": "claude",
+  "health": "healthy",
+  "hookSessionId": null,
   "hostInputAbandonedAt": null,
   "hostInputUnknown": false,
   "jsonl_path": null,
-  "last_seen_at": null,
+  "last_seen_at": "2026-09-10T03:06:42.833774434Z",
   "launchRoot": {
     "claudeDir": "/tmp/th-int-3r8tuw4q/claude",
     "rootAuthorityRevision": "<redacted>",
     "teamIncarnationId": "f8005b884a038039db4e53198e58e3952cc9860faeb6032b9d40656f744e2b63",
     "teamsDir": "/tmp/th-int-3r8tuw4q/claude/teams"
   },
-  "memberName": "seat",
-  "paneId": "%2",
-  "panePid": 436,
-  "paneStartTime": "23013904",
+  "memberName": "lead",
+  "paneId": "%1",
+  "panePid": 115,
+  "paneStartTime": "23013825",
   "project_path": "/tmp/th-int-3r8tuw4q/project",
   "recovery": {
-    "activation_intent": "460de2b9-f49d-45a3-9442-aa9e63ad9d7d",
+    "activation_intent": "8ff2c9f4f3d9884364572ccd83b5baf948d8e458ee14ad508a8e23feb25c7b32",
     "admitted_boundary": null,
     "baseline_binding": [
       [
         "f8005b884a038039db4e53198e58e3952cc9860faeb6032b9d40656f744e2b63",
-        "ba04f7a7-0db8-46b4-b918-37b9849123e8"
+        "9f36f28f-f563-4472-9990-4eb1574e5ba2"
       ],
       [
         1,
@@ -68,7 +38,7 @@
       ]
     ],
     "claim": {
-      "accepted_bytes": 0,
+      "accepted_bytes": 2258,
       "attempt": 1,
       "card_key": {
         "card_schema": 1,
@@ -77,17 +47,17 @@
           0
         ],
         "contract": {
-          "effective_role_revision": "44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf",
+          "effective_role_revision": "37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b",
           "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
           "packet_revision": "",
           "role_id": ""
         },
         "recipient": [
           "f8005b884a038039db4e53198e58e3952cc9860faeb6032b9d40656f744e2b63",
-          "ba04f7a7-0db8-46b4-b918-37b9849123e8"
+          "9f36f28f-f563-4472-9990-4eb1574e5ba2"
         ],
         "roots": {
-          "harness_account_root": "/tmp/th-int-3r8tuw4q/codex",
+          "harness_account_root": "/tmp/th-int-3r8tuw4q/claude",
           "launch_namespace": "native",
           "resolved_mesh_config_root": "/tmp/th-int-3r8tuw4q/claude",
           "resolved_project_root": "/tmp/th-int-3r8tuw4q/project",
@@ -95,14 +65,20 @@
           "root_authority_revision": "<redacted>"
         }
       },
-      "content_revision": "38ab4102cde357adb97e46c23d3ce5450584c0484595c09ff822d1173a140133",
-      "delivery_id": "4463f7bb33c855335a0bab89351edc9cb1431bf324c04f0b3f835a6be4f06fe9",
-      "generated_bytes": 2172,
+      "content_revision": "714f6b33ee7d86791c34b579623669280016eb3ceeb58750d583559507bcba0d",
+      "delivery_id": "9139829722bb8594052ef37966d51db884f403ee8d2e3f65c9ffff5e6d6db0f3",
+      "generated_bytes": 2258,
+      "journal": {
+        "delivery_id": "afd027be-e01f-40c4-8b49-56d70167aa65",
+        "message_id": "c4464730-989f-4173-a85e-bff4a65775e4",
+        "projection": "pending",
+        "sequence": 1
+      },
       "kind": "baseline",
       "obligation_key": [
         [
           "f8005b884a038039db4e53198e58e3952cc9860faeb6032b9d40656f744e2b63",
-          "ba04f7a7-0db8-46b4-b918-37b9849123e8"
+          "9f36f28f-f563-4472-9990-4eb1574e5ba2"
         ],
         [
           1,
@@ -111,19 +87,19 @@
       ],
       "observations": [
         [
-          "submitted",
-          "2026-09-10T03:06:41.214677591Z",
-          "app_server"
+          "accepted",
+          "2026-09-10T03:06:42.828465163Z",
+          "inbox"
         ]
       ],
-      "offered_bytes": 2172,
-      "path": "app_server",
+      "offered_bytes": 0,
+      "path": "inbox",
       "returned_by_read_bytes": 0,
       "satisfied_obligations": [
         [
           [
             "f8005b884a038039db4e53198e58e3952cc9860faeb6032b9d40656f744e2b63",
-            "ba04f7a7-0db8-46b4-b918-37b9849123e8"
+            "9f36f28f-f563-4472-9990-4eb1574e5ba2"
           ],
           [
             1,
@@ -131,12 +107,12 @@
           ]
         ]
       ],
-      "stage": "submitted",
+      "stage": "accepted",
       "supersedes_revision": null
     },
-    "harness_account_root": "/tmp/th-int-3r8tuw4q/codex",
+    "harness_account_root": "/tmp/th-int-3r8tuw4q/claude",
     "last_delivered": {
-      "accepted_bytes": 0,
+      "accepted_bytes": 2258,
       "attempt": 1,
       "card_key": {
         "card_schema": 1,
@@ -145,17 +121,17 @@
           0
         ],
         "contract": {
-          "effective_role_revision": "44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf",
+          "effective_role_revision": "37a06e5154de9ef5fdb08ede626ffb29630db236bda6cc9bd2f7868b61a9c25b",
           "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
           "packet_revision": "",
           "role_id": ""
         },
         "recipient": [
           "f8005b884a038039db4e53198e58e3952cc9860faeb6032b9d40656f744e2b63",
-          "ba04f7a7-0db8-46b4-b918-37b9849123e8"
+          "9f36f28f-f563-4472-9990-4eb1574e5ba2"
         ],
         "roots": {
-          "harness_account_root": "/tmp/th-int-3r8tuw4q/codex",
+          "harness_account_root": "/tmp/th-int-3r8tuw4q/claude",
           "launch_namespace": "native",
           "resolved_mesh_config_root": "/tmp/th-int-3r8tuw4q/claude",
           "resolved_project_root": "/tmp/th-int-3r8tuw4q/project",
@@ -163,14 +139,20 @@
           "root_authority_revision": "<redacted>"
         }
       },
-      "content_revision": "38ab4102cde357adb97e46c23d3ce5450584c0484595c09ff822d1173a140133",
-      "delivery_id": "4463f7bb33c855335a0bab89351edc9cb1431bf324c04f0b3f835a6be4f06fe9",
-      "generated_bytes": 2172,
+      "content_revision": "714f6b33ee7d86791c34b579623669280016eb3ceeb58750d583559507bcba0d",
+      "delivery_id": "9139829722bb8594052ef37966d51db884f403ee8d2e3f65c9ffff5e6d6db0f3",
+      "generated_bytes": 2258,
+      "journal": {
+        "delivery_id": "afd027be-e01f-40c4-8b49-56d70167aa65",
+        "message_id": "c4464730-989f-4173-a85e-bff4a65775e4",
+        "projection": "pending",
+        "sequence": 1
+      },
       "kind": "baseline",
       "obligation_key": [
         [
           "f8005b884a038039db4e53198e58e3952cc9860faeb6032b9d40656f744e2b63",
-          "ba04f7a7-0db8-46b4-b918-37b9849123e8"
+          "9f36f28f-f563-4472-9990-4eb1574e5ba2"
         ],
         [
           1,
@@ -179,19 +161,19 @@
       ],
       "observations": [
         [
-          "submitted",
-          "2026-09-10T03:06:41.214677591Z",
-          "app_server"
+          "accepted",
+          "2026-09-10T03:06:42.828465163Z",
+          "inbox"
         ]
       ],
-      "offered_bytes": 2172,
-      "path": "app_server",
+      "offered_bytes": 0,
+      "path": "inbox",
       "returned_by_read_bytes": 0,
       "satisfied_obligations": [
         [
           [
             "f8005b884a038039db4e53198e58e3952cc9860faeb6032b9d40656f744e2b63",
-            "ba04f7a7-0db8-46b4-b918-37b9849123e8"
+            "9f36f28f-f563-4472-9990-4eb1574e5ba2"
           ],
           [
             1,
@@ -199,16 +181,16 @@
           ]
         ]
       ],
-      "stage": "submitted",
+      "stage": "accepted",
       "supersedes_revision": null
     },
     "launch_namespace": "native",
-    "member_incarnation_id": "ba04f7a7-0db8-46b4-b918-37b9849123e8",
-    "reserved_attachment": null,
+    "member_incarnation_id": "9f36f28f-f563-4472-9990-4eb1574e5ba2",
+    "reserved_attachment": "2026-09-10T03:06:40.467631318Z",
     "reserved_effort": null
   },
   "schema_version": 3,
-  "session_id": "01a08948-2281-74c0-8bba-67bb9da54f94",
+  "session_id": null,
   "terminalContract": 1,
   "tmuxSessionId": "$0",
   "tmuxSocket": "/tmp/th-int-3r8tuw4q/tmux/tmux-1000/default"
