@@ -278,11 +278,12 @@ mod tests {
             ..IdleResult::idle()
         };
         refresh(&mut result, project, pid, &[record], &notify);
-        assert!(
-            !result.authoritative,
-            "a completion before the resume launch must not authorize idle"
-        );
+        assert!(!result.authoritative);
         assert!(observation(pid, project, Some("%resume-floor")).is_none());
+        fs::write(&path, "{\"type\":\"session_meta\"}\n").unwrap();
+        let (no_turn, prompt) = prompt_before_first_turn(path.to_str(), || idle_prompt(IDLE_PANE));
+        let ready = sample(prompt, no_turn, None, launch, now).unwrap();
+        assert_eq!(ready.source, "launch_ready");
         invalidate(pid);
     }
 

@@ -569,11 +569,18 @@ mod tests {
         cache::remove_state_tracker(pid);
     }
 
+    // Regression: 53d59fc2 inverted scanner/log guards, deadlocking the Codex readiness replay.
+    #[test]
+    fn codex_capture_lock_order_is_scanner_then_log() {
+        let inverted = "StateChangeCapture::install();\n        let _lock = SCANNER_TEST_LOCK";
+        assert!(!include_str!("classification.rs").contains(inverted));
+    }
+
     // Regression: b9e4a855 bypassed the activity registry for launch readiness.
     #[test]
     fn codex_review_readiness_uses_activity_slice_and_classification() {
-        let capture = StateChangeCapture::install();
         let _lock = SCANNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let capture = StateChangeCapture::install();
         struct Reset;
         impl Drop for Reset {
             fn drop(&mut self) {
@@ -752,10 +759,10 @@ mod tests {
     // transition.
     #[test]
     fn first_sight_of_an_idle_process_emits_no_state_change() {
-        let capture = StateChangeCapture::install();
         let _lock = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
+        let capture = StateChangeCapture::install();
         let pid = 941_010;
         cache::remove_state_tracker(pid);
 
@@ -775,10 +782,10 @@ mod tests {
     // arrives already working. First sight of an *active* PID is real news.
     #[test]
     fn first_sight_of_an_active_process_emits_the_arrival() {
-        let capture = StateChangeCapture::install();
         let _lock = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
+        let capture = StateChangeCapture::install();
         let pid = 941_011;
         cache::remove_state_tracker(pid);
 
@@ -798,10 +805,10 @@ mod tests {
     // genuine transitions on a tracked PID untouched, in both directions.
     #[test]
     fn a_tracked_process_still_emits_both_transition_directions() {
-        let capture = StateChangeCapture::install();
         let _lock = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
+        let capture = StateChangeCapture::install();
         let pid = 941_012;
         cache::remove_state_tracker(pid);
 

@@ -969,17 +969,15 @@ mod tests {
         fn start(root: &Path, lock: &Path, coordination: &Path) -> Self {
             let writer = File::open(lock).unwrap();
             fs2::FileExt::try_lock_exclusive(&writer).unwrap();
-            Self(
-                std::process::Command::new("/bin/sleep")
-                    .arg("60")
-                    .env_clear()
-                    .env("CODEX_HOME", root)
-                    .env("HOME", root)
-                    .stdin(writer)
-                    .stdout(File::open(coordination).unwrap())
-                    .spawn()
-                    .unwrap(),
-            )
+            let child = std::process::Command::new("/bin/sleep")
+                .arg("60")
+                .env_clear()
+                .envs([("CODEX_HOME", root), ("HOME", root)])
+                .stdin(writer)
+                .stdout(File::open(coordination).unwrap())
+                .spawn()
+                .unwrap();
+            Self(child)
         }
     }
 
@@ -1000,8 +998,7 @@ mod tests {
         let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
         setup_binding_store(&tmp);
-        let project = tmp.path().join("project");
-        let cwd = project.to_str().unwrap();
+        let cwd = tmp.path().to_str().unwrap();
         let sessions = tmp.path().join("sessions");
         let date = sessions.join(chrono::Local::now().format("%Y/%m/%d").to_string());
         fs::create_dir_all(&date).unwrap();
@@ -1053,7 +1050,7 @@ mod tests {
         assert_ne!(pid, old_pid);
         let mut record: MemberRuntimeRecord = serde_json::from_value(serde_json::json!({
             "paneId":"%5","panePid":pid,"paneStartTime":crate::platform::process_start_ticks(pid).unwrap().to_string(),
-            "cli_tool":"codex","project_path":project,"session_id":ids[0],"jsonl_path":paths[0],
+            "cli_tool":"codex","project_path":cwd,"session_id":ids[0],"jsonl_path":paths[0],
             "attached_at":Utc::now() - chrono::Duration::seconds(30),
             "recovery":{"harness_account_root":tmp.path()}
         })).unwrap();
@@ -1070,9 +1067,8 @@ mod tests {
         record.jsonl_path = rebound.jsonl_path.as_ref().map(PathBuf::from);
         let teams = tmp.path().join("teams");
         MemberRuntimeStore::save(&teams, "trial", "alpha", &record).unwrap();
-        let saved: serde_json::Value =
-            serde_json::from_reader(File::open(teams.join("trial/runtime/alpha.json")).unwrap())
-                .unwrap();
+        let saved = fs::read(teams.join("trial/runtime/alpha.json")).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&saved).unwrap();
         assert_eq!(saved["hookSessionId"], ids[1]);
         assert_eq!(saved["session_id"], ids[1]);
         assert_eq!(saved["jsonl_path"].as_str(), rebound.jsonl_path.as_deref());
@@ -1092,13 +1088,22 @@ mod tests {
         assert_eq!(result.session_id, rebound.session_id);
         assert!(result.authoritative, "notify.ts < transcript_mtime");
         assert_eq!(result.state, SessionState::Idle);
-        let observed = observation(pid, cwd, Some("%5")).unwrap();
-        assert_eq!(observed.source, "notify");
-        // A later turn cannot reuse the previous completion.
-        let started = serde_json::json!({"type":"event_msg","payload":{"type":"task_started"}});
-        writeln!(rollout, "{started}").unwrap();
-        let busy = resolver.detect_idle_for_pid_in(cwd, pid, Some("%5"), &[record]);
-        assert!(!busy.authoritative);
+        assert_eq!(observation(pid, cwd, Some("%5")).unwrap().source, "notify");
+        // Each guard must independently reject a complete, timestamped final row.
+        for (kind, event, turn_id, at) in [
+            ("response_item", "task_complete", turn, completed),
+            ("event_msg", "task_started", turn, completed),
+            ("event_msg", "turn_aborted", turn, completed),
+            ("event_msg", "settings", turn, completed),
+            ("event_msg", "task_complete", "other-turn", completed),
+            ("event_msg", "task_complete", turn, Utc::now()),
+        ] {
+            let later = serde_json::json!({"timestamp":at.to_rfc3339(),"type":kind,
+                "payload":{"type":event,"turn_id":turn_id}});
+            writeln!(rollout, "{later}").unwrap();
+            let busy = resolver.detect_idle_for_pid_in(cwd, pid, Some("%5"), &[record.clone()]);
+            assert!(!busy.authoritative, "accepted {later}");
+        }
     }
 
     // Regression: 6398bfa3's multi-lock refusal, L1 run 4d: an ephemeral
@@ -1130,11 +1135,8 @@ mod tests {
             let meta = serde_json::json!({"timestamp":"2026-09-10T17:56:14.970Z","ordinal":0,"type":"session_meta",
                 "payload":{"id":id,"session_id":id,"cwd":cwd,"originator":"codex-tui","cli_version":"0.153.4","source":"cli","thread_source":"user"}});
             let row = serde_json::json!({"timestamp":now.to_rfc3339(),"type":"event_msg","payload":{"type":"task_complete","turn_id":id}});
-            fs::write(
-                date.join(format!("rollout-2026-09-10T19-56-14-{id}.jsonl")),
-                format!("{meta}\n{row}\n"),
-            )
-            .unwrap();
+            let path = date.join(format!("rollout-2026-09-10T19-56-14-{id}.jsonl"));
+            fs::write(path, format!("{meta}\n{row}\n")).unwrap();
         }
         let lock = |id| {
             let file = File::create(locks.join(format!("{id}.lock"))).unwrap();
@@ -1165,8 +1167,7 @@ mod tests {
             let result = resolve(record.clone());
             assert_eq!(result.session_id.as_deref(), Some(ids[0]));
             assert!(result.authoritative);
-            let observed = observation(pid, cwd, Some("%4d")).unwrap();
-            assert_eq!(observed.source, "notify");
+            assert_eq!(observation(pid, cwd, Some("%4d")).unwrap().source, "notify");
             drop(held);
         }
         super::super::codex_readiness::invalidate(pid);
@@ -1544,7 +1545,7 @@ mod tests {
             "paneId":parts[1],"panePid":pid,"paneStartTime":crate::platform::process_start_ticks(pid).unwrap().to_string(),
             "tmuxSocket":socket,"cli_tool":"codex","project_path":project,
             "attachedAt": Utc::now() - chrono::Duration::seconds(30),
-            "recovery":{"harness_account_root":home}
+            "recovery":{"harness_account_root":home,"reserved_attachment":Utc::now() - chrono::Duration::seconds(10)}
         })).unwrap();
         MemberRuntimeStore::save(&teams, "trial", "seat", &record).unwrap();
         let hosted = serde_json::from_value(serde_json::json!({"appServer":{
