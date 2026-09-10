@@ -324,6 +324,7 @@ pub struct SessionActivityHub {
 struct ScannerThread {
     stop: Arc<ScannerStop>,
     handle: thread::JoinHandle<()>,
+    host_handle: thread::JoinHandle<()>,
 }
 
 /// The stop signal for one scanner thread.
@@ -388,7 +389,6 @@ fn scanner_loop(hub: std::sync::Weak<SessionActivityHub>, stop: Arc<ScannerStop>
                     Vec::new()
                 }
             };
-            hub.refresh_hosts();
             let cycle = scan_cycle_for_team_locations(&team_locations);
 
             let decision = hub.commit_cycle(
@@ -639,7 +639,17 @@ impl SessionActivityHub {
         let hub = Arc::downgrade(self);
         let loop_stop = Arc::clone(&stop);
         let handle = thread::spawn(move || scanner_loop(hub, loop_stop));
-        *scanner = Some(ScannerThread { stop, handle });
+        let hub = Arc::downgrade(self);
+        let host_stop = Arc::clone(&stop);
+        let host_handle = thread::spawn(move || {
+            while !host_stop.requested() {
+                let Some(hub) = hub.upgrade() else { break };
+                hub.refresh_hosts();
+                drop(hub);
+                if host_stop.park(ACTIVE_SCAN_INTERVAL) { break; }
+            }
+        });
+        *scanner = Some(ScannerThread { stop, handle, host_handle });
     }
 
     /// Stop this hub's scanner thread and wait for it to finish.
@@ -653,17 +663,15 @@ impl SessionActivityHub {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .take();
-        let Some(ScannerThread { stop, handle }) = scanner else {
+        let Some(ScannerThread { stop, handle, host_handle }) = scanner else {
             return;
         };
         stop.request();
-        if handle.thread().id() == thread::current().id() {
-            // The hub's last reference died inside a cycle, so this *is* the
-            // scanner thread running its own `Drop`. It has been told to stop
-            // and its next upgrade fails anyway; joining itself would deadlock.
-            return;
+        for handle in [handle, host_handle] {
+            if handle.thread().id() != thread::current().id() {
+                let _ = handle.join();
+            }
         }
-        let _ = handle.join();
     }
 
     /// The thread id of the scanner this hub started, if it is still running.

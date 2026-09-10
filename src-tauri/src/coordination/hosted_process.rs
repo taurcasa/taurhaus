@@ -210,6 +210,13 @@ impl HostProcess {
                 == Some(&self.process_start)
     }
 
+    /// Drain notifications with one bounded read, without copying transcript/event history.
+    pub fn refresh_activity(&mut self, guard: &HostOperationLock) -> Result<(), String> {
+        self.rpc.as_mut().ok_or("host connection unavailable")?
+            .call("thread/read", json!({"threadId":self.thread_id}), guard)
+            .map(|_| ()).map_err(String::from)
+    }
+
     pub fn transcript(&mut self, guard: &HostOperationLock) -> Result<Value, String> {
         if !self.alive() {
             return Err("owned host stopped".into());
@@ -511,15 +518,11 @@ struct Rpc {
     pending_read_logged: bool,
 }
 impl Rpc {
-    fn publish_activity(&self, available: bool) {
+    fn publish_activity(&self) {
         taurhaus_lib::daemon::session_activity::SessionActivityHub::shared().publish_host_status(
             &self.activity_socket,
             &self.thread_id,
-            if available {
-                &self.status
-            } else {
-                &Value::Null
-            },
+            &self.status,
         );
     }
 
@@ -550,7 +553,7 @@ impl Rpc {
             }
             _ => {}
         }
-        self.publish_activity(true);
+        self.publish_activity();
     }
 
     fn set_status(&mut self, status: &Value) {
@@ -558,23 +561,17 @@ impl Rpc {
         if status["type"] == "idle" {
             self.active_turn = None;
         }
-        self.publish_activity(true);
     }
 
     fn write(&mut self, value: &Value, guard: &HostOperationLock) -> Result<(), String> {
-        self.socket
-            .send(
-                1,
-                &serde_json::to_vec(value).map_err(|e| e.to_string())?,
-                guard,
-            )
-            .inspect_err(|_| self.publish_activity(false))
+        self.socket.send(
+            1,
+            &serde_json::to_vec(value).map_err(|e| e.to_string())?,
+            guard,
+        )
     }
     fn read(&mut self, guard: &HostOperationLock) -> Result<Value, String> {
-        let message = self
-            .socket
-            .read(guard)
-            .inspect_err(|_| self.publish_activity(false))?;
+        let message = self.socket.read(guard)?;
         let value: Value = serde_json::from_slice(&message).map_err(|_| "malformed host frame")?;
         if !value.is_object() {
             return Err("host frame must contain one JSON object".into());
@@ -702,7 +699,7 @@ impl Rpc {
                         }
                     }
                 }
-                self.publish_activity(true);
+                self.publish_activity();
                 if self.policy_dirty && !self.repairing {
                     // Finish the in-flight response first: never lose correlation to a
                     // nested repair. One repair only, under this same bounded deadline.

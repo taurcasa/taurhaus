@@ -20,6 +20,12 @@ use taurhaus_lib::daemon::session_activity::{
 };
 use taurhaus_lib::session_scanner::{launch::HostedLaunch, RuntimeSession, SessionGroupKind};
 
+fn host_connection_closed(error: &str) -> bool {
+    matches!(error.strip_prefix("outcome_unknown: ").unwrap_or(error),
+        "host connection closed" | "host connection closed during write" |
+        "host WebSocket closed" | "host connection unavailable")
+}
+
 type SeatKey = (PathBuf, String, String);
 type Seat = Arc<Mutex<Option<OwnedSeat>>>;
 struct OwnedSeat {
@@ -269,15 +275,15 @@ impl HostedMembers {
                     return;
                 };
                 let Some(seat) = owned.as_mut() else { return };
-                let Ok(guard) = HostOperationLock::acquire(
-                    &refresh_root,
-                    &refresh_team,
-                    &refresh_member,
-                    Duration::ZERO,
+                let Ok(guard) = HostOperationLock::acquire_for_activity(
+                    &refresh_root, &refresh_team, &refresh_member,
                 ) else {
                     return;
                 };
-                if !seat.attachment.socket_path.exists() || seat.host.transcript(&guard).is_err() {
+                let disconnected = !seat.attachment.socket_path.exists() || !seat.host.alive();
+                let closed = !disconnected && seat.host.refresh_activity(&guard).is_err_and(|error|
+                    host_connection_closed(&error));
+                if disconnected || closed {
                     SessionActivityHub::shared().publish_host_status(
                         &seat.attachment.socket_path,
                         &seat.host.thread_id,
@@ -676,7 +682,7 @@ impl HostedMembers {
         {
             return Err("host team/member authority changed".into());
         }
-        match operation {
+        let result = (|| { match operation {
             "transcript" => seat.host.transcript(&guard),
             "input" => {
                 if record.host_input_unknown {
@@ -742,7 +748,12 @@ impl HostedMembers {
                 &guard,
             ),
             _ => Err("UNKNOWN_METHOD".into()),
+        } })();
+        if result.as_ref().is_err_and(|error| host_connection_closed(error)) {
+            SessionActivityHub::shared().publish_host_status(
+                &seat.attachment.socket_path, &seat.host.thread_id, &Value::Null);
         }
+        result
     }
 
     pub fn reconcile(
@@ -888,6 +899,23 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn hosted_probe_preserves_authority_while_thread_read_is_pending() {
+        // Regression: 1b19edd2 blocked the global scanner for 5s and called pending a disconnect.
+        let tmp = tempfile::tempdir().unwrap();
+        let (registry, hosts) = running(tmp.path());
+        let generation = saved(tmp.path()).attachment_generation;
+        input(&hosts, &registry, generation, "active").unwrap();
+        std::fs::write(tmp.path().join("pending-read"), "").unwrap();
+        let started = std::time::Instant::now();
+        SessionActivityHub::shared().refresh_hosts();
+        let elapsed = started.elapsed();
+        let row = SessionActivityHub::shared().runtime_snapshot().runtime_sessions
+            .into_iter().find(|s| s.project_path == tmp.path().to_str().unwrap()).unwrap();
+        assert_eq!(row.source.as_deref(), Some("host"));
+        assert!(elapsed < Duration::from_secs(1), "probe took {elapsed:?}");
+    }
+
+    #[test]
     fn hosted_activity_tracks_turns_waits_disconnect_and_teardown() {
         // Regression: 6f61f611 kept owned thread activity private to the host client.
         let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
@@ -973,6 +1001,7 @@ pub(crate) mod tests {
         .unwrap();
         op("interrupt", Value::Null).unwrap();
         assert!(input(&hosts, &registry, generation, "disconnect").is_err());
+        hub.refresh_hosts();
         assert_eq!(snapshot()["source"], "host_unavailable");
         assert_eq!(snapshot()["activity_confidence"], "low");
         hosts.stop(&registry, "team", "seat").unwrap();
