@@ -771,3 +771,186 @@ Deviations / evidence limits:
 - Text captures and gate logs trim trailing blank lines; the actual captured
   pane output remains in events.jsonl. No plan ledger, product code, release,
   deployment, operator installation or other Taurhaus checkout was changed.
+
+## Attempt 4 — INCONCLUSIVE: step 1 observer confounded host initialization
+
+2026-09-10. **No eligibility enabled.** The production initialize operation
+returned `Conflict: unsupported app-server handshake` at `launch_host`.
+**This run does not establish a product defect:** the trial controller added an
+observer that could initialize before the daemon. Codex 0.153.4 seeds its
+`userAgent` from the first client, as the binding transport amendment already
+warns. The observer therefore was not passive with respect to initialization.
+This was a controller mistake. The trial stopped immediately, without a retry,
+product patch, paid input, or continuation to steps 2–7.
+
+Pair: Taurhaus `ae9ae356cce35829e8449fca34246ca9a32399f1` on
+`feat/integration-trial`, containing PR #159 / `6f61f611`, protocol **27**;
+Mesh `dfa22bc103fc84c32de77a7b6cbe054d58cba13b` on `feat/native-push`.
+[Execution metadata](integration/attempt4/execution.json),
+[daemon build](integration/attempt4/daemon-build.json),
+[Mesh build](integration/attempt4/mesh-build.json): both builds exited **0**.
+Each build used its checkout-local target after the exact Cargo preflight
+`pgrep -af '(^|/)cargo( |$)'` returned **1** (no competing Cargo).
+The temporary [descriptor diff](integration/attempt4/mesh-trial-descriptor.diff)
+enabled only 0.153.4 as `trial`, with exact class identities
+`taurhaus-daemon-owned-thread/1`, `strict-config/1`, `daemon-owned/1` and
+`unix-websocket`. The candidate binary was copied only into scratch
+`HOME/.local/bin`; its SHA-256 and the other copied executable hashes are in
+[events](integration/attempt4/run/events.jsonl).
+
+| Ordered step | Outcome | S-runtime evidence / missing proof |
+| --- | --- | --- |
+| 1. Daemon launches host, attached pane, runtime record and startup card | **INCONCLUSIVE; execution assertion FAIL** | Production RPC failed at `launch_host`: `Conflict: unsupported app-server handshake`. Observer's Unix WebSocket Upgrade returned 101 and initialized against the scratch home. No thread/turn, appServer record, attached TUI or startup-card uptake established. |
+| 2. Idle Mesh delivery, marker/reply, receipt and explicit-read consumption | **NOT RUN** | Stopped at step 1; no `mesh send`, receipt or explicit read. |
+| 3. Active-thread pending, then one idle `turn/start` | **NOT RUN** | No thread or delivery obligation. The binding deferred-delivery rule was not exercised. |
+| 4. Typed input plus pending delivery; mutual host lock exclusion | **NOT RUN** | No attached TUI; no holder-file proof. |
+| 5. Compaction and recovery card on the same thread | **NOT RUN** | No compaction or recovery generation. |
+| 6. Daemon restart and post-restart delivery | **NOT RUN** | Teardown only; no restart or identity-resume claim. |
+| 7. Operational stop/remove/re-add tmux rollback and delivery | **NOT RUN** | No hosted seat to roll back; the documented refusal was read in source, not observed at runtime. Cleanup nevertheless completed. |
+
+### Exact stopped boundary and the observer confound
+
+[Controller](integration/attempt4-controller.py) created the team only through
+`coordination.initialize_team`; its request has one Claude lead and one Codex
+seat, `model: "gpt-5.6-luna"`, `reasoning_effort: "low"`,
+`delivery: "app_server"`, and `messaging.mode: "canonical"` with the exact
+[DEFAULT_CANONICAL_POLICY](integration/attempt4/run/policy.json) parsed from
+`meshTabUtils.js`. It created a scratch git project with a short AGENTS.md,
+read-only sandbox and never approvals. No launched seat was opted in later.
+As in attempt 3, this source executes shared hosted activation during the
+`CreatePanes` pass; the controller did not reorder production stages.
+
+S: root `/tmp/th-int-02qek9op` (created private, 0700), daemon port **30683**,
+private tmux socket `/tmp/th-int-02qek9op/tmux/tmux-1000/default`.
+All product/account homes were under this root; inherited `TMUX` was absent.
+Only the authorized `auth.json` was copied to the initially empty CODEX_HOME.
+The daemon and its descendants ran inside a disposable Bubblewrap PID namespace,
+with operator homes, `/tmp` and `/run` hidden except for the scratch bind.
+The lead CLI version probe succeeded (Claude 2.1.267); a lead login screen was
+not reached. No Claude model turn was requested.
+
+The production operation id was **`init_62bda75b0bbe41d783a36fcd9518b23e`**.
+[initialize-result.json](integration/attempt4/run/initialize-result.json) retains:
+
+```json
+{"failed_step":"launch_host","message":"Conflict: unsupported app-server handshake","retryable":true,"succeeded_steps":["validate_configuration","create_team","add_lead"]}
+```
+
+The [observer](integration/attempt4-observer.py) ran before initialization and
+watched for the daemon-created Unix socket. It independently sent:
+
+```json
+{"id":"observer-init","method":"initialize","params":{"clientInfo":{"name":"trial_observer","version":"4"},"capabilities":{"experimentalApi":true}}}
+```
+
+S: [host-events.jsonl](integration/attempt4/run/host-events.jsonl), six rows,
+records the exact HTTP Upgrade/accept, successful observer initialize against
+`/tmp/th-int-02qek9op/codex`, and server close. It contains no `thread/started`,
+`turn/started`, `thread/tokenUsage/updated`, or host JSON-RPC error object.
+The observer retained only `codexHome` from its initialize result; it did **not**
+retain `userAgent`. I: first-client seeding is the likely direct cause of the
+refusal: `hosted_process.rs` parses the successful initialize response using
+`strip_prefix("taurhaus_host/")` and returns the exact observed refusal when
+that prefix is absent. U: the exact daemon initialize response and relative
+initialize ordering were not captured, so that causal explanation is not a
+wire-proven root cause. A future controller must avoid competing for first
+initialization; this run was not repeated to test that correction.
+
+S: [taurhaus.log.jsonl](integration/attempt4/run/taurhaus.log.jsonl) records
+`coordination.step.failed` for `launch_host` at
+`2026-09-10T02:53:31.315Z`. **There is no `hosted.rpc.rejected` log line or host
+error object to quote**: the observed refusal is local validation of an
+initialize response, not an observed JSON-RPC rejection. The raw error required
+for a host-rejected-request case is therefore unavailable, not fabricated.
+No `hosted.instruction_sources.loaded` event was reached; loaded AGENTS.md
+sources cannot be claimed. Failure cleanup removed the provisional team before
+the snapshot, so there are no runtime records, journal rows, receipts or holder
+files for this attempt. The only surviving pane capture is the private bootstrap
+shell [initialize-pane-0.txt](integration/attempt4/run/initialize-pane-0.txt).
+
+### Spend, teardown and reproduction
+
+Reserved random marker **`74212e7ee11810b2`** is in the isolation event; it was never submitted.
+[Cost ledger](integration/attempt4/run/cost-ledger.json) and
+[usage export](integration/attempt4/run/usage-events.json) agree:
+
+| Spend item | Model turns / compactions | Observed spend |
+| --- | --- | --- |
+| Claude lead version probe; no work | 0 / 0 | $0.00 |
+| Codex version probe and app-server initialization | 0 / 0 | $0.00 |
+| Mesh inputs, operator inputs, compaction, restart, rollback | 0 / 0 | $0.00 |
+| Attempt 4 total | **0 / 8 turns; 0 compactions** | **$0.00 / $3.00** |
+
+No tokenUsage event or rollout turn was observed. No nonzero charge or null
+per-turn cost is hidden. The unexercised observer ledger calculates each
+`tokenUsage.last` at the packet's $0.20/$0.02/$1.20 per million
+input/cached/output rates, plus a conservative all-tokens-at-$1.20 bound;
+these are API-equivalent estimates, not actual subscription invoices.
+Its pre-initialization connection hazard prevents calling that metering design
+validated. Installation identifiers were redacted before logging, account usage
+notifications omitted, and no credential contents retained.
+
+Controller exit **1** was observed. Its finally block stopped and joined the
+observer, ended the owned namespace, waited its child processes, verified no
+run-tagged survivors and a closed port, and removed the scratch root and auth
+copy. [Identities](integration/attempt4/run/identities.json) retain five
+PID/start-tick pairs; the short-lived app-server had already exited before that
+inventory. [Cleanup](integration/attempt4/run/cleanup.json) and the later
+[read-only audit](integration/attempt4/final-verification.json) confirm all five
+absent, no run-tagged process, private socket/root absent and port 30683 closed.
+No foreign process was killed. Exact descriptor restoration exited **0**:
+
+```sh
+git -C /home/mstie/projects/mesh-push checkout -- src/delivery/app_server/capabilities.rs
+```
+
+The Mesh worktree is clean. **Descriptor flip: none; Mesh commit: none.**
+The scratch executable was deleted; the rebuilt target artifact is not installed.
+**Taurhaus registry entry: not needed**; the existing hosted launch descriptor
+already pins Codex 0.153.4 / unix-websocket.
+
+Exact reproduction from `/home/mstie/projects/taurhaus-trial`, for a separately
+authorized reproduction only (these scripts reproduce this stopped, confounded
+setup, not a passing seven-step trial):
+
+```sh
+TRIAL_EVIDENCE_LABEL=attempt4 python3 docs/design/evidence/native-eligibility/integration/attempt3-build.py
+python3 docs/design/evidence/native-eligibility/integration/attempt4-controller.py attempt4/NEW_RUN
+TRIAL_EVIDENCE_LABEL=attempt4 python3 docs/design/evidence/native-eligibility/integration/attempt2-gates.py
+python3 docs/design/evidence/native-eligibility/integration/attempt4-audit.py
+```
+
+The audit targets the retained `attempt4/run`; a new evidence directory needs a
+matching audit path. No paid retry, alternate client probe or product fix ran.
+
+### Required gates and deviations
+
+| Exact gate, from checkout root | Exit / result |
+| --- | --- |
+| `just check-quick` | **0**; Rust test compilation, frontend typecheck, 150 files / 2,495 frontend tests. |
+| `just lint` | **0**. |
+| `just test-contracts` | **0**. |
+| `just test-rust-unit` | N/A: no `src-tauri/` diff. |
+| Mesh `just check-quick`, `just lint`, `just test` | N/A: conditional seven-step PASS was not reached. |
+
+[Gate logs and exit metadata](integration/attempt4/gates) retain the exact
+commands and preflights (all Cargo probes exited 1), using the unchanged
+credential-free gate helper: scratch HOME, rejecting CLI/tmux/Mesh shims,
+private PID namespace, checkout-local target. Gate cleanup removed its root.
+[Audit controller](integration/attempt4-audit.py) additionally checks branch,
+merged prerequisite, isolation, policy, zero spend, cleanup and artifact hygiene.
+
+- Material deviation: the added observer could become the first client and
+  invalidate the intended production initialization. The trial is **INCONCLUSIVE**,
+  not an eligibility FAIL attributed to either product. No downstream acceptance
+  claim is made; all steps after the refusal were stopped as instructed.
+- No numbered step passed, so this is one evidence commit, not seven green-step
+  commits. The live step-1 assertion observed red; no product regression was
+  repaired, no artificial red/green unit-test claim, and no tests added.
+- The conditional Mesh `runtime_record_missing:<member>` test/fix was not made.
+  Product insertions **0 / 200**, new dependencies **0**, plan ledger edits **0**.
+- An Opus evidence lens is unavailable in the exposed model surface. No
+  cross-family review is claimed; the audit is local verification only.
+
+Attempt-4 text captures and logs trim trailing whitespace/empty lines; events.jsonl
+preserves the original pane capture string. No artifact contains auth contents.

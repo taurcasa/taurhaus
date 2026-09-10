@@ -1,0 +1,12 @@
+{
+  "model": "gpt-5.6-luna",
+  "effort": "low",
+  "turn_ids": [],
+  "paid_inputs": 0,
+  "generations": [],
+  "api_equivalent_usd": 0,
+  "conservative_usd": 0,
+  "basis": "Observed host tokenUsage.last; packet rates $0.20/$0.02/$1.20 per million input/cached/output. API-equivalent estimate, not a billing invoice.",
+  "rollout_turn_ids": [],
+  "metering_complete": true
+}

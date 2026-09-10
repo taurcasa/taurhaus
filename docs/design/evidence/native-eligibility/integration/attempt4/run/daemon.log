@@ -1,0 +1,28 @@
+[2m2026-09-10T02:53:30.276530Z[0m [32m INFO[0m [2mtaurhaus_daemon[0m[2m:[0m Auth token written [3mpath[0m[2m=[0m/tmp/th-int-02qek9op/data/daemon.token
+[2m2026-09-10T02:53:30.276562Z[0m [32m INFO[0m [2mtaurhaus_daemon[0m[2m:[0m taurhaus-daemon starting [3mport[0m[2m=[0m30683 [3mbind[0m[2m=[0m127.0.0.1 [3midle_timeout[0m[2m=[0mSome(600) [3mdata_root[0m[2m=[0m/tmp/th-int-02qek9op/data [3mauth[0m[2m=[0mtrue
+[2m2026-09-10T02:53:30.291063Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m daemon listening [3mport[0m[2m=[0m30683
+[2m2026-09-10T02:53:30.592143Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46820
+[2m2026-09-10T02:53:30.642503Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46826
+[2m2026-09-10T02:53:30.643263Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m Probing CLI version [3mprogram[0m[2m=[0m"codex" [3margv[0m[2m=[0m["/bin/bash", "-ilc", "codex --version"]
+[2m2026-09-10T02:53:30.692773Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46834
+[2m2026-09-10T02:53:30.718869Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI version probe completed [3mprogram[0m[2m=[0m"codex" [3mstatus[0m[2m=[0mSome(0) [3mraw_output[0m[2m=[0mThis message is shown once a day. To disable it please create the
+/tmp/th-int-02qek9op/home/.hushlogin file.
+codex-cli 0.153.4
+bash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: no job control in this shell
+Command 'update-motd' is available in the following places
+ * /sbin/update-motd
+ * /usr/sbin/update-motd
+The command could not be located because '/sbin:/usr/sbin' is not included in the PATH environment variable.
+This is most likely caused by the lack of administrative privileges associated with your user account.
+update-motd: command not found
+[2m2026-09-10T02:53:30.718968Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m Probing CLI version [3mprogram[0m[2m=[0m"claude" [3margv[0m[2m=[0m["/bin/bash", "-ilc", "claude --version"]
+[2m2026-09-10T02:53:30.744289Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI version probe completed [3mprogram[0m[2m=[0m"claude" [3mstatus[0m[2m=[0mSome(0) [3mraw_output[0m[2m=[0m2.1.267 (Claude Code)
+bash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: no job control in this shell
+[2m2026-09-10T02:53:30.744378Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m Probing CLI version [3mprogram[0m[2m=[0m"agy" [3margv[0m[2m=[0m["/bin/bash", "-ilc", "agy --version"]
+[2m2026-09-10T02:53:30.769728Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI version probe completed [3mprogram[0m[2m=[0m"agy" [3mstatus[0m[2m=[0mSome(77) [3mraw_output[0m[2m=[0mbash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: no job control in this shell
+[2m2026-09-10T02:53:30.769809Z[0m [32m INFO[0m [2mtaurhaus_lib::models[0m[2m:[0m CLI versions detected for native harness capability gates [3mcodex[0m[2m=[0mSome("0.153.4") [3mclaude[0m[2m=[0mSome("2.1.267") [3magy[0m[2m=[0mNone [3mcodex_compaction_hooks_supported[0m[2m=[0mtrue [3mcodex_notify_supported[0m[2m=[0mtrue [3mcodex_queue_wake_supported[0m[2m=[0mtrue [3magy_hooks_supported[0m[2m=[0mfalse
+[2m2026-09-10T02:53:31.314754Z[0m [33m WARN[0m [2mtaurhaus_lib::coordination::orchestrator::teardown[0m[2m:[0m failed to leave mesh during teardown [3mteam[0m[2m=[0mintegration [3mmember[0m[2m=[0mseat [3merror[0m[2m=[0mBackend error: mesh leave failed for 'seat' in 'integration': error: unauthorized: actor 'seat' is not authenticated for Mesh control; run `mesh join --team integration --name seat` to issue a control token
+[2m2026-09-10T02:53:31.695294Z[0m [32m INFO[0m [2mtaurhaus_lib::daemon::server[0m[2m:[0m client connected [3maddr[0m[2m=[0m127.0.0.1:46842
