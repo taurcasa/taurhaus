@@ -133,3 +133,79 @@ The generated view config and policy
 reassertion still enforce model/effort/sandbox/approval. This supersedes the
 empty-instruction-source refusal; it makes no claim that instruction loading or
 the attached TUI's settings push is a no-op.
+
+## Thread state on Codex 0.153.4 (binding; from the orchestrator's real-host probe, 2026-09-10)
+
+Evidence: `.check-logs/mesh-next-phase0/integration-trial-3/probe-turn-start.py`,
+`probe-thread-read.py` and their `probe-events.jsonl` (real `codex app-server
+--listen unix://…` under the daemon's exact `-c` overrides, isolated scratch home,
+two model turns of gpt-5.6-luna at low). Both lanes copy these three files into
+`docs/design/evidence/native-eligibility/integration/probe-thread-state/`.
+
+1. `thread/read {threadId, includeTurns: true}` is REJECTED on this build:
+   `{"code": -32601, "message": "list_turns is not supported yet"}`. This is the
+   refusal integration trial attempt 3 hit at `launch_host` (the daemon reads the
+   thread before every submission). Neither client may send `includeTurns`.
+2. `thread/read {threadId}` succeeds when the thread is idle and returns `thread`
+   with `id`, `sessionId`, `status: {type: "idle"}`, `canAcceptDirectInput: true`,
+   `model`, `reasoningEffort`, `cwd`, `cliVersion`, `path`, and `turns: []` — the
+   turn list is ALWAYS empty on this build, so no client may derive the active
+   turn from `thread.turns`.
+3. During the FIRST turn `thread/read` fails with
+   `{"code": -32603, "message": "failed to read thread: thread-store internal
+   error: … rollout at …/sessions/…jsonl is empty"}` until the first item is
+   persisted. Both clients classify a `-32603` on `thread/read` as TRANSIENT
+   (`pending`, retry within the bounded deadline), never as a rejection.
+4. `turn/start {threadId, input: [{type: "text", text}]}` is ACCEPTED as is
+   (the daemon's minimal shape) and returns `{turn: {id, status: "inProgress",
+   itemsView: "notLoaded", …}}`; the attach trial's shape with `model`,
+   `effort`, `serviceTierForTurn` is accepted too.
+5. Notifications on the connection carry the turn state:
+   `thread/status/changed {threadId, status: {type: "active"|"idle",
+   activeFlags: [...]}}`, `turn/started {threadId, turn: {id, status:
+   "inProgress"}}`, `item/started` / `item/agentMessage/delta` /
+   `item/completed` (the `agentMessage` item carries the reply `text`),
+   `turn/completed {threadId, turn: {id, status: "completed", items: [...]}}`,
+   plus `thread/tokenUsage/updated`, `account/rateLimits/updated`,
+   `mcpServer/startupStatus/updated`, `remoteControl/status/changed`.
+   The ACTIVE TURN ID exists only in `turn/started` / `turn/completed`
+   notifications and in the `turn/start` result; it must be tracked per
+   connection.
+6. Consequences: (a) the daemon's host client tracks the active turn and the
+   thread status from the notifications it already receives, uses `thread/read`
+   (no `includeTurns`) only for identity/status, and synthesizes the transcript
+   the hosted UI shows from `item/*` and `turn/completed` events (bounded); it
+   steers operator input with the tracked id; (b) mesh's adapter, a second client
+   with its own connection, cannot learn a turn id another connection started:
+   while `thread/read` reports `status.type == "active"` (or a transient
+   `-32603`), the obligation is DEFERRED as `pending` with reason `thread_active`
+   and delivered by `turn/start` once idle — the same "deliver only when idle"
+   rule the tmux path already applies (activity idle ≤ 120 s); `turn/steer` is
+   used only when the adapter itself started the active turn on the same
+   connection and holds its id (bounded wait for `turn/completed`, then the next
+   obligation); no double exposure, receipts unchanged (`native_enqueued` on a
+   `turn/start` result carrying a turn id); (c) both fake app-server fixtures
+   mirror 1–5 exactly (reject `includeTurns`, empty `turns`, `-32603` on the
+   first mid-turn read, the notification sequence), so green tests mean the real
+   shapes; (d) the host's JSON-RPC error object is recorded — bounded to `code`
+   and the first 256 characters of `message` — in the daemon's structured log
+   (`hosted.rpc.rejected` with method) and in mesh's receipt/health reason;
+   UI surfaces keep the generic wording.
+
+Source: orchestrator binding memo
+`/home/mstie/projects/taurhaus/.check-logs/mesh-next-phase0/integration-trial-3/thread-state-0.153.4.md`.
+Archived evidence: [turn-start probe](evidence/native-eligibility/integration/probe-thread-state/probe-turn-start.py),
+[thread-read probe](evidence/native-eligibility/integration/probe-thread-state/probe-thread-read.py),
+[wire events](evidence/native-eligibility/integration/probe-thread-state/probe-events.jsonl).
+These are copied evidence, never gate executables. Credential-value and structured
+credential-key checks passed before the byte-identical copy; scripts reference
+an auth file but contain no credentials. No real host was run for this fix.
+The supplied installed-schema snapshot contains only JSONRPCRequest and RequestId;
+it establishes no separate `turn/failed` or `turn/cancelled` notification.
+Terminal statuses on `turn/completed` (including interrupted/failed) clear activity.
+
+Round-1 correction (2026-09-10): tracked turns survive lagging read/resume idle
+snapshots. Transient reads retry within the existing host deadline and log one
+`hosted.rpc.pending` per episode; exhausted reads stay pending without submission.
+The byte-identical wire evidence deliberately retains installation UUID and
+rate-limit/account-plan metadata (account-linked, not credentials).

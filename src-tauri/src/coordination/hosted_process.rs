@@ -81,11 +81,15 @@ impl HostProcess {
                 host.rpc = Some(Rpc {
                     socket: WebSocket::connect(stream, guard)?,
                     events: VecDeque::new(),
+                    thread_id: String::new(),
+                    status: Value::Null,
+                    active_turn: None,
                     requests: Vec::new(),
                     truncated: false,
                     policy: None,
                     repairing: false,
                     policy_dirty: false,
+                    pending_read_logged: false,
                 });
                 break;
             }
@@ -121,6 +125,8 @@ impl HostProcess {
         if resume.is_some_and(|id| id != host.thread_id) {
             return Err("host resumed a different thread".into());
         }
+        rpc.thread_id = host.thread_id.clone();
+        rpc.status = result["thread"]["status"].clone();
         host.instruction_sources = instruction_sources(&result);
         if !host.instruction_sources.is_empty() {
             tracing::info!(event = "hosted.instruction_sources.loaded",
@@ -208,14 +214,30 @@ impl HostProcess {
             return Err("owned host stopped".into());
         }
         let rpc = self.rpc.as_mut().ok_or("host connection unavailable")?;
-        let mut result = rpc.call(
-            "thread/read",
-            json!({"threadId":self.thread_id,"includeTurns":true}),
-            guard,
-        )?;
+        let mut pending = false;
+        let mut result = loop {
+            if pending && guard.remaining().is_err() {
+                return Err(RpcError::PendingRead.into());
+            }
+            match rpc.call("thread/read", json!({"threadId":self.thread_id}), guard) {
+                Ok(result) => break result,
+                Err(RpcError::PendingRead) => {
+                    pending = true;
+                    if let Ok(remaining) = guard.remaining() {
+                        std::thread::sleep(remaining.min(Duration::from_millis(50)));
+                    }
+                }
+                Err(_) if pending && guard.remaining().is_err() => {
+                    return Err(RpcError::PendingRead.into())
+                }
+                Err(error) => return Err(error.into()),
+            }
+        };
         if result["thread"]["id"] != self.thread_id {
             return Err("host thread identity changed".into());
         }
+        result["thread"]["status"] = rpc.status.clone();
+        result["thread"]["turns"] = json!(event_turns(&rpc.events, &self.thread_id));
         result["requests"] = json!(rpc.requests);
         result["events"] = json!(rpc.events);
         result["eventsTruncated"] = json!(rpc.truncated);
@@ -235,31 +257,21 @@ impl HostProcess {
         let state = self.transcript(guard)?;
         let thread = &state["thread"];
         if thread["canAcceptDirectInput"] != true
-            || !thread["status"]["activeFlags"]
-                .as_array()
-                .is_some_and(Vec::is_empty)
+            || !match thread["status"].get("activeFlags") {
+                None => thread["status"]["type"] == "idle",
+                Some(flags) => flags.as_array().is_some_and(Vec::is_empty),
+            }
             || !state["requests"].as_array().is_some_and(Vec::is_empty)
         {
             return Err(
                 "pending: thread is waiting for permission/input or has unverified state".into(),
             );
         }
-        let active: Vec<_> = thread["turns"]
-            .as_array()
-            .ok_or("unverified turns")?
-            .iter()
-            .filter(|t| t["status"] == "inProgress")
-            .collect();
+        let active = self.rpc.as_ref().unwrap().active_turn.clone();
         let mut params = json!({"threadId":self.thread_id,"input":[{"type":"text","text":text}]});
-        let expected = match (thread["status"]["type"].as_str(), active.as_slice()) {
-            (Some("idle"), []) => None,
-            (Some("active"), [turn]) => Some(
-                turn["id"]
-                    .as_str()
-                    .filter(|s| !s.is_empty())
-                    .ok_or("missing active turn")?
-                    .to_string(),
-            ),
+        let expected = match (thread["status"]["type"].as_str(), active) {
+            (Some("idle"), None) => None,
+            (Some("active"), Some(id)) => Some(id),
             _ => return Err("pending: inconsistent thread state".into()),
         };
         let method = if let Some(id) = &expected {
@@ -297,22 +309,20 @@ impl HostProcess {
 
     pub fn interrupt(&mut self, guard: &HostOperationLock) -> Result<Value, String> {
         let state = self.transcript(guard)?;
-        let turns = state["thread"]["turns"]
-            .as_array()
-            .ok_or("unverified turns")?;
-        let active: Vec<_> = turns
-            .iter()
-            .filter(|t| t["status"] == "inProgress")
-            .collect();
-        let [turn] = active.as_slice() else {
-            return Err("no single active turn to cancel".into());
-        };
+        let turn = self
+            .rpc
+            .as_ref()
+            .unwrap()
+            .active_turn
+            .clone()
+            .filter(|_| state["thread"]["status"]["type"] == "active")
+            .ok_or("pending: no tracked active turn to cancel")?;
         self.rpc
             .as_mut()
             .unwrap()
             .call(
                 "turn/interrupt",
-                json!({"threadId":self.thread_id,"turnId":turn["id"]}),
+                json!({"threadId":self.thread_id,"turnId":turn}),
                 guard,
             )
             .map_err(String::from)
@@ -365,6 +375,7 @@ impl Drop for HostProcess {
 enum RpcError {
     Transport(String),
     Rejected(Value),
+    PendingRead,
 }
 impl From<String> for RpcError {
     fn from(message: String) -> Self {
@@ -380,6 +391,10 @@ impl From<RpcError> for String {
     fn from(error: RpcError) -> Self {
         match error {
             RpcError::Transport(message) => message,
+            RpcError::PendingRead => {
+                "pending: host thread state is not yet readable; retry within the host deadline"
+                    .into()
+            }
             // Preserve the error object for classification; never expose arbitrary host text.
             RpcError::Rejected(_) => "host rejected request; reconcile before retrying".into(),
         }
@@ -410,16 +425,126 @@ fn instruction_sources(result: &Value) -> Vec<String> {
         .collect()
 }
 
+// Rebuild only from the retained event window; no second, unbounded history.
+fn event_turns(events: &VecDeque<Value>, thread_id: &str) -> Vec<Value> {
+    let mut turns: Vec<Value> = Vec::new();
+    for event in events {
+        let params = &event["params"];
+        if params["threadId"] != thread_id {
+            continue;
+        }
+        let method = event["method"].as_str().unwrap_or_default();
+        if !matches!(
+            method,
+            "turn/started"
+                | "turn/completed"
+                | "item/started"
+                | "item/completed"
+                | "item/agentMessage/delta"
+        ) {
+            continue;
+        }
+        let Some(id) = params["turnId"]
+            .as_str()
+            .or_else(|| params["turn"]["id"].as_str())
+            .filter(|id| !id.is_empty())
+        else {
+            continue;
+        };
+        let index = turns
+            .iter()
+            .position(|turn| turn["id"] == id)
+            .unwrap_or_else(|| {
+                turns.push(json!({"id":id, "status":"inProgress", "items":[]}));
+                turns.len() - 1
+            });
+        let turn = &mut turns[index];
+        if let Some(fields) = params["turn"].as_object() {
+            for (key, value) in fields.iter().filter(|(key, _)| key.as_str() != "items") {
+                turn[key] = value.clone();
+            }
+        }
+        let items = turn["items"].as_array_mut().unwrap();
+        let incoming = params["turn"]["items"]
+            .as_array()
+            .cloned()
+            .unwrap_or_else(|| params.get("item").cloned().into_iter().collect());
+        for item in incoming {
+            if let Some(index) = items.iter().position(|old| old["id"] == item["id"]) {
+                items[index] = item;
+            } else {
+                items.push(item);
+            }
+        }
+        if method == "item/agentMessage/delta" {
+            let Some(id) = params["itemId"].as_str() else {
+                continue;
+            };
+            let index = items
+                .iter()
+                .position(|item| item["id"] == id)
+                .unwrap_or_else(|| {
+                    items.push(json!({"id":id,"type":"agentMessage","text":""}));
+                    items.len() - 1
+                });
+            let mut text = items[index]["text"].as_str().unwrap_or_default().to_owned();
+            text.push_str(params["delta"].as_str().unwrap_or_default());
+            items[index]["text"] = json!(text);
+        }
+    }
+    turns
+}
+
 struct Rpc {
     socket: WebSocket,
     events: VecDeque<Value>,
+    thread_id: String,
+    status: Value,
+    active_turn: Option<String>,
     requests: Vec<Value>,
     truncated: bool,
     policy: Option<(Value, Value, Vec<String>)>,
     repairing: bool,
     policy_dirty: bool,
+    pending_read_logged: bool,
 }
 impl Rpc {
+    fn observe(&mut self, frame: &Value) {
+        let params = &frame["params"];
+        if params["threadId"].as_str() != Some(self.thread_id.as_str()) {
+            return;
+        }
+        match frame["method"].as_str() {
+            Some("thread/status/changed") => self.set_status(&params["status"]),
+            Some("turn/started") => {
+                self.active_turn = params["turn"]["id"]
+                    .as_str()
+                    .filter(|id| !id.is_empty())
+                    .map(str::to_owned);
+                if self.status["type"] != "active" {
+                    self.status = json!({"type":"active", "activeFlags":[]});
+                }
+            }
+            // This notification also carries failed/interrupted terminal statuses.
+            Some("turn/completed")
+                if self
+                    .active_turn
+                    .as_deref()
+                    .is_none_or(|id| params["turn"]["id"] == id) =>
+            {
+                self.set_status(&json!({"type":"idle"}));
+            }
+            _ => {}
+        }
+    }
+
+    fn set_status(&mut self, status: &Value) {
+        self.status = status.clone();
+        if status["type"] == "idle" {
+            self.active_turn = None;
+        }
+    }
+
     fn write(&mut self, value: &Value, guard: &HostOperationLock) -> Result<(), String> {
         self.socket.send(
             1,
@@ -486,6 +611,7 @@ impl Rpc {
                             }
                         }
                     }
+                    self.observe(&frame);
                     if self.events.len() == 64 {
                         self.events.pop_front();
                         self.truncated = true;
@@ -494,9 +620,67 @@ impl Rpc {
                 }
             } else if frame["id"] == id {
                 if frame.get("error").is_some() {
-                    return Err(RpcError::Rejected(frame["error"].clone()));
+                    let error = &frame["error"];
+                    let pending = method == "thread/read" && error["code"] == -32603;
+                    if pending && self.pending_read_logged {
+                        return Err(RpcError::PendingRead);
+                    }
+                    self.pending_read_logged |= pending;
+                    let event = if pending {
+                        "hosted.rpc.pending"
+                    } else {
+                        "hosted.rpc.rejected"
+                    };
+                    let code = error["code"].as_i64();
+                    let message: String = error["message"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .chars()
+                        .take(256)
+                        .collect();
+                    tracing::warn!(event, method, code, message = %message);
+                    taurhaus_lib::logging::emit_global(
+                        "warn",
+                        "coordination",
+                        event,
+                        Some(message),
+                        serde_json::Map::from_iter([
+                            ("method".into(), json!(method)),
+                            ("code".into(), json!(code)),
+                        ]),
+                    );
+                    return Err(if pending {
+                        RpcError::PendingRead
+                    } else {
+                        RpcError::Rejected(error.clone())
+                    });
                 }
                 let result = frame.get("result").cloned().ok_or("missing host result")?;
+                if method == "thread/read" {
+                    self.pending_read_logged = false;
+                }
+                if matches!(method, "thread/read" | "thread/resume")
+                    && result["thread"]["id"] == self.thread_id
+                    // Snapshots can lag a start receipt/notification. Only live
+                    // notifications may retire the connection's tracked turn.
+                    && self.active_turn.is_none()
+                {
+                    self.set_status(&result["thread"]["status"]);
+                }
+                if method == "turn/start" {
+                    if let Some(turn) = result["turn"]["id"].as_str().filter(|id| !id.is_empty()) {
+                        // A start receipt can precede turn/started. Never overwrite a
+                        // completion already observed before this correlated result.
+                        if !self.events.iter().any(|event| {
+                            event["method"] == "turn/completed"
+                                && event["params"]["threadId"] == self.thread_id
+                                && event["params"]["turn"]["id"] == turn
+                        }) {
+                            self.active_turn = Some(turn.to_owned());
+                            self.status = json!({"type":"active", "activeFlags":[]});
+                        }
+                    }
+                }
                 if self.policy_dirty && !self.repairing {
                     // Finish the in-flight response first: never lose correlation to a
                     // nested repair. One repair only, under this same bounded deadline.
@@ -564,6 +748,11 @@ if '--remote' in sys.argv:
 address = sys.argv[sys.argv.index('--listen')+1].removeprefix('unix://')
 saved = os.path.join(root, 'thread.json')
 thread = json.load(open(saved)) if os.path.exists(saved) else None
+# A killed host cannot retain a running model turn in the new process.
+if thread and thread['status']['type'] == 'active':
+    thread['status'] = {'type':'idle'}
+    thread['canAcceptDirectInput'] = True
+    thread['turns'][-1]['status'] = 'interrupted'
 lock = threading.Lock()
 def client(connection):
     global thread
@@ -605,6 +794,24 @@ def client(connection):
                 assert receive() == (10, b'probe')
                 frame(0, payload[3:])
             else: frame(1, payload)
+        def notify(method, **params):
+            emit({'method':method, 'params':dict(threadId=thread['id'], **params)})
+        def items_and_completion(turn):
+            for item in turn['items']:
+                notify('item/started', turnId=turn['id'], item=item)
+                notify('item/completed', turnId=turn['id'], item=item)
+            agent = {'id':'agent-'+turn['id'], 'type':'agentMessage', 'text':''}
+            notify('item/started', turnId=turn['id'], item=agent)
+            notify('item/agentMessage/delta', turnId=turn['id'], itemId=agent['id'], delta='fixture reply')
+            agent['text'] = 'fixture reply'
+            notify('item/completed', turnId=turn['id'], item=agent)
+            if turn['status'] != 'inProgress':
+                thread['status'] = {'type':'idle'}
+                with open(saved, 'w') as output: json.dump(thread, output)
+                notify('thread/status/changed', status={'type':'idle'})
+                # Like the probe, completion summarizes the agent item only.
+                notify('turn/completed', turn=dict(turn, items=[agent]))
+        pending_items = None
         initialized = False
         while True:
             opcode, payload = receive()
@@ -628,9 +835,12 @@ def client(connection):
                 thread['approvalDecision'] = request['result']['decision']
                 thread['canAcceptDirectInput'] = True
                 thread['status']['activeFlags'] = []
+                notify('thread/status/changed', status=thread['status'])
                 continue
             method, params = request.get('method'), request.get('params', {})
             result, error, approval = {}, None, None
+            with open(os.path.join(root, 'requests.jsonl'), 'a') as output:
+                output.write(json.dumps(request)+'\n')
             with lock:
                 if method == 'initialize':
                     result = {'userAgent':'taurhaus_host/'+os.environ.get('FAKE_BUILD','0.153.4'), 'codexHome':root}
@@ -643,12 +853,20 @@ def client(connection):
                 elif method == 'thread/start':
                     assert thread is None
                     with open(os.path.join(root, 'start.json'), 'w') as output: json.dump(params, output)
-                    thread = {'id':'owned-thread', 'status':{'type':'idle','activeFlags':[]}, 'canAcceptDirectInput':True, 'turns':[]}
-                    result = dict(policy, thread=thread)
+                    thread = {'id':'owned-thread', 'status':{'type':'idle'}, 'canAcceptDirectInput':True, 'turns':[]}
+                    result = dict(policy, thread=dict(thread, turns=[]))
                 elif method in ('thread/resume', 'thread/read'):
-                    if thread is None or params['threadId'] != thread['id']: error = {'code':-32600,'message':'unknown thread'}
+                    if 'includeTurns' in params:
+                        error = {'code':-32601,'message':'list_turns is not supported yet'}
+                    elif method == 'thread/read' and (pending_items or any(os.path.exists(os.path.join(root, name)) for name in ('pending-read', 'pending-read-once'))):
+                        error = {'code':-32603,'message':os.environ.get('FAKE_ERROR_MESSAGE', 'failed to read thread: rollout at fixture/sessions/first.jsonl is empty')}
+                        once = os.path.join(root, 'pending-read-once')
+                        if os.path.exists(once): os.unlink(once)
+                    elif thread is None or params['threadId'] != thread['id']: error = {'code':-32600,'message':'unknown thread'}
                     else:
-                        result = dict(policy, thread=thread)
+                        result = dict(policy, thread=dict(thread, turns=[]))
+                        if os.environ.get('FAKE_STALE_IDLE') and thread['status']['type'] == 'active':
+                            result['thread']['status'] = {'type':'idle'}
                         marker = os.path.join(root, 'drift.json')
                         if method == 'thread/read' and os.path.exists(marker):
                             settings = json.load(open(marker)); os.unlink(marker)
@@ -659,41 +877,56 @@ def client(connection):
                             with open(os.path.join(root, 'reassert.json'), 'w') as output: json.dump(params, output)
                 elif method == 'turn/start':
                     assert params['threadId'] == thread['id']
-                    turn = {'id':str(len(thread['turns'])+1), 'status':'completed', 'items':[{'type':'userMessage','content':params['input']}]}
+                    turn = {'id':str(len(thread['turns'])+1), 'status':'completed', 'items':[{'id':'user-'+str(len(thread['turns'])+1),'type':'userMessage','content':params['input']}]}
                     thread['turns'].append(turn)
+                    thread['status'] = {'type':'active','activeFlags':[]}
                     text = params['input'][0]['text']
                     if text == 'active':
                         turn['status'] = 'inProgress'
-                        thread['status']['type'] = 'active'
+                        thread['status'] = {'type':'active','activeFlags':[]}
                     if text in ('approval', 'foreign approval'):
                         turn['status'] = 'inProgress'
                         thread['status'] = {'type':'active','activeFlags':['waitingOnApproval']}
                         thread['canAcceptDirectInput'] = False
                         approval = {'id':'permission-1','method':'item/commandExecution/requestApproval','params':{'threadId':thread['id'] if text == 'approval' else 'foreign-thread','command':'echo marker'}}
-                    result = {'turn':turn, 'threadId':thread['id']}
+                    result = {'turn':dict(turn, status='inProgress', items=[], itemsView='notLoaded')}
                 elif method == 'turn/steer':
                     assert params['expectedTurnId'] == thread['turns'][-1]['id']
                     text = params['input'][0]['text']
                     if text == 'completion race':
                         error = {'code':-32600, 'message':'no active turn to steer'}
                         thread['turns'][-1]['status'] = 'completed'
-                        thread['status']['type'] = 'idle'
+                        thread['status'] = {'type':'idle'}
+                        notify('thread/status/changed', status=thread['status'])
+                        notify('turn/completed', turn=thread['turns'][-1])
                     elif text == 'wrong turn':
                         error = {'code':-32600, 'message':'expected turn id 1 but actual turn id 2'}
                     elif text == 'unclassified':
                         error = {'code':-32600, 'message':'unclassified rejection'}
                     else: result = {'turnId':params['expectedTurnId']}
                 elif method == 'turn/interrupt':
+                    assert params['turnId'] == thread['turns'][-1]['id']
                     thread['turns'][-1]['status'] = 'interrupted'
-                    thread['status'] = {'type':'idle','activeFlags':[]}
+                    thread['status'] = {'type':'idle'}
                     thread['canAcceptDirectInput'] = True
+                    notify('thread/status/changed', status=thread['status'])
+                    notify('turn/completed', turn=thread['turns'][-1])
                     result = {}
-                else: error = {'code':-32601,'message':'unsupported fake method'}
+                else: error = {'code':-32601,'message':os.environ.get('FAKE_ERROR_MESSAGE','unsupported fake method')}
                 if thread is not None:
                     with open(saved, 'w') as output: json.dump(thread, output)
                 if method == 'turn/start' and params['input'][0]['text'] == 'disconnect': return
                 reply = {'id':request['id'], 'error':error} if error else {'id':request['id'], 'result':result}
                 emit(reply)
+                if method == 'turn/start':
+                    notify('thread/status/changed', status=thread['status'])
+                    notify('turn/started', turn=dict(turn, status='inProgress', items=[], itemsView='notLoaded'))
+                    if len(thread['turns']) == 1:
+                        pending_items = turn
+                    else: items_and_completion(turn)
+                elif method == 'thread/read' and error and error['code'] == -32603 and pending_items:
+                    items_and_completion(pending_items)
+                    pending_items = None
                 if approval: emit(approval)
 with socket.socket(socket.AF_UNIX) as listener:
     listener.bind(address); listener.listen(4)
@@ -719,8 +952,193 @@ with socket.socket(socket.AF_UNIX) as listener:
         let socket = root.join(format!("{}.sock", uuid::Uuid::new_v4().simple()));
         HostProcess::launch(launch, root, &socket, resume, guard)
     }
+
+    #[test]
+    fn hosted_idle_startup_card_and_transcript_use_real_thread_state() {
+        // Regression: cadd533e (still present in 80290f36) rejected startup recovery by requesting unsupported includeTurns.
+        let tmp = tempfile::tempdir().unwrap();
+        let launch = fixture(tmp.path());
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        // Regression: 04128879 did not retry pre-card reads within the launch deadline.
+        std::fs::write(tmp.path().join("pending-read-once"), "").unwrap();
+        let card = "[taurhaus] recovery_card startup";
+        assert_eq!(host.input(card, &guard).unwrap()["turn"]["id"], "1");
+        let state = host.transcript(&guard).unwrap();
+        let turn = &state["thread"]["turns"][0];
+        assert_eq!(turn["status"], "completed");
+        assert_eq!(turn["items"][0]["content"][0]["text"], card);
+        assert_eq!(turn["items"][1]["text"], "fixture reply");
+        let requests = std::fs::read_to_string(tmp.path().join("requests.jsonl")).unwrap();
+        assert!(!requests.contains("includeTurns"));
+        assert!(requests.contains("turn/start"));
+        assert!(!requests.contains("turn/steer"));
+    }
+
+    #[test]
+    fn hosted_first_turn_read_is_pending_then_steers_tracked_id() {
+        // Regression: cadd533e (still present in 80290f36) rejected transient rollout reads and derived active IDs from empty turns.
+        let tmp = tempfile::tempdir().unwrap();
+        let launch = fixture(tmp.path());
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        host.input("active", &guard).unwrap();
+        let error = host
+            .rpc
+            .as_mut()
+            .unwrap()
+            .call("thread/read", json!({"threadId":host.thread_id}), &guard)
+            .unwrap_err();
+        assert!(matches!(error, RpcError::PendingRead));
+        assert!(!host.outcome_unknown());
+        assert_eq!(host.input("steer marker", &guard).unwrap()["turnId"], "1");
+        let state = host.transcript(&guard).unwrap();
+        assert_eq!(
+            state["thread"]["turns"][0]["items"][1]["text"],
+            "fixture reply"
+        );
+        host.interrupt(&guard).unwrap();
+        assert_eq!(
+            host.transcript(&guard).unwrap()["thread"]["status"]["type"],
+            "idle"
+        );
+        let requests = std::fs::read_to_string(tmp.path().join("requests.jsonl")).unwrap();
+        assert!(!requests.contains("not submitted"));
+        assert!(!requests.contains("includeTurns"));
+        assert!(requests.contains("expectedTurnId"));
+    }
+
+    #[test]
+    fn hosted_transcript_window_does_not_forget_active_turn() {
+        // Regression: cadd533e (still present in 80290f36) used read history instead of connection state and events.
+        let tmp = tempfile::tempdir().unwrap();
+        let launch = fixture(tmp.path());
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        host.input("active", &guard).unwrap();
+        host.transcript(&guard).unwrap();
+        let rpc = host.rpc.as_mut().unwrap();
+        // Model an evicted history window without losing connection activity.
+        rpc.events.clear();
+        rpc.truncated = true;
+        for n in 0..64 {
+            rpc.events
+                .push_back(json!({"method":"item/completed", "params":{
+                "threadId":"owned-thread", "turnId":format!("old-{n}"),
+                "item":{"id":"agent", "type":"agentMessage", "text":"retained"}}}));
+        }
+        let state = host.transcript(&guard).unwrap();
+        assert_eq!(state["thread"]["turns"].as_array().unwrap().len(), 64);
+        assert_eq!(state["eventsTruncated"], true);
+        assert_eq!(
+            host.input("steer after eviction", &guard).unwrap()["turnId"],
+            "1"
+        );
+    }
+
+    #[test]
+    fn hosted_stale_idle_snapshot_preserves_steer_and_interrupt() {
+        // Regression: 04128879 let lagging read/resume snapshots erase a tracked turn.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut launch = fixture(tmp.path());
+        launch
+            .environment
+            .insert("FAKE_STALE_IDLE".into(), "1".into());
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        host.input("first", &guard).unwrap();
+        host.transcript(&guard).unwrap();
+        host.input("active", &guard).unwrap();
+        assert_eq!(
+            host.transcript(&guard).unwrap()["thread"]["status"]["type"],
+            "active"
+        );
+        let rpc = host.rpc.as_mut().unwrap();
+        rpc.call(
+            "thread/resume",
+            rpc.policy.as_ref().unwrap().1.clone(),
+            &guard,
+        )
+        .unwrap();
+        assert_eq!(host.input("steer", &guard).unwrap()["turnId"], "2");
+        host.interrupt(&guard).unwrap();
+        assert_eq!(
+            host.transcript(&guard).unwrap()["thread"]["status"]["type"],
+            "idle"
+        );
+    }
+
+    #[test]
+    fn hosted_rpc_rejection_is_logged_without_params() {
+        // Regression: cadd533e (still present in 80290f36) discarded the host error behind an opaque public refusal.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let sink =
+            taurhaus_lib::logging::LogFileState::new(tmp.path().join("events.jsonl")).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
+        let mut launch = fixture(tmp.path());
+        launch
+            .environment
+            .insert("FAKE_ERROR_MESSAGE".into(), "é".repeat(300));
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let mut host = spawn(&launch, tmp.path(), None, &guard).unwrap();
+        // Regression: 04128879 selected a foreign rejection from the global sink.
+        let rpc = host.rpc.as_mut().unwrap();
+        let _ = rpc.call("thread/read", json!({"threadId":"foreign"}), &guard);
+        let error = rpc
+            .call("unsupported", json!({"private":"do not log"}), &guard)
+            .unwrap_err();
+        assert_eq!(
+            String::from(error),
+            "host rejected request; reconcile before retrying"
+        );
+        // Regression: 04128879 surfaced the first transient without using the host deadline.
+        std::fs::write(tmp.path().join("pending-read"), "").unwrap();
+        let started = std::time::Instant::now();
+        assert!(host
+            .input("not submitted", &guard)
+            .unwrap_err()
+            .starts_with("pending:"));
+        assert!(started.elapsed() >= Duration::from_secs(4));
+        assert!(!host.outcome_unknown());
+        std::fs::remove_file(tmp.path().join("pending-read")).unwrap();
+        drop(guard);
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        assert_eq!(
+            host.input("recovery card", &guard).unwrap()["turn"]["id"],
+            "1"
+        );
+        let requests = std::fs::read_to_string(tmp.path().join("requests.jsonl")).unwrap();
+        assert!(!requests.contains("not submitted"));
+        sink.flush_for_test().unwrap();
+        let logs = std::fs::read_to_string(tmp.path().join("events.jsonl")).unwrap();
+        let event: Value = serde_json::from_str(
+            logs.lines()
+                .find(|line| {
+                    line.contains("hosted.rpc.rejected")
+                        && line.contains("\"method\":\"unsupported\"")
+                })
+                .expect("rejection must be logged"),
+        )
+        .unwrap();
+        assert_eq!(event["method"], "unsupported");
+        assert_eq!(event["code"], -32601);
+        assert_eq!(event["message"], "é".repeat(256));
+        assert!(!logs.contains("do not log"));
+        let pending: Vec<Value> = logs
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .filter(|event: &Value| {
+                event["event"] == "hosted.rpc.pending" && event["message"] == "é".repeat(256)
+            })
+            .collect();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0]["code"], -32603);
+    }
     #[test]
     fn hosted_workspace_write_config_round_trips_optional_fields() {
+        // Serialize with the global-sink logging tests: this spawn emits hosted.instruction_sources.loaded.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: efb1ddb8 copied missing workspace sandbox fields as TOML nulls.
         for sandbox in [
             json!({"type":"workspaceWrite", "networkAccess":false}),
@@ -762,6 +1180,8 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_approval_policy_normalizes_config_and_repair() {
+        // Serialize with the global-sink logging tests: this spawn emits hosted.instruction_sources.loaded.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: efb1ddb8 wrote unchecked RPC approval enums straight into TOML.
         for (wire, config) in [
             ("never", "never"),
@@ -794,6 +1214,8 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_approval_policy_refuses_unknown_variant() {
+        // Serialize with the global-sink logging tests: this spawn emits hosted.instruction_sources.loaded.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: efb1ddb8 accepted arbitrary approval strings into strict TUI config.
         let tmp = tempfile::tempdir().unwrap();
         let mut launch = fixture(tmp.path());
@@ -875,6 +1297,8 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_instruction_sources_survive_settings_repair() {
+        // Serialize with the global-sink logging tests: this spawn emits hosted.instruction_sources.loaded.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: ef8f6ce9 allowed instructions but repair reused the TUI's discovery suppression.
         for changed in [false, true] {
             let tmp = tempfile::tempdir().unwrap();
@@ -919,6 +1343,8 @@ with socket.socket(socket.AF_UNIX) as listener:
 
     #[test]
     fn hosted_instruction_sources_drop_non_string_entries() {
+        // Serialize with the global-sink logging tests: this spawn emits hosted.instruction_sources.loaded.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         // Regression: ef8f6ce9 copied untyped host objects into the string-array record contract.
         let tmp = tempfile::tempdir().unwrap();
         let mut launch = fixture(tmp.path());
@@ -992,8 +1418,8 @@ with socket.socket(socket.AF_UNIX) as listener:
         assert!(taurhaus_lib::platform::process_start_ticks(pid).is_none());
         let mut resumed = spawn(&launch, tmp.path(), Some("owned-thread"), &guard).unwrap();
         assert_eq!(
-            resumed.transcript(&guard).unwrap()["thread"],
-            original["thread"]
+            resumed.transcript(&guard).unwrap()["thread"]["id"],
+            original["thread"]["id"]
         );
         assert!(spawn(&launch, tmp.path(), Some("wrong-thread"), &guard).is_err());
     }
