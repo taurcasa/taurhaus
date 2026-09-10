@@ -1,0 +1,14 @@
+[
+  {
+    "ts": "2026-09-10T16:41:48.265326894Z",
+    "session_id": "01a08c32-548b-7133-a944-bb9b426a2d61",
+    "event": "agent-turn-complete",
+    "turn_id": "01a08c32-54a5-7b42-943d-f39f62694235"
+  },
+  {
+    "ts": "2026-09-10T16:42:01.292210038Z",
+    "session_id": "01a08c32-4c14-7ba0-ba32-53edd53fc37c",
+    "event": "agent-turn-complete",
+    "turn_id": "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf"
+  }
+]

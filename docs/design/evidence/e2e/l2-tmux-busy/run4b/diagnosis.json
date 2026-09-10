@@ -1,0 +1,182 @@
+{
+  "outcome": "UNAVAILABLE / INCOMPLETE",
+  "classification": "harness",
+  "failed_step": 2,
+  "reason": "Ordinary response remained in Codex composer after literal send-keys and Enter; no second rollout turn or production busy observation within 90 seconds. Q was never sent. Exact input-handling cause is unproved; no product defect established.",
+  "step1_onboarding_message_id": "1914645c-9df1-4c95-847a-6027144cb808",
+  "step1_submission_count": 1,
+  "step1_explicit_read_count": 1,
+  "step1_attribution": {
+    "activity_attribution": "attributed",
+    "activity_confidence": "high",
+    "args": "codex --yolo --dangerously-bypass-hook-trust -c notify=[\"/tmp/th-l2-0qqche8o/home/.local/bin/taurhaus-daemon\",\"codex-notify\"] -m gpt-5.6-luna -c model_reasoning_effort=\"low\"",
+    "cli_tool": "codex",
+    "group_id": "l2-busy",
+    "group_kind": "mesh_team",
+    "group_label": "l2-busy",
+    "jsonl_path": "/tmp/th-l2-0qqche8o/codex/sessions/2026/09/10/rollout-2026-09-10T18-41-41-01a08c32-4c14-7ba0-ba32-53edd53fc37c.jsonl",
+    "last_output_age_secs": 0,
+    "member_name": "alpha",
+    "pid": 143,
+    "project_path": "/tmp/th-l2-0qqche8o/project",
+    "project_unattributed_active": false,
+    "recent_io": false,
+    "session_id": "01a08c32-4c14-7ba0-ba32-53edd53fc37c",
+    "state": "idle",
+    "tmux_pane": "%2",
+    "tmux_session": "taurhaus",
+    "tmux_window": "2",
+    "tmux_window_name": "project",
+    "tty": "/dev/pts/2"
+  },
+  "ordinary_input_command": [
+    "tmux",
+    "-S",
+    "/tmp/th-l2-0qqche8o/tmux/tmux-1000/default",
+    "send-keys",
+    "-t",
+    "%2",
+    "-l",
+    "For this bounded ordinary response, write exactly 60 numbered lines, each saying blue river stone. Do not execute tools."
+  ],
+  "ordinary_input_at": 1789058521.5090127,
+  "rollout_turn_ids": [
+    "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf"
+  ],
+  "controller_exit": {
+    "exit": 1,
+    "last_step": 2,
+    "runtime_seconds": 113.24557142402045
+  },
+  "spend": {
+    "paid_inputs": 2,
+    "turns": [
+      {
+        "turn_id": "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf",
+        "usd": 0.0030376,
+        "completed": true,
+        "usage": {
+          "input_tokens": 44156,
+          "cached_input_tokens": 35840,
+          "output_tokens": 548
+        },
+        "conservative_usd": 0.05364479999999999
+      },
+      {
+        "turn_id": "01a08c32-54a5-7b42-943d-f39f62694235",
+        "usd": null,
+        "completed": true,
+        "source": "notify-only",
+        "classification": "unknown-but-not-a-model-input"
+      }
+    ],
+    "usage_rows": [
+      {
+        "at": "2026-09-10T16:41:50.813Z",
+        "turn_id": "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf",
+        "usage": {
+          "input_tokens": 8874,
+          "cached_input_tokens": 6912,
+          "output_tokens": 205
+        },
+        "usd": 0.0007766400000000001
+      },
+      {
+        "at": "2026-09-10T16:41:56.598Z",
+        "turn_id": "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf",
+        "usage": {
+          "input_tokens": 11290,
+          "cached_input_tokens": 6912,
+          "output_tokens": 201
+        },
+        "usd": 0.00125504
+      },
+      {
+        "at": "2026-09-10T16:41:59.926Z",
+        "turn_id": "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf",
+        "usage": {
+          "input_tokens": 11828,
+          "cached_input_tokens": 11008,
+          "output_tokens": 110
+        },
+        "usd": 0.00051616
+      },
+      {
+        "at": "2026-09-10T16:42:01.285Z",
+        "turn_id": "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf",
+        "usage": {
+          "input_tokens": 12164,
+          "cached_input_tokens": 11008,
+          "output_tokens": 32
+        },
+        "usd": 0.00048976
+      }
+    ],
+    "metering_complete": true,
+    "api_equivalent_usd": 0.0030376,
+    "conservative_usd": 0.0536448,
+    "rates_usd_per_million": {
+      "input": 0.2,
+      "cached_input": 0.02,
+      "output": 1.2
+    },
+    "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+    "input_reservations": [
+      {
+        "reason": "production initialization/onboarding",
+        "step": 1,
+        "at": 1789058499.9674814,
+        "generation": null
+      },
+      {
+        "reason": "Q-work",
+        "step": 2,
+        "at": 1789058521.508155,
+        "generation": 1
+      }
+    ],
+    "rollout_turns": 1,
+    "controller_issued_inputs": 1,
+    "mesh_terminal_deliveries": 1
+  },
+  "daemon_jsonl_rows": 186,
+  "lock_samples": 7,
+  "flock_samples": 5,
+  "managed_stop_exclusion": "NOT RUN; startup samples do not establish lifecycle exclusion",
+  "steps": {
+    "1": {
+      "step": 1,
+      "outcome": "PASS",
+      "at": 1789058521.4797714
+    },
+    "2": {
+      "step": 2,
+      "outcome": "FAIL",
+      "classification": "harness",
+      "reason": "no production busy observation"
+    },
+    "3": {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    },
+    "4": {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    },
+    "5": {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    },
+    "6": {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 2"
+    }
+  },
+  "opus_review": "unavailable: no callable Workflow/Opus tool or Opus model override; no substitute approval",
+  "paid_retries": 0,
+  "product_changes": false
+}

@@ -1,5 +1,5 @@
 {
-  "paid_inputs": 1,
+  "paid_inputs": 2,
   "turns": [
     {
       "turn_id": "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf",
@@ -77,9 +77,15 @@
       "step": 1,
       "at": 1789058499.9674814,
       "generation": null
+    },
+    {
+      "reason": "Q-work",
+      "step": 2,
+      "at": 1789058521.508155,
+      "generation": 1
     }
   ],
   "rollout_turns": 1,
-  "controller_issued_inputs": 0,
+  "controller_issued_inputs": 1,
   "mesh_terminal_deliveries": 1
 }

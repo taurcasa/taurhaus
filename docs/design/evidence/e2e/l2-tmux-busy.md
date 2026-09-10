@@ -1,4 +1,4 @@
-# UNAVAILABLE — Run 4: onboarding succeeds, step 1 controller evidence and metering remain incomplete
+# UNAVAILABLE — Run 4b: step 1 PASS; step 2 ordinary input remained in the composer (harness)
 
 ## Historical run 2 — FAIL at step 1: idle Codex prompt, onboarding permanently pending
 
@@ -429,7 +429,7 @@ read or copied. **Additional seat starts: 0; Codex/Claude inputs: 0/0; additiona
 seat spend: $0.00.** Historical run 3 remains step 1 FAIL and steps 2–6 NOT RUN.
 Implementer/reviewer spend is not exposed here and remains outside the seat cap.
 
-## Run 4 — UNAVAILABLE / INCOMPLETE: harness stops at step 1
+## Run 4 — second attempt UNAVAILABLE at step 2 (first attempt retained below)
 
 **Classification: harness evidence failure; no Taurhaus or Mesh product failure
 established in this run.** The frozen run-3 controller exited **1** after
@@ -593,3 +593,116 @@ No paid restart or additional input occurred. The original stop-on-first-failure
 rule and incomplete spend accounting still prevent proceeding to steps 2–6;
 the deleted scratch runtime cannot be resumed. This verification does not change
 the run-4 unavailable/incomplete verdict or supply the missing Opus review.
+
+### Run 4, second attempt (run4b) — latest verdict: UNAVAILABLE / INCOMPLETE
+
+**Step 1 PASS; step 2 FAIL (harness); steps 3–6 NOT RUN.** The relaunch
+applied both orchestrator rulings, then stopped on a new harness observation:
+a literal `tmux send-keys` followed immediately by `Enter` left the ordinary
+response in Codex's composer. No second rollout turn or production busy snapshot
+appeared during the 90-second poll. Q was never sent. The final pane proves the
+unsubmitted text; the exact input-handling cause is unproved. This is **not a
+Taurhaus or Mesh product failure**, and no product code was changed or runtime
+input retried. [run4b diagnosis](l2-tmux-busy/run4b/diagnosis.json),
+[final pane](l2-tmux-busy/run4b/run/final-pane-2.txt),
+[complete command/results](l2-tmux-busy/run4b/run/events.jsonl).
+
+| Ordered step | Outcome / classification | Evidence |
+|---|---|---|
+| 1. Canonical initialize, runtime contract, delivered onboarding | **PASS**, product path observed | [ready snapshot and receipts](l2-tmux-busy/run4b/run/step1-ready.json), [pane identity](l2-tmux-busy/run4b/run/step1-pane-identity.json), [terminal lock](l2-tmux-busy/run4b/run/step1-terminal-lock.json) |
+| 2. Ordinary response, observed working, send Q while busy | **FAIL — harness**; response remained in composer, no observed busy window, Q not sent | [outcome](l2-tmux-busy/run4b/run/step2-outcome.json), [final pane](l2-tmux-busy/run4b/run/final-pane-2.txt) |
+| 3. Q pending, then fresh idle and one matching submission/reply | **NOT RUN — blocked by step 2**, no product classification | [outcome](l2-tmux-busy/run4b/run/step3-outcome.json) |
+| 4. Second busy response, Q2 pending, normal managed stop and lock sample | **NOT RUN — blocked by step 2**, no product classification | [outcome](l2-tmux-busy/run4b/run/step4-outcome.json) |
+| 5. One managed low-effort resume, new generation, Q2 once and no Q replay | **NOT RUN — blocked by step 2**, no product classification | [outcome](l2-tmux-busy/run4b/run/step5-outcome.json) |
+| 6. Explicit Q2 read, reconciliation, export and teardown | **NOT RUN as a workflow step**; failure export and teardown completed separately | [outcome](l2-tmux-busy/run4b/run/step6-outcome.json), [cleanup audit](l2-tmux-busy/run4b/final-audit.json) |
+
+The unchanged product is **1db4f9bf**, protocol **27**; the separate `mesh-l2`
+worktree was detached at **ed59187** and its descriptor stayed unchanged.
+Checkout-local `just build-daemon` and `cargo build --bin mesh` in `mesh-l2`
+both exited **0**, after the prescribed Cargo-process probe.
+[build commands](l2-tmux-busy/run4b/builds.json),
+[binary SHA-256 digests](l2-tmux-busy/run4b/checks-result.json).
+Actual native Codex **0.153.4**, **gpt-5.6-luna / low** ran with both native
+siblings in the scratch bin. The Claude lead remained login-only, with no
+Claude model turn. Production initialization used the builder's canonical
+messaging policy and creation-time tmux delivery. The sole authorized auth file
+was copied alone into the empty scratch Codex home as mode 0600. Child processes
+were inside the private PID namespace with operator homes hidden, a private
+tmux server and private daemon port **46929**.
+
+Alpha's runtime had `terminalContract=1`, attachment generation **1**, context
+generation **"0"**, pane **%2**, pane PID **140**, start ticks **27903816**, session
+**$0**, and terminal-lock inode **1740006**. The scratch root, socket, launch-root
+incarnation and authority revision are retained in the ready record. The real
+Codex session **01a08c32-4c14-7ba0-ba32-53edd53fc37c** was attributed and idle at
+**high** confidence. Its snapshot at **16:42:01.363777467Z** was less than one
+second old at the step-1 acceptance. Onboarding message
+**1914645c-9df1-4c95-847a-6027144cb808** is retained in the diagnosis; the
+receipt/read predicate verified **one tmux submission and one explicit read**.
+The recovery card arrived through a tool result, not a user row. Startup passive
+observation retained **7 lock samples, 5 with FLOCK holders**; these do not prove
+managed-stop exclusion, which was not reached.
+
+#### Run4b budget — every observed model-call spend
+
+The fresh budget counted **2 / 10 inputs**: one Mesh onboarding terminal delivery
+and one controller-issued ordinary response submission attempt. The latter
+created no rollout turn. There was **one completed rollout turn**,
+`01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf`, containing these usage increments:
+
+| UTC usage row | Input | Cached input | Output | USD |
+|---|---:|---:|---:|---:|
+| 16:41:50.813 | 8,874 | 6,912 | 205 | 0.00077664 |
+| 16:41:56.598 | 11,290 | 6,912 | 201 | 0.00125504 |
+| 16:41:59.926 | 11,828 | 11,008 | 110 | 0.00051616 |
+| 16:42:01.285 | 12,164 | 11,008 | 32 | 0.00048976 |
+| **Total** | **44,156** | **35,840** | **548** | **0.00303760** |
+
+The inherited packet rates are $0.20 / $0.02 / $1.20 per million input / cached
+input / output tokens; this is API-equivalent metered usage, not an invoice.
+The upper estimate pricing every input/output token at $1.20/M is **$0.05364480**.
+Both are below **$0.20**. Notify-only identity
+`01a08c32-54a5-7b42-943d-f39f62694235` has no usage row: its cost is explicitly
+**unknown-but-not-a-model-input**, and it did not block the run, per the ruling.
+No Q/Q2 or resume spend occurred; Claude spend was zero (login-only).
+[full cost ledger](l2-tmux-busy/run4b/run/cost-ledger.json).
+
+#### Run4b verification, cleanup and limitations
+
+- **Red → green:** the offline ruling tests first produced one failure
+  (`metering_complete` false for a notify-only identity) and two errors (missing
+  per-call usage ledger and receipt-based onboarding predicate). All **22**
+  controller/preflight/ruling tests then passed. Regression comments identify
+  `fb6200e0`, which inherited the faulty predicates. No test launches a CLI or
+  reads real harness credentials. [red](l2-tmux-busy/run4b/rulings-red.txt),
+  [green](l2-tmux-busy/run4b/green.txt),
+  [tests](l2-tmux-busy/run4b/rulings_test.py).
+- Gates from this checkout root: **`just check-quick` = 0**,
+  **`just lint` = 0**, **`just test-contracts` = 0**.
+  Check-quick ran **2,518 frontend tests**. No `src-tauri/` diff, so the conditional
+  Rust-unit gate does not apply. [gate exits](l2-tmux-busy/run4b/checks-result.json).
+- The controller exited **1** after **113.246 seconds**; it did not retry paid
+  input or inject faults. Its `finally` stopped owned processes, removed the
+  scratch credential and root, and verified no surviving daemon/tmux/Codex
+  identities or private listener. The independent read-only cleanup/export audit
+  exited **0**. [controller exit](l2-tmux-busy/run4b/run/controller-exit.json),
+  [cleanup](l2-tmux-busy/run4b/run/cleanup.json).
+- All **186 complete daemon JSONL rows** were retained, including shutdown,
+  with only privacy sanitization. Pane captures are at most **60 lines**.
+  Five byte-identical files were removed with explicit aliases; no daemon rows
+  were deduplicated away. [daemon stream](l2-tmux-busy/run4b/run/taurhaus.log.jsonl),
+  [alias manifest](l2-tmux-busy/run4b/export-manifest.json).
+- The model also sent a Mesh clarification to the login-only lead after reading
+  the unassigned onboarding card. This was within the same metered turn, but
+  departed from the scratch instruction to send no other messages. It did not
+  produce a Claude model turn. The rollout and journal retain the action.
+- The required independent **Opus evidence lens is unavailable**: this session
+  exposes no Workflow/Opus tool or Opus model override. No substitute review or
+  review approval is claimed. Implementer/reviewer billing is outside the seat
+  meter; no reviewer was started. Thus this is an incomplete evidence lane even
+  apart from the step-2 stop.
+- Changes are confined to this evidence report and `run4b/` controller/evidence
+  sidecars. No product patch, descriptor edit, install, release, stress run,
+  hosted seat, artificial idle stall or plan-ledger mutation was performed.
+  Step 1 was committed immediately as **9f4ac4c5** after the preparation commit
+  **31aac7d7**. No green step is claimed for steps 2–6.
