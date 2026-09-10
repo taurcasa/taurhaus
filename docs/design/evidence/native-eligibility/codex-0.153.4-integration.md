@@ -2676,3 +2676,13 @@ controller import or harness invocation. See [red](integration/attempt12/red.txt
 [green](integration/attempt12/green.txt), [tests](integration/attempt12_test.py),
 and [controller](integration/attempt12-controller.py). Gate logs will be retained
 under `integration/attempt12/gates/`. No Taurhaus product change.
+
+### Step 1 — PASS (S-runtime)
+
+Production initialize `init_de9fb0e2a2534574bbc1425e9694ff23` passed all nine stages.
+Owned thread `01a08c4e-36ef-7b81-8d5f-152614676d07`; strict config, loaded AGENTS.md,
+Unix socket and attached pane `%2` verified. Startup card completed and visible.
+Evidence: `attempt12/run/initialize-result.json`, `step1-runtime.json`,
+`step1-identities.json`, `step1-final-pane-2.txt`, `host-events.jsonl`, and the full
+`taurhaus.log.jsonl`. One metered startup turn: $0.00097004 API-equivalent,
+$0.01296120 conservative. Both checkout-local builds exited 0.

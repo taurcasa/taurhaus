@@ -1,0 +1,200 @@
+[
+  {
+    "pid": 3803440,
+    "start_ticks": "28086580",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-v92389k5",
+      "/tmp/th-int-v92389k5",
+      "--chdir",
+      "/tmp/th-int-v92389k5/project",
+      "/bin/bash",
+      "/tmp/th-int-v92389k5/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3803441,
+    "start_ticks": "28086580",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-int-v92389k5",
+      "/tmp/th-int-v92389k5",
+      "--chdir",
+      "/tmp/th-int-v92389k5/project",
+      "/bin/bash",
+      "/tmp/th-int-v92389k5/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3803442,
+    "start_ticks": "28086580",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-int-v92389k5/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 3803443,
+    "start_ticks": "28086580",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 3803449,
+    "start_ticks": "28086591",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3803451,
+    "start_ticks": "28086591",
+    "argv": [
+      "/tmp/th-int-v92389k5/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "27234",
+      "--data-dir",
+      "/tmp/th-int-v92389k5/data",
+      ""
+    ]
+  },
+  {
+    "pid": 3803573,
+    "start_ticks": "28086651",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-int-v92389k5/project' && CLAUDE_DIR='/tmp/th-int-v92389k5/claude' CLAUDE_CONFIG_DIR='/tmp/th-int-v92389k5/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'integration' --agent-name 'lead' --agent-id 'lead@integration' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 3803576,
+    "start_ticks": "28086652",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "integration",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@integration",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 3803582,
+    "start_ticks": "28086653",
+    "argv": [
+      "codex",
+      "-c",
+      "sandbox_mode=\"read-only\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "model=\"gpt-5.6-luna\"",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      "app-server",
+      "--listen",
+      "unix:///tmp/th-int-v92389k5/tmp/th-host-f85778b6339c47828854b9272615f41b/rpc.sock",
+      ""
+    ]
+  },
+  {
+    "pid": 3804266,
+    "start_ticks": "28087055",
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3804281,
+    "start_ticks": "28087093",
+    "argv": [
+      "codex",
+      "--remote",
+      "unix:///tmp/th-int-v92389k5/tmp/th-host-f85778b6339c47828854b9272615f41b/rpc.sock",
+      "resume",
+      "01a08c4e-36ef-7b81-8d5f-152614676d07",
+      "--no-alt-screen",
+      "--strict-config",
+      ""
+    ]
+  },
+  {
+    "pid": 3804726,
+    "start_ticks": "28087201",
+    "argv": [
+      "/tmp/th-int-v92389k5/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "integration",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-int-v92389k5/claude",
+      ""
+    ]
+  },
+  {
+    "pid": 3805503,
+    "start_ticks": "28087825",
+    "argv": [
+      "/bin/sh",
+      "/usr/bin/lsb_release",
+      "-a",
+      ""
+    ]
+  }
+]

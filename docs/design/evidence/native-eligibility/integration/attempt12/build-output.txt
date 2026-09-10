@@ -1,0 +1,2 @@
+{"command": ["cargo", "build", "--bin", "taurhaus-daemon"], "cwd": "/home/mstie/projects/taurhaus-trial/src-tauri", "target": "/home/mstie/projects/taurhaus-trial/src-tauri/target", "exit": 0, "cargo_preflight": [{"at": 1789060292.9546785, "exit": 1, "output": ""}]}
+{"command": ["cargo", "build", "--bin", "mesh"], "cwd": "/home/mstie/projects/mesh-trial", "target": "/home/mstie/projects/mesh-trial/target", "exit": 0, "cargo_preflight": [{"at": 1789060293.1801996, "exit": 1, "output": ""}]}
