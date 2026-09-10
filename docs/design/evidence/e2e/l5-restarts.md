@@ -518,7 +518,10 @@ including commands/exits, message IDs, baseline reads and journal pages, pending
 samples, identity/epoch/config snapshots, passive `/proc/locks`, and bounded pane
 captures (at most 60 lines each). The primary JSONL/accounting/outcome records
 remain direct. The preserved controller is the exact instrument that ran, including
-its two identified step-3 faults. The raw assertion/exit remain in
+its two identified step-3 faults. Controller stdout and contract-test stdout are retained losslessly as JSON strings
+in `run3/controller-console.json` and `run3/gates/gate-test-contracts-output.json`;
+this preserves their trailing whitespace without introducing Git whitespace errors.
+The raw assertion/exit remain in
 [step3-console.txt](l5-restarts/run3/step3-console.txt); the separate final assessment
 qualifies rather than overwrites the original step outcomes.
 
