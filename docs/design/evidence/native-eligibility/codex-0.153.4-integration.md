@@ -1764,3 +1764,14 @@ were waited and their root removed. The exact authorized Mesh descriptor checkou
 exited 0; the Mesh working tree is clean. Retained sidecars are about **379 KB**,
 excluding scripts. The two collector/timing failures are explicit harness
 deviations, not evidence against native eligibility under ordinary scheduling.
+
+### Attempt 8 continuation — user-authorized, 2026-09-10
+
+The user requested continuation from the committed tree. The earlier four turns
+and $0.0550068 conservative spend remain charged to attempt 8; no budget reset.
+The corrected driver waits for current-message journal receipts through ordinary
+scheduler retries. It refuses to count enqueue without thread_active as deferral.
+Four offline regression/budget tests observed red then green. Earlier controllers
+remain unchanged as evidence; continuation uses `attempt8-continuation-*.py` and
+sidecars under `integration/attempt8/continuation/`. Steps remain unclaimed until
+re-observed. The sampler still has no process-control or app-server socket calls.
