@@ -1,10 +1,7 @@
-# INCOMPLETE — latest run 5, harness failure at L4 step 3
+# IN PROGRESS — latest run 6, L4 step 1 passed
 
-Run 5 passed both initial exchanges and stopped every seat, including the hosted
-app-server. The inherited pending-receipt assertion failed before beta backlog or
-`resume_team`; whole-team resume remains unverified.
-See [Run 5](#run-5) for evidence, spend, gates and classification.
-
+Run 6 uses taurhaus `a7e6db7e` and the unmodified Mesh `310144d` candidate.
+See [Run 6](#run-6) for the latest checkpoints.
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -661,3 +658,18 @@ explicit above. The independent Opus evidence lens remains for the invoking
 orchestrator; no Opus tool is callable here. Steps 4–6 and beta's stopped backlog
 remain unverified. No installation/release, plan-ledger edit, descriptor mutation,
 account/root move, unrelated CLI, stress test, or operator-process kill occurred.
+
+
+## Run 6
+
+Run 6 reuses run5’s controller with the binding stopped-backlog health predicate
+and a census covering every basename starting with `codex`, including the native
+code-mode sibling. No product or descriptor change.
+
+| Step | Outcome | Evidence / classification |
+|---|---|---|
+| 1. Initialize, exchange/read one marker per seat | PASS | Runtime; [outcome](l4-resume-team/run6/step1-outcome.json), [state](l4-resume-team/run6/step1-state.json) |
+
+Four fully metered turns at step 1: API-equivalent $0.00423052; conservative
+all-output-rate $0.079704. Two start reservations make 6 inputs including starts.
+[Cost ledger](l4-resume-team/run6/cost-ledger.json). Later steps remain unverified.
