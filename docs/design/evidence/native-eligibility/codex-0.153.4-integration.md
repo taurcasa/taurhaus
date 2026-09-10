@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — attempt 6 IN PROGRESS (step 1 PASS)
+# Codex 0.153.4 integration — attempt 6 IN PROGRESS (steps 1–2 PASS)
 
 2026-09-09. **Eligibility remains disabled.** The prescribed canonical setup
 stopped before member launch: the real Mesh command `team delivery --owner team`
@@ -1201,3 +1201,25 @@ The controller reuses attempt 5 with lossless overlapping-buffer export and
 retains only new host events. Its offline regression names `d3b95226`; red was
 `ModuleNotFoundError: attempt6_support`, then one passing regression test after
 implementation. No product code or product regression fix was made.
+
+### Step 2 — PASS
+
+[Owner status](integration/attempt6/step2/step2-status-before.txt) reports
+`adapter seat: mode=app_server source=config diagnostic=none`; live team owner,
+epoch 2. The [send](integration/attempt6/step2/step2-send.txt) accepted random
+marker **cobalta6e6c2cd57**, message `c9199479-21ad-4b17-aab2-0d4a13ae0e31`,
+delivery `d498033d-dfd5-4533-baed-5f3ef9081c53`.
+The [journal before read](integration/attempt6/step2/journal-before-read.jsonl)
+records exactly one native enqueue for it, method `turn/start`, request
+`69eabd28-632e-4dd4-8f1c-bc9c80810bc7`, turn
+`01a0898e-39df-79e2-bf52-02e8ac1ca7bc`, unchanged thread. It contains no
+`consumed_by_read` for the marker. The [pane](integration/attempt6/step2/step2-pane-2.txt)
+shows the input once and exact reply once. Only the subsequent
+`mesh read --unread --mark-read --team integration --name seat` produced the
+[explicit read receipt](integration/attempt6/step2/explicit-read-receipt.json).
+
+The echo turn used 11,840 input (9,984 cached), 14 output, no reasoning:
+**$0.00058768 API-equivalent**, **$0.01422480 conservative**. Cumulative:
+**2 turns, $0.00153132 / $0.02718960 conservative**.
+The send warned about absent formal task-assignment fields; it remained an
+authorized bounded echo message, accepted as actionable and wake-eligible.
