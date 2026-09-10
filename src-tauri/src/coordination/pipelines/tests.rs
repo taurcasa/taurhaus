@@ -9419,6 +9419,21 @@ fn seat_delivery_hosted_lead_preserves_canonical_identity_and_legacy_default() {
         let report = orchestrator
             .initialize_team_with_cli_commands(&request, &commands)
             .unwrap();
+        if !canonical {
+            // Regression: 90f89257 — mesh admits hosted delivery only on a team-owned
+            // canonical team (`native_mode_or_authority`), so a legacy request with a
+            // hosted seat is refused at validation instead of creating an undeliverable seat.
+            assert_eq!(
+                report.failed_step.as_deref(),
+                Some("validate_configuration")
+            );
+            assert!(
+                format!("{report:?}").contains("app_server_requires_canonical_messaging"),
+                "{report:?}"
+            );
+            assert!(runtime.calls().is_empty());
+            continue;
+        }
         assert!(report.failed_step.is_none(), "{report:?}");
         let config = TeamConfigStore::load(tmp.path(), "canonical").unwrap();
         assert_eq!(config.members[0].extra["adapter_mode"], "app_server");
@@ -9783,6 +9798,37 @@ fn initialize_owner_race_success_tolerates_guard_cleanup_and_owner_skip() {
             .expect("successful onboarding must return a report");
         assert!(report.failed_step.is_none(), "{case}: {report:?}");
     }
+}
+
+// Regression: 90f89257 let an explicit hosted seat through a legacy (no `messaging`)
+// initialize; mesh refuses delivery to a hosted seat on a format-1 team.
+#[test]
+fn initialize_refuses_hosted_seat_without_canonical_messaging() {
+    let tmp = TempDir::new().unwrap();
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator =
+        new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+    let project = tmp.path().to_str().unwrap();
+    let mut agent = setup_config("seat", "codex", "gpt-6-astra", project);
+    agent.delivery = Some("app_server".into());
+    let request = InitializeTeamRequest {
+        messaging: None,
+        team_name: "legacy-hosted".into(),
+        team_description: None,
+        lead: setup_config("lead", "claude", "opus", project),
+        lead_mode: LeadMode::LaunchNew,
+        agents: vec![agent],
+    };
+    let report = orchestrator.initialize_team(&request).unwrap();
+    assert_eq!(
+        report.failed_step.as_deref(),
+        Some("validate_configuration")
+    );
+    assert!(
+        format!("{report:?}").contains("app_server_requires_canonical_messaging"),
+        "{report:?}"
+    );
+    assert!(runtime.calls().is_empty());
 }
 
 // Regression: 90f89257 defaulted legacy adds to hosted delivery without a target-team guard.

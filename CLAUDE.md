@@ -110,6 +110,7 @@ Unified structured logging pipeline:
 - `src-tauri/src/commands/terminal_settings.rs` (`compaction.codex_hook.unsupported/version_unknown/reconciled`); `compaction.codex_hook.degraded` also comes from `coordination/compact_hook.rs` and `commands/coordination.rs`
 - `src-tauri/src/bin/taurhaus-daemon.rs` (`codex.notify.appended`)
 - `src-tauri/src/startup/daemon.rs` (`startup.daemon_protocol.checked`)
+- `src-tauri/src/commands/mesh.rs` (`mesh.hosted_capabilities.unavailable` debug with `reason` when the installed mesh cannot report its app-server descriptors, so the builder's hosted default stays off)
 
 **Tauri frontend events**: `sessions-updated` and `tmux-focus-changed` are emitted from `src-tauri/src/daemon_lifecycle.rs`.
 

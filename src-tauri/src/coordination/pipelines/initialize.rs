@@ -598,6 +598,20 @@ impl CoordinationOrchestrator {
                 &member,
                 &self.template_root,
             )?;
+            // A hosted seat is admitted by mesh only on a canonical (format-2) team; a
+            // legacy request carrying one would create a seat mesh refuses to deliver to.
+            if request.messaging.is_none()
+                && member
+                    .extra
+                    .get("adapter_mode")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("app_server")
+            {
+                return Err(CoordinationError::Validation(format!(
+                    "member '{}' field 'delivery': app_server_requires_canonical_messaging: enable canonical messaging for this team",
+                    member.name
+                )));
+            }
         }
 
         Ok(())

@@ -1252,7 +1252,7 @@ describe('seat delivery choice', () => {
     if (hostingSupported === true) {
       expect(select).toHaveValue('tmux')
       expect(Array.from(select.options).map(option => option.textContent)).toEqual([
-        'tmux pane (fallback)', 'app-server (native; TUI attached in tmux)',
+        'typed into the pane (fallback)', 'native (app-server; TUI in tmux)',
       ])
       await fireEvent.change(select, { target: { value: 'app_server' } })
       expect(onUpdateAgent).toHaveBeenCalledWith('agent-codex-1', { delivery: 'app_server' })
