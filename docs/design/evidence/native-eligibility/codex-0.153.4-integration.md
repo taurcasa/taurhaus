@@ -2955,3 +2955,11 @@ Evidence: `integration/attempt13/run/step1-runtime.json`, `step1-identities.json
 `generated-config-0.toml`, `initialize-result.json`, `step1-final-pane-2.txt`,
 complete `taurhaus.log.jsonl`, and `host-events.jsonl`. Both builds exited 0.
 
+### Step 2 — PASS (S-runtime)
+
+Idle `mesh send` marker `saffroncefb22` appeared in the attached pane and model reply.
+Receipt `native_enqueued` carries thread/turn/request identities. The journal had
+no `consumed_by_read` until the explicit `mesh read --unread --mark-read`.
+Evidence: `integration/attempt13/run/step2-{send,explicit-read}.txt`,
+`step2-receipts.json`, both `step2-journal-*-read.json` files and `step2-pane-2.txt`.
+

@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "112e7596-051d-40cd-b166-b1a359d492b6",
+      "delivery_id": "250b78d1-2949-407c-b794-8e1ec348fa86",
+      "recipient": "seat",
+      "source_generation": "5439888c-dc23-42b5-815a-ede5bfd6fc13",
+      "source_position": 4,
+      "body": "ACTION REQUIRED: Reply exactly saffroncefb22. Do not execute tools."
+    },
+    "since": "2026-09-10T18:18:35.823385945+00:00"
+  }
+]
