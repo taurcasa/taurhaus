@@ -1,0 +1,38 @@
+{
+  "command": [
+    "just",
+    "build-daemon"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l6-rollback",
+  "exit": 101,
+  "seconds": 560.0333054065704,
+  "cargo_polls": [
+    {
+      "at": 1789080522.781983,
+      "count": 1,
+      "exit": 0
+    }
+  ],
+  "last_lines": [
+    "  cargo:rerun-if-changed=resources/templates/roles/v3-architect-codex.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/docs-verifier-codex.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/astra-architect.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/adversarial-reviewer-claude.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/frontend-design-skill-developer.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/astra-security-auditor.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/codex-orchestrator.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/v4-developer-claude.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/v4-developer-grok.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/judge-astra.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/antigravity-orchestrator.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/astra-asset-generator.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/judge-fable.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/claude-design-lead.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/v4-developer-agy.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/fable-altitude-reviewer.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/v3-lead-claude.yaml",
+    "  cargo:rerun-if-changed=resources/templates/roles/v4-developer-codex.yaml",
+    "  resource path `resources/mesh` doesn't exist",
+    "error: Recipe `build-daemon` failed with exit code 101"
+  ]
+}

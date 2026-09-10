@@ -1,0 +1,13 @@
+..........F...........
+======================================================================
+FAIL: test_meter_counts_legacy_executor_input (rollback_test.RollbackTests.test_meter_counts_legacy_executor_input)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/rollback_test.py", line 15, in test_meter_counts_legacy_executor_input
+    self.assertEqual(trial.budget(observe_only=True)['paid_inputs'],3)
+AssertionError: 2 != 3
+
+----------------------------------------------------------------------
+Ran 22 tests in 0.014s
+
+FAILED (failures=1)

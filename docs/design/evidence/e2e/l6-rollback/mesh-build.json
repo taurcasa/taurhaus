@@ -1,0 +1,40 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "mesh"
+  ],
+  "cwd": "/home/mstie/projects/mesh-l6",
+  "exit": 0,
+  "seconds": 33.35633993148804,
+  "cargo_polls": [
+    {
+      "at": 1789081305.354513,
+      "count": 1,
+      "exit": 0
+    }
+  ],
+  "last_lines": [
+    "   Compiling digest v0.10.7",
+    "   Compiling mesh v0.2.29 (/home/mstie/projects/mesh-l6)",
+    "   Compiling hashlink v0.10.0",
+    "   Compiling notify-types v2.1.0",
+    "   Compiling thiserror-impl v2.0.18",
+    "   Compiling arraydeque v0.5.1",
+    "   Compiling fastrand v2.3.0",
+    "   Compiling memchr v2.8.0",
+    "   Compiling itoa v1.0.17",
+    "   Compiling once_cell v1.21.3",
+    "   Compiling cpufeatures v0.2.17",
+    "   Compiling sha2 v0.10.9",
+    "   Compiling tempfile v3.25.0",
+    "   Compiling yaml-rust2 v0.10.4",
+    "   Compiling notify v8.2.0",
+    "   Compiling uuid v1.20.0",
+    "   Compiling clap v4.5.57",
+    "   Compiling unicode-normalization v0.1.25",
+    "   Compiling fs4 v0.13.1",
+    "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 33.34s"
+  ]
+}

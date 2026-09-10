@@ -1,0 +1,37 @@
+F.FF
+======================================================================
+FAIL: test_exactly_one_boundary_and_verified_compatibility (rollback_test.RollbackTests.test_exactly_one_boundary_and_verified_compatibility)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/rollback_test.py", line 23, in test_exactly_one_boundary_and_verified_compatibility
+    with self.assertRaises(AssertionError):ownership_boundary(rows,{'delivery_owner':'members','delivery_rollback_sha256':'hash'},verified)
+AssertionError: AssertionError not raised
+
+======================================================================
+FAIL: test_preserve_logical_id_and_independent_read_transport (rollback_test.RollbackTests.test_preserve_logical_id_and_independent_read_transport)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/rollback_test.py", line 29, in test_preserve_logical_id_and_independent_read_transport
+    with self.assertRaises(AssertionError):preserved_message(original,changed)
+AssertionError: AssertionError not raised
+
+======================================================================
+FAIL: test_retry_busy_inside_sixty_second_window (rollback_test.RollbackTests.test_retry_busy_inside_sixty_second_window)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/rollback_test.py", line 11, in test_retry_busy_inside_sixty_second_window
+    self.assertEqual(result,(0,'ok'));self.assertGreaterEqual(calls[-1],60)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Tuples differ: (1, 'handoff controller busy') != (0, 'ok')
+
+First differing element 0:
+1
+0
+
+- (1, 'handoff controller busy')
++ (0, 'ok')
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+FAILED (failures=3)

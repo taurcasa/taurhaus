@@ -1,0 +1,22 @@
+.........E...........
+======================================================================
+ERROR: test_legacy_read_array_after_banner (rollback_test.RollbackTests.test_legacy_read_array_after_banner)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/rollback_test.py", line 9, in test_legacy_read_array_after_banner
+    self.assertEqual(mesh_json('[mesh] pending info: 0\n[\n {"id":"B","read":true}\n]\n'),[{'id':'B','read':True}])
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l6-rollback/docs/design/evidence/e2e/l6-rollback/controller.py", line 39, in mesh_json
+    return json.loads('\n'.join(lines[start:]))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 340, in decode
+    raise JSONDecodeError("Extra data", s, end)
+json.decoder.JSONDecodeError: Extra data: line 2 column 1 (char 24)
+
+----------------------------------------------------------------------
+Ran 21 tests in 0.012s
+
+FAILED (errors=1)

@@ -1,0 +1,59 @@
+╭───────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)            │
+│                                       │
+│ model:     loading   /model to change │
+│ directory: loading                    │
+╰───────────────────────────────────────╯
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts
+╭──────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)               │
+│                                          │
+│ model:       loading   /model to change  │
+│ directory:   /tmp/th-l6-qgmptfx3/project │
+│ permissions: YOLO mode                   │
+╰──────────────────────────────────────────╯
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
