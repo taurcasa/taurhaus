@@ -1,9 +1,7 @@
-# FAIL — latest run 3, L4 step 1: canonical delivery opt-in refused
+# INCOMPLETE — latest run 4, L4 step 1 PASS; continuation in progress
 
-Run 3 failed in production initialization at `opt_in_delivery` with Mesh’s
-`team owner already holds lifetime lock` refusal. Steps 2–6 were NOT RUN.
-The started onboarding turn has **unverified spend**. See [Run 3](#run-3--fail-at-step-1-mesh-ownership-admission)
-for the latest evidence, gates and cleanup; the prior run below is historical.
+Run 4 initialized and exchanged/read both markers. This checkpoint is not a whole-lane PASS.
+See [Run 4](#run-4) for the current evidence; runs 2 and 3 below are historical.
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -342,3 +340,19 @@ handling left one started turn unmetered, so the dollar cap cannot be certified;
 the independent Opus evidence lens is unavailable in this session and remains
 for the orchestrator. No numbered step passed, so no numbered green-step commit
 is claimed. Preparation and the checked failure packet are separate commits.
+
+
+## Run 4
+
+Step 1 **PASS**: production initialize, both initial replies, completed transport
+and explicit read receipts. alpha is attributed and idle. Four model inputs plus
+two conservative start reservations (6/16); all four turns metered, API-equivalent
+$0.005385760, conservative all-token upper estimate $0.079182000.
+
+[Step 1 outcome](l4-resume-team/run4/step1-outcome.json),
+[identities](l4-resume-team/run4/original-identities.json),
+[activity](l4-resume-team/run4/alpha-activity.json),
+[journal/state](l4-resume-team/run4/step1-state.json),
+[ledger](l4-resume-team/run4/cost-ledger.json).
+
+Steps 2–6 pending at this checkpoint. No resume call yet.
