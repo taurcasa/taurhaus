@@ -201,11 +201,14 @@ pub(crate) fn record_host_boundary(
             return Ok(false);
         }
     }
+    let tool = super::MemberRuntimeStore::load(root, team, member)?
+        .cli_tool
+        .ok_or_else(|| CoordinationError::Conflict("host harness identity missing".into()))?;
     record_delivery_at(
         root,
         team,
         member,
-        CliTool::Codex,
+        tool,
         thread,
         timestamp,
         CompactionDeliveryResult::Skipped,

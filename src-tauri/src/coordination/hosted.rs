@@ -913,6 +913,10 @@ fn poll_compaction(
 fn record_host_delivery(root: &Path, team: &str, member: &str) -> Result<(), String> {
     use super::stores::compaction::{emit_host_compaction, CompactionDeliveryResult};
     use super::stores::MemberCompactionStore;
+    let tool = MemberRuntimeStore::load(root, team, member)
+        .map_err(|e| e.to_string())?
+        .cli_tool
+        .ok_or("host harness identity missing")?;
     let guard = acquire_team_lock(root, team).map_err(|e| e.to_string())?;
     if let Some(mut state) =
         MemberCompactionStore::load(root, team, member).map_err(|e| e.to_string())?
@@ -923,7 +927,7 @@ fn record_host_delivery(root: &Path, team: &str, member: &str) -> Result<(), Str
         super::compaction_events::emit_compaction_delivery(
             "compaction.injected",
             super::compaction_events::CompactionDeliveryEvent {
-                tool: crate::session_scanner::cli_tool::CliTool::Codex,
+                tool,
                 team_name: team.into(),
                 member_name: member.into(),
                 session_id: state.last_session_id,
