@@ -222,6 +222,8 @@ characters, without request params; public errors stay generic. The
 [binding probe facts](../design/app-server-transport-amendment.md) define this build's
 contract; the tmux path and protocol 27 remain unchanged.
 
+Hosted transcript/recover reads wait for the seat cell in 50 ms intervals within a shared 1.5-second acquisition budget whose remainder bounds the cross-process lock wait; input, interrupt and approval retain immediate cell-busy refusal, while panel polling preserves the last transcript and silently retries `host member busy` on the next tick.
+
 Definite steer rejection permits a newly validated attempt; ambiguous input blocks replay. After stop, an explicit **abandon without replay** decision records the attachment generation and permits named relaunch without changing recovery receipts. Controlled opt-out rollback validates the dead child/root/account/thread, refuses unknown input or retained native attempts, and closes the owned attached pane under `detach_tui` exclusion before clearing `appServer` and the retained TUI pane identity at a new fence, forcing plain-session recovery into a fresh pane. A reused foreign pane is left untouched while its stale recorded identity is cleared. `hostRollback` retains old/new modes, opt-in, attachment tuple and unresolved attempts. Failed pane recovery retains that boundary; wrong-thread panes are cleaned up. Team-owned Mesh switching still needs the unbuilt paired packet; hot conversion
 refuses. On `delivery_owner: team`, direct rollback returns
 `app_server_rollback_on_team_owned_team: stop the seat, remove it, re-add it with delivery tmux`.

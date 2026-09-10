@@ -38,7 +38,9 @@
           unavailable = message.includes('NOT_HOSTED')
           const older = /UNKNOWN_METHOD|Unknown method:/.test(message)
           terminal = unavailable || older
-          if (message.includes('pending:')) {
+          if (message.includes('host member busy')) {
+            error = ''
+          } else if (message.includes('pending:')) {
             pending = 'Conversation is updating. Please wait.'; error = ''
           } else error = older ? 'Hosted controls require a daemon update.' : 'Conversation unavailable. Stop and resume the hosted member to recover.'
         }

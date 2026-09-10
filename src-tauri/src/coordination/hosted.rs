@@ -699,17 +699,44 @@ impl HostedMembers {
     ) -> Result<Value, String> {
         let root = registry.resolve(team).map_err(|e| e.to_string())?;
         let cell = self.seat(&root, team, member)?;
-        let mut owned = cell.try_lock().map_err(|_| "host member busy")?;
+        // Reads share one acquisition budget; operator mutations are never queued on the cell.
+        let read_deadline = matches!(operation, "transcript" | "recover")
+            .then(|| std::time::Instant::now() + Duration::from_millis(1500));
+        let mut owned = loop {
+            match cell.try_lock() {
+                Ok(owned) => break owned,
+                Err(std::sync::TryLockError::WouldBlock) if read_deadline.is_some() => {
+                    let remaining = read_deadline
+                        .unwrap()
+                        .saturating_duration_since(std::time::Instant::now());
+                    if remaining.is_zero() {
+                        return Err("host member busy".into());
+                    }
+                    std::thread::sleep(remaining.min(Duration::from_millis(50)));
+                }
+                Err(_) => return Err("host member busy".into()),
+            }
+        };
         let seat = owned
             .as_mut()
             .ok_or("failed: host is unavailable in this daemon; controlled resume required")?;
+        // The cross-process lock keeps its previous waits: `recover` runs inside the
+        // live-presence reconcile under the team orchestrator and may mutate, so it
+        // never queues; everything else keeps the 2 s wait it had before the read budget.
         let wait = if operation == "recover" {
             Duration::ZERO
         } else {
             Duration::from_secs(2)
         };
-        let guard =
-            HostOperationLock::acquire(&root, team, member, wait).map_err(|e| e.to_string())?;
+        let guard = HostOperationLock::acquire(&root, team, member, wait).map_err(|error| {
+            if read_deadline.is_some()
+                && matches!(&error, CoordinationError::Conflict(message) if message == "host operation deferred: lock busy")
+            {
+                "host member busy".into()
+            } else {
+                error.to_string()
+            }
+        })?;
         let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
         let attachment = record.app_server.as_ref().ok_or("member is not hosted")?;
         if generation != seat.generation
@@ -1112,6 +1139,132 @@ pub(crate) mod tests {
     }
     pub(crate) fn saved(root: &Path) -> MemberRuntimeRecord {
         MemberRuntimeStore::load(root, "team", "seat").unwrap()
+    }
+
+    #[test]
+    fn hosted_read_busy_waits_for_background_activity() {
+        // Regression: 3000bc3e (#161) background refresh exposed operation()'s immediate busy refusal.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let (registry, hosts) = running(root);
+        let generation = saved(root).attachment_generation;
+        transcript(&hosts, &registry, generation);
+        for operation in ["transcript", "recover"] {
+            let cell = hosts.seat(root, "team", "seat").unwrap();
+            let (held, ready) = std::sync::mpsc::channel();
+            std::thread::scope(|scope| {
+                scope.spawn(|| {
+                    let mut owned = cell.lock().unwrap();
+                    let guard =
+                        HostOperationLock::acquire_for_activity(root, "team", "seat").unwrap();
+                    held.send(()).unwrap();
+                    std::thread::sleep(Duration::from_millis(100));
+                    owned
+                        .as_mut()
+                        .unwrap()
+                        .host
+                        .refresh_activity(&guard)
+                        .unwrap();
+                });
+                ready.recv_timeout(Duration::from_secs(1)).unwrap();
+                let started = std::time::Instant::now();
+                let result = hosts.operation(
+                    &registry,
+                    "team",
+                    "seat",
+                    generation,
+                    operation,
+                    Value::Null,
+                );
+                assert!(result.is_ok(), "{operation}: {result:?}");
+                assert!(started.elapsed() < Duration::from_millis(1500));
+            });
+        }
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+    #[test]
+    fn hosted_read_busy_bounds_contention_without_queueing_mutations() {
+        // Regression: 3000bc3e (#161) refused cell reads instantly but allowed a 2s file-lock wait.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let registry = seat(root);
+        let hosts = HostedMembers::default();
+        let launch = fixture(root);
+        let script = std::fs::read_to_string(&launch.program).unwrap().replace(
+            "                elif method == 'turn/interrupt':",
+            "                elif method == 'turn/interrupt':\n                    open(os.path.join(root, 'interrupt-held'), 'w').close(); time.sleep(4)",
+        );
+        std::fs::write(&launch.program, script).unwrap();
+        hosts.launch(&registry, "team", "seat", &launch).unwrap();
+        let generation = saved(root).attachment_generation;
+        input(&hosts, &registry, generation, "active").unwrap();
+        transcript(&hosts, &registry, generation);
+        let run = |operation| {
+            hosts.operation(
+                &registry,
+                "team",
+                "seat",
+                generation,
+                operation,
+                Value::Null,
+            )
+        };
+        for hold_cell in [true, false] {
+            let (held, ready) = std::sync::mpsc::channel();
+            let (release, released) = std::sync::mpsc::channel();
+            std::thread::scope(|scope| {
+                scope.spawn(move || {
+                    if hold_cell {
+                        run("interrupt").unwrap();
+                    } else {
+                        let _guard =
+                            HostOperationLock::acquire(root, "team", "seat", Duration::ZERO)
+                                .unwrap();
+                        held.send(()).unwrap();
+                        let _ = released.recv_timeout(Duration::from_secs(10));
+                    }
+                });
+                if hold_cell {
+                    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+                    while !root.join("interrupt-held").exists() {
+                        assert!(std::time::Instant::now() < deadline);
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    for operation in ["input", "interrupt", "approval"] {
+                        let started = std::time::Instant::now();
+                        assert_eq!(run(operation).unwrap_err(), "host member busy");
+                        assert!(started.elapsed() < Duration::from_millis(100));
+                    }
+                } else {
+                    ready.recv_timeout(Duration::from_secs(1)).unwrap();
+                }
+                for operation in ["transcript", "recover"] {
+                    let started = std::time::Instant::now();
+                    assert_eq!(run(operation).unwrap_err(), "host member busy");
+                    let elapsed = started.elapsed();
+                    if !hold_cell && operation == "recover" {
+                        // `recover` runs under the team orchestrator from the live-presence
+                        // reconcile and never queues on the cross-process lock.
+                        assert!(
+                            elapsed < Duration::from_millis(100),
+                            "{operation}: {elapsed:?}"
+                        );
+                    } else {
+                        // The read budget (cell) or the 2 s file-lock wait must have elapsed;
+                        // no upper bound — scheduler jitter under parallel lanes is not a defect.
+                        assert!(
+                            elapsed >= Duration::from_millis(1450),
+                            "{operation}: {elapsed:?}"
+                        );
+                    }
+                }
+                if !hold_cell {
+                    release.send(()).unwrap();
+                }
+            });
+        }
+        hosts.stop(&registry, "team", "seat").unwrap();
     }
 
     #[test]
