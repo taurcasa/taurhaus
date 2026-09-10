@@ -3995,6 +3995,91 @@ fn load_resume_member_state_preserves_role_template_context() {
 }
 
 #[test]
+fn operator_resume_renders_recorded_session_for_capturing_harnesses() {
+    // Regression: 4994b243 limited recorded-session resume to effort switches;
+    // e2e lane 4 run 7 observed an operator resume lose the tmux conversation.
+    for tool in [CliTool::Codex, CliTool::Claude, CliTool::Grok, CliTool::Agy] {
+        for (session_id, effort) in [
+            (Some("  recorded-session  "), None),
+            (None, None),
+            (Some(""), None),
+            (Some(" \t "), None),
+            (Some("recorded-session"), Some("high")),
+        ] {
+            let tmp = TempDir::new().unwrap();
+            let runtime = Arc::new(RecordingCoordinationRuntime::default());
+            let mut orchestrator =
+                new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime.clone());
+            orchestrator.create_team("resume-recorded", None).unwrap();
+            orchestrator
+                .add_member(
+                    "resume-recorded",
+                    member("seat", MemberRole::Lead, tool, tmp.path().to_str().unwrap()),
+                )
+                .unwrap();
+            let mut record =
+                MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat").unwrap();
+            record.session_id = session_id.map(str::to_string);
+            record.health = HealthState::SessionDead;
+            MemberRuntimeStore::save(tmp.path(), "resume-recorded", "seat", &record).unwrap();
+
+            let report = orchestrator
+                .resume_member_with_cli_commands(
+                    &ResumeMemberRequest {
+                        team_name: "resume-recorded".into(),
+                        member_name: "seat".into(),
+                        reasoning_effort_override: effort.map(str::to_string),
+                    },
+                    &CliCommandSettings::default(),
+                )
+                .unwrap();
+            assert!(report.resumed, "{report:?}");
+            let calls = runtime.calls();
+            let launch = calls
+                .iter()
+                .find_map(|call| match call {
+                    RuntimeCall::SendKeys { keys, .. } => Some(keys),
+                    _ => None,
+                })
+                .unwrap();
+            let expected = match tool {
+                CliTool::Codex => Some("codex resume 'recorded-session' --yolo"),
+                CliTool::Claude => {
+                    Some("claude --dangerously-skip-permissions --resume 'recorded-session'")
+                }
+                CliTool::Grok => Some("grok --always-approve --resume 'recorded-session'"),
+                // Antigravity has no resume base: every resume launches fresh.
+                CliTool::Agy => None,
+                _ => unreachable!(),
+            };
+            let resumes = expected.is_some() && session_id.is_some_and(|id| !id.trim().is_empty());
+            if resumes {
+                assert!(launch.contains(expected.unwrap()), "{tool}: {launch}");
+            } else {
+                if tool == CliTool::Agy {
+                    assert!(
+                        launch.contains("agy --dangerously-skip-permissions --model"),
+                        "{launch}"
+                    );
+                }
+                assert!(!launch.contains("recorded-session"), "{launch}");
+                assert!(
+                    !launch.contains(" resume ")
+                        && !launch.contains(" --resume")
+                        && !launch.contains("--conversation"),
+                    "{launch}"
+                );
+            }
+            if let Some(effort) = effort {
+                let updated =
+                    MemberRuntimeStore::load(tmp.path(), "resume-recorded", "seat").unwrap();
+                assert_eq!(updated.applied_effort.as_deref(), Some(effort), "{launch}");
+            }
+        }
+    }
+}
+
+#[test]
 fn resume_accepts_a_minimal_runtime_record_written_by_mesh() {
     // Regression: 50fc736 made a mesh-owned applied-effort record fatal to
     // activation because taurhaus required its own health field to be present.
@@ -4801,7 +4886,9 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
 }
 
 #[test]
-fn resume_pipeline_non_claude_reuses_pane_but_starts_fresh_session_and_updates_runtime() {
+fn resume_pipeline_codex_accepts_scanner_rebound_identity() {
+    // Regression: 4994b243 omitted the operator's recorded session (e2e lane 4
+    // run 7). A named Codex resume may rebind to a new rollout, as in PR #172.
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -4843,6 +4930,7 @@ fn resume_pipeline_non_claude_reuses_pane_but_starts_fresh_session_and_updates_r
         MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder").expect("runtime");
     member_runtime.pane_id = Some("%11".to_string());
     member_runtime.daemon_pid = Some(55);
+    member_runtime.session_id = Some("recorded-session".into());
     member_runtime.health = HealthState::SessionDead;
     MemberRuntimeStore::save(tmp.path(), "architecture-final", "builder", &member_runtime)
         .expect("save runtime");
@@ -4864,7 +4952,7 @@ fn resume_pipeline_non_claude_reuses_pane_but_starts_fresh_session_and_updates_r
     assert_eq!(
         launch,
         format!(
-            "CLAUDE_DIR={} codex --yolo -m 'gpt-5.6-sol'",
+            "CLAUDE_DIR={} codex resume 'recorded-session' --yolo -m 'gpt-5.6-sol'",
             crate::session_scanner::launch::shell_escape(
                 &tmp.path().parent().unwrap().to_string_lossy()
             )

@@ -28,6 +28,8 @@ Adding a CLI must touch only the slices where that tool differs; the rest of the
 | Usage | OAuth usage windows | native 5-hour + weekly windows | native `/usage` command through an isolated provider process | unavailable; no quota endpoint, per-turn cost is in-band | unavailable |
 | Stop / teardown | `/exit` | interrupt | `/exit`, wait for presence lock, then kill floor | `/quit`, wait for the registry row to clear, then kill floor | tmux kill + mesh daemon stop |
 
+An operator's `resume_member` or `resume_team` relaunches the recorded session for each managed seat with runtime session capture (Claude, Codex, Grok), independently of effort overrides. The saved ID is trimmed; a missing or blank ID launches new. Antigravity has a conversation resume command but no managed runtime session capture, so its managed seats keep launching new. Hosted resume continues to name the saved thread and account. Ordinary Codex tmux resume accepts the scanner's rebound rollout ID; exact thread equality remains a hosted rollback fence.
+
 Codex TUI identity resolves against the matched runtime's
 `recovery.harness_account_root`, with pane-process ancestry and start ticks
 checking the attachment. Standalone resolution reads the process's `CODEX_HOME`

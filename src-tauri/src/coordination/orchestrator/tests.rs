@@ -1463,6 +1463,14 @@ fn resume_team_lead_first_then_same_project_then_cross_project() {
         CliTool::Claude,
     );
 
+    // Regression: 4994b243 left each tmux seat fresh on operator team resume
+    // (e2e lane 4 run 7); each capturing harness must get its own saved ID.
+    for name in ["team-lead", "builder", "reviewer"] {
+        let mut record = MemberRuntimeStore::load(tmp.path(), "architecture-final", name).unwrap();
+        record.session_id = Some(format!("recorded-{name}"));
+        MemberRuntimeStore::save(tmp.path(), "architecture-final", name, &record).unwrap();
+    }
+
     let report = orchestrator
         .resume_team_with_cli_commands_and_layout(
             &ResumeTeamRequest {
@@ -1498,6 +1506,16 @@ fn resume_team_lead_first_then_same_project_then_cross_project() {
             .contains("team-lead"),
         "first launch should belong to the lead"
     );
+
+    for name in ["team-lead", "builder"] {
+        assert!(send_keys
+            .iter()
+            .any(|keys| keys.contains(&format!("'recorded-{name}'"))));
+    }
+    // Antigravity lacks runtime capture and retains its fresh managed launch.
+    assert!(!send_keys
+        .iter()
+        .any(|keys| keys.contains("recorded-reviewer")));
 
     let join_order: Vec<String> = calls
         .iter()

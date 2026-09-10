@@ -532,6 +532,13 @@ pub(super) fn build_member_activation_launch_command(
     context: &MemberActivationContext,
     cli_commands: &CliCommandSettings,
 ) -> Result<TeamLaunchResult, CoordinationError> {
+    // Antigravity has a conversation resume base but no runtime session capture;
+    // its managed seats keep launching new rather than trusting an uncaptured ID.
+    let resume_session_id = context.resume_session_id.as_deref().filter(|_| {
+        spec(context.member.cli_tool)
+            .capabilities
+            .runtime_session_capture
+    });
     let mut launch = render_team_launch(
         cli_commands,
         context.member.cli_tool,
@@ -541,7 +548,7 @@ pub(super) fn build_member_activation_launch_command(
         &context.member.name,
         context.member.role,
         cli_commands.codex_bypass_hook_trust,
-        context.resume_session_id.as_deref(),
+        resume_session_id,
         context.member.account_id.as_deref(),
     )?;
     // Mesh 0.2.29 reads CLAUDE_DIR, independently of every harness's account
@@ -900,7 +907,17 @@ pub(super) fn render_team_launch(
     fields.insert("team".to_string(), Value::String(team_name.to_string()));
     fields.insert("member".to_string(), Value::String(agent_name.to_string()));
     fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
-    fields.insert("mode".to_string(), Value::String("fresh".to_string()));
+    fields.insert(
+        "mode".to_string(),
+        Value::String(
+            match mode {
+                LaunchMode::Continue => "continue",
+                LaunchMode::Fresh => "fresh",
+                LaunchMode::Resume => "resume",
+            }
+            .to_string(),
+        ),
+    );
     fields.insert(
         "model".to_string(),
         model.model.map(Value::String).unwrap_or(Value::Null),
