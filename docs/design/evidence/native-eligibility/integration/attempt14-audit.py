@@ -20,6 +20,14 @@ assert json.loads((OLD / 'step7-outcome.json').read_text())['outcome'] == 'FAIL'
 for n in [1, 7]: assert read(f'step{n}-outcome.json')['outcome'] == 'PASS'
 trace = rows('events.jsonl')
 assert not any(r['kind'] == 'stopped' for r in trace)
+old_trace = [json.loads(line) for line in (OLD/'events.jsonl').read_text().splitlines()]
+binaries = {}
+for name in ['taurhaus-daemon','mesh','codex','codex-code-mode-host']:
+    prior_hash = next(r['sha256'] for r in old_trace if r['kind'] == 'binary' and r['name'] == name)
+    current_hash = next(r['sha256'] for r in trace if r['kind'] == 'binary' and r['name'] == name)
+    binaries[name] = dict(attempt13=prior_hash, continuation=current_hash, equal=prior_hash == current_hash)
+    if name != 'mesh': assert prior_hash == current_hash
+assert (BASE/'attempt13/mesh-trial-descriptor.diff').read_bytes() == (BASE/'attempt14/mesh-trial-descriptor.diff').read_bytes()
 assert [r['action']['step'] for r in trace if r['kind'] == 'action' and r['action']['op'] == 'step'] == [1, 7]
 assert read('step7-runtime-before.json')['appServer']['threadId'] == read('step1-runtime.json')['appServer']['threadId']
 assert read('step7-stop.json') == {'ok': True}
@@ -100,7 +108,7 @@ for path in (BASE/'attempt14').rglob('*'):
 log = rows('taurhaus.log.jsonl')
 assert len(log) == len({json.dumps(r,sort_keys=True) for r in log})
 print(json.dumps(dict(verdict='PASS: attempt 13 steps 1-6 plus corrected live step 7',
-    repeated_steps=[1,7], controller_exit=0, private_port=port, cleanup=cleanup,
+    repeated_steps=[1,7], binaries=binaries, controller_exit=0, private_port=port, cleanup=cleanup,
     verified_pid_start_identities=len(identities), tmux_session=seat['session_id'], tmux_receipt=receipts[0],
     daemon_jsonl_rows=len(log), daemon_jsonl_sha256=hashlib.sha256((RUN/'taurhaus.log.jsonl').read_bytes()).hexdigest(),
     warnings=[r for r in log if r.get('level') == 'WARN'], spend=cost),indent=2))

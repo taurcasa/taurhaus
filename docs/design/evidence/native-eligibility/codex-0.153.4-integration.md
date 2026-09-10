@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — INCONCLUSIVE: step 7 controller FAIL, attempt 13
+# Codex 0.153.4 integration — PASS: attempt 13 steps 1–6 plus corrected live step 7
 
 ## Attempt 1 — INCONCLUSIVE: setup FAIL (2026-09-09)
 
@@ -3245,3 +3245,58 @@ the receipt against the actual controller predicate, all owned PID/start
 identities, closed private port, removed scratch root and absent ownership-token
 processes. The controller restored the scratch descriptor and removed the trial
 binary before the conditional descriptor work. No started process survived.
+
+
+The continuation retained all **240** daemon JSONL rows (SHA-256 in runtime-audit.json).
+It observed one additional `compaction.codex_hook.degraded` WARN at
+18:53:17.515Z for the same `_active-project-teams` config lookup, under its own
+scratch root `/tmp/th-int-g31c78ep`; this did not affect the criteria. Private
+port **29774** was closed after teardown. Plain pane **%5**, Codex session
+`01a08caa-ca61-7361-9421-c54ddd284d67`; message
+`1cb94bbf-a2ec-4490-b0e4-47d322912c41`, delivery
+`36b74c0b-9be5-465d-8863-0f8c6e50315d`, `tmux/1` / `tmux_send_keys` / `submitted`.
+
+#### Every additional spend — within attempt 13’s remaining budget
+
+| Action | Turn ID | Input / cached / output (reasoning) | API-equivalent USD | Conservative USD |
+|---|---|---|---|---|
+| Hosted setup recovery | `01a08caa-2c42-7ba0-985e-6c717cffd6af` | 10955 / 6912 / 39 (0) | 0.00099364 | 0.01319280 |
+| Tmux onboarding notice | `01a08caa-d0d2-7a80-b1c3-72dd651e6ec9` | 9248 / 6912 / 35 (16) | 0.00064744 | 0.01113960 |
+| Tmux step-7 notice | `01a08caa-e1f2-7770-a661-634feaf67d96` | 9336 / 8960 / 17 (0) | 0.00027480 | 0.01122360 |
+
+Additional measured API-equivalent subtotal **USD 0.00191588**, conservative
+subtotal **USD 0.03555600**. Combined with every unchanged attempt-13 row above:
+**15/16 turns**, measured API-equivalent **USD 0.01045200**, conservative
+**USD 0.20540160** against USD 3. Claude lead: **0 turns / USD 0**. There was
+no fresh 16-turn allocation for this continuation. The original compaction’s
+billable token classes and actual subscription debit remain unknown; the figures
+are measured subtotals, not a claim of exact billing. Hosted usage comes from
+tokenUsage events; both tmux generations come from retained rollout token_count
+rows joined to task_started. `attempt14/run/cost-final.json` records each source.
+
+Exact continuation commands, from the prescribed checkout root:
+
+```sh
+# Mesh detached at ed59187 before building; no Taurhaus branch switch.
+TRIAL_EVIDENCE_LABEL=attempt14 python3 docs/design/evidence/native-eligibility/integration/attempt13-build.py
+python3 docs/design/evidence/native-eligibility/integration/attempt14-controller.py attempt14/run
+# Second shell after inspection_ready:
+python3 docs/design/evidence/native-eligibility/integration/attempt14-steps.py 1 # recreated setup
+python3 docs/design/evidence/native-eligibility/integration/attempt14-steps.py 7
+# After step 7, write {"op":"finish"} atomically to attempt14/run/action.json.
+python3 docs/design/evidence/native-eligibility/integration/attempt14-audit.py
+TRIAL_EVIDENCE_LABEL=attempt14 python3 docs/design/evidence/native-eligibility/integration/attempt13-gates.py
+```
+
+The build log sidecars use `.txt` and redact operator tool-cache paths; the
+underlying commands/exits and complete output are retained. The corrected
+controller preserves the prior transient-read backoff, cursor and fatal-refusal
+rules. No load/stress run, product patch, install, release or standing-team action
+was performed. The historical attempt13 audit result was retained before the
+conditional Mesh flip; that historical audit intentionally expects the pre-flip
+Mesh state, whereas the continuation audit checks runtime artifacts independently.
+
+Binary continuity is recorded in runtime-audit.json: daemon, codex and
+codex-code-mode-host SHA-256 values match attempt 13 exactly. Mesh’s scratch
+descriptor diff is byte-identical on the same ed59187 source; the rebuilt binary
+hash differs (build.rs embeds the current UTC build time).
