@@ -88,7 +88,7 @@ Unified structured logging pipeline:
 - `src-tauri/src/coordination/hosted_process.rs` (`hosted.rpc.rejected`, `hosted.rpc.pending` once per transient read episode — method, error code and first 256 message characters only; never params or credentials; public refusals stay generic)
 - `src-tauri/src/daemon_api.rs` + `src-tauri/src/provider/daemon_client.rs` (`daemon.rpc.sent/response/timeout`)
 - `src-tauri/src/daemon_lifecycle.rs` (`daemon.repair.started/completed/failed` — one bundled-daemon repair per app/daemon protocol-mismatch episode, with `installed_version`, `bundled_version`, `installed_protocol`, `app_protocol`)
-- `src-tauri/src/session_scanner/classification.rs` (`activity.state.changed` with `pid`, `tool`, `from`, `to`, `source`)
+- `src-tauri/src/session_scanner/classification.rs` (`activity.state.changed` with `pid`, `tool`, `from`, `to`, `source`; `launch_ready` is medium-confidence Codex pre-turn prompt evidence, alongside registry/notify/process_io/file_mtime/none)
 - `src-tauri/src/session_scanner/process.rs` (`session_scanner.process_scan.degraded/recovered` — one `degraded` on entry, a bounded 60s reminder while the outage lasts, one `recovered` on exit)
 - `src-tauri/src/session_scanner/launch.rs` (`launch.model.*`, `launch.effort.*`, `launch.flag.deprecated`, `launch.selector.ignored`, `launch.selector.rewritten` — the last one info, emitted where the launch base pinned another account dir)
 - `src-tauri/src/commands/command_center/launching.rs` + `src-tauri/src/coordination/pipelines/helpers.rs` (`launch.command.rendered`, `launch.account.*`, `launch.base.opaque`, `launch.base.unresolved`)

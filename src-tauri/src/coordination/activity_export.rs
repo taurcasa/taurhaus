@@ -482,6 +482,7 @@ fn build_member_activity_snapshot(
 ) -> MemberActivitySnapshot {
     let observation = session.and_then(|s| {
         crate::session_scanner::idle::codex_readiness::observation(
+            s.cli_tool,
             s.pid,
             &s.project_path,
             s.tmux_pane.as_deref(),
@@ -533,29 +534,15 @@ fn build_member_activity_snapshot_with_observation(
         .unwrap_or_else(|| classify_activity_confidence(session, pane_probe, last_output_age_secs));
     let evidence = observation
         .map(|o| {
-            std::collections::BTreeMap::from([
-                ("source".into(), serde_json::json!(o.source)),
-                (
-                    "state".into(),
-                    serde_json::json!(if o.state == SessionState::Idle {
-                        "idle"
-                    } else {
-                        "working"
-                    }),
-                ),
-                (
-                    "confidence".into(),
-                    serde_json::json!(if o.source == "launch_ready" {
-                        "medium"
-                    } else {
-                        "high"
-                    }),
-                ),
-                (
-                    "last_observed_at".into(),
-                    serde_json::json!(o.last_observed_at.to_rfc3339()),
-                ),
-            ])
+            serde_json::json!({
+                "source": o.source,
+                "state": if o.state == SessionState::Idle { "idle" } else { "working" },
+                "confidence": if o.source == "launch_ready" { "medium" } else { "high" },
+                "last_observed_at": o.last_observed_at.to_rfc3339(),
+            })
+            .as_object()
+            .cloned()
+            .unwrap_or_default()
         })
         .unwrap_or_default();
 
@@ -1003,7 +990,7 @@ mod tests {
     fn codex_launch_ready_written_snapshot_matches_mesh_reader() {
         use crate::session_scanner::idle::codex_readiness::Observation;
         // Exact Activity shape and Record::idle predicate from mesh-push
-        // src/delivery/runtime.rs:28-32,195-216 (replicated; no Mesh binary).
+        // src/delivery/runtime.rs:27-29,170-186 (replicated; no Mesh binary).
         #[derive(serde::Deserialize)]
         struct Activity {
             activity_confidence: String,

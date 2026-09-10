@@ -494,3 +494,7 @@ legacy or incomplete attachments remain at 0 and cannot opt in. Legacy epoch
 start times are not compared to ticks. No daemon protocol bump is made; unlike
 the new keys, the string representation of `paneStartTime` is incompatible with
 older app readers, so deployment must pair the app and daemon.
+
+### Codex launch-readiness snapshot
+
+The daemon writes `activitySnapshotPath` on activity changes and every 30 seconds of healthy scanning. Codex readiness adds `source`, `state` (`idle`/`working`), `confidence` and fresh per-scan `last_observed_at`; existing snapshot keys remain. Mesh candidate `fcb9647`, `src/delivery/runtime.rs:27-29,170-186`, deserializes `activity_confidence` and `observed_at` and admits only `idle` aged **0–120 seconds**. `last_observed_at` is evidence metadata; it does not replace Mesh's `observed_at`. The tempdir snapshot regression replicates that exact serde shape and age predicate (including future/stale rejection); it does not invoke the Mesh binary. Hosted-card journaling is outside this lane: without an external-producer outcome verb, acceptance alone leaves a pending projection and risks double delivery.

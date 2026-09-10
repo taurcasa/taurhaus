@@ -196,6 +196,7 @@ where
             );
 
             let seat_observation = idle::codex_readiness::observation(
+                proc.cli_tool,
                 proc.pid,
                 &proc.project_path,
                 tmux_pane.map(|pane| pane.pane_id.as_str()),

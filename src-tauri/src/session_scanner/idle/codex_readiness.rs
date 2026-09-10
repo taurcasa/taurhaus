@@ -14,6 +14,7 @@ struct Quiet {
     previous: Option<u64>,
     since: Option<DateTime<Utc>>,
     last_growth: Option<DateTime<Utc>>,
+    sampled_at: Option<DateTime<Utc>>,
 }
 
 fn sample(
@@ -34,8 +35,9 @@ fn sample(
         quiet.since = Some(now);
     }
     if changed {
-        quiet.last_growth = Some(now);
+        quiet.last_growth = quiet.sampled_at;
     }
+    quiet.sampled_at = Some(now);
     quiet.previous = Some(rchar);
     let notify = notify.filter(|record| record.ts >= launch && record.ts <= now);
     let (state, source) = if changed {
@@ -116,7 +118,15 @@ pub(super) fn elapse_quiet_window(pid: u32) {
         Some(Utc::now() - chrono::Duration::seconds(10));
 }
 
-pub(crate) fn observation(pid: u32, project: &str, pane: Option<&str>) -> Option<Observation> {
+pub(crate) fn observation(
+    tool: CliTool,
+    pid: u32,
+    project: &str,
+    pane: Option<&str>,
+) -> Option<Observation> {
+    if !super::codex::is_codex(tool) {
+        return None;
+    }
     let guard = SEATS.lock().unwrap_or_else(|e| e.into_inner());
     let seat = guard.as_ref()?.get(&pid)?;
     let age = Utc::now().signed_duration_since(seat.scanned);
@@ -149,25 +159,17 @@ pub(super) fn refresh(
         return;
     };
     // Capture only the explicitly attributed runtime socket, never a default server.
-    let prompt = super::super::process::run_with_timeout_within(
-        "tmux",
-        &[
-            "-S",
-            &socket.to_string_lossy(),
-            "capture-pane",
-            "-p",
-            "-t",
-            pane,
-        ],
-        Duration::from_millis(200),
-    )
-    .is_some_and(|text| {
-        text.trim_end()
-            .lines()
-            .rev()
-            .take(8)
-            .any(|line| line.trim_start().starts_with("› ") || line.trim() == "›")
-    });
+    let socket_text = socket.to_string_lossy();
+    let args = ["-S", &socket_text, "capture-pane", "-p", "-t", pane];
+    let prompt =
+        super::super::process::run_with_timeout_within("tmux", &args, Duration::from_millis(200))
+            .is_some_and(|text| {
+                text.trim_end()
+                    .lines()
+                    .rev()
+                    .take(8)
+                    .any(|line| line.trim_start().starts_with("› ") || line.trim() == "›")
+            });
     let notify = crate::daemon::codex_notify::latest_record_for_session_after(
         notify_path,
         id,
@@ -251,6 +253,20 @@ mod tests {
             assert_eq!(observed.state, expected);
             assert_eq!(observed.source, "notify");
         }
+        // Regression: c5941e20 timestamped an IO delta at the end of its
+        // interval, hiding a completion that landed between those two polls.
+        let later = now + chrono::Duration::seconds(20);
+        assert_eq!(poll(12, None, later).unwrap().state, SessionState::Active);
+        let record = crate::daemon::codex_notify::CodexNotifyRecord {
+            ts: now + chrono::Duration::seconds(15),
+            session_id: Some("seat".into()),
+            event: "agent-turn-complete".into(),
+            turn_id: None,
+        };
+        assert_eq!(
+            poll(12, Some(&record), later).unwrap().state,
+            SessionState::Idle
+        );
     }
 
     // Regression: 32bfd698 must not turn unresolved or non-prompt quiet into readiness.
@@ -264,16 +280,8 @@ mod tests {
         ] {
             let mut quiet = Quiet::default();
             sample(&mut quiet, io, prompt, no_rollout, None, launch, launch);
-            assert!(sample(
-                &mut quiet,
-                io,
-                prompt,
-                no_rollout,
-                None,
-                launch,
-                launch + chrono::Duration::seconds(10)
-            )
-            .is_none());
+            let end = launch + chrono::Duration::seconds(10);
+            assert!(sample(&mut quiet, io, prompt, no_rollout, None, launch, end).is_none());
         }
     }
 }

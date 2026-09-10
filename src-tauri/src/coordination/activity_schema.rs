@@ -16,7 +16,7 @@ pub(crate) struct MemberActivitySnapshot {
     pub last_output_age_secs: Option<u64>,
     pub activity_confidence: SnapshotActivityConfidence,
     #[serde(default, flatten)]
-    pub evidence: std::collections::BTreeMap<String, serde_json::Value>,
+    pub evidence: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

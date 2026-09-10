@@ -386,7 +386,7 @@ where
     Some(result)
 }
 
-fn is_codex(tool: crate::session_scanner::cli_tool::CliTool) -> bool {
+pub(super) fn is_codex(tool: crate::session_scanner::cli_tool::CliTool) -> bool {
     tool == crate::session_scanner::cli_tool::CliTool::Codex
 }
 
@@ -1041,6 +1041,7 @@ mod tests {
         super::super::codex_readiness::elapse_quiet_window(pid);
         resolver.detect_idle_for_pid_in(project.to_str().unwrap(), pid, Some(parts[1]), &records);
         let observed = super::super::codex_readiness::observation(
+            crate::session_scanner::CliTool::Codex,
             pid,
             project.to_str().unwrap(),
             Some(parts[1]),
