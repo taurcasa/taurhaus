@@ -624,13 +624,19 @@ impl HostedMembers {
         {
             return Err("host team/member authority changed".into());
         }
+        let (state, recovery_turn) = if matches!(operation, "transcript" | "recover" | "input") {
+            poll_compaction(&mut seat.host, &root, team, member, &guard)?
+        } else { (Value::Null, false) };
+        let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
+        let requested = operation;
+        let operation = if recovery_turn && operation != "input" { "recovery_input" } else { operation };
         match operation {
-            "transcript" => seat.host.transcript(&guard),
-            "input" => {
+            "transcript" | "recover" => Ok(state),
+            "input" | "recovery_input" => {
                 if record.host_input_unknown {
                     return Err("outcome_unknown: previous input requires reconciliation".into());
                 }
-                let text = params["text"].as_str().ok_or("missing input text")?;
+                let text = if operation == "recovery_input" { "" } else { params["text"].as_str().ok_or("missing input text")? };
                 if record.recovery.claim.as_ref().is_some_and(|claim| {
                     claim.card_key.context == record.context()
                         && claim.stage == ReceiptStage::OutcomeUnknown
@@ -644,7 +650,7 @@ impl HostedMembers {
                     .is_none_or(|receipt| receipt.card_key.context != record.context());
                 let card = if needs_recovery {
                     // A fallback card belongs to the first next turn, never an active-turn steer.
-                    if seat.host.transcript(&guard)?["thread"]["status"]["type"] != "idle" {
+                    if state["thread"]["status"]["type"] != "idle" {
                         return Err("pending: recovery requires the next idle turn".into());
                     }
                     recovery_delivery::prepare(registry, &root, team, member, "app_server")
@@ -654,14 +660,14 @@ impl HostedMembers {
                 };
                 let input = card.as_ref().map_or_else(
                     || text.to_string(),
-                    |card| format!("{}\n\n{}", card.text, text),
+                    |card| if text.is_empty() { card.text.clone() } else { format!("{}\n\n{}", card.text, text) },
                 );
                 // Persist ambiguity before any possible input bytes, including owner crashes.
                 MemberRuntimeStore::update(&root, team, member, |r| {
                     r.host_input_unknown = true;
                 })
                 .map_err(|e| e.to_string())?;
-                let result = seat.host.input(&input, &guard);
+                let result = seat.host.input_checked(&input, &state, &guard);
                 if let Some(card) = card {
                     let stage = if result.is_ok() {
                         ReceiptStage::Submitted
@@ -672,6 +678,9 @@ impl HostedMembers {
                     };
                     recovery_delivery::observe(registry, &root, team, member, &card.receipt, stage)
                         .map_err(|e| e.to_string())?;
+                    if stage == ReceiptStage::Submitted {
+                        record_host_delivery(&root, team, member)?;
+                    }
                 }
                 if result.is_ok() || !seat.host.outcome_unknown() {
                     MemberRuntimeStore::update(&root, team, member, |r| {
@@ -679,7 +688,9 @@ impl HostedMembers {
                     })
                     .map_err(|e| e.to_string())?;
                 }
-                result
+                if requested == "transcript" && result.is_ok() {
+                    seat.host.transcript(&guard)
+                } else { result }
             }
             "interrupt" => seat.host.interrupt(&guard),
             "approval" => seat.host.approval(
@@ -715,7 +726,10 @@ impl HostedMembers {
             Err(error) => return Err(error.to_string()),
         };
         if owned.as_mut().is_some_and(|seat| seat.host.alive()) {
-            return Ok(());
+            let generation = owned.as_ref().unwrap().generation;
+            drop(owned);
+            drop(guard);
+            return self.operation(registry, team, member, generation, "recover", Value::Null).map(|_| ());
         }
         MemberRuntimeStore::update(&root, team, member, |record| {
             if let Some(host) = &mut record.app_server {
@@ -805,6 +819,52 @@ impl HostedMembers {
         drop(guard);
         Ok(())
     }
+}
+
+/// Run from daemon liveness and UI operations, always after attachment validation.
+fn poll_compaction(host: &mut HostProcess, root: &Path, team: &str, member: &str, guard: &HostOperationLock) -> Result<(Value, bool), String> {
+    use super::stores::compaction::{emit_host_compaction, record_host_boundary};
+    let mut received = None;
+    loop {
+        let state = host.transcript(guard);
+        for boundary in host.take_compactions() {
+            if boundary["threadId"] != host.thread_id {
+                emit_host_compaction(team, member, &boundary, "compaction.codex_host.skipped", "different_thread");
+            } else if record_host_boundary(root, team, member, &boundary, "host_notification").map_err(|e| e.to_string())? {
+                emit_host_compaction(team, member, &boundary, "compaction.codex_host.received", "");
+                received = Some(boundary);
+            } else {
+                emit_host_compaction(team, member, &boundary, "compaction.codex_host.skipped", "already_recorded");
+            }
+        }
+        let Some(boundary) = &received else { return state.map(|s| (s, false)); };
+        if state.as_ref().is_ok_and(|s| s["thread"]["status"]["type"] == "idle") {
+            return state.map(|s| (s, true));
+        }
+        if state.is_err() || guard.remaining().map_or(true, |r| r < Duration::from_millis(100)) {
+            emit_host_compaction(team, member, boundary, "compaction.codex_host.deferred", "thread_not_idle");
+            return state.map(|s| (s, false));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn record_host_delivery(root: &Path, team: &str, member: &str) -> Result<(), String> {
+    use super::stores::compaction::{emit_host_compaction, CompactionDeliveryResult};
+    use super::stores::MemberCompactionStore;
+    let guard = acquire_team_lock(root, team).map_err(|e| e.to_string())?;
+    if let Some(mut state) = MemberCompactionStore::load(root, team, member).map_err(|e| e.to_string())? {
+        state.last_delivery_result = CompactionDeliveryResult::Injected;
+        MemberCompactionStore::save_locked(&guard, root, team, member, &state).map_err(|e| e.to_string())?;
+        super::compaction_events::emit_compaction_delivery("compaction.injected", super::compaction_events::CompactionDeliveryEvent {
+            tool: crate::session_scanner::cli_tool::CliTool::Codex,
+            team_name: team.into(), member_name: member.into(), session_id: state.last_session_id,
+            compaction_timestamp: state.last_compaction_timestamp, delivery_result: "injected".into(),
+            skip_reason: None, fail_reason: None, delivery: Some("host_turn".into()),
+        });
+        emit_host_compaction(team, member, &state.host_boundary.unwrap_or_default(), "compaction.codex_host.delivered", "");
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1266,34 +1326,27 @@ pub(crate) mod tests {
     }
     #[test]
     fn hosted_recovery_first_input_uses_existing_pending_compaction_without_new_generation() {
-        use super::super::stores::{
-            record_delivery_at, CompactionDeliveryResult, MemberCompactionStore,
-        };
+        // Regression: 6f61f611, attempt-8 continuation: busy compaction must persist for first input.
+        use super::super::stores::MemberCompactionStore;
+        let _logs = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().unwrap();
+        let sink = taurhaus_lib::logging::LogFileState::new(tmp.path().join("events.jsonl")).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
         let (registry, hosts) = running(tmp.path());
         write_snapshot_fixture(tmp.path(), "team", "seat");
         let generation = saved(tmp.path()).attachment_generation;
         input(&hosts, &registry, generation, "startup marker").unwrap();
-        {
-            let _guard =
-                HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
-            record_delivery_at(
-                tmp.path(),
-                "team",
-                "seat",
-                crate::session_scanner::cli_tool::CliTool::Codex,
-                "owned-thread",
-                chrono::Utc::now(),
-                CompactionDeliveryResult::Skipped,
-            )
-            .unwrap();
-        }
+        std::fs::write(tmp.path().join("compact.json"), r#"{"busy":true}"#).unwrap();
+        hosts.reconcile(&registry, "team", "seat").unwrap();
+        sink.flush_for_test().unwrap();
+        assert!(std::fs::read_to_string(tmp.path().join("events.jsonl")).unwrap().contains("compaction.codex_host.deferred"));
         assert!(
             MemberCompactionStore::load(tmp.path(), "team", "seat")
                 .unwrap()
                 .unwrap()
                 .pending
         );
+        std::fs::write(tmp.path().join("compact.json"), "{}").unwrap();
         input(&hosts, &registry, generation, "after compact").unwrap();
         let transcript = transcript(&hosts, &registry, generation);
         let message = |index: usize| {
@@ -1304,8 +1357,8 @@ pub(crate) mod tests {
         assert!(message(0).starts_with("[taurhaus] recovery_card"));
         assert_eq!(message(1), "startup marker");
         assert!(
-            message(2).starts_with("[taurhaus] recovery_card")
-                && message(2).ends_with("after compact")
+            message(3).starts_with("[taurhaus] recovery_card")
+                && message(3).ends_with("after compact")
         );
         assert_eq!(saved(tmp.path()).context_generation, 1);
         assert!(
@@ -1316,6 +1369,87 @@ pub(crate) mod tests {
         );
         hosts.stop(&registry, "team", "seat").unwrap();
     }
+    #[test]
+    fn hosted_notification_compaction_delivers_once_and_deduplicates_hook() {
+        // Regression: 6f61f611, attempt-8 continuation step5-boundary-events.json:
+        // completed contextCompaction was retained but never admitted or recovered.
+        let _logs = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let sink = taurhaus_lib::logging::LogFileState::new(tmp.path().join("events.jsonl")).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
+        let (registry, hosts) = running(tmp.path());
+        let generation = saved(tmp.path()).attachment_generation;
+        transcript(&hosts, &registry, generation);
+        std::fs::write(tmp.path().join("compact.json"), r#"{"expectCard":true}"#).unwrap();
+        hosts.reconcile(&registry, "team", "seat").unwrap();
+        let record = saved(tmp.path());
+        assert_eq!(record.context_generation, 1);
+        assert_eq!(serde_json::to_value(&record).unwrap()["contextGeneration"], "1");
+        let submitted: Value = serde_json::from_slice(&std::fs::read(tmp.path().join("boundary-submission.json")).unwrap()).unwrap();
+        assert_eq!(submitted["state"]["source"], "host_notification");
+        let receipt = record.recovery.last_delivered.unwrap();
+        assert_eq!(receipt.stage, ReceiptStage::Submitted);
+        let (card, _) = recovery_delivery::read_current(&registry, tmp.path(), "team", "seat").unwrap();
+        let without_clock = |text: &str| text.lines().filter(|line| !line.starts_with("Generated: ")).collect::<Vec<_>>().join("\n");
+        assert_eq!(without_clock(submitted["input"][0]["text"].as_str().unwrap()), without_clock(&card));
+        assert_eq!(submitted["turnId"], "2");
+        let state = super::super::stores::MemberCompactionStore::load(tmp.path(), "team", "seat").unwrap().unwrap();
+        assert!(!state.pending);
+        assert_eq!(state.last_delivery_result, super::super::stores::CompactionDeliveryResult::Injected);
+        let payload = json!({"hook_event_name":"SessionStart","source":"compact","session_id":"owned-thread","turn_id":"compact-turn","item_id":"compact-item","cwd":tmp.path(),"transcript_path":tmp.path().join("rollout-owned-thread.jsonl")});
+        let mut output = Vec::new();
+        run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, tmp.path()).unwrap();
+        assert!(!String::from_utf8(output).unwrap().contains("recovery_card"));
+        assert_eq!(saved(tmp.path()).context_generation, 1);
+        let view = transcript(&hosts, &registry, generation);
+        assert!(view["thread"]["turns"].as_array().unwrap().iter().any(|t| t["items"][0]["type"] == "contextCompaction"));
+        let requests: Vec<Value> = std::fs::read_to_string(tmp.path().join("requests.jsonl")).unwrap().lines().map(|s| serde_json::from_str(s).unwrap()).collect();
+        assert_eq!(requests.iter().filter(|r| r["method"] == "turn/start").count(), 2);
+        sink.flush_for_test().unwrap();
+        let events = std::fs::read_to_string(tmp.path().join("events.jsonl")).unwrap();
+        for event in ["compaction.codex_host.received", "compaction.codex_host.delivered", "compaction.codex_host.skipped", "already_recorded", "host_turn"] {
+            assert!(events.contains(event), "missing {event}");
+        }
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+    #[test]
+    fn hosted_notification_compaction_deduplicates_an_earlier_hook() {
+        // Regression: 6f61f611, attempt-8 continuation boundary: either observer may arrive first.
+        let tmp = tempfile::tempdir().unwrap();
+        let (registry, hosts) = running(tmp.path());
+        let generation = saved(tmp.path()).attachment_generation;
+        transcript(&hosts, &registry, generation);
+        let payload = json!({"hook_event_name":"SessionStart","source":"compact","session_id":"owned-thread","turnId":"compact-turn","itemId":"compact-item","cwd":tmp.path(),"transcript_path":tmp.path().join("rollout-owned-thread.jsonl")});
+        let mut output = Vec::new();
+        run_compact_hook_cli(payload.to_string().as_bytes(), &mut output, tmp.path()).unwrap();
+        assert!(String::from_utf8(output).unwrap().contains("recovery_card"));
+        std::fs::write(tmp.path().join("compact.json"), "{}").unwrap();
+        hosts.reconcile(&registry, "team", "seat").unwrap();
+        assert_eq!(saved(tmp.path()).context_generation, 1);
+        let requests = std::fs::read_to_string(tmp.path().join("requests.jsonl")).unwrap();
+        assert_eq!(requests.matches("turn/start").count(), 1);
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
+    #[test]
+    fn hosted_notification_compaction_ignores_foreign_thread() {
+        // Regression: 6f61f611 / attempt-8 continuation: only the owned thread is authority.
+        let _logs = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let sink = taurhaus_lib::logging::LogFileState::new(tmp.path().join("events.jsonl")).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
+        let (registry, hosts) = running(tmp.path());
+        transcript(&hosts, &registry, saved(tmp.path()).attachment_generation);
+        std::fs::write(tmp.path().join("compact.json"), r#"{"threadId":"foreign"}"#).unwrap();
+        hosts.reconcile(&registry, "team", "seat").unwrap();
+        assert_eq!(saved(tmp.path()).context_generation, 0);
+        assert!(super::super::stores::MemberCompactionStore::load(tmp.path(), "team", "seat").unwrap().is_none());
+        sink.flush_for_test().unwrap();
+        assert!(std::fs::read_to_string(tmp.path().join("events.jsonl")).unwrap().contains("different_thread"));
+        hosts.stop(&registry, "team", "seat").unwrap();
+    }
+
     #[test]
     fn hosted_publication_preserves_concurrent_foreign_fields_and_checks_incarnation() {
         // Regression: 83077dad replaced the compared current record with a stale clone,

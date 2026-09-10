@@ -81,6 +81,7 @@ impl HostProcess {
                 host.rpc = Some(Rpc {
                     socket: WebSocket::connect(stream, guard)?,
                     events: VecDeque::new(),
+                    compactions: VecDeque::new(),
                     thread_id: String::new(),
                     status: Value::Null,
                     active_turn: None,
@@ -245,7 +246,17 @@ impl HostProcess {
         Ok(result)
     }
 
+    pub fn take_compactions(&mut self) -> VecDeque<Value> {
+        self.rpc.as_mut().map(|rpc| std::mem::take(&mut rpc.compactions)).unwrap_or_default()
+    }
+
     pub fn input(&mut self, text: &str, guard: &HostOperationLock) -> Result<Value, String> {
+        let state = self.transcript(guard)?;
+        self.input_checked(text, &state, guard)
+    }
+
+    /// Reuse the state validated under this same host lock; recovery never steers.
+    pub fn input_checked(&mut self, text: &str, state: &Value, guard: &HostOperationLock) -> Result<Value, String> {
         if self.uncertain {
             return Err(
                 "outcome_unknown: reconcile previous input before another submission".into(),
@@ -254,7 +265,6 @@ impl HostProcess {
         if text.trim().is_empty() || text.len() > 16_384 || text.chars().count() > 8000 {
             return Err("input must contain 1–8000 characters within 16 KiB".into());
         }
-        let state = self.transcript(guard)?;
         let thread = &state["thread"];
         if thread["canAcceptDirectInput"] != true
             || !match thread["status"].get("activeFlags") {
@@ -498,6 +508,7 @@ fn event_turns(events: &VecDeque<Value>, thread_id: &str) -> Vec<Value> {
 struct Rpc {
     socket: WebSocket,
     events: VecDeque<Value>,
+    compactions: VecDeque<Value>,
     thread_id: String,
     status: Value,
     active_turn: Option<String>,
@@ -610,6 +621,14 @@ impl Rpc {
                                 }
                             }
                         }
+                    }
+                    if frame["method"] == "item/completed" && frame["params"]["item"]["type"] == "contextCompaction" {
+                        if self.compactions.len() == 64 {
+                            return Err("host compaction notification limit reached".into());
+                        }
+                        let p = &frame["params"];
+                        self.compactions.push_back(json!({"threadId":p["threadId"], "turnId":p["turnId"],
+                            "itemId":p["item"]["id"], "completedAtMs":p["completedAtMs"]}));
                     }
                     self.observe(&frame);
                     if self.events.len() == 64 {
@@ -812,6 +831,7 @@ def client(connection):
                 # Like the probe, completion summarizes the agent item only.
                 notify('turn/completed', turn=dict(turn, items=[agent]))
         pending_items = None
+        expect_card = False
         initialized = False
         while True:
             opcode, payload = receive()
@@ -838,6 +858,10 @@ def client(connection):
                 notify('thread/status/changed', status=thread['status'])
                 continue
             method, params = request.get('method'), request.get('params', {})
+            if expect_card:
+                assert method == 'turn/start', 'recovery must be the next request after idle'
+                assert params['input'][0]['text'].startswith('[taurhaus] recovery_card')
+                expect_card = False
             result, error, approval = {}, None, None
             with open(os.path.join(root, 'requests.jsonl'), 'a') as output:
                 output.write(json.dumps(request)+'\n')
@@ -856,6 +880,23 @@ def client(connection):
                     thread = {'id':'owned-thread', 'status':{'type':'idle'}, 'canAcceptDirectInput':True, 'turns':[]}
                     result = dict(policy, thread=dict(thread, turns=[]))
                 elif method in ('thread/resume', 'thread/read'):
+                    boundary = os.path.join(root, 'compact.json')
+                    if os.path.exists(boundary):
+                        compact = json.load(open(boundary)); os.unlink(boundary)
+                        expect_card = compact.get('expectCard', False)
+                        tid = compact.get('threadId', thread['id'])
+                        def boundary_event(method, **params):
+                            emit({'method':method, 'params':dict(threadId=tid, **params)})
+                        item = {'id':'compact-item', 'type':'contextCompaction'}
+                        boundary_event('thread/status/changed', status={'type':'active','activeFlags':[]})
+                        boundary_event('turn/started', turn={'id':'compact-turn','status':'inProgress','items':[]})
+                        boundary_event('item/started', turnId='compact-turn', item=item)
+                        boundary_event('thread/tokenUsage/updated', turnId='compact-turn', tokenUsage={'last':{'totalTokens':6344}})
+                        boundary_event('item/completed', turnId='compact-turn', item=item, completedAtMs=1789017963589)
+                        if not compact.get('busy'):
+                            boundary_event('thread/status/changed', status={'type':'idle'})
+                            boundary_event('turn/completed', turn={'id':'compact-turn','status':'completed','items':[]})
+                        with open(os.path.join(root, 'compact-emitted'), 'w') as output: output.write('1')
                     if 'includeTurns' in params:
                         error = {'code':-32601,'message':'list_turns is not supported yet'}
                     elif method == 'thread/read' and (pending_items or any(os.path.exists(os.path.join(root, name)) for name in ('pending-read', 'pending-read-once'))):
@@ -877,6 +918,12 @@ def client(connection):
                             with open(os.path.join(root, 'reassert.json'), 'w') as output: json.dump(params, output)
                 elif method == 'turn/start':
                     assert params['threadId'] == thread['id']
+                    if os.path.exists(os.path.join(root, 'compact-emitted')):
+                        state = json.load(open(os.path.join(root, 'team/state/compaction/seat.json')))
+                        assert state['pending'] and state['pending_obligation'][1][1] == 1
+                        with open(os.path.join(root, 'boundary-submission.json'), 'w') as output:
+                            json.dump({'state':state,'input':params['input'],'turnId':str(len(thread['turns'])+1)}, output)
+                        os.unlink(os.path.join(root, 'compact-emitted'))
                     turn = {'id':str(len(thread['turns'])+1), 'status':'completed', 'items':[{'id':'user-'+str(len(thread['turns'])+1),'type':'userMessage','content':params['input']}]}
                     thread['turns'].append(turn)
                     thread['status'] = {'type':'active','activeFlags':[]}

@@ -58,6 +58,10 @@ pub struct CompactHookInput {
     hook_event_name: String,
     #[serde(alias = "sessionId")]
     session_id: String,
+    #[serde(default, alias = "turnId")]
+    turn_id: Option<String>,
+    #[serde(default, alias = "itemId")]
+    item_id: Option<String>,
     #[serde(default)]
     source: Option<String>,
     #[serde(default)]
@@ -562,6 +566,31 @@ fn handle_compaction_decision(
                 "hosted compaction attachment changed or is unavailable".into(),
             ));
         }
+        use crate::coordination::stores::compaction::{record_host_boundary, emit_host_compaction};
+        let timestamp = payload.transcript_path.as_deref()
+            .and_then(crate::session_scanner::transcript_boundary::latest_compaction_timestamp);
+        let boundary = json!({"threadId":payload.session_id,"turnId":payload.turn_id,
+            "itemId":payload.item_id,"completedAtMs":timestamp.map(|t| t.timestamp_millis())});
+        if !record_host_boundary(&matched.teams_dir, &matched.team_name, &matched.member.name, &boundary, "hook")? {
+            emit_host_compaction(&matched.team_name, &matched.member.name, &boundary,
+                "compaction.codex_host.skipped", "already_recorded");
+            return Ok(CompactHookResponse::default());
+        }
+        let registry = crate::coordination::stores::TeamRootRegistry::new(teams_dir.into());
+        let card = crate::coordination::recovery_delivery::prepare(
+            &registry, &matched.teams_dir, &matched.team_name, &matched.member.name, "hook_stdout")?;
+        if card.is_some() {
+            let state = crate::coordination::stores::MemberCompactionStore::load(&matched.teams_dir, &matched.team_name, &matched.member.name)?.unwrap();
+            record_delivery_at(&matched.teams_dir, &matched.team_name, &matched.member.name, tool,
+                &payload.session_id, state.last_compaction_timestamp, CompactionDeliveryResult::Injected)?;
+        }
+        return Ok(card.map_or_else(CompactHookResponse::default, |card| CompactHookResponse {
+            drain_receipt: None,
+            receipt: Some((matched.teams_dir.clone(), matched.team_name.clone(), matched.member.name.clone(), card.receipt)),
+            hook_specific_output: Some(CompactHookSpecificOutput {
+                hook_event_name: SESSION_START_HOOK_EVENT.into(), additional_context: card.text,
+            }),
+        }));
     }
     emit_compact_hook_resolved(payload, &matched);
 
