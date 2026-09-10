@@ -113,3 +113,9 @@ def reply_seen(journal, rollout, marker):
 def identity_preserved(before, after):
     def logical(r): return r.get('appServer',{}).get('threadId') or r.get('session_id')
     return bool(logical(before)) and logical(before)==logical(after) and after.get('attachmentGeneration',0)>=before.get('attachmentGeneration',0)
+
+def attributed_activity(session, sidecar, age):
+    attributed=session.get('activity_attribution')=='attributed'
+    state=session.get('state') if session.get('source')=='host' else sidecar.get('state')
+    return {'state':state,'age':age,'session_id':session.get('session_id') if attributed else None,
+            'runtime':session,'snapshot':sidecar}

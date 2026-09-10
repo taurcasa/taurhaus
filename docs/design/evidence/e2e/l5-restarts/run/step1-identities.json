@@ -1,0 +1,216 @@
+[
+  {
+    "pid": 2232182,
+    "start_ticks": "30061465",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l5-jg_gyq7i",
+      "/tmp/th-l5-jg_gyq7i",
+      "--chdir",
+      "/tmp/th-l5-jg_gyq7i/project",
+      "/bin/bash",
+      "/tmp/th-l5-jg_gyq7i/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2232186,
+    "start_ticks": "30061465",
+    "argv": [
+      "bwrap",
+      "--die-with-parent",
+      "--unshare-pid",
+      "--ro-bind",
+      "/",
+      "/",
+      "--tmpfs",
+      "/home",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run",
+      "--proc",
+      "/proc",
+      "--dev",
+      "/dev",
+      "--bind",
+      "/tmp/th-l5-jg_gyq7i",
+      "/tmp/th-l5-jg_gyq7i",
+      "--chdir",
+      "/tmp/th-l5-jg_gyq7i/project",
+      "/bin/bash",
+      "/tmp/th-l5-jg_gyq7i/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2232187,
+    "start_ticks": "30061465",
+    "argv": [
+      "/bin/bash",
+      "/tmp/th-l5-jg_gyq7i/boot.sh",
+      ""
+    ]
+  },
+  {
+    "pid": 2232190,
+    "start_ticks": "30061465",
+    "argv": [
+      "tmux",
+      "-D",
+      "-f",
+      "/dev/null",
+      ""
+    ]
+  },
+  {
+    "pid": 2232359,
+    "start_ticks": "30061476",
+    "argv": [
+      "/bin/bash",
+      ""
+    ]
+  },
+  {
+    "pid": 2232361,
+    "start_ticks": "30061476",
+    "argv": [
+      "/tmp/th-l5-jg_gyq7i/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "27367",
+      "--data-dir",
+      "/tmp/th-l5-jg_gyq7i/data",
+      ""
+    ]
+  },
+  {
+    "pid": 2232492,
+    "start_ticks": "30061538",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l5-jg_gyq7i/project' && CLAUDE_DIR='/tmp/th-l5-jg_gyq7i/claude' CLAUDE_CONFIG_DIR='/tmp/th-l5-jg_gyq7i/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l5-restarts' --agent-name 'lead' --agent-id 'lead@l5-restarts' --agent-type 'orchestrator' -n 'lead'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 2232495,
+    "start_ticks": "30061538",
+    "argv": [
+      "claude",
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-haiku-4-5",
+      "--team-name",
+      "l5-restarts",
+      "--agent-name",
+      "lead",
+      "--agent-id",
+      "lead@l5-restarts",
+      "--agent-type",
+      "orchestrator",
+      "-n",
+      "lead",
+      ""
+    ]
+  },
+  {
+    "pid": 2232511,
+    "start_ticks": "30061543",
+    "argv": [
+      "/bin/bash",
+      "-ic",
+      "cd '/tmp/th-l5-jg_gyq7i/project' && CLAUDE_DIR='/tmp/th-l5-jg_gyq7i/claude' CODEX_HOME='/tmp/th-l5-jg_gyq7i/codex' codex --yolo --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l5-jg_gyq7i/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'; exec \"$SHELL\"",
+      ""
+    ]
+  },
+  {
+    "pid": 2232514,
+    "start_ticks": "30061543",
+    "argv": [
+      "codex",
+      "--yolo",
+      "--dangerously-bypass-hook-trust",
+      "-c",
+      "notify=[\"/tmp/th-l5-jg_gyq7i/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]",
+      "-m",
+      "gpt-5.6-luna",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      ""
+    ]
+  },
+  {
+    "pid": 2232557,
+    "start_ticks": "30061545",
+    "argv": [
+      "codex",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "sandbox_mode=\"danger-full-access\"",
+      "-c",
+      "model=\"gpt-5.6-luna\"",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      "app-server",
+      "--listen",
+      "unix:///tmp/th-l5-jg_gyq7i/tmp/th-host-a3070b3bbe2443f6b35d74628e14fb32/rpc.sock",
+      ""
+    ]
+  },
+  {
+    "pid": 2234991,
+    "start_ticks": "30061987",
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 2235107,
+    "start_ticks": "30062024",
+    "argv": [
+      "codex",
+      "--remote",
+      "unix:///tmp/th-l5-jg_gyq7i/tmp/th-host-a3070b3bbe2443f6b35d74628e14fb32/rpc.sock",
+      "resume",
+      "01a08d7b-8f23-7310-8a8c-bccfbbe625f7",
+      "--no-alt-screen",
+      "--strict-config",
+      ""
+    ]
+  },
+  {
+    "pid": 2235793,
+    "start_ticks": "30062136",
+    "argv": [
+      "/tmp/th-l5-jg_gyq7i/home/.local/bin/mesh",
+      "team-daemon",
+      "start",
+      "--team",
+      "l5-restarts",
+      "--name",
+      "lead",
+      "--claude-dir",
+      "/tmp/th-l5-jg_gyq7i/claude",
+      ""
+    ]
+  }
+]

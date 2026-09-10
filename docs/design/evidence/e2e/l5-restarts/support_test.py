@@ -22,3 +22,14 @@ class Acceptance(unittest.TestCase):
   self.assertFalse(identity_preserved(before,dict(before,session_id='b')))
   self.assertFalse(identity_preserved(dict(before,attachmentGeneration=2),before))
 if __name__=='__main__':unittest.main()
+
+class HostedActivity(unittest.TestCase):
+ def test_host_state_comes_from_fresh_attributed_daemon_snapshot(self):
+  # // Regression: 9fa886ee required a hosted sidecar state that the publisher omits.
+  from support import attributed_activity
+  s={'session_id':'beta','state':'idle','source':'host','activity_attribution':'attributed'}
+  a=attributed_activity(s,{'observed_at':'synthetic'},2)
+  self.assertEqual(a['state'],'idle')
+  self.assertEqual(a['session_id'],'beta')
+  self.assertEqual(a['age'],2)
+  self.assertIsNone(attributed_activity(dict(s,activity_attribution='unattributed'),{},2)['session_id'])

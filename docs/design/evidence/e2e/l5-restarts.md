@@ -11,7 +11,7 @@ Metering is retained independently and never gates a lifecycle operation.
 
 | Step | Outcome | Classification |
 |---|---|---|
-| 1 Initialize and complete/read baseline | Not run | — |
+| 1 Initialize and complete/read baseline | PASS | Runtime; read-only hosted-activity observer corrected before baseline |
 | 2 Observe both pending backlogs | Not run | — |
 | 3 Restart Taurhaus normally | Not run | — |
 | 4 Deliver backlog without baseline replay | Not run | — |

@@ -1,0 +1,186 @@
+{
+  "message": {
+    "message_id": "a3ea3a40-befa-4c75-a399-4a91f874b9aa",
+    "sequence": 8,
+    "status": "accepted",
+    "projection": "pending",
+    "delivery_targets": [
+      {
+        "delivery_id": "61ace4c0-c7c3-4617-bab1-3fc4d87f7fb8",
+        "legacy_acceptance": "unknown",
+        "legacy_id": "f7291980-2880-49e6-9b35-dcfe938e09dd",
+        "member_id": "alpha@l5-restarts",
+        "read_audience": [
+          {
+            "member_id": "alpha@l5-restarts",
+            "name": "alpha"
+          },
+          {
+            "member_id": "ea620f1e-f2fb-49e8-92bd-6f620e555e65",
+            "name": "lead"
+          }
+        ],
+        "recipient": "alpha",
+        "source_path": "inboxes/alpha.json"
+      }
+    ],
+    "marker": "L5_baseline_alpha_802543",
+    "seat": "alpha"
+  },
+  "receipts": [
+    {
+      "adapter": "tmux/1",
+      "attachment": {
+        "attachment_generation": 1,
+        "context_generation": "0",
+        "generation": "1",
+        "harness": "codex",
+        "launch_root": {
+          "claudeDir": "/tmp/th-l5-jg_gyq7i/claude",
+          "rootAuthorityRevision": 0,
+          "teamIncarnationId": "c5e686732f8ad109dfc01d2e4a9357757983347813bd8ee8fa78adef417cb519",
+          "teamsDir": "/tmp/th-l5-jg_gyq7i/claude/teams"
+        },
+        "member": "alpha",
+        "pane": "%2",
+        "pane_pid": 136,
+        "pane_start": "30061543",
+        "root": "/tmp/th-l5-jg_gyq7i/claude",
+        "session": "$0",
+        "socket": "/tmp/th-l5-jg_gyq7i/tmux/tmux-1000/default",
+        "team_incarnation": "c5e686732f8ad109dfc01d2e4a9357757983347813bd8ee8fa78adef417cb519",
+        "tmux_session": "$0"
+      },
+      "attempt_id": "06c9d655-9bcd-401c-ad4d-707319654a50",
+      "delivery_id": "61ace4c0-c7c3-4617-bab1-3fc4d87f7fb8",
+      "event_type": "delivery_attempt",
+      "evidence": "durable claim",
+      "message_id": "a3ea3a40-befa-4c75-a399-4a91f874b9aa",
+      "observed_at": "2026-09-10T22:42:31.658252048+00:00",
+      "origin": "adapter",
+      "owner_epoch": 2,
+      "recipient": "alpha",
+      "source_generation": "38839d28-241e-4b39-a9ae-a33297d0d888",
+      "source_position": 8,
+      "stage": "attempt_started",
+      "team_incarnation": "c5e686732f8ad109dfc01d2e4a9357757983347813bd8ee8fa78adef417cb519"
+    },
+    {
+      "adapter": "tmux/1",
+      "attachment": {
+        "attachment_generation": 1,
+        "context_generation": "0",
+        "generation": "1",
+        "harness": "codex",
+        "launch_root": {
+          "claudeDir": "/tmp/th-l5-jg_gyq7i/claude",
+          "rootAuthorityRevision": 0,
+          "teamIncarnationId": "c5e686732f8ad109dfc01d2e4a9357757983347813bd8ee8fa78adef417cb519",
+          "teamsDir": "/tmp/th-l5-jg_gyq7i/claude/teams"
+        },
+        "member": "alpha",
+        "pane": "%2",
+        "pane_pid": 136,
+        "pane_start": "30061543",
+        "root": "/tmp/th-l5-jg_gyq7i/claude",
+        "session": "$0",
+        "socket": "/tmp/th-l5-jg_gyq7i/tmux/tmux-1000/default",
+        "team_incarnation": "c5e686732f8ad109dfc01d2e4a9357757983347813bd8ee8fa78adef417cb519",
+        "tmux_session": "$0"
+      },
+      "attempt_id": "06c9d655-9bcd-401c-ad4d-707319654a50",
+      "delivery_id": "61ace4c0-c7c3-4617-bab1-3fc4d87f7fb8",
+      "event_type": "receipt",
+      "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+      "message_id": "a3ea3a40-befa-4c75-a399-4a91f874b9aa",
+      "observed_at": "2026-09-10T22:42:31.837571611+00:00",
+      "origin": "tmux_send_keys",
+      "owner_epoch": 2,
+      "recipient": "alpha",
+      "source_generation": "38839d28-241e-4b39-a9ae-a33297d0d888",
+      "source_position": 8,
+      "stage": "submitted",
+      "team_incarnation": "c5e686732f8ad109dfc01d2e4a9357757983347813bd8ee8fa78adef417cb519"
+    },
+    {
+      "accepted_sequence": 8,
+      "audience_proof": {
+        "kind": "captured-members",
+        "members": [
+          {
+            "member_id": "alpha@l5-restarts",
+            "name": "alpha"
+          },
+          {
+            "member_id": "ea620f1e-f2fb-49e8-92bd-6f620e555e65",
+            "name": "lead"
+          }
+        ],
+        "team_id": "c5e686732f8ad109dfc01d2e4a9357757983347813bd8ee8fa78adef417cb519"
+      },
+      "body_bytes": 94,
+      "body_hash": "7d5c0c46bf0734757afda5830fc8154daeaec41798fffc20721422ffb1adffe1",
+      "context": "explicit-mesh-cli",
+      "delivery_id": "61ace4c0-c7c3-4617-bab1-3fc4d87f7fb8",
+      "kind": "consumed_by_read",
+      "message_id": "a3ea3a40-befa-4c75-a399-4a91f874b9aa",
+      "read_audience": [
+        {
+          "member_id": "alpha@l5-restarts",
+          "name": "alpha"
+        },
+        {
+          "member_id": "ea620f1e-f2fb-49e8-92bd-6f620e555e65",
+          "name": "lead"
+        }
+      ],
+      "reader": "alpha@l5-restarts",
+      "reader_name": "alpha"
+    }
+  ],
+  "activity": {
+    "state": "idle",
+    "age": 2.0441741943359375,
+    "session_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+    "runtime": {
+      "activity_attribution": "attributed",
+      "activity_confidence": "high",
+      "args": "codex --yolo --dangerously-bypass-hook-trust -c notify=[\"/tmp/th-l5-jg_gyq7i/home/.local/bin/taurhaus-daemon\",\"codex-notify\"] -m gpt-5.6-luna -c model_reasoning_effort=\"low\"",
+      "cli_tool": "codex",
+      "group_id": "l5-restarts",
+      "group_kind": "mesh_team",
+      "group_label": "l5-restarts",
+      "jsonl_path": "/tmp/th-l5-jg_gyq7i/codex/sessions/2026/09/11/rollout-2026-09-11T00-41-18-01a08d7b-8878-7071-9fb8-caa350aef74f.jsonl",
+      "last_output_age_secs": 1,
+      "member_name": "alpha",
+      "pid": 139,
+      "project_path": "/tmp/th-l5-jg_gyq7i/project",
+      "project_unattributed_active": false,
+      "recent_io": false,
+      "session_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+      "state": "idle",
+      "tmux_pane": "%2",
+      "tmux_session": "taurhaus",
+      "tmux_window": "2",
+      "tmux_window_name": "project",
+      "tty": "/dev/pts/2"
+    },
+    "snapshot": {
+      "version": 1,
+      "observed_at": "2026-09-10T22:42:38.986313050+00:00",
+      "stall_recent_activity": false,
+      "stall_no_output": true,
+      "stall_no_active_process": false,
+      "active_non_shell_process": true,
+      "recent_io": false,
+      "pane_alive": true,
+      "pane_foreign": false,
+      "last_output_age_secs": 0,
+      "activity_confidence": "idle",
+      "confidence": "high",
+      "last_observed_at": "2026-09-10T22:42:38.983622271+00:00",
+      "source": "notify",
+      "state": "idle"
+    }
+  }
+}

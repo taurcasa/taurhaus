@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "a3ea3a40-befa-4c75-a399-4a91f874b9aa",
+      "delivery_id": "61ace4c0-c7c3-4617-bab1-3fc4d87f7fb8",
+      "recipient": "alpha",
+      "source_generation": "38839d28-241e-4b39-a9ae-a33297d0d888",
+      "source_position": 8,
+      "body": "ACTION REQUIRED: Reply exactly L5_baseline_alpha_802543. Do not execute tools or modify files."
+    },
+    "since": "2026-09-10T22:42:31.658255728+00:00"
+  }
+]

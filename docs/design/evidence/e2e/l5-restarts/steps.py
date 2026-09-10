@@ -2,7 +2,7 @@
 import datetime, json, secrets, sys, time
 from pathlib import Path
 from actions import action
-from support import clean, complete_rows, delivered, pending, reply_seen, identity_preserved
+from support import clean, complete_rows, delivered, pending, reply_seen, identity_preserved, attributed_activity
 B=Path(__file__).resolve().parent;OUT=B/'run';TEAM='l5-restarts'
 
 def save(name,value): (OUT/name).write_text(json.dumps(clean(value),indent=2)+'\n')
@@ -45,7 +45,7 @@ def activity(seat):
  age=time.time()-datetime.datetime.fromisoformat(stamp).timestamp() if stamp else 999
  matches=[s for s in view['runtime_sessions'] if s.get('session_id')==logical(r) and s.get('tmux_pane')==r.get('paneId')]
  s=matches[0] if len(matches)==1 and matches[0].get('activity_attribution')=='attributed' and not view.get('degraded') else {}
- return {'state':a.get('state'),'age':age,'session_id':s.get('session_id'),'runtime':s,'snapshot':a}
+ return attributed_activity(s,a,age)
 def idle(seat):
  a=activity(seat);return a['state']=='idle' and a['age']<=120 and a['session_id']==logical(rec(seat))
 def agent_rows(seat):

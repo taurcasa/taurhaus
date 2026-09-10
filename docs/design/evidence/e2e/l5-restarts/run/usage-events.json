@@ -1,0 +1,282 @@
+[
+  {
+    "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+    "timestamp": "2026-09-10T22:41:24.838Z",
+    "ordinal": 1,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a08d7b-a152-7083-b5dc-39ce153ccbce",
+      "started_at": 1789080084,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+    "timestamp": "2026-09-10T22:41:28.426Z",
+    "ordinal": 14,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 9282,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 96,
+          "reasoning_output_tokens": 22,
+          "total_tokens": 9378
+        },
+        "last_token_usage": {
+          "input_tokens": 9282,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 96,
+          "reasoning_output_tokens": 22,
+          "total_tokens": 9378
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+    "timestamp": "2026-09-10T22:41:29.975Z",
+    "ordinal": 20,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 20075,
+          "cached_input_tokens": 15872,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 138,
+          "reasoning_output_tokens": 55,
+          "total_tokens": 20213
+        },
+        "last_token_usage": {
+          "input_tokens": 10793,
+          "cached_input_tokens": 8960,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 42,
+          "reasoning_output_tokens": 33,
+          "total_tokens": 10835
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+    "timestamp": "2026-09-10T22:41:29.982Z",
+    "ordinal": 21,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a08d7b-a152-7083-b5dc-39ce153ccbce",
+      "last_agent_message": "unavailable done",
+      "started_at": 1789080084,
+      "completed_at": 1789080089,
+      "duration_ms": 5158,
+      "time_to_first_token_ms": 2305
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+    "timestamp": "2026-09-10T22:42:31.841Z",
+    "ordinal": 23,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a08d7c-a71b-7361-875e-aee6cc62c65d",
+      "started_at": 1789080151,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+    "timestamp": "2026-09-10T22:42:34.561Z",
+    "ordinal": 33,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 30968,
+          "cached_input_tokens": 25856,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 220,
+          "reasoning_output_tokens": 63,
+          "total_tokens": 31188
+        },
+        "last_token_usage": {
+          "input_tokens": 10893,
+          "cached_input_tokens": 9984,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 82,
+          "reasoning_output_tokens": 8,
+          "total_tokens": 10975
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+    "timestamp": "2026-09-10T22:42:38.864Z",
+    "ordinal": 39,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 42741,
+          "cached_input_tokens": 35840,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 402,
+          "reasoning_output_tokens": 231,
+          "total_tokens": 43143
+        },
+        "last_token_usage": {
+          "input_tokens": 11773,
+          "cached_input_tokens": 9984,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 182,
+          "reasoning_output_tokens": 168,
+          "total_tokens": 11955
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8878-7071-9fb8-caa350aef74f",
+    "timestamp": "2026-09-10T22:42:38.870Z",
+    "ordinal": 40,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a08d7c-a71b-7361-875e-aee6cc62c65d",
+      "last_agent_message": "L5_baseline_alpha_802543",
+      "started_at": 1789080151,
+      "completed_at": 1789080158,
+      "duration_ms": 7029,
+      "time_to_first_token_ms": 1477
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8f23-7310-8a8c-bccfbbe625f7",
+    "timestamp": "2026-09-10T22:41:21.985Z",
+    "ordinal": 1,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a08d7b-94ff-7832-9815-a6c090885bc4",
+      "started_at": 1789080081,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8f23-7310-8a8c-bccfbbe625f7",
+    "timestamp": "2026-09-10T22:41:28.876Z",
+    "ordinal": 13,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 11145,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 94,
+          "reasoning_output_tokens": 85,
+          "total_tokens": 11239
+        },
+        "last_token_usage": {
+          "input_tokens": 11145,
+          "cached_input_tokens": 6912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 94,
+          "reasoning_output_tokens": 85,
+          "total_tokens": 11239
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8f23-7310-8a8c-bccfbbe625f7",
+    "timestamp": "2026-09-10T22:41:29.077Z",
+    "ordinal": 14,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a08d7b-94ff-7832-9815-a6c090885bc4",
+      "last_agent_message": "task unavailable done",
+      "started_at": 1789080081,
+      "completed_at": 1789080089,
+      "duration_ms": 7113,
+      "time_to_first_token_ms": 6610
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8f23-7310-8a8c-bccfbbe625f7",
+    "timestamp": "2026-09-10T22:42:41.853Z",
+    "ordinal": 15,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_started",
+      "turn_id": "01a08d7c-ce36-7553-b18c-45f7d2389f4a",
+      "started_at": 1789080161,
+      "model_context_window": 31129,
+      "collaboration_mode_kind": "default"
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8f23-7310-8a8c-bccfbbe625f7",
+    "timestamp": "2026-09-10T22:42:43.655Z",
+    "ordinal": 22,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 22498,
+          "cached_input_tokens": 17920,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 107,
+          "reasoning_output_tokens": 85,
+          "total_tokens": 22605
+        },
+        "last_token_usage": {
+          "input_tokens": 11353,
+          "cached_input_tokens": 11008,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 13,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 11366
+        },
+        "model_context_window": 31129
+      }
+    }
+  },
+  {
+    "thread_id": "01a08d7b-8f23-7310-8a8c-bccfbbe625f7",
+    "timestamp": "2026-09-10T22:42:43.759Z",
+    "ordinal": 23,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a08d7c-ce36-7553-b18c-45f7d2389f4a",
+      "last_agent_message": "L5_baseline_beta_d745e9",
+      "started_at": 1789080161,
+      "completed_at": 1789080163,
+      "duration_ms": 1906,
+      "time_to_first_token_ms": 1458
+    }
+  }
+]
