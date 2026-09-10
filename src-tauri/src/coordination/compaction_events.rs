@@ -8,6 +8,7 @@ use taurhaus_lib::logging::emit_global;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompactionDeliveryEvent {
+    pub delivery: Option<String>,
     pub tool: CliTool,
     pub team_name: String,
     pub member_name: String,
@@ -34,6 +35,7 @@ pub fn emit_compaction_delivery(event_name: &str, event: CompactionDeliveryEvent
 
 fn delivery_fields(event: CompactionDeliveryEvent) -> Map<String, Value> {
     let mut fields = Map::new();
+    insert_optional_string(&mut fields, "delivery", event.delivery);
     fields.insert("tool".to_string(), Value::String(event.tool.to_string()));
     fields.insert("team_name".to_string(), Value::String(event.team_name));
     fields.insert("member_name".to_string(), Value::String(event.member_name));
@@ -64,6 +66,7 @@ mod tests {
     #[test]
     fn delivery_fields_include_skip_and_fail_reason_when_present() {
         let fields = delivery_fields(CompactionDeliveryEvent {
+            delivery: None,
             tool: CliTool::Codex,
             team_name: "taurhaus-team".to_string(),
             member_name: "developer1".to_string(),
