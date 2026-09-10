@@ -1,0 +1,60 @@
+  cannot begin. Report through its completion signal; no pure acknowledgment.
+  Corrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.
+  Next action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required
+  context.
+
+
+• Unassigned; awaiting missing identity, release, and task context from the team lead.
+
+
+› [taurhaus] recovery_card
+  Identity: seat on integration; key={"card_schema":1,"recipient":
+  ["dd3910c9ef9c13a27ce10eb70ea26de0b6b8043baa34819a850465e221f8e36a","1a8cb6cb-741f-478a-844e-e00407be482a"],"context":[3,0],"roots":
+  {"root_authority_revision":"0","resolved_teams_root":"/tmp/th-int-v92389k5/claude/teams","resolved_mesh_config_root":"/tmp/th-int-
+  v92389k5/claude","harness_account_root":"/tmp/th-int-v92389k5/codex","launch_namespace":"native","resolved_project_root":"/tmp/th-int-
+  v92389k5/project"},"contract":
+  {"role_id":"","effective_role_revision":"44ffdd9316a9efc3856d18e4f0ea7e4df04ee03f8316f4a311fada3863b419bf","instruction_contract_revision
+  ":"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f","packet_revision":""}}
+  Coverage: ef9d8315bd4bc7d5dceabf1edbe0fd66fc4deb457933bda9a12c6f17f73f90b7;
+  source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable
+  Project cwd: /tmp/th-int-v92389k5/project
+  Assignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned
+  Objective: unavailable
+  Deliverable: unavailable
+  First action: unavailable
+  Completion signal: unavailable
+  Review route: unavailable
+  Wait/release: unavailable
+  Candidate: unavailable
+  Rubric: unavailable
+  Restart cursor: unavailable
+  Requested effort: unavailable; effective effort: low; hold: none recorded
+  File boundary: unavailable
+  Evidence/handoff retention: unavailable; references do not prove archival preservation.
+  Generated: 2026-09-10 17:15:26.961267752 UTC
+  Current task: # —
+  Execution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none
+  Focal files: unavailable
+  Role: unavailable
+  Purpose: Isolated transport trial. Reply briefly. Never execute tools or commands.
+  work_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution
+  cannot begin. Report through its completion signal; no pure acknowledgment.
+  Corrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.
+  Next action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required
+  context.
+
+
+• Unassigned; awaiting missing identity, release, and task context from the team lead.
+
+
+› [mesh message data] {"assignment":null,"author":"lead","body":"ACTION REQUIRED: Reply exactly willowa1183e. Do not execute
+  tools.","delivery_id":"ad5c1556-77d9-4873-b4a4-aee5f93c1705","expectation":null,"message_id":"a46d378c-2731-4e8b-bd2d-
+  59a597ce3963","metadata":{},"task":null}
+
+
+• willowa1183e
+
+
+› Ask Codex to do anything
+
+  gpt-5.6-luna low · /tmp/th-int-v92389k5/project

@@ -92,8 +92,9 @@
       "cached_input": 0,
       "output": 0,
       "reasoning_output": 0,
-      "api_equivalent_usd": 0.0,
-      "conservative_usd": 0.0
+      "api_equivalent_usd": null,
+      "conservative_usd": null,
+      "limitation": "Compaction counter reset; billable token classes unreported."
     },
     {
       "thread_id": "01a08c4e-36ef-7b81-8d5f-152614676d07",
@@ -126,11 +127,19 @@
       "conservative_usd": 0.0160296
     }
   ],
-  "api_equivalent_usd": 0.00801896,
-  "conservative_usd": 0.1510728,
+  "api_equivalent_usd": null,
+  "conservative_usd": null,
   "metering_complete": false,
   "unmetered_turn_ids": [
     "01a08c51-33cc-7372-bdd3-18d13b0d7793"
   ],
-  "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice."
+  "basis": "Host tokenUsage.last via daemon hosted_transcript; packet rates $0.20/$0.02/$1.20 per million input/cached/output. Estimate, not invoice.",
+  "measured_api_equivalent_subtotal_usd": 0.00801896,
+  "measured_conservative_subtotal_usd": 0.1510728,
+  "actual_billed_usd": null,
+  "compaction_metering_gaps": [
+    "01a08c50-7dc8-72a3-8961-f0eae2ddb956"
+  ],
+  "paid_generation_slots_including_steer_and_compaction": 11,
+  "limitation": "One restart turn lacks matching usage; later usage carries the earlier recovery ID. No inferred reassignment. Full billed USD/cap unverified."
 }

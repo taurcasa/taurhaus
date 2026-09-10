@@ -88,18 +88,6 @@
     ]
   },
   {
-    "pid": 3803451,
-    "start_ticks": "28086591",
-    "argv": [
-      "/tmp/th-int-v92389k5/home/.local/bin/taurhaus-daemon",
-      "--port",
-      "27234",
-      "--data-dir",
-      "/tmp/th-int-v92389k5/data",
-      ""
-    ]
-  },
-  {
     "pid": 3803573,
     "start_ticks": "28086651",
     "argv": [
@@ -131,47 +119,6 @@
     ]
   },
   {
-    "pid": 3803582,
-    "start_ticks": "28086653",
-    "argv": [
-      "codex",
-      "-c",
-      "sandbox_mode=\"read-only\"",
-      "-c",
-      "approval_policy=\"never\"",
-      "-c",
-      "model=\"gpt-5.6-luna\"",
-      "-c",
-      "model_reasoning_effort=\"low\"",
-      "app-server",
-      "--listen",
-      "unix:///tmp/th-int-v92389k5/tmp/th-host-f85778b6339c47828854b9272615f41b/rpc.sock",
-      ""
-    ]
-  },
-  {
-    "pid": 3804266,
-    "start_ticks": "28087055",
-    "argv": [
-      "-bash",
-      ""
-    ]
-  },
-  {
-    "pid": 3804281,
-    "start_ticks": "28087093",
-    "argv": [
-      "codex",
-      "--remote",
-      "unix:///tmp/th-int-v92389k5/tmp/th-host-f85778b6339c47828854b9272615f41b/rpc.sock",
-      "resume",
-      "01a08c4e-36ef-7b81-8d5f-152614676d07",
-      "--no-alt-screen",
-      "--strict-config",
-      ""
-    ]
-  },
-  {
     "pid": 3804726,
     "start_ticks": "28087201",
     "argv": [
@@ -188,12 +135,74 @@
     ]
   },
   {
-    "pid": 3805503,
-    "start_ticks": "28087825",
+    "pid": 3837789,
+    "start_ticks": "28106117",
     "argv": [
-      "/bin/sh",
-      "/usr/bin/lsb_release",
-      "-a",
+      "/bin/bash",
+      "-c",
+      "/tmp/th-int-v92389k5/home/.local/bin/taurhaus-daemon --port 27234 --data-dir /tmp/th-int-v92389k5/data >>/tmp/th-int-v92389k5/daemon-restart.log 2>&1",
+      ""
+    ]
+  },
+  {
+    "pid": 3837791,
+    "start_ticks": "28106118",
+    "argv": [
+      "/tmp/th-int-v92389k5/home/.local/bin/taurhaus-daemon",
+      "--port",
+      "27234",
+      "--data-dir",
+      "/tmp/th-int-v92389k5/data",
+      ""
+    ]
+  },
+  {
+    "pid": 3837878,
+    "start_ticks": "28106143",
+    "argv": [
+      "codex",
+      "-c",
+      "sandbox_mode=\"read-only\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-c",
+      "model=\"gpt-5.6-luna\"",
+      "-c",
+      "model_reasoning_effort=\"low\"",
+      "app-server",
+      "--listen",
+      "unix:///tmp/th-int-v92389k5/tmp/th-host-36d98b53a30f4776a7b8c81724fc3356/rpc.sock",
+      ""
+    ]
+  },
+  {
+    "pid": 3839111,
+    "start_ticks": "28106510",
+    "argv": [
+      "-bash",
+      ""
+    ]
+  },
+  {
+    "pid": 3839147,
+    "start_ticks": "28106547",
+    "argv": [
+      "codex",
+      "--remote",
+      "unix:///tmp/th-int-v92389k5/tmp/th-host-36d98b53a30f4776a7b8c81724fc3356/rpc.sock",
+      "resume",
+      "01a08c4e-36ef-7b81-8d5f-152614676d07",
+      "--no-alt-screen",
+      "--strict-config",
+      ""
+    ]
+  },
+  {
+    "pid": 3839529,
+    "start_ticks": "28106614",
+    "argv": [
+      "sleep",
+      "1",
       ""
     ]
   }

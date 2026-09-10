@@ -1,4 +1,4 @@
-# Codex 0.153.4 integration — IN PROGRESS: attempt 12
+# Codex 0.153.4 integration — INCONCLUSIVE: step 6 metering-ID mismatch, attempt 12
 
 ## Attempt 1 — INCONCLUSIVE: setup FAIL (2026-09-09)
 
@@ -2723,3 +2723,158 @@ subtotal $0.00718480 / conservative $0.11915280. The compaction tokenUsage
 reset has zero input/output classes: this is **unreported compaction spend, not
 a free compaction**. Final joined ledger will distinguish it from measured rows.
 All three Taurhaus gates exited 0; their complete `.txt` logs are sidecars.
+
+### Attempt 12 RESULT — stopped at step 6; descriptor remains disabled
+
+**S-runtime:** steps 1–5 PASS. **Step 6 controller FAIL** after its full 100-second
+completion window; **functional restart/delivery observed, metering join incomplete**.
+Step 7 NOT RUN under the mandatory stop-on-failure rule. Controller and step-6 driver
+both exited **1**. No product defect was patched, no additional paid retry occurred,
+and no descriptor flip or named-refusal Mesh fix was made (both conditional on full PASS).
+Mesh remains clean/detached at `ed59187`; flip commit **none**. No Taurhaus registry
+entry was needed: production launch already accepted the exact paired tuple.
+
+| Step | Outcome | Evidence under `integration/attempt12/run/` |
+|---|---|---|
+| 1. Production hosted launch | PASS | `initialize-result.json`: all nine stages, including opt_in_delivery; `step1-runtime.json`, `step1-identities.json`, `generated-config-0.toml`, `step1-final-pane-2.txt`; daemon instruction/onboarding rows. |
+| 2. Idle native delivery and explicit read | PASS | `step2-marker.json`, `step2-receipts.json`, `step2-pane-2.txt`, both `step2-journal-*-read.json` snapshots and `step2-explicit-read.txt`. |
+| 3. Active deferral | PASS | `step3-pending.json`: thread_active; eventual `step3-receipts.json`, single exposure in `step3-exposure.json`. |
+| 4. Operator/socket ordering | PASS | `step4-pending.json`, `step4-exposure.json`, `step4-final-pane-2.txt`; passive `step4-locks.jsonl` shows both daemon and Mesh holding the same inode, including fdinfo. |
+| 5. Compaction boundary | PASS | `step5-boundary-events.json`, `step5-runtime-before/after.json`, `step5-final-pane-2.txt`; contextGeneration advances 0→1 and complete daemon log records received/delivered. |
+| 6. Restart and delivery | FAIL completion/metering guard; functional delivery observed | `step6-resume-result.json`, unchanged thread in `step6-runtime-before/after.json`, `step6-receipts.json`: native_enqueued; `step6-observed-pane-14.txt` and `host-events.jsonl:132`: marker reply. `step6-outcome.json` retains the exact controller failure. |
+| 7. Operational rollback | NOT RUN | `step7-outcome.json`; stopped at step 6, no rollback RPC or send attempted. |
+
+#### Exact step-6 discrepancy
+
+The raw exception is `missing completed reply willowa1183e`. That text comes from
+`wait_reply`, whose predicate is **reply AND idle AND metering_complete**, so it
+must not be read as proof of a lost marker. The retained transcript is idle and
+contains exactly one `willowa1183e` agent reply; the attached pane and native receipt
+also confirm delivery. The unmatched started/completed recovery turn is
+`01a08c51-33cc-7372-bdd3-18d13b0d7793`. The usage event following that start instead
+carries the earlier pre-restart recovery ID `01a08c50-a10c-7a72-b665-c2a795e27d27`,
+with 13,221 input / 12,032 cached / 21 output tokens. The controller's strict join
+therefore remains false for the entire step window. This is an **observed ID
+mismatch**, not a proven origin in the vendor, daemon projection, or collector;
+no raw socket observer was opened and no usage ID was silently reassigned.
+
+The only extra action was the read-only `capture` named `step6-observed`, while
+that original window was still open; it preserved the successful delivery pane.
+All normal daemon stop/start commands, process identities, RPC request/response
+IDs, actions, and exact message bodies remain in `events.jsonl`. The sanctioned
+step-6 restart used the installed SIGINT handler, followed by normal startup and
+production `coordination.resume_member`; no process was paused to obtain locks.
+
+Both exact transient refusals are covered by offline regression tests. The live
+run observed seat-mutex `host member busy` deferrals and recovered; it did not
+observe the cross-process flock refusal during this schedule. Thus flock-refusal
+handling has synthetic coverage, not a fabricated runtime observation.
+
+#### Every spend (fresh attempt-12 budget)
+
+All model work used Codex 0.153.4, `gpt-5.6-luna`, low effort. **10 distinct protocol
+turns / 11 generation slots including typed steer and compaction**, below 16.
+Claude lead, gates, controller tests and audit: **0 model turns / USD 0**.
+No model work was sent to the credential-free Claude lead.
+Packet rates are $0.20/$0.02/$1.20 per million uncached/cached/output tokens;
+these dollar numbers are API-equivalent calculations from retained host usage,
+**not billing receipts**. The original controller ledger is retained unchanged;
+`cost-final.json` corrects the compact reset to unknown and preserves the unmatched
+turn instead of hiding it.
+
+| Observed generation | Wire turn ID | Input / cached / output | API-equivalent USD |
+|---|---|---|---|
+| Startup card | `01a08c4e-3c05-7193-a9c9-1c289714be01` | 10747 / 6912 / 54 | $0.00097004 |
+| Idle delivery | `01a08c4e-e143-73b0-b119-13cc004d1040` | 11830 / 9984 / 9 | $0.00057968 |
+| Active timing input | `01a08c4f-2e2f-7ee3-a955-eb4115e5d402` | 11870 / 11008 / 506 | $0.00099976 |
+| Deferred delivery | `01a08c4f-5d32-7a61-87b8-68ae67c0c943` | 12478 / 11008 / 11 | $0.00052736 |
+| Ordering timing input | `01a08c4f-a280-7363-81ab-aad62442e87a` | 12520 / 6912 / 495 | $0.00185384 |
+| Typed continuation (same turn) | `01a08c4f-a280-7363-81ab-aad62442e87a` | 13034 / 12032 / 10 | $0.00045304 |
+| Pending socket delivery | `01a08c4f-d87c-7da0-9531-49d562d46ddd` | 13146 / 12032 / 9 | $0.00047424 |
+| Compaction counter reset | `01a08c50-7dc8-72a3-8961-f0eae2ddb956` | 0 / 0 / 0 | **Unreported** |
+| Compaction recovery card | `01a08c50-a10c-7a72-b665-c2a795e27d27` | 12519 / 6912 / 56 | $0.00132684 |
+| Post-restart usage (earlier ID on wire) | `01a08c50-a10c-7a72-b665-c2a795e27d27` | 13221 / 12032 / 21 | $0.00050364 |
+| Post-restart marker delivery | `01a08c51-4a18-7731-b500-c709e9b273ed` | 13349 / 13056 / 9 | $0.00033052 |
+
+Measured subtotal **$0.00801896**; all measured ordinary tokens charged at $1.20/M
+would be **$0.15107280**. Compaction reports totalTokens=6315 with zero input/output
+classes, a counter reset, **not zero cost**. Actual billed USD, complete per-turn
+attribution, and the full USD-3 ceiling cannot be independently verified from this
+interface. The attempt used the fresh budget throughout; no budget question,
+size-based stop, reserve abort or additional paid retry was introduced.
+
+#### Reproduction and verification
+
+Commands ran from `/home/mstie/projects/taurhaus-trial`; the only other writable
+checkout was the explicitly commissioned `/home/mstie/projects/mesh-trial`.
+The latter was first detached at `ed59187`, then scratch-edited to the verified
+class identities and trial eligibility. Build commands, exact targets and Cargo
+exclusion probes are in `daemon-build.json` and `mesh-build.json` (both exit 0).
+The complete retained controllers are `attempt12-{build,controller,actions,steps,gates,audit}.py`,
+`attempt12_support.py`, and `attempt12_test.py`; unchanged imported helpers remain
+versioned beside them.
+
+```sh
+python3 docs/design/evidence/native-eligibility/integration/attempt12_test.py
+python3 docs/design/evidence/native-eligibility/integration/attempt12-build.py
+python3 docs/design/evidence/native-eligibility/integration/attempt12-controller.py attempt12/run
+# In a second shell, after inspection_ready; inspect and commit after each:
+python3 docs/design/evidence/native-eligibility/integration/attempt12-steps.py 1
+python3 docs/design/evidence/native-eligibility/integration/attempt12-steps.py 2
+python3 docs/design/evidence/native-eligibility/integration/attempt12-steps.py 3
+python3 docs/design/evidence/native-eligibility/integration/attempt12-steps.py 4
+python3 docs/design/evidence/native-eligibility/integration/attempt12-steps.py 5
+python3 docs/design/evidence/native-eligibility/integration/attempt12-steps.py 6
+# Read-only capture during the unchanged step-6 window:
+python3 docs/design/evidence/native-eligibility/integration/attempt12-actions.py '[{"op":"capture","name":"step6-observed"}]'
+# Exact unpaid gates, isolated from real harness homes and executables:
+python3 docs/design/evidence/native-eligibility/integration/attempt12-gates.py
+# After teardown and the NOT RUN step-7 outcome is recorded:
+python3 docs/design/evidence/native-eligibility/integration/attempt12-audit.py
+```
+
+| Verification | Exit / evidence |
+|---|---|
+| Controller regression red | 1; three errors across flock/cursor and full-window subtests (`red.txt`). |
+| Controller regression green/final | 0; 11 tests (`green.txt`, `final-tests.txt`). |
+| Daemon / Mesh scratch builds | 0 / 0; checkout-local targets, no install. Build `.log` files were renamed to committed `.txt` sidecars. |
+| `just check-quick` | 0; 150 frontend files / 2,518 tests; `gates/gate-check-quick.txt` and `.json`. |
+| `just lint` | 0; `gates/gate-lint.txt` and `.json`. |
+| `just test-contracts` | 0; `gates/gate-test-contracts.txt` and `.json`. |
+| Final evidence/cleanup audit | 0; `final-audit.json`. |
+| `just test-rust-unit` | Not required: no `src-tauri/` diff. |
+| Mesh flip gates (`just check-quick`, `just lint`, `just test`) | Not run: full-PASS condition not met. |
+
+Gates used a separate credential-free HOME and harness directories, blocked CLI
+shims, private PID namespace and checkout-local Cargo target. Their logs are
+committed sidecars, never only retained in `/tmp`. The audit initially rejected
+synthetic `/home/user/proj-*` fixture strings in those logs; its path check was
+corrected to check the actual operator home, preserving the complete test output.
+No gate was rerun or hidden because of that audit-only correction.
+
+#### Cleanup, retained evidence and deviations
+
+`final-audit.json` independently verifies **20 PID/start-time identities absent**,
+no process with either the trial or gate ownership token, private port **27234**
+closed, scratch root `/tmp/th-int-v92389k5` and copied credentials removed, and gate
+scratch removed. Daemon, app-server children, TUI, private tmux and Mesh owner
+processes all belonged to the removed PID namespace; no operator process was
+signalled. Mesh source is clean at `ed59187`; `target/debug/mesh` is absent.
+
+The **complete daemon JSONL** is retained: **910 unique rows**, including every
+emitted event family; SHA-256
+`424e4dd4fff44500e6865f8def6435a0afe01f0cd447b5185f6a8d1f66c75bee`.
+Host event history retains 135 rows with incremental overlap removal, no
+`item/agentMessage/delta` rows, and pane captures stay at most 60 lines.
+Credentials and operator paths are absent from evidence; synthetic fixture paths
+are intentionally preserved in test logs. No new dependency, Taurhaus product
+change, plan ledger edit, release, installation or broadening of eligibility.
+Non-evidence inserted lines: **0/200**.
+
+Deviations/limits: step 7 and the conditional descriptor flip/named-refusal fix
+were not reached; step 6's generic error text overstates a metering-join failure;
+compaction billing and one recovery usage attribution remain unverified. The
+brief's requested **Opus evidence lens did not run**: no callable Opus review
+model/tool is available in this session. This report does not claim that review;
+it remains for the surrounding cross-family review workflow. All work stopped
+at the original step failure, with no product patch or extra paid trial.
