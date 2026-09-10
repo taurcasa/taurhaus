@@ -1,0 +1,52 @@
+{
+  "exit": 0,
+  "survivors": [],
+  "port": 45321,
+  "port_closed": true,
+  "root_removed": true,
+  "auth_removed": true,
+  "pane_lines": {
+    "final-pane-2.txt": 60,
+    "final-pane-1.txt": 48,
+    "step1-initial-pane-2.txt": 59,
+    "final-pane-0.txt": 48
+  },
+  "jsonl_complete": true,
+  "forbidden_export_fields": false,
+  "steps": {
+    "1": {
+      "step": 1,
+      "outcome": "FAIL",
+      "classification": "taurhaus",
+      "reason": "alpha onboarding not delivered/completed with fresh idle activity"
+    },
+    "2": {
+      "step": 2,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 1"
+    },
+    "3": {
+      "step": 3,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 1"
+    },
+    "4": {
+      "step": 4,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 1"
+    },
+    "5": {
+      "step": 5,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 1"
+    },
+    "6": {
+      "step": 6,
+      "outcome": "NOT RUN",
+      "reason": "blocked by step 1"
+    }
+  },
+  "opus_review": "unavailable: no callable Opus reviewer in session",
+  "runtime_trial_count": 1,
+  "paid_retry_count": 0
+}
