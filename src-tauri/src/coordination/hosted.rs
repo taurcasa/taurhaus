@@ -978,9 +978,32 @@ impl HostedMembers {
         team: &str,
         member: &str,
     ) -> Result<String, String> {
+        self.stop_with_tui(registry, team, member, || Ok(()))
+    }
+
+    pub fn stop_with_tui(
+        &self,
+        registry: &TeamRootRegistry,
+        team: &str,
+        member: &str,
+        stop_tui: impl FnOnce() -> Result<(), String>,
+    ) -> Result<String, String> {
         let root = registry.resolve(team).map_err(|e| e.to_string())?;
         let cell = self.seat(&root, team, member)?;
-        let mut owned = cell.try_lock().map_err(|_| "host member busy")?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        let mut owned = loop {
+            match cell.try_lock() {
+                Ok(owned) => break owned,
+                Err(std::sync::TryLockError::WouldBlock)
+                    if std::time::Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => return Err("host member busy; retry".into()),
+            }
+        };
+        // Keep the seat through both teardowns, but never overlap terminal and host file locks.
+        stop_tui()?;
         let guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
             .map_err(|e| e.to_string())?;
         let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;

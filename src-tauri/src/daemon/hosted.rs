@@ -104,8 +104,9 @@ pub(super) fn stop_session(
     let Some(host) = &record.app_server else {
         return Ok(false);
     };
-    crate::session_scanner::control::stop_hosted_tui(&params.tmux_pane, params.cli_tool)?;
-    let exit_status = hosts.stop(registry, team, member)?;
+    let exit_status = hosts.stop_with_tui(registry, team, member, || {
+        crate::session_scanner::control::stop_hosted_tui(&params.tmux_pane, params.cli_tool)
+    })?;
     let fields = serde_json::json!({"team":team, "member":member,
         "thread_id":host.thread_id, "exit_status":exit_status});
     tracing::info!(event = "hosted.stop_session.host_stopped", fields = %fields, "Hosted session stopped");
