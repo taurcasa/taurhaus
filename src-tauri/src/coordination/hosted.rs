@@ -999,6 +999,8 @@ impl HostedMembers {
         } else {
             return Err("member is not hosted".into());
         }
+        // A failed record update leaves the owned, reaped Child available for a
+        // retry; after daemon restart host_alive=false also permits repair.
         let exit_status = match owned.as_mut() {
             Some(seat) => seat.host.stop()?,
             None => "already stopped".into(),

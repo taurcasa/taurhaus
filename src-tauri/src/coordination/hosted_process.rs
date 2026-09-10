@@ -783,13 +783,7 @@ impl HostProcess {
 
 impl Drop for HostProcess {
     fn drop(&mut self) {
-        if self.child.try_wait().ok().flatten().is_none() {
-            let _ = self.child.kill();
-            let deadline = Instant::now() + Duration::from_secs(1);
-            while self.child.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
-                std::thread::sleep(Duration::from_millis(5));
-            }
-        }
+        let _ = self.stop();
         if let Some(stderr) = &mut self.stderr {
             stderr.finish();
         }

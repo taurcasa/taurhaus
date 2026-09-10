@@ -1,7 +1,7 @@
 //! Additive operator methods; older daemons answer UNKNOWN_METHOD.
 use crate::coordination::hosted::HostedMembers;
 use crate::coordination::stores::{
-    team_roots::same_teams_root, MemberRuntimeStore, TeamConfigStore, TeamRootRegistry,
+    MemberRuntimeStore, TeamConfigStore, TeamRootRegistry,
 };
 use serde_json::Value;
 
@@ -52,42 +52,35 @@ pub(super) fn stop_session(
     params: &super::protocol::StopSessionParams,
 ) -> Result<bool, String> {
     let mut records = Vec::new();
-    for root in registry.roots().unwrap_or_default() {
-        for team in TeamConfigStore::list(&root).unwrap_or_default() {
-            if !registry
-                .resolve(&team)
-                .is_ok_and(|r| same_teams_root(&root, &r))
-            {
-                continue;
-            }
-            records.extend(
-                MemberRuntimeStore::load_all(&root, &team)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|(member, record)| (team.clone(), member, record)),
-            );
+    for (root, team) in registry.team_locations().map_err(|e| e.to_string())? {
+        let members = MemberRuntimeStore::load_all(&root, &team).map_err(|e| e.to_string())?;
+        let config = TeamConfigStore::load(&root, &team).map_err(|e| e.to_string())?;
+        if MemberRuntimeStore::list(&root, &team).map_err(|e| e.to_string())?.len() != members.len()
+            || config.members.iter().any(|m| !members.iter().any(|(name, _)| name == &m.name))
+        {
+            return Err("hosted stop deferred: attachment inventory incomplete".into());
+        }
+        records.extend(members.into_iter().filter(|(_, r)| r.app_server.is_some()).map(|(member, r)| (team.clone(), member, r)));
+    }
+    let mut matches = Vec::new();
+    for candidate in &records {
+        if candidate.2.pane_id.as_deref() == Some(&params.tmux_pane)
+            && crate::session_scanner::control::pane_matches_record(&params.tmux_pane, &candidate.2)?
+        {
+            matches.push(candidate);
         }
     }
-    let exact = records
-        .iter()
-        .find(|(_, _, r)| r.pane_id.as_deref() == Some(&params.tmux_pane));
-    let argv = if exact.is_none() {
-        crate::session_scanner::control::pane_process_argv(&params.tmux_pane)
-    } else {
-        Vec::new()
-    };
-    let matched = exact.or_else(|| {
-        records.iter().find(|(_, _, r)| {
-            let Some(host) = &r.app_server else {
-                return false;
-            };
+    // Ordinary panes without any hosted candidates need no process-table scan.
+    if matches.is_empty() && !records.is_empty() {
+        let argv = crate::session_scanner::control::pane_process_argv(&params.tmux_pane);
+        matches.extend(records.iter().filter(|(_, _, r)| {
+            let host = r.app_server.as_ref().unwrap();
             let socket = format!("unix://{}", host.socket_path.display());
-            argv.iter().any(|args| {
-                args.windows(4)
-                    .any(|w| w == ["--remote", &socket, "resume", &host.thread_id])
-            })
-        })
-    });
+            argv.iter().any(|args| args.windows(4).any(|w| w == ["--remote", &socket, "resume", &host.thread_id]))
+        }));
+    }
+    if matches.len() > 1 { return Err("hosted stop deferred: ambiguous pane ownership".into()); }
+    let matched = matches.first().copied();
     let Some((team, member, record)) = matched else {
         return Ok(false);
     };
