@@ -2147,6 +2147,7 @@ mod tests {
                 pane_foreign: false,
                 last_output_age_secs: (active || likely_working).then_some(1),
                 activity_confidence: confidence,
+                evidence: Default::default(),
             })
             .expect("serialize activity snapshot"),
         )

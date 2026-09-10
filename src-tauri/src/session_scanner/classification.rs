@@ -159,11 +159,25 @@ where
             // The tool reported this state itself (Claude sessions registry or
             // Codex notify): it replaces the file signal rather than
             // supplementing it.
-            let authoritative_state = tool_spec.activity_source().authoritative_state(
-                &proc.project_path,
-                proc.pid,
-                &idle_result,
-            );
+            let seat_observation = tool_spec
+                .activity_source()
+                .observation(
+                    proc.pid,
+                    &proc.project_path,
+                    tmux_pane.map(|pane| pane.pane_id.as_str()),
+                )
+                .filter(|observed| matches!(observed.source, "launch_ready" | "notify"));
+            let authoritative_state = tool_spec
+                .activity_source()
+                .authoritative_state(&proc.project_path, proc.pid, &idle_result)
+                .or_else(|| {
+                    seat_observation
+                        .as_ref()
+                        .map(|observed| idle::AuthoritativeState {
+                            state: observed.state,
+                            source: observed.source,
+                        })
+                });
             let authoritative = authoritative_state.is_some();
             let observed_state = authoritative_state
                 .map(|reported| reported.state)
@@ -239,7 +253,17 @@ where
                 );
             }
             let (activity_confidence, activity_attribution, project_unattributed_active) =
-                if state == SessionState::Active {
+                if let Some(observed) = &seat_observation {
+                    (
+                        if observed.source == "launch_ready" {
+                            ActivityConfidence::Medium
+                        } else {
+                            ActivityConfidence::High
+                        },
+                        ActivityAttribution::Attributed,
+                        false,
+                    )
+                } else if state == SessionState::Active {
                     (decision.confidence, decision.attribution, false)
                 } else if decision.project_unattributed_active {
                     (
@@ -473,6 +497,173 @@ mod tests {
             &move |_: &process::ProcessInfo| result.clone(),
         );
         sessions.into_iter().next().expect("one session")
+    }
+
+    // Regression: b9e4a855 promoted the readiness slice's raw process_io
+    // observation to High-confidence working, bypassing proc_io hysteresis.
+    #[test]
+    fn codex_round3_process_io_observation_is_not_authoritative() {
+        let _lock = SCANNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let pid = 941_033;
+        let project = "/scratch/round3";
+        idle::codex_readiness::seed_observation_for_test(
+            pid,
+            project,
+            "%round3",
+            "process_io",
+            SessionState::Active,
+            chrono::Utc::now(),
+        );
+        let proc = process::ProcessInfo {
+            pid,
+            project_path: project.into(),
+            tty: "round3-tty".into(),
+            args: "codex".into(),
+            cli_tool: CliTool::Codex,
+        };
+        let panes = HashMap::from([(
+            "round3-tty".into(),
+            tmux::TmuxPane {
+                pane_id: "%round3".into(),
+                tty: "round3-tty".into(),
+                window_index: "0".into(),
+                window_name: "test".into(),
+                session_name: "test".into(),
+            },
+        )]);
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                set_runtime_idle_detector_override(None);
+            }
+        }
+        let _reset = Reset;
+        set_runtime_idle_detector_override(Some(|_| idle_result(SessionState::Idle, false)));
+        let (sessions, _, _, _) =
+            classify_display_runtime_sessions_with(vec![proc], panes, &HashMap::new(), &|_| {
+                idle_result(SessionState::Idle, false)
+            });
+        assert_eq!(sessions[0].state, SessionState::Idle);
+        assert!(!sessions[0].recent_io);
+        assert_eq!(sessions[0].activity_confidence, ActivityConfidence::Low);
+        cache::remove_state_tracker(pid);
+    }
+
+    // Regression: b9e4a855 bypassed the activity registry for launch readiness.
+    #[test]
+    fn codex_review_readiness_uses_activity_slice_and_classification() {
+        let _lock = SCANNER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                set_runtime_idle_detector_override(None);
+            }
+        }
+        let _reset = Reset;
+        set_runtime_idle_detector_override(Some(|_| idle_result(SessionState::Idle, false)));
+        let pid = 941_030;
+        let tool = CliTool::Codex;
+        let project = "/scratch/review";
+        let pane = "%review";
+        let activity = crate::session_scanner::cli_tool::spec(tool).activity_source();
+        for (source, state, confidence) in [
+            (
+                "launch_ready",
+                SessionState::Idle,
+                ActivityConfidence::Medium,
+            ),
+            ("notify", SessionState::Idle, ActivityConfidence::High),
+            ("notify", SessionState::Active, ActivityConfidence::High),
+        ] {
+            idle::codex_readiness::seed_observation_for_test(
+                pid,
+                project,
+                pane,
+                source,
+                state,
+                chrono::Utc::now(),
+            );
+            let observation = activity
+                .observation(pid, project, Some(pane))
+                .expect("registry must own readiness");
+            assert_eq!(observation.source, source);
+            let proc = process::ProcessInfo {
+                pid,
+                project_path: project.into(),
+                tty: "test-tty".into(),
+                args: "codex".into(),
+                cli_tool: tool,
+            };
+            let panes = HashMap::from([(
+                "test-tty".into(),
+                tmux::TmuxPane {
+                    pane_id: pane.into(),
+                    tty: "test-tty".into(),
+                    window_index: "0".into(),
+                    window_name: "test".into(),
+                    session_name: "test".into(),
+                },
+            )]);
+            let (sessions, _, _, _) =
+                classify_display_runtime_sessions_with(vec![proc], panes, &HashMap::new(), &|_| {
+                    idle_result(SessionState::Idle, false)
+                });
+            let session = &sessions[0];
+            assert_eq!(session.state, state);
+            assert_eq!(session.activity_confidence, confidence);
+            assert_eq!(
+                session.activity_attribution,
+                ActivityAttribution::Attributed
+            );
+            assert!(!session.project_unattributed_active);
+            use crate::coordination::activity_export::{
+                build_member_activity_snapshot, PaneActivityProbe,
+            };
+            use crate::coordination::activity_schema::SnapshotActivityConfidence;
+            let display = crate::session_scanner::DisplaySession::from(session.clone());
+            let probe = PaneActivityProbe {
+                pane_alive: true,
+                active_non_shell_process: true,
+                ..Default::default()
+            };
+            let expected = if state == SessionState::Idle {
+                SnapshotActivityConfidence::Idle
+            } else {
+                SnapshotActivityConfidence::Active
+            };
+            let fresh = build_member_activity_snapshot(Some(&display), &probe, chrono::Utc::now());
+            assert_eq!(fresh.activity_confidence, expected);
+            assert_eq!(
+                fresh.evidence.get("source"),
+                Some(&serde_json::json!(source))
+            );
+            assert_eq!(
+                fresh.evidence.get("confidence"),
+                Some(&serde_json::json!(confidence))
+            );
+            // Expiry and concurrent invalidation must preserve the classified verdict.
+            idle::codex_readiness::seed_observation_for_test(
+                pid,
+                project,
+                pane,
+                source,
+                state,
+                chrono::Utc::now() - chrono::Duration::seconds(3),
+            );
+            let stale = build_member_activity_snapshot(Some(&display), &probe, chrono::Utc::now());
+            assert_eq!(stale.activity_confidence, expected);
+            assert!(stale.evidence.is_empty());
+        }
+        idle::codex_readiness::seed_observation_for_test(
+            pid,
+            project,
+            pane,
+            "launch_ready",
+            SessionState::Idle,
+            chrono::Utc::now() - chrono::Duration::seconds(3),
+        );
+        assert!(activity.observation(pid, project, Some(pane)).is_none());
+        cache::remove_state_tracker(pid);
     }
 
     #[test]

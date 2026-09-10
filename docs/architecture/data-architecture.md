@@ -331,6 +331,17 @@ resend of a submitted notice is permitted. A failure before submission records
 a failed recovery receipt and permits the existing single bounded retry with
 the same delivery identity. Legacy teams retain the append behavior below.
 
+Hosted generated cards still bypass this journal adapter: `hosted.rs` submits
+startup and next-turn recovery cards directly and records only the Taurhaus
+recovery receipt. Extending the daemon producer contract to these cards requires
+both canonical acceptance **before** socket input and an external outcome receipt
+against the returned projection delivery ID. The specified Mesh candidate
+`4388d6a1` exposes `journal accept` but has no such outcome verb; its
+`delivery receipt` belongs to a reserved native-hook offer. Acceptance alone
+would leave a pending projection eligible for duplicate delivery. This integration
+remains blocked; socket submission must never be represented as `consumed_by_read`.
+Format-1 hosted delivery is unchanged.
+
 Taurhaus inbox producers route through that writer — operator notices for bridged
 members, operator notices for Claude members, and grok compaction cards.
 Legacy operator-originated traffic uses the explicit sender or `taurhaus`
@@ -483,3 +494,7 @@ legacy or incomplete attachments remain at 0 and cannot opt in. Legacy epoch
 start times are not compared to ticks. No daemon protocol bump is made; unlike
 the new keys, the string representation of `paneStartTime` is incompatible with
 older app readers, so deployment must pair the app and daemon.
+
+### Codex launch-readiness snapshot
+
+The daemon writes `activitySnapshotPath` on activity changes and every 30 seconds of healthy scanning. Codex readiness adds `source`, `state` (`idle`/`working`), `confidence` and fresh per-scan `last_observed_at`; existing snapshot keys remain. Mesh candidate `fcb9647`, `src/delivery/runtime.rs:27-29,170-186`, deserializes `activity_confidence` and `observed_at` and admits only `idle` aged **0–120 seconds**. `last_observed_at` is evidence metadata; it does not replace Mesh's `observed_at`. The tempdir snapshot regression replicates that exact serde shape and age predicate (including future/stale rejection); it does not invoke the Mesh binary. Hosted-card journaling is outside this lane: without an external-producer outcome verb, acceptance alone leaves a pending projection and risks double delivery.

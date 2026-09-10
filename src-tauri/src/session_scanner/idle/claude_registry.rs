@@ -82,6 +82,16 @@ pub struct AuthoritativeState {
 }
 
 pub trait ActivitySource: Send + Sync {
+    /// Optional per-process evidence resolved by this harness's activity slice.
+    fn observation(
+        &self,
+        _pid: u32,
+        _project: &str,
+        _pane: Option<&str>,
+    ) -> Option<super::ActivityObservation> {
+        None
+    }
+
     fn authoritative_state(
         &self,
         project_path: &str,

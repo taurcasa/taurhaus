@@ -245,6 +245,16 @@ fn compact_sink_if_needed(file: &mut File, path: &Path) -> Result<bool, String> 
     Ok(true)
 }
 
+/// Legacy Codex notify emits completion only. Unknown event names remain
+/// ordinary per-event records, never activity authority.
+pub(crate) fn latest_activity_record_for_session_after(
+    path: &Path,
+    session_id: &str,
+    not_before: SystemTime,
+) -> Option<CodexNotifyRecord> {
+    latest_record_for_session_after(path, session_id, "agent-turn-complete", not_before)
+}
+
 pub(crate) fn latest_record_for_session_after(
     path: &Path,
     session_id: &str,

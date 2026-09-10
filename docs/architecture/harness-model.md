@@ -28,6 +28,20 @@ Adding a CLI must touch only the slices where that tool differs; the rest of the
 | Usage | OAuth usage windows | native 5-hour + weekly windows | native `/usage` command through an isolated provider process | unavailable; no quota endpoint, per-turn cost is in-band | unavailable |
 | Stop / teardown | `/exit` | interrupt | `/exit`, wait for presence lock, then kill floor | `/quit`, wait for the registry row to clear, then kill floor | tmux kill + mesh daemon stop |
 
+Codex TUI identity resolves against the matched runtime's
+`recovery.harness_account_root`, with pane-process ancestry and start ticks
+checking the attachment. Standalone resolution reads the process's `CODEX_HOME`
+(or its own `HOME/.codex`) before the daemon default. All registered team roots
+contribute `appServer.threadId` exclusions, including hosted seats in other teams;
+those IDs cannot be reused by a TUI's cached binding or rollout selection.
+An open per-thread writer-lock descriptor can identify a fresh 0.153.4 TUI before
+its first rollout exists. This is identity evidence; readiness is checked separately.
+Rollout descriptor ownership is preferred; multiple indistinguishable candidates
+retain no session identity and log the named `codex_identity_ambiguous` source.
+A newest-file guess never resolves a multi-candidate TUI.
+
+For team-owned delivery, an attributed TUI at its visible `›` prompt becomes `idle` / `launch_ready` (heuristic, medium confidence) after the existing 10-second quiet window with reads below the calibrated process-I/O activity rate and no validated completion. A missing rollout or metadata-only rollout counts as no turn; unreadable/ambiguous evidence does not. The recorded pane PID/start, ancestry, account and explicit tmux socket bind the probe. Each scan refreshes `last_observed_at`; notify completion takes over as the authoritative source only when a bound transcript validates its boundary, including after pane reattachment. Legacy Codex notify emits completion only; working detection stays with calibrated process-I/O hysteresis and transcript activity. A writer lock alone cannot validate an old completion. Claude registry and hosted activity paths retain their behavior. This checkout has no harness-prompt launch helper to reuse (launch waits for tmux session availability); the bounded prompt probe recognizes the visible Codex glyph. Pane readiness currently requires Linux process start ticks (including the WSL daemon). macOS has no start-tick provider, so it retains transcript/notify classification without this pre-turn readiness signal.
+
 The registry (`src-tauri/src/session_scanner/cli_tool.rs`) is the one place tool identity may fan out; slices with two real implementations are traits (`SessionSource`, `ActivitySource`, `CompactionSignalSource`, `TranscriptParser`), everything else is data. A conformance suite runs every registry entry through every slice, so a new tool is proven by the same tests as the existing ones. The tracked metric is the number of `CliTool::…` branches outside the registry and slice files; it is meant to go down.
 
 ## Model and reasoning effort are first-class

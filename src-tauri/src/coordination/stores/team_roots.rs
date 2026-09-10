@@ -52,6 +52,22 @@ pub struct TeamRootRegistry {
 }
 
 impl TeamRootRegistry {
+    /// Scanner consumers receive values, never the root-authority writer handle.
+    pub(crate) fn read_runtime_records(
+        default_teams_dir: PathBuf,
+    ) -> Result<Vec<super::MemberRuntimeRecord>, CoordinationError> {
+        let registry = Self::new(default_teams_dir);
+        let mut records = Vec::new();
+        for (root, team) in registry.team_locations()? {
+            records.extend(
+                super::MemberRuntimeStore::load_all(&root, &team)?
+                    .into_iter()
+                    .map(|(_, record)| record),
+            );
+        }
+        Ok(records)
+    }
+
     pub fn new(default_teams_dir: PathBuf) -> Self {
         #[cfg(target_os = "windows")]
         let reader_wsl_distro =

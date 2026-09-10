@@ -31,12 +31,12 @@ struct SessionMembershipMetadata {
 }
 
 #[derive(Debug, Clone, Default)]
-struct PaneActivityProbe {
-    pane_alive: bool,
-    active_non_shell_process: bool,
-    pane_foreign: bool,
-    foreign_reason: Option<String>,
-    foreign_live_pane: Option<LivePane>,
+pub(crate) struct PaneActivityProbe {
+    pub(crate) pane_alive: bool,
+    pub(crate) active_non_shell_process: bool,
+    pub(crate) pane_foreign: bool,
+    pub(crate) foreign_reason: Option<String>,
+    pub(crate) foreign_live_pane: Option<LivePane>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -498,10 +498,29 @@ fn assign_runtime_session_memberships(
     }
 }
 
-fn build_member_activity_snapshot(
+pub(crate) fn build_member_activity_snapshot(
     session: Option<&DisplaySession>,
     pane_probe: &PaneActivityProbe,
     observed_at: DateTime<Utc>,
+) -> MemberActivitySnapshot {
+    let observation = session.and_then(|s| {
+        crate::session_scanner::cli_tool::spec(s.cli_tool)
+            .activity_source()
+            .observation(s.pid, &s.project_path, s.tmux_pane.as_deref())
+            .filter(|o| {
+                o.state == s.state
+                    && s.activity_attribution == ActivityAttribution::Attributed
+                    && o.last_observed_at <= observed_at
+            })
+    });
+    snapshot_with_evidence(session, pane_probe, observed_at, observation.as_ref())
+}
+
+fn snapshot_with_evidence(
+    session: Option<&DisplaySession>,
+    pane_probe: &PaneActivityProbe,
+    observed_at: DateTime<Utc>,
+    observation: Option<&crate::session_scanner::idle::ActivityObservation>,
 ) -> MemberActivitySnapshot {
     if pane_probe.pane_foreign {
         return MemberActivitySnapshot {
@@ -516,14 +535,36 @@ fn build_member_activity_snapshot(
             pane_foreign: true,
             last_output_age_secs: None,
             activity_confidence: SnapshotActivityConfidence::Dead,
+            evidence: Default::default(),
         };
     }
+    let observation = observation.filter(|_| pane_probe.pane_alive);
     let has_active_session = session.is_some_and(|session| session.state == SessionState::Active);
     let has_any_session = session.is_some();
     let recent_io = session.is_some_and(|session| session.recent_io);
     let last_output_age_secs = session.and_then(|session| session.last_output_age_secs);
-    let activity_confidence =
-        classify_activity_confidence(session, pane_probe, last_output_age_secs);
+    let activity_confidence = observation
+        .map(|o| {
+            if o.state == SessionState::Idle {
+                SnapshotActivityConfidence::Idle
+            } else {
+                SnapshotActivityConfidence::Active
+            }
+        })
+        .unwrap_or_else(|| classify_activity_confidence(session, pane_probe, last_output_age_secs));
+    let evidence = observation
+        .map(|o| {
+            serde_json::json!({
+                "source": o.source,
+                "state": if o.state == SessionState::Idle { "idle" } else { "working" },
+                "confidence": session.map(|s| s.activity_confidence).unwrap_or_default(),
+                "last_observed_at": o.last_observed_at.to_rfc3339(),
+            })
+            .as_object()
+            .cloned()
+            .unwrap_or_default()
+        })
+        .unwrap_or_default();
 
     MemberActivitySnapshot {
         version: ACTIVITY_SNAPSHOT_SCHEMA_VERSION,
@@ -537,6 +578,7 @@ fn build_member_activity_snapshot(
         pane_foreign: false,
         last_output_age_secs,
         activity_confidence,
+        evidence,
     }
 }
 
@@ -553,6 +595,16 @@ fn classify_activity_confidence(
 
     if session.is_some_and(|session| session.recent_io) {
         return SnapshotActivityConfidence::Active;
+    }
+
+    // Classification already resolved this idle state. A cache expiry or a
+    // concurrent scan must not reinterpret its positive attribution as work.
+    if session.is_some_and(|session| {
+        session.state == SessionState::Idle
+            && session.activity_confidence != ActivityConfidence::Low
+            && session.activity_attribution == ActivityAttribution::Attributed
+    }) {
+        return SnapshotActivityConfidence::Idle;
     }
 
     if pane_probe.active_non_shell_process
@@ -962,6 +1014,70 @@ mod tests {
         assert_eq!(stats.members_written, 2);
         assert!(activity_snapshot_path(&default_root, "default-team", "default-member").exists());
         assert!(activity_snapshot_path(&work_root, "work-team", "work-member").exists());
+    }
+
+    // Regression: b9e4a855 exported a classified idle seat as working on a cache miss.
+    #[test]
+    fn codex_review_idle_cache_miss_never_becomes_likely_working() {
+        let mut session = sample_session("/scratch/review", "%review", SessionState::Idle);
+        session.pid = u32::MAX - 4;
+        session.activity_confidence = ActivityConfidence::Medium;
+        let probe = PaneActivityProbe {
+            pane_alive: true,
+            active_non_shell_process: true,
+            ..Default::default()
+        };
+        let snapshot = build_member_activity_snapshot(Some(&session), &probe, Utc::now());
+        assert_eq!(
+            snapshot.activity_confidence,
+            SnapshotActivityConfidence::Idle
+        );
+    }
+
+    // Regression: 664feab6 exported an attributed pre-turn prompt as uncertain.
+    #[test]
+    fn codex_launch_ready_written_snapshot_matches_mesh_reader() {
+        use crate::session_scanner::idle::ActivityObservation as Observation;
+        // Exact Activity shape and Record::idle predicate from mesh-push
+        // src/delivery/runtime.rs:27-29,170-186 (replicated; no Mesh binary).
+        #[derive(serde::Deserialize)]
+        struct Activity {
+            activity_confidence: String,
+            observed_at: DateTime<Utc>,
+        }
+        let accepts = |bytes: &[u8], now: DateTime<Utc>| {
+            let activity: Activity = serde_json::from_slice(bytes).unwrap();
+            let age = now.signed_duration_since(activity.observed_at);
+            activity.activity_confidence == "idle"
+                && age >= chrono::Duration::zero()
+                && age <= chrono::Duration::seconds(120)
+        };
+        let tmp = TempDir::new().unwrap();
+        let now = Utc::now();
+        let mut session = sample_session(tmp.path().to_str().unwrap(), "%1", SessionState::Idle);
+        session.activity_confidence = ActivityConfidence::Medium;
+        let probe = PaneActivityProbe {
+            pane_alive: true,
+            active_non_shell_process: true,
+            ..Default::default()
+        };
+        let observation = Observation {
+            state: SessionState::Idle,
+            source: "launch_ready",
+            last_observed_at: now,
+        };
+        let snapshot = snapshot_with_evidence(Some(&session), &probe, now, Some(&observation));
+        write_member_activity_snapshot(tmp.path(), "team", "seat", &snapshot).unwrap();
+        let bytes = fs::read(activity_snapshot_path(tmp.path(), "team", "seat")).unwrap();
+        assert!(accepts(&bytes, now));
+        assert!(accepts(&bytes, now + chrono::Duration::seconds(120)));
+        assert!(!accepts(&bytes, now + chrono::Duration::seconds(121)));
+        assert!(!accepts(&bytes, now - chrono::Duration::seconds(1)));
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["source"], "launch_ready");
+        assert_eq!(value["state"], "idle");
+        assert_eq!(value["confidence"], "medium");
+        assert_eq!(value["last_observed_at"], now.to_rfc3339());
     }
 
     #[test]
