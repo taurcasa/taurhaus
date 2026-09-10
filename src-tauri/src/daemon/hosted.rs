@@ -43,6 +43,73 @@ pub(crate) fn handle(
     Ok(result)
 }
 
+/// Resolve the existing pane-level request through every authoritative team root.
+pub(super) fn stop_session(
+    hosts: &HostedMembers,
+    registry: &TeamRootRegistry,
+    params: &super::protocol::StopSessionParams,
+) -> Result<bool, String> {
+    let mut records = Vec::new();
+    for (root, team) in registry.team_locations().unwrap_or_default() {
+        for (member, record) in MemberRuntimeStore::load_all(&root, &team).unwrap_or_default() {
+            if record.app_server.is_some() {
+                records.push((team.clone(), member, record));
+            }
+        }
+    }
+    let mut matches = Vec::new();
+    for candidate @ (_, _, record) in &records {
+        if record.pane_id.as_deref() == Some(&params.tmux_pane)
+            && crate::session_scanner::control::pane_matches_record(&params.tmux_pane, record)?
+        {
+            matches.push(candidate);
+        }
+    }
+    // A stale non-hosted record can claim a reused pane ID while the hosted
+    // seat's own recorded pane ID is stale, so no pane-ID-only shortcut may
+    // pre-empt the argv fallback: the attached TUI's socket+thread argv is
+    // stronger ownership evidence than any record's pane ID. Ordinary panes
+    // without hosted candidates still need no process-table scan.
+    if matches.is_empty() && !records.is_empty() {
+        let argv = crate::session_scanner::control::pane_process_argv(&params.tmux_pane);
+        matches.extend(records.iter().filter(|(_, _, r)| {
+            let host = r
+                .app_server
+                .as_ref()
+                .expect("hosted candidates have an app-server attachment");
+            let socket = format!("unix://{}", host.socket_path.display());
+            argv.iter().any(|args| {
+                args.windows(4)
+                    .any(|w| w == ["--remote", &socket, "resume", &host.thread_id])
+            })
+        }));
+    }
+    if matches.len() > 1 {
+        return Err("hosted stop deferred: ambiguous pane ownership".into());
+    }
+    let Some((team, member, record)) = matches.first().copied() else {
+        return Ok(false);
+    };
+    let host = record
+        .app_server
+        .as_ref()
+        .expect("matched hosted candidate has an app-server attachment");
+    let exit_status = hosts.stop_with_tui(registry, team, member, || {
+        crate::session_scanner::control::stop_hosted_tui(&params.tmux_pane, params.cli_tool)
+    })?;
+    let fields = serde_json::json!({"team":team, "member":member,
+        "thread_id":host.thread_id, "exit_status":exit_status});
+    tracing::info!(event = "hosted.stop_session.host_stopped", fields = %fields, "Hosted session stopped");
+    taurhaus_lib::logging::emit_global(
+        "info",
+        "coordination",
+        "hosted.stop_session.host_stopped",
+        Some("Hosted session stopped".into()),
+        fields.as_object().unwrap().clone(),
+    );
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

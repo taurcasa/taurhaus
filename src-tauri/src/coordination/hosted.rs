@@ -977,10 +977,31 @@ impl HostedMembers {
         registry: &TeamRootRegistry,
         team: &str,
         member: &str,
-    ) -> Result<(), String> {
+    ) -> Result<String, String> {
+        self.stop_with_tui(registry, team, member, || Ok(()))
+    }
+
+    pub fn stop_with_tui(
+        &self,
+        registry: &TeamRootRegistry,
+        team: &str,
+        member: &str,
+        stop_tui: impl FnOnce() -> Result<(), String>,
+    ) -> Result<String, String> {
         let root = registry.resolve(team).map_err(|e| e.to_string())?;
         let cell = self.seat(&root, team, member)?;
-        let mut owned = cell.try_lock().map_err(|_| "host member busy")?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        let mut owned = loop {
+            match cell.try_lock() {
+                Ok(owned) => break owned,
+                Err(std::sync::TryLockError::WouldBlock)
+                    if std::time::Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => return Err("host member busy; retry".into()),
+            }
+        };
         let guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
             .map_err(|e| e.to_string())?;
         let record = MemberRuntimeStore::load(&root, team, member).map_err(|e| e.to_string())?;
@@ -999,6 +1020,18 @@ impl HostedMembers {
         } else {
             return Err("member is not hosted".into());
         }
+        // Validate before touching the TUI; keep the seat, but never overlap file locks.
+        drop(guard);
+        stop_tui()?;
+        // Reap under the held seat before a competing hook can delay publication.
+        // A failed record update leaves the owned, reaped Child available for a
+        // retry; after daemon restart host_alive=false also permits repair.
+        let exit_status = match owned.as_mut() {
+            Some(seat) => seat.host.stop()?,
+            None => "already stopped".into(),
+        };
+        let guard = HostOperationLock::acquire(&root, team, member, Duration::from_secs(2))
+            .map_err(|e| format!("host stopped; record update failed: {e}"))?;
         MemberRuntimeStore::update(&root, team, member, |record| {
             record.attachment_generation = record.attachment_generation.saturating_add(1);
             record.health = HealthState::SessionDead;
@@ -1006,11 +1039,11 @@ impl HostedMembers {
                 host.state = "stopped".into();
             }
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("host stopped; record update failed: {e}"))?;
         // Only a Child held by this daemon can be killed, never a record PID.
         drop(owned.take());
         drop(guard);
-        Ok(())
+        Ok(exit_status)
     }
 }
 
@@ -1111,6 +1144,22 @@ fn record_host_delivery(root: &Path, team: &str, member: &str) -> Result<(), Str
 
 #[cfg(test)]
 pub(crate) mod tests {
+    pub(crate) fn hold_stop_seat(
+        hosts: &super::HostedMembers,
+        root: &std::path::Path,
+        duration: std::time::Duration,
+    ) -> std::thread::JoinHandle<()> {
+        let cell = hosts.seat(root, "team", "seat").unwrap();
+        let (ready, held) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let _seat = cell.lock().unwrap();
+            ready.send(()).unwrap();
+            std::thread::sleep(duration);
+        });
+        held.recv().unwrap();
+        holder
+    }
+
     use super::super::compact_hook::{run_compact_hook_cli, tests::write_snapshot_fixture};
     use super::*;
     use crate::coordination::hosted_process::tests::fixture;
@@ -1139,6 +1188,52 @@ pub(crate) mod tests {
     }
     pub(crate) fn saved(root: &Path) -> MemberRuntimeRecord {
         MemberRuntimeStore::load(root, "team", "seat").unwrap()
+    }
+
+    #[test]
+    fn hosted_stop_reaps_before_contended_record_update() {
+        // Regression: 73a42755 reacquired the host lock after destroying the TUI,
+        // so a concurrent hook could prevent the owned child from being reaped.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let (registry, hosts) = running(root);
+        let before = saved(root);
+        let attachment = before.app_server.as_ref().unwrap();
+        let result = std::thread::scope(|scope| {
+            let (acquire, requested) = std::sync::mpsc::channel();
+            let (ready, held) = std::sync::mpsc::channel();
+            let (release, finished) = std::sync::mpsc::channel::<()>();
+            scope.spawn(move || {
+                requested.recv().unwrap();
+                let _guard =
+                    HostOperationLock::acquire(root, "team", "seat", Duration::from_secs(2))
+                        .unwrap();
+                ready.send(()).unwrap();
+                // Channel closure also releases the holder if the caller panics.
+                let _ = finished.recv();
+            });
+            let result = hosts.stop_with_tui(&registry, "team", "seat", || {
+                acquire.send(()).unwrap();
+                held.recv().unwrap();
+                Ok(())
+            });
+            drop(release);
+            result
+        });
+        assert!(!host_alive(attachment), "owned host survived TUI stop");
+        let error = result.unwrap_err();
+        assert!(
+            error.starts_with("host stopped; record update failed:"),
+            "{error}"
+        );
+        assert_eq!(saved(root), before, "failed publication remains retryable");
+        hosts.stop(&registry, "team", "seat").unwrap();
+        let after = saved(root);
+        assert_eq!(after.app_server.unwrap().state, "stopped");
+        assert_eq!(
+            after.attachment_generation,
+            before.attachment_generation + 1
+        );
     }
 
     #[test]

@@ -270,6 +270,27 @@ pub(crate) fn terminal_write_for_pane_at_root<T>(
     write: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
     let registry = super::team_roots::TeamRootRegistry::new(teams_dir.to_path_buf());
+    if let Some((root, team, member)) = resolve_terminal_member(&registry, pane)? {
+        // Windows app fallback must not create lock/holder state on the UNC volume.
+        #[cfg(target_os = "windows")]
+        {
+            let _ = (&root, &team, &member, op);
+            return Err("terminal write deferred: managed stop requires the native daemon".into());
+        }
+        #[cfg(not(target_os = "windows"))]
+        return terminal_write(&root, &team, &member, op, || {
+            write().map_err(CoordinationError::Backend)
+        })
+        .map_err(|e| e.to_string());
+    }
+    write()
+}
+
+/// Shared resolution fence: a positive binding wins over unrelated unreadable records.
+pub(crate) fn resolve_terminal_member(
+    registry: &super::team_roots::TeamRootRegistry,
+    pane: &str,
+) -> Result<Option<(PathBuf, String, String)>, String> {
     let deferred = |e| format!("terminal write deferred: attachment lookup: {e}");
     let mut uncertain = false;
     for (root, team) in registry.team_locations().map_err(deferred)? {
@@ -282,17 +303,7 @@ pub(crate) fn terminal_write_for_pane_at_root<T>(
         };
         for (member, record) in &records {
             if record.pane_id.as_deref() == Some(pane) {
-                // Windows app fallback must not create lock/holder state on
-                // the UNC volume; only the native daemon can exclude writers.
-                #[cfg(target_os = "windows")]
-                return Err(
-                    "terminal write deferred: managed stop requires the native daemon".into(),
-                );
-                #[cfg(not(target_os = "windows"))]
-                return terminal_write(&root, &team, member, op, || {
-                    write().map_err(CoordinationError::Backend)
-                })
-                .map_err(|e| e.to_string());
+                return Ok(Some((root, team, member.clone())));
             }
         }
         // A missing/corrupt member makes a negative lookup inconclusive; it
@@ -311,7 +322,7 @@ pub(crate) fn terminal_write_for_pane_at_root<T>(
     if uncertain {
         return Err("terminal write deferred: attachment inventory incomplete".into());
     }
-    write()
+    Ok(None)
 }
 
 fn terminal_lock_contended(error: &std::io::Error, windows: bool) -> bool {

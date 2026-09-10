@@ -2043,12 +2043,18 @@ fn launch_cli_session_surfaces_daemon_error_message() {
 }
 
 #[test]
-fn stop_cli_session_surfaces_daemon_error_message() {
+fn stop_cli_session_budget_covers_teardown_and_surfaces_daemon_error() {
+    // Regression: d9dd5cc2, round-2 review: the old 5 s PING_TIMEOUT omitted teardown waits.
+    // Round-4 review: the daemon's waits sum to stop_timeout + 12 s exactly, so the
+    // client keeps 6 s of headroom: stop_timeout + 18 s = 23 s / 33 s.
+    for (tool, seconds) in [(CliTool::Codex, 23), (CliTool::Grok, 33)] {
+        assert_eq!(navigation::stop_session_timeout(tool).as_secs(), seconds);
+    }
     let daemon = start_stub_daemon(serde_json::json!({
         "result": null,
         "error": {
             "code": "STOP_ERROR",
-            "message": "cannot stop session"
+            "message": "host member busy; retry"
         }
     }));
     let provider = ProviderState {
@@ -2068,7 +2074,7 @@ fn stop_cli_session_surfaces_daemon_error_message() {
         Some(CliTool::Codex),
     )
     .expect_err("daemon stop should return error");
-    assert!(err.contains("cannot stop session"));
+    assert_eq!(err, "Failed to stop session: host member busy; retry");
 }
 
 #[test]
