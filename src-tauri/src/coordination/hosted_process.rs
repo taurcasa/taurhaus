@@ -68,6 +68,10 @@ impl StderrTail {
             reader: Some(reader),
         })
     }
+    fn sanitized(&self) -> String {
+        let bytes: Vec<_> = self.bytes.lock().unwrap().iter().copied().collect();
+        sanitize_stderr(&bytes)
+    }
     fn finish(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         if let Some(reader) = self.reader.take() {
@@ -79,6 +83,83 @@ impl Drop for StderrTail {
     fn drop(&mut self) {
         self.finish();
     }
+}
+
+fn sanitize_stderr(bytes: &[u8]) -> String {
+    // A ring cut can remove a credential's prefix: discard the leading fragment.
+    let bytes = if bytes.len() == 4096 {
+        let start = bytes
+            .iter()
+            .position(|b| b.is_ascii_whitespace() || b.is_ascii_control())
+            .unwrap_or(bytes.len());
+        &bytes[start..]
+    } else {
+        bytes
+    };
+    let mut text = String::new();
+    let mut escape = 0;
+    for c in String::from_utf8_lossy(bytes).chars() {
+        match (escape, c) {
+            (0, '\u{1b}') => escape = 1,
+            (0, '\u{9b}') => escape = 2,
+            (0, '\u{9d}') => escape = 3,
+            (1, '[') => escape = 2,
+            (1, ']' | 'P' | '^' | '_') => escape = 3,
+            (1, ' '..='/') => {}
+            (1, _) | (2, '@'..='~') | (3, '\u{7}') | (4, '\\') => escape = 0,
+            (3, '\u{1b}') => escape = 4,
+            (4, _) => escape = 3,
+            (0, c) if c.is_whitespace() => text.push(' '),
+            (0, c) if !c.is_control() => text.push(c),
+            _ => {}
+        }
+    }
+    let mut cursor = 0;
+    while cursor < text.len() {
+        let lower = text[cursor..].to_ascii_lowercase();
+        let found = ["sk-", "bearer ", "\"access_token\"", "\"api_key\""]
+            .iter()
+            .filter_map(|key| lower.find(key).map(|i| (i, *key)))
+            .min_by_key(|v| v.0);
+        let Some((offset, key)) = found else {
+            break;
+        };
+        let start = cursor + offset;
+        let value = if key == "sk-" {
+            start
+        } else {
+            start + key.len() + text[start + key.len()..].len()
+                - text[start + key.len()..]
+                    .trim_start_matches([' ', ':', '='])
+                    .len()
+        };
+        let rest = &text[value..];
+        let end = if rest.starts_with('"') {
+            let mut json = serde_json::Deserializer::from_str(rest).into_iter::<String>();
+            if json.next().is_some_and(|v| v.is_ok()) {
+                value + json.byte_offset()
+            } else {
+                text.len()
+            }
+        } else if let Some(quoted) = rest.strip_prefix('\'') {
+            quoted.find('\'').map_or(text.len(), |i| value + i + 2)
+        } else {
+            rest.find([' ', '\"', '\'', ',', ';', '}', ']'])
+                .map_or(text.len(), |i| value + i)
+        };
+        text.replace_range(start..end, "[redacted]");
+        cursor = start + "[redacted]".len();
+    }
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .rev()
+        .take(512)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
 }
 
 pub(crate) struct HostProcess {
@@ -146,8 +227,11 @@ impl HostProcess {
             .to_string();
         loop {
             let remaining = guard.remaining().map_err(|e| e.to_string())?;
-            if host.child.try_wait().map_err(|e| e.to_string())?.is_some() {
-                return Err("app-server exited before transport readiness".into());
+            if let Some(status) = host.child.try_wait().map_err(|e| e.to_string())? {
+                let (status, tail) = host.exit_details(status);
+                return Err(format!(
+                    "app-server exited before transport readiness (exit {status}): {tail}"
+                ));
             }
             let connection =
                 socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::STREAM, None)
@@ -279,6 +363,17 @@ impl HostProcess {
     #[cfg(test)]
     pub fn disconnect_for_test(&mut self) {
         self.rpc.as_mut().unwrap().socket = None;
+    }
+
+    fn exit_details(&mut self, status: std::process::ExitStatus) -> (String, String) {
+        let stderr = self.stderr.as_mut().unwrap();
+        stderr.finish();
+        (
+            status
+                .code()
+                .map_or_else(|| status.to_string(), |code| code.to_string()),
+            stderr.sanitized(),
+        )
     }
 
     pub fn outcome_unknown(&self) -> bool {
@@ -1023,6 +1118,31 @@ pub(crate) mod tests {
         let bytes = tail.bytes.lock().unwrap();
         assert_eq!(bytes.len(), 4096);
         assert!(bytes.iter().copied().collect::<Vec<_>>().ends_with(b"END"));
+    }
+
+    #[test]
+    fn launch_error_has_sanitized_stderr_and_status() {
+        // Regression: cadd533e returned a bare readiness error and discarded stderr.
+        let tmp = tempfile::tempdir().unwrap();
+        let launch = fixture(tmp.path());
+        std::fs::write(&launch.program, r#"#!/bin/sh
+printf '\033[31mfailed\033[0m sk-fake-secret Bearer fake-bearer "access_token": "fake-access"\nfinal reason\001' >&2
+exit 23
+"#).unwrap();
+        let guard = HostOperationLock::acquire(tmp.path(), "team", "seat", Duration::ZERO).unwrap();
+        let error = spawn(&launch, tmp.path(), None, &guard).err().unwrap();
+        assert!(error.contains("(exit 23):"), "{error}");
+        assert!(error.contains("failed") && error.ends_with("final reason"));
+        for forbidden in [
+            "fake-secret",
+            "fake-bearer",
+            "fake-access",
+            "\u{1b}",
+            "\n",
+            "\u{1}",
+        ] {
+            assert!(!error.contains(forbidden));
+        }
     }
 
     pub(crate) fn fixture(
