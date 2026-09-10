@@ -118,6 +118,7 @@ pub(crate) struct CoordinationRunStatus {
 
 #[derive(Debug)]
 struct CoordinationRunRecord {
+    team_operation: Option<crate::coordination::state::TeamRunGuard>,
     kind: CoordinationRunKind,
     steps: Vec<StepProgress>,
     resume_team_steps: Vec<ResumeTeamProgress>,
@@ -149,6 +150,19 @@ impl CoordinationRunRegistry {
         self.start_at(kind, Instant::now())
     }
 
+    pub(crate) fn start_for_team(
+        &self,
+        kind: CoordinationRunKind,
+        team: &str,
+        state: &crate::coordination::state::CoordinationState,
+    ) -> String {
+        let id = self.start(kind);
+        let guard = state.register_team_run(&id, team);
+        let mut records = self.records.lock().unwrap_or_else(|e| e.into_inner());
+        records.get_mut(&id).expect("new run").team_operation = Some(guard);
+        id
+    }
+
     fn start_at(&self, kind: CoordinationRunKind, now: Instant) -> String {
         let run_id = format!("{}_{}", kind.id_prefix(), uuid::Uuid::new_v4().simple());
         let mut records = self
@@ -159,6 +173,7 @@ impl CoordinationRunRegistry {
         records.insert(
             run_id.clone(),
             CoordinationRunRecord {
+                team_operation: None,
                 kind,
                 steps: Vec::new(),
                 resume_team_steps: Vec::new(),
@@ -241,10 +256,12 @@ impl CoordinationRunRegistry {
                 error: error.clone(),
             };
             record.terminal_at = Some(now);
+            record.team_operation = None;
             return Err(error);
         }
         record.outcome = RunOutcome::Completed { report };
         record.terminal_at = Some(now);
+        record.team_operation = None;
         Ok(())
     }
 
@@ -265,6 +282,7 @@ impl CoordinationRunRegistry {
         }
         record.outcome = outcome;
         record.terminal_at = Some(now);
+        record.team_operation = None;
         Ok(())
     }
 
@@ -393,6 +411,75 @@ fn managed_codex_discovery_or_conservative(teams_dir: &std::path::Path) -> bool 
 
 #[cfg(test)]
 mod tests {
+    // Regression: 06d1267b, attempt 10 / L4 run 3: registered runs did not exclude self-heal.
+    #[test]
+    fn initialize_owner_race_registered_operations_and_stale_guard() {
+        use crate::coordination::{
+            backend::{fake::FakeBackend, BackendSelector},
+            runtime::RecordingCoordinationRuntime,
+            state::CoordinationState,
+        };
+        use std::sync::Arc;
+        let _logging = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let log = tmp.path().join("guard.jsonl");
+        let sink = taurhaus_lib::logging::LogFileState::new(log.clone()).unwrap();
+        taurhaus_lib::logging::install_global_sink(&sink);
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let state = CoordinationState::with_components_and_runtime(
+            tmp.path().into(),
+            BackendSelector::m0(),
+            Arc::new(|_, _| Ok(Arc::new(FakeBackend::default()))),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        );
+        state
+            .with_orchestrator(|orch| orch.create_team("race", None))
+            .unwrap();
+        let registry = CoordinationRunRegistry::default();
+        let guard = crate::coordination::initialize_guard::path(tmp.path(), "race");
+        crate::coordination::initialize_guard::begin(tmp.path(), "race").unwrap();
+        std::fs::File::open(&guard)
+            .unwrap()
+            .set_times(
+                std::fs::FileTimes::new()
+                    .set_modified(std::time::SystemTime::now() - Duration::from_secs(1801)),
+            )
+            .unwrap();
+        for kind in [
+            CoordinationRunKind::InitializeTeam,
+            CoordinationRunKind::AddAgent,
+            CoordinationRunKind::ResumeMember,
+            CoordinationRunKind::ResumeTeam,
+            CoordinationRunKind::Reonboard,
+        ] {
+            let run = registry.start_for_team(kind, "race", &state);
+            let before = runtime.calls().len();
+            state.run_background_self_heal_core_pass().unwrap();
+            assert_eq!(runtime.calls().len(), before);
+            assert!(
+                guard.exists(),
+                "registered run protects even an expired guard"
+            );
+            registry.fail(&run, "fixture finished".into()).unwrap();
+        }
+        let before = runtime.calls().len();
+        state.run_background_self_heal_core_pass().unwrap();
+        assert!(!guard.exists(), "unregistered stale guard is ignored");
+        assert!(runtime.calls().len() > before);
+        state.run_background_self_heal_core_pass().unwrap();
+        sink.flush_for_test().unwrap();
+        let records = std::fs::read_to_string(log).unwrap();
+        assert_eq!(
+            records
+                .matches("coordination.initialize.stale_guard")
+                .count(),
+            1
+        );
+    }
+
     use std::time::{Duration, Instant};
 
     use super::{CoordinationRunKind, CoordinationRunRegistry, CoordinationRunReport, RunOutcome};

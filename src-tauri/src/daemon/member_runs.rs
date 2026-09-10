@@ -74,7 +74,11 @@ impl MemberOperationsService {
         &self,
         params: CoordinationAddAgentParams,
     ) -> Result<String, String> {
-        let run_id = self.registry.start(CoordinationRunKind::AddAgent);
+        let run_id = self.registry.start_for_team(
+            CoordinationRunKind::AddAgent,
+            &params.request.team_name,
+            &self.state,
+        );
         let run_id_for_task = run_id.clone();
         let registry = self.registry.clone();
         let state = self.state.clone();
@@ -136,7 +140,11 @@ impl MemberOperationsService {
         &self,
         params: CoordinationResumeMemberParams,
     ) -> Result<String, String> {
-        let run_id = self.registry.start(CoordinationRunKind::ResumeMember);
+        let run_id = self.registry.start_for_team(
+            CoordinationRunKind::ResumeMember,
+            &params.request.team_name,
+            &self.state,
+        );
         let run_id_for_task = run_id.clone();
         let registry = self.registry.clone();
         let state = self.state.clone();

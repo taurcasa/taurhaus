@@ -39,6 +39,96 @@ fn identity_args(team: &str, lead: &str, teams: &Path) -> Vec<String> {
     args
 }
 
+/// Reset only a pre-onboarding owner: no pending list entries or attempt histories.
+pub(crate) fn opt_in_with_owner_reset(
+    runtime: &dyn super::CoordinationRuntime,
+    team: &str,
+    lead: &str,
+    root: &Path,
+) -> Result<(), super::CoordinationError> {
+    let Err(refusal) = runtime.opt_in_team_delivery(team, lead, root) else {
+        return Ok(());
+    };
+    let message = refusal.to_string();
+    if !message.contains("quiescent required before opt-in:")
+        || !message.contains("team owner already holds lifetime lock")
+    {
+        return Err(refusal);
+    }
+    let Some(pid) = runtime
+        .validated_team_daemon_pid_at_root(team, root)
+        .ok()
+        .flatten()
+    else {
+        return Err(refusal);
+    };
+    let store = root.join(team).join("state/delivery");
+    if !unused_delivery_store(&store).unwrap_or(false) {
+        return Err(refusal);
+    }
+    runtime.stop_team_daemon_at_root(team, root)?;
+    // SIGTERM is asynchronous. Wait for Mesh (and inherited child fences) to release ownership.
+    if let Ok(lock) = std::fs::File::open(store.join("owner.lock")) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while fs2::FileExt::try_lock_exclusive(&lock).is_err() {
+            if std::time::Instant::now() >= deadline {
+                return Err(refusal);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+    runtime.opt_in_team_delivery(team, lead, root)?;
+    taurhaus_lib::logging::emit_global(
+        "info",
+        "coordination",
+        "coordination.opt_in.owner_reset",
+        None,
+        serde_json::Map::from_iter([("team".into(), team.into()), ("pid".into(), pid.into())]),
+    );
+    Ok(())
+}
+
+fn unused_delivery_store(store: &Path) -> std::io::Result<bool> {
+    use std::io::Read;
+    for (index, entry) in std::fs::read_dir(store)?.enumerate() {
+        if index >= 4096 {
+            return Ok(false);
+        }
+        let path = entry?.path();
+        if path.extension().is_none_or(|ext| ext != "json")
+            || path.file_name().is_some_and(|n| n == "epoch.json")
+        {
+            continue;
+        }
+        // Empty pending lists and idle scheduler health are not obligations.
+        // Handoff, rollback, attempt history and unknown JSON remain fail-closed.
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        let health = name.starts_with("health-");
+        if !health && !name.starts_with("pending-") {
+            return Ok(false);
+        }
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)?
+            .take(256 * 1024 + 1)
+            .read_to_end(&mut bytes)?;
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            return Ok(false);
+        };
+        let idle = if health {
+            value.get("pending_since") == Some(&serde_json::Value::Null)
+                && value.get("error") == Some(&serde_json::Value::Null)
+                && value.get("completed").and_then(|v| v.as_u64()) == Some(0)
+                && value.get("failures").and_then(|v| v.as_u64()) == Some(0)
+        } else {
+            value == serde_json::json!([])
+        };
+        if !idle {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

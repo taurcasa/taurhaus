@@ -9578,3 +9578,209 @@ fn seat_delivery_seed_preserves_created_incarnation() {
         before.team_incarnation_id
     );
 }
+
+// Regression: 06d1267b (observed at 6398bfa3), integration attempt 10 and L4 run 3: self-heal acquired
+// the canonical owner during initialize; retained Retry seats remained exposed.
+#[test]
+fn initialize_owner_race_guard_lifecycle_and_interleaved_self_heal() {
+    let _lock = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    for canonical in [true, false] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let backend = Arc::new(FakeBackend::default());
+        let mut orch = new_orchestrator(&tmp, backend.clone(), runtime.clone());
+        let state = crate::coordination::state::CoordinationState::with_components_and_runtime(
+            tmp.path().into(),
+            crate::coordination::backend::BackendSelector::m0(),
+            Arc::new(move |_, _| Ok(backend.clone())),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        );
+        let log_path = tmp.path().join("race.jsonl");
+        let sink = LogFileState::new(log_path.clone()).unwrap();
+        install_global_sink(&sink);
+        let guard = tmp
+            .path()
+            .join(".taurhaus-initialize-pending/canonical.guard");
+        let mut request = canonical_review_request(&tmp);
+        if !canonical {
+            request.messaging = None;
+        }
+        let owner_count = || {
+            runtime
+                .calls()
+                .iter()
+                .filter(|c| matches!(c, RuntimeCall::SpawnTeamDaemonAtRoot { .. }))
+                .count()
+        };
+        let mut observe = |step: &str, status: StepStatus, _message: Option<String>| {
+            if step == "create_team" && status == StepStatus::Succeeded {
+                assert!(guard.exists());
+            }
+            if canonical && step == "send_onboarding" {
+                assert_eq!(owner_count(), 1);
+            }
+            if step == "send_onboarding" || step == "opt_in_delivery" {
+                assert!(guard.exists());
+                let before = runtime.calls().len();
+                let pass = state.run_background_self_heal_core_pass().unwrap();
+                assert_eq!(pass.teams_skipped, 1);
+                assert_eq!(pass.team_daemons_ensured, 0);
+                assert_eq!(runtime.calls().len(), before);
+            }
+        };
+        for refusal in [Some("mesh: runtime pending"), None] {
+            if !canonical && refusal.is_some() {
+                continue;
+            }
+            runtime.set_delivery_opt_in_failure(refusal);
+            let report = orch
+                .initialize_team_with_cli_commands_and_layout_and_progress(
+                    &request,
+                    &CliCommandSettings::default(),
+                    "new_window",
+                    Some(&mut observe),
+                )
+                .unwrap();
+            assert_eq!(
+                report.failed_step.as_deref(),
+                refusal.map(|_| "opt_in_delivery")
+            );
+            assert_eq!(guard.exists(), refusal.is_some());
+        }
+        if canonical {
+            assert_eq!(owner_count(), 1);
+        }
+        sink.flush_for_test().unwrap();
+        assert!(fs::read_to_string(log_path)
+            .unwrap()
+            .contains("self_heal.team.skipped_initializing"));
+    }
+}
+
+// Regression: 77616a34 rejected idle owner health records from attempt 10 / L4 run 3.
+#[test]
+fn initialize_owner_race_resets_only_a_validated_idle_owner() {
+    let _lock = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    for case in [
+        "empty",
+        "health_pending",
+        "health_completed",
+        "health_error",
+        "health_corrupt",
+        "pending",
+        "corrupt",
+        "history",
+        "invalid_pid",
+        "other",
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = RecordingCoordinationRuntime::default();
+        let refusal = if case == "other" {
+            "another refusal"
+        } else {
+            "quiescent required before opt-in: team owner already holds lifetime lock"
+        };
+        runtime.set_delivery_opt_in_failure_once(refusal);
+        runtime.set_pid_running(4242, case != "invalid_pid");
+        let pending = match case {
+            "pending" => "[{}]",
+            "corrupt" => "invalid",
+            _ => "[]",
+        };
+        let state_file = if case == "history" {
+            "attempt.json"
+        } else {
+            "pending-test.json"
+        };
+        for (path, bytes) in [
+            ("daemons/team.pid".into(), "4242"),
+            (format!("state/delivery/{state_file}"), pending),
+        ] {
+            let path = tmp.path().join("race").join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, bytes).unwrap();
+        }
+        let mut health = serde_json::json!({
+            "member": "lead", "root": tmp.path(), "incarnation": "attempt-10",
+            "epoch": 1, "heartbeat": "2026-09-10T12:39:02.352Z",
+            "pending_since": null, "completed": 0, "failures": 0, "error": null
+        });
+        match case {
+            "health_pending" => health["pending_since"] = "2026-09-10T12:39:00Z".into(),
+            "health_completed" => health["completed"] = 1.into(),
+            "health_error" => health["error"] = "delivery failed".into(),
+            "health_corrupt" => health = serde_json::json!({}),
+            _ => {}
+        }
+        fs::write(
+            tmp.path().join("race/state/delivery/health-lead.json"),
+            health.to_string(),
+        )
+        .unwrap();
+        let log = tmp.path().join("reset.jsonl");
+        let sink = LogFileState::new(log.clone()).unwrap();
+        install_global_sink(&sink);
+        let result = crate::coordination::runtime::team_activation::opt_in_with_owner_reset(
+            &runtime,
+            "race",
+            "lead",
+            tmp.path(),
+        );
+        let recovered = case == "empty";
+        assert_eq!(result.is_ok(), recovered, "{case}: {result:?}");
+        let calls = runtime.calls();
+        let stops = calls
+            .iter()
+            .filter(|c| matches!(c, RuntimeCall::StopTeamDaemon { .. }))
+            .count();
+        let attempts = calls
+            .iter()
+            .filter(|c| matches!(c, RuntimeCall::OptInTeamDelivery { .. }))
+            .count();
+        assert_eq!(stops, usize::from(recovered));
+        assert_eq!(attempts, 1 + usize::from(recovered));
+        sink.flush_for_test().unwrap();
+        let records = fs::read_to_string(log).unwrap();
+        assert_eq!(
+            records.contains("coordination.opt_in.owner_reset"),
+            recovered
+        );
+    }
+}
+
+// Regression: c9e18117 made best-effort ensure and guard cleanup fatal after opt-in
+// while fixing attempt 10 / L4 run 3; neither should misreport a successful opt-in.
+#[test]
+fn initialize_owner_race_success_tolerates_guard_cleanup_and_owner_skip() {
+    for case in ["missing_guard", "unremovable_guard", "owner_skip"] {
+        let tmp = TempDir::new().unwrap();
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orch = new_orchestrator(&tmp, Arc::new(FakeBackend::default()), runtime);
+        let request = canonical_review_request(&tmp);
+        let guard = crate::coordination::initialize_guard::path(tmp.path(), "canonical");
+        let mut observe = |step: &str, status: StepStatus, _: Option<String>| {
+            if case == "owner_skip" && step == "opt_in_delivery" && status == StepStatus::Running {
+                fs::remove_file(tmp.path().join("canonical/state/control_auth/lead.json")).unwrap();
+            }
+            if case != "owner_skip" && step == "send_onboarding" && status == StepStatus::Succeeded
+            {
+                fs::remove_file(&guard).unwrap();
+                if case == "unremovable_guard" {
+                    fs::create_dir(&guard).unwrap();
+                }
+            }
+        };
+        let report = orch
+            .initialize_team_with_cli_commands_and_layout_and_progress(
+                &request,
+                &CliCommandSettings::default(),
+                "new_window",
+                Some(&mut observe),
+            )
+            .expect("successful onboarding must return a report");
+        assert!(report.failed_step.is_none(), "{case}: {report:?}");
+    }
+}

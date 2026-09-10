@@ -143,7 +143,7 @@ impl LivePaneProbeGate {
 pub struct RecordingCoordinationRuntime {
     calls: Mutex<Vec<RuntimeCall>>,
     canonical_create_failure: Mutex<Option<String>>,
-    delivery_opt_in_failure: Mutex<Option<String>>,
+    delivery_opt_in_failure: Mutex<Option<(String, bool)>>,
     pane_exists: Mutex<HashMap<String, bool>>,
     pane_dead: Mutex<HashMap<String, bool>>,
     pane_shell: Mutex<HashMap<String, bool>>,
@@ -174,7 +174,11 @@ impl RecordingCoordinationRuntime {
     }
 
     pub fn set_delivery_opt_in_failure(&self, message: Option<&str>) {
-        *self.delivery_opt_in_failure.lock().unwrap() = message.map(str::to_owned);
+        *self.delivery_opt_in_failure.lock().unwrap() = message.map(|s| (s.to_owned(), false));
+    }
+
+    pub fn set_delivery_opt_in_failure_once(&self, message: &str) {
+        *self.delivery_opt_in_failure.lock().unwrap() = Some((message.into(), true));
     }
 
     pub fn calls(&self) -> Vec<RuntimeCall> {
@@ -605,6 +609,15 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         Ok(())
     }
 
+    fn validated_team_daemon_pid_at_root(
+        &self,
+        team: &str,
+        root: &std::path::Path,
+    ) -> Result<Option<u32>, CoordinationError> {
+        let pid = super::process::read_pid_file(&root.join(team).join("daemons/team.pid"));
+        Ok(pid.filter(|pid| self.pid_running.lock().unwrap().get(pid) == Some(&true)))
+    }
+
     fn opt_in_team_delivery(
         &self,
         team_name: &str,
@@ -614,7 +627,11 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         self.push_call(RuntimeCall::OptInTeamDelivery {
             args: super::team_activation::delivery_args(team_name, lead_name, teams_dir),
         });
-        if let Some(message) = self.delivery_opt_in_failure.lock().unwrap().clone() {
+        let mut failure = self.delivery_opt_in_failure.lock().unwrap();
+        if let Some((message, once)) = failure.clone() {
+            if once {
+                *failure = None;
+            }
             return Err(CoordinationError::Backend(message));
         }
         Ok(())

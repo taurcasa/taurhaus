@@ -13,6 +13,7 @@ pub mod domain;
 pub mod errors;
 pub mod events;
 pub mod health;
+pub(crate) mod initialize_guard;
 pub mod journal;
 pub mod member_activation;
 pub mod mesh_cli;

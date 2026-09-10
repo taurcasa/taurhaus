@@ -159,6 +159,14 @@ pub trait CoordinationRuntime: Send + Sync {
         ))
     }
 
+    fn validated_team_daemon_pid_at_root(
+        &self,
+        _team: &str,
+        _root: &Path,
+    ) -> Result<Option<u32>, CoordinationError> {
+        Ok(None)
+    }
+
     fn opt_in_team_delivery(
         &self,
         _team_name: &str,
