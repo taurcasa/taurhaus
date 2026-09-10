@@ -1,0 +1,48 @@
+╭──────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)               │
+│                                          │
+│ model:       loading   /model to change  │
+│ directory:   /tmp/th-l6-bo64jqch/project │
+│ permissions: YOLO mode                   │
+╰──────────────────────────────────────────╯
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,22 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--bin",
+    "mesh"
+  ],
+  "cwd": "/home/mstie/projects/mesh-l6",
+  "exit": 0,
+  "seconds": 2.5924034118652344,
+  "cargo_polls": [
+    {
+      "at": 1789084698.4239995,
+      "count": 2,
+      "exit": 0
+    }
+  ],
+  "last_lines": [
+    "   Compiling mesh v0.2.29 (/home/mstie/projects/mesh-l6)",
+    "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.57s"
+  ]
+}

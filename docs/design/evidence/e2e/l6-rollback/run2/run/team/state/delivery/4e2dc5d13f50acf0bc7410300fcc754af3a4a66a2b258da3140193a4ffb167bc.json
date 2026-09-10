@@ -1,0 +1,69 @@
+{
+  "obligation": {
+    "message_id": "47937533-0ca9-4bbb-866f-5f3ae88aa205",
+    "delivery_id": "221660db-479f-41b9-8d26-e95abe9626af",
+    "recipient": "alpha",
+    "source_generation": "abea0f8d-0057-4901-8a87-e09210db881a",
+    "source_position": 2,
+    "body": "[taurhaus] recovery_card\nIdentity: alpha on l6-rollback-run2; key={\"card_schema\":1,\"recipient\":[\"640a339a973c0d762946d00205b514974dd607004fbd504046da27843ed877ac\",\"973d7df7-6ae8-4028-a993-36d3c194913c\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l6-bo64jqch/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l6-bo64jqch/claude\",\"harness_account_root\":\"/tmp/th-l6-bo64jqch/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l6-bo64jqch/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"fc4f4e08103b0a2e9c182394816c47e87c5a448b21b99e3aaf4371630e221b5f\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 61e9470fd12511a74db41b938b36c264bf7ced389e93bd85058d96d183590362; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l6-bo64jqch/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 23:58:45.021773147 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \"$CLAUDE_DIR\" --team l6-rollback-run2 --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l6-rollback-run2 --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context."
+  },
+  "attempts": [
+    {
+      "claim": {
+        "obligation": {
+          "message_id": "47937533-0ca9-4bbb-866f-5f3ae88aa205",
+          "delivery_id": "221660db-479f-41b9-8d26-e95abe9626af",
+          "recipient": "alpha",
+          "source_generation": "abea0f8d-0057-4901-8a87-e09210db881a",
+          "source_position": 2,
+          "body": "[taurhaus] recovery_card\nIdentity: alpha on l6-rollback-run2; key={\"card_schema\":1,\"recipient\":[\"640a339a973c0d762946d00205b514974dd607004fbd504046da27843ed877ac\",\"973d7df7-6ae8-4028-a993-36d3c194913c\"],\"context\":[1,0],\"roots\":{\"root_authority_revision\":\"0\",\"resolved_teams_root\":\"/tmp/th-l6-bo64jqch/claude/teams\",\"resolved_mesh_config_root\":\"/tmp/th-l6-bo64jqch/claude\",\"harness_account_root\":\"/tmp/th-l6-bo64jqch/codex\",\"launch_namespace\":\"native\",\"resolved_project_root\":\"/tmp/th-l6-bo64jqch/project\"},\"contract\":{\"role_id\":\"\",\"effective_role_revision\":\"fc4f4e08103b0a2e9c182394816c47e87c5a448b21b99e3aaf4371630e221b5f\",\"instruction_contract_revision\":\"bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f\",\"packet_revision\":\"\"}}\nCoverage: 61e9470fd12511a74db41b938b36c264bf7ced389e93bd85058d96d183590362; source=682540e4a3f9cfbca660a5add5db7fa379ff474f5fe7c2f18798f74d7e72c755; audience=unavailable\nProject cwd: /tmp/th-l6-bo64jqch/project\nAssignment: task=unavailable token=unavailable stage=unavailable owner=unavailable state=unassigned\nObjective: unavailable\nDeliverable: unavailable\nFirst action: unavailable\nCompletion signal: unavailable\nReview route: unavailable\nWait/release: unavailable\nCandidate: unavailable\nRubric: unavailable\nRestart cursor: unavailable\nRequested effort: unavailable; effective effort: low; hold: none recorded\nFile boundary: unavailable\nEvidence/handoff retention: unavailable; references do not prove archival preservation.\nGenerated: 2026-09-10 23:58:45.021773147 UTC\nCurrent task: # \u2014 \nExecution mode: ; Validation expectation: ; Response expectation: ; Adjacent fix policy: ; Override allowed: false; Override reason: none\nFocal files: unavailable\nRole: unavailable\nPurpose: For every inbox notification including onboarding, explicitly run mesh read --json --unread --mark-read --claude-dir \"$CLAUDE_DIR\" --team l6-rollback-run2 --name alpha; follow returned --since cursors with the same filters until done. Reply briefly. When a message assigns you a task, run exactly the mesh lifecycle commands the message names, in order, then reply with the task id and the word done. Never modify files. For ACTION REQUIRED marker messages, read your inbox with mesh read --json --mark-read --claude-dir \"$CLAUDE_DIR\" --team l6-rollback-run2 --name alpha and reply exactly with the requested marker. Follow every returned cursor until done. Do not send other messages.\n\nwork_contract.first_action: Execute the first action in the delivered current assignment; record a real dependency wait when execution cannot begin. Report through its completion signal; no pure acknowledgment.\nCorrections replace only named instructions; reminders cannot release GO. Ordinary assignments require no card fetch.\nNext action: preserve the stated wait or terminal/unassigned state; ask the team lead for any missing identity, release, or required context."
+        },
+        "attachment": {
+          "launch_root": {
+            "claudeDir": "/tmp/th-l6-bo64jqch/claude",
+            "rootAuthorityRevision": 0,
+            "teamsDir": "/tmp/th-l6-bo64jqch/claude/teams",
+            "teamIncarnationId": "640a339a973c0d762946d00205b514974dd607004fbd504046da27843ed877ac"
+          },
+          "attachment_generation": 1,
+          "root": "/tmp/th-l6-bo64jqch/claude",
+          "team_incarnation": "640a339a973c0d762946d00205b514974dd607004fbd504046da27843ed877ac",
+          "member": "alpha",
+          "session": "$0",
+          "context_generation": "0",
+          "generation": "1",
+          "socket": "/tmp/th-l6-bo64jqch/tmux/tmux-1000/default",
+          "pane": "%2",
+          "pane_pid": 140,
+          "pane_start": "30526223",
+          "tmux_session": "$0",
+          "harness": "codex"
+        },
+        "epoch": 2,
+        "adapter": "tmux/1",
+        "attempt_id": "0fdbfa80-d30c-4706-96cc-430422831a5d"
+      },
+      "receipts": [
+        {
+          "stage": "accepted",
+          "origin": "legacy_mapping",
+          "evidence": "source obligation",
+          "observed_at": "2026-09-10T23:58:46.711851551+00:00"
+        },
+        {
+          "stage": "attempt_started",
+          "origin": "adapter",
+          "evidence": "durable claim",
+          "observed_at": "2026-09-10T23:58:46.711861891+00:00"
+        },
+        {
+          "stage": "submitted",
+          "origin": "tmux_send_keys",
+          "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+          "observed_at": "2026-09-10T23:58:46.941330178+00:00"
+        }
+      ],
+      "presentation_started": true
+    }
+  ]
+}
