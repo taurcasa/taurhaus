@@ -1,0 +1,14 @@
+{
+  "controller_commit": "2cb49f296926001e2f689d9ad90194f50093b3a7",
+  "product_base": "1db4f9bf67447a85ea7a2935e6b1d0e34b012d97",
+  "mesh_commit": "ed591876fdbe9832d18ab7992ce7583c80bc8c64",
+  "protocol_expected": 27,
+  "branch": "feat/e2e-l4-resume-team",
+  "attempt9_reference": "read via git show HEAD in the authorized taurhaus-trial reference; sandbox structure reused; not executed verbatim",
+  "fresh_budget": {
+    "max_codex_inputs_and_starts": 16,
+    "max_usd": 0.25,
+    "max_runtime_seconds": 900
+  },
+  "review": "Independent Opus evidence lens belongs to the orchestrator; no Opus tool callable in implementer session."
+}

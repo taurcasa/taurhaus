@@ -1,0 +1,14 @@
+{
+  "command": [
+    "git",
+    "-C",
+    "/home/mstie/projects/mesh-l4",
+    "checkout",
+    "--",
+    "src/delivery/app_server/capabilities.rs"
+  ],
+  "cwd": "/home/mstie/projects/taurhaus-l4-resume-team",
+  "exit_code": 0,
+  "seconds": 0.0,
+  "log_lines": 0
+}
