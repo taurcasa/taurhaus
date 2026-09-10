@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createMeshTabGate } from './meshTabGate.svelte.js'
 
 import { TEST_MODEL_CATALOG as CATALOG } from '../../test/fixtures/modelCatalog.js'
 import {
@@ -14,6 +15,27 @@ import {
 } from './meshTabUtils.js'
 
 describe('accountLineLabel', () => {
+  it('downgrades hosted activity after the live gate caches it', async () => {
+    // Regression: 1b19edd2 dropped source and freshness in the gate's cache write.
+    const members = ['lead', 'seat'].map((name, i) => ({
+      name, role: i ? 'member' : 'lead', cliTool: 'codex', state: 'working', source: 'host',
+    }))
+    let cached
+    const gate = createMeshTabGate({ state: {}, refs: { discoverySequence: 1 }, deps: {
+      getProjectPath: () => '/fixture',
+      normalizeProjectMeshSnapshot: value => value,
+      setMeshCache: (_, value) => { cached = value },
+      refreshRuntimeTeamConfigWorkflow: async ({ onTeamConfig }) => {
+        onTeamConfig(buildTeamConfigFromRuntimeStatus({ members }, '/fixture'))
+      },
+    } })
+    await gate.queueRuntimeTeamRefresh('team', 1, { teamName: 'team', warnings: [] })
+    const hydrated = buildTeamConfigFromRuntimeStatus(cached.teamStatus, '/fixture')
+    for (const member of [hydrated.lead, ...hydrated.agents]) {
+      expect(member.status).toBe('uncertain')
+      expect(member.source).toBe('host_unavailable')
+    }
+  })
   it('preserves the host activity source through runtime member shaping', () => {
     // Regression: 6f61f611 reduced host evidence to roster health.
     const config = buildTeamConfigFromRuntimeStatus({ teamName: 'team', members: [

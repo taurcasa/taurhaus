@@ -298,6 +298,8 @@ export function createMeshTabGate({ state, refs, deps }) {
             contextSummary: nextConfig.lead.contextSummary,
             behaviorSummary: nextConfig.lead.behaviorSummary,
             sessionStatus: nextConfig.lead.status,
+            state: nextConfig.lead.state,
+            source: nextConfig.lead.source,
             paneId: nextConfig.lead.paneId,
           }
         : null,
@@ -314,6 +316,8 @@ export function createMeshTabGate({ state, refs, deps }) {
         contextSummary: member.contextSummary,
         behaviorSummary: member.behaviorSummary,
         sessionStatus: member.status,
+        state: member.state,
+        source: member.source,
         paneId: member.paneId,
       })),
     ].filter(Boolean)
@@ -327,6 +331,7 @@ export function createMeshTabGate({ state, refs, deps }) {
         teamName: nextTeamName,
         leadName: nextConfig.lead?.name ?? 'team-lead',
         members: liveStatusMembers,
+        runtimeSnapshotFreshness: 'cached',
       })
     )
   }
