@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "570ef405-ab87-41e3-8f67-e967cb659ca6",
+      "delivery_id": "248d5b78-5eec-4705-b888-e2adaa4b8b61",
+      "recipient": "lead",
+      "source_generation": "ee5f281a-59f4-40fb-ab7c-9b6c0a23754b",
+      "source_position": 8,
+      "body": "INFO ONLY: No current assignment or required context is present. Please provide the task, first action, and completion signal.\n\n[orchestration_v1]\nintent: info\nno_response_needed: true\n[/orchestration_v1]"
+    },
+    "since": "2026-09-10T21:49:13.234635976+00:00"
+  }
+]

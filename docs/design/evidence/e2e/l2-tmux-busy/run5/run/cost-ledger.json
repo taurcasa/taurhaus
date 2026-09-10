@@ -1,0 +1,86 @@
+{
+  "paid_inputs": 1,
+  "turns": [
+    {
+      "turn_id": "01a08d4b-9cb3-7813-b7b6-a07558315b2b",
+      "usd": 0.00755876,
+      "completed": true,
+      "usage": {
+        "input_tokens": 44647,
+        "cached_input_tokens": 11008,
+        "output_tokens": 509
+      },
+      "conservative_usd": 0.0541872
+    },
+    {
+      "turn_id": "01a08d4b-a08d-7162-a0e6-ae11e3252ea5",
+      "usd": null,
+      "completed": true,
+      "source": "notify-only",
+      "classification": "unknown-but-not-a-model-input"
+    }
+  ],
+  "usage_rows": [
+    {
+      "at": "2026-09-10T21:49:03.279Z",
+      "turn_id": "01a08d4b-9cb3-7813-b7b6-a07558315b2b",
+      "usage": {
+        "input_tokens": 9023,
+        "cached_input_tokens": 0,
+        "output_tokens": 156
+      },
+      "usd": 0.0019918
+    },
+    {
+      "at": "2026-09-10T21:49:08.868Z",
+      "turn_id": "01a08d4b-9cb3-7813-b7b6-a07558315b2b",
+      "usage": {
+        "input_tokens": 11407,
+        "cached_input_tokens": 0,
+        "output_tokens": 183
+      },
+      "usd": 0.002501
+    },
+    {
+      "at": "2026-09-10T21:49:13.118Z",
+      "turn_id": "01a08d4b-9cb3-7813-b7b6-a07558315b2b",
+      "usage": {
+        "input_tokens": 11926,
+        "cached_input_tokens": 0,
+        "output_tokens": 149
+      },
+      "usd": 0.0025640000000000003
+    },
+    {
+      "at": "2026-09-10T21:49:14.388Z",
+      "turn_id": "01a08d4b-9cb3-7813-b7b6-a07558315b2b",
+      "usage": {
+        "input_tokens": 12291,
+        "cached_input_tokens": 11008,
+        "output_tokens": 21
+      },
+      "usd": 0.00050196
+    }
+  ],
+  "metering_complete": true,
+  "api_equivalent_usd": 0.00755876,
+  "conservative_usd": 0.0541872,
+  "rates_usd_per_million": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+  "input_reservations": [
+    {
+      "reason": "production initialization/onboarding",
+      "step": 1,
+      "at": 1789076935.237916,
+      "generation": null
+    }
+  ],
+  "rollout_turns": 1,
+  "controller_input_attempts": 0,
+  "controller_issued_inputs": 0,
+  "mesh_terminal_deliveries": 1
+}
