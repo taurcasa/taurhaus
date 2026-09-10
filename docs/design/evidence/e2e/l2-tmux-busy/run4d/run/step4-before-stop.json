@@ -8,11 +8,11 @@
   "daemon_pid": null,
   "delivery_lease": null,
   "harness": "codex",
-  "health": "session_dead",
-  "hookSessionId": null,
+  "health": "healthy",
+  "hookSessionId": "01a08c5c-6617-75b3-b64a-3d23e8eb94c9",
   "hostInputAbandonedAt": null,
   "hostInputUnknown": false,
-  "jsonl_path": null,
+  "jsonl_path": "/tmp/th-l2-y7a0aky6/codex/sessions/2026/09/10/rollout-2026-09-10T19-27-40-01a08c5c-6617-75b3-b64a-3d23e8eb94c9.jsonl",
   "last_seen_at": "2026-09-10T17:27:44.399245872Z",
   "launchRoot": {
     "claudeDir": "/tmp/th-l2-y7a0aky6/claude",
@@ -191,7 +191,7 @@
     "reserved_effort": "low"
   },
   "schema_version": 3,
-  "session_id": null,
+  "session_id": "01a08c5c-6617-75b3-b64a-3d23e8eb94c9",
   "terminalContract": 1,
   "tmuxSessionId": "$0",
   "tmuxSocket": "/tmp/th-l2-y7a0aky6/tmux/tmux-1000/default"
