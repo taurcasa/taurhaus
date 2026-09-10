@@ -1,0 +1,40 @@
+{
+  "taurhaus_base": "a7e6db7e484290542ac35ead468f9809968bb4f0",
+  "taurhaus_head": "63841f81b8d2972093ae40d54a2a65b92fbb15fc",
+  "controller_commit": "63841f81b8d2972093ae40d54a2a65b92fbb15fc",
+  "branch": "feat/e2e-l4-resume-team",
+  "mesh_commit": "310144de1f7939e7fbb2d80ab42ebd00580ce15d",
+  "mesh_descriptor": "shipped enabled; unmodified",
+  "protocol": 27,
+  "runtime_model": "gpt-5.6-luna",
+  "effort": "low",
+  "codex_version_required": "0.153.4",
+  "fresh_budget": {
+    "inputs": 16,
+    "usd": 0.25,
+    "runtime_seconds": 900
+  },
+  "budget_basis": "Metered API-equivalent subtotal + $0.05 per prospective input headroom; all-output-rate total also retained. No billed-invoice claim.",
+  "attempt9_reference": {
+    "exit": 128,
+    "reason": "referenced worktree does not exist; run5 sandbox retained as explicitly directed"
+  },
+  "review": "User-supplied Opus round-1 findings addressed red-first; no callable Opus/Workflow runner for a new evidence lens.",
+  "executed_files_sha256": {
+    "run7/controller.py": "713590a804592f0a6e7fe8290b5f67c25a2279aa99ff0b9259e401e878aabc3e",
+    "run6/controller.py": "e68a4ed8fca6445567122d0dede03ba880ee232257eddd63eb9218f1d0a7dabd",
+    "run6/support.py": "cecc571c090947dd0e3f82eccbd77a09c9b5c79ba4f128278846b346f94f8b3f",
+    "preflight.py": "11bd5a0fc3f25f1f8456b4da4a40c206673ab432cfc360d117bbefb4b0af0228"
+  },
+  "tdd": {
+    "red_exit": 1,
+    "red_failures": 5,
+    "red_errors": 3,
+    "green_exit": 0,
+    "green_tests": 25,
+    "preflight_exit": 0,
+    "preflight_tests": 6
+  },
+  "run": 7,
+  "prior_evidence": "Run6 is historical only; run7 starts at step1 with a fresh isolated runtime."
+}
