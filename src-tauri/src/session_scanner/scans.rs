@@ -1085,8 +1085,10 @@ mod tests {
     // leaves the inventory, so nothing downstream can see it.
     #[test]
     fn a_process_without_a_controlling_terminal_never_becomes_a_session() {
-        let capture = StateChangeCapture::install();
+        // Lock order SCANNER -> CODEX -> GLOBAL_LOG, as classification.rs and
+        // codex_readiness.rs take it; the inverse deadlocked a parallel `cargo test --lib`.
         let _harness = E2eScanner::install();
+        let capture = StateChangeCapture::install();
         E2E_INVENTORY_MODE.store(INVENTORY_FILTERED, Ordering::SeqCst);
 
         let (display, runtime, degraded) = scan_sessions_for_authoritative_snapshot();
@@ -1125,8 +1127,10 @@ mod tests {
     // still reported.
     #[test]
     fn a_pts_backed_process_still_becomes_a_session() {
-        let capture = StateChangeCapture::install();
+        // Lock order SCANNER -> CODEX -> GLOBAL_LOG, as classification.rs and
+        // codex_readiness.rs take it; the inverse deadlocked a parallel `cargo test --lib`.
         let _harness = E2eScanner::install();
+        let capture = StateChangeCapture::install();
         E2E_INVENTORY_MODE.store(INVENTORY_FILTERED, Ordering::SeqCst);
 
         let (display, _, degraded) = scan_sessions_for_authoritative_snapshot();
