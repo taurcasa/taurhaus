@@ -1,0 +1,44 @@
+.........EEEE
+======================================================================
+ERROR: test_busy_deadline_allows_sixty_seconds (test_support.Run5Busy.test_busy_deadline_allows_sixty_seconds)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run5/test_support.py", line 90, in test_busy_deadline_allows_sixty_seconds
+    from support import retry_busy
+ImportError: cannot import name 'retry_busy' from 'support' (/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run5/support.py)
+
+======================================================================
+ERROR: test_busy_stop_retries_only_refusals (test_support.Run5Busy.test_busy_stop_retries_only_refusals)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run5/test_support.py", line 79, in test_busy_stop_retries_only_refusals
+    from support import retry_busy
+ImportError: cannot import name 'retry_busy' from 'support' (/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run5/support.py)
+
+======================================================================
+ERROR: test_lock_busy_read_is_pending (test_support.Run5Busy.test_lock_busy_read_is_pending)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run5/test_support.py", line 75, in test_lock_busy_read_is_pending
+    self.assertIsNone(observe_host(busy,events.append))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run5/support.py", line 40, in observe_host
+    return read()
+           ^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run5/test_support.py", line 74, in busy
+    def busy(): raise RuntimeError('coordination.hosted_transcript: lock busy')
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: coordination.hosted_transcript: lock busy
+
+======================================================================
+ERROR: test_real_refusal_is_not_retried (test_support.Run5Busy.test_real_refusal_is_not_retried)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run5/test_support.py", line 99, in test_real_refusal_is_not_retried
+    from support import retry_busy
+ImportError: cannot import name 'retry_busy' from 'support' (/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run5/support.py)
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.005s
+
+FAILED (errors=4)

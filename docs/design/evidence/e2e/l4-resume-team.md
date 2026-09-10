@@ -1,8 +1,8 @@
-# FAIL — latest run 4, L4 step 2: hosted process survives supported stop
+# INCOMPLETE — latest run 5 prepared; runtime pending
 
-Run 4 passed initialization and both initial exchanges, then failed to stop beta's app-server.
-Steps 3–6 were NOT RUN. All four turns were metered; cleanup found zero survivors.
-See [Run 4](#run-4) for evidence, spend, gates and limitations; earlier runs are historical.
+Run 5 reuses run 4 on the PR #171 base and the shipped Mesh descriptor.
+See [Run 5](#run-5) for current evidence; earlier runs are historical.
+
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -508,3 +508,26 @@ explicitly prohibited account-usage rows. The Opus evidence lens remains for the
 orchestrator (no Opus tool callable here). No product change, fault injection,
 install/release, descriptor commit, plan-ledger edit or paid retry occurred.
 Step 1 was committed before step 2; no passing step-2 commit is claimed.
+
+
+## Run 5
+
+Run 5 is prepared on Taurhaus base `e4de06f9` (PR #171), branch
+`feat/e2e-l4-resume-team`, with Mesh detached at `310144d` in the designated
+worktree. No product or descriptor edit. The run-4 controller is reused with
+100-second retry handling only for explicit `host member busy` / `lock busy`
+refusals. Accepted operations and model inputs are never automatically retried.
+
+Offline guards: four new tests observed red (exit 1), then all 13 passed (exit 0).
+[Red](l4-resume-team/run5/red.txt), [green](l4-resume-team/run5/green.txt).
+They use in-memory data and generated tempdirs, with no CLI or auth access.
+
+Builds and six ordered runtime steps are pending. Fresh cap: 16 Codex inputs,
+USD 0.25, 15 minutes runtime. The login-only Claude lead takes no model turn.
+The authorized auth file alone is copied at 0600 into scratch and deleted during
+teardown; both native Codex siblings are copied from the resolved installation.
+
+The referenced attempt-9 worktree was unavailable (git exited 128: worktree does
+not exist); run 4 already carries its private namespace/tmux/root layout and
+production initialize/poll structure. No Opus tool is callable in this implementer
+lane; the independent Opus evidence lens remains with the invoking orchestrator.
