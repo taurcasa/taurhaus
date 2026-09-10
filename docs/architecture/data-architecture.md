@@ -331,6 +331,17 @@ resend of a submitted notice is permitted. A failure before submission records
 a failed recovery receipt and permits the existing single bounded retry with
 the same delivery identity. Legacy teams retain the append behavior below.
 
+Hosted generated cards still bypass this journal adapter: `hosted.rs` submits
+startup and next-turn recovery cards directly and records only the Taurhaus
+recovery receipt. Extending the daemon producer contract to these cards requires
+both canonical acceptance **before** socket input and an external outcome receipt
+against the returned projection delivery ID. The specified Mesh candidate
+`4388d6a1` exposes `journal accept` but has no such outcome verb; its
+`delivery receipt` belongs to a reserved native-hook offer. Acceptance alone
+would leave a pending projection eligible for duplicate delivery. This integration
+remains blocked; socket submission must never be represented as `consumed_by_read`.
+Format-1 hosted delivery is unchanged.
+
 Taurhaus inbox producers route through that writer — operator notices for bridged
 members, operator notices for Claude members, and grok compaction cards.
 Legacy operator-originated traffic uses the explicit sender or `taurhaus`

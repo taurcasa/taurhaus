@@ -1130,7 +1130,8 @@ mod tests {
             notify_path,
         };
 
-        let result = resolver.detect_idle_for_pid("/home/test/project", u32::MAX, Some("%99"));
+        let result =
+            resolver.detect_idle_for_pid_in("/home/test/project", u32::MAX, Some("%99"), &[]);
 
         assert_eq!(result.state, SessionState::Idle);
         assert!(result.authoritative);

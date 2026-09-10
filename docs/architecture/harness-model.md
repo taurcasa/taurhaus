@@ -28,6 +28,18 @@ Adding a CLI must touch only the slices where that tool differs; the rest of the
 | Usage | OAuth usage windows | native 5-hour + weekly windows | native `/usage` command through an isolated provider process | unavailable; no quota endpoint, per-turn cost is in-band | unavailable |
 | Stop / teardown | `/exit` | interrupt | `/exit`, wait for presence lock, then kill floor | `/quit`, wait for the registry row to clear, then kill floor | tmux kill + mesh daemon stop |
 
+Codex TUI identity resolves against the matched runtime's
+`recovery.harness_account_root`, with pane-process ancestry and start ticks
+checking the attachment. Standalone resolution reads the process's `CODEX_HOME`
+(or its own `HOME/.codex`) before the daemon default. All registered team roots
+contribute `appServer.threadId` exclusions, including hosted seats in other teams;
+those IDs cannot be reused by a TUI's cached binding or rollout selection.
+An open per-thread writer-lock descriptor can identify a fresh 0.153.4 TUI before
+its first rollout exists. This is identity evidence, not turn-readiness evidence.
+Rollout descriptor ownership is preferred; multiple indistinguishable candidates
+retain no session identity and log the named `codex_identity_ambiguous` source.
+A newest-file guess never resolves a multi-candidate TUI.
+
 The registry (`src-tauri/src/session_scanner/cli_tool.rs`) is the one place tool identity may fan out; slices with two real implementations are traits (`SessionSource`, `ActivitySource`, `CompactionSignalSource`, `TranscriptParser`), everything else is data. A conformance suite runs every registry entry through every slice, so a new tool is proven by the same tests as the existing ones. The tracked metric is the number of `CliTool::…` branches outside the registry and slice files; it is meant to go down.
 
 ## Model and reasoning effort are first-class
