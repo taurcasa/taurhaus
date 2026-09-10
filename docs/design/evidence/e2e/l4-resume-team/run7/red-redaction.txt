@@ -1,0 +1,34 @@
+.........................EF
+======================================================================
+ERROR: test_nested_json_with_null_method_and_cursor_remains_exportable (test_support.Run7Redaction.test_nested_json_with_null_method_and_cursor_remains_exportable)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 251, in test_nested_json_with_null_method_and_cursor_remains_exportable
+    result=json.loads(controller.clean(original)['output'])
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/controller.py", line 36, in clean
+    return {k:('<signed-read-cursor-redacted>' if k=='cursor' and v else clean(v)) for k,v in value.items() if 'installation' not in k.lower() and k.lower() not in {'auth','accountid','account_id','controlauthtokenhash','accesstoken','refreshtoken','idtoken','access_token','refresh_token','id_token','rate_limits','ratelimits','account_observations'}}
+                                                                         ^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/controller.py", line 40, in clean
+    try: return json.dumps(clean(json.loads(value)))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/controller.py", line 35, in clean
+    if value.get('method','').startswith('account/') or value.get('event','').startswith('usage.'): return None
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'startswith'
+
+======================================================================
+FAIL: test_observer_attribute_error_is_harness (test_support.Run7Redaction.test_observer_attribute_error_is_harness)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 259, in test_observer_attribute_error_is_harness
+    self.assertEqual(classify_failure("'NoneType' object has no attribute 'startswith'"),'harness')
+AssertionError: 'taurhaus' != 'harness'
+- taurhaus
++ harness
+
+
+----------------------------------------------------------------------
+Ran 27 tests in 0.032s
+
+FAILED (failures=1, errors=1)

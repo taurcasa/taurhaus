@@ -1,0 +1,161 @@
+{
+  "resume_operation": {
+    "report": {
+      "failed_members": [],
+      "resumed": true,
+      "resumed_members": [
+        "lead",
+        "alpha",
+        "beta"
+      ],
+      "started_team_daemon": true,
+      "team_daemon_warning": null,
+      "team_name": "l4-resume",
+      "total_members": 3,
+      "warnings": [
+        "lead: existing pane was not reusable for 'lead'; created a new pane",
+        "alpha: existing pane was not reusable for 'alpha'; created a new pane"
+      ]
+    },
+    "status": "completed"
+  },
+  "launch_commands": [
+    {
+      "ts": "2026-09-10T22:28:44.602Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "launch.command.rendered",
+      "run_id": "run_cee846f96a0641c78c690e5a7aee9578",
+      "message": "Rendered team member launch command",
+      "command": "CLAUDE_CONFIG_DIR='/tmp/th-l4-run7-b3xvm4ag/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l4-resume' --agent-name 'lead' --agent-id 'lead@l4-resume' --agent-type 'orchestrator' -n 'lead'",
+      "member": "lead",
+      "mode": "fresh",
+      "model": "claude-haiku-4-5",
+      "reasoning_effort": null,
+      "team": "l4-resume",
+      "tool": "claude"
+    },
+    {
+      "ts": "2026-09-10T22:28:44.655Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "launch.command.rendered",
+      "run_id": "run_cee846f96a0641c78c690e5a7aee9578",
+      "message": "Rendered team member launch command",
+      "command": "CODEX_HOME='/tmp/th-l4-run7-b3xvm4ag/codex' codex --sandbox danger-full-access --ask-for-approval never --dangerously-bypass-hook-trust -c 'notify=[\"/tmp/th-l4-run7-b3xvm4ag/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'",
+      "member": "alpha",
+      "mode": "fresh",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "team": "l4-resume",
+      "tool": "codex"
+    },
+    {
+      "ts": "2026-09-10T22:28:44.709Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "launch.command.rendered",
+      "run_id": "run_cee846f96a0641c78c690e5a7aee9578",
+      "message": "Rendered team member launch command",
+      "command": "CODEX_HOME='/tmp/th-l4-run7-b3xvm4ag/codex' codex --sandbox danger-full-access --ask-for-approval never -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'",
+      "member": "beta",
+      "mode": "fresh",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "team": "l4-resume",
+      "tool": "codex"
+    },
+    {
+      "ts": "2026-09-10T22:29:51.636Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "launch.command.rendered",
+      "run_id": "run_cee846f96a0641c78c690e5a7aee9578",
+      "message": "Rendered team member launch command",
+      "command": "CLAUDE_CONFIG_DIR='/tmp/th-l4-run7-b3xvm4ag/claude' CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'claude-haiku-4-5' --team-name 'l4-resume' --agent-name 'lead' --agent-id 'lead@l4-resume' --agent-type 'orchestrator' -n 'lead'",
+      "member": "lead",
+      "mode": "fresh",
+      "model": "claude-haiku-4-5",
+      "reasoning_effort": null,
+      "team": "l4-resume",
+      "tool": "claude"
+    },
+    {
+      "ts": "2026-09-10T22:29:53.152Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "launch.command.rendered",
+      "run_id": "run_cee846f96a0641c78c690e5a7aee9578",
+      "message": "Rendered team member launch command",
+      "command": "CODEX_HOME='/tmp/th-l4-run7-b3xvm4ag/codex' codex --sandbox danger-full-access --ask-for-approval never -c 'notify=[\"/tmp/th-l4-run7-b3xvm4ag/home/.local/bin/taurhaus-daemon\",\"codex-notify\"]' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'",
+      "member": "alpha",
+      "mode": "fresh",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "team": "l4-resume",
+      "tool": "codex"
+    },
+    {
+      "ts": "2026-09-10T22:29:54.666Z",
+      "level": "INFO",
+      "component": "coordination",
+      "event": "launch.command.rendered",
+      "run_id": "run_cee846f96a0641c78c690e5a7aee9578",
+      "message": "Rendered team member launch command",
+      "command": "CODEX_HOME='/tmp/th-l4-run7-b3xvm4ag/codex' codex --sandbox danger-full-access --ask-for-approval never resume '01a08d70-11f0-7b92-894a-1b4ecd71c1c4' -m 'gpt-5.6-luna' -c 'model_reasoning_effort=\"low\"'",
+      "member": "beta",
+      "mode": "fresh",
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "low",
+      "team": "l4-resume",
+      "tool": "codex"
+    }
+  ],
+  "identity_deviation": {
+    "classification": "taurhaus",
+    "criterion": "step-5 session identity preserved",
+    "alpha_before": "01a08d70-0b37-7012-a4cd-4cdedefb676a",
+    "alpha_after_observed_rollout": "01a08d71-1657-7b43-bf91-6a1a2f19faa0",
+    "beta_thread_before_and_after": "01a08d70-11f0-7b92-894a-1b4ecd71c1c4",
+    "source": "src-tauri/src/coordination/pipelines/members.rs:617-660"
+  },
+  "observed_attachment_generations": {
+    "alpha": 2,
+    "beta": 3
+  },
+  "counter_epoch_diagnostics": [
+    {
+      "at": 1789079401.384466,
+      "step": 4,
+      "kind": "meter_diagnostic",
+      "diagnostic": {
+        "kind": "counter_epoch_reset",
+        "session_id": "01a08d70-11f0-7b92-894a-1b4ecd71c1c4",
+        "turn_id": "01a08d71-258f-7e72-b2d0-c23ad79a9b31",
+        "row": 33,
+        "epoch": 1,
+        "previous": {
+          "input_tokens": 22769,
+          "cached_input_tokens": 16896,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 69,
+          "reasoning_output_tokens": 21,
+          "total_tokens": 22838
+        },
+        "observed": {
+          "input_tokens": 12644,
+          "cached_input_tokens": 11008,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 39,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 12683
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Step4 and final runtime snapshots failed in JSON redaction; no replacement snapshot reconstructed.",
+    "Step5 recovery/identity/delivery verification and step6 explicit reads/executors not executed.",
+    "Raw events retain the original wrong taurhaus classification; step4-outcome corrects it to harness."
+  ]
+}

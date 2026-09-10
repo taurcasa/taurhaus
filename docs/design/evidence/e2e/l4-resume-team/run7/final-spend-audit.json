@@ -1,13 +1,6 @@
 {
-  "paid_inputs": 6,
-  "turn_ids": [
-    "01a08d70-1769-7303-a916-8380394ed148",
-    "01a08d70-23b6-7602-ae85-e4745dc0541f",
-    "01a08d70-4c03-71f0-9e58-f990396eceb3",
-    "01a08d70-62cb-7fe3-883f-88f141c88e05",
-    "01a08d71-1e33-7b21-b30e-ed3447969cb1",
-    "01a08d71-258f-7e72-b2d0-c23ad79a9b31"
-  ],
+  "model": "gpt-5.6-luna",
+  "effort": "low",
   "turns": [
     {
       "turn_id": "01a08d70-23b6-7602-ae85-e4745dc0541f",
@@ -70,16 +63,14 @@
       "conservative_usd": 0.0152196
     }
   ],
-  "unmetered": [],
-  "api_equivalent_usd": 0.00671068,
-  "conservative_usd": 0.1192476,
-  "basis": "Prior trial packet Luna input/cached/output rates $0.20/$0.02/$1.20 per million; conservative all tokens at $1.20/M, not an invoice.",
-  "seat_start_reservations": 4,
-  "inputs_plus_conservative_starts": 10,
-  "model": "gpt-5.6-luna",
-  "effort": "low",
-  "max_inputs": 16,
-  "max_usd": 0.25,
+  "observed_turn_ids": [
+    "01a08d70-1769-7303-a916-8380394ed148",
+    "01a08d70-23b6-7602-ae85-e4745dc0541f",
+    "01a08d70-4c03-71f0-9e58-f990396eceb3",
+    "01a08d70-62cb-7fe3-883f-88f141c88e05",
+    "01a08d71-1e33-7b21-b30e-ed3447969cb1",
+    "01a08d71-258f-7e72-b2d0-c23ad79a9b31"
+  ],
   "completed_turn_ids": [
     "01a08d70-1769-7303-a916-8380394ed148",
     "01a08d70-23b6-7602-ae85-e4745dc0541f",
@@ -88,8 +79,32 @@
     "01a08d71-1e33-7b21-b30e-ed3447969cb1",
     "01a08d71-258f-7e72-b2d0-c23ad79a9b31"
   ],
-  "attachment_generations": {
-    "alpha": 2,
-    "beta": 3
-  }
+  "unmetered_turn_ids": [],
+  "metered_api_equivalent_subtotal_usd": 0.00671068,
+  "conservative_all_output_rate_subtotal_usd": 0.1192476,
+  "final_total_usd": 0.00671068,
+  "final_cost_cap_verified": true,
+  "input_cap_verified": true,
+  "observed_turns": 6,
+  "seat_start_reservations": 4,
+  "total_turns_plus_starts": 10,
+  "hosted_launch_retries": 0,
+  "scope": "Final passive drain captured completion and usage for every observed turn before owned namespace teardown. API-equivalent estimate, not a billing invoice.",
+  "checkpoint_spend": [
+    {
+      "step": 1,
+      "api_equivalent_usd": 0.00478528,
+      "paid_inputs": 4
+    },
+    {
+      "step": 2,
+      "api_equivalent_usd": 0.00478528,
+      "paid_inputs": 4
+    },
+    {
+      "step": 3,
+      "api_equivalent_usd": 0.00478528,
+      "paid_inputs": 4
+    }
+  ]
 }

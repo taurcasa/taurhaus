@@ -32,7 +32,8 @@ OUT=BASE
 
 def clean(value):
     if isinstance(value,dict):
-        if value.get('method','').startswith('account/') or value.get('event','').startswith('usage.'): return None
+        if any(isinstance(value.get(key),str) and value[key].startswith(prefix)
+               for key,prefix in [('method','account/'),('event','usage.')]): return None
         return {k:('<signed-read-cursor-redacted>' if k=='cursor' and v else clean(v)) for k,v in value.items() if 'installation' not in k.lower() and k.lower() not in {'auth','accountid','account_id','controlauthtokenhash','accesstoken','refreshtoken','idtoken','access_token','refresh_token','id_token','rate_limits','ratelimits','account_observations'}}
     if isinstance(value,list): return [v for x in value if (v:=clean(x)) is not None]
     if isinstance(value,str):

@@ -20,7 +20,7 @@ def sanitize_log_rows(records):
 
 
 def classify_failure(reason):
-    if any(s in reason for s in ['harness command','auth source','unapproved Codex','cap','headroom','metered','bwrap:', 'code-mode-host', 'Operation not permitted', 'Permission denied']):
+    if any(s in reason for s in ["'NoneType' object has no attribute 'startswith'",'harness command','auth source','unapproved Codex','cap','headroom','metered','bwrap:', 'code-mode-host', 'Operation not permitted', 'Permission denied']):
         return 'harness'
     return 'mesh' if 'Mesh refusal' in reason or 'mesh team activation failed' in reason or 'team-daemon' in reason else 'taurhaus'
 

@@ -241,3 +241,19 @@ class Run7Metering(unittest.TestCase):
             self.assertEqual(result['privacy_files_scanned'],2)
             self.assertEqual(len(result['privacy_exemptions']),1)
             self.assertEqual(result['privacy_exemptions'][0]['file'],'controller.py')
+
+
+class Run7Redaction(unittest.TestCase):
+    def test_nested_json_with_null_method_and_cursor_remains_exportable(self):
+        # // Regression: 63841f81 parsed embedded JSON then called startswith on a null method during the step4 snapshot.
+        import controller, json
+        original={'output':json.dumps({'method':None,'event':None,'cursor':'generated-opaque-cursor','result':{'status':'completed'}})}
+        result=json.loads(controller.clean(original)['output'])
+        self.assertIsNone(result['method'])
+        self.assertEqual(result['cursor'],'<signed-read-cursor-redacted>')
+        self.assertEqual(result['result']['status'],'completed')
+        self.assertEqual(controller.clean({'method':17}),{'method':17})
+
+    def test_observer_attribute_error_is_harness(self):
+        # // Regression: 63841f81's fallback labeled the redaction exception as a product failure.
+        self.assertEqual(classify_failure("'NoneType' object has no attribute 'startswith'"),'harness')

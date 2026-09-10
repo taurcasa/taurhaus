@@ -1,10 +1,10 @@
-# INCOMPLETE — latest run 6, steps 1–4 passed; step 5 harness failure
+# INCOMPLETE — latest run 7, steps 1–3 passed; step 4 harness snapshot failure
 
-Run 6 proved both stopped backlogs and a successful whole-team `resume_team`.
-The inherited counter-reset assertion aborted observation before step 5’s checks;
-step 6 was not run. Retained state also shows alpha resumed with a new session ID.
-Final spend is partially metered, so the dollar cap is **unverified**.
-See [Run 6](#run-6) for outcomes, every observed spend, gates and deviations.
+Run 7's single `resume_team` RPC completed, but JSON redaction failed while
+exporting the step-4 runtime snapshot. Steps 5–6 were not run. Cleanup's resumed
+counter reset was observed without aborting; all six observed turns are metered
+at **$0.00671068**, with zero owned-process survivors. Alpha again launched fresh.
+See [Run 7](#run-7) for outcomes, spend, gates and deviations.
 
 ## Historical run 2 — hosted process exited before transport readiness
 
@@ -820,3 +820,133 @@ separate observed Taurhaus deviation. The independent Opus evidence lens remains
 for the invoking orchestrator: no Opus/Workflow tool is callable here. No product
 fix, paid rerun, installation/release, plan-ledger edit, descriptor mutation,
 account/root move, stress/fault injection or operator-process kill occurred.
+
+
+## Run 7
+
+**INCOMPLETE, S-runtime attempted.** Fresh run from step 1 on unchanged Taurhaus
+`a7e6db7e` + Mesh `310144d`; no prior run's runtime proof was reused. The branch
+was already rebased onto `origin/main`. Both native Codex 0.153.4 siblings were
+copied into the private bin; the shipped app-server descriptor remained enabled
+and unmodified. Model `gpt-5.6-luna`, effort `low`; login-only Claude lead used no
+paid input. The executed controller/support commit is `63841f81`, with digests,
+binaries and setup in [provenance](l4-resume-team/run7/provenance.json),
+[build results](l4-resume-team/run7/build/binaries.json) and
+[capabilities](l4-resume-team/run7/delivery-capabilities.json).
+
+| Step | Outcome / classification | Evidence |
+|---|---|---|
+| 1. Initialize, exchange and explicitly read both initial markers | **PASS / runtime** | [Outcome](l4-resume-team/run7/step1-outcome.json), [identities](l4-resume-team/run7/original-identities.json), [state/journal](l4-resume-team/run7/step1-state.json) |
+| 2. Supported stop for all seats, including daemon-owned host | **PASS / runtime** | [Outcome](l4-resume-team/run7/step2-outcome.json), [empty seat census, including codex-code-mode-host](l4-resume-team/run7/step2-stop-poll.json) |
+| 3. Both obligations accepted while stopped, with no transport receipt and stopped-member health refusal | **PASS / runtime** | [Alpha backlog](l4-resume-team/run7/step3-alpha-backlog.json), [beta backlog](l4-resume-team/run7/step3-beta-backlog.json) |
+| 4. One whole-team resume and runtime export | **FAIL / harness**; the RPC itself completed successfully | [Status polling](l4-resume-team/run7/step4-operation.json), [corrected classification](l4-resume-team/run7/step4-outcome.json), [traceback](l4-resume-team/run7/controller-error.json) |
+| 5. Verify recovery identity/cards and both backlog deliveries | **NOT RUN / not evaluated** | [Outcome](l4-resume-team/run7/step5-outcome.json) |
+| 6. Explicit reads, no replay and executor reconciliation | **NOT RUN / not evaluated** | [Outcome](l4-resume-team/run7/step6-outcome.json) |
+
+The resume report has `failed_members: []` and `started_team_daemon: true`.
+The subsequent snapshot hit `'NoneType' object has no attribute 'startswith'`
+in the controller's `clean()`: the new embedded-JSON redaction parsed a record
+whose `method` was null, then applied a string operation. The raw event's generic
+classifier incorrectly called this Taurhaus; the outcome sidecar explicitly
+corrects it to **harness**, preserving the original event and classification.
+Step4/final snapshots were not saved and cannot be recovered from the removed
+scratch root. No replacement snapshot is inferred from logs.
+
+A separate **Taurhaus observation** remains: alpha's new rollout is
+`01a08d71-1657-7b43-bf91-6a1a2f19faa0`, versus original
+`01a08d70-0b37-7012-a4cd-4cdedefb676a`. Its launch has no `resume`, while beta
+uses `resume '01a08d70-11f0-7b92-894a-1b4ecd71c1c4'`. The ledger observed
+attachment generations alpha=2 and beta=3. The ordinary tmux path in
+`src-tauri/src/coordination/pipelines/members.rs:617–660` does not set the resume
+session ID. This is an independent identity deviation, not a substitute for
+executing step 5. [Machine-readable analysis](l4-resume-team/run7/runtime-analysis.json).
+
+### Metering and budget
+
+Cleanup **continued through the real resumed counter reset**. Beta's cumulative
+input/output changed from 22,769/69 to 12,644/39 in the same rollout; the observer
+recorded one `counter_epoch_reset` diagnostic and accumulated a new epoch instead
+of throwing. Every observed turn has usage and completion, with no unmetered IDs.
+[Final ledger](l4-resume-team/run7/cost-ledger.json),
+[spend audit](l4-resume-team/run7/final-spend-audit.json),
+[diagnostic](l4-resume-team/run7/runtime-analysis.json).
+
+| Turn | Input | API-equivalent USD | All tokens at output rate USD |
+|---|---|---:|---:|
+| `01a08d70-1769-7303-a916-8380394ed148` | beta onboarding | 0.000991440 | 0.013071600 |
+| `01a08d70-23b6-7602-ae85-e4745dc0541f` | alpha onboarding | 0.001837680 | 0.024474000 |
+| `01a08d70-4c03-71f0-9e58-f990396eceb3` | alpha initial marker | 0.001352280 | 0.027763200 |
+| `01a08d70-62cb-7fe3-883f-88f141c88e05` | beta initial marker | 0.000603880 | 0.014334000 |
+| `01a08d71-1e33-7b21-b30e-ed3447969cb1` | resumed alpha recovery | 0.001331240 | 0.024385200 |
+| `01a08d71-258f-7e72-b2d0-c23ad79a9b31` | resumed beta recovery | 0.000594160 | 0.015219600 |
+| **Total** | **6 observed completed turns** | **0.006710680** | **0.119247600** |
+
+Steps 1–3 each ended at four metered turns / $0.00478528; stopped backlogs
+added no paid turn. Six turns plus four conservative seat-start reservations
+are **10 ≤ 16**; no hosted launch retry was observed. Final observed metered spend
+is **$0.00671068 ≤ $0.25**. Runtime was **79.181 seconds ≤ 900**.
+The API-equivalent rates are the inherited trial rates ($0.20/$0.02/$1.20 per
+million input/cached/output tokens), not a billing invoice. Automatic cleanup
+observation submitted no input; no paid controller retry followed the failure.
+
+### Review fixes and validation
+
+All five supplied findings were verified and addressed. Counter epochs now retain
+prior subtotals; repeated observation deduplicates diagnostics. One shared
+`require_headroom(ledger, inputs, basis='api_equivalent_usd')` returns a refusal
+before the next paid input; observation records cap facts without throwing.
+Runtime completion and metering completeness are separate, and cleanup retries
+observation errors until its deadline. Reconciliation names both cost bases.
+Run6's step5 JSON now includes its separate Taurhaus identity observation.
+Run6's privacy audit scans Python sources with an explicit authorized auth-source
+exception, recorded in [its audit](l4-resume-team/run6/final-audit.json).
+Run6's historical executed controller digests still identify its original code;
+the files now contain the reviewed implementation used/adapted for run7.
+
+Initial offline red: **5 failures + 3 errors**, including divergent headroom,
+missing epoch support, observer cap abort and privacy coverage. A direct replay
+against the old support also produced `AssertionError: unmetered reset token
+counter`. Green: **25 tests**, plus **6 shared preflight tests**. The new redaction
+failure was reproduced after the paid run with **1 failure + 1 error**; the null
+method handling and classifier fix then passed **27 tests**. These final two
+fixes are offline-only and were not followed by another paid run. All regression
+tests use generated temporary data/in-memory stubs, without real harness CLI,
+credentials or network access.
+[Initial red](l4-resume-team/run7/red.txt), [green](l4-resume-team/run7/green.txt),
+[preflight](l4-resume-team/run7/preflight.txt),
+[redaction red](l4-resume-team/run7/red-redaction.txt),
+[final green](l4-resume-team/run7/green-redaction.txt).
+
+| Gate/check | Exit | Evidence |
+|---|---:|---|
+| Mesh `cargo build --bin mesh` | **0** | [Result](l4-resume-team/run7/build/mesh.json) |
+| `just ensure-tauri-resources` / `just build-daemon` | **0 / 0** | [Resource preparation](l4-resume-team/run7/build/resources.json), [daemon](l4-resume-team/run7/build/daemon.json) |
+| `just check-quick` | **0** | [Result](l4-resume-team/run7/gates/check-quick.json) |
+| `just lint` | **0** | [Result](l4-resume-team/run7/gates/lint.json) |
+| `just test-contracts` | **0** | [Result](l4-resume-team/run7/gates/test-contracts.json) |
+| Runtime controller | **1** | [Result and last logs](l4-resume-team/run7/execution-result.json) |
+| Process/privacy audit | **0** | [Result](l4-resume-team/run7/final-audit.json) |
+
+Gates ran from this checkout root via `run7/gates.py`, using scratch harness
+homes and this checkout's own `src-tauri/target`. Before each build/gate the exact
+`pgrep -af '(^|/)cargo( |$)'` probe admitted work only below three Cargo processes;
+30-second polls/30-minute deadline were configured, with no wait needed.
+One build job per Cargo command. No `src-tauri/` diff; the conditional
+`just test-rust-unit` requirement does not apply.
+
+Teardown rechecked **15 owned PID/start-tick identities, zero survivors**, closed
+the private port, removed the scratch root/auth copy, and verified unchanged
+Mesh source. The **complete 310-row sanitized daemon JSONL** is retained;
+prohibited account-usage rows/fields are excluded, and signed read cursors are
+redacted. [Cleanup](l4-resume-team/run7/cleanup.json),
+[daemon log](l4-resume-team/run7/taurhaus.log.jsonl).
+
+Deviations: the added JSON redaction caused a new step-4 harness failure, fixed
+red-first offline; steps 5–6 remain unexecuted under the binding stop-on-failure
+rule. Alpha's separate identity deviation is retained. The unavailable attempt9
+reference/layout deviation remains as recorded in provenance; run5's existing
+private layout was reused. The supplied Opus review drove this fix round; a new
+independent Opus review of run7 remains with the orchestrator (no callable Opus
+runner here). Each passing runtime step was committed before the next release.
+No product change, install/release, plan-ledger edit, descriptor mutation, Mesh
+commit, account/root move, fault/stress injection or operator-process kill.
