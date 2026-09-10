@@ -478,7 +478,16 @@ Cargo process within the 30-minute bound. Checkout-local targets and temporary
 Tauri resources were used. [Build commands/exits/digests](l4-resume-team/run4/build/),
 [provenance](l4-resume-team/run4/provenance.json).
 
-Required gates are running; final exit codes will be appended before handoff.
+| Required gate (checkout root) | Exit | Evidence |
+|---|---:|---|
+| `just check-quick` | **0** | [Result](l4-resume-team/run4/gates/check-quick.json); 150 frontend files / 2518 tests passed |
+| `just lint` | **0** | [Result](l4-resume-team/run4/gates/lint.json) |
+| `just test-contracts` | **0** | [Result](l4-resume-team/run4/gates/test-contracts.json) |
+| Final evidence/privacy/process audit | **0** | [Result](l4-resume-team/run4/final-audit.json) |
+
+The gate runner exited **0**, waited all owned children, and removed the temporary
+Tauri Mesh resource. `git diff --check` passed. Runtime assertion failure remains
+**1**; passing repository gates do not change the step-2 verdict.
 No `src-tauri/` diff exists, so `just test-rust-unit` is not required.
 
 Cleanup stopped/waited only owned processes/private namespace, verified PID/start
