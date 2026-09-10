@@ -1,0 +1,265 @@
+{
+  "receipt": {
+    "checksum": "80b4a19c6075ddf6c0ce8c4041c6e1c6faf20d218bcfd976d74b50279e318224",
+    "committed_at": "2026-09-10T16:41:42.895440554+00:00",
+    "event_id": "80be3b90-7b6c-4b34-b2c5-454d0580d8fc",
+    "event_type": "receipt",
+    "log_epoch": "73d85fad-e61d-422f-b3f8-a69d167b19d2",
+    "payload": {
+      "adapter": "tmux/1",
+      "attachment": {
+        "attachment_generation": 1,
+        "context_generation": "0",
+        "generation": "1",
+        "harness": "codex",
+        "launch_root": {
+          "claudeDir": "/tmp/th-l2-0qqche8o/claude",
+          "rootAuthorityRevision": 0,
+          "teamIncarnationId": "9ed1ae8bb4cabd2969ab852000781d863ff27754ce09f42210f16bb8d8043f1c",
+          "teamsDir": "/tmp/th-l2-0qqche8o/claude/teams"
+        },
+        "member": "alpha",
+        "pane": "%2",
+        "pane_pid": 140,
+        "pane_start": "27903816",
+        "root": "/tmp/th-l2-0qqche8o/claude",
+        "session": "$0",
+        "socket": "/tmp/th-l2-0qqche8o/tmux/tmux-1000/default",
+        "team_incarnation": "9ed1ae8bb4cabd2969ab852000781d863ff27754ce09f42210f16bb8d8043f1c",
+        "tmux_session": "$0"
+      },
+      "attempt_id": "d3d72eea-2446-4034-b391-51761c13b41b",
+      "delivery_id": "6b465dc3-1611-4e1a-98a4-b0815ead20f1",
+      "event_type": "receipt",
+      "evidence": "literal paste and harness submit exited 0; model uptake unobserved",
+      "message_id": "1914645c-9df1-4c95-847a-6027144cb808",
+      "observed_at": "2026-09-10T16:41:42.859104951+00:00",
+      "origin": "tmux_send_keys",
+      "owner_epoch": 2,
+      "recipient": "alpha",
+      "source_generation": "73d85fad-e61d-422f-b3f8-a69d167b19d2",
+      "source_position": 2,
+      "stage": "submitted",
+      "team_incarnation": "9ed1ae8bb4cabd2969ab852000781d863ff27754ce09f42210f16bb8d8043f1c"
+    },
+    "schema_version": 1,
+    "sequence": 6,
+    "team_id": "9ed1ae8bb4cabd2969ab852000781d863ff27754ce09f42210f16bb8d8043f1c"
+  },
+  "runtime": {
+    "activitySnapshotPath": "/tmp/th-l2-0qqche8o/claude/teams/l2-busy/state/activity/alpha.json",
+    "appliedEffort": "low",
+    "attached_at": "2026-09-10T16:41:40.379594295Z",
+    "attachmentGeneration": 1,
+    "cli_tool": "codex",
+    "contextGeneration": "0",
+    "daemon_pid": null,
+    "delivery_lease": null,
+    "harness": "codex",
+    "health": "healthy",
+    "hookSessionId": null,
+    "hostInputAbandonedAt": null,
+    "hostInputUnknown": false,
+    "jsonl_path": null,
+    "last_seen_at": "2026-09-10T16:41:41.224130878Z",
+    "launchRoot": {
+      "claudeDir": "/tmp/th-l2-0qqche8o/claude",
+      "rootAuthorityRevision": 0,
+      "teamIncarnationId": "9ed1ae8bb4cabd2969ab852000781d863ff27754ce09f42210f16bb8d8043f1c",
+      "teamsDir": "/tmp/th-l2-0qqche8o/claude/teams"
+    },
+    "memberName": "alpha",
+    "paneId": "%2",
+    "panePid": 140,
+    "paneStartTime": "27903816",
+    "project_path": "/tmp/th-l2-0qqche8o/project",
+    "recovery": {
+      "activation_intent": "0edb152ad18d5ed0d8d6007a0ed482fc91c1e01b88400bfd70a231561085f282",
+      "admitted_boundary": null,
+      "baseline_binding": [
+        [
+          "9ed1ae8bb4cabd2969ab852000781d863ff27754ce09f42210f16bb8d8043f1c",
+          "64117e98-a0a2-4173-a2ed-b9c498e5b174"
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "claim": {
+        "accepted_bytes": 2860,
+        "attempt": 1,
+        "card_key": {
+          "card_schema": 1,
+          "context": [
+            1,
+            0
+          ],
+          "contract": {
+            "effective_role_revision": "bb80b8a0546ec4a737117a5e83df361adeb3072fc2e0f6bd1fe36379b172fa30",
+            "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+            "packet_revision": "",
+            "role_id": ""
+          },
+          "recipient": [
+            "9ed1ae8bb4cabd2969ab852000781d863ff27754ce09f42210f16bb8d8043f1c",
+            "64117e98-a0a2-4173-a2ed-b9c498e5b174"
+          ],
+          "roots": {
+            "harness_account_root": "/tmp/th-l2-0qqche8o/codex",
+            "launch_namespace": "native",
+            "resolved_mesh_config_root": "/tmp/th-l2-0qqche8o/claude",
+            "resolved_project_root": "/tmp/th-l2-0qqche8o/project",
+            "resolved_teams_root": "/tmp/th-l2-0qqche8o/claude/teams",
+            "root_authority_revision": "0"
+          }
+        },
+        "content_revision": "4d636af96baf962e6e6f691f12c9152c1797a5c9bb76bbb1da9d8092918af181",
+        "delivery_id": "a9aa4ef633cfa020cd491932b92ecc277e0a2fc4c671419dae79922d30260728",
+        "generated_bytes": 2860,
+        "journal": {
+          "delivery_id": "6b465dc3-1611-4e1a-98a4-b0815ead20f1",
+          "message_id": "1914645c-9df1-4c95-847a-6027144cb808",
+          "projection": "pending",
+          "sequence": 2
+        },
+        "kind": "baseline",
+        "obligation_key": [
+          [
+            "9ed1ae8bb4cabd2969ab852000781d863ff27754ce09f42210f16bb8d8043f1c",
+            "64117e98-a0a2-4173-a2ed-b9c498e5b174"
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "observations": [
+          [
+            "accepted",
+            "2026-09-10T16:41:41.216539789Z",
+            "inbox"
+          ]
+        ],
+        "offered_bytes": 0,
+        "path": "inbox",
+        "returned_by_read_bytes": 0,
+        "satisfied_obligations": [
+          [
+            [
+              "9ed1ae8bb4cabd2969ab852000781d863ff27754ce09f42210f16bb8d8043f1c",
+              "64117e98-a0a2-4173-a2ed-b9c498e5b174"
+            ],
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        "stage": "accepted",
+        "supersedes_revision": null
+      },
+      "harness_account_root": "/tmp/th-l2-0qqche8o/codex",
+      "last_delivered": {
+        "accepted_bytes": 2860,
+        "attempt": 1,
+        "card_key": {
+          "card_schema": 1,
+          "context": [
+            1,
+            0
+          ],
+          "contract": {
+            "effective_role_revision": "bb80b8a0546ec4a737117a5e83df361adeb3072fc2e0f6bd1fe36379b172fa30",
+            "instruction_contract_revision": "bb9a29a62cb8c6ff6d04bb703f15fd76430f0f7c48feed35a374314aac00672f",
+            "packet_revision": "",
+            "role_id": ""
+          },
+          "recipient": [
+            "9ed1ae8bb4cabd2969ab852000781d863ff27754ce09f42210f16bb8d8043f1c",
+            "64117e98-a0a2-4173-a2ed-b9c498e5b174"
+          ],
+          "roots": {
+            "harness_account_root": "/tmp/th-l2-0qqche8o/codex",
+            "launch_namespace": "native",
+            "resolved_mesh_config_root": "/tmp/th-l2-0qqche8o/claude",
+            "resolved_project_root": "/tmp/th-l2-0qqche8o/project",
+            "resolved_teams_root": "/tmp/th-l2-0qqche8o/claude/teams",
+            "root_authority_revision": "0"
+          }
+        },
+        "content_revision": "4d636af96baf962e6e6f691f12c9152c1797a5c9bb76bbb1da9d8092918af181",
+        "delivery_id": "a9aa4ef633cfa020cd491932b92ecc277e0a2fc4c671419dae79922d30260728",
+        "generated_bytes": 2860,
+        "journal": {
+          "delivery_id": "6b465dc3-1611-4e1a-98a4-b0815ead20f1",
+          "message_id": "1914645c-9df1-4c95-847a-6027144cb808",
+          "projection": "pending",
+          "sequence": 2
+        },
+        "kind": "baseline",
+        "obligation_key": [
+          [
+            "9ed1ae8bb4cabd2969ab852000781d863ff27754ce09f42210f16bb8d8043f1c",
+            "64117e98-a0a2-4173-a2ed-b9c498e5b174"
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "observations": [
+          [
+            "accepted",
+            "2026-09-10T16:41:41.216539789Z",
+            "inbox"
+          ]
+        ],
+        "offered_bytes": 0,
+        "path": "inbox",
+        "returned_by_read_bytes": 0,
+        "satisfied_obligations": [
+          [
+            [
+              "9ed1ae8bb4cabd2969ab852000781d863ff27754ce09f42210f16bb8d8043f1c",
+              "64117e98-a0a2-4173-a2ed-b9c498e5b174"
+            ],
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        "stage": "accepted",
+        "supersedes_revision": null
+      },
+      "launch_namespace": "native",
+      "member_incarnation_id": "64117e98-a0a2-4173-a2ed-b9c498e5b174",
+      "reserved_attachment": "2026-09-10T16:41:40.379594295Z",
+      "reserved_effort": "low"
+    },
+    "schema_version": 3,
+    "session_id": null,
+    "terminalContract": 1,
+    "tmuxSessionId": "$0",
+    "tmuxSocket": "/tmp/th-l2-0qqche8o/tmux/tmux-1000/default"
+  },
+  "activity": {
+    "version": 1,
+    "observed_at": "2026-09-10T16:41:42.362817245+00:00",
+    "stall_recent_activity": false,
+    "stall_no_output": true,
+    "stall_no_active_process": false,
+    "active_non_shell_process": true,
+    "recent_io": false,
+    "pane_alive": true,
+    "pane_foreign": false,
+    "last_output_age_secs": null,
+    "activity_confidence": "idle",
+    "confidence": "medium",
+    "last_observed_at": "2026-09-10T16:41:42.358176491+00:00",
+    "source": "launch_ready",
+    "state": "idle"
+  },
+  "at": 1789058503.0827866
+}

@@ -1,0 +1,13 @@
+[
+  {
+    "obligation": {
+      "message_id": "98ce6f15-3c44-43fe-9802-392d4a6b329e",
+      "delivery_id": "97eabe87-a2ed-4c5e-9c1d-81ac8826e99a",
+      "recipient": "lead",
+      "source_generation": "73d85fad-e61d-422f-b3f8-a69d167b19d2",
+      "source_position": 8,
+      "body": "Assignment remains unassigned. Please provide the missing identity, release, and required context."
+    },
+    "since": "2026-09-10T16:42:00.230974129+00:00"
+  }
+]

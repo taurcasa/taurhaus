@@ -1,0 +1,85 @@
+{
+  "paid_inputs": 1,
+  "turns": [
+    {
+      "turn_id": "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf",
+      "usd": 0.0030376,
+      "completed": true,
+      "usage": {
+        "input_tokens": 44156,
+        "cached_input_tokens": 35840,
+        "output_tokens": 548
+      },
+      "conservative_usd": 0.05364479999999999
+    },
+    {
+      "turn_id": "01a08c32-54a5-7b42-943d-f39f62694235",
+      "usd": null,
+      "completed": true,
+      "source": "notify-only",
+      "classification": "unknown-but-not-a-model-input"
+    }
+  ],
+  "usage_rows": [
+    {
+      "at": "2026-09-10T16:41:50.813Z",
+      "turn_id": "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf",
+      "usage": {
+        "input_tokens": 8874,
+        "cached_input_tokens": 6912,
+        "output_tokens": 205
+      },
+      "usd": 0.0007766400000000001
+    },
+    {
+      "at": "2026-09-10T16:41:56.598Z",
+      "turn_id": "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf",
+      "usage": {
+        "input_tokens": 11290,
+        "cached_input_tokens": 6912,
+        "output_tokens": 201
+      },
+      "usd": 0.00125504
+    },
+    {
+      "at": "2026-09-10T16:41:59.926Z",
+      "turn_id": "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf",
+      "usage": {
+        "input_tokens": 11828,
+        "cached_input_tokens": 11008,
+        "output_tokens": 110
+      },
+      "usd": 0.00051616
+    },
+    {
+      "at": "2026-09-10T16:42:01.285Z",
+      "turn_id": "01a08c32-50c8-75d2-99f7-4e1fd0f6b3bf",
+      "usage": {
+        "input_tokens": 12164,
+        "cached_input_tokens": 11008,
+        "output_tokens": 32
+      },
+      "usd": 0.00048976
+    }
+  ],
+  "metering_complete": true,
+  "api_equivalent_usd": 0.0030376,
+  "conservative_usd": 0.0536448,
+  "rates_usd_per_million": {
+    "input": 0.2,
+    "cached_input": 0.02,
+    "output": 1.2
+  },
+  "rate_source": "Inherited integration/messaging packet; estimates, not invoices",
+  "input_reservations": [
+    {
+      "reason": "production initialization/onboarding",
+      "step": 1,
+      "at": 1789058499.9674814,
+      "generation": null
+    }
+  ],
+  "rollout_turns": 1,
+  "controller_issued_inputs": 0,
+  "mesh_terminal_deliveries": 1
+}
