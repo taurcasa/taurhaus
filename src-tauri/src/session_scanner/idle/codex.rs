@@ -69,9 +69,12 @@ impl CodexResolver {
         pid: u32,
         pane_id: Option<&str>,
     ) -> IdleResult {
-        let registry =
-            crate::coordination::stores::TeamRootRegistry::new(PlatformPaths::teams_dir());
-        self.detect_idle_for_pid_in(project_path, pid, pane_id, &registry)
+        let Ok(records) = crate::coordination::stores::TeamRootRegistry::read_runtime_records(
+            PlatformPaths::teams_dir(),
+        ) else {
+            return unresolved_identity(pid, "codex_runtime_scope_unavailable");
+        };
+        self.detect_idle_for_pid_in(project_path, pid, pane_id, &records)
     }
 
     fn detect_idle_for_pid_in(
@@ -79,10 +82,9 @@ impl CodexResolver {
         project_path: &str,
         pid: u32,
         pane_id: Option<&str>,
-        registry: &crate::coordination::stores::TeamRootRegistry,
+        records: &[crate::coordination::stores::MemberRuntimeRecord],
     ) -> IdleResult {
-        let Some((seat_root, excluded)) =
-            codex_identity_scope(project_path, pid, pane_id, registry)
+        let Some((seat_root, excluded)) = codex_identity_scope(project_path, pid, pane_id, records)
         else {
             return unresolved_identity(pid, "codex_runtime_scope_unavailable");
         };
@@ -381,13 +383,17 @@ where
     Some(result)
 }
 
+fn is_codex(tool: crate::session_scanner::cli_tool::CliTool) -> bool {
+    tool == crate::session_scanner::cli_tool::CliTool::Codex
+}
+
 pub(super) fn reconcile_persisted_bindings(
     processes: &[ProcessInfo],
     pane_map: &HashMap<String, TmuxPane>,
 ) {
     let active_keys = processes
         .iter()
-        .filter(|process| process.cli_tool == crate::session_scanner::cli_tool::CliTool::Codex)
+        .filter(|process| is_codex(process.cli_tool))
         .map(|process| {
             let pane_id = pane_map.get(&process.tty).map(|pane| pane.pane_id.as_str());
             binding_key(&process.project_path, process.pid, pane_id)
@@ -417,9 +423,8 @@ fn codex_identity_scope(
     project: &str,
     pid: u32,
     pane: Option<&str>,
-    registry: &crate::coordination::stores::TeamRootRegistry,
+    records: &[crate::coordination::stores::MemberRuntimeRecord],
 ) -> Option<(Option<PathBuf>, std::collections::HashSet<String>)> {
-    use crate::coordination::stores::MemberRuntimeStore;
     let mut ancestors = std::collections::HashSet::new();
     let mut parent = pid;
     for _ in 0..64 {
@@ -433,34 +438,33 @@ fn codex_identity_scope(
     }
     let mut account = None;
     let mut excluded = std::collections::HashSet::new();
-    for (root, team) in registry.team_locations().ok()? {
-        for (_, record) in MemberRuntimeStore::load_all(&root, &team).ok()? {
-            if let Some(host) = record.app_server {
-                excluded.insert(host.thread_id);
-                continue;
-            }
-            let bound = record.cli_tool == Some(crate::session_scanner::cli_tool::CliTool::Codex)
-                && record.project_path.as_deref().is_some_and(|p| {
-                    normalize_project_path(&p.to_string_lossy()) == normalize_project_path(project)
-                })
-                && pane.is_none_or(|p| record.pane_id.as_deref() == Some(p))
-                && record.pane_pid.is_some_and(|p| {
-                    ancestors.contains(&p)
-                        && record.pane_start_time.is_some()
-                        && crate::platform::process_start_ticks(p) == record.pane_start_time
-                });
-            if bound {
-                if let Some(root) = record
-                    .recovery
-                    .harness_account_root
-                    .filter(|r| !r.is_empty())
-                    .map(PathBuf::from)
-                {
-                    if account.as_ref().is_some_and(|previous| previous != &root) {
-                        return None;
-                    }
-                    account = Some(root);
+    for record in records {
+        if let Some(host) = &record.app_server {
+            excluded.insert(host.thread_id.clone());
+            continue;
+        }
+        let bound = record.cli_tool.is_some_and(is_codex)
+            && record.project_path.as_deref().is_some_and(|p| {
+                normalize_project_path(&p.to_string_lossy()) == normalize_project_path(project)
+            })
+            && pane.is_none_or(|p| record.pane_id.as_deref() == Some(p))
+            && record.pane_pid.is_some_and(|p| {
+                ancestors.contains(&p)
+                    && record.pane_start_time.is_some()
+                    && crate::platform::process_start_ticks(p) == record.pane_start_time
+            });
+        if bound {
+            if let Some(root) = record
+                .recovery
+                .harness_account_root
+                .clone()
+                .filter(|r| !r.is_empty())
+                .map(PathBuf::from)
+            {
+                if account.as_ref().is_some_and(|previous| previous != &root) {
+                    return None;
                 }
+                account = Some(root);
             }
         }
     }
@@ -734,7 +738,7 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
 
-    // Regression: 6f61f611 searched only the daemon account, losing a seat
+    // Regression: 5188e732 bound per-PID resolution to the daemon account, losing a seat
     // launched with its own CODEX_HOME (the trial's non-default root layout).
     #[test]
     #[cfg(target_os = "linux")]
@@ -759,9 +763,7 @@ mod tests {
             base_dir: Some(tmp.path().join("daemon-account/sessions")),
             notify_path: tmp.path().join("notify.jsonl"),
         };
-        let registry = crate::coordination::stores::TeamRootRegistry::new(tmp.path().join("teams"));
-        let result =
-            resolver.detect_idle_for_pid_in("/scratch/project", child.id(), None, &registry);
+        let result = resolver.detect_idle_for_pid_in("/scratch/project", child.id(), None, &[]);
         child.kill().unwrap();
         child.wait().unwrap();
         assert_eq!(result.session_id.as_deref(), Some("seat-thread"));
@@ -773,7 +775,8 @@ mod tests {
         file.set_modified(time).unwrap();
     }
 
-    // Regression: 6f61f611 admitted a hosted rollout as the lone TUI candidate.
+    // Regression: 80290f36 added hosted seats while c9669ef8's lone-rollout
+    // fallback still admitted their threads as TUI candidates (seen at 6f61f611).
     // The trial retained cwd/id/version in thread/read, but no session_meta bytes;
     // use those observed fields without inventing a PID field in session_meta.
     #[test]
@@ -829,7 +832,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn codex_identity_private_tmux_runtime_account_and_symlink() {
-        // Regression: 6f61f611 used daemon CODEX_HOME, not the pane launch root.
+        // Regression: 5188e732 used daemon CODEX_HOME, not the pane launch root.
         use crate::coordination::stores::{MemberRuntimeStore, TeamRootRegistry};
         use std::process::Command;
         struct Server(PathBuf);
@@ -922,9 +925,9 @@ mod tests {
             base_dir: Some(tmp.path().join("daemon-account/sessions")),
             notify_path: tmp.path().join("notify.jsonl"),
         };
-        let registry = TeamRootRegistry::new(teams);
+        let records = TeamRootRegistry::read_runtime_records(teams).unwrap();
         assert!(
-            codex_identity_scope(project.to_str().unwrap(), pid, Some(parts[1]), &registry)
+            codex_identity_scope(project.to_str().unwrap(), pid, Some(parts[1]), &records)
                 .unwrap()
                 .1
                 .contains("hosted")
@@ -963,7 +966,7 @@ mod tests {
             project.to_str().unwrap(),
             pid,
             Some(parts[1]),
-            &registry,
+            &records,
         );
         assert_eq!(result.session_id.as_deref(), Some("seat-thread"));
         assert_eq!(result.state, SessionState::Idle);
@@ -972,7 +975,7 @@ mod tests {
 
     #[test]
     fn codex_identity_writer_lock_binds_before_first_rollout() {
-        // Regression: 6f61f611 required a rollout that 0.153.4's empty prompt
+        // Regression: 5188e732 required a rollout that 0.153.4's empty prompt
         // has not created; the l2 trial retained this exact lock-name shape.
         let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
