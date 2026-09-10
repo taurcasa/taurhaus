@@ -33,6 +33,15 @@ use super::{
 
 /// Per-process session identity and transcript binding supplied by a harness.
 pub trait SessionSource: Send + Sync {
+    /// A harness may already own authoritative activity for an inventory row.
+    fn process_session(
+        &self,
+        _process: &crate::session_scanner::process::ProcessInfo,
+        _pane: Option<&str>,
+    ) -> Option<crate::session_scanner::RuntimeSession> {
+        None
+    }
+
     fn resolve(&self, project_path: &str, pid: u32, pane_id: Option<&str>) -> IdleResult;
 
     fn is_floor(&self) -> bool {

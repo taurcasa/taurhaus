@@ -3,12 +3,13 @@ use serde::{Deserialize, Serialize};
 use super::CliTool;
 
 /// State of a detected CLI tool session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionState {
     /// Claude is actively working (JSONL mtime < 5s ago).
     Active,
     /// Session is waiting for user input (JSONL mtime > 10s ago, process alive).
+    #[default]
     Idle,
 }
 
@@ -82,6 +83,8 @@ pub struct DisplaySession {
     /// Attribution quality for the current activity signal.
     #[serde(default)]
     pub activity_attribution: ActivityAttribution,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     /// Project has active session-file signal that could not be tied to this PID.
     #[serde(default)]
     pub project_unattributed_active: bool,
@@ -112,7 +115,7 @@ pub struct DisplaySession {
 }
 
 /// A detected CLI tool session with runtime transcript metadata preserved.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeSession {
     pub pid: u32,
     pub project_path: String,
@@ -134,6 +137,8 @@ pub struct RuntimeSession {
     pub activity_confidence: ActivityConfidence,
     #[serde(default)]
     pub activity_attribution: ActivityAttribution,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
     #[serde(default)]
     pub project_unattributed_active: bool,
     #[serde(default)]
@@ -166,6 +171,7 @@ impl From<RuntimeSession> for DisplaySession {
             last_output_age_secs: session.last_output_age_secs,
             activity_confidence: session.activity_confidence,
             activity_attribution: session.activity_attribution,
+            source: session.source,
             project_unattributed_active: session.project_unattributed_active,
             group_kind: session.group_kind,
             group_id: session.group_id,
@@ -178,6 +184,41 @@ impl From<RuntimeSession> for DisplaySession {
                 .then_some(session.session_id)
                 .flatten(),
         }
+    }
+}
+
+/// Additive hosted evidence for roster consumers; ordinary rows omit it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostActivity {
+    pub state: String,
+    pub source: String,
+    pub activity_confidence: ActivityConfidence,
+}
+impl HostActivity {
+    pub fn unavailable() -> Self {
+        Self {
+            state: "uncertain".into(),
+            source: "host_unavailable".into(),
+            activity_confidence: ActivityConfidence::Low,
+        }
+    }
+    pub fn from_session(session: &RuntimeSession) -> Option<Self> {
+        let source = session.source.as_deref()?;
+        let level = if source == "host_unavailable" {
+            "uncertain"
+        } else if session.state == SessionState::Idle {
+            "idle"
+        } else if session.activity_attribution == ActivityAttribution::Attributed {
+            "working"
+        } else {
+            "active"
+        };
+        Some(Self {
+            state: level.into(),
+            source: source.into(),
+            activity_confidence: session.activity_confidence,
+        })
     }
 }
 
@@ -218,6 +259,7 @@ mod tests {
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::High,
             activity_attribution: ActivityAttribution::Attributed,
+            source: None,
             project_unattributed_active: false,
             group_kind: SessionGroupKind::Standalone,
             group_id: None,
@@ -263,6 +305,7 @@ mod tests {
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::Low,
             activity_attribution: ActivityAttribution::None,
+            source: None,
             project_unattributed_active: false,
             group_kind: SessionGroupKind::Standalone,
             group_id: None,
@@ -298,6 +341,7 @@ mod tests {
             last_output_age_secs: Some(1),
             activity_confidence: ActivityConfidence::High,
             activity_attribution: ActivityAttribution::Attributed,
+            source: None,
             project_unattributed_active: false,
             group_kind: SessionGroupKind::Standalone,
             group_id: None,
@@ -342,6 +386,7 @@ mod tests {
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::Low,
             activity_attribution: ActivityAttribution::None,
+            source: None,
             project_unattributed_active: false,
             group_kind: SessionGroupKind::Standalone,
             group_id: None,
@@ -377,6 +422,7 @@ mod tests {
             last_output_age_secs: None,
             activity_confidence: ActivityConfidence::Low,
             activity_attribution: ActivityAttribution::None,
+            source: None,
             project_unattributed_active: false,
             group_kind: SessionGroupKind::Standalone,
             group_id: None,

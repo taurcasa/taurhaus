@@ -4277,6 +4277,7 @@ fn live_team_status_round_trip() {
             crate::commands::coordination_types::LiveRuntimeSnapshotFreshness::Fresh,
         members: vec![
             LiveAgentStatus {
+                host_activity: Some(taurhaus_lib::session_scanner::HostActivity::unavailable()),
                 hosted: false,
                 name: "team-lead".to_string(),
                 role: AgentRole::Lead,
@@ -4306,6 +4307,7 @@ fn live_team_status_round_trip() {
                 account_fallback_from: None,
             },
             LiveAgentStatus {
+                host_activity: None,
                 hosted: false,
                 name: "frontend-dev".to_string(),
                 role: AgentRole::Member,
@@ -4338,6 +4340,10 @@ fn live_team_status_round_trip() {
     };
 
     let json = serde_json::to_string(&value).expect("serialize live team status");
+    // Regression: 1b19edd2 flattened snake_case activity into camelCase roster IPC.
+    let wire: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(wire["members"][0]["activityConfidence"], "low");
+    assert!(wire["members"][0].get("activity_confidence").is_none());
     let decoded: LiveTeamStatus =
         serde_json::from_str(&json).expect("deserialize live team status");
     assert_eq!(decoded, value);
@@ -4353,6 +4359,7 @@ fn project_mesh_snapshot_round_trip() {
         team_status: Some(FastTeamSnapshot {
             lead_name: "team-lead".to_string(),
             members: vec![FastAgentSnapshot {
+                host_activity: None,
                 hosted: false,
                 name: "frontend-dev".to_string(),
                 role: AgentRole::Member,
@@ -5173,6 +5180,7 @@ fn daemon_runtime_session(
         last_output_age_secs: None,
         activity_confidence: Default::default(),
         activity_attribution: Default::default(),
+        source: None,
         project_unattributed_active: false,
         group_kind: crate::session_scanner::SessionGroupKind::MeshTeam,
         group_id: Some(team_name.to_string()),

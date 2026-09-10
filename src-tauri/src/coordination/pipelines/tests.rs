@@ -9263,6 +9263,8 @@ fn seat_delivery_canonical_creation_and_operational_rollback() {
         tmp.path().display(),
         launch.program.display()
     );
+    // Regression: 6f61f611 also forwarded the managed notify override to the host.
+    commands.codex_notify_executable = Some(tmp.path().join("fake-notify"));
     // Regression: 3d3a0f83 rejected the default managed hook flag before spawning a host.
     commands.codex_bypass_hook_trust = true;
     commands
@@ -9283,6 +9285,14 @@ fn seat_delivery_canonical_creation_and_operational_rollback() {
         .initialize_team_with_cli_commands(&request, &commands)
         .unwrap();
     assert!(report.failed_step.is_none(), "{report:?}");
+    // Regression: 1b19edd2 tested an unused renderer, leaving production notify suppression unguarded.
+    let host_argv: Vec<String> =
+        serde_json::from_str(&fs::read_to_string(tmp.path().join("host-argv.json")).unwrap())
+            .unwrap();
+    assert!(
+        host_argv.iter().all(|arg| !arg.contains("notify=")),
+        "managed hosted launch must suppress notify overrides"
+    );
     let record = MemberRuntimeStore::load(tmp.path(), "canonical", &name).unwrap();
     let wire = serde_json::to_value(&record).unwrap();
     assert_eq!(wire["appServer"]["host"], "taurhaus-daemon-owned-thread/1");

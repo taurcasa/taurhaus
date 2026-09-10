@@ -34,6 +34,15 @@ describe('sessionStore', () => {
     vi.useRealTimers()
   })
 
+  it.each([true, false])('invalidates cached hosted authority (hydrate=%s)', async (hydrate) => {
+    // Regression: 6f61f611 fallback snapshots could revive a disconnected host's working signal.
+    const session = { pid: 99, project_path: '/hosted', state: 'active', source: 'host' }
+    ipc.listCliSessionSnapshot.mockResolvedValue({ sessions: [null, session], freshness: 'cached' })
+    if (hydrate) await store.hydrateFromBackend()
+    else { store.startPolling(); await vi.advanceTimersByTimeAsync(0) }
+    expect(store.getSessionForProject('/hosted').source).toBe('host_unavailable')
+  })
+
   // Regression: when daemon `sessions-updated` events are delayed/missing,
   // polling fallback must keep session indicators updating instead of stalling.
   // AC1: Polling calls listClaudeSessions every 500ms

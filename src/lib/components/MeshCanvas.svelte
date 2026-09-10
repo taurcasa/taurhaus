@@ -612,6 +612,7 @@
         accountLabel={layout.lead.accountLabel}
         accountFallbackFrom={layout.lead.accountFallbackFrom}
         status={layout.lead.status}
+        source={layout.lead.source}
         isCrossProject={layout.lead.isCrossProject}
         projectLabel={layout.lead.projectLabel}
         selected={isSelected(layout.lead.id)}
@@ -645,6 +646,7 @@
           accountLabel={agent.accountLabel}
           accountFallbackFrom={agent.accountFallbackFrom}
           status={agent.status}
+          source={agent.source}
           isCrossProject={agent.isCrossProject}
           projectLabel={agent.projectLabel}
           selected={isSelected(agent.id)}

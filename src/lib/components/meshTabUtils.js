@@ -1,4 +1,4 @@
-import { activityLevel } from '../activitySignal.js'
+import { activityLevel, withActivityFreshness } from '../activitySignal.js'
 import {
   toolOptions,
   applyNamePattern,
@@ -135,6 +135,7 @@ export function createLead(overrides = {}, projectPath = '') {
     paneId: overrides.paneId ?? null,
     sessionId: overrides.sessionId ?? overrides.session_id ?? null,
     hosted: overrides.hosted === true,
+    source: overrides.source ?? null,
     workflowActivity: overrides.workflowActivity ?? overrides.workflow_activity ?? null,
     roleId: overrides.roleId ?? null,
     roleName: overrides.roleName ?? overrides.role_name ?? null,
@@ -174,6 +175,7 @@ export function createAgent(index, overrides = {}, projectPath = '') {
     paneId: overrides.paneId ?? null,
     sessionId: overrides.sessionId ?? overrides.session_id ?? null,
     hosted: overrides.hosted === true,
+    source: overrides.source ?? null,
     workflowActivity: overrides.workflowActivity ?? overrides.workflow_activity ?? null,
     roleId: overrides.roleId ?? null,
     roleName: overrides.roleName ?? overrides.role_name ?? null,
@@ -388,7 +390,9 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
     }
     return null
   })()
-  const members = Array.isArray(status?.members) ? status.members : []
+  const members = (Array.isArray(status?.members) ? status.members : []).map((member) => {
+    return withActivityFreshness(member, runtimeSnapshotFreshness)
+  })
   const normalizedMembers = members.map((member, index) => ({
     ...member,
     name: String(member?.name ?? `member-${index + 1}`),
@@ -453,6 +457,7 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
       paneId: normalizedLeadMember?.paneId ?? null,
       sessionId: normalizedLeadMember?.sessionId ?? null,
       hosted: normalizedLeadMember?.hosted === true,
+      source: normalizedLeadMember?.source ?? null,
       workflowActivity: normalizedLeadMember?.workflowActivity ?? null,
       roleId: normalizedLeadMember?.roleId ?? null,
       roleName: normalizedLeadMember?.roleName ?? null,
@@ -493,6 +498,7 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
           paneId: member.paneId,
           sessionId: member.sessionId,
           hosted: member.hosted === true,
+          source: member.source ?? null,
           workflowActivity: member.workflowActivity,
           roleId: member.roleId,
           roleName: member.roleName,

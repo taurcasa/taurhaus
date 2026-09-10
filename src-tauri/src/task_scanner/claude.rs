@@ -1164,6 +1164,7 @@ mod tests {
             last_output_age_secs: None,
             activity_confidence: crate::session_scanner::ActivityConfidence::High,
             activity_attribution: crate::session_scanner::ActivityAttribution::Attributed,
+            source: None,
             project_unattributed_active: false,
             group_kind: crate::session_scanner::SessionGroupKind::Standalone,
             group_id: None,

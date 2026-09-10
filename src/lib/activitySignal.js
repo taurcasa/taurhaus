@@ -170,6 +170,13 @@ export function activitySignal(record) {
   const base = baseStatus(record)
   if (base === 'offline') return signal('offline', 'none', 'medium')
 
+  if (record?.source === 'host_unavailable' || (record?.source === 'host' && isStalePresence(record))) {
+    return signal('uncertain', 'host_unavailable', 'low')
+  }
+  if (record?.source === 'host') {
+    const level = base === 'active' && attribution(record) === 'attributed' ? 'working' : base
+    return signal(level, 'host', 'high')
+  }
   if (record?.degraded === true) return signal('uncertain', 'degraded', 'low')
   if (isStalePresence(record)) return signal('uncertain', 'stale', 'low')
   if (base === 'uncertain') return signal('uncertain', 'status', 'low')
@@ -223,4 +230,19 @@ export function isActiveLevel(level) {
  */
 export function isRetainedSignal(signal) {
   return signal?.source === 'stale' || signal?.source === 'degraded'
+}
+
+/** Optional explanation of the daemon authority, shared by activity surfaces. */
+/** Cached host readings describe history, not a currently observed thread. */
+export function withActivityFreshness(record, freshness) {
+  if (record?.source !== 'host' || !['cached', 'attachments_only'].includes(freshness)) return record
+  const current = activitySignal({ ...record, _presenceStale: true })
+  return { ...record, state: current.level, source: current.source }
+}
+
+export function hostActivityExplanation(record) {
+  const current = activitySignal(record)
+  if (current.source === 'host') return `${current.label} via daemon-owned thread`
+  if (current.source === 'host_unavailable') return 'Uncertain · daemon-owned thread unavailable'
+  return null
 }

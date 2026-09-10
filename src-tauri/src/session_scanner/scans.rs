@@ -353,6 +353,15 @@ fn build_runtime_session(
     tmux_pane: Option<&tmux::TmuxPane>,
     recent_io: bool,
 ) -> RuntimeSession {
+    if let Some(mut session) = crate::session_scanner::cli_tool::spec(proc.cli_tool)
+        .session_source()
+        .process_session(&proc, tmux_pane.map(|pane| pane.pane_id.as_str()))
+    {
+        session.tmux_session = tmux_pane.map(|pane| pane.session_name.clone());
+        session.tmux_window = tmux_pane.map(|pane| pane.window_index.clone());
+        session.tmux_window_name = tmux_pane.map(|pane| pane.window_name.clone());
+        return session;
+    }
     let idle_result = detect_runtime_idle_for_process_with_pane(
         &proc,
         tmux_pane.map(|pane| pane.pane_id.as_str()),
@@ -388,6 +397,7 @@ fn build_runtime_session_with_idle(
         last_output_age_secs: idle_result.last_output_age_secs,
         activity_confidence: ActivityConfidence::Low,
         activity_attribution: ActivityAttribution::None,
+        source: None,
         project_unattributed_active: false,
         group_kind: SessionGroupKind::Standalone,
         group_id: None,
@@ -410,6 +420,68 @@ mod tests {
     use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
     use std::sync::MutexGuard;
     use tempfile::TempDir;
+
+    #[test]
+    fn runtime_scan_resolves_hosted_tui_before_ordinary_idle_detection() {
+        // Regression: 1b19edd2 installed hosted recognition only in the display scan.
+        let env = E2eScanner::install();
+        let root = env._tmp.path();
+        let hub = crate::daemon::session_activity::SessionActivityHub::shared();
+        let socket = root.join("socket");
+        let _lease = hub.register_host(
+            socket.clone(),
+            root.into(),
+            RuntimeSession {
+                project_path: root.to_string_lossy().into_owned(),
+                session_id: Some("thread".into()),
+                group_id: Some("team".into()),
+                member_name: Some("seat".into()),
+                ..Default::default()
+            },
+            std::sync::Arc::new(|| {}),
+        );
+        std::fs::create_dir(root.join("sessions")).unwrap();
+        let transcript = root.join("sessions/rollout-thread.jsonl");
+        std::fs::write(
+            &transcript,
+            serde_json::json!({
+                "type":"session_meta", "payload":{"id":"thread", "cwd":root}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        hub.publish_host_status(&socket, "thread", &serde_json::json!({"type":"active"}));
+        for thread in ["thread", "unmatched"] {
+            let rows = scan_sessions_for_runtime_with(
+                &|| {
+                    vec![process::ProcessInfo {
+                        pid: 999_991,
+                        project_path: root.to_string_lossy().into_owned(),
+                        tty: "pts/fixture".into(),
+                        args: format!(
+                            "codex --remote unix://{} resume {thread} --no-alt-screen",
+                            socket.display()
+                        ),
+                        cli_tool: CliTool::Codex,
+                    }]
+                },
+                &HashMap::new,
+            );
+            assert_eq!(
+                E2E_IDLE_CALLS.load(Ordering::SeqCst),
+                0,
+                "hosted TUI must bypass ordinary idle/notify resolution"
+            );
+            assert_eq!(rows[0].session_id.as_deref(), Some(thread));
+            if thread == "thread" {
+                assert_eq!(rows[0].source.as_deref(), Some("host"));
+                assert_eq!(rows[0].jsonl_path.as_deref(), transcript.to_str());
+            } else {
+                assert_eq!(rows[0].source.as_deref(), Some("host_unavailable"));
+                assert!(rows[0].jsonl_path.is_none());
+            }
+        }
+    }
 
     #[test]
     fn runtime_session_carries_recent_workflow_activity_from_its_session_directory() {
