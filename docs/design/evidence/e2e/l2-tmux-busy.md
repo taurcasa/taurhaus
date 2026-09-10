@@ -1021,3 +1021,23 @@ seats. Descriptor unchanged, no hosted bypass.
   Preparation commit **f6880113**; immediate green-step commits **a0111dbd**
   (1), **fbaa2322** (2), **faea1b33** (3), **8646697b** (4). Full-lane PASS is
   withheld because steps 5–6, complete metering and Opus review are unresolved.
+
+#### Run 4d continuation verification
+
+The continuation started at **f931749b** with a clean tree. Every completed
+runtime step was already committed: **a0111dbd** (1), **fbaa2322** (2),
+**faea1b33** (3), **8646697b** (4). No green runtime step awaited a commit.
+
+All **32** offline tests, frozen evidence reconciliation and the read-only
+cleanup/privacy audit passed again. Fresh exact root gates all exited **0**:
+**`just check-quick`**, **`just lint`**, **`just test-contracts`**.
+[Continuation checks](l2-tmux-busy/run4d/continuation-checks.json).
+The product diff against **1db4f9bf** remains empty; the conditional Rust-unit
+gate does not apply. Original runtime and gate records remain unchanged.
+
+Step 5's recorded harness failure (`stopped-turn metering incomplete`) and
+completed removal of the scratch runtime prevent an ordered live continuation.
+The binding stop-on-failure rule remains in effect. No paid runtime was
+restarted and no additional seat spend occurred. Steps 1–4 remain **PASS**,
+step 5 **FAIL — harness**, step 6 **NOT RUN**. Complete metering and independent
+Opus review remain unresolved; the headline verdict remains **UNAVAILABLE**.
