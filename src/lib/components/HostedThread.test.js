@@ -79,3 +79,34 @@ it('keeps deferred input editable without claiming an unknown outcome', async ()
   expect(input).toHaveValue('Keep this draft')
   expect(screen.queryByText(/Previous input has an unknown outcome/)).not.toBeInTheDocument()
 })
+
+it.each(['pending: rollout is empty', 'temporary disconnect'])('recovers transcript polling after %s', async (message) => {
+  // Regression: 04128879 exposed transient reads to a9c8109b's latched recovery alarm.
+  vi.useFakeTimers()
+  try {
+    coordinationHosted.mockRejectedValueOnce(new Error(message)).mockResolvedValue({ thread: { status: { type: 'idle' }, turns: [] } })
+    render(HostedThread, { teamName: 'team', memberName: 'seat' })
+    await vi.advanceTimersByTimeAsync(0)
+    if (message.startsWith('pending:')) {
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.getByRole('status')).toHaveTextContent('Conversation is updating')
+    }
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  } finally { vi.useRealTimers() }
+})
+
+it('does not report accepted input as deferred when its transcript is pending', async () => {
+  // Regression: 04128879's transient read made a9c8109b invite duplicate sends after a receipt.
+  coordinationHosted.mockResolvedValueOnce({ attachmentGeneration: 7, thread: { turns: [] } })
+    .mockResolvedValueOnce({ turn: { id: 'accepted' } }).mockRejectedValue(new Error('pending: rollout is empty'))
+  render(HostedThread, { teamName: 'team', memberName: 'seat' })
+  const input = await screen.findByLabelText('Message hosted member')
+  await fireEvent.input(input, { target: { value: 'Send once' } })
+  await fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Conversation is updating'))
+  expect(input).toHaveValue('')
+  expect(screen.queryByText(/draft is saved|Input deferred/)).not.toBeInTheDocument()
+  expect(coordinationHosted.mock.calls.filter(call => call[2] === 'input')).toHaveLength(1)
+})

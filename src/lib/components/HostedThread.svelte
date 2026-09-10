@@ -28,8 +28,8 @@
       try {
         const next = await coordinationHosted(team, member, 'transcript', {})
         if (!disposed) {
-          transcript = next; unavailable = false
-          if (next.thread?.status?.type === 'idle') pending = ''
+          transcript = next; unavailable = false; error = ''
+          if (next.thread?.status?.type === 'idle' || pending === 'Conversation is updating. Please wait.') pending = ''
         }
       } catch (cause) {
         if (!disposed) {
@@ -37,7 +37,9 @@
           unavailable = message.includes('NOT_HOSTED')
           const older = /UNKNOWN_METHOD|Unknown method:/.test(message)
           terminal = unavailable || older
-          error = older ? 'Hosted controls require a daemon update.' : 'Conversation unavailable. Stop and resume the hosted member to recover.'
+          if (message.includes('pending:')) {
+            pending = 'Conversation is updating. Please wait.'; error = ''
+          } else error = older ? 'Hosted controls require a daemon update.' : 'Conversation unavailable. Stop and resume the hosted member to recover.'
         }
       } finally {
         if (!disposed && !terminal) timer = setTimeout(refresh, 2000)
@@ -54,16 +56,20 @@
     submitting = true
     error = ''
     pending = ''
+    let accepted = false
     try {
       await coordinationHosted(team, member, operation, { generation, ...params })
       if (!current()) return
+      accepted = true
       if (operation === 'input') draft = ''
       const next = await coordinationHosted(team, member, 'transcript', {})
       if (current()) transcript = next
     } catch (cause) {
       if (!current()) return
       const message = String(cause?.message ?? cause)
-      if (/pending:|deferred:|host member busy/.test(message)) {
+      if (accepted) {
+        pending = 'Conversation is updating. Please wait.'
+      } else if (/pending:|deferred:|host member busy/.test(message)) {
         pending = message.includes('recovery')
           ? 'Recovery must reach the next idle turn. Your draft is saved; send it when the turn is idle.'
           : 'Input deferred. Your draft is saved; retry when the member is ready.'
@@ -75,7 +81,7 @@
   }
 </script>
 
-{#if !unavailable && (transcript || error)}
+{#if !unavailable && (transcript || error || pending)}
   <section class="space-y-3 rounded-xl border p-4 {t.keyline} {t.textPrimary}" aria-label="Hosted conversation">
     <h3 class="text-sm font-semibold">Conversation</h3>
     <p class="text-xs">To return a seat on a team-owned team to a tmux pane, stop it, remove it, then re-add the same name with Delivery set to tmux pane.</p>
@@ -103,7 +109,6 @@
           <button disabled={submitting} onclick={() => submit('reconcile', { abandonUnknown: true })}>Abandon unknown input without replay</button>
         {/if}
       {/if}
-      {#if pending}<p role="status">{pending}</p>{/if}
       <form class="space-y-2" onsubmit={event => { event.preventDefault(); submit('input', { text: draft }) }}>
         <label class="block text-xs" for="hosted-input">Message hosted member</label>
         <textarea id="hosted-input" class="w-full rounded border bg-transparent p-2 text-sm {t.keyline}" bind:value={draft} disabled={disabled} maxlength="8000" rows="3"></textarea>
@@ -113,6 +118,7 @@
         </div>
       </form>
     {/if}
+    {#if pending}<p role="status">{pending}</p>{/if}
     {#if error}<p role="alert" class="text-sm">{error}</p>{/if}
   </section>
 {/if}
