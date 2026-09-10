@@ -25,10 +25,11 @@ def meter(starts, usage):
             'basis':'Prior trial packet Luna input/cached/output rates $0.20/$0.02/$1.20 per million; conservative all tokens at $1.20/M, not an invoice.'}
 
 
-def require_headroom(ledger, inputs):
-    assert ledger['paid_inputs'] + inputs <= 16, 'input cap'
-    assert not ledger['unmetered'], 'unmetered turns before next paid input'
-    assert ledger['conservative_usd'] + .05 * inputs <= .25, 'cost headroom'
+def require_headroom(ledger, inputs, basis='api_equivalent_usd'):
+    """Refuse the next paid input without interrupting passive evidence/drain."""
+    return (ledger['paid_inputs'] + ledger.get('seat_start_reservations', 0) + inputs <= 16
+            and not ledger['unmetered']
+            and ledger[basis] + .05 * inputs <= .25)
 
 
 def require_resume_success(report):

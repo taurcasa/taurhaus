@@ -20,8 +20,8 @@ import time
 import traceback
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from preflight import meter, require_resume_success
-from support import copy_native_runtime, sanitize_log_rows, classify_failure, observe_host, reconciled_spend, rollout_usage, retry_busy, seat_process, stopped_backlog, require_headroom
+from preflight import meter, require_resume_success, require_headroom
+from support import copy_native_runtime, sanitize_log_rows, classify_failure, observe_host, reconciled_spend, rollout_usage, retry_busy, seat_process, stopped_backlog
 
 BASE=Path(__file__).resolve().parent
 CHECKOUT=Path('/home/mstie/projects/taurhaus-l4-resume-team')
@@ -33,10 +33,13 @@ OUT=BASE
 def clean(value):
     if isinstance(value,dict):
         if value.get('method','').startswith('account/') or value.get('event','').startswith('usage.'): return None
-        return {k:clean(v) for k,v in value.items() if 'installation' not in k.lower() and k.lower() not in {'auth','accountid','account_id','controlauthtokenhash','accesstoken','refreshtoken','idtoken','access_token','refresh_token','id_token','rate_limits','ratelimits','account_observations'}}
+        return {k:('<signed-read-cursor-redacted>' if k=='cursor' and v else clean(v)) for k,v in value.items() if 'installation' not in k.lower() and k.lower() not in {'auth','accountid','account_id','controlauthtokenhash','accesstoken','refreshtoken','idtoken','access_token','refresh_token','id_token','rate_limits','ratelimits','account_observations'}}
     if isinstance(value,list): return [v for x in value if (v:=clean(x)) is not None]
     if isinstance(value,str):
-        return re.sub(r'(?<![\w/-])/home/[^/\s]+/(?!projects/(?:taurhaus-l4-resume-team|mesh-l4)(?:/|\b))[^\s\"\']*','<operator-path-redacted>',value)
+        if value.lstrip().startswith(('{','[')):
+            try: return json.dumps(clean(json.loads(value)))
+            except ValueError: pass
+        return re.sub(r'(?<![\w/-])'+ '/' + r'home/[^/\s]+/(?!projects/(?:taurhaus-l4-resume-team|mesh-l4)(?:/|\b))[^\s\"\']*','<operator-path-redacted>',value)
     return value
 
 
@@ -60,7 +63,7 @@ def save(name,value):
 
 class Lane:
     def __init__(self):
-        self.root=Path(tempfile.mkdtemp(prefix='th-l4-run6-'))
+        self.root=Path(tempfile.mkdtemp(prefix='th-l4-'+OUT.name+'-'))
         for directory in ['home/.local/bin','codex','claude','gemini','grok','data','tmp','tmux','project']:
             (self.root/directory).mkdir(parents=True,exist_ok=True)
         self.bin=self.root/'home/.local/bin'
@@ -163,7 +166,7 @@ class Lane:
                 if row.get('type')=='response_item' and p.get('type')=='message': retained.append(row)
             if session:
                 self.rollouts[session]=retained
-                usage.extend(rollout_usage(rows(path),session))
+                usage.extend(rollout_usage(rows(path),session,self.meter_diagnostic))
         if self.host_ready:
             view=observe_host(lambda:self.rpc('coordination.hosted_transcript',{'team_name':TEAM,'member_name':'beta'},record=False), lambda error:self.event('host_observation_pending',error=error))
             view=view or self.views.get('beta',{})
@@ -187,9 +190,25 @@ class Lane:
         save('spend-reconciliation.json',reconciled_spend(self.ledger))
         save('rollouts.json',self.rollouts)
         save('host-events.json',list(self.host_events.values()))
-        assert self.ledger['paid_inputs']+self.seat_starts<=16, 'hard input cap exceeded'
-        assert self.ledger['api_equivalent_usd']<=.25, 'hard cost cap exceeded'
-        assert time.monotonic()-self.start_time<=900, '15-minute runtime cap'
+        facts={'input_cap_verified':self.ledger['paid_inputs']+self.seat_starts<=16,
+               'cost_cap_verified':not self.ledger['unmetered'] and self.ledger['api_equivalent_usd']<=.25,
+               'runtime_cap_verified':time.monotonic()-self.start_time<=900}
+        save('cap-observation.json',facts)
+        if not all(facts.values()): self.meter_diagnostic({'kind':'cap_observation',**facts})
+
+    def meter_diagnostic(self, row):
+        # Full rollout replays and repeated polls retain one diagnostic per fact.
+        key=json.dumps(row,sort_keys=True)
+        if key not in self.previous:
+            self.previous[key]=True
+            self.event('meter_diagnostic',diagnostic=row)
+
+    def allow_input(self, inputs):
+        if require_headroom(self.ledger,inputs) and time.monotonic()-self.start_time<=900:
+            return True
+        self.event('input_refused',inputs=inputs,ledger=self.ledger,
+                   reason='next paid input lacks verified cap/headroom; passive observation continues')
+        return False
 
     def wait(self,test,reason,timeout=100):
         assert timeout>=60
@@ -201,7 +220,7 @@ class Lane:
         raise AssertionError(reason)
 
     def settled(self):
-        return bool(self.started) and not self.ledger['unmetered'] and self.started<=self.completed
+        return bool(self.started) and self.started<=self.completed
 
     def journal_rows(self):
         return [r for p in sorted((self.team/'state/messaging-v2/segments').glob('*.jsonl')) for r in rows(p)]
@@ -276,8 +295,7 @@ class Lane:
         raise AssertionError('read paging deadline')
 
     def send(self,member,phase):
-        require_headroom(self.ledger,1)
-        assert self.ledger['paid_inputs']+self.seat_starts+1<=16, 'input cap including starts'
+        if not self.allow_input(1): return False
         marker=f'L4_{phase}_{member}_'+secrets.token_hex(3)
         self.markers[phase,member]=marker
         result=self.mesh(['send',member,'ACTION REQUIRED: Reply exactly '+marker+'. No tools are needed for this marker.','--summary',f'L4 {phase} marker'],f'{phase}-{member}-send')
@@ -299,7 +317,7 @@ class Lane:
         return [r for r in self.journal_rows() if r.get('payload',{}).get('message_id')==mid]
 
     def step1(self):
-        require_headroom(self.ledger,4)
+        if not self.allow_input(4): return False
         self.seat_starts+=2
         result=self.operation('coordination.initialize_team',{'request':self.request,'cli_commands':self.commands,'tmux_layout':'new_window'})
         save('initialize-result.json',result)
@@ -312,7 +330,7 @@ class Lane:
         self.original_config=json.loads((self.team/'config.json').read_text())
         for member in ['alpha','beta']:
             assert self.old[member].get('session_id'), member+' missing session identity'
-            self.send(member,'old')
+            if self.send(member,'old') is False: return False
             marker=self.markers['old',member]
             self.wait(lambda:bool(self.replies(member,marker)) and self.settled(),member+' initial marker missing')
             self.wait(lambda:any(r.get('payload',{}).get('stage') in {'submitted','native_enqueued'} for r in self.receipts('old',member)),member+' completed transport missing')
@@ -341,7 +359,7 @@ class Lane:
     def step3(self):
         # Scheduler refuses a stopped runtime before constructing a receipt.
         for member in ['alpha','beta']:
-            self.send(member,'pending')
+            if self.send(member,'pending') is False: return False
             def backlog():
                 status=self.mesh(['team-daemon','status'],f'step3-{member}-team-daemon')
                 line=next((s for s in status.splitlines() if s.startswith(f'[mesh] delivery {member}: ')), '')
@@ -358,8 +376,9 @@ class Lane:
 
     def step4(self):
         # Two recovery inputs plus the two already accepted pending obligations.
-        require_headroom(self.ledger,4)
-        assert self.ledger['paid_inputs']+self.seat_starts+6<=16, 'input cap including resumed starts'
+        if not self.allow_input(4): return False
+        if self.ledger['paid_inputs']+self.seat_starts+6>16:
+            self.event('input_refused',reason='input cap including resumed starts'); return False
         self.seat_starts+=2
         self.operation('coordination.resume_team',{'request':{'team_name':TEAM},'cli_commands':self.commands,'tmux_layout':'new_window'})
         self.host_ready=bool(self.record('beta').get('appServer'))
@@ -479,14 +498,14 @@ class Lane:
 
     def cleanup(self):
         # Observation never submits a new model input. Drain already started usage.
-        try:
-            if self.record('beta').get('appServer'): self.host_ready=True
-            end=time.monotonic()+60
-            while time.monotonic()<end:
+        if self.record('beta').get('appServer'): self.host_ready=True
+        end=time.monotonic()+60
+        while time.monotonic()<end:
+            try:
                 self.observe()
-                if self.settled() or not self.started: break
-                time.sleep(1)
-        except Exception as e: self.event('cleanup_observation',error=str(e))
+                if (self.settled() and not self.ledger['unmetered']) or not self.started: break
+            except Exception as e: self.meter_diagnostic({'kind':'cleanup_observation','error':str(e)})
+            time.sleep(1)
         try: self.snapshot('final')
         except Exception as e: self.event('snapshot_error',error=str(e))
         save('owned-before-cleanup.json',self.identities())
@@ -515,7 +534,7 @@ class Lane:
 
 def main():
     assert Path.cwd()==CHECKOUT
-    assert not (OUT/'events.jsonl').exists(), 'run6 already executed; no paid retry'
+    assert not (OUT/'events.jsonl').exists(), OUT.name+' already executed; no paid retry'
     os.umask(0o077)
     for sig in [signal.SIGTERM,signal.SIGINT]: signal.signal(sig,lambda s,f: (_ for _ in ()).throw(RuntimeError('controller interrupted')))
     lane=Lane(); code=1
@@ -529,11 +548,14 @@ def main():
                     lane.observe(); time.sleep(1)
                 action=json.loads((OUT/'action.json').read_text()); (OUT/'action.json').unlink()
                 assert action=={'step':step}, 'out-of-order action'
-            getattr(lane,'step'+str(step))()
+            if getattr(lane,'step'+str(step))() is False:
+                save(f'step{step}-outcome.json',{'step':step,'outcome':'NOT RUN','classification':'harness',
+                     'reason':'next paid input refused by recorded cap/headroom facts'})
+                break
             lane.snapshot('step'+str(step)); lane.observe()
             save('step'+str(step)+'-outcome.json',{'step':step,'outcome':'PASS','classification':'runtime','at':time.time()})
             lane.event('checkpoint',step_completed=step,ledger=lane.ledger)
-        code=0
+        else: code=0
     except BaseException as e:
         reason=clean(str(e))
         classification=classify_failure(reason)

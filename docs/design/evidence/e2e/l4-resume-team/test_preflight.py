@@ -22,8 +22,7 @@ class LaneTests(unittest.TestCase):
         self.assertAlmostEqual(result['conservative_usd'], .000132)
 
     def test_missing_usage_blocks_the_next_paid_input(self):
-        with self.assertRaisesRegex(AssertionError, 'unmetered'):
-            require_headroom(meter(['t'], []), 1)
+        self.assertFalse(require_headroom(meter(['t'], []), 1))
 
     def test_resume_terminal_status_does_not_hide_a_startup_refusal(self):
         # // Regression: 4f946ee5 treated terminal RPC status as whole-team success.
@@ -34,9 +33,7 @@ class LaneTests(unittest.TestCase):
         require_resume_success({'resumed':True,'failed_members':[], 'started_team_daemon':True, 'team_daemon_warning':None})
 
     def test_caps_include_automatic_startup_and_recovery(self):
-        with self.assertRaisesRegex(AssertionError, 'input cap'):
-            require_headroom(meter([str(n) for n in range(16)], [{'turn_id':str(n),'input':0,'output':0} for n in range(16)]), 1)
-        with self.assertRaisesRegex(AssertionError, 'cost headroom'):
-            require_headroom(meter(['t'], [{'turn_id':'t','input':190000,'output':0}]), 1)
+        self.assertFalse(require_headroom(meter([str(n) for n in range(16)], [{'turn_id':str(n),'input':0,'output':0} for n in range(16)]), 1))
+        self.assertFalse(require_headroom(meter(['t'], [{'turn_id':'t','input':190000,'output':0}]), 1, basis='conservative_usd'))
 
 if __name__ == '__main__': unittest.main()

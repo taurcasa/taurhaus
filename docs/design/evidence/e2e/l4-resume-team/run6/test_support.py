@@ -34,10 +34,10 @@ class Guards(unittest.TestCase):
         self.assertEqual(classify_failure('Backend error: mesh team activation failed: error: IO error: delivery: quiescent required before opt-in: IO error: delivery: team owner already holds lifetime lock'), 'mesh')
     def test_unmetered_turn_never_reports_zero_total(self):
         # Regression: f62bb158's raw meter subtotal was zero with one unmetered turn.
-        result=reconciled_spend({'conservative_usd':0, 'unmetered':['turn-1']})
+        result=reconciled_spend({'api_equivalent_usd':0, 'conservative_usd':0, 'unmetered':['turn-1']})
         self.assertIsNone(result['total_usd'])
         self.assertFalse(result['cap_verified'])
-        self.assertEqual(result['metered_subtotal_usd'],0)
+        self.assertEqual(result['api_equivalent_subtotal_usd'],0)
     def test_native_runtime_failure_is_harness(self):
         self.assertEqual(classify_failure('launch_host: app-server exited before transport readiness; stderr: bwrap: Creating new namespace failed: Operation not permitted'),'harness')
         self.assertEqual(classify_failure('launch_host: app-server exited before transport readiness; exit status: 1'),'taurhaus')
@@ -169,8 +169,75 @@ class Run6Backlog(unittest.TestCase):
         # // Regression: 92899b62 would stop step 4 at $0.08 + four $0.05 reservations despite $0.006 metered.
         from controller import require_headroom
         require_headroom({'paid_inputs':4,'unmetered':[], 'api_equivalent_usd':.006,'conservative_usd':.08},4)
-        with self.assertRaisesRegex(AssertionError,'cost headroom'):
-            require_headroom({'paid_inputs':4,'unmetered':[], 'api_equivalent_usd':.22,'conservative_usd':.23},1)
+        self.assertFalse(require_headroom({'paid_inputs':4,'unmetered':[], 'api_equivalent_usd':.22,'conservative_usd':.23},1))
 
 if __name__=='__main__': unittest.main()
 
+
+
+class Run7Metering(unittest.TestCase):
+    # // Regression: c008cc2e inherited reset assertions and divergent cap rules; 83f5bda3 records the aborted run.
+    def test_resumed_counter_epochs_accumulate_without_aborting(self):
+        def event(kind, **values): return {'type':'event_msg','payload':{'type':kind,**values}}
+        def count(i,o): return event('token_count',info={'total_token_usage':{'input_tokens':i,'cached_input_tokens':0,'output_tokens':o}})
+        rows=[event('task_started',turn_id='a'),count(100,20),event('task_started',turn_id='b'),
+              count(0,0),count(10,2),count(25,5),count(3,1),count(8,2)]
+        diagnostics=[]
+        result=rollout_usage(rows,'same-session',diagnostics.append)
+        self.assertEqual([(r['turn_id'],r['input'],r['output']) for r in result],[('a',100,20),('b',33,7)])
+        self.assertEqual(len(diagnostics),2)
+        self.assertEqual(diagnostics[0]['kind'],'counter_epoch_reset')
+        self.assertEqual(result,rollout_usage(rows,'same-session'))
+
+    def test_controller_uses_the_single_nonfatal_headroom_rule(self):
+        import controller, preflight
+        self.assertIs(controller.require_headroom,preflight.require_headroom)
+        ledger={'paid_inputs':4,'unmetered':[], 'api_equivalent_usd':.006,'conservative_usd':.08}
+        self.assertTrue(controller.require_headroom(ledger,4))
+        self.assertFalse(controller.require_headroom(ledger,4,basis='conservative_usd'))
+        self.assertFalse(controller.require_headroom({**ledger,'unmetered':['pending']},1))
+        self.assertFalse(controller.require_headroom({**ledger,'paid_inputs':16},1))
+
+    def test_spend_basis_is_explicit(self):
+        result=reconciled_spend({'api_equivalent_usd':.01,'conservative_usd':.30,'unmetered':[]})
+        self.assertEqual(result['total_usd'],.01)
+        self.assertEqual(result['api_equivalent_subtotal_usd'],.01)
+        self.assertEqual(result['all_output_rate_subtotal_usd'],.30)
+        self.assertTrue(result['cap_verified'])
+
+    def test_over_cap_observation_keeps_exporting_and_refuses_next_input(self):
+        import controller
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            lane=controller.Lane.__new__(controller.Lane)
+            lane.root=Path(tmp); lane.host_ready=False; lane.host_events={}; lane.seat_starts=17
+            lane.start_time=controller.time.monotonic(); lane.record=lambda _:{}
+            lane.event=lambda *a,**k:None; lane.previous={}; lane.step=4
+            with patch.object(controller,'save') as save:
+                lane.observe()
+                self.assertTrue(any(c.args[0]=='cost-ledger.json' for c in save.call_args_list))
+                self.assertFalse(lane.allow_input(1))
+
+    def test_meter_gap_does_not_block_runtime_completion(self):
+        import controller
+        lane=controller.Lane.__new__(controller.Lane)
+        lane.started={'t'}; lane.completed={'t'}; lane.ledger={'unmetered':['t']}
+        self.assertTrue(lane.settled())
+
+    def test_privacy_includes_sources_with_only_exact_auth_allowlist(self):
+        # // Regression: c008cc2e audit skipped all .py files, hiding controller coverage.
+        import ast
+        source=Path(__file__).with_name('audit.py').read_text()
+        tree=ast.parse(source)
+        nodes=[n for n in tree.body if isinstance(n,(ast.Import,ast.ImportFrom,ast.FunctionDef))]
+        namespace={}
+        exec(compile(ast.Module(body=nodes,type_ignores=[]),'audit.py','exec'),namespace)
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            (root/'controller.py').write_text("source=Path('/home')/'mstie'/'.codex'/'auth.json'\n")
+            (root/'other.py').write_text("path='/" + "home/someone/private'\n")
+            result=namespace['privacy_scan'](root)
+            self.assertIn('other.py: operator path',result['privacy_violations'])
+            self.assertEqual(result['privacy_files_scanned'],2)
+            self.assertEqual(len(result['privacy_exemptions']),1)
+            self.assertEqual(result['privacy_exemptions'][0]['file'],'controller.py')

@@ -1,0 +1,81 @@
+........E........F.FFFEEF
+======================================================================
+ERROR: test_unmetered_turn_never_reports_zero_total (test_support.Guards.test_unmetered_turn_never_reports_zero_total)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 40, in test_unmetered_turn_never_reports_zero_total
+    self.assertEqual(result['api_equivalent_subtotal_usd'],0)
+                     ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyError: 'api_equivalent_subtotal_usd'
+
+======================================================================
+ERROR: test_privacy_includes_sources_with_only_exact_auth_allowlist (test_support.Run7Metering.test_privacy_includes_sources_with_only_exact_auth_allowlist)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 239, in test_privacy_includes_sources_with_only_exact_auth_allowlist
+    result=namespace['privacy_scan'](root)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^
+KeyError: 'privacy_scan'
+
+======================================================================
+ERROR: test_resumed_counter_epochs_accumulate_without_aborting (test_support.Run7Metering.test_resumed_counter_epochs_accumulate_without_aborting)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 186, in test_resumed_counter_epochs_accumulate_without_aborting
+    result=rollout_usage(rows,'same-session',diagnostics.append)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: rollout_usage() takes 2 positional arguments but 3 were given
+
+======================================================================
+FAIL: test_resume_headroom_uses_metered_cost_not_all_tokens_at_output_rate (test_support.Run6Backlog.test_resume_headroom_uses_metered_cost_not_all_tokens_at_output_rate)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 172, in test_resume_headroom_uses_metered_cost_not_all_tokens_at_output_rate
+    self.assertFalse(require_headroom({'paid_inputs':4,'unmetered':[], 'api_equivalent_usd':.22,'conservative_usd':.23},1))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/support.py", line 107, in require_headroom
+    assert ledger['api_equivalent_usd']+.05*inputs<=.25, 'cost headroom'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: cost headroom
+
+======================================================================
+FAIL: test_controller_uses_the_single_nonfatal_headroom_rule (test_support.Run7Metering.test_controller_uses_the_single_nonfatal_headroom_rule)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 194, in test_controller_uses_the_single_nonfatal_headroom_rule
+    self.assertIs(controller.require_headroom,preflight.require_headroom)
+AssertionError: <function require_headroom at 0x7b607942c680> is not <function require_headroom at 0x7b60792ec4a0>
+
+======================================================================
+FAIL: test_meter_gap_does_not_block_runtime_completion (test_support.Run7Metering.test_meter_gap_does_not_block_runtime_completion)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 225, in test_meter_gap_does_not_block_runtime_completion
+    self.assertTrue(lane.settled())
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_over_cap_observation_keeps_exporting_and_refuses_next_input (test_support.Run7Metering.test_over_cap_observation_keeps_exporting_and_refuses_next_input)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 217, in test_over_cap_observation_keeps_exporting_and_refuses_next_input
+    lane.observe()
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/controller.py", line 190, in observe
+    assert self.ledger['paid_inputs']+self.seat_starts<=16, 'hard input cap exceeded'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: hard input cap exceeded
+
+======================================================================
+FAIL: test_spend_basis_is_explicit (test_support.Run7Metering.test_spend_basis_is_explicit)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/mstie/projects/taurhaus-l4-resume-team/docs/design/evidence/e2e/l4-resume-team/run6/test_support.py", line 203, in test_spend_basis_is_explicit
+    self.assertEqual(result['total_usd'],.01)
+AssertionError: 0.3 != 0.01
+
+----------------------------------------------------------------------
+Ran 25 tests in 0.029s
+
+FAILED (failures=5, errors=3)
+
+Original 0d55b106 support, offline same-rollout resumed epoch replay: AssertionError: unmetered reset token counter (expected red).

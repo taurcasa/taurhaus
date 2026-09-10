@@ -27,11 +27,12 @@ def classify_failure(reason):
 
 def reconciled_spend(ledger):
     complete=not ledger['unmetered']
-    return {'total_usd':ledger['conservative_usd'] if complete else None,
-            'metered_subtotal_usd':ledger['conservative_usd'],
-            'cap_verified':complete and ledger['conservative_usd']<=.25,
+    return {'total_usd':ledger['api_equivalent_usd'] if complete else None,
+            'api_equivalent_subtotal_usd':ledger['api_equivalent_usd'],
+            'all_output_rate_subtotal_usd':ledger['conservative_usd'],
+            'cap_verified':complete and ledger['api_equivalent_usd']<=.25,
             'unmetered_turns':ledger['unmetered'],
-            'note':'Unknown total is never zero spend. Raw meter values are metered subtotals only.'}
+            'note':'Unknown total is never zero spend. API-equivalent rates are not an invoice.'}
 
 
 def observe_host(read, diagnostic):
@@ -45,22 +46,33 @@ def observe_host(read, diagnostic):
         return None
 
 
-def rollout_usage(rows, session):
-    """Cumulative session counters include all tool-response segments in each turn."""
-    current=None; previous={}; baseline={}; turns={}
+def rollout_usage(rows, session, diagnostic=lambda row: None):
+    """Accumulate turn subtotals across process counter epochs in one rollout.
+
+    A resumed process may reset even mid-turn. Retain the previous epoch's
+    subtotal and count the new epoch's observed total once (including a nonzero
+    first sample); rebase subsequent differences to that sample. Replaying the
+    complete file produces identical totals and stable diagnostic identities.
+    """
+    current=None; previous={}; baseline={}; subtotal={}; turns={}; epoch=0
     keys={'input':'input_tokens','cached_input':'cached_input_tokens','output':'output_tokens'}
-    for row in rows:
+    for index,row in enumerate(rows):
         if row.get('type')!='event_msg': continue
         p=row.get('payload',{})
         if p.get('type')=='task_started':
-            current=p.get('turn_id'); baseline=previous.copy()
+            current=p.get('turn_id'); baseline=previous.copy(); subtotal={}
         if p.get('type')!='token_count' or not p.get('info'): continue
         total=p['info'].get('total_token_usage')
         if not total: continue
+        if any(total.get(k,0)<previous.get(k,0) for k in keys.values()):
+            epoch+=1
+            diagnostic({'kind':'counter_epoch_reset','session_id':session,'turn_id':current,
+                        'row':index,'epoch':epoch,'previous':previous,'observed':total})
+            subtotal={out:turns.get(current,{}).get(out,0)+total.get(key,0) for out,key in keys.items()}
+            baseline=total.copy()
         if current:
-            assert all(total.get(k,0)>=baseline.get(k,0) for k in keys.values()), 'unmetered reset token counter'
             turns[current]={'turn_id':current,'session_id':session,'observer':'rollout-cumulative',
-                            **{out:total.get(key,0)-baseline.get(key,0) for out,key in keys.items()}}
+                            **{out:subtotal.get(out,0)+total.get(key,0)-baseline.get(key,0) for out,key in keys.items()}}
         previous=total.copy()
     return list(turns.values())
 
@@ -98,10 +110,3 @@ def stopped_backlog(records, message_id, member, projection, health):
     reason=health.get('last_defer_reason') or ''
     deferred=any(s in reason for s in ['pending: runtime session dead','pending: native_host_not_live'])
     return accepted and projection=='pending' and not presented and health.get('member')==member and deferred
-
-
-def require_headroom(ledger, inputs):
-    """Fresh run6 cap is metered; retain the all-output-rate estimate separately."""
-    assert ledger['paid_inputs']+inputs<=16, 'input cap'
-    assert not ledger['unmetered'], 'unmetered turns before next paid input'
-    assert ledger['api_equivalent_usd']+.05*inputs<=.25, 'cost headroom'
