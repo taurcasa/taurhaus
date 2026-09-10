@@ -92,8 +92,12 @@ impl StateChangeCapture {
         self.events
             .try_iter()
             .filter(|event| {
-                event["event"] == "activity.state.changed" && event["fields"]["pid"] == pid
-                    && !matches!(event["fields"]["source"].as_str(), Some("host" | "host_unavailable"))
+                event["event"] == "activity.state.changed"
+                    && event["fields"]["pid"] == pid
+                    && !matches!(
+                        event["fields"]["source"].as_str(),
+                        Some("host" | "host_unavailable")
+                    )
             })
             .map(|event| {
                 (
